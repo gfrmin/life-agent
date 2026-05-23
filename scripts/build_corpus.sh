@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
-# build_corpus.sh — assemble kb/raw from notes, already-extracted text, and OCR'd document images.
-# Idempotent: only adds what's new. See kb/raw/README.md and docs/data-seams.md.
+# build_corpus.sh — assemble the corpus from notes, already-extracted text, and OCR'd
+# document images, into $LIFE_AGENT_KB/raw (outside the repo — see docs/kb-schema.md).
+# Idempotent: only adds what's new. See docs/data-seams.md.
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-RAW="$REPO_ROOT/kb/raw"
+# Knowledge/PII lives outside the repo, at $LIFE_AGENT_KB.
+LIFE_AGENT_KB="${LIFE_AGENT_KB:-$HOME/.life-agent/kb}"
+RAW="${RAW:-$LIFE_AGENT_KB/raw}"
 NOTES_SRC="${NOTES_SRC:-/mnt/yo/notes}"
 PARSED_SRC="${PARSED_SRC:-/mnt/yo/parsed}"
 DOCS_SRC="${DOCS_SRC:-/mnt/yo/dropbox/documents}"

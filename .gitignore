@@ -19,10 +19,10 @@ build/
 *.key
 *.pem
 
-# Knowledge base: raw sources and compiled pages are large and/or personal.
-# Keep the structure, ignore the content. Un-ignore kb/wiki if you decide to
-# version the compiled wiki (note: it may contain personal data).
-kb/raw/**
-!kb/raw/README.md
-kb/wiki/**
-!kb/wiki/.gitkeep
+# Knowledge base lives OUTSIDE the repo, at $LIFE_AGENT_KB (default
+# $HOME/.life-agent/kb) — see docs/kb-schema.md. There is no kb/ in the repo.
+# Defensive entries below in case tooling is ever run with data in-tree.
+ocr-cache/
+eval/questions.yaml
+eval/phase0_log.md
+FAILURES.md

@@ -14,8 +14,9 @@ QUERY="${*:-}"
 
 DOCS_DIR="${DOCS_DIR:-/mnt/yo/dropbox/documents}"
 PARSED_DIR="${PARSED_DIR:-/mnt/yo/parsed}"
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-OCR_CACHE="${OCR_CACHE:-$REPO_ROOT/.ocr-cache}"
+# Knowledge/PII lives outside the repo, at $LIFE_AGENT_KB (see docs/kb-schema.md).
+LIFE_AGENT_KB="${LIFE_AGENT_KB:-$HOME/.life-agent/kb}"
+OCR_CACHE="${OCR_CACHE:-$LIFE_AGENT_KB/ocr-cache}"
 LANGS="${TESS_LANGS:-heb+eng}"
 mkdir -p "$OCR_CACHE"
 
