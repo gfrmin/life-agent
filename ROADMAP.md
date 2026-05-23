@@ -49,10 +49,11 @@ projects, especially **PKM**.
 ## Roadmap (each phase usable on its own)
 
 ### Phase 0 — Measure + needle-find · this weekend  *(both, in parallel)*
-- **Karpathy-style LLM wiki** (in this repo's `kb/`): `raw/` (docs + `~/yo/notes` + the `~/yo/parsed`
-  text, plus a quick `tesseract -l heb+eng` pass over the 163 images so scans like the ID join the
-  corpus) → a `CLAUDE.md` schema → Claude Code authors `wiki/` with `[[wikilinks]]` → ask ~20 real
-  questions → **log what it can't answer** (this defines the retrieval requirements). Near-zero code.
+- **Karpathy-style LLM wiki** (under `$LIFE_AGENT_KB`, outside the repo): `raw/` (docs + `~/yo/notes`
+  + the `~/yo/parsed` text, plus a `tesseract -l heb+eng` pass over the 163 images so scans like the
+  ID join the corpus) → the `docs/kb-schema.md` schema → Claude Code authors `wiki/` with
+  `[[wikilinks]]` → ask ~20 real questions (`bin/ask`) → **log what it can't answer** (this defines the
+  retrieval requirements). Near-zero code.
 - **OCR+grep needle-finder** (`scripts/needle.sh`): OCRs images on demand and greps the corpus —
   answers document lookups immediately. The Israeli ID is already located at
   `/mnt/yo/dropbox/documents/` (`il id.pdf`, `il id.jpg`, `il id back.jpg`, `il id.png`); this makes
@@ -82,17 +83,18 @@ CRM/relationship nudges (`renavon`); scope expansion to photos (PhotoPrism + vis
 
 ## Critical files
 - **`~/git/life-agent` (this repo):** the pi-mono app (composition root) + MCP-bridge extension;
-  Phase-0 `kb/raw`+`kb/wiki`+`kb/CLAUDE.md`; `scripts/needle.sh`; email/calendar/chat MCP servers;
+  Phase-0 tooling (`bin/ask`, `scripts/needle.sh`, `scripts/build_corpus.sh`) + `docs/kb-schema.md`
+  (knowledge itself lives under `$LIFE_AGENT_KB`, outside the repo); email/calendar/chat MCP servers;
   agent system prompt + scheduling.
-- **pkm:** `src/pkm/producers/tesseract.py(new)`, `migrations/0004_*.py(new)`,
-  `src/pkm/{chunking,embeddings,retrieval,mcp_server}.py(new)`, `cli.py`, `routing.py`, `extract.py`,
-  `hashing.py`; `SPEC.md` → v0.3.0.
+- **pkm:** `SPEC-PRINCIPLES.md(done)`, `SPEC-v0.3.0.md(done)`, `migrations/0004_*.py(done)`,
+  `hashing.py(hardened)`; still to come: `src/pkm/producers/tesseract.py(new)`,
+  `src/pkm/{chunking,embeddings,retrieval,mcp_server}.py(new)`, `cli.py`, `routing.py`, `extract.py`.
 - **credence-pi:** `bdsl/capabilities.bdsl` (gate new capabilities), `extension/src/index.ts`,
   `daemon/server.jl`.
 - **jarvis-lite:** `mcp_server.py` (exists).
 
 ## Verification
-- **Phase 0:** ask ~20 real questions to the wiki; record hit-rate + failure list (`kb/FAILURES.md`).
+- **Phase 0:** ask ~20 real questions to the wiki; record hit-rate + failure list (`$LIFE_AGENT_KB/FAILURES.md`).
   `tesseract -l heb+eng "il id.jpg" stdout` returns Hebrew text incl. the ID number.
 - **Phase 1:** `uv run pkm search "תעודת זהות"` returns the ID with provenance; idempotent re-ingest
   (double-run no-op); `pytest`/`ruff`/`mypy` green; `pkm-memory` MCP callable from Claude Code.
