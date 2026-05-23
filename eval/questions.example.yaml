@@ -1,0 +1,29 @@
+# ILLUSTRATIVE EXAMPLE — fake data. The real eval set lives at
+# $LIFE_AGENT_KB/eval/questions.yaml (out of tree). See README.md.
+#
+# source_id is sha256: of the ORIGINAL source bytes (for OCR, the image, not
+# the .txt). Compute with: sha256sum "<original file>".
+questions:
+  - id: q-001
+    question: "What is Pat Doe's national ID number?"
+    expected_citations:
+      - path: "raw/ocr/national-id.jpg.txt"
+        source_id: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    notes: "ID printed on the scanned card; OCR'd from the image."
+    status: answered
+
+  - id: q-002
+    question: "When does Pat's passport expire?"
+    expected_citations:
+      - path: "raw/ocr/passport.jpg.txt"
+        source_id: "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+    notes: "Expiry date on the passport bio page."
+    status: partial
+
+  - id: q-003
+    question: "Which bank holds Pat's primary current account?"
+    expected_citations:
+      - path: "raw/parsed-text/bank-statement.txt"
+        source_id: "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+    notes: "Example of a question answered from extracted PDF text rather than OCR."
+    status: missed

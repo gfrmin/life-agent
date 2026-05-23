@@ -1,0 +1,86 @@
+#!/usr/bin/env python3
+"""ask — answer a question about your life from the life-agent wiki, with citations.
+
+Phase-0 MVP. Deliberately naive: load ALL of $LIFE_AGENT_KB/wiki, send it plus the
+question plus a system prompt to Claude, print the cited answer. No retrieval, no
+chunking — that is Phase 1, and `FAILURES.md` is its spec. Knowledge lives OUTSIDE
+this repo, at $LIFE_AGENT_KB (default ~/.life-agent/kb); see docs/kb-schema.md.
+
+Usage:  bin/ask "what is my Israeli ID number?"
+Env:    LIFE_AGENT_KB (kb path), ASK_MODEL (default claude-sonnet-4-6),
+        ANTHROPIC_API_KEY (else read from gnome-keyring: service=env key=ANTHROPIC_API_KEY)
+"""
+from __future__ import annotations
+
+import json
+import os
+import subprocess
+import sys
+import urllib.request
+from pathlib import Path
+
+KB = Path(os.environ.get("LIFE_AGENT_KB", str(Path.home() / ".life-agent/kb")))
+WIKI = KB / "wiki"
+MODEL = os.environ.get("ASK_MODEL", "claude-sonnet-4-6")
+
+
+def api_key() -> str:
+    key = os.environ.get("ANTHROPIC_API_KEY")
+    if key:
+        return key
+    try:
+        out = subprocess.run(
+            ["secret-tool", "lookup", "service", "env", "key", "ANTHROPIC_API_KEY"],
+            capture_output=True, text=True, check=True,
+        )
+        if out.stdout.strip():
+            return out.stdout.strip()
+    except Exception:
+        pass
+    sys.exit("ANTHROPIC_API_KEY not found in env or gnome-keyring")
+
+
+def main() -> None:
+    if len(sys.argv) < 2:
+        sys.exit('usage: ask "<question>"')
+    question = " ".join(sys.argv[1:])
+
+    pages = sorted(WIKI.glob("*.md"))
+    if not pages:
+        sys.exit(f"no wiki at {WIKI} — run scripts/build_corpus.sh then compile the wiki")
+    wiki = "\n\n".join(f"# FILE: {p.name}\n{p.read_text()}" for p in pages)
+
+    system = (
+        "You are the owner's personal assistant. Answer ONLY from the WIKI below. "
+        "Every fact you assert MUST carry its `(raw/...)` citation, copied exactly as it "
+        "appears in the wiki. If the wiki does not contain the answer, say so plainly and "
+        "name the source that would be needed. Watch for identity confusion (the owner's "
+        "documents contain other people's IDs too). Be concise.\n\n=== WIKI ===\n" + wiki
+    )
+    body = json.dumps({
+        "model": MODEL,
+        "max_tokens": 1024,
+        "system": system,
+        "messages": [{"role": "user", "content": question}],
+    }).encode("utf-8")
+
+    req = urllib.request.Request(
+        "https://api.anthropic.com/v1/messages",
+        data=body,
+        headers={
+            "content-type": "application/json",
+            "x-api-key": api_key(),
+            "anthropic-version": "2023-06-01",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req) as resp:
+            data = json.load(resp)
+    except urllib.error.HTTPError as e:
+        sys.exit(f"Anthropic API error {e.code}: {e.read().decode(errors='replace')}")
+
+    print("".join(b["text"] for b in data.get("content", []) if b.get("type") == "text"))
+
+
+if __name__ == "__main__":
+    main()
