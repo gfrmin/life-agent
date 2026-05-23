@@ -1,0 +1,28 @@
+# Dependencies / build
+node_modules/
+.venv/
+__pycache__/
+*.pyc
+dist/
+build/
+
+# Local databases / caches
+*.duckdb
+*.duckdb.wal
+.ocr-cache/
+
+# OS
+.DS_Store
+
+# Secrets — these belong in gnome-keyring, never in the repo
+.env
+*.key
+*.pem
+
+# Knowledge base: raw sources and compiled pages are large and/or personal.
+# Keep the structure, ignore the content. Un-ignore kb/wiki if you decide to
+# version the compiled wiki (note: it may contain personal data).
+kb/raw/**
+!kb/raw/README.md
+kb/wiki/**
+!kb/wiki/.gitkeep
