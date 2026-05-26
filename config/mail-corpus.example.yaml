@@ -1,0 +1,44 @@
+# Curation manifest for the mail -> pkm corpus bridge (scripts/mail_bridge.py).
+#
+# THIS IS A FAKE EXAMPLE of the schema. The REAL manifest holds your actual
+# folder selections (which can reveal personal/financial/medical context) and
+# therefore lives OUTSIDE this public repo, at:
+#
+#     $LIFE_AGENT_KB/config/mail-corpus.yaml   (default: ~/yo/life-agent-kb/config/...)
+#
+# The bridge symlinks every message in the `include` folders into `staging_dir`
+# as a `.eml` file (mirroring folder structure), so pkm -- which routes by
+# extension and already handles .eml via Unstructured -- ingests them with no
+# Maildir knowledge of its own. Curation lives here, not in pkm.
+
+version: 1
+
+# Root of ONE Maildir account: the directory whose children are the mail
+# folders (each folder has cur/ new/ tmp/). For a multi-account store, run the
+# bridge once per account (or extend this manifest).
+maildir_root: ~/mail/example-account
+
+# Where the .eml symlink tree is written. MUST be outside any git repo (it
+# points at real mail). Symlinks are cheap and cross-filesystem-safe.
+staging_dir: ~/pkm/mail-staging
+
+# Folders to ingest, relative to maildir_root. Each must be a Maildir folder
+# (has a cur/). Listing a folder also pulls in any nested folders beneath it,
+# so prefer naming specific high-signal folders over a noisy parent: e.g. a
+# big `Archive/` typically has its OWN cur/ full of automated notifications.
+# Start small and widen from dogfood evidence ("I searched X and it wasn't
+# in the corpus").
+include:
+  - INBOX
+  - Sent
+  # - Archive/personal
+  # - Archive/financial
+
+# Folders to skip even when reached via an `include` (glob-matched against the
+# path relative to maildir_root). Use this to drop machine-generated noise
+# (git/jira/CI/dmarc notifications) that pollutes retrieval.
+exclude:
+  - Archive/*/git
+  - Archive/*/jira
+  - dmarc
+  - fb

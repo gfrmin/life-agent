@@ -1,29 +1,31 @@
 # ILLUSTRATIVE EXAMPLE — fake data. The real eval set lives at
-# $LIFE_AGENT_KB/eval/questions.yaml (out of tree). See README.md.
+# $LIFE_AGENT_KB/eval/questions.yaml (out of tree, PII). See README.md.
 #
-# source_id is sha256: of the ORIGINAL source bytes (for OCR, the image, not
-# the .txt). Compute with: sha256sum "<original file>".
+# Ground truth is the ANSWER (the fact), not a source_id — robust to corpus growth and
+# source-agnostic. scripts/run_eval.py grades whether the answer surfaces in a top-k
+# retrieved chunk (token-boundary match), and classifies failures by MODE.
 questions:
   - id: q-001
     question: "What is Pat Doe's national ID number?"
-    expected_citations:
-      - path: "raw/ocr/national-id.jpg.txt"
-        source_id: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
-    notes: "ID printed on the scanned card; OCR'd from the image."
-    status: answered
+    subject: me
+    answer: "123456789"
+    distractors: ["987654321"]        # a housemate's ID — confusable wrong subject
+    search_queries: ["123456789", "national id"]
+    notes: "PASS if 123456789 is in a top-k chunk; the housemate's ID being retrieved flags SUBJECT_CONFUSION (orthogonal to the verdict)."
 
   - id: q-002
     question: "When does Pat's passport expire?"
-    expected_citations:
-      - path: "raw/ocr/passport.jpg.txt"
-        source_id: "sha256:1111111111111111111111111111111111111111111111111111111111111111"
-    notes: "Expiry date on the passport bio page."
-    status: partial
+    subject: me
+    answer: "2031-08-14"
+    answer_variants: ["14/08/2031"]
+    search_queries: ["passport expiry", "2031"]
+    mode_hint: coverage
+    notes: "If the passport scan isn't ingested -> ABSENT_COVERAGE; if ingested but OCR-garbled -> set mode_hint: extraction."
 
   - id: q-003
-    question: "Which bank holds Pat's primary current account?"
-    expected_citations:
-      - path: "raw/parsed-text/bank-statement.txt"
-        source_id: "sha256:2222222222222222222222222222222222222222222222222222222222222222"
-    notes: "Example of a question answered from extracted PDF text rather than OCR."
-    status: missed
+    question: "Summarise Pat's argument in the 2024 grant proposal."
+    subject: n/a
+    answer: "prioritise rural clinics over urban expansion"
+    fuzzy: true
+    search_queries: ["grant proposal 2024 argument rural clinics"]
+    notes: "fuzzy: a sentence answer, graded by the LLM judge rather than the token matcher (Phase 2)."
