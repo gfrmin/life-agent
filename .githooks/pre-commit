@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Structural PII guard — block staged content shaped like real personal data.
+# Catches leaks at commit time, before they enter local history.
+exec python3 "$(git rev-parse --show-toplevel)/.githooks/pii_check.py" --staged

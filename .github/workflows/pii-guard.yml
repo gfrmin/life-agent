@@ -1,0 +1,17 @@
+name: pii-guard
+
+# Server-side backstop: re-run the structural PII checks that need no private
+# patterns. Catches the "hook not installed / bypassed" case. For direct pushes
+# this fires *after* the push is public — an alarm, not a wall; the committed
+# pre-commit/pre-push hooks (core.hooksPath=.githooks) are the real gate.
+on:
+  push:
+  pull_request:
+
+jobs:
+  pii-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Scan tree for PII shapes (allowlist, no private list)
+        run: python3 .githooks/pii_check.py --shapes-only

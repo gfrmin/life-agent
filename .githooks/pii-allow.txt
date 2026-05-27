@@ -1,0 +1,6 @@
+# Public, non-PII email domains that may legitimately appear in tracked files
+# (e.g. clone URLs, attribution). One per line, case-insensitive. NEVER add a
+# personal domain here — this file is public. Personal-data patterns live in
+# $LIFE_AGENT_KB/pii-patterns.txt, outside the repo.
+github.com
+anthropic.com
