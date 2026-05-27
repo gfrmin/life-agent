@@ -17,23 +17,27 @@ detectable shape) supplements the shapes. It is loaded from
 
 This catches *novel* PII by construction, unlike a denylist of known values.
 
-Output never echoes a matched value (the guard also runs in public CI logs);
-it reports ``path:line: <kind>`` only. A line containing the marker ``PII-OK``
-is exempt — use sparingly, for deliberate, reviewed false positives.
+Output never echoes a matched value (it could end up in a log); it reports
+``path:line: <kind>`` only. A line containing the marker ``PII-OK`` is exempt —
+use sparingly, for deliberate, reviewed false positives.
+
+This is the *whole* gate — there is no server-side CI backstop (solo repo) — so
+the hooks run at both commit and push, and pre-push scans every blob in every
+pushed commit, not just the net diff.
 
 Modes
 -----
   (default)      shapes + email allowlist + private denylist.  Fail-closed:
                  if the denylist file is missing, refuse to scan (exit 2).
-  --shapes-only  shapes + email allowlist only; no private file needed.  Used
-                 by CI, which has no access to ``$LIFE_AGENT_KB``.
+  --shapes-only  shapes + email allowlist only; no private file needed. For an
+                 ad-hoc scan when ``$LIFE_AGENT_KB`` is unavailable.
 
 Inputs (pick one)
 -----------------
   --staged       scan the staged blobs                              (pre-commit)
   --prepush      read ref updates on stdin, scan the pushed blobs   (pre-push)
   PATH...        scan explicit paths from the working tree          (manual)
-  (none)         scan every tracked file in the working tree        (manual/CI)
+  (none)         scan every tracked file in the working tree        (manual)
 
 Exit: 0 clean · 1 PII found · 2 misuse (denylist missing in default mode).
 """
@@ -229,9 +233,58 @@ def _rev_exists(sha: str) -> bool:
     )
 
 
+def _cat_blob(sha: str) -> str | None:
+    raw = subprocess.run(
+        ["git", "cat-file", "-p", sha], capture_output=True, check=False
+    ).stdout
+    if b"\x00" in raw:
+        return None
+    return raw.decode("utf-8", errors="replace")
+
+
+def _introduced_blobs(rsha: str, lsha: str) -> list[tuple[str, str]]:
+    """(blob_sha, path) for every file added/modified by each commit in the
+    pushed range. Scanning per-commit (not the net diff) means PII committed and
+    then removed *within the same push* is still caught."""
+    pairs: list[tuple[str, str]] = []
+    for commit in _git(["rev-list", f"{rsha}..{lsha}"]).split():
+        raw = _git(["diff-tree", "--no-commit-id", "--no-renames", "-r", commit])
+        for line in raw.splitlines():
+            if not line.startswith(":"):
+                continue
+            meta, _, path = line.partition("\t")
+            fields = meta.split()
+            if len(fields) < 4 or fields[3].startswith("0000000"):
+                continue  # malformed or a deletion (no post-image to scan)
+            pairs.append((fields[3], path))
+    return pairs
+
+
+def _tip_blobs(lsha: str) -> list[tuple[str, str]]:
+    """(blob_sha, path) for every blob in lsha's tree — the full published
+    snapshot. Used when there is no remote baseline (a new branch, or a
+    force-push after a history rewrite): scan the curated current state rather
+    than pre-convention historical blobs. History-level real-PII cleanliness for
+    a rewrite is assured separately (the rewrite itself + a full-history grep of
+    the private patterns), not by re-validating old synthetic fixtures here."""
+    pairs: list[tuple[str, str]] = []
+    for entry in _git(["ls-tree", "-r", lsha]).splitlines():
+        meta, _, path = entry.partition("\t")
+        fields = meta.split()
+        if len(fields) >= 3 and fields[1] == "blob":
+            pairs.append((fields[2], path))
+    return pairs
+
+
 def gather_prepush(stdin: str) -> list[tuple[str, str]]:
+    """Scan the content being published. With a known remote baseline, scan
+    every blob introduced by every commit in the range (so PII added then
+    removed within the same push is still caught); otherwise (new branch or
+    post-rewrite force-push) scan the curated tip snapshot. Deduplicated by blob
+    id. This is the whole gate — no server-side CI — paired with the structural
+    rules in SPEC §14.9."""
     out: list[tuple[str, str]] = []
-    seen: set[tuple[str, str]] = set()
+    seen: set[str] = set()
     for line in stdin.splitlines():
         parts = line.split()
         if len(parts) != 4:
@@ -239,23 +292,19 @@ def gather_prepush(stdin: str) -> list[tuple[str, str]]:
         _lref, lsha, _rref, rsha = parts
         if lsha.startswith("0000000000"):
             continue  # branch deletion
-        # New branch, or a force-push whose old remote tip is no longer in our
-        # object store (e.g. after a history rewrite): scan the whole tip tree
-        # rather than a diff that would error against a missing rev.
         if rsha.startswith("0000000000") or not _rev_exists(rsha):
-            names = _git(["ls-tree", "-r", "--name-only", lsha]).splitlines()
+            pairs = _tip_blobs(lsha)
         else:
-            names = _git(["diff", "--name-only", rsha, lsha]).splitlines()
-        for name in names:
-            if _skip(name):
+            pairs = _introduced_blobs(rsha, lsha)
+        for blobsha, path in pairs:
+            if blobsha in seen:
                 continue
-            key = (lsha, name)
-            if key in seen:
+            seen.add(blobsha)
+            if _skip(path):
                 continue
-            seen.add(key)
-            text = _blob(lsha, name)
+            text = _cat_blob(blobsha)
             if text is not None:
-                out.append((f"{lsha[:8]}:{name}", text))
+                out.append((path, text))
     return out
 
 
