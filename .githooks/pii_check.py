@@ -233,6 +233,15 @@ def _rev_exists(sha: str) -> bool:
     )
 
 
+def _is_ancestor(a: str, b: str) -> bool:
+    return (
+        subprocess.run(
+            ["git", "merge-base", "--is-ancestor", a, b], capture_output=True
+        ).returncode
+        == 0
+    )
+
+
 def _cat_blob(sha: str) -> str | None:
     raw = subprocess.run(
         ["git", "cat-file", "-p", sha], capture_output=True, check=False
@@ -292,7 +301,14 @@ def gather_prepush(stdin: str) -> list[tuple[str, str]]:
         _lref, lsha, _rref, rsha = parts
         if lsha.startswith("0000000000"):
             continue  # branch deletion
-        if rsha.startswith("0000000000") or not _rev_exists(rsha):
+        # Incremental scan only for a true fast-forward (remote tip is an
+        # ancestor). New branch, missing baseline, or a divergent force-push
+        # (history rewrite) → scan the curated tip snapshot instead.
+        if (
+            rsha.startswith("0000000000")
+            or not _rev_exists(rsha)
+            or not _is_ancestor(rsha, lsha)
+        ):
             pairs = _tip_blobs(lsha)
         else:
             pairs = _introduced_blobs(rsha, lsha)
