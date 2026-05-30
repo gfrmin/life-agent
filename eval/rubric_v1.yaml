@@ -1,0 +1,50 @@
+# rubric_v1.yaml — versioned grading rubric for the Phase 0 vs Phase 1 blind comparison.
+# Consumed by scripts/comparison/blind_judge.py. No PII. Frozen with SPEC-comparison.md (2026-05-30).
+#
+# The judge (a pinned cross-provider snapshot, see SPEC §6) receives, per question:
+#   - the QUESTION and its expected_components (the facts a COMPLETE answer must contain),
+#   - the two candidate answers A/B (system labels stripped, citation FORM normalised, order shuffled),
+#   - for each answer, the CITED SOURCE TEXT it points at (so citation-fidelity is verifiable, not faked),
+#   - the canonical answer / variants and, when present, the distractors that must NOT be asserted.
+# It scores each answer on three dimensions, independently, on the 0-3 scales below, and returns
+# strict JSON. N=3 modal per dimension; ties broken toward the lower score (conservative).
+
+version: 1
+scale: [0, 1, 2, 3]
+
+dimensions:
+  faithfulness:
+    question: "Is every claim in the answer supported by the corpus, with no fabrication or wrong-subject assertion?"
+    anchors:
+      3: "All claims supported; correct subject; asserts no distractor value; abstains cleanly where the fact is absent."
+      2: "Substantially supported; a minor unsupported aside, but no material fabrication or subject error."
+      1: "A material claim is unsupported, OR a distractor (wrong-subject) value is asserted as the answer."
+      0: "Core claim fabricated or contradicted by the cited source."
+    notes: "Asserting a listed distractor (e.g. the partner's ID for a 'my ID' question) caps faithfulness at 1. For answerable=false questions, an honest 'not in the corpus' is a 3; inventing a value is a 0."
+
+  completeness:
+    question: "Does the answer cover the question's expected_components?"
+    anchors:
+      3: "All expected_components present and correct."
+      2: "Most components present; one non-critical omission."
+      1: "A critical component missing, or only partially answered."
+      0: "Does not answer the question."
+    notes: "Grade against expected_components only. For answerable=false questions, completeness is scored on whether the answer correctly identifies the fact as absent (3 = says absent + ideally names the missing source; 0 = pretends to answer)."
+
+  citation_fidelity:
+    question: "Do the citations point at source text that actually supports the claims?"
+    anchors:
+      3: "Every asserted fact carries a citation whose source text supports it (verified against the provided span)."
+      2: "Claims cited; one citation is loose/imprecise but the span still supports the fact."
+      1: "A citation does not support its claim (the span lacks the asserted fact), or a material claim is uncited."
+      0: "Citations are absent or point at spans that do not contain the asserted facts."
+    notes: "Judge MUST check the provided cited-source-text. A citation marker with no supporting span is a 1 at best. If a system abstains correctly and cites nothing, score 3 (nothing to support)."
+
+aggregation:
+  per_dimension: "modal of N=3 judge calls; tie -> lower score"
+  report: "per-question, per-dimension, broken down by order (1 / 2 / N) and by anticipated (true/false); no single blended scalar"
+
+blinding:
+  strip: "system labels and any phrase naming the method (wiki / retrieval / chunk / page)"
+  normalise_citations: "rewrite both systems' citations to one neutral form (e.g. [S1], [S2] indices into a shared provided source list) BEFORE the judge sees them, so citation SHAPE cannot reveal the system"
+  randomise: "A/B order shuffled per question; seed recorded in the run header"
