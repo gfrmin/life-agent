@@ -74,7 +74,6 @@ eval/
 docs/
   kb-schema.md                  the knowledge-base schema (what lives under $LIFE_AGENT_KB)
   failures-template.md          how to author the Phase-1 failure log
-  data-seams.md                 verified integration points (don't re-explore — read this)
   nix-for-documents-report.md   commissioned research on the memory-core architecture
   pkm-retrieval-design.md       code-grounded design for extending pkm
   brain-design.md               pi-mono + credence-pi findings and how the app composes them

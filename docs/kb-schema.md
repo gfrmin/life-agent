@@ -7,7 +7,7 @@
 LIFE_AGENT_KB   # default: $HOME/.life-agent/kb
 ```
 
-Point it wherever you keep your stuff (`export LIFE_AGENT_KB=~/yo/life-agent-kb`). Everything below
+Point it wherever you keep your stuff (`export LIFE_AGENT_KB=~/.life-agent/kb`). Everything below
 describes the layout the tooling expects **under `$LIFE_AGENT_KB`**. None of it is committed here —
 it is personal and may be large.
 

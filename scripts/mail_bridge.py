@@ -37,9 +37,9 @@ import yaml
 
 def _kb_root() -> Path:
     """Resolve $LIFE_AGENT_KB (the out-of-tree knowledge base), defaulting to
-    ~/yo/life-agent-kb — same convention as scripts/run_phase1_eval.py."""
+    ~/.life-agent/kb — same convention as scripts/run_eval.py."""
     env = os.environ.get("LIFE_AGENT_KB")
-    return Path(env).expanduser() if env else Path.home() / "yo/life-agent-kb"
+    return Path(env).expanduser() if env else Path.home() / ".life-agent/kb"
 
 
 def load_manifest(path: Path) -> dict:

@@ -141,6 +141,6 @@ posterior (BDSL programs in `bdsl/{capabilities,features,prior,kernel,decide}.bd
   n8n, miniflux, invidious; timers `mbsync` (mail) + `renavon-inbox-ingest`; bi-hourly borg backup.
 
 ## Start here
-1. Read [`ROADMAP.md`](./ROADMAP.md) (phases) and [`docs/data-seams.md`](./docs/data-seams.md) (the
-   verified data map — saves you a re-exploration).
+1. Read [`ROADMAP.md`](./ROADMAP.md) (phases) and `$LIFE_AGENT_KB/docs/data-seams.md` (the verified,
+   machine-specific data map — out of tree; saves you a re-exploration).
 2. Follow [`GETTING_STARTED.md`](./GETTING_STARTED.md). Current phase: **Phase 0** (measure + needle-find).

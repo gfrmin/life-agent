@@ -26,8 +26,11 @@ JUDGE_MODEL = "gpt-5.1"
 TEMPERATURE = 0.0
 JUDGE_N = 3                          # N=3 modal per dimension
 
-KB = Path(os.environ.get("LIFE_AGENT_KB", str(Path.home() / "yo/life-agent-kb")))
+KB = Path(os.environ.get("LIFE_AGENT_KB", str(Path.home() / ".life-agent/kb")))
 COMPARISON_DIR = KB / "eval" / "comparison"   # all run outputs (PII) land here
+
+# Machine-specific: point PKM_CONFIG at your pkm config.yaml (no machine path baked into the repo).
+PKM_CONFIG = Path(os.environ.get("PKM_CONFIG", "~/.config/life-agent/pkm.yaml")).expanduser()
 
 
 # --- secrets -------------------------------------------------------------- #

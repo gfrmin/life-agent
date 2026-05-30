@@ -28,7 +28,7 @@ from pathlib import Path
 
 import yaml
 
-KB = Path(os.environ.get("LIFE_AGENT_KB", str(Path.home() / "yo/life-agent-kb")))
+KB = Path(os.environ.get("LIFE_AGENT_KB", str(Path.home() / ".life-agent/kb")))
 CORPUS_CONFIG = KB / "config" / "comparison-corpus.yaml"
 OUT_DIR = KB / "eval"
 STAGING_DIR = KB / "comparison" / "mail-window"  # symlinks to in-window .eml, for the pkm catalogue

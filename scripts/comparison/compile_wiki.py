@@ -25,7 +25,6 @@ import yaml
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _common as C  # noqa: E402
 
-LIVE_CONFIG = Path("~/yo/pkm/live/config.yaml").expanduser()
 WIKI_DIR = C.COMPARISON_DIR / "wiki"
 PER_SOURCE_CHARS = 5000      # cap per source so the compile cost stays bounded
 SHARD_CHARS = 28_000         # ~7k tokens/shard — small enough that dense shards don't drop facts
@@ -112,7 +111,7 @@ def main() -> int:
         n_sources = json.loads((C.COMPARISON_DIR / "compile_meta.json").read_text())["n_sources"]
         print(f"reduce-only: re-authoring from cached map_notes ({len(all_notes)} chars)")
     else:
-        cfg = yaml.safe_load(LIVE_CONFIG.read_text(encoding="utf-8"))
+        cfg = yaml.safe_load(C.PKM_CONFIG.read_text(encoding="utf-8"))
         conn = duckdb.connect(str(Path(cfg["root_dir"]).expanduser() / "catalogue.duckdb"), read_only=True)
         s_paths = C.snapshot_paths()
         texts = source_texts(conn, s_paths)

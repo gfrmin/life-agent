@@ -48,7 +48,7 @@ _MEMBERSHIP_K = 100_000
 
 def _kb_root() -> Path:
     env = os.environ.get("LIFE_AGENT_KB")
-    return Path(env).expanduser() if env else Path.home() / "yo/life-agent-kb"
+    return Path(env).expanduser() if env else Path.home() / ".life-agent/kb"
 
 
 def load_questions() -> list[dict]:
@@ -193,8 +193,8 @@ def format_report(results: list[dict], k: int, elapsed: float) -> str:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--config", default=str(Path.home() / "yo/pkm/live/config.yaml"),
-        help="pkm config.yaml (default: ~/yo/pkm/live/config.yaml)",
+        "--config", default=os.environ.get("PKM_CONFIG", str(Path("~/.config/life-agent/pkm.yaml").expanduser())),
+        help="pkm config.yaml (default: $PKM_CONFIG or ~/.config/life-agent/pkm.yaml)",
     )
     parser.add_argument("--k", type=int, default=20, help="top-k per query")
     parser.add_argument("--rebuild-index", action="store_true", help="rebuild FTS first")

@@ -22,12 +22,11 @@ import yaml
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _common as C  # noqa: E402
 
-LIVE_CONFIG = Path("~/yo/pkm/live/config.yaml").expanduser()
 OVERFETCH = 300  # fetch this many live hits per query, THEN filter to S, then take top-k
 
 
 def _connect():
-    cfg = yaml.safe_load(LIVE_CONFIG.read_text(encoding="utf-8"))
+    cfg = yaml.safe_load(C.PKM_CONFIG.read_text(encoding="utf-8"))
     db = Path(cfg["root_dir"]).expanduser() / "catalogue.duckdb"
     conn = duckdb.connect(str(db), read_only=True)
     conn.execute("INSTALL fts; LOAD fts;")

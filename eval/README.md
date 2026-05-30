@@ -22,7 +22,7 @@ $LIFE_AGENT_KB/eval/questions.yaml   # the real questions + ground-truth answers
 $LIFE_AGENT_KB/eval/eval_log.md      # the latest run's report (generated)
 ```
 
-(`LIFE_AGENT_KB` default `$HOME/.life-agent/kb`; on this machine `~/yo/life-agent-kb`.)
+(`LIFE_AGENT_KB` default `$HOME/.life-agent/kb`; override it to wherever you keep your KB.)
 
 ## Schema
 

@@ -7,9 +7,9 @@ set -euo pipefail
 # Knowledge/PII lives outside the repo, at $LIFE_AGENT_KB.
 LIFE_AGENT_KB="${LIFE_AGENT_KB:-$HOME/.life-agent/kb}"
 RAW="${RAW:-$LIFE_AGENT_KB/raw}"
-NOTES_SRC="${NOTES_SRC:-/mnt/yo/notes}"
-PARSED_SRC="${PARSED_SRC:-/mnt/yo/parsed}"
-DOCS_SRC="${DOCS_SRC:-/mnt/yo/dropbox/documents}"
+NOTES_SRC="${NOTES_SRC:-$HOME/notes}"
+PARSED_SRC="${PARSED_SRC:-$HOME/parsed}"
+DOCS_SRC="${DOCS_SRC:-$HOME/documents}"
 LANGS="${TESS_LANGS:-heb+eng}"
 
 mkdir -p "$RAW/notes" "$RAW/parsed-text" "$RAW/ocr"

@@ -12,8 +12,8 @@ set -euo pipefail
 QUERY="${*:-}"
 [ -z "$QUERY" ] && { echo "usage: $0 <query>"; exit 2; }
 
-DOCS_DIR="${DOCS_DIR:-/mnt/yo/dropbox/documents}"
-PARSED_DIR="${PARSED_DIR:-/mnt/yo/parsed}"
+DOCS_DIR="${DOCS_DIR:-$HOME/documents}"
+PARSED_DIR="${PARSED_DIR:-$HOME/parsed}"
 # Knowledge/PII lives outside the repo, at $LIFE_AGENT_KB (see docs/kb-schema.md).
 LIFE_AGENT_KB="${LIFE_AGENT_KB:-$HOME/.life-agent/kb}"
 OCR_CACHE="${OCR_CACHE:-$LIFE_AGENT_KB/ocr-cache}"
