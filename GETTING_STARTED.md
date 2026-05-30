@@ -14,7 +14,12 @@ dogfood week** — use it, log misses to `$LIFE_AGENT_KB/FAILURES.md`, re-rank �
 MCP-bridge). Build only what the failure log demands.
 
 **Knowledge lives outside this repo**, at `$LIFE_AGENT_KB` (default `$HOME/.life-agent/kb`) — see
-[`docs/kb-schema.md`](./docs/kb-schema.md). `export LIFE_AGENT_KB=...` before running the tooling.
+[`docs/kb-schema.md`](./docs/kb-schema.md).
+
+**Local config:** copy `.env.example` → `.env` (gitignored) and set `LIFE_AGENT_KB` + `PKM_CONFIG`
+for your machine, then `set -a; source .env; set +a` once per shell before running the tooling.
+`.env` is for **non-secret paths only** — secrets stay in your secret store and are read via
+`secret-tool`, never from `.env`.
 
 ## Prerequisites (verify, don't assume)
 - Ollama is up: `curl -s localhost:11434/api/tags | jq '.models[].name'` should list
