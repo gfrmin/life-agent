@@ -49,26 +49,39 @@ projects, especially **PKM**.
 ## Roadmap (each phase usable on its own)
 
 ### Phase 0 — Measure + needle-find · this weekend  *(both, in parallel)*
-- **Karpathy-style LLM wiki** (under `$LIFE_AGENT_KB`, outside the repo): `raw/` (docs + `~/yo/notes`
-  + the `~/yo/parsed` text, plus a `tesseract -l heb+eng` pass over the 163 images so scans like the
-  ID join the corpus) → the `docs/kb-schema.md` schema → Claude Code authors `wiki/` with
+- **Karpathy-style LLM wiki** (under `$LIFE_AGENT_KB`, outside the repo): `raw/` (your notes +
+  already-extracted text directories, plus a `tesseract -l heb+eng` pass over scanned images so scans
+  like an ID card join the corpus) → the `docs/kb-schema.md` schema → Claude Code authors `wiki/` with
   `[[wikilinks]]` → ask ~20 real questions (`bin/ask`) → **log what it can't answer** (this defines the
   retrieval requirements). Near-zero code.
 - **OCR+grep needle-finder** (`scripts/needle.sh`): OCRs images on demand and greps the corpus —
-  answers document lookups immediately. The Israeli ID is already located at
-  `/mnt/yo/dropbox/documents/` (`il id.pdf`, `il id.jpg`, `il id back.jpg`, `il id.png`); this makes
-  such finds repeatable today.
+  answers document lookups immediately. The seed example (an ID-card scan in the documents directory)
+  is found this way; the corpus roots are configured via env / the out-of-tree registry, not hardcoded.
 
-### Phase 1 — PKM retrieval substrate · ~1–2 weeks
-1. Bump PKM **SPEC → v0.3.0** authorising retrieval/embeddings/extensions/local MCP server (governance-first).
-2. **`TesseractProducer`** (`src/pkm/producers/tesseract.py`, heb+eng) wired into `routing.py` +
+### Phase 1 — PKM retrieval substrate · **substrate complete; corpus live**
+1. **(done)** Bump PKM **SPEC → v0.3.0** authorising retrieval/embeddings/extensions/local MCP server (governance-first).
+2. **(done)** **`TesseractProducer`** (`src/pkm/producers/tesseract.py`, heb+eng) wired into `routing.py` +
    `extract.py` + `cli.py`; migration `0004` (`chunks`, `embeddings FLOAT[768]`, `source_origin`).
-3. Local embeddings via Ollama `nomic-embed-text` (stdlib `urllib`, no new dep).
-4. DuckDB `fts` + `vss` hybrid query (over-fetch k·10); `pkm search` CLI; `pkm-memory` MCP (FastMCP,
+3. **(done)** Local embeddings via Ollama `nomic-embed-text` (stdlib `urllib`, no new dep).
+4. **(done)** DuckDB `fts` + `vss` hybrid query (over-fetch k·10); `pkm search` CLI; `pkm-memory` MCP (FastMCP,
    mirroring `jarvis-lite/mcp_server.py`).
-5. Source adapters (email/notmuch via `notmuch show --format=json`; chat via matrix-archiver SQLite at
-   `~/git/matrix-local/data/archiver/archive.db`; notes; contacts via Fastmail CardDAV; takeout
-   transcripts), each materialised as content-addressed source objects.
+5. **(done) Source adapters — now a declarative registry, not ad-hoc scripts.** Sources are declared
+   in a **`data-sources.yaml`** registry (real one under `$LIFE_AGENT_KB`, fake schema in
+   `config/data-sources.example.yaml`) and enumerated from **plocate** (the system file index,
+   repurposed via a one-line `/etc/updatedb.conf` change so it covers your data mount). Two pieces:
+   - `scripts/data_source_registry.py` — loader + plocate census + `--report` (classifies every file
+     by pkm producer coverage: "ingestable today" vs "no producer yet"); deferred roots (photos)
+     counted, never ingested.
+   - `scripts/ingest_sources.py` — promote step: `filetree` + `maildir` adapters (the latter reusing
+     `mail_bridge.py`) → merge into pkm `sources.yaml` (dedupe by path, union tags) → `pkm ingest`.
+   Adding **chat** (matrix-archiver SQLite) or **contacts** (Fastmail CardDAV → CRM people-seed) is
+   now *a new `kind` adapter + a registry entry*, deferred to dogfood evidence / Phase 2.
+
+> **Status — Phase 1 substrate is built and the live corpus is ingested + MCP-verified:**
+> mail INBOX+Sent (8288 src / 37,439 chunks), documents (364 / 3,786), notes (69 / 211); a
+> `pkm-memory__search` round-trip returns mail/doc/notes hits with `source_origin` provenance.
+> **Next is a dogfood week** — use it, log failures, re-rank — *before* starting Phase 2 (the
+> FAILURES-driven rule: build only what the failure log demands).
 
 ### Phase 2 — Brain + actions · ~2–4 weeks
 - **pi MCP-bridge extension** → credence-pi/pi can call `pkm-memory` + Jarvis + email + calendar.
@@ -83,9 +96,11 @@ CRM/relationship nudges (`renavon`); scope expansion to photos (PhotoPrism + vis
 
 ## Critical files
 - **`~/git/life-agent` (this repo):** the pi-mono app (composition root) + MCP-bridge extension;
-  Phase-0 tooling (`bin/ask`, `scripts/needle.sh`, `scripts/build_corpus.sh`) + `docs/kb-schema.md`
-  (knowledge itself lives under `$LIFE_AGENT_KB`, outside the repo); email/calendar/chat MCP servers;
-  agent system prompt + scheduling.
+  Phase-0 tooling (`bin/ask`, `scripts/needle.sh`, `scripts/build_corpus.sh`) + `docs/kb-schema.md`;
+  the configurable data layer (`scripts/data_source_registry.py`, `scripts/ingest_sources.py`,
+  `config/data-sources.example.yaml`); email/calendar/chat MCP servers; agent system prompt +
+  scheduling. (Knowledge + the *real* `data-sources.yaml` + `machine-config.md` live under
+  `$LIFE_AGENT_KB`, outside the repo.)
 - **pkm:** `SPEC-PRINCIPLES.md(done)`, `SPEC-v0.3.0.md(done)`, `migrations/0004_*.py(done)`,
   `hashing.py(hardened)`; still to come: `src/pkm/producers/tesseract.py(new)`,
   `src/pkm/{chunking,embeddings,retrieval,mcp_server}.py(new)`, `cli.py`, `routing.py`, `extract.py`.
@@ -95,9 +110,12 @@ CRM/relationship nudges (`renavon`); scope expansion to photos (PhotoPrism + vis
 
 ## Verification
 - **Phase 0:** ask ~20 real questions to the wiki; record hit-rate + failure list (`$LIFE_AGENT_KB/FAILURES.md`).
-  `tesseract -l heb+eng "il id.jpg" stdout` returns Hebrew text incl. the ID number.
+  `tesseract -l heb+eng <id-card-scan> stdout` returns Hebrew text incl. the ID number.
 - **Phase 1:** `uv run pkm search "תעודת זהות"` returns the ID with provenance; idempotent re-ingest
   (double-run no-op); `pytest`/`ruff`/`mypy` green; `pkm-memory` MCP callable from Claude Code.
+  **Data layer (done):** `python scripts/data_source_registry.py --report` prints the per-root census;
+  `python scripts/ingest_sources.py` is idempotent (re-run = no new catalogue rows); `pkm-memory__search`
+  returns mail/doc/notes hits carrying `source_origin` provenance.
 - **Phase 2:** credence-pi asks before an email send, auto-proceeds on a read-only search; daily
   briefing renders.
 

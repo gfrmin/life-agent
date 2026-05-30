@@ -1,0 +1,51 @@
+# Declarative registry of the local data roots life-agent feeds into pkm.
+# Consumed by scripts/data_source_registry.py (--report census) and
+# scripts/ingest_sources.py (stage + register + `pkm ingest`).
+#
+# THIS IS A FAKE EXAMPLE of the schema. The REAL registry holds your actual
+# data roots (whose paths/names can reveal personal context) and therefore
+# lives OUTSIDE this public repo, at:
+#
+#     $LIFE_AGENT_KB/config/data-sources.yaml   (default: ~/yo/life-agent-kb/config/...)
+#
+# Enumeration for --report comes from plocate (the system file index). For that
+# to see your data, plocate must index the data mount — see the project plan's
+# "Step 0" (un-prune the mount in /etc/updatedb.conf, then `sudo updatedb`).
+
+version: 1
+
+roots:
+  # A tree of files. The `filetree` adapter stages matching files as symlinks
+  # and lets pkm's producers (pandoc/docling/tesseract/unstructured) extract them.
+  - id: notes
+    kind: filetree
+    path: /data/notes
+    include: ["**/*.md"]      # fnmatch globs over the path relative to `path`;
+    exclude: []               # empty include = all files. `*` spans `/`.
+    tags: [notes]             # applied to every staged file (pkm source_tags)
+    enabled: true             # enabled -> eligible for ingest. false -> census-only.
+
+  - id: documents
+    kind: filetree
+    path: /data/documents
+    # no include -> every file; the census shows which have a pkm producer today
+    tags: [documents]
+    enabled: true
+
+  # A Maildir account. The `maildir` adapter reuses mail_bridge.py's folder
+  # discovery + .eml symlinking; pkm ingests the .eml tree via its email producer.
+  - id: mail
+    kind: maildir
+    path: /data/mail/example-account   # the dir whose children are mail folders
+    include: [INBOX, Sent]             # folders relative to path (each has cur/)
+    exclude: ["Archive/*/git"]         # drop machine-generated noise
+    staging_dir: /data/staging/mail    # where the .eml symlink tree is written
+    tags: [email]
+    enabled: true
+
+  # A census-only root: counted/reported by --report, but never staged or
+  # ingested. Use for large/deferred corpora you want visibility into.
+  - id: photos
+    kind: filetree
+    path: /data/photoprism
+    enabled: false
