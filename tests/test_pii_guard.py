@@ -8,7 +8,7 @@ guard to skip that source line and is a Python comment). All values are
 synthetic.
 
 Run in the pkm env:
-    uv run --project ~/git/pkm python -m pytest ~/git/pkm/tests/test_pii_guard.py
+    uv run --project ../pkm python -m pytest tests/test_pii_guard.py
 """
 
 from __future__ import annotations
@@ -95,3 +95,52 @@ def test_denylist_supplement_matches_unshaped_literal() -> None:
 def test_marker_suppresses_line() -> None:
     vid = _valid_il_id("11111111")
     assert scan_text("t", "id " + vid + " x # PII-OK", denylist=[], allowed_domains=D) == []
+
+
+# --- personal filesystem paths (layered: env backstop + placeholder allowlist) ---
+
+
+def test_forbidden_prefixes_from_env(monkeypatch) -> None:
+    from pii_check import load_forbidden_prefixes
+
+    monkeypatch.setenv("HOME", "/home/zz")  # PII-OK
+    monkeypatch.setenv("LIFE_AGENT_KB", "/home/zz/yo/kb")  # PII-OK
+    pref = load_forbidden_prefixes()
+    assert "/home/zz" in pref  # home  # PII-OK
+    assert "/home/zz/yo" in pref  # data mount (kb parent)  # PII-OK
+    assert "~/yo/kb" in pref  # tilde form  # PII-OK
+    # generic roots are never forbidden outright (they would over-match)
+    assert "/home" not in pref and "/mnt" not in pref and "~" not in pref  # PII-OK
+
+
+_ALLOW = ("/data", "/tmp", "~/.config", "~/.life-agent")
+_FORB = ("/mnt/zz", "/home/zz")  # PII-OK
+
+
+def test_path_allowlist_flags_non_placeholder_roots() -> None:
+    f = scan_text("t", "cd /opt/zz/proj/x", denylist=[], allowed_domains=D,  # PII-OK
+                  path_allow=_ALLOW, forbidden_prefixes=())
+    assert any(x.kind.startswith("personal-path") for x in f)
+    # placeholder roots, relative paths and URLs are clean
+    for ok in ("see /data/notes/a.md", "edit ~/.config/app", "go ../pkm now",
+               "url https://github.com/org/repo here"):
+        assert scan_text("t", ok, denylist=[], allowed_domains=D,
+                         path_allow=_ALLOW, forbidden_prefixes=()) == []
+
+
+def test_path_machine_prefix_backstop() -> None:
+    f = scan_text("t", "ls /mnt/zz/projects/secret", denylist=[], allowed_domains=D,  # PII-OK
+                  path_allow=("/mnt",), forbidden_prefixes=_FORB)  # PII-OK
+    assert any(x.kind == "personal-path (machine prefix)" for x in f)
+
+
+def test_path_ignores_single_segment_abs_and_globs() -> None:
+    # single-name absolute tokens (routes, REPL cmds, glob fragments) reveal nothing
+    for ok in ("POST /sensor then /signals", "glob **/.git/** and **/node_modules/**",
+               "type /quit to exit", "version 3 not /3 here"):
+        assert scan_text("t", ok, denylist=[], allowed_domains=D,
+                         path_allow=("/data",), forbidden_prefixes=()) == []
+    # a single-segment HOME path IS personal and is flagged
+    f = scan_text("t", "cd ~/proj now", denylist=[], allowed_domains=D,  # PII-OK
+                  path_allow=("~/.config",), forbidden_prefixes=())
+    assert any(x.kind.startswith("personal-path") for x in f)

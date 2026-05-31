@@ -10,6 +10,11 @@ personal data is rejected:
   * a 9-digit run that *passes* the Israeli-ID checksum (synthetic test IDs are
     chosen to fail it, e.g. ``123456789``, so they pass the guard untouched);
   * a passport shape (two letters then seven digits) or an Israeli mobile.
+  * a filesystem path under a non-placeholder root (tracked text must use
+    ``/data``, ``/tmp``, ``~/.config`` … — see ``.githooks/pii-path-allow.txt``);
+    real machine prefixes (``$HOME`` / the ``$LIFE_AGENT_KB`` mount) are derived
+    from the environment and rejected outright. A *bare* personal folder name with
+    no path (e.g. a project dir on its own) has no shape and stays the denylist's job.
 
 A small **private denylist** (names / employers / domains — things with no
 detectable shape) supplements the shapes. It is loaded from
@@ -63,6 +68,20 @@ _EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@((?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,})\
 _NINE_DIGITS_RE = re.compile(r"(?<![A-Za-z0-9])\d{9}(?![A-Za-z0-9])")
 _PASSPORT_RE = re.compile(r"\b[A-Z]{2}\d{7}\b")
 _IL_MOBILE_RE = re.compile(r"(?<![A-Za-z0-9])05\d[-\s]?\d{7}(?![A-Za-z0-9])")
+# A filesystem-path literal worth checking. Home-relative (tilde-rooted, >=1 path
+# segment — inherently personal) OR absolute (slash-rooted, >=2 path segments). The
+# 2-segment floor for absolute paths skips the noise of single-name HTTP routes,
+# REPL commands and glob fragments (a leading-slash dotname) which reveal nothing
+# personal. The look-behind drops URL schemes, plain relative, and dot-relative.
+_PATH_RE = re.compile(
+    r"(?<![:\w@~./\-])"
+    r"(?:~/[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*"
+    r"|/[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)+)"
+)
+
+
+def _path_allowed(p: str, allow: tuple[str, ...]) -> bool:
+    return any(p == a or p.startswith(a.rstrip("/") + "/") for a in allow)
 
 # Machine-generated dependency lockfiles: hashes/sizes/URLs only, no prose and
 # no possible personal data. Scanning them is pure false-positive noise.
@@ -118,6 +137,8 @@ def scan_text(
     *,
     denylist: list[re.Pattern[str]],
     allowed_domains: frozenset[str],
+    path_allow: tuple[str, ...] = (),
+    forbidden_prefixes: tuple[str, ...] = (),
 ) -> list[Finding]:
     """Return every PII shape / denylist hit in ``text``. Pure; no IO."""
     out: list[Finding] = []
@@ -138,6 +159,12 @@ def scan_text(
             if pat.search(line):
                 out.append(Finding(path, lineno, "private-denylist"))
                 break
+        for m in _PATH_RE.finditer(line):
+            p = m.group(0)
+            if any(p == fp or p.startswith(fp.rstrip("/") + "/") for fp in forbidden_prefixes):
+                out.append(Finding(path, lineno, "personal-path (machine prefix)"))
+            elif not _path_allowed(p, path_allow):
+                out.append(Finding(path, lineno, "personal-path (non-placeholder root)"))
     return out
 
 
@@ -178,6 +205,48 @@ def load_allowed_domains(repo_root: str) -> frozenset[str]:
                 if line and not line.startswith("#"):
                     extra.add(line)
     return DEFAULT_ALLOWED_DOMAINS | frozenset(extra)
+
+
+def load_path_allow(repo_root: str) -> tuple[str, ...]:
+    """Allowed placeholder / system path roots, from committed
+    ``.githooks/pii-path-allow.txt`` (no PII — public-safe). A tracked filesystem
+    path whose prefix is not one of these is flagged."""
+    out: list[str] = []
+    path = os.path.join(repo_root, ".githooks", "pii-path-allow.txt")
+    if os.path.isfile(path):
+        with open(path, encoding="utf-8") as fh:
+            for raw in fh:
+                line = raw.strip()
+                if line and not line.startswith("#"):
+                    out.append(line)
+    return tuple(out)
+
+
+_GENERIC_ROOTS = frozenset({"/home", "/Users", "/mnt", "/media", "/var", "/usr", "/", "~"})  # PII-OK
+
+
+def load_forbidden_prefixes() -> tuple[str, ...]:
+    """Real machine paths to forbid outright, derived live from ``$HOME`` /
+    ``$LIFE_AGENT_KB`` so no personal path is ever stored in this committed file.
+    Empty if the environment is unset (Layer-1 allowlist still applies). Generic /
+    too-short roots are dropped so the prefixes never over-match."""
+    cands: set[str] = set()
+    home = os.environ.get("HOME", "")
+    kb = os.environ.get("LIFE_AGENT_KB", "")
+    for base in filter(None, (home, kb)):
+        cands.add(base)
+        cands.add(os.path.realpath(base))
+    for b in ({kb, os.path.realpath(kb)} if kb else set()):
+        cands.add(os.path.dirname(b))  # the data mount = the KB's parent
+    if home:
+        for c in list(cands):
+            if c.startswith(home + "/"):
+                cands.add("~" + c[len(home):])  # tilde form of a home-rooted prefix
+    return tuple(sorted(
+        p
+        for p in cands
+        if p and len(p) >= 5 and p.rstrip("/") not in _GENERIC_ROOTS
+    ))
 
 
 # --- git plumbing: produce (path, text) pairs to scan ---------------------
@@ -350,6 +419,8 @@ def main(argv: list[str]) -> int:
 
     repo_root = _git(["rev-parse", "--show-toplevel"]).strip()
     allowed_domains = load_allowed_domains(repo_root)
+    path_allow = load_path_allow(repo_root)
+    forbidden = load_forbidden_prefixes()
 
     if shapes_only:
         denylist: list[re.Pattern[str]] = []
@@ -357,7 +428,7 @@ def main(argv: list[str]) -> int:
         loaded = load_denylist(kb_root())
         if loaded is None:
             sys.stderr.write(
-                f"pii_check: denylist missing at {kb_root()}/pii-patterns.txt — "
+                f"pii_check: denylist missing at {kb_root()}/pii-patterns.txt — "  # PII-OK
                 "refusing to scan blind. Set LIFE_AGENT_KB, or pass --shapes-only.\n"
             )
             return 2
@@ -375,7 +446,14 @@ def main(argv: list[str]) -> int:
     findings: list[Finding] = []
     for path, text in files:
         findings.extend(
-            scan_text(path, text, denylist=denylist, allowed_domains=allowed_domains)
+            scan_text(
+                path,
+                text,
+                denylist=denylist,
+                allowed_domains=allowed_domains,
+                path_allow=path_allow,
+                forbidden_prefixes=forbidden,
+            )
         )
 
     if findings:

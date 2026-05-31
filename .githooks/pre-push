@@ -1,4 +1,4 @@
 #!/usr/bin/env bash
 # Structural PII guard — the authoritative gate: block any push carrying
 # real-looking personal data. Ref updates arrive on stdin (git hook protocol).
-exec python3 "$(git rev-parse --show-toplevel)/.githooks/pii_check.py" --prepush
+exec python3 "$(git rev-parse --show-toplevel)/.githooks/pii_check.py" --prepush  # PII-OK

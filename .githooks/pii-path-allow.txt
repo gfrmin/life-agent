@@ -1,0 +1,22 @@
+# Placeholder + system path roots that may legitimately appear in tracked text.
+# One prefix per line. A tracked filesystem path whose prefix is NOT listed here is
+# flagged by .githooks/pii_check.py. NEVER add a personal data root (e.g. a real
+# mount like a home/data path) here — this file is public. Real machine prefixes are
+# rejected automatically via the environment; they are never enumerated in-tree.
+/data
+/tmp
+/path/to
+/etc
+/usr
+/var
+/opt
+/srv
+/dev
+/proc
+/sys
+~/.config
+~/.cache
+~/.local
+~/.life-agent
+~/.env
+~/.msmtprc
