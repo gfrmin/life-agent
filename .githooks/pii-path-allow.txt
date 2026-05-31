@@ -5,6 +5,7 @@
 # rejected automatically via the environment; they are never enumerated in-tree.
 /data
 /tmp
+/fake
 /path/to
 /etc
 /usr

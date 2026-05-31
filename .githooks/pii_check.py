@@ -72,9 +72,10 @@ _IL_MOBILE_RE = re.compile(r"(?<![A-Za-z0-9])05\d[-\s]?\d{7}(?![A-Za-z0-9])")
 # segment — inherently personal) OR absolute (slash-rooted, >=2 path segments). The
 # 2-segment floor for absolute paths skips the noise of single-name HTTP routes,
 # REPL commands and glob fragments (a leading-slash dotname) which reveal nothing
-# personal. The look-behind drops URL schemes, plain relative, and dot-relative.
+# personal. The look-behind drops URL schemes, plain relative, dot-relative, and
+# placeholder-rooted docs like `<root>/sources/...` (the slash follows a `>`).
 _PATH_RE = re.compile(
-    r"(?<![:\w@~./\-])"
+    r"(?<![:\w@~./>\-])"
     r"(?:~/[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*"
     r"|/[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)+)"
 )

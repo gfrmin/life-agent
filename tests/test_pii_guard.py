@@ -144,3 +144,11 @@ def test_path_ignores_single_segment_abs_and_globs() -> None:
     f = scan_text("t", "cd ~/proj now", denylist=[], allowed_domains=D,  # PII-OK
                   path_allow=("~/.config",), forbidden_prefixes=())
     assert any(x.kind.startswith("personal-path") for x in f)
+
+
+def test_path_ignores_placeholder_rooted_docs() -> None:
+    # `<root>/sources/...` and `<root_dir>/logs/...` document layout, not a person
+    for ok in ("the file <root>/sources/sources.yaml here",
+               "logs at <root_dir>/logs/transforms/x.jsonl"):
+        assert scan_text("t", ok, denylist=[], allowed_domains=D,
+                         path_allow=("/data",), forbidden_prefixes=()) == []
