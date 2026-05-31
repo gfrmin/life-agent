@@ -20,7 +20,7 @@ a fake example of the schema is ``config/data-sources.example.yaml``. Same split
 
 Run in the pkm env (has PyYAML, duckdb, and the pkm producers whose ``handled_formats``
 define "ingestable today"):
-    uv run --project ~/git/pkm python scripts/data_source_registry.py --report
+    uv run --project ../pkm python scripts/data_source_registry.py --report
 """
 
 from __future__ import annotations

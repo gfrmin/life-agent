@@ -26,3 +26,6 @@ ocr-cache/
 eval/questions.yaml
 eval/phase0_log.md
 FAILURES.md
+
+# local-only: superpowers specs are symlinked to $LIFE_AGENT_KB (out of tree, PII-bearing)
+docs/superpowers/

@@ -1,6 +1,6 @@
 # CLAUDE.md — operating manual for `life-agent`
 
-You are an agent working in `~/git/life-agent`, the composition root of a personal life-management
+You are an agent working in `.`, the composition root of a personal life-management
 assistant. This file is your orientation; **read [`ROADMAP.md`](./ROADMAP.md) for the plan and
 [`GETTING_STARTED.md`](./GETTING_STARTED.md) for the immediate tasks.** The owner is a strong
 engineer (builds Julia DSLs, TS, Python data platforms) — be precise, terse, and don't over-build.
@@ -43,7 +43,7 @@ Claude Code talks to the *same* MCP servers directly — that's why MCP is the i
 
 ## The component repos — what to reuse, and the key files
 
-### `~/git/pkm` — the memory core (Python, uv, DuckDB)
+### `../pkm` — the memory core (Python, uv, DuckDB)
 Content-addressed extraction cache + DuckDB catalogue + format producers + Phase-2 Anthropic entity
 extraction. Retrieval is the part we add. **It already nails content-addressing and a *semantic*
 (not bitwise) determinism contract — don't "fix" that.**
@@ -65,7 +65,7 @@ extraction. Retrieval is the part we add. **It already nails content-addressing 
   top-level directory / a new file format.** Adding retrieval requires bumping **SPEC → v0.3.0**.
 - Verified: **DuckDB 1.5.2** here loads both `fts` and `vss` (HNSW cosine + `array_cosine_distance`).
 
-### `~/git/credence/apps/credence-pi` — the brain (TS body + Julia daemon)
+### `../credence/apps/credence-pi` — the brain (TS body + Julia daemon)
 A **Bayesian governor**, *not* a task-doer: a pi extension (`extension/src/index.ts`) hooks each
 tool call, ships features over HTTP `POST /sensor` to a Julia daemon (`daemon/server.jl`) holding a
 posterior (BDSL programs in `bdsl/{capabilities,features,prior,kernel,decide}.bdsl`), which returns
@@ -74,10 +74,10 @@ posterior (BDSL programs in `bdsl/{capabilities,features,prior,kernel,decide}.bd
   extending `bdsl/capabilities.bdsl`.
 - Design rule from its SPEC: *"the brain does not invent tentacles; it selects from those the body
   declares."* So **register capabilities body-side (pi tools); keep the brain pure.**
-- `credence-proxy` (`~/git/credence/apps/python/credence_router`, OpenAI-compatible LLM router) and
-  `credence_agents` (`~/git/credence/apps/python/credence_agents`) are separate and not yet wired in.
+- `credence-proxy` (`../credence/apps/python/credence_router`, OpenAI-compatible LLM router) and
+  `credence_agents` (`../credence/apps/python/credence_agents`) are separate and not yet wired in.
 
-### `~/git/pi-mono` — the runtime (TypeScript, pnpm, Node ≥20)
+### `../pi-mono` — the runtime (TypeScript, pnpm, Node ≥20)
 - `packages/agent/src/types.ts` — `AgentTool` (the runtime tool type).
 - `packages/coding-agent/src/core/tools/index.ts` — built-in tool registry (`createAllTools`).
 - `packages/coding-agent/src/core/extensions/types.ts` — `ToolDefinition` + `registerTool` (how
@@ -85,7 +85,7 @@ posterior (BDSL programs in `bdsl/{capabilities,features,prior,kernel,decide}.bd
 - **No native MCP** (by design). To use MCP servers, **write an extension that is an MCP client and
   wraps each MCP tool as a `ToolDefinition`** — this is the MCP-bridge we build in this repo.
 
-### `~/git/jarvis-lite` — tasks (Python, SQLite, FastMCP)
+### `../jarvis-lite` — tasks (Python, SQLite, FastMCP)
 - `mcp_server.py` exposes **13 MCP tools**: `add_task`, `complete_task`, `delete_task`, `move_task`,
   `mark_today`, `clear_today`, `get_tasks`, `get_today_tasks`, `get_tasks_by_tag`,
   `get_tasks_due_today`, `get_overdue_tasks`, `get_task_counts`, `get_completed_this_week`.

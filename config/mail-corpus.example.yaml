@@ -4,7 +4,7 @@
 # folder selections (which can reveal personal/financial/medical context) and
 # therefore lives OUTSIDE this public repo, at:
 #
-#     $LIFE_AGENT_KB/config/mail-corpus.yaml   (default: ~/yo/life-agent-kb/config/...)
+#     $LIFE_AGENT_KB/config/mail-corpus.yaml   (default: ~/.life-agent/kb/config/...)
 #
 # The bridge symlinks every message in the `include` folders into `staging_dir`
 # as a `.eml` file (mirroring folder structure), so pkm -- which routes by
@@ -16,11 +16,11 @@ version: 1
 # Root of ONE Maildir account: the directory whose children are the mail
 # folders (each folder has cur/ new/ tmp/). For a multi-account store, run the
 # bridge once per account (or extend this manifest).
-maildir_root: ~/mail/example-account
+maildir_root: /data/mail/example-account
 
 # Where the .eml symlink tree is written. MUST be outside any git repo (it
 # points at real mail). Symlinks are cheap and cross-filesystem-safe.
-staging_dir: ~/pkm/mail-staging
+staging_dir: /data/staging/mail
 
 # Folders to ingest, relative to maildir_root. Each must be a Maildir folder
 # (has a cur/). Listing a folder also pulls in any nested folders beneath it,

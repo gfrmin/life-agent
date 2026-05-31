@@ -1,7 +1,7 @@
 """Unit tests for the dogfood ask REPL's pure helpers (scripts/ask.py).
 
 Run in the pkm env (has duckdb/yaml/pytest, which ask.py imports at module load):
-    uv run --project ~/git/pkm python -m pytest ~/git/life-agent/tests/test_ask.py
+    uv run --project ../pkm python -m pytest ./tests/test_ask.py
 
 Only the dependency-free logic is covered here — log-entry formatting and the
 retrieve() dedupe/rank. The live retrieval + LLM synthesis paths are exercised by the
@@ -23,8 +23,8 @@ from _common import SourceCard  # noqa: E402
 # --- log_entry formatting -------------------------------------------------- #
 
 def _cards():
-    return [SourceCard(n=1, text="x", origin="/a/b/id_scan.pdf"),
-            SourceCard(n=2, text="y", origin="/c/2024-01-15.eml")]
+    return [SourceCard(n=1, text="x", origin="/data/id_scan.pdf"),
+            SourceCard(n=2, text="y", origin="/data/2024-01-15.eml")]
 
 
 def test_log_entry_good_omits_note_line() -> None:
@@ -53,7 +53,7 @@ def test_log_entry_no_sources_omits_sources_line() -> None:
 
 # --- retrieve() dedupe + rank (no DuckDB; pkm.retrieval.search monkeypatched) #
 
-def _hit(text: str, score: float, path: str = "/p/doc"):
+def _hit(text: str, score: float, path: str = "/data/p/doc"):
     return SimpleNamespace(chunk_text=text, score=score, source_path=path)
 
 

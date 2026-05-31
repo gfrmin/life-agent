@@ -9,7 +9,7 @@
     source edit forces a recompile — anchor = the measured compile cost); Phase 1 re-ingests only the
     changed content-addressed object, leaving the other ~953 as cache hits (0 API tokens).
 
-Run:  uv run --project ~/git/pkm python scripts/comparison/divergence.py
+Run:  uv run --project ../pkm python scripts/comparison/divergence.py
 """
 from __future__ import annotations
 

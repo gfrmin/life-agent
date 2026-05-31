@@ -6,7 +6,7 @@ For each question: FTS over the live pkm catalogue, filter every hit to the pinn
 an answer that cites [n] into those chunks. Meters tokens / wall-clock / cache-hit. Differs from
 Phase 0 ONLY in context assembly (top-k chunks vs whole wiki).
 
-Run:  uv run --project ~/git/pkm python scripts/comparison/phase1_answer.py [--k 8]
+Run:  uv run --project ../pkm python scripts/comparison/phase1_answer.py [--k 8]
 """
 from __future__ import annotations
 

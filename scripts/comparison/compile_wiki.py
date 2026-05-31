@@ -10,7 +10,7 @@ Compiled-once-and-frozen, NOT bit-reproducible (temp-0 ≠ deterministic on a ho
 asymmetry is a finding (§7c). The compile is metered; its cost is itself a divergence datum (§7d).
 Source text is reassembled from the live catalogue's chunks, filtered to the pinned S manifest.
 
-Run:  uv run --project ~/git/pkm python scripts/comparison/compile_wiki.py
+Run:  uv run --project ../pkm python scripts/comparison/compile_wiki.py
 Outputs (PII) → $LIFE_AGENT_KB/eval/comparison/wiki/ + compile_meta.json
 """
 from __future__ import annotations

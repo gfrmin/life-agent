@@ -45,7 +45,7 @@ questions:
 Run in the pkm env (for `pkm.retrieval` + DuckDB):
 
 ```
-uv run --project ~/git/pkm python scripts/run_eval.py --k 20
+uv run --project ../pkm python scripts/run_eval.py --k 20
 ```
 
 For each question it unions `search()` over `search_queries`, then checks the answer with a

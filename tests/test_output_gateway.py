@@ -6,7 +6,7 @@ write, so a future change that targets a path inside the repo tree fails here
 (and in review) rather than silently leaking data into a public repo.
 
 Run in the pkm env:
-    uv run --project ~/git/pkm python -m pytest ~/git/life-agent/tests/test_output_gateway.py
+    uv run --project ../pkm python -m pytest ./tests/test_output_gateway.py
 """
 
 from __future__ import annotations
@@ -34,7 +34,7 @@ def test_kb_root_is_outside_the_repo(monkeypatch) -> None:
 
 
 def test_eval_log_write_target_is_under_the_kb_not_the_repo(monkeypatch, tmp_path) -> None:
-    # run_eval writes its only output to _kb_root()/eval/eval_log.md
+    # run_eval writes its only output to _kb_root() (writes eval/eval_log.md)
     monkeypatch.setenv("LIFE_AGENT_KB", str(tmp_path))
     out = run_eval._kb_root() / "eval/eval_log.md"
     assert _outside_repo(out)

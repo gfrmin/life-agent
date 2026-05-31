@@ -61,7 +61,7 @@ building it (see the research report's Phase 0).
    **Log failures to `$LIFE_AGENT_KB/FAILURES.md`** ([`docs/failures-template.md`](./docs/failures-template.md))
    — that list is the spec for Phase 1 retrieval. (Don't build retrieval until you have it.)
 
-## Then — Phase 1 (in `~/git/pkm`, not here)
+## Then — Phase 1 (in `../pkm`, not here)
 
 Spec'd by `$LIFE_AGENT_KB/FAILURES.md`. See [`docs/pkm-retrieval-design.md`](./docs/pkm-retrieval-design.md).
 **Already landed (Phase-0 foundation):** pkm `SPEC-v0.3.0.md` drafted; cache key hardened to

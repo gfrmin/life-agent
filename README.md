@@ -15,11 +15,11 @@ calendar — as MCP tools**. Polyglot underneath (TS + Python + Julia); one appl
 
 | Faculty | System | Path | Role |
 |---|---|---|---|
-| **Memory** | pkm | `~/git/pkm` | content-addressed extraction + retrieval; `pkm-memory` MCP server |
-| **Brain** | credence-pi | `~/git/credence/apps/credence-pi` | Bayesian VOI governor: ask / proceed / block per tool call |
-| **Runtime** | pi-mono | `~/git/pi-mono` | agent loop, multi-provider LLM, tool registry (TS) |
-| **Tasks** | jarvis-lite | `~/git/jarvis-lite` | GTD; MCP server (13 tools) |
-| **Application + glue** | **this repo** | `~/git/life-agent` | the app, the pi **MCP-bridge** extension, small MCP servers (email/calendar/chat), scheduling, and the Phase-0 knowledge base |
+| **Memory** | pkm | `../pkm` | content-addressed extraction + retrieval; `pkm-memory` MCP server |
+| **Brain** | credence-pi | `../credence/apps/credence-pi` | Bayesian VOI governor: ask / proceed / block per tool call |
+| **Runtime** | pi-mono | `../pi-mono` | agent loop, multi-provider LLM, tool registry (TS) |
+| **Tasks** | jarvis-lite | `../jarvis-lite` | GTD; MCP server (13 tools) |
+| **Application + glue** | **this repo** | `.` | the app, the pi **MCP-bridge** extension, small MCP servers (email/calendar/chat), scheduling, and the Phase-0 knowledge base |
 
 The unifying trick: **every capability is an MCP server**, so the interface (Claude Code, the pi app,
 later Telegram/OpenClaw) is a swappable detail.
@@ -40,7 +40,7 @@ the failure log are personal — they live **outside the repo**, at a path you c
 LIFE_AGENT_KB     # default: $HOME/.life-agent/kb
 ```
 
-`export LIFE_AGENT_KB=~/somewhere` and point it wherever you keep your stuff; the tooling reads from
+`export LIFE_AGENT_KB=/path/to/kb` and point it wherever you keep your stuff; the tooling reads from
 there. The same separation pkm already uses (code in the repo, the content-addressed cache on your
 disk). Nothing personal is ever committed. See [`docs/kb-schema.md`](./docs/kb-schema.md) for the
 layout the tooling expects under `$LIFE_AGENT_KB` (`raw/`, `wiki/`, `FAILURES.md`, `eval/`).

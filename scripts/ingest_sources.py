@@ -22,7 +22,7 @@ tags unioned) — never clobbering the curated corpus. ``--dry-run`` prints the 
 manifest and skips both the write and ``pkm ingest``.
 
 Run in the pkm env:
-    uv run --project ~/git/pkm python scripts/ingest_sources.py --dry-run
+    uv run --project ../pkm python scripts/ingest_sources.py --dry-run
 """
 
 from __future__ import annotations
@@ -49,7 +49,7 @@ from data_source_registry import (  # noqa: E402
     load_registry,
 )
 
-PKM_DIR = Path("~/git/pkm").expanduser()
+PKM_DIR = Path(os.environ.get("PKM_DIR") or (Path(__file__).resolve().parents[1].parent / "pkm"))
 DEFAULT_PKM_CONFIG = Path(os.environ.get("PKM_CONFIG", "~/.config/life-agent/pkm.yaml")).expanduser()
 SOURCES_MANIFEST_VERSION = 1
 

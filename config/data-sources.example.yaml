@@ -6,7 +6,7 @@
 # data roots (whose paths/names can reveal personal context) and therefore
 # lives OUTSIDE this public repo, at:
 #
-#     $LIFE_AGENT_KB/config/data-sources.yaml   (default: ~/yo/life-agent-kb/config/...)
+#     $LIFE_AGENT_KB/config/data-sources.yaml   (default: ~/.life-agent/kb/config/...)
 #
 # Enumeration for --report comes from plocate (the system file index). For that
 # to see your data, plocate must index the data mount — see the project plan's

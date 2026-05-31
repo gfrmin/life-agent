@@ -1,7 +1,7 @@
 """Unit tests for the declarative data-source registry (scripts/data_source_registry.py).
 
 Run in the pkm env (has pytest, PyYAML, and the pkm producers):
-    uv run --project ~/git/pkm python -m pytest ~/git/life-agent/tests/test_data_source_registry.py
+    uv run --project ../pkm python -m pytest ./tests/test_data_source_registry.py
 """
 
 from __future__ import annotations
@@ -142,9 +142,9 @@ def test_matches_exclude_overrides() -> None:
 
 def test_classify_uses_fmt_map() -> None:
     fmt = {".pdf": "docling", ".md": "pandoc"}
-    assert classify(Path("/x/a.PDF"), fmt) == (".pdf", "docling", True)
-    assert classify(Path("/x/a.md"), fmt) == (".md", "pandoc", True)
-    assert classify(Path("/x/a.xyz"), fmt) == (".xyz", None, False)
+    assert classify(Path("/data/x/a.PDF"), fmt) == (".pdf", "docling", True)
+    assert classify(Path("/data/x/a.md"), fmt) == (".md", "pandoc", True)
+    assert classify(Path("/data/x/a.xyz"), fmt) == (".xyz", None, False)
 
 
 def test_ingestable_formats_reflects_real_pkm_producers() -> None:
@@ -161,9 +161,9 @@ def test_ingestable_formats_reflects_real_pkm_producers() -> None:
 def test_aggregate_counts_and_bytes() -> None:
     root = Root("docs", "filetree", Path("/data/cloud/documents"), (), (), ("documents",), True, None)
     rows = [
-        Row("docs", "/x/a.pdf", ".pdf", 100, "docling", True),
-        Row("docs", "/x/b.pdf", ".pdf", 200, "docling", True),
-        Row("docs", "/x/c.heic", ".heic", 50, None, False),
+        Row("docs", "/data/x/a.pdf", ".pdf", 100, "docling", True),
+        Row("docs", "/data/x/b.pdf", ".pdf", 200, "docling", True),
+        Row("docs", "/data/x/c.heic", ".heic", 50, None, False),
     ]
     s = aggregate(root, rows)
     assert s.files == 3
@@ -301,16 +301,16 @@ def test_enumerate_filetree_prunes_vcs_and_cloned_repos(tmp_path: Path) -> None:
 def test_merge_entries_dedupes_and_unions_tags() -> None:
     from ingest_sources import merge_entries  # noqa: E402
 
-    existing = [{"path": "/x/a.pdf"}, {"path": "/x/b.pdf", "tags": ["documents"]}]
+    existing = [{"path": "/data/x/a.pdf"}, {"path": "/data/x/b.pdf", "tags": ["documents"]}]
     new = [
-        {"path": "/x/b.pdf", "tags": ["legal"]},  # dup path -> union tags
-        {"path": "/x/c.md", "tags": ["notes"]},  # genuinely new
-        {"path": "/staging/mail", "tags": ["email"], "recursive": True},
+        {"path": "/data/x/b.pdf", "tags": ["legal"]},  # dup path -> union tags
+        {"path": "/data/x/c.md", "tags": ["notes"]},  # genuinely new
+        {"path": "/data/staging/mail", "tags": ["email"], "recursive": True},
     ]
     merged = merge_entries(existing, new)
     paths = [e["path"] for e in merged]
-    assert paths == ["/x/a.pdf", "/x/b.pdf", "/x/c.md", "/staging/mail"]  # existing first
-    b = next(e for e in merged if e["path"] == "/x/b.pdf")
+    assert paths == ["/data/x/a.pdf", "/data/x/b.pdf", "/data/x/c.md", "/data/staging/mail"]  # existing first
+    b = next(e for e in merged if e["path"] == "/data/x/b.pdf")
     assert b["tags"] == ["documents", "legal"]  # unioned, sorted
-    mail = next(e for e in merged if e["path"] == "/staging/mail")
+    mail = next(e for e in merged if e["path"] == "/data/staging/mail")
     assert mail["recursive"] is True

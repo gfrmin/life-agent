@@ -1,6 +1,6 @@
 # PKM retrieval design (code-grounded)
 
-How to extend `~/git/pkm` into the memory core. PKM already has the data model for retrieval; it
+How to extend `../pkm` into the memory core. PKM already has the data model for retrieval; it
 lacks a retrieval reader, an embedding step, a non-file source path, and any server. Add those four
 without touching the cache/catalogue/hashing invariants. **Governance: amend pkm `SPEC.md` → v0.3.0
 first** (its rules forbid retrieval/servers/new-deps until the SPEC says otherwise), and follow
@@ -28,7 +28,7 @@ bytes). File-centricity lives only in `ingest.py` (`sources.current_path NOT NUL
 `produce(input_path)` signature. **Model each non-file source as "materialise canonical bytes":**
 an adapter (`src/pkm/adapters/{email,chat,markdown,vcf}.py`) emits `(canonical_bytes, source_type,
 provenance)`; write the bytes into a content-addressed **source store**
-(`<root>/sources/objects/<aa>/<bb…>`), so `source_id = sha256(bytes)` and idempotency hold verbatim,
+(`<root>/sources/objects/<aa>/<bb…>`), so `source_id = sha256(bytes)` and idempotency hold verbatim,  <!-- PII-OK: pkm cache layout, not a personal path -->
 and `produce()` gets a real on-disk path. Give synthesised objects an explicit extension (`.eml`,
 `.json`) so extension-based routing still works. Email canonical bytes = raw RFC822 (the
 **unstructured** producer already extracts `.eml`). Add a normalised `source_origin` table (below).
@@ -62,7 +62,7 @@ of a canonical descriptor (idempotent).
 - **CLI `pkm search "<q>"`** — add a parser + handler in `cli.py` (match `_SUBCOMMANDS`; import the
   retrieval module *inside* the handler). Calls `src/pkm/retrieval.py::search(root, config, query, k, mode)`.
 - **`pkm-memory` MCP server** — `src/pkm/mcp_server.py`, **FastMCP**, mirroring
-  `~/git/jarvis-lite/mcp_server.py` (thin wrappers, `mcp.run(transport="stdio")`). Tools:
+  `../jarvis-lite/mcp_server.py` (thin wrappers, `mcp.run(transport="stdio")`). Tools:
   `search`, `get_source` (returns provenance + extracted text via `cache.read_artifact`), `ask`
   (retrieval → return a cited context pack for the calling model to synthesise — simplest, no extra LLM cost).
   Read-only (sidesteps DuckDB single-writer). Add a `[project.scripts]` entry `pkm-memory`.

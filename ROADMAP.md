@@ -24,11 +24,11 @@ projects, especially **PKM**.
 
 | Faculty | System | Reality / new work |
 |---|---|---|
-| **Memory** | **PKM** (`~/git/pkm`) | Extend with retrieval (OCR, chunks, embeddings, hybrid search, `pkm-memory` MCP). PKM already nails content-addressing + determinism. |
-| **Runtime** | **pi-mono** (`~/git/pi-mono`, TS) | Agent loop + LLM abstraction (`pi-ai`) + tool registry. Tools are TS `ToolDefinition`s. **No native MCP.** |
-| **Brain** | **credence-pi** (`~/git/credence/apps/credence-pi`, TS body + Julia daemon) | Pass-1: Bayesian VOI governor over each tool call → ask/proceed/block. *This is the confidence-gated autonomy.* Extend its `capabilities.bdsl`. |
+| **Memory** | **PKM** (`../pkm`) | Extend with retrieval (OCR, chunks, embeddings, hybrid search, `pkm-memory` MCP). PKM already nails content-addressing + determinism. |
+| **Runtime** | **pi-mono** (`../pi-mono`, TS) | Agent loop + LLM abstraction (`pi-ai`) + tool registry. Tools are TS `ToolDefinition`s. **No native MCP.** |
+| **Brain** | **credence-pi** (`../credence/apps/credence-pi`, TS body + Julia daemon) | Pass-1: Bayesian VOI governor over each tool call → ask/proceed/block. *This is the confidence-gated autonomy.* Extend its `capabilities.bdsl`. |
 | **Capabilities (hands)** | MCP servers | `pkm-memory` (new, in pkm), **Jarvis** (exists, 13 tools, `user_id 12365873`), email (`msmtp`/JMAP), calendar (CalDAV/Google MCP), chat (matrix-archiver sqlite). |
-| **Application** | **`~/git/life-agent`** — a pi-mono app (composition root) + **MCP-bridge extension** (new) | Imports pi + credence-pi (TS); composes pkm/jarvis/email/calendar as MCP tools. The bridge lets credence-pi/pi use the same MCP servers Claude Code uses. Polyglot underneath, one app on top. |
+| **Application** | **`.`** — a pi-mono app (composition root) + **MCP-bridge extension** (new) | Imports pi + credence-pi (TS); composes pkm/jarvis/email/calendar as MCP tools. The bridge lets credence-pi/pi use the same MCP servers Claude Code uses. Polyglot underneath, one app on top. |
 | **Interfaces** | Claude Code + CLI now; pi coding-agent; later Telegram/OpenClaw (Tailscale-only) | Swappable; all point at the same MCP tools. |
 | **Autonomic** | n8n + `systemd` timers (`mbsync`, `renavon-inbox-ingest` already run) | Ingestion, daily briefing, follow-ups. |
 
@@ -95,7 +95,7 @@ CRM/relationship nudges (`renavon`); scope expansion to photos (PhotoPrism + vis
 661 GB encrypted `more/` (needs keys).
 
 ## Critical files
-- **`~/git/life-agent` (this repo):** the pi-mono app (composition root) + MCP-bridge extension;
+- **`.` (this repo):** the pi-mono app (composition root) + MCP-bridge extension;
   Phase-0 tooling (`bin/ask`, `scripts/needle.sh`, `scripts/build_corpus.sh`) + `docs/kb-schema.md`;
   the configurable data layer (`scripts/data_source_registry.py`, `scripts/ingest_sources.py`,
   `config/data-sources.example.yaml`); email/calendar/chat MCP servers; agent system prompt +
@@ -122,5 +122,5 @@ CRM/relationship nudges (`renavon`); scope expansion to photos (PhotoPrism + vis
 ## Resolved decisions
 - **Phase-0 strategy:** Karpathy-wiki measurement **and** OCR+grep needle-finder, in parallel.
 - **OCR:** standalone Tesseract producer (heb+eng).
-- **Repo layout:** new umbrella application `~/git/life-agent` (working name) is the composition root
+- **Repo layout:** new umbrella application `.` (working name) is the composition root
   (pi-mono spine); capabilities stay in their own repos and are composed over MCP.

@@ -6,7 +6,7 @@ citations. The only difference from Phase 1 is context assembly (whole wiki vs t
 citation SHAPE is normalised to the same `[n]` scheme (each wiki page is a numbered source) so the
 blind judge cannot tell the systems apart by citation form (§6). Meters tokens / wall-clock.
 
-Run:  uv run --project ~/git/pkm python scripts/comparison/phase0_answer.py
+Run:  uv run --project ../pkm python scripts/comparison/phase0_answer.py
 Reads the compiled wiki at $LIFE_AGENT_KB/eval/comparison/wiki/ (run compile_wiki.py first).
 """
 from __future__ import annotations
