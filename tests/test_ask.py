@@ -79,3 +79,32 @@ def test_retrieve_truncates_to_k(monkeypatch) -> None:
 
     out = ask.retrieve(conn=None, question="q", k=2)
     assert [c.text for c, _ in out] == ["A", "B"]
+
+
+# --- query expansion: _clean_terms + build_query (pure) -------------------- #
+
+def test_clean_terms_flattens_llm_reply() -> None:
+    # newlines, bullets, commas, quotes -> single space-separated term run
+    raw = '- income\n- "salary"\n- contractor, freelance\n'
+    assert ask._clean_terms(raw) == "income salary contractor freelance"
+
+
+def test_clean_terms_preserves_hebrew() -> None:
+    # Hebrew letters are word chars and must survive (the corpus is bilingual)
+    assert ask._clean_terms("salary, משכורת; עוסק מורשה") == "salary משכורת עוסק מורשה"
+
+
+def test_clean_terms_empty_on_blank() -> None:
+    assert ask._clean_terms("   \n  ") == ""
+
+
+def test_build_query_appends_terms_to_question() -> None:
+    # the original words are ALWAYS retained, so expansion can only add recall
+    assert ask.build_query("how do i make money", "income salary contractor") == (
+        "how do i make money income salary contractor"
+    )
+
+
+def test_build_query_falls_back_to_question_when_no_terms() -> None:
+    # expansion failure (empty terms) must leave the raw-question search unchanged
+    assert ask.build_query("am i a contractor?", "") == "am i a contractor?"
