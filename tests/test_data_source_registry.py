@@ -14,16 +14,33 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
 from data_source_registry import (  # noqa: E402
+    Candidate,
     Registry,
     RegistryError,
     Root,
     Row,
+    _covered,
     _matches,
     aggregate,
+    bucket_undeclared,
     classify,
+    discovery_root,
     ingestable_formats,
     load_registry,
 )
+
+
+def _root(id: str, path: str, **kw) -> Root:
+    return Root(
+        id=id,
+        kind=kw.get("kind", "filetree"),
+        path=Path(path),
+        include=tuple(kw.get("include", ())),
+        exclude=tuple(kw.get("exclude", ())),
+        tags=tuple(kw.get("tags", ())),
+        enabled=kw.get("enabled", True),
+        staging_dir=kw.get("staging_dir"),
+    )
 
 VALID = """\
 version: 1
@@ -142,7 +159,7 @@ def test_ingestable_formats_reflects_real_pkm_producers() -> None:
 
 
 def test_aggregate_counts_and_bytes() -> None:
-    root = Root("docs", "filetree", Path("/data/dropbox/documents"), (), (), ("documents",), True, None)
+    root = Root("docs", "filetree", Path("/data/cloud/documents"), (), (), ("documents",), True, None)
     rows = [
         Row("docs", "/x/a.pdf", ".pdf", 100, "docling", True),
         Row("docs", "/x/b.pdf", ".pdf", 200, "docling", True),
@@ -154,6 +171,128 @@ def test_aggregate_counts_and_bytes() -> None:
     assert s.ingestable_files == 2
     assert s.ingestable_bytes == 300
     assert s.by_ext == {".pdf": 2, ".heic": 1}  # descending by count
+
+
+# --- discovery (the inverse of the census) -------------------------------- #
+
+
+def test_discovery_root_is_common_ancestor_of_declared_roots() -> None:
+    roots = (
+        _root("notes", "/data/notes"),
+        _root("docs", "/data/cloud/documents"),
+        _root("mail", "/data/mail/acct"),
+    )
+    assert discovery_root(roots, None) == Path("/data")
+
+
+def test_discovery_root_single_root_is_that_root() -> None:
+    assert discovery_root((_root("a", "/data/projects"),), None) == Path("/data/projects")
+
+
+def test_discovery_root_override_wins() -> None:
+    roots = (_root("a", "/data/notes"),)
+    assert discovery_root(roots, "/data/elsewhere") == Path("/data/elsewhere")
+
+
+def test_discovery_root_empty_registry_needs_a_path() -> None:
+    with pytest.raises(RegistryError, match="discovery root"):
+        discovery_root((), None)
+
+
+def test_covered_is_by_location_not_include() -> None:
+    reals = ("/data/notes", "/data/cloud/documents")
+    # Inside a declared root counts as covered even though notes only ingests *.md.
+    assert _covered("/data/notes/sub/scan.png", reals) is True
+    assert _covered("/data/cloud/documents/a.pdf", reals) is True
+    # A sibling dir that merely shares a name prefix is NOT covered.
+    assert _covered("/data/notes-backup/a.md", reals) is False
+    assert _covered("/data/projects/proj-a/x.pdf", reals) is False
+
+
+def test_bucket_undeclared_groups_by_top_dir_and_counts_ingestable() -> None:
+    base = Path("/data")
+    fmt = {".pdf": "docling", ".jpg": "tesseract"}
+    files = [
+        "/data/projects/proj-a/a.pdf",
+        "/data/projects/proj-a/cert.jpg",
+        "/data/projects/proj-a/ledger.journal",  # no producer
+        "/data/scratch/note.txt",  # no producer in this fmt map
+        "/data/loose.pdf",  # a file directly under base -> "." bucket
+    ]
+    cands = bucket_undeclared(files, base, fmt)
+    by_name = {c.name: c for c in cands}
+
+    assert by_name["projects"].files == 3
+    assert by_name["projects"].ingestable_files == 2
+    assert by_name["projects"].by_ext == {".pdf": 1, ".jpg": 1}
+
+    assert by_name["scratch"].ingestable_files == 0
+    assert by_name["."].files == 1 and by_name["."].ingestable_files == 1
+
+    # Ranked by ingestable files, descending: projects (2) leads.
+    assert cands[0].name == "projects"
+
+
+def test_discover_covers_staging_dirs(monkeypatch) -> None:
+    # A maildir root's staging tree (outside its `path`) must count as covered.
+    import data_source_registry as dsr
+
+    reg = Registry(
+        version=1,
+        roots=(
+            _root("mail", "/data/mail/acct", kind="maildir", staging_dir=Path("/data/pkm/mail-staging")),
+            _root("notes", "/data/notes"),
+        ),
+    )
+    swept = [
+        "/data/pkm/mail-staging/INBOX/1.eml",  # covered via staging_dir
+        "/data/notes/a.md",  # covered via path
+        "/data/library/paper.pdf",  # genuinely undeclared
+    ]
+    monkeypatch.setattr(dsr, "_plocate_under", lambda base: swept)
+    d = dsr.discover(reg, "/data")
+    assert [c.name for c in d.candidates] == ["library"]
+    assert d.covered == 2
+
+
+def test_bucket_undeclared_samples_are_ingestable_only() -> None:
+    base = Path("/data")
+    fmt = {".pdf": "docling"}
+    files = ["/data/p/keep.pdf", "/data/p/skip.journal"]
+    (cand,) = bucket_undeclared(files, base, fmt)
+    assert cand.samples == ("/data/p/keep.pdf",)
+    assert isinstance(cand, Candidate)
+
+
+# --- enumerate_filetree pruning (ingest_sources) -------------------------- #
+
+
+def test_prune_patterns_derives_subtree_excludes() -> None:
+    from ingest_sources import _prune_patterns  # noqa: E402
+
+    pats = _prune_patterns(("**/.git/**", "git/**", "**/._*", "**/node_modules/**"))
+    # subtree excludes (ending /**) become dir-prune patterns; per-file globs do not.
+    assert pats == ("**/.git", "git", "**/node_modules")
+
+
+def test_enumerate_filetree_prunes_vcs_and_cloned_repos(tmp_path: Path) -> None:
+    from ingest_sources import enumerate_filetree  # noqa: E402
+
+    (tmp_path / ".git" / "objects").mkdir(parents=True)
+    (tmp_path / ".git" / "objects" / "x.md").write_text("vcs", encoding="utf-8")
+    (tmp_path / "git" / "repo").mkdir(parents=True)
+    (tmp_path / "git" / "repo" / "README.md").write_text("cloned", encoding="utf-8")
+    (tmp_path / "notes").mkdir()
+    (tmp_path / "notes" / "a.md").write_text("real", encoding="utf-8")
+
+    archive_excludes = ("git/**", "**/git/**", "**/.git/**")
+    root = _root("archive", str(tmp_path), include=("**/*.md",), exclude=archive_excludes)
+    got = {p.name for p in enumerate_filetree(root)}
+    assert got == {"a.md"}  # VCS + cloned-repo markdown pruned, real note kept
+
+    # Without the excludes, the same files are all enumerated (prune is opt-in).
+    root_all = _root("archive", str(tmp_path), include=("**/*.md",))
+    assert len(enumerate_filetree(root_all)) == 3
 
 
 # --- merge_entries (ingest_sources) --------------------------------------- #

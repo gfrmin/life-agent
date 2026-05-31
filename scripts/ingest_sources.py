@@ -44,6 +44,7 @@ from data_source_registry import (  # noqa: E402
     Root,
     _kb_root,
     _matches,
+    _pat_match,
     default_registry_path,
     load_registry,
 )
@@ -58,14 +59,35 @@ SOURCES_MANIFEST_VERSION = 1
 # --------------------------------------------------------------------------- #
 
 
+def _prune_patterns(exclude: tuple[str, ...]) -> tuple[str, ...]:
+    """Directory-prune patterns derived from excludes that end in ``/**`` (which
+    exclude a whole subtree): ``**/.git/**`` -> ``**/.git``, ``git/**`` -> ``git``.
+    A non-subtree exclude (e.g. ``**/._*``, a per-file glob) yields nothing."""
+    return tuple(p[:-3] for p in exclude if p.endswith("/**"))
+
+
 def enumerate_filetree(root: Root) -> list[Path]:
     """Included regular files under ``root.path`` (current state, via os.walk).
-    Symlinked subdirectories are not descended (pkm doesn't traverse them either)."""
+    Symlinked subdirectories are not descended (pkm doesn't traverse them either).
+
+    Excluded subtrees are *pruned* from the walk rather than filtered after the
+    fact, so a root like ``archive/`` does not pay to crawl every ``.git`` object
+    tree or cloned-repo it then discards (the result is identical either way)."""
     base = root.path
     if not base.is_dir():
         raise RegistryError(f"{root.id}: path is not a directory: {base}")
+    prune = _prune_patterns(root.exclude)
     out: list[Path] = []
-    for dirpath, _dirnames, filenames in os.walk(base, followlinks=False):
+    for dirpath, dirnames, filenames in os.walk(base, followlinks=False):
+        if prune:
+            dirnames[:] = [
+                d
+                for d in dirnames
+                if not any(
+                    _pat_match(Path(os.path.relpath(Path(dirpath) / d, base)).as_posix(), pp)
+                    for pp in prune
+                )
+            ]
         for name in filenames:
             p = Path(dirpath) / name
             rel = Path(os.path.relpath(p, base)).as_posix()
@@ -186,6 +208,8 @@ def main() -> int:
     ap.add_argument("--pkm-config", type=Path, default=DEFAULT_PKM_CONFIG)
     ap.add_argument("--dry-run", action="store_true", help="print merged sources.yaml; don't write or ingest")
     ap.add_argument("--no-ingest", action="store_true", help="stage + write sources.yaml but skip `pkm ingest`")
+    ap.add_argument("--extract", action="store_true", help="after ingest, run `pkm extract` (run producers)")
+    ap.add_argument("--chunk", action="store_true", help="after extract, run `pkm chunk --backfill` (index for search)")
     args = ap.parse_args()
 
     try:
@@ -218,12 +242,23 @@ def main() -> int:
         print("skipping `pkm ingest` (--no-ingest)")
         return 0
 
-    print("running `pkm ingest`...")
-    proc = subprocess.run(
-        ["uv", "run", "--project", str(PKM_DIR), "pkm", "--config", str(args.pkm_config), "ingest"],
-        check=False,
-    )
-    return proc.returncode
+    # Register → (optionally) extract → (optionally) chunk. `ingest` alone only
+    # registers sources; `--extract`/`--chunk` complete the searchable promote.
+    stages: list[list[str]] = [["ingest"]]
+    if args.extract:
+        stages.append(["extract"])
+    if args.chunk:
+        stages.append(["chunk", "--backfill"])
+
+    for stage in stages:
+        print(f"running `pkm {' '.join(stage)}`...")
+        proc = subprocess.run(
+            ["uv", "run", "--project", str(PKM_DIR), "pkm", "--config", str(args.pkm_config), *stage],
+            check=False,
+        )
+        if proc.returncode != 0:
+            return proc.returncode
+    return 0
 
 
 if __name__ == "__main__":

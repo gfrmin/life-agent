@@ -281,6 +281,157 @@ def aggregate(root: Root, rows: list[Row]) -> RootSummary:
 
 
 # --------------------------------------------------------------------------- #
+# Discovery — the inverse of the census: sweep the whole data mount from plocate
+# and surface the dirs that are NOT yet declared roots (so you can decide what is
+# worth ingesting). The census audits *declared* roots; discovery finds the rest.
+# --------------------------------------------------------------------------- #
+
+
+@dataclass(frozen=True)
+class Candidate:
+    """An undeclared top-level directory under the discovery root."""
+
+    name: str  # path component directly under the discovery root ("." = loose files)
+    files: int
+    ingestable_files: int
+    by_ext: dict[str, int]  # ingestable ext -> count, descending (the promote signal)
+    samples: tuple[str, ...]  # up to 3 example ingestable paths
+
+
+def discovery_root(roots: tuple[Root, ...], override: str | None) -> Path:
+    """The directory to sweep. An explicit ``override`` wins; otherwise the
+    common ancestor of every declared root's realpath (symlinks resolved), so the
+    sweep covers exactly the mount the corpus already lives under — no hard-coded,
+    machine-specific path."""
+    if override:
+        return Path(override).expanduser().absolute()
+    if not roots:
+        raise RegistryError("cannot infer a discovery root from an empty registry; pass a path")
+    reals = [os.path.realpath(r.path) for r in roots]
+    return Path(reals[0] if len(reals) == 1 else os.path.commonpath(reals))
+
+
+def _covered(path: str, declared_reals: tuple[str, ...]) -> bool:
+    """True if ``path`` lies inside any declared root's realpath. Coverage is by
+    location, not by a root's include/exclude: discovery looks for entirely
+    undeclared *areas*, not for filtered-out files within a known one."""
+    return any(path == real or path.startswith(real + "/") for real in declared_reals)
+
+
+def _plocate_under(root: Path) -> list[str]:
+    """Raw plocate entries (files AND dirs, un-stat'd) under ``root``'s realpath.
+    Anchored like ``plocate_paths`` but without the per-entry stat — the whole-mount
+    sweep would otherwise pay millions of stats. We stat only the undeclared tail."""
+    real = os.path.realpath(root)
+    anchor = "^" + _regex_escape(real.rstrip("/")) + "/"
+    proc = subprocess.run(
+        ["plocate", "-0", "--regexp", anchor], capture_output=True, text=True, check=False
+    )
+    if proc.returncode not in (0, 1):
+        raise RegistryError(f"plocate failed for discovery ({real}): {proc.stderr.strip()}")
+    return [s for s in proc.stdout.split("\0") if s]
+
+
+def bucket_undeclared(files: list[str], base: Path, fmt_map: dict[str, str]) -> list[Candidate]:
+    """Group undeclared *files* by their first path component under ``base``,
+    counting ingestable coverage per group. Pure (no I/O) — the caller supplies
+    the already-enumerated file list, so this is what the tests drive."""
+    groups: dict[str, list[str]] = {}
+    for p in files:
+        rel = os.path.relpath(p, base)
+        parts = rel.split(os.sep)
+        groups.setdefault(parts[0] if len(parts) > 1 else ".", []).append(p)
+
+    candidates: list[Candidate] = []
+    for name, paths in groups.items():
+        by_ext: dict[str, int] = {}
+        ingestable: list[str] = []
+        for p in paths:
+            ext, _producer, ok = classify(Path(p), fmt_map)
+            if ok:
+                ingestable.append(p)
+                by_ext[ext] = by_ext.get(ext, 0) + 1
+        by_ext = dict(sorted(by_ext.items(), key=lambda kv: (-kv[1], kv[0])))
+        candidates.append(
+            Candidate(name, len(paths), len(ingestable), by_ext, tuple(sorted(ingestable)[:3]))
+        )
+    candidates.sort(key=lambda c: (-c.ingestable_files, -c.files, c.name))
+    return candidates
+
+
+@dataclass(frozen=True)
+class Discovery:
+    root: Path
+    candidates: tuple[Candidate, ...]
+    total: int  # all plocate entries under root
+    covered: int  # entries inside a declared root
+
+
+def discover(
+    registry: Registry, override: str | None, extra_covered: tuple[str, ...] = ()
+) -> Discovery:
+    """Sweep ``base`` and bucket the entries that fall under no declared root.
+
+    Deliberately *stat-free*: a whole-mount sweep is millions of entries, and one
+    ``stat`` each (just to drop directories) made it unusable. We classify
+    ingestability from the path's extension instead — directories have no
+    producer-bearing extension, so they fall out of the ingestable counts on their
+    own; they only pad the raw path tally. ``extra_covered`` lets the caller mask
+    non-source areas that live under ``base`` (e.g. the pkm content store itself)."""
+    base = discovery_root(registry.roots, override)
+    # A root covers both its source path and its staging dir (e.g. a maildir root's
+    # .eml symlink tree lives under the pkm dir, not under the root's path).
+    declared_reals = (
+        tuple(
+            os.path.realpath(p)
+            for r in registry.roots
+            for p in (r.path, r.staging_dir)
+            if p is not None
+        )
+        + extra_covered
+    )
+    raw = _plocate_under(base)
+    undeclared = [p for p in raw if not _covered(p, declared_reals)]
+    candidates = bucket_undeclared(undeclared, base, ingestable_formats())
+    return Discovery(base, tuple(candidates), len(raw), len(raw) - len(undeclared))
+
+
+def _pkm_store_reals() -> tuple[str, ...]:
+    """Realpath of the pkm content store (from $PKM_CONFIG's ``root_dir``), so
+    discovery masks the memory itself — the cache/catalogue sit under the same
+    mount as the sources but are not themselves a corpus candidate. Best-effort:
+    a missing/unreadable config just means nothing extra is masked."""
+    cfg = os.environ.get("PKM_CONFIG")
+    if not cfg:
+        return ()
+    try:
+        data = yaml.safe_load(Path(cfg).expanduser().read_text(encoding="utf-8"))
+        root = data.get("root_dir")
+        return (os.path.realpath(Path(root).expanduser()),) if isinstance(root, str) else ()
+    except (OSError, yaml.YAMLError):
+        return ()
+
+
+def render_discovery(d: Discovery) -> str:
+    lines = [
+        f"## discovery: {d.root}",
+        f"  {d.total} indexed paths — {d.covered} under declared roots, "
+        f"{d.total - d.covered} undeclared in {len(d.candidates)} dir(s)",
+        "",
+        "  undeclared dirs (ranked by ingestable files — candidates to declare):",
+    ]
+    for c in d.candidates:
+        exts = ", ".join(f"{e or '(none)'}:{n}" for e, n in list(c.by_ext.items())[:8])
+        hint = f"  ({exts})" if exts else "  (no ingestable types)"
+        lines.append(f"    {c.name + '/':22} {c.files:>8,} paths, {c.ingestable_files:>6,} ingestable{hint}")
+        for s in c.samples:
+            lines.append(f"        e.g. {s}")
+    if not d.candidates:
+        lines.append("    (nothing undeclared — the whole mount is covered by declared roots)")
+    return "\n".join(lines)
+
+
+# --------------------------------------------------------------------------- #
 # Report rendering + optional duckdb dump
 # --------------------------------------------------------------------------- #
 
@@ -349,6 +500,15 @@ def main() -> int:
         help="registry file (default: $LIFE_AGENT_KB/config/data-sources.yaml)",
     )
     ap.add_argument("--report", action="store_true", help="census: what is on disk under each root")
+    ap.add_argument(
+        "--discover",
+        nargs="?",
+        const="",
+        default=None,
+        metavar="PATH",
+        help="inverse of --report: sweep the mount (default: common ancestor of the "
+        "declared roots; or PATH) and list the dirs NOT yet declared as roots",
+    )
     ap.add_argument("--refresh", action="store_true", help="run `sudo updatedb` before reporting")
     ap.add_argument("--duckdb", type=Path, help="also dump inventory rows to this DuckDB file")
     args = ap.parse_args()
@@ -358,6 +518,13 @@ def main() -> int:
     except RegistryError as e:
         raise SystemExit(str(e))
 
+    if args.refresh:
+        subprocess.run(["sudo", "updatedb"], check=True)
+
+    if args.discover is not None:
+        print(render_discovery(discover(registry, args.discover or None, _pkm_store_reals())))
+        return 0
+
     if not args.report:
         print(f"loaded {len(registry.roots)} root(s) from {args.registry}:")
         for r in registry.roots:
@@ -365,9 +532,6 @@ def main() -> int:
             print(f"  {r.id:14} {r.kind:9} {state:11} {r.path}")
         print("\nPass --report for an on-disk census.")
         return 0
-
-    if args.refresh:
-        subprocess.run(["sudo", "updatedb"], check=True)
 
     fmt_map = ingestable_formats()
     summaries: list[tuple[RootSummary, list[Row]]] = []

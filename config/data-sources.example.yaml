@@ -14,6 +14,16 @@
 
 version: 1
 
+# Optional shared lists. Extra top-level keys are ignored by the loader (it reads
+# only `version` + `roots`), so YAML anchors can be defined here and aliased below
+# with `*name` to avoid repeating long include/exclude lists across roots.
+# Doc-include = pkm's non-image producer extensions (text-first: defer images).
+x-doc-include: &doc_include
+  ["**/*.pdf", "**/*.docx", "**/*.doc", "**/*.pptx", "**/*.md", "**/*.txt",
+   "**/*.html", "**/*.csv", "**/*.tex", "**/*.epub", "**/*.rtf", "**/*.odt"]
+x-junk-exclude: &junk_exclude
+  ["**/.git/**", "**/.stfolder/**", "**/._*", "**/node_modules/**", "**/.Trash*/**"]
+
 roots:
   # A tree of files. The `filetree` adapter stages matching files as symlinks
   # and lets pkm's producers (pandoc/docling/tesseract/unstructured) extract them.
@@ -25,10 +35,14 @@ roots:
     tags: [notes]             # applied to every staged file (pkm source_tags)
     enabled: true             # enabled -> eligible for ingest. false -> census-only.
 
+  # A broad doc tree: ingest document types only (images deferred — text-first),
+  # and prune junk subtrees. `**/.git/**`-style excludes (ending in `/**`) prune
+  # the os.walk, so cloned repos / VCS object trees are never crawled.
   - id: documents
     kind: filetree
     path: /data/documents
-    # no include -> every file; the census shows which have a pkm producer today
+    include: *doc_include        # alias the shared list above; images not matched
+    exclude: *junk_exclude
     tags: [documents]
     enabled: true
 
@@ -44,7 +58,8 @@ roots:
     enabled: true
 
   # A census-only root: counted/reported by --report, but never staged or
-  # ingested. Use for large/deferred corpora you want visibility into.
+  # ingested. Use for large/deferred corpora (e.g. image-heavy dirs under the
+  # text-first decision) you want visibility into without extracting.
   - id: photos
     kind: filetree
     path: /data/photoprism
