@@ -127,6 +127,56 @@ def load_registry(path: Path) -> Registry:
 
 
 # --------------------------------------------------------------------------- #
+# Ingest guard — never feed the agent's own memory back into the corpus
+# --------------------------------------------------------------------------- #
+
+
+def _within(path: Path | str, ancestors: tuple[str, ...]) -> bool:
+    """True if ``path`` (symlinks resolved) equals or sits inside any ancestor
+    realpath. Both sides are realpath'd so a symlinked root cannot slip past."""
+    rp = os.path.realpath(path)
+    return any(rp == a or rp.startswith(a.rstrip("/") + "/") for a in ancestors)
+
+
+def forbidden_ingest_zones(pkm_config: Path | str | None = None) -> tuple[str, ...]:
+    """Realpaths that must NEVER be ingested — the circular case where the agent
+    would feed its own memory back into the corpus:
+
+      * ``$LIFE_AGENT_KB`` — the knowledge base (eval gold answers, dogfood Q/A
+        logs, FAILURES notes). Ingesting it lets retrieval surface its own past
+        answers instead of the source documents, and pollutes provenance.
+      * the pkm content store (``root_dir``) — the cache + catalogue (the extracted
+        text itself). Re-ingesting the memory is doubly circular.
+
+    Derived from the environment (or the given ``pkm_config``), so no machine path
+    is baked into this public repo. The mail *staging* dir is a sibling of
+    ``root_dir`` (not inside it), so legitimately-staged email is unaffected."""
+    zones = [os.path.realpath(_kb_root())]
+    store = _pkm_store_real(pkm_config)
+    if store:
+        zones.append(store)
+    return tuple(dict.fromkeys(zones))  # de-dupe, preserve order
+
+
+def assert_roots_ingestable(
+    roots: tuple[Root, ...], *, pkm_config: Path | str | None = None
+) -> None:
+    """Fail-closed guard, called at the ingest boundary before any staging: raise
+    if an *enabled* root resolves inside a forbidden zone. Census-only roots
+    (``enabled: false``) are exempt — they are never ingested, so a disabled root
+    may still point at the KB for inventory."""
+    zones = forbidden_ingest_zones(pkm_config)
+    bad = [(r.id, os.path.realpath(r.path)) for r in roots if r.enabled and _within(r.path, zones)]
+    if bad:
+        listing = ", ".join(f"{rid} ({rp})" for rid, rp in bad)
+        raise RegistryError(
+            "refusing to ingest root(s) inside a protected zone — the agent's own KB "
+            f"or the pkm content store: {listing}. Feeding the memory back into the "
+            "corpus is circular; move the root, or mark it `enabled: false` (census-only)."
+        )
+
+
+# --------------------------------------------------------------------------- #
 # Producer coverage — reuse pkm's real handled_formats (capability, not a guess)
 # --------------------------------------------------------------------------- #
 
@@ -396,20 +446,26 @@ def discover(
     return Discovery(base, tuple(candidates), len(raw), len(raw) - len(undeclared))
 
 
-def _pkm_store_reals() -> tuple[str, ...]:
-    """Realpath of the pkm content store (from $PKM_CONFIG's ``root_dir``), so
-    discovery masks the memory itself — the cache/catalogue sit under the same
-    mount as the sources but are not themselves a corpus candidate. Best-effort:
-    a missing/unreadable config just means nothing extra is masked."""
-    cfg = os.environ.get("PKM_CONFIG")
+def _pkm_store_real(pkm_config: Path | str | None = None) -> str | None:
+    """Realpath of the pkm content store (``root_dir`` in the pkm config) — the
+    cache/catalogue, which sit under the same mount as the sources but are not
+    themselves a corpus candidate. Uses ``pkm_config`` if given, else ``$PKM_CONFIG``.
+    Best-effort: a missing/unreadable config returns ``None`` (nothing masked)."""
+    cfg = str(pkm_config) if pkm_config else os.environ.get("PKM_CONFIG")
     if not cfg:
-        return ()
+        return None
     try:
         data = yaml.safe_load(Path(cfg).expanduser().read_text(encoding="utf-8"))
-        root = data.get("root_dir")
-        return (os.path.realpath(Path(root).expanduser()),) if isinstance(root, str) else ()
     except (OSError, yaml.YAMLError):
-        return ()
+        return None
+    root = data.get("root_dir") if isinstance(data, dict) else None
+    return os.path.realpath(Path(root).expanduser()) if isinstance(root, str) else None
+
+
+def _pkm_store_reals() -> tuple[str, ...]:
+    """Tuple form used to mask the memory itself during ``discover``."""
+    real = _pkm_store_real()
+    return (real,) if real else ()
 
 
 def render_discovery(d: Discovery) -> str:

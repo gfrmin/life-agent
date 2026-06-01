@@ -22,9 +22,11 @@ from data_source_registry import (  # noqa: E402
     _covered,
     _matches,
     aggregate,
+    assert_roots_ingestable,
     bucket_undeclared,
     classify,
     discovery_root,
+    forbidden_ingest_zones,
     ingestable_formats,
     load_registry,
 )
@@ -314,3 +316,73 @@ def test_merge_entries_dedupes_and_unions_tags() -> None:
     assert b["tags"] == ["documents", "legal"]  # unioned, sorted
     mail = next(e for e in merged if e["path"] == "/data/staging/mail")
     assert mail["recursive"] is True
+
+
+# --- ingest guard: never feed the agent's own memory back into the corpus --- #
+
+
+def _pkm_cfg(tmp_path: Path, root_dir: Path) -> Path:
+    cfg = tmp_path / "pkm.yaml"
+    cfg.write_text(f"root_dir: {root_dir}\n", encoding="utf-8")
+    return cfg
+
+
+def test_guard_rejects_enabled_root_inside_kb(monkeypatch, tmp_path: Path) -> None:
+    kb = tmp_path / "kb"
+    (kb / "config").mkdir(parents=True)
+    monkeypatch.setenv("LIFE_AGENT_KB", str(kb))
+    monkeypatch.delenv("PKM_CONFIG", raising=False)
+    roots = (_root("evil", str(kb / "config")),)  # enabled by default
+    with pytest.raises(RegistryError, match="protected zone"):
+        assert_roots_ingestable(roots)
+
+
+def test_guard_exempts_census_only_root_inside_kb(monkeypatch, tmp_path: Path) -> None:
+    kb = tmp_path / "kb"
+    kb.mkdir()
+    monkeypatch.setenv("LIFE_AGENT_KB", str(kb))
+    monkeypatch.delenv("PKM_CONFIG", raising=False)
+    roots = (_root("kb_census", str(kb), enabled=False),)
+    assert_roots_ingestable(roots)  # disabled roots are never ingested -> no raise
+
+
+def test_guard_allows_root_outside_zones(monkeypatch, tmp_path: Path) -> None:
+    kb = tmp_path / "kb"
+    kb.mkdir()
+    monkeypatch.setenv("LIFE_AGENT_KB", str(kb))
+    monkeypatch.delenv("PKM_CONFIG", raising=False)
+    roots = (_root("real", str(tmp_path / "dropbox")),)
+    assert_roots_ingestable(roots)  # a genuine corpus root -> no raise
+
+
+def test_guard_rejects_root_inside_pkm_store(monkeypatch, tmp_path: Path) -> None:
+    store = tmp_path / "pkm" / "live"
+    store.mkdir(parents=True)
+    (tmp_path / "kb").mkdir()
+    monkeypatch.setenv("LIFE_AGENT_KB", str(tmp_path / "kb"))
+    roots = (_root("cache", str(store / "runs")),)
+    with pytest.raises(RegistryError, match="protected zone"):
+        assert_roots_ingestable(roots, pkm_config=_pkm_cfg(tmp_path, store))
+
+
+def test_guard_allows_mail_root_whose_staging_is_sibling_of_store(monkeypatch, tmp_path: Path) -> None:
+    # The pkm store is .../pkm/live; mail stages into .../pkm/mail-staging, a SIBLING
+    # of the store (not inside it). A maildir root's own path is the real Maildir,
+    # well outside any zone — so legitimate mail ingest must not trip the guard.
+    store = tmp_path / "pkm" / "live"
+    store.mkdir(parents=True)
+    (tmp_path / "kb").mkdir()
+    monkeypatch.setenv("LIFE_AGENT_KB", str(tmp_path / "kb"))
+    roots = (_root("mail", str(tmp_path / "mail" / "fastmail"), kind="maildir",
+                   staging_dir=tmp_path / "pkm" / "mail-staging"),)
+    assert_roots_ingestable(roots, pkm_config=_pkm_cfg(tmp_path, store))
+
+
+def test_forbidden_zones_derived_from_env(monkeypatch, tmp_path: Path) -> None:
+    kb = tmp_path / "kb"
+    kb.mkdir()
+    monkeypatch.setenv("LIFE_AGENT_KB", str(kb))
+    store = tmp_path / "store"
+    store.mkdir()
+    zones = forbidden_ingest_zones(pkm_config=_pkm_cfg(tmp_path, store))
+    assert set(zones) == {str(kb), str(store)}

@@ -45,6 +45,7 @@ from data_source_registry import (  # noqa: E402
     _kb_root,
     _matches,
     _pat_match,
+    assert_roots_ingestable,
     default_registry_path,
     load_registry,
 )
@@ -214,6 +215,9 @@ def main() -> int:
 
     try:
         registry: Registry = load_registry(args.registry)
+        # Guard before any staging: never ingest the agent's own KB or the pkm
+        # content store (circular). Fail-closed — a misconfigured root aborts here.
+        assert_roots_ingestable(registry.roots, pkm_config=args.pkm_config)
         pkm_root = _pkm_root(args.pkm_config)
         sources_yaml = pkm_root / "sources" / "sources.yaml"
 
