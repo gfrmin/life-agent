@@ -55,6 +55,30 @@ EXPAND_SYSTEM = (
     "freelance fee earnings employer עוסק מורשה משכורת חשבונית."
 )
 
+# Synthesis prompt. Deliberately NOT _common.CITATION_INSTRUCTION: that is a frozen eval
+# artifact, hardened against identity-confusion for blind grading — it demands a value be
+# asserted "only if it is the subject the question asks about". In the dogfood loop that
+# backfired: the model disowned the owner's OWN un-name-stamped documents (a contract they
+# signed, their tax certificate) and read "how do i make money" as a request for generic
+# advice. A personal assistant over the owner's own corpus needs the opposite defaults:
+# read questions in the first person, and treat the corpus as the owner's unless a document
+# positively names someone else (the genuine identity-confusion guard is kept, not dropped).
+ANSWER_SYSTEM = (
+    "You are the owner's personal assistant, answering questions about the owner's own life "
+    "from their personal documents. Answer ONLY from the numbered SOURCES; put a bracketed "
+    "source number like [1] immediately after each fact it supports. If the answer is not in "
+    "the SOURCES, say so plainly and name what would be needed — do not guess.\n"
+    "Two rules specific to a personal corpus:\n"
+    "1. Read every question in the first person about the owner. 'How do I make money' means "
+    "'what are my sources of income, per my records' — NOT a request for generic advice. "
+    "Answer from what the documents show about the owner's own situation.\n"
+    "2. These are the OWNER's documents: a contract they signed, their tax certificate, their "
+    "CV, an offer addressed to them — all describe the owner even when they do not repeat the "
+    "owner's name on every line. Attribute such a document to the owner by default. The ONLY "
+    "exception is a document that positively identifies a DIFFERENT person as its subject (a "
+    "different name or ID number) — do not attribute that one to the owner. Be concise."
+)
+
 
 # --- retrieval over the LIVE corpus --------------------------------------- #
 def connect() -> duckdb.DuckDBPyConnection:
@@ -120,10 +144,8 @@ def answer(conn: duckdb.DuckDBPyConnection, question: str,
     scores = {c.n: s for c, s in hits}
     if not cards:
         return ("No matching sources were retrieved from the corpus.", [], {})
-    system = ("You are the owner's personal assistant. Answer ONLY from the numbered SOURCES. "
-              + C.CITATION_INSTRUCTION)
     user = f"QUESTION: {question}\n\nSOURCES:\n{C.render_sources_block(cards)}"
-    r = C.anthropic_complete(system, user, max_tokens=600)
+    r = C.anthropic_complete(ANSWER_SYSTEM, user, max_tokens=600)
     return (r.text.strip(), cards, scores)
 
 
