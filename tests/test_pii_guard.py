@@ -7,8 +7,8 @@ must embed another shape carry a trailing ``# PII-OK`` (which both tells the
 guard to skip that source line and is a Python comment). All values are
 synthetic.
 
-Run in the pkm env:
-    uv run --project ../pkm python -m pytest tests/test_pii_guard.py
+Run:
+    uv run --project . python -m pytest tests/test_pii_guard.py
 """
 
 from __future__ import annotations
@@ -111,6 +111,33 @@ def test_forbidden_prefixes_from_env(monkeypatch) -> None:
     assert "~/yo/kb" in pref  # tilde form  # PII-OK
     # generic roots are never forbidden outright (they would over-match)
     assert "/home" not in pref and "/mnt" not in pref and "~" not in pref  # PII-OK
+
+
+def test_xdg_base_kb_parent_not_forbidden(monkeypatch) -> None:
+    # When the KB lives under a standard XDG base, that base is generic (not a private
+    # mount), so it must NOT become a forbidden prefix — else it blocks ~/.local/share/<app>.
+    from pii_check import load_forbidden_prefixes
+
+    monkeypatch.setenv("HOME", "/home/zz")  # PII-OK
+    monkeypatch.setenv("LIFE_AGENT_KB", "/home/zz/.local/share/life-agent")  # PII-OK
+    pref = load_forbidden_prefixes()
+    assert "/home/zz/.local/share" not in pref  # PII-OK  (XDG base, not a data mount)
+    assert "~/.local/share" not in pref  # PII-OK
+    assert "/home/zz/.local/share/life-agent" in pref  # the KB itself stays forbidden  # PII-OK
+
+
+def test_xdg_sibling_path_passes_scan(monkeypatch) -> None:
+    # Another app's generic XDG path (e.g. pkm's default root_dir) must pass when the KB
+    # sits under the same base — it is allowed by the ~/.local placeholder root.
+    from pii_check import load_forbidden_prefixes
+
+    monkeypatch.setenv("HOME", "/home/zz")  # PII-OK
+    monkeypatch.setenv("LIFE_AGENT_KB", "/home/zz/.local/share/life-agent")  # PII-OK
+    findings = scan_text(
+        "t", "root_dir: ~/.local/share/pkm", denylist=[], allowed_domains=D,
+        path_allow=("~/.local",), forbidden_prefixes=load_forbidden_prefixes(),
+    )
+    assert findings == []
 
 
 _ALLOW = ("/data", "/tmp", "~/.config", "~/.life-agent")

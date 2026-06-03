@@ -225,6 +225,12 @@ def load_path_allow(repo_root: str) -> tuple[str, ...]:
 
 _GENERIC_ROOTS = frozenset({"/home", "/Users", "/mnt", "/media", "/var", "/usr", "/", "~"})  # PII-OK
 
+# Standard XDG base dirs. When $LIFE_AGENT_KB lives under one of these, that base is
+# generic (shared by many apps), NOT a private data mount — so the "data mount = KB
+# parent" heuristic must not forbid it, else it blocks another app's XDG paths. (A
+# genuinely private mount, by contrast, has a non-XDG parent that stays forbidden.)
+_XDG_BASES = frozenset({"~/.local/share", "~/.local/state", "~/.config", "~/.cache"})  # PII-OK
+
 
 def load_forbidden_prefixes() -> tuple[str, ...]:
     """Real machine paths to forbid outright, derived live from ``$HOME`` /
@@ -238,7 +244,10 @@ def load_forbidden_prefixes() -> tuple[str, ...]:
         cands.add(base)
         cands.add(os.path.realpath(base))
     for b in ({kb, os.path.realpath(kb)} if kb else set()):
-        cands.add(os.path.dirname(b))  # the data mount = the KB's parent
+        parent = os.path.dirname(b)  # the data mount = the KB's parent …
+        tilde = ("~" + parent[len(home):]) if home and parent.startswith(home + "/") else parent
+        if tilde not in _XDG_BASES:  # … unless that parent is a generic XDG base
+            cands.add(parent)
     if home:
         for c in list(cands):
             if c.startswith(home + "/"):

@@ -21,8 +21,8 @@ scripts/eval_grading.py (unit-tested).
 A --synthesis flag reserves the end-to-end grader (synthesized answer + citation
 validity) for Phase 2 / pkm-memory; it is inert today (we have retrieval, not synthesis).
 
-Usage (run in the pkm env for pkm.retrieval + DuckDB):
-    uv run --project ../pkm python scripts/run_eval.py [--config PATH] [--k N] \
+Usage (run in this monorepo's env for pkm.retrieval + DuckDB):
+    uv run --project . python scripts/run_eval.py [--config PATH] [--k N] \
         [--rebuild-index] [--synthesis]
 """
 

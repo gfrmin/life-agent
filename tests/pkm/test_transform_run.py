@@ -31,8 +31,8 @@ from pkm.transforms.entity_extraction import EntityExtractionProducer
 # --- Fixtures and helpers ------------------------------------------------
 
 _EXAMPLES_DIR = (
-    Path(__file__).resolve().parent.parent
-    / "examples" / "transforms" / "entity_extraction" / "v1"
+    Path(__file__).resolve().parents[2]
+    / "docs" / "pkm" / "examples" / "transforms" / "entity_extraction" / "v1"
 )
 
 _DOCUMENTS: list[tuple[str, list[str]]] = [

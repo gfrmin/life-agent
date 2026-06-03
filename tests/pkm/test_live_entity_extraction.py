@@ -26,8 +26,8 @@ from pkm.transforms.entity_extraction import estimate_cost
 pytestmark = pytest.mark.llm
 
 _EXAMPLES_DIR = (
-    Path(__file__).resolve().parent.parent
-    / "examples" / "transforms" / "entity_extraction" / "v1"
+    Path(__file__).resolve().parents[2]
+    / "docs" / "pkm" / "examples" / "transforms" / "entity_extraction" / "v1"
 )
 
 

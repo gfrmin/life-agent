@@ -20,7 +20,7 @@ This script ONLY builds the symlink tree (and can prune dangling links). Registe
 staging dir as a pkm source and running ``pkm ingest/extract/rebuild-index`` is a separate,
 explicit step (it prints the manifest snippet to use).
 
-Usage (run in any env with PyYAML, e.g. ``uv run --project ../pkm python``):
+Usage (run in any env with PyYAML, e.g. ``uv run --project . python``):
     python scripts/mail_bridge.py [--manifest PATH] [--prune] [--dry-run]
 """
 

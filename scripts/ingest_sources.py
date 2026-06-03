@@ -50,7 +50,8 @@ from data_source_registry import (  # noqa: E402
     load_registry,
 )
 
-PKM_DIR = Path(os.environ.get("PKM_DIR") or (Path(__file__).resolve().parents[1].parent / "pkm"))
+# pkm now lives in this monorepo (src/pkm); the `pkm` console script runs under this project.
+PKM_DIR = Path(os.environ.get("PKM_DIR") or Path(__file__).resolve().parents[1])
 DEFAULT_PKM_CONFIG = Path(os.environ.get("PKM_CONFIG", "~/.config/life-agent/pkm.yaml")).expanduser()
 SOURCES_MANIFEST_VERSION = 1
 

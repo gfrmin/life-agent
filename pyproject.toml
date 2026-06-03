@@ -1,25 +1,49 @@
 [project]
 name = "life-agent"
 version = "0.0.1"
-description = "Personal life-management assistant — the Python memory layer (retrieval + synthesis) over pkm."
-requires-python = ">=3.13,<3.14"   # match pkm so the shared interpreter resolves
+description = "Personal life-management assistant — a monorepo of two packages: pkm (content-addressed extraction + catalogue) and life_agent (retrieval, synthesis, and action over it)."
+license = "AGPL-3.0-or-later"
+license-files = ["LICENSE"]
+requires-python = ">=3.13,<3.14"
 dependencies = [
-    # pkm is the memory core (content-addressed catalogue + FTS retrieval). Consumed as an
-    # editable path dependency (see [tool.uv.sources]); life-agent is its composition root.
-    "pkm",
+    # --- pkm (extraction faculty) ---
     "duckdb>=1.0",
     "pyyaml>=6.0",
+    "pypandoc>=1.13",
+    "docling>=2.14",
+    # Unstructured's optional format dependencies, added as specific
+    # formats have surfaced in real corpora. Do not pre-empt — add
+    # each only when a real extraction failure names it:
+    #   .xlsx                → openpyxl (already transitive)
+    #   .xls                 → xlrd (added 2026-04-21, 500-doc run)
+    #   .xls/.xlsx protected → msoffcrypto-tool (added 2026-04-21)
+    "unstructured>=0.16",
+    "msoffcrypto-tool>=6.0.0",
+    "xlrd>=2.0.2",
+    # Docling pre-flight: pikepdf detects encrypted PDFs (cheap
+    # header parse) so the producer can return a specific error
+    # rather than Docling's uninformative status=FAILURE. Added
+    # 2026-04-22 after the 1000-doc run's WTW-salaries PDF cluster.
+    "pikepdf>=10.5.1",
+    # Transform output validation (SPEC v0.2.0 §20.2).
+    "jsonschema>=4.23",
+    # LLM provider SDK for Phase 2 transforms (SPEC v0.2.0 §20).
+    "anthropic>=0.42",
+    # HTML-body stripping in the email producer (SPEC v0.5.0 §7.2).
+    "beautifulsoup4>=4.12",
 ]
 
-# pkm lives beside this repo and has its own lifecycle — depend on it by path (editable), not
-# a published version. This makes `uv run --project .` yield one env with both life_agent and pkm.
-[tool.uv.sources]
-pkm = { path = "../pkm", editable = true }
+[project.scripts]
+pkm = "pkm.cli:main"
 
 [dependency-groups]
 dev = [
     "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "mypy>=1.11",
     "ruff>=0.6",
+    "types-PyYAML>=6.0",
+    "types-jsonschema>=4.26.0.20260408",
 ]
 
 [build-system]
@@ -27,11 +51,10 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/life_agent"]
+packages = ["src/pkm", "src/life_agent"]
 
 [tool.ruff]
-# This repo's Python predates a linter and is written ~100 cols wide (pkm holds to 88, but its
-# code was linted from day one). Match the existing width rather than reflow it all.
+# pkm holds to 88; life_agent code is ~100 wide. 100 satisfies both (pkm's longest line is 84).
 line-length = 100
 
 [tool.ruff.lint]
@@ -40,7 +63,20 @@ select = ["E", "F", "W", "I", "N", "UP", "B", "SIM", "RUF"]
 ignore = ["N812"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["life_agent"]
+known-first-party = ["life_agent", "pkm"]
+
+[tool.mypy]
+# pkm's strict type gate is preserved; life_agent is not yet under strict mypy (future).
+strict = true
+warn_unreachable = true
+files = ["src/pkm"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# importlib mode: two packages' test trees coexist under tests/ (life_agent at top,
+# pkm under tests/pkm/) without sys.path collisions — e.g. the real `pkm` package isn't
+# shadowed by tests/pkm/, and the two test_pii_guard.py files don't clash.
+addopts = "-m 'not llm' --import-mode=importlib"
+markers = [
+    "llm: tests requiring live LLM API calls (skipped by default)",
+]
