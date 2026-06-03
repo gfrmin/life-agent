@@ -23,7 +23,6 @@ import pytest
 from pkm.producer import (
     Producer,
     ProducerConfigError,
-    ProducerResult,
     ProducerVersionMismatchError,
 )
 from pkm.producers.unstructured import (

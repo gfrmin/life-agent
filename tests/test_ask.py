@@ -172,3 +172,34 @@ def test_tell_records_fact_without_touching_corpus(monkeypatch, tmp_path) -> Non
 
     assert ask.main(["--tell", "My name is Ada Lovelace"]) == 0
     assert "My name is Ada Lovelace" in owner.load_profile()
+
+
+# --- reliability: weak-retrieval abstention floor -------------------------- #
+
+def test_retrieval_is_weak_truth_table() -> None:
+    assert ask.retrieval_is_weak({}, floor=4.0, min_hits=1)                  # zero retrieval
+    assert ask.retrieval_is_weak({1: 3.9, 2: 1.0}, floor=4.0, min_hits=1)    # none clear the floor
+    assert not ask.retrieval_is_weak({1: 5.0}, floor=4.0, min_hits=1)        # one strong hit
+    assert ask.retrieval_is_weak({1: 5.0}, floor=4.0, min_hits=2)            # need 2, have 1
+    assert not ask.retrieval_is_weak({1: 9.0, 2: 8.0}, floor=4.0, min_hits=2)
+
+
+def test_answer_abstains_on_weak_retrieval_without_calling_llm(monkeypatch) -> None:
+    monkeypatch.setattr(owner, "load_profile", lambda: "")  # no profile to answer from
+    monkeypatch.setattr(
+        ask, "retrieve",
+        lambda conn, q, k: [(SourceCard(n=1, text="x", origin="/data/a.pdf"), 1.0)],  # weak score
+    )
+    monkeypatch.setattr(
+        ask.C, "anthropic_complete",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("synthesis LLM must not run")),
+    )
+    text, cards, _ = ask.answer(conn=None, question="q", k=8, expand=False)
+    assert text == ask.ABSTENTION
+    assert [c.n for c in cards] == [1]  # weak hits still returned for the dogfood log
+
+
+def test_log_entry_records_unverified_line() -> None:
+    e = ask.log_entry("q?", "ID 222222222 [1]", _cards(), {1: 0.5, 2: 0.4},
+                      "BAD", "", when="10:00", unverified="[1] ID 222222222")
+    assert "unverified: [1] ID 222222222" in e

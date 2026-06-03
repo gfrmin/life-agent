@@ -13,7 +13,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
-from data_source_registry import (  # noqa: E402
+from data_source_registry import (
     Candidate,
     Registry,
     RegistryError,
@@ -161,7 +161,8 @@ def test_ingestable_formats_reflects_real_pkm_producers() -> None:
 
 
 def test_aggregate_counts_and_bytes() -> None:
-    root = Root("docs", "filetree", Path("/data/cloud/documents"), (), (), ("documents",), True, None)
+    root = Root("docs", "filetree", Path("/data/cloud/documents"), (), (),
+                ("documents",), True, None)
     rows = [
         Row("docs", "/data/x/a.pdf", ".pdf", 100, "docling", True),
         Row("docs", "/data/x/b.pdf", ".pdf", 200, "docling", True),
@@ -242,7 +243,8 @@ def test_discover_covers_staging_dirs(monkeypatch) -> None:
     reg = Registry(
         version=1,
         roots=(
-            _root("mail", "/data/mail/acct", kind="maildir", staging_dir=Path("/data/pkm/mail-staging")),
+            _root("mail", "/data/mail/acct", kind="maildir",
+                  staging_dir=Path("/data/pkm/mail-staging")),
             _root("notes", "/data/notes"),
         ),
     )
@@ -270,7 +272,7 @@ def test_bucket_undeclared_samples_are_ingestable_only() -> None:
 
 
 def test_prune_patterns_derives_subtree_excludes() -> None:
-    from ingest_sources import _prune_patterns  # noqa: E402
+    from ingest_sources import _prune_patterns
 
     pats = _prune_patterns(("**/.git/**", "git/**", "**/._*", "**/node_modules/**"))
     # subtree excludes (ending /**) become dir-prune patterns; per-file globs do not.
@@ -278,7 +280,7 @@ def test_prune_patterns_derives_subtree_excludes() -> None:
 
 
 def test_enumerate_filetree_prunes_vcs_and_cloned_repos(tmp_path: Path) -> None:
-    from ingest_sources import enumerate_filetree  # noqa: E402
+    from ingest_sources import enumerate_filetree
 
     (tmp_path / ".git" / "objects").mkdir(parents=True)
     (tmp_path / ".git" / "objects" / "x.md").write_text("vcs", encoding="utf-8")
@@ -301,7 +303,7 @@ def test_enumerate_filetree_prunes_vcs_and_cloned_repos(tmp_path: Path) -> None:
 
 
 def test_merge_entries_dedupes_and_unions_tags() -> None:
-    from ingest_sources import merge_entries  # noqa: E402
+    from ingest_sources import merge_entries
 
     existing = [{"path": "/data/x/a.pdf"}, {"path": "/data/x/b.pdf", "tags": ["documents"]}]
     new = [
@@ -311,7 +313,8 @@ def test_merge_entries_dedupes_and_unions_tags() -> None:
     ]
     merged = merge_entries(existing, new)
     paths = [e["path"] for e in merged]
-    assert paths == ["/data/x/a.pdf", "/data/x/b.pdf", "/data/x/c.md", "/data/staging/mail"]  # existing first
+    # existing entries first, then the new staging path
+    assert paths == ["/data/x/a.pdf", "/data/x/b.pdf", "/data/x/c.md", "/data/staging/mail"]
     b = next(e for e in merged if e["path"] == "/data/x/b.pdf")
     assert b["tags"] == ["documents", "legal"]  # unioned, sorted
     mail = next(e for e in merged if e["path"] == "/data/staging/mail")
@@ -365,7 +368,8 @@ def test_guard_rejects_root_inside_pkm_store(monkeypatch, tmp_path: Path) -> Non
         assert_roots_ingestable(roots, pkm_config=_pkm_cfg(tmp_path, store))
 
 
-def test_guard_allows_mail_root_whose_staging_is_sibling_of_store(monkeypatch, tmp_path: Path) -> None:
+def test_guard_allows_mail_root_whose_staging_is_sibling_of_store(
+        monkeypatch, tmp_path: Path) -> None:
     # The pkm store is .../pkm/live; mail stages into .../pkm/mail-staging, a SIBLING
     # of the store (not inside it). A maildir root's own path is the real Maildir,
     # well outside any zone — so legitimate mail ingest must not trip the guard.

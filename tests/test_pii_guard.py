@@ -19,7 +19,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / ".githooks"))
 
-from pii_check import (  # noqa: E402
+from pii_check import (
     DEFAULT_ALLOWED_DOMAINS,
     il_id_valid,
     scan_text,

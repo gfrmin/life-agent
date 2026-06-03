@@ -20,12 +20,14 @@ Run (in the pkm env, for pkm.retrieval + duckdb):
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import readline  # noqa: F401  -- enables line editing / history at the input() prompts
 import sys
 from datetime import datetime
 from pathlib import Path
 
+import citation_guard as guard  # sibling script: deterministic citation-faithfulness gate
 import duckdb
 import yaml
 
@@ -35,6 +37,17 @@ import life_agent.core as C
 from life_agent import owner
 
 DEFAULT_K = 8  # matches phase1_answer.py's synthesis-context default
+
+# Abstention floor (§reliability): refuse to synthesise when retrieval is too weak, rather than
+# confabulate from topically-adjacent-but-wrong chunks. Conservative defaults (fire only on
+# genuinely weak retrieval); tune from the eval BM25 score distribution via these env vars.
+WEAK_SCORE_FLOOR = float(os.environ.get("LIFE_AGENT_SCORE_FLOOR", "4.0"))
+MIN_STRONG_HITS = int(os.environ.get("LIFE_AGENT_MIN_HITS", "1"))
+ABSTENTION = (
+    "I don't have a strong enough source in your corpus to answer that confidently — retrieval "
+    "surfaced nothing above the relevance floor. I'd rather say so than guess; the weak matches "
+    "below are shown only so you can see what was near."
+)
 
 # Query expansion: a cheap model rewrites the natural-language question into concrete
 # BM25 keywords. The dogfood loop showed FTS fails on vocabulary mismatch — "how do i
@@ -147,6 +160,12 @@ def retrieve(conn: duckdb.DuckDBPyConnection, question: str,
             for i, h in enumerate(top)]
 
 
+def retrieval_is_weak(scores: dict[int, float], *, floor: float, min_hits: int) -> bool:
+    """Pure: True when fewer than ``min_hits`` retrieved chunks cleared ``floor``. Empty scores
+    (zero retrieval) are weak by definition. The confabulation guard for the synthesis step."""
+    return sum(1 for s in scores.values() if s >= floor) < min_hits
+
+
 def answer(conn: duckdb.DuckDBPyConnection, question: str,
            k: int, *, expand: bool = True) -> tuple[str, list[C.SourceCard], dict[int, float]]:
     """Retrieve then synthesise a cited answer. The authoritative owner profile (who "I"/"my"
@@ -161,8 +180,10 @@ def answer(conn: duckdb.DuckDBPyConnection, question: str,
     hits = retrieve(conn, build_query(question, terms), k)
     cards = [c for c, _ in hits]
     scores = {c.n: s for c, s in hits}
-    if not cards and not profile:
-        return ("No matching sources were retrieved from the corpus.", [], {})
+    # Abstain on weak retrieval (subsumes the zero-hit case) unless the owner profile can answer
+    # an identity question on its own. Returns the weak cards so the dogfood loop sees the misses.
+    if retrieval_is_weak(scores, floor=WEAK_SCORE_FLOOR, min_hits=MIN_STRONG_HITS) and not profile:
+        return (ABSTENTION, cards, scores)
     blocks = []
     if profile:
         blocks.append(f'OWNER (authoritative — who "I"/"my" refers to):\n{profile}')
@@ -177,18 +198,22 @@ def _sources_inline(cards: list[C.SourceCard], scores: dict[int, float]) -> str:
     return ", ".join(f"{Path(c.origin).name}({scores.get(c.n, 0.0):.2f})" for c in cards)
 
 
-def render(text: str, cards: list[C.SourceCard], scores: dict[int, float]) -> None:
+def render(text: str, cards: list[C.SourceCard], scores: dict[int, float],
+           audit: guard.CitationAudit | None = None) -> None:
     print(f"\n{text}\n")
     if cards:
         print("sources:")
         for c in cards:
             print(f"  [{c.n}] {Path(c.origin).name}  ({scores.get(c.n, 0.0):.2f})")
+    if audit is not None and not audit.ok:
+        print(audit.footer())  # ⚠ unverified: a cited fact wasn't found in its source
     print()
 
 
 # --- feedback capture (the dogfood signal) -------------------------------- #
 def log_entry(question: str, text: str, cards: list[C.SourceCard],
-              scores: dict[int, float], verdict: str, note: str, *, when: str) -> str:
+              scores: dict[int, float], verdict: str, note: str, *, when: str,
+              unverified: str = "") -> str:
     """Render one dogfood log block. Pure (no I/O, no clock) so it is unit-tested."""
     lines = [
         f"## {when}  {verdict}",
@@ -197,6 +222,8 @@ def log_entry(question: str, text: str, cards: list[C.SourceCard],
     ]
     if cards:
         lines.append(f"sources: {_sources_inline(cards, scores)}")
+    if unverified:  # citation-guard flagged a cited fact not present in its source
+        lines.append(f"unverified: {unverified}")
     if note:
         lines.append(f"note: {note}")
     return "\n".join(lines) + "\n"
@@ -215,9 +242,20 @@ def append_log(entry: str) -> Path:
     return log
 
 
-def capture(question: str, text: str, cards: list[C.SourceCard], scores: dict[int, float]) -> None:
+def _unverified_summary(audit: guard.CitationAudit | None) -> str:
+    """Compact one-line summary of a citation audit for the dogfood log ('' when clean)."""
+    if audit is None or audit.ok:
+        return ""
+    parts = [f"[{n}] {claim}" for claim, n in audit.unsupported]
+    if audit.dangling:
+        parts.append("dangling " + ",".join(f"[{n}]" for n in audit.dangling))
+    return "; ".join(parts)
+
+
+def capture(question: str, text: str, cards: list[C.SourceCard], scores: dict[int, float],
+            audit: guard.CitationAudit | None = None) -> None:
     """One-key verdict (+ optional note). Frictionless: `g` logs immediately; `b`/`n`
-    prompt for a note; Enter skips."""
+    prompt for a note; Enter skips. A citation-guard flag is logged regardless of verdict."""
     try:
         choice = input("[g]ood / [b]ad / [n]ote / Enter=next > ").strip().lower()
     except EOFError:
@@ -233,7 +271,8 @@ def capture(question: str, text: str, cards: list[C.SourceCard], scores: dict[in
         except EOFError:
             print()
     log = append_log(log_entry(question, text, cards, scores, verdict, note,
-                               when=f"{datetime.now():%H:%M}"))
+                               when=f"{datetime.now():%H:%M}",
+                               unverified=_unverified_summary(audit)))
     print(f"→ logged {verdict} to {log}\n")
 
 
@@ -241,8 +280,9 @@ def capture(question: str, text: str, cards: list[C.SourceCard], scores: dict[in
 def ask_once(conn: duckdb.DuckDBPyConnection, question: str, k: int,
              *, expand: bool = True) -> None:
     text, cards, scores = answer(conn, question, k, expand=expand)
-    render(text, cards, scores)
-    capture(question, text, cards, scores)
+    audit = guard.audit(text, cards)
+    render(text, cards, scores, audit)
+    capture(question, text, cards, scores, audit)
 
 
 # --- teaching: opportunistically record an authoritative owner fact ------- #
