@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# uv reads requires-python (>=3.13,<3.14) and installs the right Python itself.
+env:
+  UV_FROZEN: "1"   # never mutate the lockfile in CI; fail if it's stale
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # pandoc extracts the (markdown) sample corpus and is exercised by the
+      # extraction tests. The ML extractors (docling/unstructured/tesseract) are
+      # Python deps installed by `uv sync`; the sample/smoke path never invokes them.
+      - name: Install pandoc
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends pandoc
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      # Full sync (faithful to uv.lock). This pulls the heavy extractor stack;
+      # a lighter install via optional extras is a worthwhile follow-up but would
+      # change the default dependency contract, so it is deferred deliberately.
+      - name: Sync dependencies
+        run: uv sync
+
+      - name: Lint (ruff)
+        run: uv run ruff check src tests   # scripts/ has known debt, excluded for now
+
+      - name: Typecheck (mypy — advisory)
+        run: uv run mypy
+        continue-on-error: true            # 2 known pre-existing issues in pkm's email producer
+
+      - name: Tests
+        run: uv run pytest
+
+      - name: PII guard (shapes-only over the tracked tree)
+        run: uv run python .githooks/pii_check.py --shapes-only
+
+      - name: Fresh-clone smoke (sample corpus → cited retrieval, no API key)
+        run: scripts/smoke-fresh-clone.sh

@@ -55,33 +55,59 @@ layout the tooling expects under `$LIFE_AGENT_KB` (`raw/`, `wiki/`, `FAILURES.md
 
 ## Usage
 
-```bash
-export LIFE_AGENT_KB=~/.life-agent/kb        # wherever your kb lives
+Try it on the bundled **synthetic** corpus first — no real data, no API key to
+build it ([full guide: `SETUP.md`](./SETUP.md)):
 
-scripts/build_corpus.sh                       # assemble $LIFE_AGENT_KB/raw from docs, notes, OCR, parsed text
-scripts/needle.sh "תעודת זהות"                # find any document, incl. text inside scans (OCR'd on demand)
-bin/ask "when does my passport expire?"       # answer from the wiki, with (raw/...) citations
+```bash
+scripts/bootstrap-sample.sh                   # build a throwaway corpus (markdown + pandoc only)
+
+export LIFE_AGENT_KB=$PWD/examples/.sandbox/kb
+export PKM_CONFIG=$PWD/examples/.sandbox/pkm.yaml
+export ANTHROPIC_API_KEY=sk-ant-...           # only needed to *ask* (synthesis)
+
+bin/ask-live "what is my national ID number?" # cited answer over the live corpus
 ```
 
-`bin/ask` uses Claude (`ANTHROPIC_API_KEY` from env or gnome-keyring; model via `ASK_MODEL`).
+**`bin/ask-live`** is the entrypoint: it retrieves from the live pkm catalogue
+(BM25, Hebrew-aware), synthesises a `[n]`-cited answer, and **verifies every
+cited fact appears in its source** before showing it. Point it at your own data
+by editing `config/data-sources.example.yaml` into `$LIFE_AGENT_KB` — see
+[`SETUP.md`](./SETUP.md). Contributors: [`CONTRIBUTING.md`](./CONTRIBUTING.md).
+
+> `bin/ask` + `scripts/needle.sh` are the earlier **Phase-0** wiki/grep tools
+> (load a compiled wiki, no retrieval); `bin/ask-live` superseded them.
 
 ## Layout
 
 ```
+SETUP.md              clone → cited answer (start here as a user)
+CONTRIBUTING.md       dogfood loop, the PII guard, the two-package rules
 ROADMAP.md            the approved plan (phases 0–3)
 CLAUDE.md             operating manual for an agent working in this repo
 GETTING_STARTED.md    concrete first-session checklist
+LICENSE               AGPL-3.0-or-later
 bin/
-  ask                 answer a question from the wiki, with citations (Phase-0 MVP)
+  ask-live            THE entrypoint: cited answers over the live corpus, fact-verified
+  ask                 Phase-0 legacy: answer from a compiled wiki (no retrieval)
+src/
+  pkm/                memory faculty — content-addressed extraction + DuckDB catalogue
+  life_agent/         reasoning faculty — retrieval, citation guard, owner profile
+examples/
+  README.md           the sample-corpus guide + the identity-guard demo
+  sample-corpus/      synthetic markdown docs (Ada Lovelace) to try before your own data
+config/
+  pkm.example.yaml            pkm content store + extractor versions
+  data-sources.example.yaml   which folders to ingest
+  pii-patterns.txt.example    private denylist for the PII guard (copy to $LIFE_AGENT_KB)
 scripts/
-  needle.sh           OCR+grep "find any document" (the repeatable "find my Israeli ID")
-  build_corpus.sh     assemble $LIFE_AGENT_KB/raw from your documents, notes, OCR, and parsed text
-eval/
-  README.md           the eval-set schema (real, populated set lives under $LIFE_AGENT_KB)
-  questions.example.yaml   illustrative/fake example
+  bootstrap-sample.sh   build the sample corpus into a throwaway sandbox
+  smoke-fresh-clone.sh  CI: clone → sample → cited retrieval, no key
+  ask.py                the ask-live implementation (retrieve → synthesise → verify)
+  ingest_sources.py     register + extract + chunk your declared data roots into pkm
+  needle.sh             Phase-0 OCR+grep "find any document"
 docs/
   kb-schema.md                  the knowledge-base schema (what lives under $LIFE_AGENT_KB)
-  failures-template.md          how to author the Phase-1 failure log
+  pkm/                          pkm's SPEC + phase docs
   nix-for-documents-report.md   commissioned research on the memory-core architecture
   pkm-retrieval-design.md       code-grounded design for extending pkm
   brain-design.md               pi-mono + credence-pi findings and how the app composes them

@@ -29,3 +29,6 @@ FAILURES.md
 
 # local-only: superpowers specs are symlinked to $LIFE_AGENT_KB (out of tree, PII-bearing)
 docs/superpowers/
+
+# Throwaway sandbox built by scripts/bootstrap-sample.sh (KB + pkm store + config)
+examples/.sandbox/

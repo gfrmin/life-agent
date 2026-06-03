@@ -1,0 +1,48 @@
+# pkm config — EXAMPLE. Copy to wherever $PKM_CONFIG points, then edit.
+#
+#   mkdir -p ~/.config/life-agent
+#   cp config/pkm.example.yaml ~/.config/life-agent/pkm.yaml
+#
+# pkm reads exactly one config file (no env overrides, no hierarchy — SPEC §14.6).
+# $PKM_CONFIG selects which; it defaults to ~/.config/life-agent/pkm.yaml.
+
+# The pkm content store: the content-addressed cache + the DuckDB catalogue.
+# This is your *memory on disk*. Keep it OUT of the repo, on a backed-up disk.
+root_dir: ~/.local/share/pkm/store
+
+# Extractors: one entry per producer that might run on your corpus. `version`
+# MUST equal the exact installed tool version — pkm refuses to run a producer
+# whose installed version differs, because the version is part of the cache key
+# (a stale version would silently corrupt the content-addressing). Find yours:
+#
+#   pandoc --version | head -1        ->  e.g. "pandoc 3.6"  -> version: "3.6"
+#   tesseract --version | head -1     ->  e.g. "tesseract 5.5.2"
+#
+# Only declare the producers your corpus actually needs. The bundled sample
+# corpus is markdown, so it needs ONLY pandoc (see scripts/bootstrap-sample.sh,
+# which generates a pandoc-only config automatically).
+extractors:
+  # Plain text, markdown, HTML, docx, odt, rst, tex, rtf, epub — fast, no models.
+  pandoc:
+    version: "3.6"          # <-- set to YOUR `pandoc --version`
+    config: {}
+
+  # PDFs and layout-sensitive documents (loads ML models on first use — slower).
+  # docling:
+  #   version: "2.x.y"      # the installed `docling` package version
+  #   config: {ocr: true, table_structure: true}
+
+  # Scanned images / image-only PDFs via OCR. Hebrew + English in the example.
+  # tesseract:
+  #   version: "5.5.2"      # your `tesseract --version`
+  #   config: {languages: ["heb", "eng"]}
+
+  # Spreadsheets, .msg/.ppt/.doc and a catch-all for formats above don't cover.
+  # unstructured:
+  #   version: "0.x.y"      # the installed `unstructured` package version
+  #   config: {}
+
+  # .eml mail (stdlib RFC822 producer — no external tool, version is pkm's own).
+  # email:
+  #   version: "1"
+  #   config: {}

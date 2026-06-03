@@ -1,0 +1,39 @@
+# PII denylist — EXAMPLE. Copy to $LIFE_AGENT_KB/pii-patterns.txt and fill in.
+#
+#   cp config/pii-patterns.txt.example "$LIFE_AGENT_KB/pii-patterns.txt"
+#
+# WHAT THIS IS
+#   .githooks/pii_check.py is a structural guard for this PUBLIC repo. It already
+#   catches *shaped* PII automatically (emails on non-allowlisted domains,
+#   checksum-valid national IDs, passport/phone shapes, personal file paths).
+#   This file supplements that with the SHAPELESS things only you know: the
+#   literal names, employers, and private domains that would identify you but
+#   match no generic pattern.
+#
+# HOW IT IS READ
+#   One regex per line (Python `re`, case-insensitive). Blank lines and lines
+#   beginning with `#` are ignored. A commit/push is blocked if any tracked line
+#   matches — the matched value is NEVER printed, only `path:line: kind`.
+#
+# WHERE IT LIVES
+#   In $LIFE_AGENT_KB (outside this repo), because the patterns themselves are
+#   personal. The guard runs "fail-closed": in its default mode it refuses to
+#   scan if this file is missing, so copy it before your first commit. (For an
+#   ad-hoc scan without it, use `python .githooks/pii_check.py --shapes-only`.)
+#
+# The entries below are SYNTHETIC placeholders. Delete them and add your own.
+
+# A private surname that appears in your documents but nowhere public:
+Zzyzx
+
+# A maiden name or family name (word-boundaried so it doesn't over-match):
+\bQwerty\b
+
+# An employer or org name that would identify you:
+Acme Widgets (Pty) Ltd
+
+# A personal domain you own (escape the dots):
+my-private-domain\.example
+
+# A street name from your address:
+Nonesuch Avenue
