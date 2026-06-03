@@ -3,15 +3,17 @@
 This is the concrete checklist for a fresh agent/session. Read [`CLAUDE.md`](./CLAUDE.md) and
 [`ROADMAP.md`](./ROADMAP.md) first.
 
-**Status:** Phase 0 **and** the Phase 1 retrieval substrate are done — pkm `SPEC-v0.3.0`, migration
-`0004` (chunks+embeddings), `pkm search` + the `pkm-memory` MCP server, and the **configurable data
-layer** (`scripts/data_source_registry.py` census + `scripts/ingest_sources.py` promote, driven by a
-`data-sources.yaml` registry over plocate). The **live corpus is ingested and searchable** via
-`pkm-memory`: mail INBOX+Sent (8288 src / 37,439 chunks), documents (364 / 3,786), notes (69 / 211).
-To see what's on the system, run `python scripts/data_source_registry.py --report`; to add a source,
-edit `$LIFE_AGENT_KB/config/data-sources.yaml` and re-run `scripts/ingest_sources.py`. **Next is a
-dogfood week** — use it, log misses to `$LIFE_AGENT_KB/FAILURES.md`, re-rank — *then* Phase 2 (the pi
-MCP-bridge). Build only what the failure log demands.
+**Status (read `ROADMAP.md` for the full picture):** Phase 0 + the Phase 1 retrieval substrate are
+done — pkm `SPEC-v0.3.0`, migration `0004` (chunks+embeddings), and the **configurable data layer**
+(`scripts/data_source_registry.py` census + `scripts/ingest_sources.py` promote, driven by a
+`data-sources.yaml` registry over plocate). The **live corpus is ingested and searchable** (NVMe
+catalogue, ~13k sources / ~400k chunks incl. the Downloads root). The retrieval/synthesis read path is the
+`life_agent.core`-backed `scripts/ask.py`, dogfooded via **`bin/ask-live`** — the `pkm-memory` MCP
+server was **retired**. To see what's on the system, run `python scripts/data_source_registry.py
+--report`; to add a source, edit `$LIFE_AGENT_KB/config/data-sources.yaml` and re-run
+`scripts/ingest_sources.py`. **Active phase = mature memory (Phase 1.5):** dogfood, log misses to
+`$LIFE_AGENT_KB/FAILURES.md`, build only what the failure log demands. The agent loop / brain / spine
+are later phases (spine = open decision).
 
 **Knowledge lives outside this repo**, at `$LIFE_AGENT_KB` (default `$HOME/.life-agent/kb`) — see
 [`docs/kb-schema.md`](./docs/kb-schema.md).

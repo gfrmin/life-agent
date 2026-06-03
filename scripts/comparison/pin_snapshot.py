@@ -14,7 +14,7 @@ Both Phase 0 (wiki compile) and Phase 1 (retrieval) read S in full. This script:
 
 Outputs (manifest, staging) hold/point at PII and live under $LIFE_AGENT_KB.
 
-Run:  uv run --project ../pkm python scripts/comparison/pin_snapshot.py
+Run:  uv run --project . python scripts/comparison/pin_snapshot.py
 """
 from __future__ import annotations
 

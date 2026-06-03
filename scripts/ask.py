@@ -29,10 +29,10 @@ from pathlib import Path
 import duckdb
 import yaml
 
-# Reuse the comparison harness (sibling dir): metered LLM call, secret lookup, citation
-# instruction, source rendering, and the resolved KB / PKM_CONFIG paths.
-sys.path.insert(0, str(Path(__file__).resolve().parent / "comparison"))
-import _common as C  # noqa: E402
+# Shared infra (metered LLM call, secret lookup, source rendering, the resolved KB /
+# PKM_CONFIG paths) lives in the installed life_agent package (see life-agent's pyproject).
+import life_agent.core as C
+from life_agent import owner
 
 DEFAULT_K = 8  # matches phase1_answer.py's synthesis-context default
 
@@ -55,28 +55,36 @@ EXPAND_SYSTEM = (
     "freelance fee earnings employer עוסק מורשה משכורת חשבונית."
 )
 
-# Synthesis prompt. Deliberately NOT _common.CITATION_INSTRUCTION: that is a frozen eval
-# artifact, hardened against identity-confusion for blind grading — it demands a value be
-# asserted "only if it is the subject the question asks about". In the dogfood loop that
-# backfired: the model disowned the owner's OWN un-name-stamped documents (a contract they
-# signed, their tax certificate) and read "how do i make money" as a request for generic
-# advice. A personal assistant over the owner's own corpus needs the opposite defaults:
-# read questions in the first person, and treat the corpus as the owner's unless a document
-# positively names someone else (the genuine identity-confusion guard is kept, not dropped).
+# Synthesis prompt. Deliberately NOT the comparison harness's CITATION_INSTRUCTION (in
+# scripts/comparison/_common.py): that is a frozen eval artifact, hardened against
+# identity-confusion for blind grading — it demands a value be asserted "only if it is the
+# subject the question asks about". In the dogfood loop that backfired: the model disowned the
+# owner's OWN un-name-stamped documents (a contract they signed, their tax certificate) and read
+# "how do i make money" as a request for generic advice. So this prompt reads questions in the
+# first person and attributes the corpus to the owner by default.
+#
+# But that default *over*-corrected on 2026-06-02: "what is my name?" returned a family member's
+# health report (a partner's name + ID) as the owner's. The fix is the OWNER block — authoritative
+# identity facts (see life_agent.owner) injected by answer() — which this prompt treats as the
+# authority on whose document a SOURCE is, so a partner's/relative's name or ID is never asserted
+# as the owner's. (The OWNER block may be empty; the rules then degrade to the old behaviour.)
 ANSWER_SYSTEM = (
-    "You are the owner's personal assistant, answering questions about the owner's own life "
-    "from their personal documents. Answer ONLY from the numbered SOURCES; put a bracketed "
-    "source number like [1] immediately after each fact it supports. If the answer is not in "
-    "the SOURCES, say so plainly and name what would be needed — do not guess.\n"
-    "Two rules specific to a personal corpus:\n"
+    "You are the owner's personal assistant, answering questions about the owner's own life. "
+    "You are given an OWNER block (authoritative facts about who the owner is — names, IDs) and "
+    "numbered SOURCES (chunks retrieved from the owner's documents). Answer from these; put a "
+    "bracketed source number like [1] immediately after each fact a SOURCE supports. If the answer "
+    "is in neither, say so plainly and name what would be needed — do not guess.\n"
+    "Rules specific to a personal corpus:\n"
     "1. Read every question in the first person about the owner. 'How do I make money' means "
-    "'what are my sources of income, per my records' — NOT a request for generic advice. "
-    "Answer from what the documents show about the owner's own situation.\n"
-    "2. These are the OWNER's documents: a contract they signed, their tax certificate, their "
-    "CV, an offer addressed to them — all describe the owner even when they do not repeat the "
-    "owner's name on every line. Attribute such a document to the owner by default. The ONLY "
-    "exception is a document that positively identifies a DIFFERENT person as its subject (a "
-    "different name or ID number) — do not attribute that one to the owner. Be concise."
+    "'what are my sources of income, per my records' — NOT a request for generic advice.\n"
+    "2. The OWNER block is the authority on the owner's identity: answer 'what is my name / my ID "
+    "/ my phone' from it directly. Use it to judge whose document a SOURCE is — a SOURCE whose "
+    "subject is a person or ID the OWNER block identifies as someone ELSE (a partner, a family "
+    "member) is NOT the owner's; never assert another person's name or ID as the owner's.\n"
+    "3. Otherwise attribute documents to the owner by default: a contract they signed, their tax "
+    "certificate, their CV, an offer addressed to them all describe the owner even when they don't "
+    "repeat the owner's name on every line. The exception is a document that positively identifies "
+    "a DIFFERENT person as its subject. Be concise."
 )
 
 
@@ -89,6 +97,13 @@ def connect() -> duckdb.DuckDBPyConnection:
     conn = duckdb.connect(str(db), read_only=True)
     conn.execute("INSTALL fts; LOAD fts;")
     return conn
+
+
+def _is_lock_error(msg: str) -> bool:
+    """True if a DuckDB error message means the catalogue is held by another process (a running
+    extraction). Pure, so it's unit-tested in place of an un-reproducible live lock."""
+    m = msg.lower()
+    return "lock" in m or "conflict" in m or "being used" in m
 
 
 def _clean_terms(raw: str) -> str:
@@ -116,7 +131,8 @@ def _expand_terms(question: str, *, model: str = EXPAND_MODEL) -> str:
     return _clean_terms(r.text)
 
 
-def retrieve(conn: duckdb.DuckDBPyConnection, question: str, k: int) -> list[tuple[C.SourceCard, float]]:
+def retrieve(conn: duckdb.DuckDBPyConnection, question: str,
+             k: int) -> list[tuple[C.SourceCard, float]]:
     """FTS the given query over the whole corpus; dedupe by chunk text keeping the best
     score; return the top-k as (numbered SourceCard, score) pairs. No snapshot filter."""
     from pkm.retrieval import search
@@ -133,18 +149,25 @@ def retrieve(conn: duckdb.DuckDBPyConnection, question: str, k: int) -> list[tup
 
 def answer(conn: duckdb.DuckDBPyConnection, question: str,
            k: int, *, expand: bool = True) -> tuple[str, list[C.SourceCard], dict[int, float]]:
-    """Retrieve then synthesise a cited answer. Retrieval uses the question expanded with
-    cheap-model keywords by default (``expand=False`` for the raw-question A/B baseline).
+    """Retrieve then synthesise a cited answer. The authoritative owner profile (who "I"/"my"
+    is) is prepended as an OWNER block so the model never mistakes a relative's document for the
+    owner's. Retrieval uses the question expanded with cheap-model keywords by default
+    (``expand=False`` for the raw-question A/B baseline).
     Returns (answer_text, cards, {card_n: score})."""
+    profile = owner.load_profile()
     terms = _expand_terms(question) if expand else ""
     if terms:
         print(f"  ↳ expanded: {terms}")
     hits = retrieve(conn, build_query(question, terms), k)
     cards = [c for c, _ in hits]
     scores = {c.n: s for c, s in hits}
-    if not cards:
+    if not cards and not profile:
         return ("No matching sources were retrieved from the corpus.", [], {})
-    user = f"QUESTION: {question}\n\nSOURCES:\n{C.render_sources_block(cards)}"
+    blocks = []
+    if profile:
+        blocks.append(f'OWNER (authoritative — who "I"/"my" refers to):\n{profile}')
+    blocks.append(f"SOURCES:\n{C.render_sources_block(cards) if cards else '(none retrieved)'}")
+    user = f"QUESTION: {question}\n\n" + "\n\n".join(blocks)
     r = C.anthropic_complete(ANSWER_SYSTEM, user, max_tokens=600)
     return (r.text.strip(), cards, scores)
 
@@ -215,15 +238,29 @@ def capture(question: str, text: str, cards: list[C.SourceCard], scores: dict[in
 
 
 # --- one question, end to end --------------------------------------------- #
-def ask_once(conn: duckdb.DuckDBPyConnection, question: str, k: int, *, expand: bool = True) -> None:
+def ask_once(conn: duckdb.DuckDBPyConnection, question: str, k: int,
+             *, expand: bool = True) -> None:
     text, cards, scores = answer(conn, question, k, expand=expand)
     render(text, cards, scores)
     capture(question, text, cards, scores)
 
 
+# --- teaching: opportunistically record an authoritative owner fact ------- #
+def remember(fact: str) -> None:
+    """Append an owner-told fact ('My name is …') to the owner profile. This is identity
+    ground truth, not corpus evidence — it is injected into every future answer, never ingested
+    into pkm. Empty facts are ignored."""
+    fact = fact.strip()
+    if not fact:
+        return
+    path = owner.append_fact(fact, when=f"{datetime.now():%Y-%m-%d %H:%M}")
+    print(f"→ remembered (owner profile: {path})\n")
+
+
 # --- REPL ----------------------------------------------------------------- #
 def repl(conn: duckdb.DuckDBPyConnection, k: int, *, expand: bool = True) -> None:
-    print("ask anything about your life — Ctrl-D or /q to quit\n")
+    print("ask anything about your life — '/i <fact>' to teach me about you, "
+          "Ctrl-D or /q to quit\n")
     while True:
         try:
             question = input("ask> ").strip()
@@ -234,6 +271,9 @@ def repl(conn: duckdb.DuckDBPyConnection, k: int, *, expand: bool = True) -> Non
             continue
         if question in ("/q", "/quit", "/exit"):
             return
+        if question.startswith(("/i ", "/me ")):
+            remember(question.split(" ", 1)[1])
+            continue
         ask_once(conn, question, k, expand=expand)
 
 
@@ -241,17 +281,24 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("question", nargs="*", help="ask once non-interactively; omit for the REPL")
-    ap.add_argument("--k", type=int, default=DEFAULT_K, help=f"top-k retrieval context (default {DEFAULT_K})")
+    ap.add_argument("--k", type=int, default=DEFAULT_K,
+                    help=f"top-k retrieval context (default {DEFAULT_K})")
     ap.add_argument("--no-expand", action="store_true",
                     help="disable cheap-model query expansion (raw-question BM25 baseline)")
+    ap.add_argument("--tell", metavar="FACT",
+                    help="record an authoritative owner fact (e.g. 'My name is …') and exit")
     args = ap.parse_args(argv)
     expand = not args.no_expand
+
+    # Teaching is corpus-free: it works even while an extraction holds the catalogue lock.
+    if args.tell:
+        remember(args.tell)
+        return 0
 
     try:
         conn = connect()
     except duckdb.Error as e:
-        msg = str(e).lower()
-        if "lock" in msg or "conflict" in msg or "being used" in msg:
+        if _is_lock_error(str(e)):
             print("corpus locked by extraction, retry in a moment", file=sys.stderr)
             return 2
         raise

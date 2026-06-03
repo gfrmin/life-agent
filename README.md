@@ -9,27 +9,35 @@ It doesn't reinvent anything; it **composes systems you already run**.
 
 ## What this is
 
-`life-agent` is a **TypeScript application built on pi-mono** (the agent runtime) that loads the
-**credence-pi** Bayesian governor (the "brain") and **composes capabilities — memory, tasks, email,
-calendar — as MCP tools**. Polyglot underneath (TS + Python + Julia); one application on top.
+The north star is an agent that **maximises the owner's expected utility** — remembers everything,
+reasons under uncertainty (the *brain*), acts across tools, is proactive. The design is **four
+faculties + a spine**, each in the language that serves it, integrated over **language-neutral seams
+(MCP / HTTP / CLI)** — polyglot by design, not one app in one language.
 
-| Faculty | System | Path | Role |
+**What exists today is the Memory faculty, in Python:** a retrieval + synthesis layer over pkm's
+DuckDB catalogue (`src/life_agent/` + `scripts/ask.py`, run via `bin/ask-live`). The other faculties
+are future work, and the **agent-loop spine is an open decision** (see `ROADMAP.md`).
+
+| Faculty | System | Path | Status |
 |---|---|---|---|
-| **Memory** | pkm | `../pkm` | content-addressed extraction + retrieval; `pkm-memory` MCP server |
-| **Brain** | credence-pi | `../credence/apps/credence-pi` | Bayesian VOI governor: ask / proceed / block per tool call |
-| **Runtime** | pi-mono | `../pi-mono` | agent loop, multi-provider LLM, tool registry (TS) |
-| **Tasks** | jarvis-lite | `../jarvis-lite` | GTD; MCP server (13 tools) |
-| **Application + glue** | **this repo** | `.` | the app, the pi **MCP-bridge** extension, small MCP servers (email/calendar/chat), scheduling, and the Phase-0 knowledge base |
+| **Memory** | pkm + `life_agent` | `../pkm`, `.` | **Live** — content-addressed extraction + DuckDB `fts`/`vss`; this repo adds the retrieval/synthesis read path |
+| **Brain** | credence | `../credence/apps/credence-pi` | Not wired — Bayesian VOI governor: ask / proceed / block (Julia) |
+| **Hands** | jarvis-lite, email, calendar, chat | `../jarvis-lite`, … | Not wired — Jarvis is a 13-tool MCP server; others TBD |
+| **Goals / Utility** | *(new)* | — | Unbuilt — what the owner values; owed before autonomous action |
+| **Spine** | **TBD** | — | Open decision: pi-mono (TS) vs a Python loop vs Claude Code as interim |
 
-The unifying trick: **every capability is an MCP server**, so the interface (Claude Code, the pi app,
-later Telegram/OpenClaw) is a swappable detail.
+The unifying trick is the **seam**: every capability is reachable over a stable, language-neutral
+contract, so the spine and the interface (Claude Code today, later Telegram/Matrix) are swappable.
+MCP is endorsed as a seam (an earlier `pkm-memory` MCP server was built then retired).
 
 ## Status
 
-**Phase 0 done; retrieval-substrate foundation locked.** You can ask questions about your life and get
-cited answers today (`bin/ask`), and find any document including inside scans (`scripts/needle.sh`).
-Underneath, pkm's cache key is hardened and migration `0004` (chunks + embeddings) has landed; the
-Phase-1 retrieval spec is the measured failure log. Begin at [`GETTING_STARTED.md`](./GETTING_STARTED.md).
+**Phase 1 memory substrate done; corpus live; active phase = mature memory (Phase 1.5).** Ask
+questions about your life and get cited answers over the whole live corpus today via **`bin/ask-live`**
+(`bin/ask` + `scripts/needle.sh` are the earlier Phase-0 wiki/grep tools). Underneath: pkm's
+content-addressed extraction + a DuckDB `fts`/`vss` catalogue (~13k sources / ~400k chunks). The work
+now is dogfood-driven: use it, log misses to `FAILURES.md`, build only what they demand. Begin at
+[`GETTING_STARTED.md`](./GETTING_STARTED.md).
 
 ## Data layout — the repo is the system; your knowledge is yours
 

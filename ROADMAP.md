@@ -17,20 +17,38 @@ model)` transforms) and warns against over-building: *measure what you actually 
 the retrieval "cathedral."*
 
 Locked decisions: local-vs-cloud is an engineering (not privacy) choice; first win = ask-anything
-search; scope = text-first; **brain = Credence via `credence-pi`/`pi-mono`**; leverage existing
-projects, especially **PKM**.
+search; scope = text-first; **brain = credence** (the Bayesian governor); leverage existing
+projects, especially **PKM**. The agent-loop *spine* is deliberately **not** locked — see
+Architecture and Open decisions.
 
-## Architecture
+## North star
 
-| Faculty | System | Reality / new work |
+An agent that **maximises the owner's expected utility**: remembers everything, reasons under
+uncertainty about what matters, acts across the owner's tools, and is proactive. The seed task
+("find my Israeli ID across all my data") was the first rung; the destination is decision-theoretic
+(value-of-information-driven ask/proceed/block), which is exactly why **credence** is the brain and
+not optional.
+
+## Architecture — faculties over language-neutral seams
+
+The agent is **four faculties + a spine**, each in the language that serves it, integrated over
+**language-neutral boundaries** (MCP / HTTP / CLI) — *not* a single-language monolith. Compose,
+don't rebuild: ~90% already exists in the owner's repos.
+
+| Faculty | System / language | Status |
 |---|---|---|
-| **Memory** | **PKM** (`../pkm`) | Extend with retrieval (OCR, chunks, embeddings, hybrid search, `pkm-memory` MCP). PKM already nails content-addressing + determinism. |
-| **Runtime** | **pi-mono** (`../pi-mono`, TS) | Agent loop + LLM abstraction (`pi-ai`) + tool registry. Tools are TS `ToolDefinition`s. **No native MCP.** |
-| **Brain** | **credence-pi** (`../credence/apps/credence-pi`, TS body + Julia daemon) | Pass-1: Bayesian VOI governor over each tool call → ask/proceed/block. *This is the confidence-gated autonomy.* Extend its `capabilities.bdsl`. |
-| **Capabilities (hands)** | MCP servers | `pkm-memory` (new, in pkm), **Jarvis** (exists, 13 tools, `user_id 12365873`), email (`msmtp`/JMAP), calendar (CalDAV/Google MCP), chat (matrix-archiver sqlite). |
-| **Application** | **`.`** — a pi-mono app (composition root) + **MCP-bridge extension** (new) | Imports pi + credence-pi (TS); composes pkm/jarvis/email/calendar as MCP tools. The bridge lets credence-pi/pi use the same MCP servers Claude Code uses. Polyglot underneath, one app on top. |
-| **Interfaces** | Claude Code + CLI now; pi coding-agent; later Telegram/OpenClaw (Tailscale-only) | Swappable; all point at the same MCP tools. |
-| **Autonomic** | n8n + `systemd` timers (`mbsync`, `renavon-inbox-ingest` already run) | Ingestion, daily briefing, follow-ups. |
+| **Memory** — recall + retrieval | **PKM** (`../pkm`, Python) + **`life_agent`** (this repo, Python) | **Live.** PKM: content-addressed extraction + DuckDB `fts`/`vss`. `life_agent` adds the retrieval/synthesis read path (`scripts/ask.py`, dogfooded via `bin/ask-live`). |
+| **Brain** — beliefs under uncertainty; value-of-information → ask/proceed/block | **credence** (`../credence/apps/credence-pi`, Julia posterior) | Not wired. *The confidence-gated autonomy* — the core of "maximise expected utility". |
+| **Hands** — capabilities/actions | MCP / HTTP servers: **Jarvis** (tasks, exists, 13 tools, `user_id 12365873`), email (`msmtp`/JMAP), calendar (CalDAV/Google), chat (matrix) | Not wired. |
+| **Goals / Utility** — what the owner values | *(new, unbuilt)* | **The hardest missing piece.** EU-maximisation presupposes it; owed a design before any autonomous *action*. |
+| **Spine** — the agent loop + routing | **TBD — open decision** | Deferred to Phase 2. Candidates: pi-mono (TS, open/extensible — the original pick), a Python loop, or Claude Code as an interim loop. |
+
+**The seams are the architecture.** Each faculty is reachable over a stable, language-neutral
+contract, so the spine — whatever language wins — can call Memory and Brain without caring how
+they're built. MCP is endorsed *as a seam*; the earlier `pkm-memory` MCP server was built then
+**torn down** (operational — a leaked process — not an architecture verdict). Today the memory read
+path is dogfooded directly via `bin/ask-live`, and Claude Code itself is the only (manual) reasoning
+loop. **Autonomic:** n8n + `systemd` timers (`mbsync`, `renavon-inbox-ingest`) already run ingestion.
 
 ## What the report changes (build-vs-adopt verdicts)
 - **Determinism:** PKM already correct (semantic, not bitwise; cache keyed on inputs; SPEC §7.1). No change.
@@ -63,8 +81,8 @@ projects, especially **PKM**.
 2. **(done)** **`TesseractProducer`** (`src/pkm/producers/tesseract.py`, heb+eng) wired into `routing.py` +
    `extract.py` + `cli.py`; migration `0004` (`chunks`, `embeddings FLOAT[768]`, `source_origin`).
 3. **(done)** Local embeddings via Ollama `nomic-embed-text` (stdlib `urllib`, no new dep).
-4. **(done)** DuckDB `fts` + `vss` hybrid query (over-fetch k·10); `pkm search` CLI; `pkm-memory` MCP (FastMCP,
-   mirroring `jarvis-lite/mcp_server.py`).
+4. **(done)** DuckDB `fts` + `vss` hybrid query (over-fetch k·10); `pkm search` CLI; `pkm-memory` MCP
+   (FastMCP, mirroring `jarvis-lite/mcp_server.py`) — **later retired**; retrieval now via `bin/ask-live`.
 5. **(done) Source adapters — now a declarative registry, not ad-hoc scripts.** Sources are declared
    in a **`data-sources.yaml`** registry (real one under `$LIFE_AGENT_KB`, fake schema in
    `config/data-sources.example.yaml`) and enumerated from **plocate** (the system file index,
@@ -77,30 +95,45 @@ projects, especially **PKM**.
    Adding **chat** (matrix-archiver SQLite) or **contacts** (Fastmail CardDAV → CRM people-seed) is
    now *a new `kind` adapter + a registry entry*, deferred to dogfood evidence / Phase 2.
 
-> **Status — Phase 1 substrate is built and the live corpus is ingested + MCP-verified:**
-> mail INBOX+Sent (8288 src / 37,439 chunks), documents (364 / 3,786), notes (69 / 211); a
-> `pkm-memory__search` round-trip returns mail/doc/notes hits with `source_origin` provenance.
-> **Next is a dogfood week** — use it, log failures, re-rank — *before* starting Phase 2 (the
-> FAILURES-driven rule: build only what the failure log demands).
+> **Status — substrate built, corpus live, dogfooded via `bin/ask-live`:** the live catalogue
+> (NVMe; ~13k sources / ~400k chunks incl. the Downloads root) answers cited questions end-to-end. The
+> `pkm-memory` MCP server was built then **torn down** ("not a fan"); dogfood is now direct via
+> `bin/ask-live`. Dogfooding surfaced a real retrieval miss (query-expansion, shipped) and a
+> synthesis miss (own-corpus attribution, fixed) — exactly the FAILURES-driven signal the loop is for.
 
-### Phase 2 — Brain + actions · ~2–4 weeks
-- **pi MCP-bridge extension** → credence-pi/pi can call `pkm-memory` + Jarvis + email + calendar.
-- Extend credence-pi `capabilities.bdsl` so the Bayesian governor gates autonomy per capability
-  (e.g. ask before sending email, auto-proceed on a read-only memory search).
-- Daily briefing + follow-up/deadline surfacing (n8n / `systemd` timer).
+### Phase 1.5 — Mature memory · **ACTIVE, dogfood-driven**
+Build **only what `$LIFE_AGENT_KB/FAILURES.md` demands**, dogfooding between changes (no speculative
+build). Known candidate levers (not a fixed list — promote by evidence):
+- **OCR the image-PDFs** — route the failed/empty-text extractions through the Tesseract producer so
+  scanned docs become searchable (the standing extraction-quality frontier).
+- **Retrieval ranking** — nudge `EXPAND_SYSTEM` to always emit document-type nouns
+  (agreement/contract/certificate) so authoritative docs surface for status/identity phrasings.
+- **Coverage** — new source `kind` adapters (matrix chat, CardDAV contacts) as dogfood calls for them.
 
-### Phase 3 — Omnichannel + autonomy · ongoing
-Telegram/OpenClaw (Tailscale-only) as pi channels; draft replies, scheduling, GTD automation,
-CRM/relationship nudges (`renavon`); scope expansion to photos (PhotoPrism + vision models), then the
-661 GB encrypted `more/` (needs keys).
+### Phase 2 — Goals/utility model + first agent loop (read-only) · future
+- Design the **goals/utility representation** (the unbuilt faculty) — how the agent learns and
+  stores what the owner values. Owed before any write-action.
+- Build the **first real agent loop over read-only capabilities** (daily briefing, "what needs
+  attention"), reasoning over memory, gated by **credence** (VOI ask/proceed/block — safe because
+  nothing is destructive). **The spine is chosen here** (see Open decisions).
+
+### Phase 3 — Action layer + autonomy · future
+Write-capabilities (Jarvis tasks, email drafts, calendar) under credence ask/proceed/block;
+omnichannel (Telegram/Matrix, Tailscale-only); scope expansion to photos (PhotoPrism + vision),
+then the 661 GB encrypted `more/` (needs keys).
+
+### Open decisions (decide when the phase arrives, not before)
+- **The spine** (Phase 2): pi-mono (TS, open/extensible) vs a Python agent loop vs Claude Code as an
+  interim loop. Criterion: openness/extensibility vs lock-in. Owner is neutral; MCP-as-seam is not ruled out.
+- **The goals/utility representation** (Phase 2): the form the EU model takes.
 
 ## Critical files
-- **`.` (this repo):** the pi-mono app (composition root) + MCP-bridge extension;
-  Phase-0 tooling (`bin/ask`, `scripts/needle.sh`, `scripts/build_corpus.sh`) + `docs/kb-schema.md`;
-  the configurable data layer (`scripts/data_source_registry.py`, `scripts/ingest_sources.py`,
-  `config/data-sources.example.yaml`); email/calendar/chat MCP servers; agent system prompt +
-  scheduling. (Knowledge + the *real* `data-sources.yaml` + `machine-config.md` live under
-  `$LIFE_AGENT_KB`, outside the repo.)
+- **`.` (this repo):** the Python **memory layer** over pkm — `src/life_agent/core/` (shared infra:
+  LLM calls, secrets, config, source rendering), `scripts/ask.py` (retrieval + synthesis, run via
+  `bin/ask-live`), the configurable data layer (`scripts/data_source_registry.py`,
+  `scripts/ingest_sources.py`, `config/data-sources.example.yaml`), and the frozen blind-comparison
+  harness (`scripts/comparison/`). Future faculties (brain, loop, hands) compose over seams; the
+  spine is not yet chosen. (Knowledge + the *real* `data-sources.yaml` live under `$LIFE_AGENT_KB`.)
 - **pkm:** `SPEC-PRINCIPLES.md(done)`, `SPEC-v0.3.0.md(done)`, `migrations/0004_*.py(done)`,
   `hashing.py(hardened)`; still to come: `src/pkm/producers/tesseract.py(new)`,
   `src/pkm/{chunking,embeddings,retrieval,mcp_server}.py(new)`, `cli.py`, `routing.py`, `extract.py`.
@@ -112,15 +145,20 @@ CRM/relationship nudges (`renavon`); scope expansion to photos (PhotoPrism + vis
 - **Phase 0:** ask ~20 real questions to the wiki; record hit-rate + failure list (`$LIFE_AGENT_KB/FAILURES.md`).
   `tesseract -l heb+eng <id-card-scan> stdout` returns Hebrew text incl. the ID number.
 - **Phase 1:** `uv run pkm search "תעודת זהות"` returns the ID with provenance; idempotent re-ingest
-  (double-run no-op); `pytest`/`ruff`/`mypy` green; `pkm-memory` MCP callable from Claude Code.
+  (double-run no-op); `pytest`/`ruff`/`mypy` green; `bin/ask-live` returns cited answers from the corpus.
   **Data layer (done):** `python scripts/data_source_registry.py --report` prints the per-root census;
-  `python scripts/ingest_sources.py` is idempotent (re-run = no new catalogue rows); `pkm-memory__search`
-  returns mail/doc/notes hits carrying `source_origin` provenance.
-- **Phase 2:** credence-pi asks before an email send, auto-proceeds on a read-only search; daily
-  briefing renders.
+  `python scripts/ingest_sources.py` is idempotent (re-run = no new catalogue rows). Retrieval is
+  dogfooded via `bin/ask-live` (the `pkm-memory` MCP server was retired); `pytest tests/` green.
+- **Phase 1.5:** a `FAILURES.md`-traced change moves a real dogfood miss (e.g. an image-PDF becomes
+  searchable after OCR routing); idempotent re-ingest; no FTS-ranking regressions.
+- **Phase 2:** the read-only loop renders a daily briefing; credence asks/auto-proceeds appropriately
+  on read-only capabilities; a goals/utility representation exists and is consulted.
 
 ## Resolved decisions
 - **Phase-0 strategy:** Karpathy-wiki measurement **and** OCR+grep needle-finder, in parallel.
 - **OCR:** standalone Tesseract producer (heb+eng).
-- **Repo layout:** new umbrella application `.` (working name) is the composition root
-  (pi-mono spine); capabilities stay in their own repos and are composed over MCP.
+- **Repo layout:** this repo is the composition root; capabilities stay in their own repos, composed
+  over language-neutral seams. It currently *is* the Python memory layer over pkm; the spine that
+  will run the agent loop is an **open decision** (Phase 2), so the repo doesn't yet assume one.
+- **Polyglot by design:** each faculty in the language that serves it (Memory = Python, Brain =
+  Julia); not everything is one language — the seams (MCP/HTTP/CLI) are what hold it together.

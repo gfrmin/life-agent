@@ -1,11 +1,11 @@
-"""Unit tests for the dogfood ask REPL's pure helpers (scripts/ask.py).
+"""Unit tests for the dogfood ask REPL (scripts/ask.py) and the owner profile.
 
-Run in the pkm env (has duckdb/yaml/pytest, which ask.py imports at module load):
-    uv run --project ../pkm python -m pytest ./tests/test_ask.py
+Run in life-agent's own env (which pulls in pkm + duckdb via the path dependency):
+    uv run --project . python -m pytest tests/
 
-Only the dependency-free logic is covered here — log-entry formatting and the
-retrieve() dedupe/rank. The live retrieval + LLM synthesis paths are exercised by the
-manual end-to-end verification in the plan, not in CI.
+Covers the dependency-free logic — log-entry / owner-profile formatting, retrieve() dedupe-rank,
+query-expansion cleaning, and the lock-error classification. The live retrieval + LLM synthesis
+paths are exercised by the manual end-to-end verification in the plan, not in CI.
 """
 
 from __future__ import annotations
@@ -14,11 +14,14 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
+import duckdb
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
-import ask  # noqa: E402
-from _common import SourceCard  # noqa: E402
+import ask
 
+from life_agent import owner
+from life_agent.core import SourceCard
 
 # --- log_entry formatting -------------------------------------------------- #
 
@@ -108,3 +111,64 @@ def test_build_query_appends_terms_to_question() -> None:
 def test_build_query_falls_back_to_question_when_no_terms() -> None:
     # expansion failure (empty terms) must leave the raw-question search unchanged
     assert ask.build_query("am i a contractor?", "") == "am i a contractor?"
+
+
+# --- owner profile: load_profile + append_fact (tmp KB, no live I/O) ------- #
+
+def test_load_profile_empty_when_absent(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(owner, "PROFILE", tmp_path / "owner.md")
+    assert owner.load_profile() == ""
+
+
+def test_append_fact_creates_section_once_and_accumulates(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(owner, "PROFILE", tmp_path / "owner.md")
+
+    owner.append_fact("My name is Ada Lovelace", when="2026-06-03 14:00")
+    owner.append_fact("My phone is 555-0100", when="2026-06-03 14:05")
+
+    text = owner.load_profile()
+    assert text.count("## Told by the owner") == 1          # heading written exactly once
+    assert "- My name is Ada Lovelace  _(told 2026-06-03 14:00)_" in text
+    assert "- My phone is 555-0100  _(told 2026-06-03 14:05)_" in text
+
+
+def test_append_fact_preserves_seeded_prose(monkeypatch, tmp_path) -> None:
+    # a hand-seeded profile (no '## Told' section yet) must survive — the section is appended
+    profile = tmp_path / "owner.md"
+    profile.write_text("# Owner\n\nName: Ada Lovelace.\n", encoding="utf-8")
+    monkeypatch.setattr(owner, "PROFILE", profile)
+
+    owner.append_fact("My ID is 123456789", when="2026-06-03 15:00")
+
+    text = owner.load_profile()
+    assert "Name: Ada Lovelace." in text                     # seeded prose retained
+    assert "## Told by the owner" in text
+    assert "- My ID is 123456789  _(told 2026-06-03 15:00)_" in text
+
+
+# --- lock handling (no real concurrent extraction needed) ------------------ #
+
+def test_is_lock_error_truth_table() -> None:
+    assert ask._is_lock_error("Could not set lock on file: Conflicting lock")
+    assert ask._is_lock_error("database is being used by another process")
+    assert ask._is_lock_error("write-write CONFLICT detected")   # case-insensitive
+    assert not ask._is_lock_error("Catalog Error: Table does not exist")
+    assert not ask._is_lock_error("Binder Error: syntax error")
+
+
+def test_main_returns_2_on_locked_corpus(monkeypatch, capsys) -> None:
+    def _locked() -> None:
+        raise duckdb.Error("Could not set lock on file catalogue.duckdb: Conflicting lock")
+
+    monkeypatch.setattr(ask, "connect", _locked)
+    assert ask.main(["what is my id?"]) == 2
+    assert "corpus locked" in capsys.readouterr().err
+
+
+def test_tell_records_fact_without_touching_corpus(monkeypatch, tmp_path) -> None:
+    # --tell is corpus-free: connect() must never be called, yet the fact lands in the profile.
+    monkeypatch.setattr(owner, "PROFILE", tmp_path / "owner.md")
+    monkeypatch.setattr(ask, "connect", lambda: (_ for _ in ()).throw(AssertionError("connected")))
+
+    assert ask.main(["--tell", "My name is Ada Lovelace"]) == 0
+    assert "My name is Ada Lovelace" in owner.load_profile()

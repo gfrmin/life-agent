@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 # ask-live — the Phase-1 dogfood "ask anything" REPL over the live pkm catalogue.
-# Sources .env (LIFE_AGENT_KB / PKM_CONFIG), then runs scripts/ask.py in the pkm env.
-#   ask-live                    # interactive loop
-#   ask-live "what is my ID?"   # one-shot
+# Sources .env (LIFE_AGENT_KB / PKM_CONFIG), then runs scripts/ask.py in life-agent's env
+# (which pulls in pkm as a path dependency — see pyproject.toml).
+#   ask-live                          # interactive loop
+#   ask-live "what is my ID?"         # one-shot
+#   ask-live --tell "My name is …"    # teach the agent an owner fact
 set -euo pipefail
 # Resolve through symlinks (e.g. ~/.local/bin/ask-live) so root is always the repo.
 root="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
 set -a; [ -f "$root/.env" ] && source "$root/.env"; set +a
-exec uv run --project "${PKM_REPO:-$HOME/git/pkm}" python "$root/scripts/ask.py" "$@"
+exec uv run --project "$root" python "$root/scripts/ask.py" "$@"

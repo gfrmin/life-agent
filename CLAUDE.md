@@ -21,10 +21,20 @@ repos below already does it.
 
 ## Architecture
 
-`life-agent` is a **pi-mono (TypeScript) application** — the spine. It **imports** `pi-agent-core`
-and loads the **credence-pi** governor (same language); it **composes** the cross-language
-capabilities as **MCP tools** via a new **MCP-bridge extension**. A small **Python side** of this
-repo imports `pkm` directly for batch ingestion.
+> **Reality check (2026-06): the diagram below is the *aspiration*, not the current state.**
+> What exists today is the **memory faculty in Python**: a `life_agent` package + `scripts/ask.py`
+> retrieval/synthesis layer over pkm's DuckDB catalogue, dogfooded via `bin/ask-live`. There is **no
+> pi-mono app, no credence wiring, and no live MCP server** (the `pkm-memory` MCP server was built
+> then torn down). The owner's steer: **mature memory first**; treat the **agent-loop spine as an
+> open decision** (pi-mono vs a Python loop vs Claude Code as interim — *not* pre-committed); think
+> **polyglot — each faculty in its best language, integrated over language-neutral seams (MCP / HTTP
+> / CLI)**, rather than one TS app. See `ROADMAP.md` → Architecture + Open decisions. The text below
+> describes where this is *heading* and the building blocks to reuse.
+
+`life-agent` is intended to be a **pi-mono (TypeScript) application** — the spine. It **imports**
+`pi-agent-core` and loads the **credence-pi** governor (same language); it **composes** the
+cross-language capabilities as **MCP tools** via a new **MCP-bridge extension**. A small **Python
+side** of this repo imports `pkm` directly for batch ingestion.
 
 ```
             ┌────────────────────── life-agent (this repo, TS app) ──────────────────────┐
@@ -111,7 +121,8 @@ posterior (BDSL programs in `bdsl/{capabilities,features,prior,kernel,decide}.bd
 
 ## Resolved decisions (do not relitigate without reason)
 - **First win:** ask-anything search. **Scope:** text-first (skip 1.2M photos + the 661 GB encrypted
-  `more/` for v1). **Brain:** Credence via `credence-pi`/`pi-mono`. **Memory:** extend `pkm`.
+  `more/` for v1). **Brain:** credence (the Bayesian governor). **Memory:** extend `pkm`. (Agent-loop
+  *spine* is an open decision — not pre-committed to pi-mono.)
 - **Phase-0 strategy:** do the Karpathy-wiki measurement **and** the OCR+grep needle-finder in parallel.
 - **OCR:** standalone **Tesseract producer** in pkm (`tesseract -l heb+eng`), not extending Docling —
   chosen for speed and predictable Hebrew.
