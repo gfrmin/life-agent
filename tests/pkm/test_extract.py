@@ -440,6 +440,7 @@ def test_extract_breaks_out_of_loop_when_stop_is_requested(
 # --- empty_succeeded routing integration (SPEC v0.3.1 §7.3) ------------
 
 
+@pytest.mark.system
 def test_empty_docling_pdf_triggers_tesseract_not_docling(
     tmp_path: Path,
 ) -> None:

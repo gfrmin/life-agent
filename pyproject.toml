@@ -81,4 +81,5 @@ testpaths = ["tests"]
 addopts = "-m 'not llm' --import-mode=importlib"
 markers = [
     "llm: tests requiring live LLM API calls (skipped by default)",
+    "system: tests needing heavy producer runtime (tesseract binary / docling models) absent in minimal CI",
 ]

@@ -43,7 +43,9 @@ jobs:
         run: uv run mypy
 
       - name: Tests
-        run: uv run pytest
+        # `system`-marked tests need heavy producer runtime (tesseract binary,
+        # docling models) not present on a minimal runner; they run locally.
+        run: uv run pytest -m "not llm and not system"
 
       - name: PII guard (shapes-only over the tracked tree)
         run: uv run python .githooks/pii_check.py --shapes-only

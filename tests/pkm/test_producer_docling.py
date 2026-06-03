@@ -148,6 +148,7 @@ def test_docling_producer_satisfies_producer_protocol(
 # --- Conversion: success paths ------------------------------------------
 
 
+@pytest.mark.system
 def test_converts_simple_pdf_to_docling_json(
     producer: DoclingProducer,
 ) -> None:
@@ -177,6 +178,7 @@ def test_converts_simple_pdf_to_docling_json(
     assert result.producer_metadata["docling_schema_version"] == doc["version"]
 
 
+@pytest.mark.system
 def test_converts_pdf_with_table(producer: DoclingProducer) -> None:
     """A PDF with a clear table should yield at least one detected
     table in the Docling JSON (exercising TableFormer)."""
@@ -193,6 +195,7 @@ def test_converts_pdf_with_table(producer: DoclingProducer) -> None:
     )
 
 
+@pytest.mark.system
 def test_converts_two_column_pdf(producer: DoclingProducer) -> None:
     """Multi-column PDF: content preserved end-to-end. Not asserting
     exact reading order (DocLayNet is not byte-stable across minor
@@ -284,6 +287,7 @@ def test_encrypted_pdf_returns_specific_failure(
 # consumers can now discriminate without scanning cached bytes.
 
 
+@pytest.mark.system
 def test_success_sets_completion_complete(producer: DoclingProducer) -> None:
     """Real simple PDF round-trips to SUCCESS. The completion key
     records this as "complete" so consumers don't have to re-infer."""
