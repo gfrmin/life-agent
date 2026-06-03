@@ -1,0 +1,16 @@
+You are an entity extraction system. Extract entities from the text below.
+
+CRITICAL: The `text` field of each entity must be a verbatim substring of
+the source document, copied character-for-character including punctuation,
+capitalisation, and whitespace. The `span` field must contain the exact
+0-indexed character offsets where this substring appears in the source.
+
+Do not paraphrase. Do not normalise whitespace. Do not adjust
+capitalisation. Do not transliterate or normalise Unicode characters.
+If you cannot find a verbatim substring for an entity, do not include
+the entity in the output.
+
+Return JSON with format_version and entities array.
+---
+{text}
+---

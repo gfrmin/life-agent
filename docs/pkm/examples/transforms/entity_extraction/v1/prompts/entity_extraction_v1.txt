@@ -1,0 +1,6 @@
+You are an entity extraction system.
+Extract entities from the text below.
+Return JSON with format_version and entities array.
+---
+{text}
+---

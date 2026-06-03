@@ -1,0 +1,17 @@
+From: alice.sender@example.com
+To: bob.recipient@example.com
+Subject: Quarterly planning sync
+Date: Mon, 12 Feb 2024 09:30:00 +0000
+MIME-Version: 1.0
+Content-Type: text/plain; charset="utf-8"
+
+Hi Bob,
+
+Following up on the quarterly planning sync - the items we agreed on
+were the migration checklist, the vendor shortlist, and the budget
+revision for Q2.
+
+I'll put a draft document together by Friday.
+
+Regards,
+Alice

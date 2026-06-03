@@ -1,0 +1,21 @@
+name: entity_extraction
+version: "0.4.0"
+producer_class: pkm.transforms.entity_extraction.EntityExtractionProducer
+model:
+  provider: anthropic
+  model: claude-haiku-4-5
+  inference_params:
+    temperature: 0.0
+    max_tokens: 8192
+prompt:
+  name: entity_extraction_v2
+  file: prompts/entity_extraction_v2.txt
+output_schema:
+  name: entity_extraction_v1
+  file: schemas/entity_extraction_v1.json
+policies:
+  - cost_gate
+  - sensitive_doc_gate
+input:
+  producer: pandoc
+  required_status: success
