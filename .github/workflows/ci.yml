@@ -37,11 +37,10 @@ jobs:
         run: uv sync
 
       - name: Lint (ruff)
-        run: uv run ruff check src tests   # scripts/ has known debt, excluded for now
+        run: uv run ruff check src tests scripts
 
-      - name: Typecheck (mypy — advisory)
+      - name: Typecheck (mypy — strict on src/pkm)
         run: uv run mypy
-        continue-on-error: true            # 2 known pre-existing issues in pkm's email producer
 
       - name: Tests
         run: uv run pytest

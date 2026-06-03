@@ -349,7 +349,10 @@ def main() -> int:
     parser.add_argument("--rebuild-index", action="store_true", help="rebuild FTS first")
     parser.add_argument(
         "--synthesis", action="store_true",
-        help="run the end-to-end synthesis grader (LLM judge) → hallucination/grounded/abstention rates",
+        help=(
+            "run the end-to-end synthesis grader (LLM judge) → "
+            "hallucination/grounded/abstention rates"
+        ),
     )
     args = parser.parse_args()
 

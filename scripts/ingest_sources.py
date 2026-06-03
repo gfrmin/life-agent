@@ -37,8 +37,8 @@ import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import mail_bridge  # noqa: E402  (reuse its Maildir discovery + linking)
-from data_source_registry import (  # noqa: E402
+import mail_bridge
+from data_source_registry import (
     Registry,
     RegistryError,
     Root,
@@ -52,7 +52,9 @@ from data_source_registry import (  # noqa: E402
 
 # pkm now lives in this monorepo (src/pkm); the `pkm` console script runs under this project.
 PKM_DIR = Path(os.environ.get("PKM_DIR") or Path(__file__).resolve().parents[1])
-DEFAULT_PKM_CONFIG = Path(os.environ.get("PKM_CONFIG", "~/.config/life-agent/pkm.yaml")).expanduser()
+DEFAULT_PKM_CONFIG = Path(
+    os.environ.get("PKM_CONFIG", "~/.config/life-agent/pkm.yaml")
+).expanduser()
 SOURCES_MANIFEST_VERSION = 1
 
 
@@ -208,10 +210,22 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--registry", type=Path, default=default_registry_path())
     ap.add_argument("--pkm-config", type=Path, default=DEFAULT_PKM_CONFIG)
-    ap.add_argument("--dry-run", action="store_true", help="print merged sources.yaml; don't write or ingest")
-    ap.add_argument("--no-ingest", action="store_true", help="stage + write sources.yaml but skip `pkm ingest`")
-    ap.add_argument("--extract", action="store_true", help="after ingest, run `pkm extract` (run producers)")
-    ap.add_argument("--chunk", action="store_true", help="after extract, run `pkm chunk --backfill` (index for search)")
+    ap.add_argument(
+        "--dry-run", action="store_true",
+        help="print merged sources.yaml; don't write or ingest",
+    )
+    ap.add_argument(
+        "--no-ingest", action="store_true",
+        help="stage + write sources.yaml but skip `pkm ingest`",
+    )
+    ap.add_argument(
+        "--extract", action="store_true",
+        help="after ingest, run `pkm extract` (run producers)",
+    )
+    ap.add_argument(
+        "--chunk", action="store_true",
+        help="after extract, run `pkm chunk --backfill` (index for search)",
+    )
     args = ap.parse_args()
 
     try:
@@ -231,13 +245,21 @@ def main() -> int:
         existing = _load_existing(sources_yaml)
         merged = merge_entries(existing, new_entries)
         added = len(merged) - len(existing)
-        print(f"\n{len(existing)} existing + {len(new_entries)} generated -> {len(merged)} merged ({added} new path(s))")
+        print(
+            f"\n{len(existing)} existing + {len(new_entries)} generated -> "
+            f"{len(merged)} merged ({added} new path(s))"
+        )
     except (RegistryError, OSError) as e:
-        raise SystemExit(f"error: {e}")
+        raise SystemExit(f"error: {e}") from e
 
     if args.dry_run:
         print("\n--- merged sources.yaml (dry-run) ---")
-        print(yaml.safe_dump({"version": SOURCES_MANIFEST_VERSION, "sources": merged}, sort_keys=False, allow_unicode=True))
+        print(
+            yaml.safe_dump(
+                {"version": SOURCES_MANIFEST_VERSION, "sources": merged},
+                sort_keys=False, allow_unicode=True,
+            )
+        )
         return 0
 
     _write_sources(sources_yaml, merged)
@@ -258,7 +280,8 @@ def main() -> int:
     for stage in stages:
         print(f"running `pkm {' '.join(stage)}`...")
         proc = subprocess.run(
-            ["uv", "run", "--project", str(PKM_DIR), "pkm", "--config", str(args.pkm_config), *stage],
+            ["uv", "run", "--project", str(PKM_DIR), "pkm", "--config",
+             str(args.pkm_config), *stage],
             check=False,
         )
         if proc.returncode != 0:

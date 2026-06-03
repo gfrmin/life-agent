@@ -105,7 +105,10 @@ class EmailProducer:
                     fp, policy=email.policy.default
                 )
             if not isinstance(msg, EmailMessage):  # pragma: no cover
-                return _failed(
+                # Defensive: with policy.default the stdlib always returns an
+                # EmailMessage, so mypy proves this branch dead — but we keep the
+                # runtime guard against a future policy change. (SPEC §7.1: never raise.)
+                return _failed(  # type: ignore[unreachable]
                     f"email producer parsed {input_path.name} as a legacy "
                     "Message, not an EmailMessage (policy mismatch)"
                 )
@@ -164,7 +167,7 @@ def _body_text(msg: EmailMessage) -> str:
     if body is None:
         return ""
     content_type = body.get_content_type()
-    text = body.get_content()  # decodes charset + transfer-encoding
+    text: str = body.get_content()  # decodes charset + transfer-encoding
     if content_type == "text/html":
         return BeautifulSoup(text, "html.parser").get_text("\n", strip=True)
     return text.strip("\n")

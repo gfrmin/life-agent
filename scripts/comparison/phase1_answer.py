@@ -20,7 +20,7 @@ import duckdb
 import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import _common as C  # noqa: E402
+import _common as C
 
 OVERFETCH = 300  # fetch this many live hits per query, THEN filter to S, then take top-k
 
@@ -33,7 +33,7 @@ def _connect():
     return conn
 
 
-def retrieve_S(conn, queries: list[str], s_paths: set[str], k: int) -> list[C.SourceCard]:
+def retrieve_s(conn, queries: list[str], s_paths: set[str], k: int) -> list[C.SourceCard]:
     """Union FTS over queries, filter to S, dedupe by chunk text, keep top-k by score."""
     from pkm.retrieval import search
 
@@ -53,7 +53,7 @@ def retrieve_S(conn, queries: list[str], s_paths: set[str], k: int) -> list[C.So
 
 
 def answer_one(conn, q: dict, s_paths: set[str], k: int) -> C.Answer:
-    cards = retrieve_S(conn, q["search_queries"], s_paths, k)
+    cards = retrieve_s(conn, q["search_queries"], s_paths, k)
     if not cards:
         return C.Answer("phase1", q["id"], "No matching sources were retrieved from the corpus.",
                         sources=[], cache_hit=True)

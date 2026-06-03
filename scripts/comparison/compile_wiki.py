@@ -23,7 +23,7 @@ import duckdb
 import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import _common as C  # noqa: E402
+import _common as C
 
 WIKI_DIR = C.COMPARISON_DIR / "wiki"
 PER_SOURCE_CHARS = 5000      # cap per source so the compile cost stays bounded
@@ -90,18 +90,20 @@ MAP_SYSTEM = (
     "contain other people's IDs too). Omit boilerplate. If a source has nothing durable, skip it."
 )
 REDUCE_TOPIC_SYSTEM = (
-    "You are authoring ONE page of a personal-life wiki from the fact-notes below. Write the page for "
-    "the requested TOPIC only: pull every relevant fact from the notes into clean deduplicated "
-    "Markdown, preserving specific values (numbers, dates, amounts, account/policy/ID numbers) EXACTLY "
-    "as written, and keeping the (source filename) citations. Keep distinct people's identifiers "
-    "clearly attributed (the owner vs others). For an expenses/invoices topic, list each invoice and "
-    "compute the total if the notes contain the line items. If the notes contain nothing for this "
-    "topic, reply with exactly NONE."
+    "You are authoring ONE page of a personal-life wiki from the fact-notes below. Write the "
+    "page for the requested TOPIC only: pull every relevant fact from the notes into clean "
+    "deduplicated Markdown, preserving specific values (numbers, dates, amounts, "
+    "account/policy/ID numbers) EXACTLY as written, and keeping the (source filename) "
+    "citations. Keep distinct people's identifiers clearly attributed (the owner vs others). "
+    "For an expenses/invoices topic, list each invoice and compute the total if the notes "
+    "contain the line items. If the notes contain nothing for this topic, reply with exactly "
+    "NONE."
 )
 
 
 def main() -> int:
-    reduce_only = "--reduce-only" in sys.argv  # re-author pages from cached map_notes (no map re-run)
+    # re-author pages from cached map_notes (no map re-run)
+    reduce_only = "--reduce-only" in sys.argv
     notes_cache = C.COMPARISON_DIR / "map_notes.txt"
     in_tok = out_tok = 0
     secs = 0.0
@@ -112,7 +114,9 @@ def main() -> int:
         print(f"reduce-only: re-authoring from cached map_notes ({len(all_notes)} chars)")
     else:
         cfg = yaml.safe_load(C.PKM_CONFIG.read_text(encoding="utf-8"))
-        conn = duckdb.connect(str(Path(cfg["root_dir"]).expanduser() / "catalogue.duckdb"), read_only=True)
+        conn = duckdb.connect(
+            str(Path(cfg["root_dir"]).expanduser() / "catalogue.duckdb"), read_only=True
+        )
         s_paths = C.snapshot_paths()
         texts = source_texts(conn, s_paths)
         n_sources = len(texts)
@@ -124,7 +128,9 @@ def main() -> int:
             block = "\n\n".join(f"### {name}\n{txt}" for name, txt in sh)
             r = C.anthropic_complete(MAP_SYSTEM, f"SOURCES:\n{block}", max_tokens=3000)
             notes.append(r.text)
-            in_tok += r.in_tokens; out_tok += r.out_tokens; secs += r.seconds
+            in_tok += r.in_tokens
+            out_tok += r.out_tokens
+            secs += r.seconds
             print(f"  map {i+1}/{len(shards)}: {len(sh)} src -> {r.out_tokens} note tok")
         all_notes = "\n".join(notes)
         notes_cache.write_text(all_notes, encoding="utf-8")  # reduce re-runnable
@@ -134,11 +140,16 @@ def main() -> int:
     for slug, desc in TOPICS:
         r = C.anthropic_complete(REDUCE_TOPIC_SYSTEM,
                                  f"TOPIC: {desc}\n\nFACT-NOTES:\n{all_notes}", max_tokens=4000)
-        in_tok += r.in_tokens; out_tok += r.out_tokens; secs += r.seconds
+        in_tok += r.in_tokens
+        out_tok += r.out_tokens
+        secs += r.seconds
         body = r.text.strip()
         if body and body.upper() != "NONE":
             pages[f"{slug}.md"] = body
-        print(f"  reduce[{slug}]: {r.out_tokens} tok{' (empty)' if not pages.get(slug+'.md') else ''}")
+        print(
+            f"  reduce[{slug}]: {r.out_tokens} tok"
+            f"{' (empty)' if not pages.get(slug+'.md') else ''}"
+        )
     print(f"  -> {len(pages)} wiki pages")
 
     if WIKI_DIR.exists():
@@ -151,9 +162,11 @@ def main() -> int:
     if reduce_only:
         prior = json.loads((C.COMPARISON_DIR / "compile_meta.json").read_text())
         n_shards_val = prior.get("n_shards", 0)
-        in_tok += prior.get("in_tokens", 0); out_tok += prior.get("out_tokens", 0)
+        in_tok += prior.get("in_tokens", 0)
+        out_tok += prior.get("out_tokens", 0)
         note = ("compiled-once-and-frozen; NOT bit-reproducible (SPEC §2/§7c). Cost includes a "
-                "discarded first reduce (the truncation-fix re-run) — an upper bound on the compile.")
+                "discarded first reduce (the truncation-fix re-run) — an upper bound on the "
+                "compile.")
     else:
         n_shards_val = len(shards)
         note = "compiled-once-and-frozen; NOT bit-reproducible (SPEC §2/§7c)"
@@ -162,9 +175,14 @@ def main() -> int:
         "n_pages": len(pages), "in_tokens": in_tok, "out_tokens": out_tok,
         "wall_seconds": round(secs, 1), "note": note,
     }
-    (C.COMPARISON_DIR / "compile_meta.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
+    (C.COMPARISON_DIR / "compile_meta.json").write_text(
+        json.dumps(meta, indent=2), encoding="utf-8"
+    )
     print(f"\nwrote {len(pages)} pages to {WIKI_DIR}")
-    print(f"COMPILE COST: {in_tok} in + {out_tok} out tokens, {secs:.0f}s  (a divergence datum, §7d)")
+    print(
+        f"COMPILE COST: {in_tok} in + {out_tok} out tokens, {secs:.0f}s "
+        f" (a divergence datum, §7d)"
+    )
     return 0
 
 

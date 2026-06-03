@@ -25,7 +25,7 @@ from pathlib import Path
 import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import _common as C  # noqa: E402
+import _common as C
 
 RUBRIC = Path(__file__).resolve().parent.parent.parent / "eval" / "rubric_v1.yaml"
 SHUFFLE_SEED = 20260530  # recorded; makes the A/B assignment reproducible
@@ -33,7 +33,11 @@ DIMS = ("faithfulness", "completeness", "citation_fidelity")
 
 
 def _load(name: str) -> dict[str, dict]:
-    rows = [json.loads(l) for l in (C.COMPARISON_DIR / name).read_text(encoding="utf-8").splitlines() if l.strip()]
+    rows = [
+        json.loads(line)
+        for line in (C.COMPARISON_DIR / name).read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
     return {r["question_id"]: r for r in rows}
 
 
@@ -43,7 +47,7 @@ def _sources_block(ans: dict) -> str:
 
 def _rubric_text() -> str:
     r = yaml.safe_load(RUBRIC.read_text(encoding="utf-8"))
-    lines = [f"Score each answer on these dimensions (integer 0-3):"]
+    lines = ["Score each answer on these dimensions (integer 0-3):"]
     for dim, spec in r["dimensions"].items():
         lines.append(f"\n{dim}: {spec['question']}")
         for score, anchor in sorted(spec["anchors"].items(), reverse=True):
@@ -51,13 +55,14 @@ def _rubric_text() -> str:
     return "\n".join(lines)
 
 
-def judge_once(q: dict, ans_A: dict, ans_B: dict, rubric: str) -> dict | None:
+def judge_once(q: dict, ans_a: dict, ans_b: dict, rubric: str) -> dict | None:
     gold = q.get("answer") or "(no single value — see expected components)"
     system = (
         "You are an impartial grader comparing two answers to the same question about a person's "
-        "records. You are given each answer and the SOURCE TEXTS it cited (as [n]). Judge ONLY from "
-        "what is shown. For citation_fidelity you MUST check that the cited source text actually "
-        "contains the asserted fact; a citation marker whose source lacks the fact scores low. "
+        "records. You are given each answer and the SOURCE TEXTS it cited (as [n]). Judge ONLY "
+        "from what is shown. For citation_fidelity you MUST check that the cited source text "
+        "actually contains the asserted fact; a citation marker whose source lacks the fact "
+        "scores low. "
         "A correct 'the answer is not in the sources' for a truly-absent fact is full marks on all "
         "dimensions. Return STRICT JSON only: "
         '{"A":{"faithfulness":int,"completeness":int,"citation_fidelity":int},'
@@ -69,8 +74,8 @@ def judge_once(q: dict, ans_A: dict, ans_B: dict, rubric: str) -> dict | None:
         f"CANONICAL ANSWER: {gold}   ACCEPTABLE VARIANTS: {q.get('answer_variants') or '[]'}\n"
         f"MUST-NOT-ASSERT (wrong-subject distractors): {q.get('distractors') or '[]'}\n"
         f"ANSWERABLE FROM CORPUS: {q.get('answerable')}\n\n"
-        f"===== ANSWER A =====\n{ans_A['text']}\n\nA's CITED SOURCES:\n{_sources_block(ans_A)}\n\n"
-        f"===== ANSWER B =====\n{ans_B['text']}\n\nB's CITED SOURCES:\n{_sources_block(ans_B)}\n"
+        f"===== ANSWER A =====\n{ans_a['text']}\n\nA's CITED SOURCES:\n{_sources_block(ans_a)}\n\n"
+        f"===== ANSWER B =====\n{ans_b['text']}\n\nB's CITED SOURCES:\n{_sources_block(ans_b)}\n"
     )
     r = C.judge_complete(system, user, max_tokens=300)
     txt = r.text.strip()
@@ -109,11 +114,11 @@ def main() -> int:
             print(f"  {qid}: MISSING answer (p0={bool(a0)} p1={bool(a1)}) — skipped")
             continue
         a_is_p0 = rng.random() < 0.5            # randomise which system is shown as "A"
-        ansA, ansB = (a0, a1) if a_is_p0 else (a1, a0)
+        ans_a, ans_b = (a0, a1) if a_is_p0 else (a1, a0)
 
         per_dim = {"phase0": {d: [] for d in DIMS}, "phase1": {d: [] for d in DIMS}}
         for _ in range(C.JUDGE_N):
-            j = judge_once(q, ansA, ansB, rubric)
+            j = judge_once(q, ans_a, ans_b, rubric)
             if not j:
                 continue
             served.add(j.get("_served", ""))

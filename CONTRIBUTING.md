@@ -64,14 +64,15 @@ first. `src/life_agent` is lighter but still test-first.
 
 ```bash
 uv run --project . pytest                       # both suites (LLM tests are skipped by default)
-uv run --project . ruff check src tests         # scripts/ has known debt, not yet gated
-uv run --project . mypy                          # strict on src/pkm (advisory in CI for now)
+uv run --project . ruff check src tests scripts # lint everything
+uv run --project . mypy                          # strict on src/pkm
 scripts/smoke-fresh-clone.sh                     # clone → sample → cited retrieval, no key
 ```
 
-CI runs these on every PR (see `.github/workflows/ci.yml`). Tests that hit a live
-LLM are marked `llm` and excluded by default; don't add unmarked tests that need
-network or an API key. Keep new code in `src/` and `tests/` ruff- and mypy-clean.
+CI runs these on every PR (see `.github/workflows/ci.yml`) and they are blocking.
+Tests that hit a live LLM are marked `llm` and excluded by default; don't add
+unmarked tests that need network or an API key. Keep `src/`, `tests/`, and
+`scripts/` ruff-clean, and `src/pkm` mypy-clean.
 
 ## Good first contributions
 

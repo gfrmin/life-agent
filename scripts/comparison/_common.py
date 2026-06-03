@@ -26,10 +26,25 @@ from life_agent.core import (  # re-exported below for the frozen comparison cal
 )
 
 __all__ = [  # the surface the comparison scripts reach via `import _common as C`
-    "KB", "PKM_CONFIG", "TEMPERATURE", "LLMResult", "SourceCard",
-    "anthropic_complete", "openai_complete", "render_sources_block", "secret",
-    "ANSWER_MODEL", "JUDGE_MODEL", "JUDGE_N", "COMPARISON_DIR", "judge_complete",
-    "load_questions", "scored_questions", "snapshot_paths", "Answer", "CITATION_INSTRUCTION",
+    "ANSWER_MODEL",
+    "CITATION_INSTRUCTION",
+    "COMPARISON_DIR",
+    "JUDGE_MODEL",
+    "JUDGE_N",
+    "KB",
+    "PKM_CONFIG",
+    "TEMPERATURE",
+    "Answer",
+    "LLMResult",
+    "SourceCard",
+    "anthropic_complete",
+    "judge_complete",
+    "load_questions",
+    "openai_complete",
+    "render_sources_block",
+    "scored_questions",
+    "secret",
+    "snapshot_paths",
 ]
 
 # --- pinned snapshots (SPEC-comparison.md §4, §6) ------------------------- #
@@ -39,8 +54,9 @@ __all__ = [  # the surface the comparison scripts reach via `import _common as C
 # value's literal as its default, so behaviour is unchanged.
 ANSWER_MODEL = "claude-sonnet-4-6"
 # Judge: cross-provider (different family from the answerer) is the requirement. Gemini was the
-# nominal pin but its key has zero credits (429); OpenAI was the pre-approved alternate. Independence
-# property preserved. The exact served snapshot is captured per-call into the run record.
+# nominal pin but its key has zero credits (429); OpenAI was the pre-approved alternate.
+# Independence property preserved. The exact served snapshot is captured per-call into the run
+# record.
 JUDGE_MODEL = "gpt-5.1"
 JUDGE_N = 3                          # N=3 modal per dimension
 

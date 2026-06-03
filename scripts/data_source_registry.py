@@ -196,7 +196,9 @@ def ingestable_formats() -> dict[str, str]:
     from pkm.producers.unstructured import UnstructuredProducer  # type: ignore[import-untyped]
 
     mapping: dict[str, str] = {}
-    for prod in (UnstructuredProducer, TesseractProducer, DoclingProducer, PandocProducer, EmailProducer):
+    for prod in (
+        UnstructuredProducer, TesseractProducer, DoclingProducer, PandocProducer, EmailProducer,
+    ):
         name = prod.__name__.removesuffix("Producer").lower()
         for ext in prod.handled_formats:
             mapping[ext.lower()] = name
@@ -229,9 +231,7 @@ def _matches(rel_posix: str, include: tuple[str, ...], exclude: tuple[str, ...])
     means "all"."""
     if include and not any(_pat_match(rel_posix, p) for p in include):
         return False
-    if any(_pat_match(rel_posix, p) for p in exclude):
-        return False
-    return True
+    return not any(_pat_match(rel_posix, p) for p in exclude)
 
 
 def plocate_paths(root: Root) -> list[Path]:
@@ -479,7 +479,10 @@ def render_discovery(d: Discovery) -> str:
     for c in d.candidates:
         exts = ", ".join(f"{e or '(none)'}:{n}" for e, n in list(c.by_ext.items())[:8])
         hint = f"  ({exts})" if exts else "  (no ingestable types)"
-        lines.append(f"    {c.name + '/':22} {c.files:>8,} paths, {c.ingestable_files:>6,} ingestable{hint}")
+        lines.append(
+            f"    {c.name + '/':22} {c.files:>8,} paths, "
+            f"{c.ingestable_files:>6,} ingestable{hint}"
+        )
         for s in c.samples:
             lines.append(f"        e.g. {s}")
     if not d.candidates:
@@ -513,7 +516,9 @@ def render_report(summaries: list[tuple[RootSummary, list[Row]]]) -> str:
             f"{_human(summary.ingestable_bytes)}"
         )
         if summary.by_ext:
-            top = ", ".join(f"{ext or '(none)'}:{n}" for ext, n in list(summary.by_ext.items())[:10])
+            top = ", ".join(
+                f"{ext or '(none)'}:{n}" for ext, n in list(summary.by_ext.items())[:10]
+            )
             lines.append(f"  by type: {top}")
         not_ing = sorted({r.ext or "(none)" for r in rows if not r.ingestable})
         if not_ing:
@@ -572,7 +577,7 @@ def main() -> int:
     try:
         registry = load_registry(args.registry)
     except RegistryError as e:
-        raise SystemExit(str(e))
+        raise SystemExit(str(e)) from e
 
     if args.refresh:
         subprocess.run(["sudo", "updatedb"], check=True)
@@ -594,7 +599,10 @@ def main() -> int:
     all_rows: list[Row] = []
     for root in registry.roots:
         if root.kind != "filetree":
-            print(f"# {root.id}: kind={root.kind} — summarized by its own adapter, skipped here", file=sys.stderr)
+            print(
+                f"# {root.id}: kind={root.kind} — summarized by its own adapter, skipped here",
+                file=sys.stderr,
+            )
             continue
         rows = rows_for_root(root, fmt_map)
         if not rows:

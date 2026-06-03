@@ -6,8 +6,8 @@
 (c) Reproducibility   — re-run Phase-1 retrieval and confirm it returns byte-identical chunk sets
     (content-addressed determinism). Phase 0's compile is not bit-reproducible (§7c), stated.
 (b) Incremental update — structural cost with measured anchors: Phase 0 has no incremental path (a
-    source edit forces a recompile — anchor = the measured compile cost); Phase 1 re-ingests only the
-    changed content-addressed object, leaving the other ~953 as cache hits (0 API tokens).
+    source edit forces a recompile — anchor = the measured compile cost); Phase 1 re-ingests only
+    the changed content-addressed object, leaving the other ~953 as cache hits (0 API tokens).
 
 Run:  uv run --project . python scripts/comparison/divergence.py
 """
@@ -18,12 +18,16 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import _common as C  # noqa: E402
-import phase1_answer as P1  # noqa: E402
+import _common as C
+import phase1_answer as P1
 
 
 def _read_jsonl(name: str) -> dict[str, dict]:
-    rows = [json.loads(l) for l in (C.COMPARISON_DIR / name).read_text(encoding="utf-8").splitlines() if l.strip()]
+    rows = [
+        json.loads(line)
+        for line in (C.COMPARISON_DIR / name).read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
     return {r["question_id"]: r for r in rows}
 
 
@@ -44,7 +48,7 @@ def reproducibility(p1: dict) -> dict:
     qs = {q["id"]: q for q in C.scored_questions()}
     identical = mismatched = 0
     for qid, rec in p1.items():
-        cards = P1.retrieve_S(conn, qs[qid]["search_queries"], s_paths, 8)
+        cards = P1.retrieve_s(conn, qs[qid]["search_queries"], s_paths, 8)
         now = [c.text for c in cards]
         was = [c["text"] for c in rec["sources"]]
         if now == was:
@@ -78,7 +82,9 @@ def main() -> int:
         "incremental_update": incremental_update(compile_meta),
         "ceilings": {
             "phase0_corpus_size_ceiling": "full S (~345k chunks) is uncompilable (§7d)",
-            "phase1_recall_ceiling": "fixed k=8 cannot widen recall within a wide aggregation query (§7e)",
+            "phase1_recall_ceiling": (
+                "fixed k=8 cannot widen recall within a wide aggregation query (§7e)"
+            ),
         },
     }
     (C.COMPARISON_DIR / "divergence.json").write_text(json.dumps(out, indent=2), encoding="utf-8")

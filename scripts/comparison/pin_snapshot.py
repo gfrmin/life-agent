@@ -23,7 +23,7 @@ import hashlib
 import json
 import os
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import yaml
@@ -137,7 +137,7 @@ def main() -> int:
     snap.write_text(
         json.dumps(
             {
-                "pinned_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "pinned_utc": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
                 "rules": {"doc_roots": doc_roots, "mail_year": mail_year},
                 "n_files": len(manifest),
                 "total_bytes": sum(m["bytes"] for m in manifest),

@@ -17,7 +17,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import _common as C  # noqa: E402
+import _common as C
 
 WIKI_DIR = C.COMPARISON_DIR / "wiki"
 
@@ -53,13 +53,16 @@ def main() -> int:
         a = answer_one(q, cards)
         answers.append(a)
         print(f"  {a.question_id}: {a.in_tokens} in / {a.out_tokens} out tok, {a.seconds:.1f}s")
-    out.write_text("\n".join(json.dumps(dataclasses.asdict(a), ensure_ascii=False) for a in answers),
-                   encoding="utf-8")
+    out.write_text(
+        "\n".join(json.dumps(dataclasses.asdict(a), ensure_ascii=False) for a in answers),
+        encoding="utf-8",
+    )
     tot_in = sum(a.in_tokens for a in answers)
     tot_out = sum(a.out_tokens for a in answers)
     print(f"\nwrote {out}  ({len(answers)} answers; {tot_in} in / {tot_out} out tokens, "
           f"{C.ANSWER_MODEL})")
-    print(f"NOTE: every Phase-0 answer re-stuffs the whole wiki ({cards[0].n}..{cards[-1].n} pages) "
+    print(f"NOTE: every Phase-0 answer re-stuffs the whole wiki "
+          f"({cards[0].n}..{cards[-1].n} pages) "
           f"into context — that per-query input cost is a divergence datum (§7a).")
     return 0
 

@@ -36,10 +36,7 @@ def _is_contiguous_sublist(needle: list[str], haystack: list[str]) -> bool:
     if not needle:
         return False
     n = len(needle)
-    for i in range(len(haystack) - n + 1):
-        if haystack[i : i + n] == needle:
-            return True
-    return False
+    return any(haystack[i : i + n] == needle for i in range(len(haystack) - n + 1))
 
 
 def answer_matches(answer: str, variants: list[str], chunk_text: str) -> bool:
