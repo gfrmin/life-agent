@@ -1,13 +1,14 @@
 # SPEC.md — technical specification
 
-Version: 0.6.0 (draft)
+Version: 0.7.0 (draft)
 Status: Phase 1 complete (extraction layer with content-addressed
 caching, chunking, and FTS keyword retrieval); Phase 1.5 OCR-PDF
 fallback applied to the live corpus; source paths are stored as
 declared, not canonicalized (§8.2, §13.6); email (`.eml`) has a
 dedicated stdlib producer (§7.2); a structural PII guard keeps
-personal data out of this public repo (§14.9). This spec is the
-contract. Changes require a separate commit with justification.
+personal data out of this public repo (§14.9); a read-only MCP
+query surface exposes FTS retrieval over stdio (§17). This spec is
+the contract. Changes require a separate commit with justification.
 
 This spec is intentionally strict. See §14 for the principles of
 first-principles debuggability that govern every decision below.
@@ -1259,8 +1260,99 @@ HKSAR passport) from "OCR-unrecoverable" to PASS: the number is in the corpus
 via typed sources (an email, a boarding card), which source-id matching —
 pinned to the OCR-garbled `<partner> passport.pdf` — could not see.
 
+## 17. Query surface (MCP server)
+
+### 17.1 Purpose
+
+`pkm` exposes a read-only MCP server (`pkm serve`) as its canonical external query interface.
+The server wraps the FTS retrieval layer (§15) over the MCP stdio transport so that any MCP
+client — Claude Code, pi-mono, or other local agents — can search the personal knowledge corpus
+without needing direct Python imports or DuckDB access.
+
+The server **retrieves only**. It does not synthesise answers, rank beyond BM25, or write to the
+catalogue. Synthesis is the responsibility of the calling agent.
+
+### 17.2 Tool contract
+
+The server exposes exactly one tool: `search`.
+
+**Input:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `query`   | `str` | — | Keyword query string; Unicode (including Hebrew) is supported. |
+| `k`       | `int` | 10 | Maximum number of chunks to return. |
+
+**Output:** a JSON array of result objects, ordered by descending BM25 relevance:
+
+```json
+[
+  {
+    "chunk_text": "<extracted text snippet>",
+    "score": 1.234,
+    "source_path": "/path/to/source",
+    "source_origin": "email" | "pandoc" | null,
+    "artifact_cache_key": "<64-char hex>"
+  }
+]
+```
+
+`chunk_text` is a keyword-in-context (KWIC) snippet of ≤~300 chars centred on the
+first matched query token. The full extracted text is in the catalogue but is not
+returned to avoid saturating the caller's context window. Because KWIC centres on
+the first matched token, the answer value may fall outside the window if it sits far
+from the matched label in the same chunk.
+
+The tool does not synthesise: the caller assembles a cited answer from the returned chunks.
+
+On a retryable failure (catalogue locked by an active extraction), the tool returns a single-
+element array with an `"error"` key rather than raising an exception:
+
+```json
+[{"error": "corpus temporarily locked by an active extraction; retry shortly"}]
+```
+
+### 17.3 Connection model
+
+The server opens a **read-only** DuckDB connection (`read_only=True`) per request and closes it
+immediately after the query. It holds no persistent connection between requests.
+
+**Concurrency:**
+
+- An *idle* server (between requests) holds no open DuckDB connection. `pkm extract` can acquire
+  the write lock freely while the server is registered but not actively serving a request.
+- DuckDB's cross-process model is *one read-write process OR multiple read-only processes —
+  never both simultaneously*. A read request that arrives while `pkm extract` holds the write
+  lock will fail with a lock conflict for the full duration of that extraction (which may be
+  hours on a large corpus). The server catches this as a retryable error (§17.2) rather than
+  crashing or hanging.
+
+### 17.4 Transport
+
+stdio only. The server's `stdout` carries the MCP JSON-RPC protocol stream; all logging goes to
+`stderr` (and the configured JSONL log file) — never to `stdout`. Callers must not add any
+`print()` calls to `mcp_server.py` that would corrupt the protocol stream.
+
+### 17.5 Configuration
+
+The corpus root (i.e. where `catalogue.duckdb` lives) is resolved **once** at server startup
+from the `--config` flag passed to `pkm serve`, via the normal `load_config()` path. The
+resolved root is stored in a module-level variable (`_ROOT`) and read by the `search` tool
+closure at call time. This ensures `--config` actually reaches the tool and is not shadowed by
+a default.
+
+### 17.6 Classification
+
+The MCP server is an *access surface*, not a producer or transform. It introduces no new cache
+keys, no new extraction contracts, and no new migrations. Adding it does not change the
+determinism or idempotency guarantees defined in §6 and §7.1.
+
 ## 16. Change log
 
+- 0.7.0 (draft): §17 (new) — *read-only MCP query surface*. Adds `pkm serve` (stdio transport),
+  a single `search` tool wrapping the §15 FTS retrieval, per-request DuckDB connections, and a
+  structured retryable error for lock conflicts. New dependency: `mcp>=1.0`. No schema, cache-
+  key, producer, or migration changes.
 - 0.6.0 (draft): §14.9 (new) — *personal data never enters the
   repository*, made structural rather than detection-only: out-of-tree
   data, an **allowlist** of safe shapes enforced by

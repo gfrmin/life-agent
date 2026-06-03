@@ -46,6 +46,7 @@ import argparse
 import logging
 import sys
 from collections.abc import Callable
+from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _package_version
 from pathlib import Path
 
@@ -61,6 +62,20 @@ from pkm.rebuild import rebuild_artifacts
 logger = logging.getLogger(__name__)
 
 DEFAULT_CONFIG_PATH: Path = Path("~/.local/share/pkm/config.yaml")
+
+
+def _pkm_version() -> str:
+    """Resolve the installed version, tolerating either packaging.
+
+    pkm ships as its own ``pkm`` distribution when installed standalone, or as
+    a module inside the ``life-agent`` umbrella distribution in the monorepo.
+    Try each in turn; never raise — a bare source checkout has no metadata."""
+    for dist in ("pkm", "life-agent"):
+        try:
+            return _package_version(dist)
+        except PackageNotFoundError:
+            continue
+    return "0+unknown"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -122,7 +137,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--version",
         action="version",
-        version=f"pkm {_package_version('pkm')}",
+        version=f"pkm {_pkm_version()}",
     )
     parser.add_argument(
         "--config",
@@ -281,6 +296,17 @@ def _build_parser() -> argparse.ArgumentParser:
             "'pkm chunk --backfill' to make new chunks searchable. "
             "Index rebuilding is a maintenance operation, separate from "
             "query (SPEC v0.3.1 §15.2)."
+        ),
+    )
+
+    subparsers.add_parser(
+        "serve",
+        help="Start the read-only MCP server over stdio (SPEC §17).",
+        description=(
+            "Start the pkm-memory MCP server. Stdout carries the "
+            "JSON-RPC protocol stream; all logging goes to stderr and "
+            "the JSONL log file. Register this command in your MCP "
+            "client (e.g. Claude Code settings.json mcpServers)."
         ),
     )
 
@@ -539,6 +565,14 @@ def _cmd_search(args: argparse.Namespace, config: Config) -> int:
     return 0
 
 
+def _cmd_serve(args: argparse.Namespace, config: Config) -> int:
+    from pkm import mcp_server  # lazy import — mcp dep only needed for serve
+
+    mcp_server.set_root(config.root_dir)
+    mcp_server.mcp.run(transport="stdio")
+    return 0
+
+
 def _cmd_transform(args: argparse.Namespace, config: Config) -> int:
     sub = args.transform_subcommand
     if sub is None:
@@ -697,5 +731,6 @@ _SUBCOMMANDS: dict[str, Callable[[argparse.Namespace, Config], int]] = {
     "chunk": _cmd_chunk,
     "rebuild-index": _cmd_rebuild_index,
     "search": _cmd_search,
+    "serve": _cmd_serve,
     "transform": _cmd_transform,
 }
