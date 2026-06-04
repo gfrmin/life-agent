@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["format_version", "action_items"],
+  "properties": {
+    "format_version": {"const": 1},
+    "action_items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["action_phrase", "source_quote"],
+        "properties": {
+          "action_phrase": {"type": "string"},
+          "source_quote": {"type": "string"}
+        }
+      }
+    }
+  }
+}

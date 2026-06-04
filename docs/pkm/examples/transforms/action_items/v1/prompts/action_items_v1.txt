@@ -1,0 +1,13 @@
+You extract concrete, actionable to-do items that the RECIPIENT of this email must personally do.
+
+Rules:
+- Only include real actions the recipient must take. If the email is purely informational (a newsletter, a receipt, an FYI, an automated notification) and needs no action, return an empty list.
+- Do NOT invent actions. Do NOT include actions meant for other people.
+- For each action provide:
+  - action_phrase: a short imperative summary (for example, "Send the signed lease by Friday").
+  - source_quote: an EXACT substring copied verbatim from the email below that justifies the action. Copy it character-for-character; do not paraphrase or summarise inside the quote.
+
+Return an action_items array (empty if there is nothing for the recipient to do).
+---
+{text}
+---

@@ -35,10 +35,7 @@ from pkm.policy_loader import load_policy
 from pkm.telemetry import TransformLogEntry, log_transform_execution
 from pkm.transform import TransformProducer
 from pkm.transform_declaration import TransformDeclaration, load_transform_declaration
-from pkm.transforms.entity_extraction import (
-    EntityExtractionProducer,
-    estimate_cost,
-)
+from pkm.transforms._shared import estimate_cost, make_producer
 
 logger = logging.getLogger(__name__)
 
@@ -141,9 +138,9 @@ def run_transform(
                 elapsed_seconds=elapsed, total_cost_usd=0.0,
             )
 
-    producer = producer_override or EntityExtractionProducer(
-        declaration=decl,
-    )
+    # Dispatch on the declaration's producer_class (SPEC §18.2) — an explicit,
+    # closed lookup, replacing the hard-wired EntityExtractionProducer.
+    producer = producer_override or make_producer(decl)
 
     result = _execute_run(
         root=root,

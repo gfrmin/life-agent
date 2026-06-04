@@ -1,0 +1,21 @@
+name: action_items
+version: "0.1.0"
+producer_class: pkm.transforms.action_items.ActionItemsProducer
+model:
+  provider: ollama
+  model: "qwen2.5:7b-instruct"
+  inference_params:
+    temperature: 0.0
+prompt:
+  name: action_items_v1
+  file: prompts/action_items_v1.txt
+output_schema:
+  name: action_items_v1
+  file: schemas/action_items_v1.json
+# No policies: the Ollama backend is free, so the cost gate is moot. Add
+# `cost_gate` here (and ship policies/cost_gate.py) if you switch `provider`
+# to a metered backend (anthropic).
+policies: []
+input:
+  producer: email
+  required_status: success
