@@ -42,10 +42,10 @@ questions:
 
 ## Grading (`scripts/run_eval.py`)
 
-Run in the pkm env (for `pkm.retrieval` + DuckDB):
+Run from the repo root (for `pkm.retrieval` + DuckDB):
 
 ```
-uv run --project ../pkm python scripts/run_eval.py --k 20
+uv run --project . python scripts/run_eval.py --k 20
 ```
 
 For each question it unions `search()` over `search_queries`, then checks the answer with a

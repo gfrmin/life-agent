@@ -1,7 +1,7 @@
 """Unit tests for the answer-grounded eval grading logic (scripts/eval_grading.py).
 
-Run in the pkm env (has pytest):
-    uv run --project ../pkm python -m pytest ./tests/test_eval_grading.py
+Run from the repo root (has pytest):
+    uv run --project . python -m pytest ./tests/test_eval_grading.py
 """
 
 from __future__ import annotations

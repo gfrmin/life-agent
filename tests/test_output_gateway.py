@@ -5,8 +5,8 @@ The repo holds only code; the corpus, eval set, and logs live under
 write, so a future change that targets a path inside the repo tree fails here
 (and in review) rather than silently leaking data into a public repo.
 
-Run in the pkm env:
-    uv run --project ../pkm python -m pytest ./tests/test_output_gateway.py
+Run from the repo root:
+    uv run --project . python -m pytest ./tests/test_output_gateway.py
 """
 
 from __future__ import annotations

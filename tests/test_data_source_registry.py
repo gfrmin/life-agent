@@ -1,7 +1,7 @@
 """Unit tests for the declarative data-source registry (scripts/data_source_registry.py).
 
-Run in the pkm env (has pytest, PyYAML, and the pkm producers):
-    uv run --project ../pkm python -m pytest ./tests/test_data_source_registry.py
+Run from the repo root (has pytest, PyYAML, and the pkm producers):
+    uv run --project . python -m pytest ./tests/test_data_source_registry.py
 """
 
 from __future__ import annotations

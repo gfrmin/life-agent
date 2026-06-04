@@ -13,10 +13,10 @@ Operational and KB-specific (it mutates the live catalogue), so it lives in
 life-agent, not pkm. **DRY-RUN by default** — pass ``--apply`` to delete.
 Idempotent: re-running after a clean reports 0.
 
-Run in the pkm env (for the pkm package + DuckDB):
-    uv run --project /path/to/pkm python \
+Run from the repo root (for the pkm package + DuckDB):
+    uv run --project . python \
         scripts/cleanup_orphan_unstructured_emails.py \
-        --config /path/to/pkm/config.yaml [--apply]
+        --config "$PKM_CONFIG" [--apply]
 """
 
 from __future__ import annotations

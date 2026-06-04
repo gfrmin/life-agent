@@ -18,7 +18,7 @@ file lives OUTSIDE this public repo at ``$LIFE_AGENT_KB/config/data-sources.yaml
 a fake example of the schema is ``config/data-sources.example.yaml``. Same split as
 ``mail_bridge.py`` / ``mail-corpus.example.yaml``.
 
-Run in the pkm env (has PyYAML, duckdb, and the pkm producers whose ``handled_formats``
+Run from the repo root (has PyYAML, duckdb, and the pkm producers whose ``handled_formats``
 define "ingestable today"):
     uv run --project . python scripts/data_source_registry.py --report
 """

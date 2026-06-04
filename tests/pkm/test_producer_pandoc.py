@@ -9,8 +9,8 @@ valid docx, which is a far weaker claim than "bytes are stable".
 
 Tests that exercise a real subprocess require pandoc on PATH. Any
 environment without pandoc will fail at discovery with a clear
-``ProducerDiscoveryError``; we don't skip, because a pkm env
-without pandoc is already misconfigured.
+``ProducerDiscoveryError``; we don't skip, because an env set up to
+run pkm without pandoc is already misconfigured.
 """
 
 from __future__ import annotations

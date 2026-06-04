@@ -37,7 +37,7 @@ don't rebuild: ~90% already exists in the owner's repos.
 
 | Faculty | System / language | Status |
 |---|---|---|
-| **Memory** — recall + retrieval | **PKM** (`../pkm`, Python) + **`life_agent`** (this repo, Python) | **Live.** PKM: content-addressed extraction + DuckDB `fts`/`vss`. `life_agent` adds the retrieval/synthesis read path (`scripts/ask.py`, dogfooded via `bin/ask-live`). |
+| **Memory** — recall + retrieval | **PKM** (`src/pkm`, Python) + **`life_agent`** (this repo, Python) | **Live.** PKM: content-addressed extraction + DuckDB `fts`/`vss`. `life_agent` adds the retrieval/synthesis read path (`scripts/ask.py`, dogfooded via `bin/ask-live`). |
 | **Brain** — beliefs under uncertainty; value-of-information → ask/proceed/block | **credence** (`../credence/apps/credence-pi`, Julia posterior) | Not wired. *The confidence-gated autonomy* — the core of "maximise expected utility". |
 | **Hands** — capabilities/actions | MCP / HTTP servers: **Jarvis** (tasks, exists, 13 tools, `user_id 12365873`), email (`msmtp`/JMAP), calendar (CalDAV/Google), chat (matrix) | Not wired. |
 | **Goals / Utility** — what the owner values | *(new, unbuilt)* | **The hardest missing piece.** EU-maximisation presupposes it; owed a design before any autonomous *action*. |

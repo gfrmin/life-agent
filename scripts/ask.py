@@ -12,7 +12,7 @@ minus the frozen-snapshot filter (dogfood asks over the whole corpus, not a pinn
 and minus the per-question hand-written search_queries (the raw question IS the query —
 an honest "ask anything" test that surfaces retrieval gaps as signal).
 
-Run (in the pkm env, for pkm.retrieval + duckdb):
+Run (from the repo root, for pkm.retrieval + duckdb):
     bin/ask-live                      # interactive REPL
     bin/ask-live "what is my ID?"     # answer once, then prompt for a verdict
     bin/ask-live --k 12               # wider retrieval context

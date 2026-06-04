@@ -1,6 +1,6 @@
 # PKM retrieval design (code-grounded)
 
-How to extend `../pkm` into the memory core. PKM already has the data model for retrieval; it
+How to extend `src/pkm` into the memory core. PKM already has the data model for retrieval; it
 lacks a retrieval reader, an embedding step, a non-file source path, and any server. Add those four
 without touching the cache/catalogue/hashing invariants. **Governance: amend pkm `SPEC.md` → v0.3.0
 first** (its rules forbid retrieval/servers/new-deps until the SPEC says otherwise), and follow

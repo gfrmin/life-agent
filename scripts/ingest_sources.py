@@ -21,8 +21,8 @@ New entries are **merged** into pkm's existing ``sources.yaml`` (deduped by path
 tags unioned) — never clobbering the curated corpus. ``--dry-run`` prints the merged
 manifest and skips both the write and ``pkm ingest``.
 
-Run in the pkm env:
-    uv run --project ../pkm python scripts/ingest_sources.py --dry-run
+Run from the repo root:
+    uv run --project . python scripts/ingest_sources.py --dry-run
 """
 
 from __future__ import annotations

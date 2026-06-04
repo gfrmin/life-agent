@@ -53,7 +53,7 @@ Claude Code talks to the *same* MCP servers directly — that's why MCP is the i
 
 ## The component repos — what to reuse, and the key files
 
-### `../pkm` — the memory core (Python, uv, DuckDB)
+### `src/pkm` (now in-tree) — the memory core (Python, uv, DuckDB)
 Content-addressed extraction cache + DuckDB catalogue + format producers + Phase-2 Anthropic entity
 extraction. Retrieval is the part we add. **It already nails content-addressing and a *semantic*
 (not bitwise) determinism contract — don't "fix" that.**
