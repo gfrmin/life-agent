@@ -1,14 +1,17 @@
 # SPEC.md — technical specification
 
-Version: 0.7.0 (draft)
+Version: 0.8.0 (draft)
 Status: Phase 1 complete (extraction layer with content-addressed
 caching, chunking, and FTS keyword retrieval); Phase 1.5 OCR-PDF
 fallback applied to the live corpus; source paths are stored as
 declared, not canonicalized (§8.2, §13.6); email (`.eml`) has a
 dedicated stdlib producer (§7.2); a structural PII guard keeps
 personal data out of this public repo (§14.9); a read-only MCP
-query surface exposes FTS retrieval over stdio (§17). This spec is
-the contract. Changes require a separate commit with justification.
+query surface exposes FTS retrieval over stdio (§17); the Phase 2
+**transform** layer is specified (§18) — LLM/local-model perspectives
+over artifacts, with a grounding contract, incl. the `action_items`
+transform behind email→GTD. This spec is the contract. Changes require
+a separate commit with justification.
 
 This spec is intentionally strict. See §14 for the principles of
 first-principles debuggability that govern every decision below.
@@ -17,9 +20,11 @@ first-principles debuggability that govern every decision below.
 
 This document specifies the foundation layer: content-addressed cache,
 catalogue, canonicalisation rules, and the extraction pipeline that
-runs over raw documents. It does not specify LLM transforms, query
-planning, or any higher-layer concerns — those live in later spec
-versions once the foundation is stable.
+runs over raw documents. As of v0.8.0 it also specifies the Phase 2
+**transform** layer (§18) — derived perspectives over artifacts, via
+cloud or local models, under a grounding contract. Query planning and
+higher-layer concerns still live in later spec versions once these are
+stable.
 
 ## 2. Core concepts
 
@@ -1347,8 +1352,110 @@ The MCP server is an *access surface*, not a producer or transform. It introduce
 keys, no new extraction contracts, and no new migrations. Adding it does not change the
 determinism or idempotency guarantees defined in §6 and §7.1.
 
+## 18. Transforms (Phase 2)
+
+A **transform** is a producer (§2.2) whose input is another producer's artifact and whose output
+is a derived JSON artifact — a *perspective* on the source (named-entity extraction, action-item
+extraction, …). Transforms were deferred by §1 through v0.7.0; v0.8.0 brings the layer into scope
+at the contract level the existing substrate (`transform.py`, `transform_run.py`,
+`transform_declaration.py`, migration 0003) already embodies, and adds the `action_items` transform
+(§18.6) used by the email→GTD capability.
+
+### 18.1 Transform as producer
+
+A transform obeys the §7.1 producer contract: `produce()` never raises, returns
+`status="success"|"failed"`, and is keyed in the content-addressed cache. Its *input* is the
+content of an upstream artifact selected by `input.producer` (e.g. `pandoc`, `email`); a transform
+runs only over sources that have a successful upstream artifact
+(`transform_run._find_eligible_sources`).
+
+### 18.2 Declaration
+
+A transform is declared, not hard-wired, in `<root>/transforms/<name>.yaml`: `name`, `version`,
+`producer_class` (a dotted path), `model` (`{provider, model, inference_params}`), `prompt`
+(`{name, file}`), `output_schema` (`{name, file}`), `policies`, and `input`
+(`{producer, required_status}`). Prompt and schema are loaded from files under the root and hashed
+(§18.4). The declaration is the unit of change: a new transform adds a declaration plus a producer
+class — no schema migration.
+
+**Dispatch.** `producer_class` selects the producer via an explicit, closed lookup — no plugin
+discovery, no `importlib` of arbitrary dotted paths (§14.1 inspectability). Adding a transform
+extends the lookup by one entry. This is the deliberate, bounded exception to §12's "no registry
+before three producers": a two-line table over an already-declared field, not an abstraction layer.
+
+### 18.3 Model backends (`provider`)
+
+`model.provider` selects the inference backend; both are constrained to the output schema:
+
+- `anthropic` — Structured Outputs (`output_config`) over the Anthropic API; cost is metered
+  (per-MTok pricing) and feeds the policy cost gate (§18.5).
+- `ollama` — a local model via Ollama's native chat endpoint (`http://localhost:11434/api/chat`)
+  with `format: <schema>` (grammar-constrained decoding); `cost_usd = 0`. Local extraction is the
+  **default** for `action_items`:
+  free, private, offline. Per §7.1, temperature-0 is not bitwise-deterministic on a local model —
+  the content-addressed cache, not run-to-run reproducibility, is the determinism guarantee, so the
+  model **tag must be pinned** (never `:latest`); the tag is part of `model_identity` and hence the
+  cache key.
+
+### 18.4 Cache key and idempotency
+
+A transform artifact's cache key is `compute_cache_key(..., schema_version=3)`, folding in
+`model_identity` (provider + model + inference params), `engine_version` (the runtime identity:
+`anthropic.__version__`, or a pinned constant for the Ollama call path), `prompt_template_hash`
+(SHA-256 of the *template*, not the rendered prompt), and `output_schema`. Because the key is over
+the template and the *input artifact content*, re-running a transform over an unchanged source is a
+cache hit — extraction cost is paid once per (source, declaration); a second run writes nothing
+(§6.2). Lineage (`artifact_lineage`, migration 0003) records `(transform_artifact, source_artifact,
+role="source_text")` so a consumer can trace a derived fact back to the exact upstream artifact.
+
+### 18.5 Grounding contract
+
+A transform that emits quoted spans of the source must **ground every span**: the quoted text must
+resolve in the source, or the *whole source fails* (no partial output, §14.3). Two matching
+disciplines, by span kind:
+
+- **Exact offsets** (e.g. `entity_extraction`): the `span` must satisfy `source[start:end] == text`;
+  a near-miss is corrected by a windowed then global `str.find`; an unfindable entity fails the
+  source.
+- **Whitespace-normalised containment** (e.g. `action_items`): a prose `source_quote` is grounded
+  iff `norm(quote) in norm(source)`, where `norm` collapses runs of whitespace to a single space.
+  This is mandatory for prose quotes because line-wrapped sources (notably `email`) render a source
+  newline as a space in the model's copy; exact matching would reject faithful quotes (measured:
+  ~75% false-reject on wrapped email). The check still proves the words appear contiguously and in
+  order in the source.
+
+Grounding is the load-bearing anti-hallucination guarantee: a weaker (local) model that paraphrases
+loses recall (fewer grounded items) but cannot emit an ungrounded one.
+
+### 18.6 The `action_items` transform
+
+`action_items` (`pkm.transforms.action_items`, provider `ollama`, model `qwen2.5:7b-instruct`)
+consumes an `email` artifact and emits `{format_version: 1, action_items: [{action_phrase,
+source_quote}]}`, where every `source_quote` is grounded under §18.5 whitespace-normalised
+containment. It powers email→GTD: the action faculty (out of scope here, in `life_agent`) reads
+these artifacts, dedups by the source email's Message-ID, and files each as a task citing the
+source. The transform is a pure perspective — it has no knowledge of tasks.
+
 ## 16. Change log
 
+- 0.8.0 (draft): §18 (new) — *Transforms (Phase 2)*. Brings the LLM/local-model transform layer into
+  scope (deferred by §1 through v0.7.0; the substrate — `transform.py`, `transform_run.py`,
+  `transform_declaration.py`, migration 0003, `entity_extraction` — already existed in-tree against the
+  removed v0.2.0 §19–§20). §18.2 specifies declaration-driven dispatch on `producer_class` (an explicit,
+  closed two-line lookup over an already-declared field — the bounded exception to §12, replacing the
+  hard-wired `EntityExtractionProducer` in `transform_run.py`). §18.3 specifies the `provider` backend
+  field: `anthropic` (Structured Outputs, metered) and **`ollama`** (local, grammar-constrained
+  Ollama chat endpoint, `cost_usd=0`) — local is the default for `action_items`; the model tag must be pinned
+  (never `:latest`) since it is in the cache key. §18.5 specifies the grounding contract with two
+  matching disciplines: exact offsets (entity_extraction) and **whitespace-normalised containment**
+  (action_items prose quotes — mandatory because line-wrapped email renders newlines as spaces, so exact
+  matching false-rejects ~75% of faithful quotes). §18.6 adds the `action_items` transform
+  (`ollama`/`qwen2.5:7b-instruct`) consuming `email` artifacts for email→GTD. Transform output is a JSON
+  artifact (`format_version`); **no migration**. Affects: `transforms/_shared.py` (new, provider seam +
+  shared helpers), `transforms/action_items.py` (new), `transform_run.py` (dispatch), a shipped example
+  declaration under `docs/pkm/examples/transforms/action_items/`, and tests. The landed
+  `entity_extraction` transform is unchanged. No new top-level dependency for the Ollama path (stdlib
+  `urllib`).
 - 0.7.0 (draft): §17 (new) — *read-only MCP query surface*. Adds `pkm serve` (stdio transport),
   a single `search` tool wrapping the §15 FTS retrieval, per-request DuckDB connections, and a
   structured retryable error for lock conflicts. New dependency: `mcp>=1.0`. No schema, cache-
