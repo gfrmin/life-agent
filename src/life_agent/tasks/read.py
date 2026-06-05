@@ -41,6 +41,9 @@ class EmailActions:
     items: list[dict[str, Any]]
     email_cache_key: str | None
     action_items_cache_key: str
+    # The email's ``email_triage`` category (SPEC §18.8), or None if the email
+    # has not been triaged. The projector's actionable-category policy reads this.
+    category: str | None = None
 
 
 def _connect(root: Path) -> duckdb.DuckDBPyConnection:
@@ -86,12 +89,14 @@ def read_action_items(
             email_ck = _source_email_key(conn, ai_ck)
             message_id = subject = None
             email_produced_at: datetime | None = None
+            category: str | None = None
             if email_ck is not None:
                 email = _safe_read(root, conn, email_ck)
                 if email is not None:
                     message_id = email.producer_metadata.get("message_id")
                     subject = email.producer_metadata.get("subject")
                     email_produced_at = email.produced_at
+                category = _triage_category(root, conn, email_ck)
 
             out.append(
                 EmailActions(
@@ -101,6 +106,7 @@ def read_action_items(
                     items=items,
                     email_cache_key=email_ck,
                     action_items_cache_key=ai_ck,
+                    category=category,
                 )
             )
     finally:
@@ -117,6 +123,30 @@ def _source_email_key(
         [action_items_cache_key],
     ).fetchone()
     return row[0] if row else None
+
+
+def _triage_category(
+    root: Path, conn: duckdb.DuckDBPyConnection, email_cache_key: str,
+) -> str | None:
+    """The most recent ``email_triage`` category for this email (None if untriaged).
+
+    Reverse-lineage: find the triage artifact whose input is this email
+    (`role='source_text'`), newest first, and read its ``category`` (§18.8).
+    """
+    row = conn.execute(
+        "SELECT l.artifact_cache_key FROM artifact_lineage l "
+        "JOIN artifacts a ON a.cache_key = l.artifact_cache_key "
+        "WHERE l.input_cache_key = ? AND a.producer_name = 'email_triage' "
+        "AND a.status = 'success' ORDER BY a.produced_at DESC LIMIT 1",
+        [email_cache_key],
+    ).fetchone()
+    if not row:
+        return None
+    entry = _safe_read(root, conn, row[0])
+    if entry is None or entry.content is None:
+        return None
+    cat = json.loads(entry.content.decode("utf-8")).get("category")
+    return str(cat) if cat is not None else None
 
 
 def _safe_read(root: Path, conn: duckdb.DuckDBPyConnection, cache_key: str) -> Any:

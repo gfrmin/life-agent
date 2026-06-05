@@ -56,23 +56,27 @@ def _resolve_user_id(db_path: Path) -> int:
 
 
 def _run_extract(limit: int | None) -> None:
+    # Run both transforms over the (recent) emails: email_triage classifies each
+    # (SPEC §18.8), action_items extracts grounded to-dos (§18.6). They compose at
+    # the projection layer — a task is filed only from an email triaged actionable.
     # `--config` is a global pkm arg (before the subcommand); `--limit` is a
     # `transform run` arg (after the name). Order matters.
-    cmd = [
-        sys.executable, "-m", "pkm", "--config", str(C.PKM_CONFIG),
-        "transform", "run", "action_items",
-    ]
-    if limit is not None:
-        cmd += ["--limit", str(limit)]
-    print(f"→ extracting action items: {' '.join(cmd[2:])}")
-    proc = subprocess.run(cmd, check=False)
-    if proc.returncode != 0:
-        # Don't crash — projection of already-cached artifacts can still run —
-        # but never let the timer silently extract nothing.
-        print(
-            f"⚠ extraction exited {proc.returncode}; projecting already-cached artifacts only",
-            file=sys.stderr,
-        )
+    for name in ("email_triage", "action_items"):
+        cmd = [
+            sys.executable, "-m", "pkm", "--config", str(C.PKM_CONFIG),
+            "transform", "run", name,
+        ]
+        if limit is not None:
+            cmd += ["--limit", str(limit)]
+        print(f"→ extracting {name}: {' '.join(cmd[2:])}")
+        proc = subprocess.run(cmd, check=False)
+        if proc.returncode != 0:
+            # Don't crash — projection of already-cached artifacts can still run —
+            # but never let the timer silently extract nothing.
+            print(
+                f"⚠ {name} exited {proc.returncode}; projecting already-cached artifacts only",
+                file=sys.stderr,
+            )
 
 
 def _print_candidate(c: Candidate) -> None:
@@ -119,7 +123,8 @@ def main() -> int:
 
     already = report.total_items - len(report.fresh)
     print(
-        f"{report.total_emails} email(s) with action items; "
+        f"{report.total_emails} actionable email(s) with items "
+        f"({report.nonactionable_filtered} non-actionable filtered by triage); "
         f"{report.total_items} item(s), {len(report.fresh)} fresh "
         f"({already} already filed)."
     )

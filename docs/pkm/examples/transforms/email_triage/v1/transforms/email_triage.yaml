@@ -1,0 +1,19 @@
+name: email_triage
+version: "0.1.0"
+producer_class: pkm.transforms.email_triage.EmailTriageProducer
+model:
+  provider: ollama
+  model: "qwen2.5:7b-instruct"
+  inference_params:
+    temperature: 0.0
+prompt:
+  name: email_triage_v1
+  file: prompts/email_triage_v1.txt
+output_schema:
+  name: email_triage_v1
+  file: schemas/email_triage_v1.json
+# No policies: the Ollama backend is free, so the cost gate is moot.
+policies: []
+input:
+  producer: email
+  required_status: success

@@ -1,6 +1,6 @@
 # SPEC.md — technical specification
 
-Version: 0.9.1 (draft)
+Version: 0.10.0 (draft)
 Status: Phase 1 complete (extraction layer with content-addressed
 caching, chunking, and FTS keyword retrieval); Phase 1.5 OCR-PDF
 fallback applied to the live corpus; source paths are stored as
@@ -1464,8 +1464,38 @@ source *type* where practical. Per §12, the substrate *enables* chaining but th
 second-order transform only when a concrete consumer exists ("no abstraction before three
 implementations").
 
+### 18.8 The `email_triage` transform
+
+`email_triage` (`pkm.transforms.email_triage`, provider `ollama`, model `qwen2.5:7b-instruct`) is a
+**classifier**, not an extractor: it consumes an `email` artifact and emits `{format_version: 1,
+category, reason}`, where `category` is grammar-constrained to a fixed enum (`personal_work`,
+`transactional`, `automated_alert`, `newsletter_marketing`, `status_report`, `other`). It has no
+grounding step (§18.5 does not apply — it quotes nothing).
+
+It exists to give email→GTD precision by **composition** (§18.7), not by a bigger prompt:
+`email_triage` and `action_items` run over the same `email` artifacts independently, and the action
+faculty (in `life_agent`, out of scope here) files a task only for emails whose category is one the
+owner acts on. The split is deliberate — the local model only classifies into a closed set (which it
+does reliably *under grammar constraint*), while *which categories are actionable* is a deterministic
+policy in the consumer, tunable without re-running the model. Measured motivation: a single permissive
+extraction prompt mislabels automated digests and newsletters as tasks (a 37-row success report became
+37 grounded-but-useless "tasks"); routing those whole emails out by category is what the classifier
+buys, and it is orthogonal to the grounding gate (§18.5), which keeps preventing fabrication.
+
 ## 16. Change log
 
+- 0.10.0 (draft): §18.8 (new) — the `email_triage` transform. A grammar-constrained classifier
+  (`email` → one of six categories + a reason; no grounding) that gives email→GTD precision by
+  **composition** (§18.7) rather than a larger prompt: `email_triage` and `action_items` run
+  independently over `email` artifacts and the consumer files a task only for actionable categories
+  (`personal_work`/`transactional` by default — that policy lives in `life_agent`, tunable without
+  re-extraction). Third transform producer, so the explicit `make_producer` dispatch table (§18.2) is
+  now over three implementations — the §12 "no registry before three" bar is met. Motivated by
+  dogfooding: a single permissive `action_items` prompt over a real inbox mislabelled automated
+  digests/newsletters as tasks (a 37-row success report → 37 grounded-but-useless "tasks"); routing
+  whole non-actionable emails out by category fixes it while the grounding gate keeps doing its
+  orthogonal job. JSON artifact (`format_version`); no migration, no new dependency. Adds
+  `transforms/email_triage.py`, an example declaration, the dispatch entry, and tests.
 - 0.9.1 (draft): §18.1 — eligible inputs are now resolved **most-recent-first** (`ORDER BY
   produced_at DESC, input_hash`) instead of arbitrary hash order, so a bounded `--limit N` run takes
   the N newest artifacts (e.g. the most recent inbox emails) rather than a meaningless slice. Ordering

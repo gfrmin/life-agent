@@ -94,7 +94,9 @@ def test_dedup_tolerates_garbage_lines(tmp_path: Path) -> None:
 # --- end-to-end: seed catalogue → project → dedup ----------------------------
 
 
-def _seed_catalogue(root: Path, *, message_id: str, items: list[dict]) -> None:
+def _seed_catalogue(
+    root: Path, *, message_id: str, items: list[dict], triage_category: str | None = None,
+) -> None:
     for d in ("cache", "logs", "sources"):
         (root / d).mkdir(parents=True, exist_ok=True)
     run_migrations(root)
@@ -137,6 +139,25 @@ def _seed_catalogue(root: Path, *, message_id: str, items: list[dict]) -> None:
             ),
             lineage=[{"cache_key": email_ck, "role": "source_text"}],
         )
+        if triage_category is not None:
+            tri_content = json.dumps(
+                {"format_version": 1, "category": triage_category, "reason": "test"}
+            ).encode("utf-8")
+            tri_ck = compute_cache_key(
+                input_hash=hashlib.sha256(b"triage:" + email_bytes).hexdigest(),
+                producer_name="email_triage", producer_version="0.1.0", producer_config={},
+            )
+            write_artifact(
+                root, conn, cache_key=tri_ck,
+                input_hash=hashlib.sha256(b"triage:" + email_bytes).hexdigest(),
+                producer_name="email_triage", producer_version="0.1.0", producer_config={},
+                result=ProducerResult(
+                    status="success", content=tri_content,
+                    content_type="application/json", content_encoding="utf-8",
+                    error_message=None, producer_metadata={"completion": "complete"},
+                ),
+                lineage=[{"cache_key": email_ck, "role": "source_text"}],
+            )
 
 
 def test_read_action_items_traces_email_provenance(tmp_path: Path) -> None:
@@ -197,3 +218,41 @@ def test_project_files_then_dedup(tmp_path: Path) -> None:
     assert r2.filed == 0
     n2 = sqlite3.connect(db_path).execute("SELECT count(*) FROM tasks").fetchone()[0]
     assert n2 == 1  # idempotent — no new task
+
+
+# --- triage gate (SPEC §18.8): file only from actionable emails ---------------
+
+
+def test_project_filters_nonactionable_email_by_triage(tmp_path: Path) -> None:
+    root = tmp_path / "pkm"
+    _seed_catalogue(
+        root, message_id="<promo@example.com>",
+        items=[{"action_phrase": "Register now", "source_quote": "send the signed lease"}],
+        triage_category="newsletter_marketing",
+    )
+    ledger = tmp_path / "tasks" / "seen.jsonl"
+    db_path = tmp_path / "jarvis.db"
+    report = project_action_items(
+        root, db_path=db_path, user_id=7, ledger=ledger, notify=False,
+    )
+    assert report.nonactionable_filtered == 1
+    assert report.total_emails == 0
+    assert report.filed == 0
+    assert not db_path.exists()  # nothing filed
+
+
+def test_project_keeps_actionable_email_by_triage(tmp_path: Path) -> None:
+    root = tmp_path / "pkm"
+    _seed_catalogue(
+        root, message_id="<invoice@example.com>",
+        items=[{"action_phrase": "Pay the invoice", "source_quote": "send the signed lease"}],
+        triage_category="transactional",
+    )
+    ledger = tmp_path / "tasks" / "seen.jsonl"
+    db_path = tmp_path / "jarvis.db"
+    report = project_action_items(
+        root, db_path=db_path, user_id=7, ledger=ledger, notify=False,
+    )
+    assert report.nonactionable_filtered == 0
+    assert report.total_emails == 1
+    assert report.filed == 1

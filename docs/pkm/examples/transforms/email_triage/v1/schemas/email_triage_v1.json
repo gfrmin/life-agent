@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["format_version", "category", "reason"],
+  "properties": {
+    "format_version": {"const": 1},
+    "category": {
+      "type": "string",
+      "enum": [
+        "personal_work",
+        "transactional",
+        "automated_alert",
+        "newsletter_marketing",
+        "status_report",
+        "other"
+      ]
+    },
+    "reason": {"type": "string"}
+  }
+}

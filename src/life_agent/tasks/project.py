@@ -27,6 +27,17 @@ from life_agent.tasks.read import EmailActions, read_action_items
 
 logger = logging.getLogger(__name__)
 
+# Which email_triage categories (SPEC §18.8) become GTD tasks. This is the
+# deterministic actionability policy the SPEC says lives in the consumer, not
+# pkm — tune it here without re-running the model. An email with no triage
+# verdict (None) is included (fail-open): the gate only *excludes* emails
+# explicitly classified non-actionable.
+ACTIONABLE_CATEGORIES = frozenset({"personal_work", "transactional"})
+
+
+def _is_actionable(category: str | None) -> bool:
+    return category is None or category in ACTIONABLE_CATEGORIES
+
 
 @dataclass(frozen=True)
 class Candidate:
@@ -74,11 +85,12 @@ def to_candidates(emails: list[EmailActions]) -> list[Candidate]:
 class ProjectReport:
     """Outcome of a ``project_action_items`` run."""
 
-    total_emails: int
+    total_emails: int  # actionable emails with items (post triage gate)
     total_items: int
     fresh: list[Candidate]
     filed: int
     notified: bool
+    nonactionable_filtered: int = 0  # emails with items dropped by triage (§18.8)
 
 
 def _file_one(candidate: Candidate, *, user_id: int, db_path: Path) -> None:
@@ -134,7 +146,9 @@ def project_action_items(
     ``commit=False`` nothing is written — a dry run for inspecting the grounded
     candidates. ``user_id`` is only used when committing/notifying.
     """
-    emails = read_action_items(root, limit=limit, since=since)
+    all_emails = read_action_items(root, limit=limit, since=since)
+    emails = [ea for ea in all_emails if _is_actionable(ea.category)]
+    filtered = len(all_emails) - len(emails)
     candidates = to_candidates(emails)
     seen = dedup.load_seen(ledger)
     fresh = [c for c in candidates if c.dedup_key not in seen]
@@ -142,7 +156,7 @@ def project_action_items(
     if not commit or not fresh:
         return ProjectReport(
             total_emails=len(emails), total_items=len(candidates),
-            fresh=fresh, filed=0, notified=False,
+            fresh=fresh, filed=0, notified=False, nonactionable_filtered=filtered,
         )
 
     for c in fresh:
@@ -162,4 +176,5 @@ def project_action_items(
     return ProjectReport(
         total_emails=len(emails), total_items=len(candidates),
         fresh=fresh, filed=len(fresh), notified=notified,
+        nonactionable_filtered=filtered,
     )
