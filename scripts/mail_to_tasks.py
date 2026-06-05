@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
 """mail-to-tasks — file grounded email action items into the GTD inbox (M2).
 
-Reads cached ``action_items`` artifacts (pkm Phase 1), dedups by the source
-email's Message-ID via a process-once ledger, and — with ``--commit`` — files
-each into the in-tree jarvis GTD **inbox** with a ``[src:email <Message-ID>]``
-citation, then optionally pings Telegram.
+Reads cached ``action_items`` artifacts (pkm Phase 1) and files each fresh,
+grounded item into the in-tree jarvis GTD **inbox** with a
+``[src:email <Message-ID>]`` citation (process-once via a ledger), then
+optionally pings Telegram. The grounded extraction is the safety gate; the human
+triages in the Telegram bot.
 
-**Dry-run by default** — prints each fresh candidate with its verbatim quote and
-citation, and writes nothing. Scope with ``--limit`` / ``--since``; ``--extract``
-first runs the pkm transform over emails (the local-model cost step).
+The work lives in ``life_agent.tasks.project.project_action_items`` — this script
+is just the CLI/timer entrypoint. **Dry-run by default** (prints each grounded
+candidate, writes nothing); ``--commit`` files them. ``--extract`` first runs the
+pkm transform over emails (the local-model cost step). Scope with
+``--limit`` / ``--since``.
 
 Run (from the repo root):
     uv run --project . python scripts/mail_to_tasks.py            # dry run
@@ -26,9 +29,8 @@ from datetime import datetime
 from pathlib import Path
 
 import life_agent.core as C
-from life_agent.tasks import dedup, notify, store
-from life_agent.tasks.policy import Candidate, to_candidates
-from life_agent.tasks.read import pkm_root, read_action_items
+from life_agent.tasks.project import Candidate, project_action_items
+from life_agent.tasks.read import pkm_root
 
 
 def _resolve_user_id(db_path: Path) -> int:
@@ -83,37 +85,37 @@ def main() -> int:
 
     root = pkm_root()
     since = datetime.fromisoformat(args.since) if args.since else None
-    emails = read_action_items(root, limit=args.limit, since=since)
-    candidates = to_candidates(emails)
+    user_id = _resolve_user_id(C.JARVIS_DB_PATH) if args.commit else 0
 
-    seen = dedup.load_seen(C.TASKS_LEDGER)
-    fresh = [c for c in candidates if c.dedup_key not in seen]
-
-    print(
-        f"{len(emails)} email(s) with action items; {len(candidates)} item(s), "
-        f"{len(fresh)} fresh ({len(candidates) - len(fresh)} already filed)."
+    report = project_action_items(
+        root,
+        db_path=C.JARVIS_DB_PATH,
+        user_id=user_id,
+        ledger=C.TASKS_LEDGER,
+        commit=args.commit,
+        notify=not args.no_notify,
+        limit=args.limit,
+        since=since,
     )
-    for c in fresh:
+
+    already = report.total_items - len(report.fresh)
+    print(
+        f"{report.total_emails} email(s) with action items; "
+        f"{report.total_items} item(s), {len(report.fresh)} fresh "
+        f"({already} already filed)."
+    )
+    for c in report.fresh:
         _print_candidate(c)
 
-    if not fresh:
+    if not report.fresh:
         print("\nNothing to file.")
         return 0
     if not args.commit:
         print("\nDRY RUN — nothing written. Re-run with --commit to file these to your GTD inbox.")
         return 0
 
-    user_id = _resolve_user_id(C.JARVIS_DB_PATH)
-    filed: list[dict[str, str]] = []
-    for c in fresh:
-        store.add_to_inbox(c, user_id=user_id, db_path=C.JARVIS_DB_PATH)
-        filed.append({"dedup_key": c.dedup_key, "message_id": c.message_id})
-    dedup.append_seen(C.TASKS_LEDGER, filed)
-    print(f"\nFiled {len(filed)} task(s) to the GTD inbox; ledger updated.")
-
-    if not args.no_notify and notify.maybe_notify(
-        f"📥 Added {len(filed)} task(s) to your GTD inbox from email.", chat_id=user_id,
-    ):
+    print(f"\nFiled {report.filed} task(s) to the GTD inbox; ledger updated.")
+    if report.notified:
         print("Telegram nudge sent.")
     return 0
 

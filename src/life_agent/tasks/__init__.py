@@ -1,8 +1,9 @@
 """life_agent.tasks — the action faculty: email → grounded GTD tasks (M2).
 
-Reads cached ``action_items`` artifacts from the pkm catalogue (Phase 1), applies
-GTD policy (everything → inbox, never auto-schedule), dedups by the source email's
-Message-ID via a process-once ledger, and files each into the in-tree jarvis GTD
-store with a ``[src:email <Message-ID>]`` citation. No cache, no pkm changes — the
-churn lives here, the grounded extraction lives in pkm.
+A thin **projection** of pkm's grounded extraction into the mutable GTD store:
+``read.py`` queries cached ``action_items`` artifacts and traces each to its
+email (Message-ID), and ``project.py`` files every not-yet-seen item once into
+the in-tree jarvis inbox with a ``[src:email <Message-ID>]`` citation
+(process-once via ``dedup.py``). No cache, no pkm changes — the grounded
+extraction lives in pkm; only the immutable→mutable bridge lives here.
 """

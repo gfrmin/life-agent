@@ -13,8 +13,8 @@ import json
 import sqlite3
 from pathlib import Path
 
-from life_agent.tasks import dedup, store
-from life_agent.tasks.policy import to_candidates
+from life_agent.tasks import dedup
+from life_agent.tasks.project import project_action_items, to_candidates
 from life_agent.tasks.read import EmailActions, read_action_items
 from pkm.cache import write_artifact
 from pkm.catalogue import open_catalogue, run_migrations
@@ -91,29 +91,7 @@ def test_dedup_tolerates_garbage_lines(tmp_path: Path) -> None:
     assert dedup.load_seen(ledger) == {"ok#0"}
 
 
-# --- the jarvis write seam ----------------------------------------------------
-
-
-def test_add_to_inbox_writes_one_row_with_citation(tmp_path: Path) -> None:
-    db_path = tmp_path / "jarvis.db"
-    from jarvis import db
-
-    db.DB_PATH = db_path
-    db.init_db()
-    ea = _email_actions(
-        "<m@x>",
-        [{"action_phrase": "Call the city office", "source_quote": "call the city office"}],
-    )
-    (c,) = to_candidates([ea])
-    reply = store.add_to_inbox(c, user_id=99, db_path=db_path)
-    assert "Added" in reply
-    rows = sqlite3.connect(db_path).execute(
-        "SELECT user_id, text, list FROM tasks"
-    ).fetchall()
-    assert rows == [(99, "Call the city office [src:email <m@x>]", "inbox")]
-
-
-# --- end-to-end: seed catalogue → read → file → dedup -------------------------
+# --- end-to-end: seed catalogue → project → dedup ----------------------------
 
 
 def _seed_catalogue(root: Path, *, message_id: str, items: list[dict]) -> None:
@@ -174,7 +152,7 @@ def test_read_action_items_traces_email_provenance(tmp_path: Path) -> None:
     assert emails[0].items[0]["action_phrase"] == "Send the lease"
 
 
-def test_end_to_end_file_then_dedup(tmp_path: Path, monkeypatch) -> None:
+def test_project_dry_run_writes_nothing(tmp_path: Path) -> None:
     root = tmp_path / "pkm"
     _seed_catalogue(
         root, message_id="<lease-7@example.com>",
@@ -182,29 +160,40 @@ def test_end_to_end_file_then_dedup(tmp_path: Path, monkeypatch) -> None:
     )
     ledger = tmp_path / "tasks" / "seen.jsonl"
     db_path = tmp_path / "jarvis.db"
-    from jarvis import db
 
-    db.DB_PATH = db_path
-    db.init_db()
-
-    # First pass: one fresh candidate → file it → ledger records it.
-    cands = to_candidates(read_action_items(root))
-    seen = dedup.load_seen(ledger)
-    fresh = [c for c in cands if c.dedup_key not in seen]
-    assert len(fresh) == 1
-    for c in fresh:
-        store.add_to_inbox(c, user_id=7, db_path=db_path)
-    dedup.append_seen(
-        ledger, [{"dedup_key": c.dedup_key, "message_id": c.message_id} for c in fresh]
+    report = project_action_items(
+        root, db_path=db_path, user_id=7, ledger=ledger, commit=False, notify=False,
     )
+    assert len(report.fresh) == 1
+    assert report.filed == 0
+    assert not ledger.exists()   # nothing recorded
+    assert not db_path.exists()  # no store written
 
-    n_after_first = sqlite3.connect(db_path).execute("SELECT count(*) FROM tasks").fetchone()[0]
-    assert n_after_first == 1
 
-    # Second pass: same artifacts → zero fresh (process-once).
-    cands2 = to_candidates(read_action_items(root))
-    seen2 = dedup.load_seen(ledger)
-    fresh2 = [c for c in cands2 if c.dedup_key not in seen2]
-    assert fresh2 == []
-    n_after_second = sqlite3.connect(db_path).execute("SELECT count(*) FROM tasks").fetchone()[0]
-    assert n_after_second == 1  # idempotent — no new task
+def test_project_files_then_dedup(tmp_path: Path) -> None:
+    root = tmp_path / "pkm"
+    _seed_catalogue(
+        root, message_id="<lease-7@example.com>",
+        items=[{"action_phrase": "Send the lease", "source_quote": "send the signed lease"}],
+    )
+    ledger = tmp_path / "tasks" / "seen.jsonl"
+    db_path = tmp_path / "jarvis.db"
+
+    # First pass: one fresh candidate → filed with its citation → ledger records it.
+    r1 = project_action_items(
+        root, db_path=db_path, user_id=7, ledger=ledger, notify=False,
+    )
+    assert r1.filed == 1
+    rows = sqlite3.connect(db_path).execute(
+        "SELECT user_id, text, list FROM tasks"
+    ).fetchall()
+    assert rows == [(7, "Send the lease [src:email <lease-7@example.com>]", "inbox")]
+
+    # Second pass: same artifacts → zero fresh (process-once), no new row.
+    r2 = project_action_items(
+        root, db_path=db_path, user_id=7, ledger=ledger, notify=False,
+    )
+    assert r2.fresh == []
+    assert r2.filed == 0
+    n2 = sqlite3.connect(db_path).execute("SELECT count(*) FROM tasks").fetchone()[0]
+    assert n2 == 1  # idempotent — no new task
