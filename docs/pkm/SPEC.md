@@ -1,6 +1,6 @@
 # SPEC.md — technical specification
 
-Version: 0.8.0 (draft)
+Version: 0.9.0 (draft)
 Status: Phase 1 complete (extraction layer with content-addressed
 caching, chunking, and FTS keyword retrieval); Phase 1.5 OCR-PDF
 fallback applied to the live corpus; source paths are stored as
@@ -10,8 +10,9 @@ personal data out of this public repo (§14.9); a read-only MCP
 query surface exposes FTS retrieval over stdio (§17); the Phase 2
 **transform** layer is specified (§18) — LLM/local-model perspectives
 over artifacts, with a grounding contract, incl. the `action_items`
-transform behind email→GTD. This spec is the contract. Changes require
-a separate commit with justification.
+transform behind email→GTD; v0.9.0 makes transforms **composable** —
+a transform's output may be another transform's input (§18.7). This spec
+is the contract. Changes require a separate commit with justification.
 
 This spec is intentionally strict. See §14 for the principles of
 first-principles debuggability that govern every decision below.
@@ -20,11 +21,11 @@ first-principles debuggability that govern every decision below.
 
 This document specifies the foundation layer: content-addressed cache,
 catalogue, canonicalisation rules, and the extraction pipeline that
-runs over raw documents. As of v0.8.0 it also specifies the Phase 2
+runs over raw documents. As of v0.9.0 it also specifies the Phase 2
 **transform** layer (§18) — derived perspectives over artifacts, via
-cloud or local models, under a grounding contract. Query planning and
-higher-layer concerns still live in later spec versions once these are
-stable.
+cloud or local models, under a grounding contract, composed into chains
+(§18.7). Query planning and higher-layer concerns still live in later
+spec versions once these are stable.
 
 ## 2. Core concepts
 
@@ -1365,9 +1366,9 @@ at the contract level the existing substrate (`transform.py`, `transform_run.py`
 
 A transform obeys the §7.1 producer contract: `produce()` never raises, returns
 `status="success"|"failed"`, and is keyed in the content-addressed cache. Its *input* is the
-content of an upstream artifact selected by `input.producer` (e.g. `pandoc`, `email`); a transform
-runs only over sources that have a successful upstream artifact
-(`transform_run._find_eligible_sources`).
+content of an upstream artifact selected by `input.producer` — a Phase-1 extractor (e.g. `pandoc`,
+`email`) or **another transform** (§18.7); a transform runs over every artifact of that producer
+with the required status (`transform_run._find_eligible_sources`).
 
 ### 18.2 Declaration
 
@@ -1405,8 +1406,9 @@ A transform artifact's cache key is `compute_cache_key(..., schema_version=3)`, 
 (SHA-256 of the *template*, not the rendered prompt), and `output_schema`. Because the key is over
 the template and the *input artifact content*, re-running a transform over an unchanged source is a
 cache hit — extraction cost is paid once per (source, declaration); a second run writes nothing
-(§6.2). Lineage (`artifact_lineage`, migration 0003) records `(transform_artifact, source_artifact,
-role="source_text")` so a consumer can trace a derived fact back to the exact upstream artifact.
+(§6.2). Lineage (`artifact_lineage`, migration 0003) records `(transform_artifact, input_artifact,
+role)` — where `role` is the declaration's `input.role` (default `source_text`) — so a consumer can
+trace a derived fact back to the exact upstream artifact, across a chain (§18.7).
 
 ### 18.5 Grounding contract
 
@@ -1436,8 +1438,47 @@ containment. It powers email→GTD: the action faculty (out of scope here, in `l
 these artifacts, dedups by the source email's Message-ID, and files each as a task citing the
 source. The transform is a pure perspective — it has no knowledge of tasks.
 
+### 18.7 Composition (chaining)
+
+Transforms compose. `input.producer` may name **another transform**, not only a Phase-1 extractor:
+a transform's output artifact is itself a valid input, so derivations chain — `email → action_items
+→ …`. Eligible inputs are therefore resolved over the `artifacts` table by `(producer_name, status)`,
+left-joined to `sources` (`transform_run._find_eligible_sources`). A primary-producer input still
+carries its source identity (id, path, tags); a transform-output input has no `sources` row, so its
+source-derived fields are empty and its identity falls back to its own artifact `cache_key`. Each
+chain edge is recorded in `artifact_lineage` with the declaration's `input.role` (§18.4), so a
+multi-step derivation is traceable end to end with `duckdb`/`jq` (§14.1–§14.2).
+
+A transform reads exactly **one** upstream artifact's content (single-input). Reading an *ancestor*
+beyond the immediate input — e.g. a grounding step that needs the original source two hops up —
+requires lineage-aware producers and is **out of scope** for this version, deferred until a concrete
+need (§12).
+
+**Design rules (composition discipline).** Prefer many small, generic, single-purpose transforms,
+chained, over one monolithic transform: each step is then independently cached, inspectable, and
+idempotent, so its correctness can be audited in isolation. A transform should be small (one model
+call or one deterministic op) and generic over a content *shape* (text, quoted spans) rather than a
+source *type* where practical. Per §12, the substrate *enables* chaining but the project adds a
+second-order transform only when a concrete consumer exists ("no abstraction before three
+implementations").
+
 ## 16. Change log
 
+- 0.9.0 (draft): §18.7 (new) — *transform composition (chaining)*. Makes the transform substrate
+  honestly compose: `input.producer` may name another transform, so derivations chain
+  (`email → action_items → …`). Eligible inputs are resolved over the `artifacts` table left-joined
+  to `sources` (`_find_eligible_sources`), so a transform-output input — which has no `sources` row —
+  is no longer silently dropped by the previous source-anchored inner join; source-derived fields
+  (path, tags) are empty for such inputs and identity falls back to the input artifact's `cache_key`.
+  The lineage edge `role` is now taken from the declaration's `input.role` (default `source_text`,
+  §18.4) instead of a hard-wired constant, so distinct chain edges are labelled. Closes a gap between
+  the stated model (§18.1, "input is another producer's artifact") and the code. **No** cache-key
+  change (the resolver is not in the key), no migration, no new dependency; existing single-hop
+  transforms (email→action_items) resolve identically — for a primary producer `input_hash ==
+  source_id`, so the left join ⊇ the prior inner join returns the same rows. Adds the composition
+  design rules (small, generic, chained — auditable). Affects: `transform_run.py` (resolver + lineage
+  role), `transform_declaration.py` (new `input_role` field), `tests/pkm/test_transform_chaining.py`
+  (new). The landed `action_items`/`entity_extraction` transforms and their artifacts are unchanged.
 - 0.8.0 (draft): §18 (new) — *Transforms (Phase 2)*. Brings the LLM/local-model transform layer into
   scope (deferred by §1 through v0.7.0; the substrate — `transform.py`, `transform_run.py`,
   `transform_declaration.py`, migration 0003, `entity_extraction` — already existed in-tree against the

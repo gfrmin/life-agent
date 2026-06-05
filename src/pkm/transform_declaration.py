@@ -41,6 +41,10 @@ class TransformDeclaration:
     input_producer: str | None
     input_required_status: str
     declaration_hash: str
+    # The lineage edge role for this transform's input (§18.4/§18.7). Default
+    # ``source_text`` keeps single-hop transforms (e.g. email→action_items)
+    # unchanged; a chained transform may label its edge (e.g. ``extracted_actions``).
+    input_role: str = "source_text"
 
 
 def load_transform_declaration(
@@ -86,4 +90,5 @@ def load_transform_declaration(
         input_producer=input_cfg.get("producer"),
         input_required_status=input_cfg.get("required_status", "success"),
         declaration_hash=declaration_hash,
+        input_role=input_cfg.get("role", "source_text"),
     )

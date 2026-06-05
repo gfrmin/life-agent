@@ -59,6 +59,11 @@ class TransformRunResult:
 
 @dataclass(frozen=True)
 class _EligibleSource:
+    # ``source_id``/``current_path``/``tags`` carry the upstream's source
+    # identity when the input is a primary-producer artifact. For a chained
+    # input (another transform's output, §18.7) there is no source row, so
+    # ``source_id`` falls back to the input artifact's ``cache_key``,
+    # ``current_path`` is empty, and ``tags`` is empty.
     source_id: str
     current_path: str
     tags: frozenset[str]
@@ -158,34 +163,42 @@ def _find_eligible_sources(
     conn: duckdb.DuckDBPyConnection,
     decl: TransformDeclaration,
 ) -> list[_EligibleSource]:
-    """Find sources with a successful extractor artifact matching
-    the declaration's ``input_producer``.
+    """Find artifacts of the declaration's ``input_producer`` to transform.
+
+    Resolved over the ``artifacts`` table (by producer + status), left-joined
+    to ``sources`` (§18.7): a primary-producer input keeps its source identity,
+    while a chained input — another transform's output, which has no ``sources``
+    row — is no longer dropped (the previous inner join silently did so). For a
+    chained input, source-derived fields fall back to the input artifact itself.
     """
     if decl.input_producer is None:
         return []
 
     rows = conn.execute(
-        "SELECT s.source_id, s.current_path, a.cache_key "
-        "FROM sources s "
-        "JOIN artifacts a ON a.input_hash = s.source_id "
+        "SELECT a.cache_key, a.input_hash, s.source_id, s.current_path "
+        "FROM artifacts a "
+        "LEFT JOIN sources s ON s.source_id = a.input_hash "
         "WHERE a.producer_name = ? AND a.status = ? "
-        "ORDER BY s.source_id",
+        "ORDER BY a.input_hash",
         [decl.input_producer, decl.input_required_status],
     ).fetchall()
 
     result: list[_EligibleSource] = []
-    for source_id, current_path, extractor_ck in rows:
-        tag_rows = conn.execute(
-            "SELECT tag FROM source_tags WHERE source_id = ?",
-            [source_id],
-        ).fetchall()
-        tags = frozenset(r[0] for r in tag_rows)
+    for cache_key, _input_hash, source_id, current_path in rows:
+        if source_id is not None:
+            tag_rows = conn.execute(
+                "SELECT tag FROM source_tags WHERE source_id = ?",
+                [source_id],
+            ).fetchall()
+            tags = frozenset(r[0] for r in tag_rows)
+        else:
+            tags = frozenset()
         result.append(
             _EligibleSource(
-                source_id=source_id,
-                current_path=current_path,
+                source_id=source_id if source_id is not None else cache_key,
+                current_path=current_path if current_path is not None else "",
                 tags=tags,
-                extractor_cache_key=extractor_ck,
+                extractor_cache_key=cache_key,
             )
         )
     return result
@@ -317,7 +330,7 @@ def _execute_run(
             )
 
             lineage = [
-                {"cache_key": src.extractor_cache_key, "role": "source_text"},
+                {"cache_key": src.extractor_cache_key, "role": decl.input_role},
             ]
 
             outcome = write_artifact(
