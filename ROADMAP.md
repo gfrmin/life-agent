@@ -39,7 +39,7 @@ don't rebuild: ~90% already exists in the owner's repos.
 |---|---|---|
 | **Memory** — recall + retrieval | **PKM** (`src/pkm`, Python) + **`life_agent`** (this repo, Python) | **Live.** PKM: content-addressed extraction + DuckDB `fts`/`vss`. `life_agent` adds the retrieval/synthesis read path (`scripts/ask.py`, dogfooded via `bin/ask-live`). |
 | **Brain** — beliefs under uncertainty; value-of-information → ask/proceed/block | **credence** (`../credence/apps/credence-pi`, Julia posterior) | Not wired. *The confidence-gated autonomy* — the core of "maximise expected utility". |
-| **Hands** — capabilities/actions | MCP / HTTP servers: **Jarvis** (tasks, exists, 13 tools, `user_id 12365873`), email (`msmtp`/JMAP), calendar (CalDAV/Google), chat (matrix) | Not wired. |
+| **Hands** — capabilities/actions | **Jarvis** (tasks — now in-tree `src/jarvis`, reached in-process; `JARVIS_USER_ID` from env), email (`msmtp`/JMAP), calendar (CalDAV/Google), chat (matrix) | Jarvis store live; email→GTD landing (M2). Rest not wired. |
 | **Goals / Utility** — what the owner values | *(new, unbuilt)* | **The hardest missing piece.** EU-maximisation presupposes it; owed a design before any autonomous *action*. |
 | **Spine** — the agent loop + routing | **TBD — open decision** | Deferred to Phase 2. Candidates: pi-mono (TS, open/extensible — the original pick), a Python loop, or Claude Code as an interim loop. |
 
@@ -139,7 +139,7 @@ then the 661 GB encrypted `more/` (needs keys).
   `src/pkm/{chunking,embeddings,retrieval,mcp_server}.py(new)`, `cli.py`, `routing.py`, `extract.py`.
 - **credence-pi:** `bdsl/capabilities.bdsl` (gate new capabilities), `extension/src/index.ts`,
   `daemon/server.jl`.
-- **jarvis-lite:** `mcp_server.py` (exists).
+- **jarvis (in-tree):** `src/jarvis/db.py` (GTD store), `bot.py` / `digest.py` (Telegram).
 
 ## Verification
 - **Phase 0:** ask ~20 real questions to the wiki; record hit-rate + failure list (`$LIFE_AGENT_KB/FAILURES.md`).

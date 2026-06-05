@@ -37,6 +37,7 @@ dependencies = [
 
 [project.scripts]
 pkm = "pkm.cli:main"
+jarvis-bot = "jarvis.bot:main"
 
 [dependency-groups]
 dev = [
@@ -53,7 +54,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/pkm", "src/life_agent"]
+packages = ["src/pkm", "src/life_agent", "src/jarvis"]
 
 [tool.ruff]
 # pkm holds to 88; life_agent code is ~100 wide. 100 satisfies both (pkm's longest line is 84).
@@ -65,7 +66,14 @@ select = ["E", "F", "W", "I", "N", "UP", "B", "SIM", "RUF"]
 ignore = ["N812"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["life_agent", "pkm"]
+known-first-party = ["life_agent", "jarvis", "pkm"]
+
+[tool.ruff.lint.per-file-ignores]
+# Vendored jarvis modules: long SQL strings (db/digest) and the bot's LLM system
+# prompt read more clearly on one line than wrapped — no E501 churn on working code.
+"src/jarvis/db.py" = ["E501"]
+"src/jarvis/digest.py" = ["E501"]
+"src/jarvis/bot.py" = ["E501"]
 
 [tool.mypy]
 # pkm's strict type gate is preserved; life_agent is not yet under strict mypy (future).

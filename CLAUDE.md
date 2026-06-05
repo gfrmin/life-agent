@@ -30,6 +30,13 @@ repos below already does it.
 > **polyglot — each faculty in its best language, integrated over language-neutral seams (MCP / HTTP
 > / CLI)**, rather than one TS app. See `ROADMAP.md` → Architecture + Open decisions. The text below
 > describes where this is *heading* and the building blocks to reuse.
+>
+> **Update (2026-06): jarvis-lite is now absorbed in-tree as `src/jarvis`** (the GTD "hands"), reached
+> **in-process** (`from jarvis import db`) — its standalone repo is archived and its MCP server dropped
+> (re-addable from history if a cross-language spine ever needs it). The **action faculty** is landing:
+> a pkm `action_items` transform (local Ollama, grounded quotes) + `src/life_agent/tasks/` turn email
+> into cited GTD tasks. So three in-tree Python packages now: `pkm` (memory), `life_agent` (reason +
+> act), `jarvis` (tasks).
 
 `life-agent` is intended to be a **pi-mono (TypeScript) application** — the spine. It **imports**
 `pi-agent-core` and loads the **credence-pi** governor (same language); it **composes** the
@@ -44,7 +51,7 @@ side** of this repo imports `pkm` directly for batch ingestion.
             └───────────────┬───────────────┬───────────────┬───────────────┬────────────┘
                             │               │               │               │
                       pkm-memory        jarvis           email           calendar     ← MCP servers
-                      (pkm, new)      (jarvis-lite)    (msmtp/JMAP)   (CalDAV/Google)
+                      (pkm, new)      (src/jarvis)     (msmtp/JMAP)   (CalDAV/Google)
                             │
                    PKM content-addressed cache + DuckDB catalogue (the memory)
 ```
@@ -95,13 +102,15 @@ posterior (BDSL programs in `bdsl/{capabilities,features,prior,kernel,decide}.bd
 - **No native MCP** (by design). To use MCP servers, **write an extension that is an MCP client and
   wraps each MCP tool as a `ToolDefinition`** — this is the MCP-bridge we build in this repo.
 
-### `../jarvis-lite` — tasks (Python, SQLite, FastMCP)
-- `mcp_server.py` exposes **13 MCP tools**: `add_task`, `complete_task`, `delete_task`, `move_task`,
-  `mark_today`, `clear_today`, `get_tasks`, `get_today_tasks`, `get_tasks_by_tag`,
-  `get_tasks_due_today`, `get_overdue_tasks`, `get_task_counts`, `get_completed_this_week`.
-- DB: `jarvis.db`. GTD lists: inbox/next/scheduled/someday; `@tags`; `is_today` focus flag.
-- **`user_id` for this owner is `12365873`** — pass it to every call. Runs as `systemd --user jarvis.service`.
-- Pattern to mirror for `pkm-memory`: FastMCP, thin tool wrappers, `mcp.run(transport="stdio")`.
+### `src/jarvis` (now in-tree) — tasks, the "hands" (Python, SQLite, Telegram)
+Absorbed from the former `gfrmin/jarvis-lite` (archived); jarvis stays standalone (does **not** import
+`life_agent`). A single-user GTD store reached **in-process** — **no MCP server**.
+- **Write seam:** `from jarvis import db` → `db.add_task(user_id, text, list_name="inbox", …)` and the
+  other functions in `src/jarvis/db.py` (lists inbox/next/scheduled/someday; `@tags`; `is_today` focus).
+- **DB:** `JARVIS_DB_PATH` (default `$LIFE_AGENT_KB/jarvis/jarvis.db`, outside the repo).
+- **Telegram reach:** `src/jarvis/bot.py` (inbound NLU via a local Ollama model) + `src/jarvis/digest.py`
+  (outbound). Runs as `systemd --user jarvis.service` via `python -m jarvis.bot`.
+- **Owner's Telegram id:** `JARVIS_USER_ID` (env / gnome-keyring) — never hard-code it.
 
 ## Conventions & constraints
 - **Functional style preferred.** Small, single-purpose units with clear interfaces.
