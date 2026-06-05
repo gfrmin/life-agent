@@ -38,3 +38,20 @@ def test_eval_log_write_target_is_under_the_kb_not_the_repo(monkeypatch, tmp_pat
     monkeypatch.setenv("LIFE_AGENT_KB", str(tmp_path))
     out = run_eval._kb_root() / "eval/eval_log.md"
     assert _outside_repo(out)
+
+
+def test_jarvis_db_and_tasks_ledger_are_outside_the_repo(monkeypatch, tmp_path) -> None:
+    # The M2 action faculty writes the GTD db + the dedup ledger under $LIFE_AGENT_KB,
+    # never into the public repo tree.
+    import importlib
+
+    monkeypatch.setenv("LIFE_AGENT_KB", str(tmp_path))
+    monkeypatch.delenv("JARVIS_DB_PATH", raising=False)
+    import life_agent.core.config as cfg
+
+    importlib.reload(cfg)
+    try:
+        assert _outside_repo(cfg.JARVIS_DB_PATH)
+        assert _outside_repo(cfg.TASKS_LEDGER)
+    finally:
+        importlib.reload(cfg)  # restore module-level paths for other tests

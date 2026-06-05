@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# mail-to-tasks — turn cached email action items into GTD inbox tasks (M2).
+# Sources .env (LIFE_AGENT_KB / PKM_CONFIG / JARVIS_*), then runs the CLI in
+# life-agent's env (pkm + jarvis are in-tree packages).
+#   mail-to-tasks                      # dry run — list grounded candidates
+#   mail-to-tasks --commit             # file them to the jarvis GTD inbox
+#   mail-to-tasks --extract --limit 50 # extract over recent emails first, then list
+set -euo pipefail
+root="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+set -a; [ -f "$root/.env" ] && source "$root/.env"; set +a
+exec uv run --project "$root" python "$root/scripts/mail_to_tasks.py" "$@"
