@@ -56,14 +56,23 @@ def _resolve_user_id(db_path: Path) -> int:
 
 
 def _run_extract(limit: int | None) -> None:
+    # `--config` is a global pkm arg (before the subcommand); `--limit` is a
+    # `transform run` arg (after the name). Order matters.
     cmd = [
-        sys.executable, "-m", "pkm", "transform", "run", "action_items",
-        "--config", str(C.PKM_CONFIG),
+        sys.executable, "-m", "pkm", "--config", str(C.PKM_CONFIG),
+        "transform", "run", "action_items",
     ]
     if limit is not None:
         cmd += ["--limit", str(limit)]
     print(f"→ extracting action items: {' '.join(cmd[2:])}")
-    subprocess.run(cmd, check=False)
+    proc = subprocess.run(cmd, check=False)
+    if proc.returncode != 0:
+        # Don't crash — projection of already-cached artifacts can still run —
+        # but never let the timer silently extract nothing.
+        print(
+            f"⚠ extraction exited {proc.returncode}; projecting already-cached artifacts only",
+            file=sys.stderr,
+        )
 
 
 def _print_candidate(c: Candidate) -> None:
