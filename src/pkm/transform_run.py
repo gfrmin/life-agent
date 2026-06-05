@@ -170,6 +170,10 @@ def _find_eligible_sources(
     while a chained input — another transform's output, which has no ``sources``
     row — is no longer dropped (the previous inner join silently did so). For a
     chained input, source-derived fields fall back to the input artifact itself.
+
+    Ordered **most-recent-first** (``produced_at DESC``, ``input_hash`` as a
+    deterministic tiebreak), so a bounded ``--limit N`` run takes the N newest
+    artifacts (e.g. the most recent inbox emails), not an arbitrary slice (§18.1).
     """
     if decl.input_producer is None:
         return []
@@ -179,7 +183,7 @@ def _find_eligible_sources(
         "FROM artifacts a "
         "LEFT JOIN sources s ON s.source_id = a.input_hash "
         "WHERE a.producer_name = ? AND a.status = ? "
-        "ORDER BY a.input_hash",
+        "ORDER BY a.produced_at DESC, a.input_hash",
         [decl.input_producer, decl.input_required_status],
     ).fetchall()
 

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -285,3 +286,46 @@ def test_find_eligible_sources_primary_unchanged_and_transform_input(
     assert c.source_id == ai_ck
     assert c.current_path == ""
     assert c.tags == frozenset()
+
+
+def test_eligible_sources_ordered_most_recent_first(migrated_root: Path) -> None:
+    """`--limit N` must take the N newest artifacts, so eligibility is ordered
+    `produced_at DESC` (§18.1). produced_at is set explicitly here — no reliance
+    on write timing — so the assertion is deterministic."""
+    root = migrated_root
+    (root / "sources").mkdir(parents=True, exist_ok=True)
+    cks: dict[str, str] = {}
+    with open_catalogue(root) as conn:
+        for tag, body in (("old", b"older email body"), ("new", b"newer email body")):
+            sid = hashlib.sha256(body).hexdigest()
+            conn.execute(
+                "INSERT OR IGNORE INTO sources "
+                "(source_id, current_path, first_seen, last_seen, size_bytes) "
+                "VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?)",
+                [sid, str(root / "sources" / f"{tag}.eml"), len(body)],
+            )
+            ck = compute_cache_key(
+                input_hash=sid, producer_name="email",
+                producer_version="1", producer_config={},
+            )
+            write_artifact(
+                root, conn, cache_key=ck, input_hash=sid, producer_name="email",
+                producer_version="1", producer_config={},
+                result=ProducerResult(
+                    status="success", content=body, content_type="text/plain",
+                    content_encoding="utf-8", error_message=None,
+                    producer_metadata={"completion": "complete"},
+                ),
+            )
+            cks[tag] = ck
+        conn.execute(
+            "UPDATE artifacts SET produced_at = ? WHERE cache_key = ?",
+            [datetime(2026, 1, 1, 0, 0, 0), cks["old"]],
+        )
+        conn.execute(
+            "UPDATE artifacts SET produced_at = ? WHERE cache_key = ?",
+            [datetime(2026, 6, 1, 0, 0, 0), cks["new"]],
+        )
+        eligible = _find_eligible_sources(conn, _decl(producer="email"))
+
+    assert [e.extractor_cache_key for e in eligible] == [cks["new"], cks["old"]]

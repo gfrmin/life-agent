@@ -1,6 +1,6 @@
 # SPEC.md — technical specification
 
-Version: 0.9.0 (draft)
+Version: 0.9.1 (draft)
 Status: Phase 1 complete (extraction layer with content-addressed
 caching, chunking, and FTS keyword retrieval); Phase 1.5 OCR-PDF
 fallback applied to the live corpus; source paths are stored as
@@ -1368,7 +1368,9 @@ A transform obeys the §7.1 producer contract: `produce()` never raises, returns
 `status="success"|"failed"`, and is keyed in the content-addressed cache. Its *input* is the
 content of an upstream artifact selected by `input.producer` — a Phase-1 extractor (e.g. `pandoc`,
 `email`) or **another transform** (§18.7); a transform runs over every artifact of that producer
-with the required status (`transform_run._find_eligible_sources`).
+with the required status (`transform_run._find_eligible_sources`), **processed most-recent-first**
+(by `produced_at`, `input_hash` as a deterministic tiebreak) so a bounded run (`--limit N`) takes the
+N newest artifacts, not an arbitrary slice.
 
 ### 18.2 Declaration
 
@@ -1464,6 +1466,10 @@ implementations").
 
 ## 16. Change log
 
+- 0.9.1 (draft): §18.1 — eligible inputs are now resolved **most-recent-first** (`ORDER BY
+  produced_at DESC, input_hash`) instead of arbitrary hash order, so a bounded `--limit N` run takes
+  the N newest artifacts (e.g. the most recent inbox emails) rather than a meaningless slice. Ordering
+  only; no cache-key change, no migration, no signature change. `transform_run._find_eligible_sources`.
 - 0.9.0 (draft): §18.7 (new) — *transform composition (chaining)*. Makes the transform substrate
   honestly compose: `input.producer` may name another transform, so derivations chain
   (`email → action_items → …`). Eligible inputs are resolved over the `artifacts` table left-joined
