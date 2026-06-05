@@ -86,8 +86,12 @@ testpaths = ["tests"]
 # importlib mode: two packages' test trees coexist under tests/ (life_agent at top,
 # pkm under tests/pkm/) without sys.path collisions — e.g. the real `pkm` package isn't
 # shadowed by tests/pkm/, and the two test_pii_guard.py files don't clash.
-addopts = "-m 'not llm' --import-mode=importlib"
+# Both `llm` and `system` are skipped by default: they make live LLM calls or run
+# heavy ML producers (docling/tesseract) whose output is not byte-stable, so they
+# are non-deterministic by nature and must not pollute the default signal. Run them
+# explicitly when the runtime is present: `pytest -m system` / `pytest -m llm`.
+addopts = "-m 'not llm and not system' --import-mode=importlib"
 markers = [
-    "llm: tests requiring live LLM API calls (skipped by default)",
-    "system: tests needing heavy producer runtime (tesseract binary / docling models) absent in minimal CI",
+    "llm: tests requiring live LLM API calls (non-deterministic; opt-in via -m llm)",
+    "system: tests running heavy ML producers (docling/tesseract); non-deterministic output, opt-in via -m system",
 ]
