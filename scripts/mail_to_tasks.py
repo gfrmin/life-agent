@@ -1,21 +1,22 @@
 #!/usr/bin/env python3
-"""mail-to-tasks — file grounded email action items into the GTD inbox (M2).
+"""mail-to-tasks — turn grounded email action items into GTD inbox tasks (M2).
 
-Reads cached ``action_items`` artifacts (pkm Phase 1) and files each fresh,
-grounded item into the in-tree jarvis GTD **inbox** with a
-``[src:email <Message-ID>]`` citation (process-once via a ledger), then
-optionally pings Telegram. The grounded extraction is the safety gate; the human
-triages in the Telegram bot.
+The **timer/debug entrypoint** for the email→GTD pipeline; the work lives in
+``life_agent.tasks.project.project_action_items``. By default it does the whole
+chain — **extract** (run the pkm ``action_items`` transform over new emails, the
+local-model cost step) then **project** (file each fresh, grounded item once into
+the in-tree jarvis GTD inbox with a ``[src:email <Message-ID>]`` citation) — and
+pings Telegram. The grounded extraction is the safety gate; you triage in the
+Telegram bot (``list inbox`` / ``delete`` / ``move``). Process-once via a ledger,
+so a task you clear never returns.
 
-The work lives in ``life_agent.tasks.project.project_action_items`` — this script
-is just the CLI/timer entrypoint. **Dry-run by default** (prints each grounded
-candidate, writes nothing); ``--commit`` files them. ``--extract`` first runs the
-pkm transform over emails (the local-model cost step). Scope with
-``--limit`` / ``--since``.
+This is meant to run unattended from a ``systemd --user`` timer after mail
+ingest; running it by hand is for debugging. Use ``--dry-run`` to preview the
+grounded candidates without extracting or writing anything.
 
-Run (from the repo root):
-    uv run --project . python scripts/mail_to_tasks.py            # dry run
-    uv run --project . python scripts/mail_to_tasks.py --commit   # file them
+    uv run --project . python scripts/mail_to_tasks.py             # extract + file + notify
+    uv run --project . python scripts/mail_to_tasks.py --dry-run   # preview only, write nothing
+    uv run --project . python scripts/mail_to_tasks.py --no-extract --no-notify
 """
 
 from __future__ import annotations
@@ -73,26 +74,35 @@ def _print_candidate(c: Candidate) -> None:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--commit", action="store_true", help="file the tasks (default: dry-run)")
-    ap.add_argument("--limit", type=int, help="cap the number of action_items artifacts read")
+    ap.add_argument(
+        "--dry-run", action="store_true",
+        help="preview grounded candidates; extract nothing, write nothing",
+    )
+    ap.add_argument(
+        "--no-extract", action="store_true",
+        help="skip the pkm transform; project already-cached artifacts",
+    )
+    ap.add_argument(
+        "--no-notify", action="store_true", help="file tasks but skip the Telegram nudge",
+    )
+    ap.add_argument("--limit", type=int, help="cap the number of emails extracted / artifacts read")
     ap.add_argument("--since", type=str, help="only artifacts extracted on/after YYYY-MM-DD")
-    ap.add_argument("--extract", action="store_true", help="run the pkm transform first")
-    ap.add_argument("--no-notify", action="store_true", help="skip the Telegram nudge on --commit")
     args = ap.parse_args()
 
-    if args.extract:
+    commit = not args.dry_run
+    if commit and not args.no_extract:
         _run_extract(args.limit)
 
     root = pkm_root()
     since = datetime.fromisoformat(args.since) if args.since else None
-    user_id = _resolve_user_id(C.JARVIS_DB_PATH) if args.commit else 0
+    user_id = _resolve_user_id(C.JARVIS_DB_PATH) if commit else 0
 
     report = project_action_items(
         root,
         db_path=C.JARVIS_DB_PATH,
         user_id=user_id,
         ledger=C.TASKS_LEDGER,
-        commit=args.commit,
+        commit=commit,
         notify=not args.no_notify,
         limit=args.limit,
         since=since,
@@ -110,8 +120,8 @@ def main() -> int:
     if not report.fresh:
         print("\nNothing to file.")
         return 0
-    if not args.commit:
-        print("\nDRY RUN — nothing written. Re-run with --commit to file these to your GTD inbox.")
+    if args.dry_run:
+        print("\nDRY RUN — nothing written. Drop --dry-run to file these to your GTD inbox.")
         return 0
 
     print(f"\nFiled {report.filed} task(s) to the GTD inbox; ledger updated.")

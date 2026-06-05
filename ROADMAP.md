@@ -37,9 +37,9 @@ don't rebuild: ~90% already exists in the owner's repos.
 
 | Faculty | System / language | Status |
 |---|---|---|
-| **Memory** — recall + retrieval | **PKM** (`src/pkm`, Python) + **`life_agent`** (this repo, Python) | **Live.** PKM: content-addressed extraction + DuckDB `fts`/`vss`. `life_agent` adds the retrieval/synthesis read path (`scripts/ask.py`, dogfooded via `bin/ask-live`). |
+| **Memory** — recall + retrieval | **PKM** (`src/pkm`, Python) + **`life_agent`** (this repo, Python) | **Live.** PKM: content-addressed extraction + DuckDB `fts`/`vss` + **composable transforms** (chained, cited perspectives — SPEC §18.7). `life_agent` adds the retrieval/synthesis read path (`scripts/ask.py`, dogfooded via `bin/ask-live`). |
 | **Brain** — beliefs under uncertainty; value-of-information → ask/proceed/block | **credence** (`../credence/apps/credence-pi`, Julia posterior) | Not wired. *The confidence-gated autonomy* — the core of "maximise expected utility". |
-| **Hands** — capabilities/actions | **Jarvis** (tasks — now in-tree `src/jarvis`, reached in-process; `JARVIS_USER_ID` from env), email (`msmtp`/JMAP), calendar (CalDAV/Google), chat (matrix) | Jarvis store live; email→GTD landing (M2). Rest not wired. |
+| **Hands** — capabilities/actions | **Jarvis** (tasks — now in-tree `src/jarvis`, reached in-process; `JARVIS_USER_ID` from env), email (`msmtp`/JMAP), calendar (CalDAV/Google), chat (matrix) | Jarvis store live; **email→GTD shipped (M2)** — the `action_items` transform (local model, grounded quotes) **auto-files** cited tasks to the inbox; you triage in Telegram. Rest not wired. |
 | **Goals / Utility** — what the owner values | *(new, unbuilt)* | **The hardest missing piece.** EU-maximisation presupposes it; owed a design before any autonomous *action*. |
 | **Spine** — the agent loop + routing | **TBD — open decision** | Deferred to Phase 2. Candidates: pi-mono (TS, open/extensible — the original pick), a Python loop, or Claude Code as an interim loop. |
 

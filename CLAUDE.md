@@ -33,10 +33,18 @@ repos below already does it.
 >
 > **Update (2026-06): jarvis-lite is now absorbed in-tree as `src/jarvis`** (the GTD "hands"), reached
 > **in-process** (`from jarvis import db`) — its standalone repo is archived and its MCP server dropped
-> (re-addable from history if a cross-language spine ever needs it). The **action faculty** is landing:
-> a pkm `action_items` transform (local Ollama, grounded quotes) + `src/life_agent/tasks/` turn email
-> into cited GTD tasks. So three in-tree Python packages now: `pkm` (memory), `life_agent` (reason +
-> act), `jarvis` (tasks).
+> (re-addable from history if a cross-language spine ever needs it). Three in-tree Python packages now —
+> `pkm` (memory), `life_agent` (reason + act), `jarvis` (tasks) — in a **derive → project → reach** shape:
+> - **derive (pkm):** sources → primary artifacts → **transforms** → cited, cached, idempotent artifacts.
+>   Transforms **compose** — `input.producer` may name another transform (SPEC §18.7) — so behaviour is
+>   built from small, generic, chained, *independently-auditable* steps, never one mega-transform.
+> - **project (life_agent):** a thin immutable→mutable bridge (`src/life_agent/tasks/project.py`) — read
+>   terminal `action_items` artifacts, file each **once** into the GTD inbox with a `[src:email <id>]` citation.
+> - **reach (jarvis):** the Telegram bot (triage: list/delete/move) + digest.
+>
+> So **email→GTD** is just the `action_items` transform (local Ollama, grounded quotes) + a thin projector:
+> new mail is **auto-filed** to the inbox — the grounding gate is the safety, you triage in Telegram — run
+> off a `systemd --user` timer, *not* a hand-run CLI (`bin/mail-to-tasks` is the timer/debug entrypoint).
 
 `life-agent` is intended to be a **pi-mono (TypeScript) application** — the spine. It **imports**
 `pi-agent-core` and loads the **credence-pi** governor (same language); it **composes** the
@@ -72,7 +80,10 @@ extraction. Retrieval is the part we add. **It already nails content-addressing 
 - **Catalogue + migrations:** `src/pkm/catalogue.py`, `src/pkm/migrations/0001..0003_*.py` (hash-verified;
   never edit a landed migration — add `0004`).
 - **Cache key:** `src/pkm/hashing.py` (`compute_cache_key`, `compute_model_identity_hash`).
-- **Transforms:** `src/pkm/transform.py`, `src/pkm/transforms/entity_extraction.py`.
+- **Transforms:** `src/pkm/transform.py`, `src/pkm/transforms/{entity_extraction,action_items}.py`;
+  they **chain** (`_find_eligible_sources` resolves `input.producer` over `artifacts`, so a transform
+  may consume another transform's output — SPEC §18.7). Live model calls gated behind markers
+  (`-m 'not llm and not system'` is the default; both are non-deterministic, opt-in only).
 - **Docling (OCR-capable, but no image extensions yet):** `src/pkm/producers/docling.py`.
 - **Tests:** `tests/conftest.py` (`tmp_root`, `migrated_root`); Stage-A hermetic pattern; live calls
   gated behind markers and skipped by default (`addopts = "-m 'not llm'"`).
