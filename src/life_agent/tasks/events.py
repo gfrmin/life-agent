@@ -24,12 +24,13 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
 
-EventType = Literal["asserted", "disposed", "superseded"]
+EventType = Literal["asserted", "disposed", "superseded", "amended"]
 
 _WS = re.compile(r"\s+")
 _SEP = "\x1f"  # unit separator — never appears in normalised text
@@ -56,6 +57,17 @@ def assertion_identity(claim_type: str, grounding_span: str, claim_content: str)
 def now_iso() -> str:
     """Wall-clock stamp for an event (``tx_time``)."""
     return datetime.now().isoformat(timespec="seconds")
+
+
+def new_identity() -> str:
+    """A unique identity for a *human-originated* assertion.
+
+    Unlike ``assertion_identity`` (content-addressed, so a re-derivation dedups), a human
+    typing the same task twice *means* two tasks — so each human command gets a fresh,
+    unique id. The randomness happens once, at command time (the draw); it is then recorded
+    in the event and replayed deterministically.
+    """
+    return uuid.uuid4().hex
 
 
 @dataclass(frozen=True)
@@ -113,6 +125,20 @@ def superseded(old_identity: str, new_identity: str, *, tx_time: str | None = No
         identity=old_identity,
         tx_time=tx_time or now_iso(),
         superseded_by=new_identity,
+    )
+
+
+def amended(identity: str, fields: dict[str, Any], *, tx_time: str | None = None) -> Event:
+    """Amend an open assertion's mutable attributes (e.g. ``{"list": "next"}``).
+
+    For GTD this carries a move / reschedule / today-flag change. The amendment does not
+    close the assertion; the projection applies ``fields`` over the current row.
+    """
+    return Event(
+        type="amended",
+        identity=identity,
+        tx_time=tx_time or now_iso(),
+        payload={"fields": fields},
     )
 
 

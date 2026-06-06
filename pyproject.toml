@@ -74,6 +74,8 @@ known-first-party = ["life_agent", "jarvis", "pkm"]
 "src/jarvis/db.py" = ["E501"]
 "src/jarvis/digest.py" = ["E501"]
 "src/jarvis/bot.py" = ["E501"]
+# The GTD read-model: long SQL read queries (relocated from jarvis/db.py) read clearer on one line.
+"src/life_agent/tasks/store.py" = ["E501"]
 
 [tool.mypy]
 # pkm's strict type gate is preserved; life_agent is not yet under strict mypy (future).
