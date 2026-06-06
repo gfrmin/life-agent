@@ -124,9 +124,10 @@ def main() -> int:
     already = report.total_items - len(report.fresh)
     print(
         f"{report.total_emails} actionable email(s) with items "
-        f"({report.nonactionable_filtered} non-actionable filtered by triage); "
+        f"({report.nonactionable_filtered} non-actionable filtered by triage, "
+        f"{report.disposed} cleared-since captured); "
         f"{report.total_items} item(s), {len(report.fresh)} fresh "
-        f"({already} already filed)."
+        f"({already} already open)."
     )
     for c in report.fresh:
         _print_candidate(c)

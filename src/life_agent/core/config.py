@@ -19,5 +19,7 @@ PKM_CONFIG = Path(os.environ.get("PKM_CONFIG", "~/.config/life-agent/pkm.yaml"))
 JARVIS_DB_PATH = Path(
     os.environ.get("JARVIS_DB_PATH", str(KB / "jarvis" / "jarvis.db"))
 ).expanduser()
-# Process-once ledger of (message_id#index) keys already filed as tasks.
-TASKS_LEDGER = KB / "tasks" / "seen-message-ids.jsonl"
+# Append-only event ledger (Asserted/Disposed/Superseded) — the authoritative
+# record the task list is a fold of, keyed on a content+grounding assertion
+# identity (not message_id#index). See life_agent/tasks/events.py.
+TASKS_LEDGER = KB / "tasks" / "events.jsonl"

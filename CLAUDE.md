@@ -40,6 +40,10 @@ repos below already does it.
 >   built from small, generic, chained, *independently-auditable* steps, never one mega-transform.
 > - **project (life_agent):** a thin immutable→mutable bridge (`src/life_agent/tasks/project.py`) — read
 >   terminal `action_items` artifacts, file each **once** into the GTD inbox with a `[src:email <id>]` citation.
+>   "Already handled" is `fold` of an **append-only event ledger** (`src/life_agent/tasks/events.py`):
+>   `Asserted`/`Disposed`/`Superseded`, keyed on a content+grounding **assertion identity** (not
+>   `message_id#index`) — the task set is a projection of the ledger, and a cleared task never resurrects.
+>   See `docs/act-layer-events.md` and the `reconciliation-as-transformation` design.
 > - **reach (jarvis):** the Telegram bot (triage: list/delete/move) + digest.
 >
 > So **email→GTD** is just the `action_items` transform (local Ollama, grounded quotes) + a thin projector:

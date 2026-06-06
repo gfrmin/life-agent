@@ -28,8 +28,9 @@ pkm transform run action_items --limit 20 # bounded
 
 Re-running is a cache hit per (email, declaration) — extraction cost is paid
 once. The output artifact is `{format_version: 1, action_items: [...]}`; the
-`life_agent` action faculty reads it, dedups by the email's Message-ID, and
-files each item to the GTD inbox with a citation.
+`life_agent` action faculty reads it and files each item to the GTD inbox with a
+citation, deduped on a content+grounding *assertion identity* via its own
+append-only event ledger (so a prompt bump re-files nothing it already has).
 
 ## Model knob
 

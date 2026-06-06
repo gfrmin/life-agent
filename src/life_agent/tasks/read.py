@@ -57,10 +57,13 @@ def read_action_items(
     limit: int | None = None,
     since: datetime | None = None,
 ) -> list[EmailActions]:
-    """Most-recent-first ``action_items`` artifacts with their email provenance.
+    """Newest ``action_items`` artifact **per email**, with its email provenance.
 
-    ``limit`` caps the number of artifacts; ``since`` filters by the artifact's
-    extraction time (``produced_at``). Artifacts with no items are skipped.
+    ``limit`` caps the number of emails returned (newest first); ``since`` filters by the
+    artifact's extraction time (``produced_at``). Only the newest generation per email is
+    taken, so a re-derivation (a prompt/model bump mints a new cache key for the same
+    email) never surfaces stale generations alongside the current one. Emails whose newest
+    extraction has no items are skipped (and not back-filled from an older generation).
     """
     out: list[EmailActions] = []
     conn = _connect(root)
@@ -74,11 +77,19 @@ def read_action_items(
             q += " AND produced_at >= ?"
             params.append(since)
         q += " ORDER BY produced_at DESC"
-        if limit is not None:
-            q += " LIMIT ?"
-            params.append(limit)
 
+        seen_emails: set[str] = set()
         for (ai_ck,) in conn.execute(q, params).fetchall():
+            if limit is not None and len(out) >= limit:
+                break
+            # Newest-first dedup: claim the email on its newest generation (even if that
+            # one has no items), so older generations are never read.
+            email_ck = _source_email_key(conn, ai_ck)
+            if email_ck is not None:
+                if email_ck in seen_emails:
+                    continue
+                seen_emails.add(email_ck)
+
             entry = _safe_read(root, conn, ai_ck)
             if entry is None or entry.content is None:
                 continue
@@ -86,7 +97,6 @@ def read_action_items(
             if not items:
                 continue
 
-            email_ck = _source_email_key(conn, ai_ck)
             message_id = subject = None
             email_produced_at: datetime | None = None
             category: str | None = None

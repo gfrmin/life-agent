@@ -1437,8 +1437,9 @@ loses recall (fewer grounded items) but cannot emit an ungrounded one.
 consumes an `email` artifact and emits `{format_version: 1, action_items: [{action_phrase,
 source_quote}]}`, where every `source_quote` is grounded under §18.5 whitespace-normalised
 containment. It powers email→GTD: the action faculty (out of scope here, in `life_agent`) reads
-these artifacts, dedups by the source email's Message-ID, and files each as a task citing the
-source. The transform is a pure perspective — it has no knowledge of tasks.
+these artifacts and projects each item once into the GTD store, keyed on a content+grounding
+*assertion identity* (not the Message-ID, not position) via its own append-only event ledger. The
+transform is a pure perspective — it has no knowledge of tasks.
 
 ### 18.7 Composition (chaining)
 

@@ -1,9 +1,11 @@
 """Tests for the email→GTD action faculty (`life_agent.tasks`, M2).
 
-Pure-unit tests for policy + dedup, a temp-db test for the jarvis write seam, and
-an end-to-end test that seeds a pkm catalogue (email + action_items artifact +
-lineage), reads it, files to a temp jarvis db, and proves process-once dedup on a
-re-run. No live model, no live store.
+Unit tests for identity-keyed candidate flattening, plus end-to-end tests that seed
+a pkm catalogue (email + action_items artifact + lineage), project it into a temp
+jarvis db backed by the append-only event ledger, and prove the three properties
+the ledger buys: process-once via ``fold`` (idempotent re-run), disposal capture (a
+task cleared in jarvis becomes a ``Disposed`` event and never resurrects), and the
+triage actionability gate. No live model, no live store.
 """
 
 from __future__ import annotations
@@ -13,7 +15,7 @@ import json
 import sqlite3
 from pathlib import Path
 
-from life_agent.tasks import dedup
+from life_agent.tasks import events
 from life_agent.tasks.project import project_action_items, to_candidates
 from life_agent.tasks.read import EmailActions, read_action_items
 from pkm.cache import write_artifact
@@ -27,7 +29,7 @@ _EMAIL = (
 )
 
 
-# --- policy -------------------------------------------------------------------
+# --- candidate flattening + assertion identity --------------------------------
 
 
 def _email_actions(message_id, items, *, email_ck="emailck", ai_ck="aick") -> EmailActions:
@@ -53,8 +55,21 @@ def test_to_candidates_everything_to_inbox_with_citation() -> None:
     assert all(c.list_name == "inbox" for c in cands)
     assert cands[0].citation == "[src:email <lease-1@example.com>]"
     assert cands[0].task_text().endswith("[src:email <lease-1@example.com>]")
-    assert cands[0].dedup_key == "<lease-1@example.com>#0"
-    assert cands[1].dedup_key == "<lease-1@example.com>#1"
+    # Identity is content+grounding, not positional, and distinguishes the two items.
+    assert cands[0].identity != cands[1].identity
+    assert cands[0].identity == events.assertion_identity(
+        "task", "send the signed lease", "Send the signed lease by Friday"
+    )
+
+
+def test_to_candidates_identity_is_message_id_independent() -> None:
+    # The SAME claim+quote from two different emails shares an identity (it is the
+    # same assertion); the message_id is provenance, not identity.
+    item = [{"action_phrase": "Do it", "source_quote": "do it"}]
+    a = to_candidates([_email_actions("<a@x>", item)])
+    b = to_candidates([_email_actions("<b@y>", item)])
+    assert a[0].identity == b[0].identity
+    assert a[0].message_id != b[0].message_id
 
 
 def test_to_candidates_falls_back_to_cache_key_without_message_id() -> None:
@@ -63,7 +78,7 @@ def test_to_candidates_falls_back_to_cache_key_without_message_id() -> None:
     )
     (c,) = to_candidates([ea])
     assert c.message_id == "abc123"
-    assert c.dedup_key == "abc123#0"
+    assert c.citation == "[src:email abc123]"
 
 
 def test_to_candidates_skips_empty_action_phrase() -> None:
@@ -71,27 +86,7 @@ def test_to_candidates_skips_empty_action_phrase() -> None:
     assert to_candidates([ea]) == []
 
 
-# --- dedup ledger -------------------------------------------------------------
-
-
-def test_dedup_load_missing_is_empty(tmp_path: Path) -> None:
-    assert dedup.load_seen(tmp_path / "nope.jsonl") == set()
-
-
-def test_dedup_round_trip(tmp_path: Path) -> None:
-    ledger = tmp_path / "tasks" / "seen.jsonl"
-    dedup.append_seen(ledger, [{"dedup_key": "a#0", "message_id": "a"}])
-    dedup.append_seen(ledger, [{"dedup_key": "b#1", "message_id": "b"}])
-    assert dedup.load_seen(ledger) == {"a#0", "b#1"}
-
-
-def test_dedup_tolerates_garbage_lines(tmp_path: Path) -> None:
-    ledger = tmp_path / "seen.jsonl"
-    ledger.write_text('{"dedup_key": "ok#0"}\nnot json\n{"no_key": 1}\n', encoding="utf-8")
-    assert dedup.load_seen(ledger) == {"ok#0"}
-
-
-# --- end-to-end: seed catalogue → project → dedup ----------------------------
+# --- end-to-end: seed catalogue → project → ledger ----------------------------
 
 
 def _seed_catalogue(
@@ -179,7 +174,7 @@ def test_project_dry_run_writes_nothing(tmp_path: Path) -> None:
         root, message_id="<lease-7@example.com>",
         items=[{"action_phrase": "Send the lease", "source_quote": "send the signed lease"}],
     )
-    ledger = tmp_path / "tasks" / "seen.jsonl"
+    ledger = tmp_path / "tasks" / "events.jsonl"
     db_path = tmp_path / "jarvis.db"
 
     report = project_action_items(
@@ -191,33 +186,54 @@ def test_project_dry_run_writes_nothing(tmp_path: Path) -> None:
     assert not db_path.exists()  # no store written
 
 
-def test_project_files_then_dedup(tmp_path: Path) -> None:
+def test_project_files_then_is_idempotent(tmp_path: Path) -> None:
     root = tmp_path / "pkm"
     _seed_catalogue(
         root, message_id="<lease-7@example.com>",
         items=[{"action_phrase": "Send the lease", "source_quote": "send the signed lease"}],
     )
-    ledger = tmp_path / "tasks" / "seen.jsonl"
+    ledger = tmp_path / "tasks" / "events.jsonl"
     db_path = tmp_path / "jarvis.db"
 
-    # First pass: one fresh candidate → filed with its citation → ledger records it.
-    r1 = project_action_items(
-        root, db_path=db_path, user_id=7, ledger=ledger, notify=False,
-    )
+    # First pass: one fresh candidate → filed with its citation → Asserted recorded.
+    r1 = project_action_items(root, db_path=db_path, user_id=7, ledger=ledger, notify=False)
     assert r1.filed == 1
-    rows = sqlite3.connect(db_path).execute(
-        "SELECT user_id, text, list FROM tasks"
-    ).fetchall()
+    rows = sqlite3.connect(db_path).execute("SELECT user_id, text, list FROM tasks").fetchall()
     assert rows == [(7, "Send the lease [src:email <lease-7@example.com>]", "inbox")]
+    asserted = [e for e in events.load(ledger) if e.type == "asserted"]
+    assert len(asserted) == 1
 
-    # Second pass: same artifacts → zero fresh (process-once), no new row.
-    r2 = project_action_items(
-        root, db_path=db_path, user_id=7, ledger=ledger, notify=False,
-    )
+    # Second pass: same artifacts, task still open in jarvis → fold suppresses it.
+    r2 = project_action_items(root, db_path=db_path, user_id=7, ledger=ledger, notify=False)
     assert r2.fresh == []
     assert r2.filed == 0
+    assert r2.disposed == 0
     n2 = sqlite3.connect(db_path).execute("SELECT count(*) FROM tasks").fetchone()[0]
     assert n2 == 1  # idempotent — no new task
+
+
+def test_project_captures_disposal_and_never_resurrects(tmp_path: Path) -> None:
+    root = tmp_path / "pkm"
+    _seed_catalogue(
+        root, message_id="<lease-7@example.com>",
+        items=[{"action_phrase": "Send the lease", "source_quote": "send the signed lease"}],
+    )
+    ledger = tmp_path / "tasks" / "events.jsonl"
+    db_path = tmp_path / "jarvis.db"
+
+    project_action_items(root, db_path=db_path, user_id=7, ledger=ledger, notify=False)
+    # Human clears the task in jarvis (hard delete, as the bot's delete does).
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("DELETE FROM tasks WHERE user_id = 7")
+
+    # Re-project: capture sees the task is gone → Disposed; the assertion stays closed.
+    r = project_action_items(root, db_path=db_path, user_id=7, ledger=ledger, notify=False)
+    assert r.disposed == 1
+    assert r.filed == 0  # not re-filed
+    log = events.load(ledger)
+    assert [e.type for e in log] == ["asserted", "disposed"]
+    assert events.fold(log) == {}  # truth = fold(ledger): nothing open
+    assert sqlite3.connect(db_path).execute("SELECT count(*) FROM tasks").fetchone()[0] == 0
 
 
 # --- triage gate (SPEC §18.8): file only from actionable emails ---------------
@@ -230,11 +246,9 @@ def test_project_filters_nonactionable_email_by_triage(tmp_path: Path) -> None:
         items=[{"action_phrase": "Register now", "source_quote": "send the signed lease"}],
         triage_category="newsletter_marketing",
     )
-    ledger = tmp_path / "tasks" / "seen.jsonl"
+    ledger = tmp_path / "tasks" / "events.jsonl"
     db_path = tmp_path / "jarvis.db"
-    report = project_action_items(
-        root, db_path=db_path, user_id=7, ledger=ledger, notify=False,
-    )
+    report = project_action_items(root, db_path=db_path, user_id=7, ledger=ledger, notify=False)
     assert report.nonactionable_filtered == 1
     assert report.total_emails == 0
     assert report.filed == 0
@@ -248,11 +262,9 @@ def test_project_keeps_actionable_email_by_triage(tmp_path: Path) -> None:
         items=[{"action_phrase": "Pay the invoice", "source_quote": "send the signed lease"}],
         triage_category="transactional",
     )
-    ledger = tmp_path / "tasks" / "seen.jsonl"
+    ledger = tmp_path / "tasks" / "events.jsonl"
     db_path = tmp_path / "jarvis.db"
-    report = project_action_items(
-        root, db_path=db_path, user_id=7, ledger=ledger, notify=False,
-    )
+    report = project_action_items(root, db_path=db_path, user_id=7, ledger=ledger, notify=False)
     assert report.nonactionable_filtered == 0
     assert report.total_emails == 1
     assert report.filed == 1
