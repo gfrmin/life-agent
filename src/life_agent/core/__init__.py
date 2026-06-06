@@ -6,7 +6,7 @@ eval-harness or agent-loop concerns.
 """
 from __future__ import annotations
 
-from life_agent.core.config import JARVIS_DB_PATH, KB, PKM_CONFIG, TASKS_LEDGER
+from life_agent.core.config import GTD_DB_PATH, JARVIS_DB_PATH, KB, PKM_CONFIG, TASKS_LEDGER
 from life_agent.core.llm import (
     DEFAULT_ANSWER_MODEL,
     TEMPERATURE,
@@ -19,6 +19,7 @@ from life_agent.core.sources import SourceCard, render_sources_block
 
 __all__ = [
     "DEFAULT_ANSWER_MODEL",
+    "GTD_DB_PATH",
     "JARVIS_DB_PATH",
     "KB",
     "PKM_CONFIG",

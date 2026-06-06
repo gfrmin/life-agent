@@ -108,7 +108,7 @@ def main() -> int:
 
     root = pkm_root()
     since = datetime.fromisoformat(args.since) if args.since else None
-    user_id = _resolve_user_id(C.JARVIS_DB_PATH) if commit else 0
+    user_id = _resolve_user_id(C.GTD_DB_PATH) if commit else 0
 
     report = project_action_items(
         root,

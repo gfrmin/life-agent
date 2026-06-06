@@ -16,14 +16,14 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-from life_agent.core.config import JARVIS_DB_PATH
+from life_agent.core.config import GTD_DB_PATH
 from life_agent.tasks import events as ev
 
 VALID_LISTS = ("inbox", "next", "scheduled", "someday")
 _AMENDABLE = frozenset({"list", "due_date", "is_today"})
 
 # Module-level so tests can monkeypatch it; defaults to the out-of-repo read-model path.
-DB_PATH: Path = JARVIS_DB_PATH
+DB_PATH: Path = GTD_DB_PATH
 
 
 def get_db() -> sqlite3.Connection:

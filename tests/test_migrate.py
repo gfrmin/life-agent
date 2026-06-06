@@ -72,3 +72,21 @@ def test_verify_detects_mismatch(tmp_path: Path) -> None:
     events.pop()  # drop the disposed event → completed task would appear active
     result = mig.verify(events, rows, tmp_path / "verify.db")
     assert not result.ok
+
+
+def test_commit_leaves_legacy_db_untouched(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import life_agent.core as core
+
+    legacy = tmp_path / "jarvis.db"
+    _old_db(legacy)
+    before = legacy.read_bytes()
+
+    monkeypatch.setattr(core, "JARVIS_DB_PATH", legacy)
+    monkeypatch.setattr(core, "GTD_DB_PATH", tmp_path / "gtd.db")
+    monkeypatch.setattr(core, "TASKS_LEDGER", tmp_path / "events.jsonl")
+    monkeypatch.setattr(sys, "argv", ["migrate", "--commit"])
+
+    assert mig.main() == 0
+    assert legacy.read_bytes() == before  # legacy is byte-identical → never written
+    assert (tmp_path / "events.jsonl").exists()  # the ledger (truth) was written
+    assert (tmp_path / "gtd.db").exists()  # the read-model was built at the new path

@@ -7,12 +7,13 @@ task becomes an ``Asserted`` (human origin) event carrying its current attribute
 Then ``fold(ledger)`` reproduces the current task set — which the migration **verifies row
 for row** before it touches anything.
 
-Safe by construction:
-- ``--dry-run`` (default) builds the events, rebuilds into a temp db, and reports the
-  verification — writing nothing.
-- ``--commit`` only proceeds if verification passes; it backs up the old db, appends to the
-  ledger, and rebuilds the real read-model. It refuses to run if the ledger is already
-  populated (the migration is one-shot), unless ``--force``.
+Safe by construction — the live store is **read-only**, never written:
+- ``--dry-run`` (default) builds the events, rebuilds into a throwaway temp db, and reports
+  the verification — writing nothing.
+- ``--commit`` only proceeds if verification passes; it appends to the ledger and builds the
+  new read-model at a **separate** path (``GTD_DB_PATH``). It never touches the legacy
+  ``jarvis.db``, which stays put as a natural pre-cutover snapshot. Refuses to run if the
+  ledger is already populated (one-shot), unless ``--force``.
 
     uv run --project . python scripts/migrate_jarvis_to_events.py            # dry-run + verify
     uv run --project . python scripts/migrate_jarvis_to_events.py --commit   # do it
@@ -21,7 +22,6 @@ Safe by construction:
 from __future__ import annotations
 
 import argparse
-import shutil
 import sqlite3
 import sys
 from dataclasses import dataclass
@@ -145,17 +145,19 @@ def main() -> int:
     ap.add_argument("--force", action="store_true", help="proceed even if the ledger is non-empty")
     args = ap.parse_args()
 
-    db_path = C.JARVIS_DB_PATH
+    legacy = C.JARVIS_DB_PATH  # read-only source — never written
+    readmodel = C.GTD_DB_PATH  # the new materialised projection (a fresh, derived file)
     ledger = C.TASKS_LEDGER
 
-    if not db_path.exists():
-        print(f"No store at {db_path} — nothing to migrate.")
+    if not legacy.exists():
+        print(f"No legacy store at {legacy} — nothing to migrate.")
         return 0
-    old_rows = read_old_tasks(db_path)
+    old_rows = read_old_tasks(legacy)
     events = build_events(old_rows)
-    print(f"Read {len(old_rows)} task(s) → {len(events)} event(s).")
+    print(f"Read {len(old_rows)} task(s) from {legacy} (read-only) → {len(events)} event(s).")
 
-    tmp_db = db_path.with_suffix(".migrate-verify.db")
+    readmodel.parent.mkdir(parents=True, exist_ok=True)
+    tmp_db = readmodel.with_suffix(".verify.db")
     try:
         result = verify(events, old_rows, tmp_db)
     finally:
@@ -176,15 +178,15 @@ def main() -> int:
         )
         return 1
 
-    backup = db_path.with_suffix(".pre-migration.bak")
-    shutil.copy2(db_path, backup)
-    print(f"Backed up {db_path} → {backup}")
     ledger.parent.mkdir(parents=True, exist_ok=True)
     ev.append(ledger, events)
-    _rebuild_into(db_path, events)
-    final = verify(events, old_rows, db_path)
+    _rebuild_into(readmodel, events)
+    final = verify(events, old_rows, readmodel)
     print(("✓ " if final.ok else "✗ ") + f"post-commit: {final.detail}")
-    print(f"\nMigrated. Ledger: {ledger}. Read-model rebuilt: {db_path}.")
+    print(
+        f"\nMigrated. Ledger: {ledger}. Read-model built: {readmodel}. "
+        f"Legacy {legacy} untouched."
+    )
     return 0 if final.ok else 1
 
 
