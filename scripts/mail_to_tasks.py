@@ -112,9 +112,7 @@ def main() -> int:
 
     report = project_action_items(
         root,
-        db_path=C.JARVIS_DB_PATH,
         user_id=user_id,
-        ledger=C.TASKS_LEDGER,
         commit=commit,
         notify=not args.no_notify,
         limit=args.limit,
@@ -124,10 +122,9 @@ def main() -> int:
     already = report.total_items - len(report.fresh)
     print(
         f"{report.total_emails} actionable email(s) with items "
-        f"({report.nonactionable_filtered} non-actionable filtered by triage, "
-        f"{report.disposed} cleared-since captured); "
+        f"({report.nonactionable_filtered} non-actionable filtered by triage); "
         f"{report.total_items} item(s), {len(report.fresh)} fresh "
-        f"({already} already open)."
+        f"({already} already known)."
     )
     for c in report.fresh:
         _print_candidate(c)

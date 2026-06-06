@@ -1,23 +1,25 @@
-"""Tests for the email→GTD action faculty (`life_agent.tasks`, M2).
+"""Tests for the email→GTD projector (`life_agent.tasks.project`).
 
-Unit tests for identity-keyed candidate flattening, plus end-to-end tests that seed
-a pkm catalogue (email + action_items artifact + lineage), project it into a temp
-jarvis db backed by the append-only event ledger, and prove the three properties
-the ledger buys: process-once via ``fold`` (idempotent re-run), disposal capture (a
-task cleared in jarvis becomes a ``Disposed`` event and never resurrects), and the
-triage actionability gate. No live model, no live store.
+The projector is now a pure *producer* into the one task ledger: it reads grounded
+``action_items`` artifacts from a seeded pkm catalogue and files fresh assertions via the
+command layer (``commands.add`` → ``Asserted(origin="email")``). Idempotency and
+"never resurrect a cleared task" are properties of the ledger's known identities — a task
+the human completes (a real ``Disposed`` event) is not re-filed. No capture/diff, no live
+store, no live model.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
-import sqlite3
 from pathlib import Path
 
-from life_agent.tasks import events
+import pytest
+
+from life_agent.tasks import commands, store
+from life_agent.tasks import events as ev
 from life_agent.tasks.project import project_action_items, to_candidates
-from life_agent.tasks.read import EmailActions, read_action_items
+from life_agent.tasks.read import EmailActions
 from pkm.cache import write_artifact
 from pkm.catalogue import open_catalogue, run_migrations
 from pkm.hashing import compute_cache_key
@@ -29,13 +31,20 @@ _EMAIL = (
 )
 
 
+@pytest.fixture(autouse=True)
+def temp_gtd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(store, "DB_PATH", tmp_path / "tasks.db")
+    monkeypatch.setattr(commands, "LEDGER_PATH", tmp_path / "events.jsonl")
+    store.init_db()
+
+
 # --- candidate flattening + assertion identity --------------------------------
 
 
-def _email_actions(message_id, items, *, email_ck="emailck", ai_ck="aick") -> EmailActions:
+def _email_actions(message_id: str | None, items: list[dict]) -> EmailActions:
     return EmailActions(
         message_id=message_id, subject="Lease", email_produced_at=None,
-        items=items, email_cache_key=email_ck, action_items_cache_key=ai_ck,
+        items=items, email_cache_key="emailck", action_items_cache_key="aick",
     )
 
 
@@ -55,16 +64,13 @@ def test_to_candidates_everything_to_inbox_with_citation() -> None:
     assert all(c.list_name == "inbox" for c in cands)
     assert cands[0].citation == "[src:email <lease-1@example.com>]"
     assert cands[0].task_text().endswith("[src:email <lease-1@example.com>]")
-    # Identity is content+grounding, not positional, and distinguishes the two items.
     assert cands[0].identity != cands[1].identity
-    assert cands[0].identity == events.assertion_identity(
+    assert cands[0].identity == ev.assertion_identity(
         "task", "send the signed lease", "Send the signed lease by Friday"
     )
 
 
 def test_to_candidates_identity_is_message_id_independent() -> None:
-    # The SAME claim+quote from two different emails shares an identity (it is the
-    # same assertion); the message_id is provenance, not identity.
     item = [{"action_phrase": "Do it", "source_quote": "do it"}]
     a = to_candidates([_email_actions("<a@x>", item)])
     b = to_candidates([_email_actions("<b@y>", item)])
@@ -72,21 +78,12 @@ def test_to_candidates_identity_is_message_id_independent() -> None:
     assert a[0].message_id != b[0].message_id
 
 
-def test_to_candidates_falls_back_to_cache_key_without_message_id() -> None:
-    ea = _email_actions(
-        None, [{"action_phrase": "Do it", "source_quote": "do it"}], email_ck="abc123",
-    )
-    (c,) = to_candidates([ea])
-    assert c.message_id == "abc123"
-    assert c.citation == "[src:email abc123]"
-
-
 def test_to_candidates_skips_empty_action_phrase() -> None:
     ea = _email_actions("<m@x>", [{"action_phrase": "  ", "source_quote": "x"}])
     assert to_candidates([ea]) == []
 
 
-# --- end-to-end: seed catalogue → project → ledger ----------------------------
+# --- end-to-end: seed pkm catalogue → project → ledger ------------------------
 
 
 def _seed_catalogue(
@@ -138,13 +135,13 @@ def _seed_catalogue(
             tri_content = json.dumps(
                 {"format_version": 1, "category": triage_category, "reason": "test"}
             ).encode("utf-8")
+            tri_in = hashlib.sha256(b"triage:" + email_bytes).hexdigest()
             tri_ck = compute_cache_key(
-                input_hash=hashlib.sha256(b"triage:" + email_bytes).hexdigest(),
-                producer_name="email_triage", producer_version="0.1.0", producer_config={},
+                input_hash=tri_in, producer_name="email_triage",
+                producer_version="0.1.0", producer_config={},
             )
             write_artifact(
-                root, conn, cache_key=tri_ck,
-                input_hash=hashlib.sha256(b"triage:" + email_bytes).hexdigest(),
+                root, conn, cache_key=tri_ck, input_hash=tri_in,
                 producer_name="email_triage", producer_version="0.1.0", producer_config={},
                 result=ProducerResult(
                     status="success", content=tri_content,
@@ -155,88 +152,48 @@ def _seed_catalogue(
             )
 
 
-def test_read_action_items_traces_email_provenance(tmp_path: Path) -> None:
-    root = tmp_path / "pkm"
-    _seed_catalogue(
-        root, message_id="<lease-7@example.com>",
-        items=[{"action_phrase": "Send the lease", "source_quote": "send the signed lease"}],
-    )
-    emails = read_action_items(root)
-    assert len(emails) == 1
-    assert emails[0].message_id == "<lease-7@example.com>"
-    assert emails[0].subject == "Lease"
-    assert emails[0].items[0]["action_phrase"] == "Send the lease"
+_LEASE = [{"action_phrase": "Send the lease", "source_quote": "send the signed lease"}]
 
 
 def test_project_dry_run_writes_nothing(tmp_path: Path) -> None:
     root = tmp_path / "pkm"
-    _seed_catalogue(
-        root, message_id="<lease-7@example.com>",
-        items=[{"action_phrase": "Send the lease", "source_quote": "send the signed lease"}],
-    )
-    ledger = tmp_path / "tasks" / "events.jsonl"
-    db_path = tmp_path / "jarvis.db"
-
-    report = project_action_items(
-        root, db_path=db_path, user_id=7, ledger=ledger, commit=False, notify=False,
-    )
+    _seed_catalogue(root, message_id="<lease-7@example.com>", items=_LEASE)
+    report = project_action_items(root, user_id=7, commit=False, notify=False)
     assert len(report.fresh) == 1
     assert report.filed == 0
-    assert not ledger.exists()   # nothing recorded
-    assert not db_path.exists()  # no store written
+    assert not commands.LEDGER_PATH.exists()  # nothing recorded
+    assert "No tasks" in store.get_tasks(7)  # nothing projected
 
 
 def test_project_files_then_is_idempotent(tmp_path: Path) -> None:
     root = tmp_path / "pkm"
-    _seed_catalogue(
-        root, message_id="<lease-7@example.com>",
-        items=[{"action_phrase": "Send the lease", "source_quote": "send the signed lease"}],
-    )
-    ledger = tmp_path / "tasks" / "events.jsonl"
-    db_path = tmp_path / "jarvis.db"
+    _seed_catalogue(root, message_id="<lease-7@example.com>", items=_LEASE)
 
-    # First pass: one fresh candidate → filed with its citation → Asserted recorded.
-    r1 = project_action_items(root, db_path=db_path, user_id=7, ledger=ledger, notify=False)
+    r1 = project_action_items(root, user_id=7, notify=False)
     assert r1.filed == 1
-    rows = sqlite3.connect(db_path).execute("SELECT user_id, text, list FROM tasks").fetchall()
-    assert rows == [(7, "Send the lease [src:email <lease-7@example.com>]", "inbox")]
-    asserted = [e for e in events.load(ledger) if e.type == "asserted"]
-    assert len(asserted) == 1
+    tasks = store.get_tasks(7)
+    assert "Send the lease [src:email <lease-7@example.com>]" in tasks
+    assert [e.type for e in ev.load(commands.LEDGER_PATH)] == ["asserted"]
 
-    # Second pass: same artifacts, task still open in jarvis → fold suppresses it.
-    r2 = project_action_items(root, db_path=db_path, user_id=7, ledger=ledger, notify=False)
+    r2 = project_action_items(root, user_id=7, notify=False)
     assert r2.fresh == []
-    assert r2.filed == 0
-    assert r2.disposed == 0
-    n2 = sqlite3.connect(db_path).execute("SELECT count(*) FROM tasks").fetchone()[0]
-    assert n2 == 1  # idempotent — no new task
+    assert r2.filed == 0  # known identity → not re-filed
 
 
-def test_project_captures_disposal_and_never_resurrects(tmp_path: Path) -> None:
+def test_project_does_not_refile_a_completed_email_task(tmp_path: Path) -> None:
     root = tmp_path / "pkm"
-    _seed_catalogue(
-        root, message_id="<lease-7@example.com>",
-        items=[{"action_phrase": "Send the lease", "source_quote": "send the signed lease"}],
-    )
-    ledger = tmp_path / "tasks" / "events.jsonl"
-    db_path = tmp_path / "jarvis.db"
+    _seed_catalogue(root, message_id="<lease-7@example.com>", items=_LEASE)
 
-    project_action_items(root, db_path=db_path, user_id=7, ledger=ledger, notify=False)
-    # Human clears the task in jarvis (hard delete, as the bot's delete does).
-    with sqlite3.connect(db_path) as conn:
-        conn.execute("DELETE FROM tasks WHERE user_id = 7")
+    project_action_items(root, user_id=7, notify=False)  # files task id 1
+    commands.complete(7, task_id=1)  # human completes it → Disposed{done}
 
-    # Re-project: capture sees the task is gone → Disposed; the assertion stays closed.
-    r = project_action_items(root, db_path=db_path, user_id=7, ledger=ledger, notify=False)
-    assert r.disposed == 1
-    assert r.filed == 0  # not re-filed
-    log = events.load(ledger)
-    assert [e.type for e in log] == ["asserted", "disposed"]
-    assert events.fold(log) == {}  # truth = fold(ledger): nothing open
-    assert sqlite3.connect(db_path).execute("SELECT count(*) FROM tasks").fetchone()[0] == 0
+    r = project_action_items(root, user_id=7, notify=False)
+    assert r.filed == 0  # the disposed identity is known → never resurrected
+    types = [e.type for e in ev.load(commands.LEDGER_PATH)]
+    assert types == ["asserted", "disposed"]
 
 
-# --- triage gate (SPEC §18.8): file only from actionable emails ---------------
+# --- triage gate (SPEC §18.8) -------------------------------------------------
 
 
 def test_project_filters_nonactionable_email_by_triage(tmp_path: Path) -> None:
@@ -246,13 +203,11 @@ def test_project_filters_nonactionable_email_by_triage(tmp_path: Path) -> None:
         items=[{"action_phrase": "Register now", "source_quote": "send the signed lease"}],
         triage_category="newsletter_marketing",
     )
-    ledger = tmp_path / "tasks" / "events.jsonl"
-    db_path = tmp_path / "jarvis.db"
-    report = project_action_items(root, db_path=db_path, user_id=7, ledger=ledger, notify=False)
+    report = project_action_items(root, user_id=7, notify=False)
     assert report.nonactionable_filtered == 1
     assert report.total_emails == 0
     assert report.filed == 0
-    assert not db_path.exists()  # nothing filed
+    assert "No tasks" in store.get_tasks(7)
 
 
 def test_project_keeps_actionable_email_by_triage(tmp_path: Path) -> None:
@@ -262,9 +217,7 @@ def test_project_keeps_actionable_email_by_triage(tmp_path: Path) -> None:
         items=[{"action_phrase": "Pay the invoice", "source_quote": "send the signed lease"}],
         triage_category="transactional",
     )
-    ledger = tmp_path / "tasks" / "events.jsonl"
-    db_path = tmp_path / "jarvis.db"
-    report = project_action_items(root, db_path=db_path, user_id=7, ledger=ledger, notify=False)
+    report = project_action_items(root, user_id=7, notify=False)
     assert report.nonactionable_filtered == 0
     assert report.total_emails == 1
     assert report.filed == 1

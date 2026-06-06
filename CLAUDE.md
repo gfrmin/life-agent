@@ -31,10 +31,11 @@ repos below already does it.
 > / CLI)**, rather than one TS app. See `ROADMAP.md` → Architecture + Open decisions. The text below
 > describes where this is *heading* and the building blocks to reuse.
 >
-> **Update (2026-06): jarvis-lite is now absorbed in-tree as `src/jarvis`** (the GTD "hands"), reached
-> **in-process** (`from jarvis import db`) — its standalone repo is archived and its MCP server dropped
-> (re-addable from history if a cross-language spine ever needs it). Three in-tree Python packages now —
-> `pkm` (memory), `life_agent` (reason + act), `jarvis` (tasks) — in a **derive → project → reach** shape:
+> **Update (2026-06): the GTD is now the agent's own act layer.** jarvis-lite was absorbed, then
+> **dissolved** — there is no separate GTD faculty. The GTD (lists, tasks, the event ledger, the command
+> logic) lives in **`life_agent.tasks`** (event-sourced); Telegram is a dumb transport the brain drives,
+> in **`life_agent.reach`** ("Jarvis" is just the persona). Two in-tree Python packages — `pkm` (memory)
+> and `life_agent` (reason + act + reach) — in a **derive → project → reach** shape:
 > - **derive (pkm):** sources → primary artifacts → **transforms** → cited, cached, idempotent artifacts.
 >   Transforms **compose** — `input.producer` may name another transform (SPEC §18.7) — so behaviour is
 >   built from small, generic, chained, *independently-auditable* steps, never one mega-transform.
@@ -44,7 +45,9 @@ repos below already does it.
 >   `Asserted`/`Disposed`/`Superseded`, keyed on a content+grounding **assertion identity** (not
 >   `message_id#index`) — the task set is a projection of the ledger, and a cleared task never resurrects.
 >   See `docs/act-layer-events.md` and the `reconciliation-as-transformation` design.
-> - **reach (jarvis):** the Telegram bot (triage: list/delete/move) + digest.
+> - **reach (`life_agent.reach`):** the Telegram channel (`telegram.py` transport) + the loop/NLU/persona
+>   (`jarvis.py`) + `digest.py`. Human commands (add/complete/delete/move) are **first-class events** into
+>   the same ledger; the read-model (SQLite) is a fold of it — no capture/diff.
 >
 > So **email→GTD** is just the `action_items` transform (local Ollama, grounded quotes) + a thin projector:
 > new mail is **auto-filed** to the inbox — the grounding gate is the safety, you triage in Telegram — run
@@ -117,14 +120,23 @@ posterior (BDSL programs in `bdsl/{capabilities,features,prior,kernel,decide}.bd
 - **No native MCP** (by design). To use MCP servers, **write an extension that is an MCP client and
   wraps each MCP tool as a `ToolDefinition`** — this is the MCP-bridge we build in this repo.
 
-### `src/jarvis` (now in-tree) — tasks, the "hands" (Python, SQLite, Telegram)
-Absorbed from the former `gfrmin/jarvis-lite` (archived); jarvis stays standalone (does **not** import
-`life_agent`). A single-user GTD store reached **in-process** — **no MCP server**.
-- **Write seam:** `from jarvis import db` → `db.add_task(user_id, text, list_name="inbox", …)` and the
-  other functions in `src/jarvis/db.py` (lists inbox/next/scheduled/someday; `@tags`; `is_today` focus).
-- **DB:** `JARVIS_DB_PATH` (default `$LIFE_AGENT_KB/jarvis/jarvis.db`, outside the repo).
-- **Telegram reach:** `src/jarvis/bot.py` (inbound NLU via a local Ollama model) + `src/jarvis/digest.py`
-  (outbound). Runs as `systemd --user jarvis.service` via `python -m jarvis.bot`.
+### `life_agent.tasks` — the GTD, event-sourced (Python, SQLite, the act layer)
+The GTD *is* the agent's act layer (the former standalone `jarvis` package is dissolved). One append-only
+**event ledger** is the source of truth; the SQLite is a rebuildable projection. See `docs/act-layer-events.md`.
+- **Ledger:** `src/life_agent/tasks/events.py` — `Asserted`/`Disposed`/`Superseded`/`Amended`, keyed on a
+  content+grounding **assertion identity** (human commands mint a unique identity; email-derived use content).
+- **Read-model:** `src/life_agent/tasks/store.py` — the `tasks` table (lists inbox/next/scheduled/someday;
+  `@tags`; `is_today`; due); `apply(event)` folds one event, `rebuild(events)` replays the ledger. DB path
+  `JARVIS_DB_PATH` (default `$LIFE_AGENT_KB/jarvis/jarvis.db`, outside the repo) — kept for continuity.
+- **Commands (write seam):** `src/life_agent/tasks/commands.py` → `commands.add/complete/delete/move/...`
+  (append event(s) → fold the read-model → return the reply). The email projector (`project.py`) is just
+  another producer of `Asserted(origin="email")` events.
+
+### `life_agent.reach` — the Telegram channel + persona (transport only, no truth)
+- **Transport:** `src/life_agent/reach/telegram.py` (poll/send; knows only Telegram).
+- **Loop + NLU + persona:** `src/life_agent/reach/jarvis.py` — Ollama parses a message → intent → routes to
+  `tasks.commands`/`tasks.store`. Runs as `systemd --user jarvis.service` via `python -m life_agent.reach.jarvis`.
+- **Digest:** `src/life_agent/reach/digest.py` (`python -m life_agent.reach.digest`).
 - **Owner's Telegram id:** `JARVIS_USER_ID` (env / gnome-keyring) — never hard-code it.
 
 ## Conventions & constraints

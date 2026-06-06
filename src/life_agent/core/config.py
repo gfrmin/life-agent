@@ -12,14 +12,15 @@ from pathlib import Path
 KB = Path(os.environ.get("LIFE_AGENT_KB", str(Path.home() / ".life-agent/kb")))
 PKM_CONFIG = Path(os.environ.get("PKM_CONFIG", "~/.config/life-agent/pkm.yaml")).expanduser()
 
-# --- M2 email→GTD (the action faculty) ---
-# The in-tree jarvis GTD store; defaults under the KB (outside the repo), matching
-# jarvis.db's own default. The owner's Telegram id is NOT stored here — it's a
-# personal id resolved at write time from JARVIS_USER_ID (env / gnome-keyring).
+# --- GTD (the agent's act layer) ---
+# Append-only event ledger (Asserted/Disposed/Superseded/Amended) — THE source of truth
+# for tasks, keyed on a content+grounding assertion identity (not message_id#index). The
+# task list is a fold of it. See life_agent/tasks/events.py.
+TASKS_LEDGER = KB / "tasks" / "events.jsonl"
+# The GTD read-model: a materialised SQLite projection of fold(TASKS_LEDGER) — a rebuildable
+# view, not the truth. Keeps the JARVIS_DB_PATH name/location for continuity with the store
+# the bot used. The owner's Telegram id is NOT stored here — it's resolved at write time from
+# JARVIS_USER_ID (env / gnome-keyring).
 JARVIS_DB_PATH = Path(
     os.environ.get("JARVIS_DB_PATH", str(KB / "jarvis" / "jarvis.db"))
 ).expanduser()
-# Append-only event ledger (Asserted/Disposed/Superseded) — the authoritative
-# record the task list is a fold of, keyed on a content+grounding assertion
-# identity (not message_id#index). See life_agent/tasks/events.py.
-TASKS_LEDGER = KB / "tasks" / "events.jsonl"

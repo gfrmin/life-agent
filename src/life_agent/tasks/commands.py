@@ -39,6 +39,7 @@ def add(
     *,
     identity: str | None = None,
     origin: str = "human",
+    valid_time: str | None = None,
 ) -> str:
     if list_name not in VALID_LISTS:
         return f"Invalid list '{list_name}'. Use one of: {', '.join(VALID_LISTS)}"
@@ -56,6 +57,7 @@ def add(
             "is_today": int(is_today),
             "origin": origin,
         },
+        valid_time=valid_time,
     )
     with store.get_db() as conn:
         _emit(conn, event)
