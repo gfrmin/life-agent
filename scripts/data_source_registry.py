@@ -2,11 +2,10 @@
 """data_source_registry.py — one declarative registry for the local data roots
 life-agent feeds into the pkm memory, plus a thin ``--report`` (census) view.
 
-Today the corpus is wired ad-hoc: ``build_corpus.sh`` hardcodes a few source
-paths, ``mail_bridge.py`` carries its own manifest, and every source is hand-copied
-into pkm's ``sources.yaml``. This module replaces that with a single registry
-(``data-sources.yaml``) describing each root: where it is, which adapter handles it
-(``kind``), which files to include, and whether it's eligible for ingestion.
+A single registry (``data-sources.yaml``) describes each local data root: where it
+is, which adapter handles it (``kind``), which files to include, and whether it's
+eligible for ingestion — replacing the earlier ad-hoc wiring (hardcoded corpus
+scripts, per-script manifests, hand-copied entries in pkm's ``sources.yaml``).
 
 It does NOT ingest — ``ingest_sources.py`` consumes this registry to stage files and
 hand them to pkm. This file owns: loading/validating the registry, and reporting what
