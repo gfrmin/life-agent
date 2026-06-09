@@ -3,12 +3,11 @@
 Thanks for trying this on your own life and wanting to make it better. A few
 things make contributing here unusual; please skim this before your first PR.
 
-## The prime directive: compose, don't rebuild
+## The principles govern
 
-~90% of the capability already exists as small, composable pieces. Before adding
-anything, check whether a producer, a transform, or an existing script already
-does it. New code should be **integration + a thin layer**, not a greenfield
-subsystem. See [`CLAUDE.md`](./CLAUDE.md) for the architecture and the reuse map.
+[`PRINCIPLES.md`](./PRINCIPLES.md) is the source of the philosophy — most importantly the prime
+directive (compose, don't rebuild — §4): check whether a producer, a transform, or an existing
+script already does it before adding anything. [`CLAUDE.md`](./CLAUDE.md) has the reuse map.
 
 ## This is a public repo holding tooling for *private* data — never commit PII
 
@@ -47,8 +46,8 @@ The whole repo is built to keep your personal data out of it. Two rules:
 ## Two packages, one repo
 
 ```
-src/pkm/         the memory faculty — content-addressed extraction + DuckDB catalogue
-src/life_agent/  the reasoning/synthesis faculty — retrieval, citation guard, owner profile
+src/pkm/         the KB — content-addressed extraction + transforms + DuckDB catalogue
+src/life_agent/  the agent — retrieval/citation guard, event-sourced GTD (tasks), Telegram reach
 scripts/         the runnable layer (ask.py, ingest, eval, bootstrap, smoke)
 tests/           life_agent + script tests;  tests/pkm/  is pkm's own suite
 docs/pkm/        pkm's SPEC + phase docs

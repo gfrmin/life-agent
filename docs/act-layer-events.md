@@ -2,8 +2,9 @@
 
 How the agent's *mutable* truth (the GTD task list) is reconciled with its *immutable*
 derivations (pkm `action_items` artifacts). This is the **project** step of
-**derive → project → reach**, and the part the `reconciliation-as-transformation`
-design is about. Implemented in `src/life_agent/tasks/events.py` + `project.py`.
+**derive → project → reach** ([`PRINCIPLES.md`](../PRINCIPLES.md) §6–7), and the part the
+`reconciliation-as-transformation` design is about. Implemented in
+`src/life_agent/tasks/events.py` + `project.py`.
 
 ## The principle
 

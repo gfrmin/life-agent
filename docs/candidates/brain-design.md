@@ -1,7 +1,11 @@
 # Brain design — pi-mono + credence-pi
 
-How the agent's runtime and "brain" work, and how `life-agent` composes them. Verified by reading
-both repos on 2026-05-23.
+> **Status: one candidate composition for the spine + brain — not the plan.** The spine is a
+> genuinely open decision ([`PRINCIPLES.md`](../../PRINCIPLES.md) §15: pi-mono vs a Python loop
+> vs Claude Code as interim); this documents the pi-mono + credence-pi option.
+
+How that candidate runtime and "brain" would work, and how `life-agent` would compose them.
+Verified by reading both repos on 2026-05-23.
 
 ## pi-mono (`../pi-mono`) — the runtime (TypeScript, pnpm, Node ≥20)
 A framework you build agents *on* (the public `pi-coding-agent` is one such app). Packages:
