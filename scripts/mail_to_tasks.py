@@ -5,7 +5,7 @@ The **timer/debug entrypoint** for the email→GTD pipeline; the work lives in
 ``life_agent.tasks.project.project_action_items``. By default it does the whole
 chain — **extract** (run the pkm ``action_items`` transform over new emails, the
 local-model cost step) then **project** (file each fresh, grounded item once into
-the in-tree jarvis GTD inbox with a ``[src:email <Message-ID>]`` citation) — and
+the GTD inbox with a ``[src:email <Message-ID>]`` citation) — and
 pings Telegram. The grounded extraction is the safety gate; you triage in the
 Telegram bot (``list inbox`` / ``delete`` / ``move``). Process-once via a ledger,
 so a task you clear never returns.

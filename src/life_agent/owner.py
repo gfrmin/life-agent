@@ -19,8 +19,8 @@ from pathlib import Path
 
 from life_agent.core import KB
 
-# Authoritative owner profile. Seeded by hand (e.g. from $LIFE_AGENT_KB/wiki/owner-identity.md)
-# and grown by `--tell` / `/i`. Module-level so tests can repoint it at a tmp path.
+# Authoritative owner profile. Seeded by hand and grown by `--tell` / `/i`.
+# Module-level so tests can repoint it at a tmp path.
 PROFILE = KB / "owner.md"
 
 _TOLD_HEADING = "## Told by the owner"

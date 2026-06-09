@@ -12,7 +12,7 @@ from dataclasses import dataclass
 @dataclass
 class SourceCard:
     n: int
-    text: str            # the cited text (a retrieved chunk, or a wiki page in Phase 0)
+    text: str            # the cited text (a retrieved chunk)
     origin: str = ""     # provenance for the harness/display only; never shown to a blind judge
 
 

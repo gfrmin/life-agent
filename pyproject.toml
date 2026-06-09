@@ -37,7 +37,6 @@ dependencies = [
 
 [project.scripts]
 pkm = "pkm.cli:main"
-jarvis-bot = "jarvis.bot:main"
 
 [dependency-groups]
 dev = [
