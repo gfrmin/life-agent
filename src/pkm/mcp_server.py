@@ -1,5 +1,10 @@
 """Read-only MCP server for pkm — the query surface (SPEC §17).
 
+Dormant by design: the live server was torn down (an operational call — a
+leaked process — not an architecture verdict). MCP remains the endorsed
+seam (PRINCIPLES.md §5); this module is the ready-to-revive surface and
+returns to service when the spine decision forces it.
+
 Exposes a single ``search`` tool over stdio that wraps the FTS retrieval
 layer.  Stdout carries the MCP JSON-RPC protocol; all logging goes to
 stderr / the JSONL log file.  Do NOT add print() calls here.
