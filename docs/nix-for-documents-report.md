@@ -1,5 +1,9 @@
 # Nix for documents: a feasible but unbuilt system
 
+> **Status: commissioned research input (2026-05), not a mandate.** Its verdicts informed
+> ROADMAP decisions (Hamilton: no; DuckDB `vss`/`fts`: yes) but bind nothing — research reports
+> are candidate inputs, never specs ([`PRINCIPLES.md`](../PRINCIPLES.md) §9).
+
 **The system you want to build does not exist, and that is the interesting finding.** Every piece — content-addressed stores (Bazel REAPI, Nix CA derivations), demand-driven memoisation (Salsa, Adapton), semantic operators over unstructured data (LOTUS, Palimpzest, DocETL), typed LLM modules (DSPy), deterministic inference (Thinking Machines' batch-invariant kernels) — is mature or at least research-grade. No one has composed them. The closest attempt at personal scale is a two-folder markdown convention Karpathy published in April 2026. At enterprise scale, RisingWave is the only shipping system that literally materialises LLM outputs inside maintained views, and it only handles embeddings. This is a real design-space gap, not a saturated market. Against that gap, the risk is not technical infeasibility; it is building a cathedral when Karpathy's two-folder barn answers 80% of queries at 1% of the engineering cost. The rest of this report maps what is genuinely available off the shelf, where the theoretical foundations are strong enough to build on, and where a minimum viable version can start this weekend.
 
 ## The conceptual landscape is richer than it looks

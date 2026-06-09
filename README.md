@@ -8,7 +8,7 @@ the answer. Facts are grounded in your own documents, not a model's memory.
 > **Use it →** [`SETUP.md`](./SETUP.md) (clone to a cited answer in minutes, on a bundled synthetic
 > corpus first — no real data, no API key to build it).
 > **Contribute →** [`CONTRIBUTING.md`](./CONTRIBUTING.md).
-> **Understand the design →** [`CLAUDE.md`](./CLAUDE.md) · [`ROADMAP.md`](./ROADMAP.md) · [`docs/`](./docs/).
+> **Understand the design →** [`PRINCIPLES.md`](./PRINCIPLES.md) · [`ROADMAP.md`](./ROADMAP.md) · [`CLAUDE.md`](./CLAUDE.md) · [`docs/`](./docs/).
 
 ## Quickstart
 
@@ -60,25 +60,14 @@ script: `scripts/ingest_sources.py --extract --chunk`). Teach it who you are wit
 
 ## What's live vs the vision
 
-The north star is an agent that **maximises the owner's expected utility** — remembers everything,
-reasons under uncertainty (the *brain*), acts across tools, is proactive. The design is **four
-faculties + a spine**, each in the language that serves it, integrated over language-neutral seams
-(MCP / HTTP / CLI) — polyglot by design, not one app in one language.
-
-**What exists today is the Memory faculty, in Python:** the retrieval + synthesis read path
-(`src/life_agent/`, run via `bin/ask-live`) over [`pkm`](./src/pkm/)'s DuckDB catalogue. The other
-faculties are future work, and the **agent-loop spine is an open decision** (see [`ROADMAP.md`](./ROADMAP.md)).
-
-| Faculty | System | Status |
-|---|---|---|
-| **Memory** | pkm + `life_agent` | **Live** — content-addressed extraction + DuckDB `fts`/`vss`; this repo adds the retrieval/synthesis read path |
-| **Brain** | credence | Not wired — Bayesian value-of-information governor: ask / proceed / block (Julia) |
-| **Hands** | jarvis-lite, email, calendar, chat | Not wired — Jarvis is a 13-tool MCP server; others TBD |
-| **Goals / Utility** | *(new)* | Unbuilt — what the owner values; owed before autonomous action |
-| **Spine** | **TBD** | Open decision: pi-mono (TS) vs a Python loop vs Claude Code as interim |
-
-The unifying idea is the **seam**: every capability is reachable over a stable, language-neutral
-contract, so the spine and the interface (a CLI today, later Telegram/Matrix) stay swappable.
+The kernel ([`PRINCIPLES.md`](./PRINCIPLES.md)): **a knowledge base built from DAGs of
+trustworthy transformations, and a personal assistant — the life agent — making rational,
+utility-maximising decisions over it.** What exists today is the KB and its first consumers:
+the cited retrieval + synthesis read path (`bin/ask-live`) over [`pkm`](./src/pkm/)'s catalogue,
+and an event-sourced GTD (`life_agent.tasks`, reached over Telegram) that email auto-files into
+with citations. The decision-theoretic faculties (the Bayesian brain, the goals/utility model)
+and the agent-loop spine are future work — the spine deliberately an open decision. Status of
+every faculty: [`ROADMAP.md`](./ROADMAP.md).
 
 ## Your data stays yours
 
@@ -99,16 +88,16 @@ and push. See [`docs/kb-schema.md`](./docs/kb-schema.md) for the expected layout
 
 ```
 SETUP.md              clone → cited answer (start here as a user)
+PRINCIPLES.md         the stable cross-phase principles (the philosophy; other docs defer to it)
 CONTRIBUTING.md       dogfood loop, the PII guard, the two-package rules
 ROADMAP.md            the plan (phases 0–3)
 CLAUDE.md             operating manual for an agent working in this repo
 LICENSE               AGPL-3.0-or-later
 bin/
   ask-live            THE entrypoint: cited answers over the live corpus, fact-verified
-  ask                 Phase-0 legacy: answer from a compiled wiki (no retrieval)
 src/
-  pkm/                memory faculty — content-addressed extraction + DuckDB catalogue
-  life_agent/         reasoning faculty — retrieval, citation guard, owner profile
+  pkm/                the KB — content-addressed extraction + transforms + DuckDB catalogue
+  life_agent/         the agent — retrieval/citation guard, event-sourced GTD (tasks), Telegram reach
 examples/
   README.md           the sample-corpus guide + the identity-guard demo
   sample-corpus/      synthetic markdown docs (Ada Lovelace) to try before your own data

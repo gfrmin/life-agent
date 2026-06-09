@@ -4,7 +4,8 @@ life-agent answers questions about your own life and **cites the document each
 fact came from**. Facts are verified, at answer time, to actually appear in the
 source they cite (see [Reliability](#reliability)). This guide gets you from a
 clone to a cited answer on the bundled synthetic corpus in a few minutes, then
-shows how to point it at your own data.
+shows how to point it at your own data. (The why behind the design:
+[`PRINCIPLES.md`](./PRINCIPLES.md).)
 
 ## 1. Prerequisites
 

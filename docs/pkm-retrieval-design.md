@@ -1,5 +1,9 @@
 # PKM retrieval design (code-grounded)
 
+> **Status: implemented (Phase 1); retained as the design record.** The MCP server it plans was
+> built then retired — the seam stands, the live server is deferred
+> ([`PRINCIPLES.md`](../PRINCIPLES.md) §5).
+
 How to extend `src/pkm` into the memory core. PKM already has the data model for retrieval; it
 lacks a retrieval reader, an embedding step, a non-file source path, and any server. Add those four
 without touching the cache/catalogue/hashing invariants. **Governance: amend pkm `SPEC.md` → v0.3.0
