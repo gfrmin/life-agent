@@ -305,3 +305,73 @@ def test_transform_help_lists_subcommands(
     out = capsys.readouterr().out
     for name in ("list", "run", "approve", "reject", "status", "show"):
         assert name in out
+
+
+# --- stale (SPEC §18.10) ------------------------------------------------
+
+def test_stale_help_states_read_only_and_append_only(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with pytest.raises(SystemExit) as excinfo:
+        main(["stale", "--help"])
+    assert excinfo.value.code == 0
+    out = capsys.readouterr().out.lower()
+    assert "read-only" in out
+    assert "nothing is deleted" in out or "append-only" in out
+
+
+def _insert_artifact(conn, *, key, input_hash, producer, version, when,
+                     status="success"):
+    from datetime import datetime
+    conn.execute(
+        "INSERT INTO artifacts "
+        "(cache_key, input_hash, producer_name, producer_version, "
+        " producer_config_hash, status, produced_at, content_type, content_path) "
+        "VALUES (?, ?, ?, ?, 'cfg', ?, ?, 'text/plain', '/dev/null')",
+        [key, input_hash, producer, version, status, datetime.fromisoformat(when)],
+    )
+
+
+def test_stale_on_clean_corpus_reports_none(
+    tmp_root: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str],
+) -> None:
+    cfg = _make_config(tmp_root, tmp_path / "config.yaml")
+    main(["--config", str(cfg), "migrate"])
+    capsys.readouterr()
+    # one extraction, no re-derivation → nothing stale
+    from pkm.catalogue import open_catalogue
+    with open_catalogue(tmp_root) as conn:
+        _insert_artifact(conn, key="a" * 64, input_hash="s" * 64,
+                         producer="docling", version="1",
+                         when="2026-01-01T00:00:00")
+    rc = main(["--config", str(cfg), "stale"])
+    assert rc == 0
+    assert "no stale artifacts" in capsys.readouterr().out
+
+
+def test_stale_reports_superseded_with_reason_and_summary(
+    tmp_root: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str],
+) -> None:
+    cfg = _make_config(tmp_root, tmp_path / "config.yaml")
+    main(["--config", str(cfg), "migrate"])
+    capsys.readouterr()
+    old, new, chunk = "1" * 64, "2" * 64, "3" * 64
+    from pkm.catalogue import open_catalogue
+    with open_catalogue(tmp_root) as conn:
+        _insert_artifact(conn, key=old, input_hash="s" * 64, producer="docling",
+                         version="1", when="2026-01-01T00:00:00")
+        _insert_artifact(conn, key=new, input_hash="s" * 64, producer="docling",
+                         version="2", when="2026-02-01T00:00:00")
+        _insert_artifact(conn, key=chunk, input_hash="c" * 64, producer="chunk",
+                         version="1", when="2026-01-02T00:00:00")
+        conn.execute(
+            "INSERT INTO artifact_lineage "
+            "(artifact_cache_key, input_cache_key, role) VALUES (?, ?, 'source')",
+            [chunk, old],
+        )
+    rc = main(["--config", str(cfg), "stale"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert f"superseded by {new}" in out          # the old extraction
+    assert f"stale-input via {old}" in out         # the chunk built on it
+    assert "2 stale (1 superseded, 1 stale-input)" in out
