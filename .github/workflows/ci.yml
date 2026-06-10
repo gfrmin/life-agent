@@ -37,7 +37,9 @@ jobs:
         run: uv sync
 
       - name: Lint (ruff)
-        run: uv run ruff check src tests scripts
+        # Whole tree (incl. .githooks): scoping to src/tests/scripts let the PII
+        # guard's own lint rot unnoticed.
+        run: uv run ruff check .
 
       - name: Typecheck (mypy — strict on src/pkm)
         run: uv run mypy
