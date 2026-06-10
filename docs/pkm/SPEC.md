@@ -1,6 +1,6 @@
 # SPEC.md — technical specification
 
-Version: 0.11.0 (draft)
+Version: 0.12.0 (draft)
 Status: Phase 1 complete (extraction layer with content-addressed
 caching, chunking, and FTS keyword retrieval); Phase 1.5 OCR-PDF
 fallback applied to the live corpus; source paths are stored as
@@ -1519,7 +1519,7 @@ The contract:
 - **Not retrievable.** External content types are NOT in `CHUNKABLE_CONTENT_TYPES` (§15.1):
   external derivations never enter chunking or FTS. This is a deliberate gate — a derived
   answer must not silently re-enter retrieval (and compete with primary sources) before
-  staleness tooling can flag descendants of superseded inputs. Lifting the gate is a future
+  staleness (§18.10) can flag descendants of superseded inputs. Lifting the gate is a future
   spec change, not a config knob.
 - **No truth claims.** pkm records external derivations exactly as it records its own
   (SPEC-PRINCIPLES §4): it owes them cache/lineage/catalogue semantics and nothing else.
@@ -1527,8 +1527,60 @@ The contract:
   failure is never frozen as the replayed result. Append-only discipline (§6.2) applies:
   reconciliation inserts rows, never rewrites cache files.
 
+### 18.10 Staleness
+
+The cache is append-only (§6.2): re-deriving a source with a newer producer version (or a
+changed config) writes a *new* `cache_key` alongside the old one — the old artifact is never
+overwritten or deleted. Over time the catalogue therefore accumulates artifacts that a later
+derivation has already replaced, and artifacts transitively built on top of those. *Staleness*
+is the read-only, deterministic operation that identifies them. It is defined entirely in terms
+of concepts the substrate already has — it introduces no new ordering rule, no new grouping, and
+no schema change.
+
+- **Current.** Within each `(input_hash, producer_name)` group restricted to `status='success'`,
+  the **current** artifact is the most recently produced — §18.1's recency rule
+  (`produced_at DESC`), applied within a group where `input_hash` is constant by construction,
+  with `cache_key` as the deterministic tiebreak should two share an exact timestamp. This is
+  the same artifact the rest of the system already treats as the live one for that input;
+  staleness reuses that recency rule rather than minting a second notion of "newest".
+- **Superseded.** Every non-current member of such a group is **superseded** — a successful
+  re-derivation of the *same input* by the *same producer* exists and is newer. (`failed`
+  artifacts are not grouped: a failure supersedes nothing and is superseded by nothing. A group
+  of one is trivially current.)
+- **Stale.** An artifact is **stale** iff it is superseded, or it was derived (per
+  `artifact_lineage`, §18.4) from an artifact that is itself stale. Equivalently: `stale` is the
+  superseded set closed downstream over lineage edges — walk from each superseded artifact along
+  the edges where it appears as `input_cache_key` to the dependent `artifact_cache_key`,
+  transitively. So upgrading the OCR producer marks the old extraction superseded, and its
+  chunks, entity-extractions, and any external derivation (§18.9) that cited them stale-by-input.
+- **Read-only, flag-never-delete.** Staleness is pure catalogue + `artifact_lineage` reachability:
+  no filesystem access, no re-hashing, no writes. It **reports**; it never deletes — the
+  append-only contract (§6.2) is unchanged, so a stale artifact's content and rows remain
+  replayable. Reclaiming space (e.g. moving stale content to an `attic/`) would be a separate
+  spec amendment, not part of this operation.
+- **`pkm stale`.** A read-only subcommand prints the stale artifacts, each tagged with its reason
+  — `superseded by <current cache_key>` or `stale-input via <stale upstream cache_key>` — so the
+  blast radius of any corpus change is exactly inspectable. No migration, no new dependency.
+- **Out of scope: source drift on disk.** A source *file* whose bytes change at a fixed path
+  produces a new `source_id` only when re-ingested; detecting drift before re-ingestion would
+  require re-hashing the filesystem, which is ingestion's concern (§8), not a read-only catalogue
+  walk. Staleness covers re-derivation already recorded in the catalogue, not yet-unobserved
+  edits to source files.
+
 ## 16. Change log
 
+- 0.12.0 (draft): §18.10 (new) — *staleness*. Defines the read-only, deterministic operation
+  that flags artifacts a later derivation has already replaced. *Current* = the §18.1-maximal
+  artifact in each `(input_hash, producer_name, status='success')` group; *superseded* = the
+  non-current members (a newer success for the same input + producer); *stale* = superseded
+  closed downstream over `artifact_lineage` (§18.4). Reuses the substrate's existing
+  most-recent-first ordering and `(input_hash, producer_name)` grouping — no new ordering rule,
+  no new vocabulary beyond formalising "superseded"/"stale" (already used informally in §18.9),
+  no schema change, no migration, no new dependency. Flag-never-delete: it reports, the
+  append-only contract (§6.2) is untouched. Resolves the §18.9 forward reference (a derived
+  answer stays out of retrieval until staleness can flag descendants of superseded inputs).
+  Source-drift-on-disk is explicitly out of scope (an ingestion concern, §8). Adds a read-only
+  `pkm stale` subcommand and `pkm.staleness`.
 - 0.11.0 (draft): §18.9 (new) — *external derivations (file-first)*. Authorises components
   outside pkm to record derivations in the cache under namespaced producer names
   (`life_agent.ask.*`), keyed through `compute_cache_key` (§4.3), written file-first in the
