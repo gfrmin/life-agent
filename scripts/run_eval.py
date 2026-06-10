@@ -23,9 +23,13 @@ path, audits citations deterministically (citation_guard), and judges faithfulne
 citation_fidelity with the cross-provider LLM judge (modal-of-N) → hallucination /
 grounded-answer / abstention-honesty rates in eval/synthesis_log.md.
 
+The synthesis path inherits the ask derivation cache (pkm SPEC §18.9): a re-run against an
+unchanged corpus replays every answer from cache (only judge calls spend). Per-stage hit/miss
+counters land in the report; --fresh forces recomputation (recording stays write-once).
+
 Usage (run in this monorepo's env for pkm.retrieval + DuckDB):
     uv run --project . python scripts/run_eval.py [--config PATH] [--k N] \
-        [--rebuild-index] [--synthesis]
+        [--rebuild-index] [--synthesis] [--fresh]
 """
 
 from __future__ import annotations
@@ -225,9 +229,10 @@ def _synthesis_judge_once(q: dict, answer_text: str, sources: list[dict], rubric
         return None
 
 
-def synthesis_grade(conn, q: dict, k: int) -> dict:
+def synthesis_grade(conn, q: dict, k: int, *, fresh: bool = False) -> dict:
     """End-to-end grade for one question: synthesise via the production path, audit citations
-    deterministically, then judge (modal-of-N). Returns a row consumed by ``synthesis_rates``."""
+    deterministically, then judge (modal-of-N). Returns a row consumed by ``synthesis_rates``.
+    ``fresh`` bypasses the ask derivation cache (recomputes; never overwrites)."""
     here = str(Path(__file__).resolve().parent)
     sys.path.insert(0, here)
     sys.path.insert(0, str(Path(__file__).resolve().parent / "comparison"))
@@ -235,7 +240,7 @@ def synthesis_grade(conn, q: dict, k: int) -> dict:
     import citation_guard
     from blind_judge import _rubric_text, modal
 
-    text, cards, _ = ask.answer(conn, q["question"], k)
+    text, cards, _ = ask.answer(conn, q["question"], k, no_cache=fresh)
     sources = [{"n": c.n, "text": c.text} for c in cards]
     audit = citation_guard.audit(text, cards)
     rubric = _rubric_text()
@@ -264,7 +269,21 @@ def synthesis_grade(conn, q: dict, k: int) -> dict:
     }
 
 
-def format_synthesis_report(rows: list[dict], rates: dict, k: int, elapsed: float) -> str:
+def _cache_line(cache: dict[str, int]) -> str:
+    """One line of per-stage derivation-cache hit rates for the report ('' when empty)."""
+    if not cache:
+        return ""
+    parts = []
+    for stage in ("expand", "retrieve", "synthesize"):
+        hits = cache.get(f"{stage}.hit", 0)
+        total = hits + cache.get(f"{stage}.miss", 0)
+        if total:
+            parts.append(f"{stage} {hits}/{total}")
+    return f"Derivation cache hits: {' · '.join(parts)}" if parts else ""
+
+
+def format_synthesis_report(rows: list[dict], rates: dict, k: int, elapsed: float,
+                            cache: dict[str, int] | None = None) -> str:
     def _pct(x: float | None) -> str:
         return "n/a" if x is None else f"{100 * x:.0f}%"
 
@@ -273,7 +292,7 @@ def format_synthesis_report(rows: list[dict], rates: dict, k: int, elapsed: floa
         "",
         f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M')}   k={k}   elapsed={elapsed:.1f}s   "
         f"judge=modal-of-{_JUDGE_N}",
-        "",
+        *([cl, ""] if (cl := _cache_line(cache or {})) else [""]),
         f"**Hallucination rate: {_pct(rates['hallucination_rate'])}** "
         f"({rates['n_hallucinated']}/{rates['n']} answers fabricated / wrong-subject / mis-cited).",
         f"**Grounded-answer rate: {_pct(rates['grounded_rate'])}** "
@@ -354,6 +373,11 @@ def main() -> int:
             "hallucination/grounded/abstention rates"
         ),
     )
+    parser.add_argument(
+        "--fresh", action="store_true",
+        help="bypass the ask derivation cache: recompute every answer "
+             "(recording stays write-once — existing derivations stand)",
+    )
     args = parser.parse_args()
 
     import duckdb
@@ -376,14 +400,20 @@ def main() -> int:
         print(f"Running synthesis grader (k={args.k}) over {len(questions)} questions "
               f"(production answer path + deterministic citation audit + modal-of-{_JUDGE_N} "
               f"LLM judge) …")
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import ask
+
+        ask.reset_cache_stats()
         t0 = time.monotonic()
-        rows = [synthesis_grade(conn, q, args.k) for q in questions]
+        rows = [synthesis_grade(conn, q, args.k, fresh=args.fresh) for q in questions]
         elapsed = time.monotonic() - t0
         rates = synthesis_rates(rows)
+        cache = ask.cache_stats()
 
         out = _kb_root() / "eval/synthesis_log.md"
         out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(format_synthesis_report(rows, rates, args.k, elapsed), encoding="utf-8")
+        out.write_text(format_synthesis_report(rows, rates, args.k, elapsed, cache),
+                       encoding="utf-8")
 
         sys.path.insert(0, str(Path(__file__).resolve().parent / "comparison"))
         import _common as JC
@@ -396,6 +426,8 @@ def main() -> int:
         print(f"  hallucination-rate={rates['hallucination_rate']}  "
               f"grounded-rate={rates['grounded_rate']}  "
               f"abstention-honesty={rates['abstention_honesty']}")
+        if (cl := _cache_line(cache)):
+            print(f"  {cl}")
         return 0 if (rates["hallucination_rate"] or 0.0) == 0.0 else 1
 
     print(f"Running answer-grounded eval (k={args.k}) over {len(questions)} questions …")
