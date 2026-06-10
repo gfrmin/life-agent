@@ -109,7 +109,7 @@ def il_id_valid(s: str) -> bool:
     """True if ``s`` is a 9-digit string whose Israeli-ID check digit is valid.
 
     Algorithm: weight digits by 1,2,1,2,…; replace any product ≥10 by the sum
-    of its two digits (== product − 9); the grand total must be ≡ 0 (mod 10).
+    of its two digits (== product - 9); the grand total must be 0 (mod 10).
     Synthetic fixtures are deliberately chosen to *fail* this, so they pass the
     guard; real IDs pass the checksum and are therefore flagged.
     """
@@ -223,7 +223,9 @@ def load_path_allow(repo_root: str) -> tuple[str, ...]:
     return tuple(out)
 
 
-_GENERIC_ROOTS = frozenset({"/home", "/Users", "/mnt", "/media", "/var", "/usr", "/", "~"})  # PII-OK
+_GENERIC_ROOTS = frozenset(
+    {"/home", "/Users", "/mnt", "/media", "/var", "/usr", "/", "~"}  # PII-OK
+)
 
 # Standard XDG base dirs. When $LIFE_AGENT_KB lives under one of these, that base is
 # generic (shared by many apps), NOT a private data mount — so the "data mount = KB
