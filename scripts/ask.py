@@ -27,6 +27,8 @@ import re
 import readline  # noqa: F401  -- enables line editing / history at the input() prompts
 import sys
 from collections import defaultdict
+from dataclasses import dataclass, field
+from datetime import date as _date
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -40,6 +42,7 @@ import yaml
 import life_agent.core as C
 from life_agent import owner
 from life_agent.core import derivations as D
+from life_agent.core import temporal as T
 from pkm.hashing import canonical_json
 
 DEFAULT_K = 8  # matches phase1_answer.py's synthesis-context default
@@ -177,6 +180,97 @@ def _clean_terms(raw: str) -> str:
     return " ".join(re.sub(r"[^\w]+", " ", raw, flags=re.UNICODE).split())
 
 
+# --- temporal (D1): /recent · /since · the nothing-vanishes footer --------- #
+# The ask path is READ-ONLY (§18.9), so temporal answers PROJECT current
+# doc_date artifacts (SPEC §18.12) over the hits and never derive in-band;
+# underived hits are named with their remedy and `/derive` materialises them
+# explicitly (closing the read connection around the write). The report of the
+# most recent temporal answer travels via TEMPORAL_LAST (the CACHE_STATS
+# pattern) so answer()'s public 3-tuple stays unchanged for run_eval/tests.
+@dataclass(frozen=True)
+class TemporalReport:
+    footer: str                                   # '' when nothing to say
+    targets: list[tuple[str, str]] = field(default_factory=list)
+    # targets: (declaration name, input artifact cache key) for /derive
+
+
+TEMPORAL_LAST: TemporalReport | None = None
+
+
+def parse_temporal_command(
+    line: str,
+) -> tuple[str, _date | None, _date | None, bool]:
+    """Pure: split a REPL line into (question, since, until, recent).
+    `/recent q` and `/since YYYY-MM-DD q` are the two temporal forms; an
+    unparseable /since date returns the line unchanged (the REPL complains
+    rather than silently asking an untemporal question)."""
+    if line.startswith("/recent "):
+        return line[len("/recent "):].strip(), None, None, True
+    if line.startswith("/since "):
+        rest = line[len("/since "):].strip()
+        head, _, q = rest.partition(" ")
+        try:
+            return q.strip(), _date.fromisoformat(head), None, False
+        except ValueError:
+            return line, None, None, False
+    return line, None, None, False
+
+
+def temporal_footer(view: T.TemporalView, name_of: dict[str, str]) -> str:
+    """Pure: render the total partition — every retrieved artifact is either
+    admitted, excluded (with the date that failed), undated, or underived
+    with its remedy. Nothing vanishes silently (the D1 coverage contract)."""
+    def names(keys: list[str]) -> str:
+        return ", ".join(name_of.get(k, k[:12] + "…") for k in keys)
+
+    parts = [f"{len(view.admitted)} admitted"]
+    if view.excluded:
+        listed = ", ".join(
+            f"{name_of.get(k, k[:12] + '…')} ({d.isoformat()})"
+            for k, d in view.excluded)
+        parts.append(f"{len(view.excluded)} excluded by date ({listed})")
+    if view.undated:
+        parts.append(f"{len(view.undated)} no extractable date "
+                     f"({names(view.undated)})")
+    if view.underived:
+        parts.append(f"{len(view.underived)} not yet date-derived "
+                     f"({names(view.underived)})")
+    footer = "date filter: " + " · ".join(parts)
+    if view.remedies:
+        footer += ("\n  /derive to materialise, or run:\n    "
+                   + "\n    ".join(view.remedies))
+    return footer
+
+
+def _apply_temporal_to_hits(
+    conn: duckdb.DuckDBPyConnection, root: Path | None,
+    hits: list[dict[str, Any]], *, since: _date | None, until: _date | None,
+    recent: bool,
+) -> tuple[list[dict[str, Any]], TemporalReport]:
+    """Project + filter the chunk hits by ARTIFACT date. Chunks of one
+    artifact share its fate; admitted chunks keep admitted-artifact order
+    (newest first). Fail-open: an unresolvable root disables the filter with
+    an explicit notice, never silently."""
+    if root is None:
+        return hits, TemporalReport(
+            footer="date filter UNAVAILABLE (no pkm root) — showing all hits")
+    keys = list(dict.fromkeys(h["artifact_cache_key"] for h in hits))
+    view = T.apply_temporal(
+        T.project_dates(conn, root, keys),
+        since=since, until=until, recent=recent)
+    name_of = {h["artifact_cache_key"]: Path(h["origin"]).name for h in hits}
+    rank = {k: i for i, k in enumerate(view.admitted)}
+    admitted_hits = sorted(
+        (h for h in hits if h["artifact_cache_key"] in rank),
+        key=lambda h: rank[h["artifact_cache_key"]])
+    targets = []
+    for remedy in view.remedies:  # "pkm derive <decl> --input <ck>"
+        words = remedy.split()
+        targets.append((words[2], words[4]))
+    return admitted_hits, TemporalReport(
+        footer=temporal_footer(view, name_of), targets=targets)
+
+
 def build_query(question: str, terms: str) -> str:
     """Pure: combine the raw question with expansion terms into one disjunctive BM25
     query. The original words are ALWAYS retained, so expansion can only *add* recall —
@@ -257,7 +351,9 @@ def retrieval_is_weak(scores: dict[int, float], *, floor: float, min_hits: int) 
 
 def answer(conn: duckdb.DuckDBPyConnection, question: str,
            k: int, *, expand: bool = True,
-           no_cache: bool = False) -> tuple[str, list[C.SourceCard], dict[int, float]]:
+           no_cache: bool = False,
+           since: _date | None = None, until: _date | None = None,
+           recent: bool = False) -> tuple[str, list[C.SourceCard], dict[int, float]]:
     """Retrieve then synthesise a cited answer. The authoritative owner profile (who "I"/"my"
     is) is prepended as an OWNER block so the model never mistakes a relative's document for the
     owner's. Retrieval uses the question expanded with cheap-model keywords by default
@@ -268,6 +364,8 @@ def answer(conn: duckdb.DuckDBPyConnection, question: str,
     retrieval-set content hash, owner-profile hash). ``no_cache`` recomputes every stage
     (recording stays write-once, so existing derivations stand). Caching is fail-open.
     Returns (answer_text, cards, {card_n: score})."""
+    global TEMPORAL_LAST
+    TEMPORAL_LAST = None
     root = _pkm_root()
     profile = owner.load_profile()
     terms = _expand_terms(question, root=root, no_cache=no_cache) if expand else ""
@@ -291,6 +389,16 @@ def answer(conn: duckdb.DuckDBPyConnection, question: str,
             lineage = [{"cache_key": ck, "role": "retrieved"}
                        for ck in dict.fromkeys(h["artifact_cache_key"] for h in hits)]
             D.record(root, rkey, _set_content(hits), lineage=lineage)
+
+    # temporal (D1): filter/rank the hits by projected doc_date BEFORE cards
+    # and the synthesize key — the admitted set IS the evidence, so the key's
+    # early-cutoff hinge hashes exactly what synthesis sees. The full retrieval
+    # set was already recorded above (retrieval is a corpus+query function;
+    # the date predicate is consumer-side policy).
+    if since is not None or until is not None or recent:
+        hits, report = _apply_temporal_to_hits(
+            conn, root, hits, since=since, until=until, recent=recent)
+        TEMPORAL_LAST = report
 
     pairs = _cards_from_set(hits)
     cards = [c for c, _ in pairs]
@@ -336,12 +444,14 @@ def _sources_inline(cards: list[C.SourceCard], scores: dict[int, float]) -> str:
 
 
 def render(text: str, cards: list[C.SourceCard], scores: dict[int, float],
-           audit: guard.CitationAudit | None = None) -> None:
+           audit: guard.CitationAudit | None = None, footer: str = "") -> None:
     print(f"\n{text}\n")
     if cards:
         print("sources:")
         for c in cards:
             print(f"  [{c.n}] {Path(c.origin).name}  ({scores.get(c.n, 0.0):.2f})")
+    if footer:
+        print(footer)  # temporal partition: nothing vanishes silently (D1)
     if audit is not None and not audit.ok:
         print(audit.footer())  # ⚠ unverified: a cited fact wasn't found in its source
     print()
@@ -415,11 +525,51 @@ def capture(question: str, text: str, cards: list[C.SourceCard], scores: dict[in
 
 # --- one question, end to end --------------------------------------------- #
 def ask_once(conn: duckdb.DuckDBPyConnection, question: str, k: int,
-             *, expand: bool = True, no_cache: bool = False) -> None:
-    text, cards, scores = answer(conn, question, k, expand=expand, no_cache=no_cache)
+             *, expand: bool = True, no_cache: bool = False,
+             since: _date | None = None, until: _date | None = None,
+             recent: bool = False) -> list[tuple[str, str]]:
+    """Answer + render + capture. Returns the temporal report's derive targets
+    (empty when untemporal) so the REPL can offer `/derive`."""
+    text, cards, scores = answer(conn, question, k, expand=expand,
+                                 no_cache=no_cache, since=since, until=until,
+                                 recent=recent)
     audit = guard.audit(text, cards)  # pure and cheap — recomputed, never cached
-    render(text, cards, scores, audit)
+    report = TEMPORAL_LAST
+    render(text, cards, scores, audit,
+           footer=report.footer if report is not None else "")
     capture(question, text, cards, scores, audit)
+    return report.targets if report is not None else []
+
+
+# --- /derive: explicit, demand-driven materialisation ---------------------- #
+def run_derive(targets: list[tuple[str, str]]) -> None:
+    """Materialise the named doc_date targets via pkm.derive (SPEC §18.11).
+    The CALLER must have closed any read-only catalogue connection first — a
+    reader and a writer cannot coexist on the DuckDB file. Fail-open: a held
+    lock (an extraction running) prints and returns; nothing crashes the REPL."""
+    from pkm.config import load_config as pkm_load_config
+    from pkm.derive import derive as pkm_derive
+
+    try:
+        cfg = pkm_load_config(C.PKM_CONFIG)
+    except Exception as e:
+        print(f"derive unavailable (pkm config: {e})")
+        return
+    for decl, input_key in targets:
+        try:
+            result = pkm_derive(cfg.root_dir, cfg, decl,
+                                input_cache_key=input_key,
+                                caller="ask.derive")
+        except duckdb.Error as e:
+            if _is_lock_error(str(e)):
+                print("corpus locked by extraction — try /derive again in a moment")
+                return
+            raise
+        if result.status == "success":
+            print(f"derived  {decl}  {result.target_cache_key}")
+        else:
+            print(f"{result.status}  {decl}: "
+                  f"{result.error_message or result.approval_id}")
 
 
 # --- teaching: opportunistically record an authoritative owner fact ------- #
@@ -438,21 +588,42 @@ def remember(fact: str) -> None:
 def repl(conn: duckdb.DuckDBPyConnection, k: int, *, expand: bool = True,
          no_cache: bool = False) -> None:
     print("ask anything about your life — '/i <fact>' to teach me about you, "
-          "Ctrl-D or /q to quit\n")
+          "'/recent <q>' or '/since YYYY-MM-DD <q>' for date-filtered answers, "
+          "'/derive' to materialise missing dates, Ctrl-D or /q to quit\n")
+    derive_targets: list[tuple[str, str]] = []
     while True:
         try:
-            question = input("ask> ").strip()
+            line = input("ask> ").strip()
         except EOFError:
             print()
             return
-        if not question:
+        if not line:
             continue
-        if question in ("/q", "/quit", "/exit"):
+        if line in ("/q", "/quit", "/exit"):
             return
-        if question.startswith(("/i ", "/me ")):
-            remember(question.split(" ", 1)[1])
+        if line.startswith(("/i ", "/me ")):
+            remember(line.split(" ", 1)[1])
             continue
-        ask_once(conn, question, k, expand=expand, no_cache=no_cache)
+        if line == "/derive":
+            if not derive_targets:
+                print("nothing to derive — ask a /recent or /since question first\n")
+                continue
+            # A reader and a writer cannot coexist (§18.9): close, write, reopen.
+            conn.close()
+            try:
+                run_derive(derive_targets)
+                derive_targets = []
+            finally:
+                conn = connect()
+            print()
+            continue
+        question, since, until, recent = parse_temporal_command(line)
+        if question == line and line.startswith("/since "):
+            print("usage: /since YYYY-MM-DD <question>\n")
+            continue
+        derive_targets = ask_once(conn, question, k, expand=expand,
+                                  no_cache=no_cache, since=since,
+                                  until=until, recent=recent)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -468,6 +639,12 @@ def main(argv: list[str] | None = None) -> int:
                          "(recording stays write-once — existing derivations stand)")
     ap.add_argument("--tell", metavar="FACT",
                     help="record an authoritative owner fact (e.g. 'My name is …') and exit")
+    ap.add_argument("--since", type=_date.fromisoformat, metavar="YYYY-MM-DD",
+                    help="only sources dated on/after this date (others are named, not dropped)")
+    ap.add_argument("--until", type=_date.fromisoformat, metavar="YYYY-MM-DD",
+                    help="only sources dated on/before this date")
+    ap.add_argument("--recent", action="store_true",
+                    help="rank dated sources newest-first (nothing excluded)")
     args = ap.parse_args(argv)
     expand = not args.no_expand
 
@@ -494,7 +671,9 @@ def main(argv: list[str] | None = None) -> int:
         raise
 
     if args.question:
-        ask_once(conn, " ".join(args.question), args.k, expand=expand, no_cache=args.no_cache)
+        ask_once(conn, " ".join(args.question), args.k, expand=expand,
+                 no_cache=args.no_cache, since=args.since, until=args.until,
+                 recent=args.recent)
     else:
         repl(conn, args.k, expand=expand, no_cache=args.no_cache)
     return 0
