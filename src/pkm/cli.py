@@ -310,6 +310,18 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
 
+    subparsers.add_parser(
+        "stale",
+        help="Report artifacts a newer derivation has superseded (SPEC §18.10).",
+        description=(
+            "Read-only staleness report. Lists artifacts that a newer "
+            "success has superseded for the same (input_hash, producer), "
+            "plus everything derived downstream of them over artifact_lineage. "
+            "Reports only — the cache is append-only, so nothing is deleted "
+            "(SPEC §18.10)."
+        ),
+    )
+
     p_transform = subparsers.add_parser(
         "transform",
         help="Run and manage LLM transforms.",
@@ -573,6 +585,30 @@ def _cmd_serve(args: argparse.Namespace, config: Config) -> int:
     return 0
 
 
+def _cmd_stale(args: argparse.Namespace, config: Config) -> int:
+    from pkm import staleness
+
+    with open_catalogue(config.root_dir) as conn:
+        rows = staleness.stale(conn)
+
+    if not rows:
+        print("no stale artifacts")
+        return 0
+
+    for s in rows:
+        if s.reason == staleness.SUPERSEDED:
+            why = f"superseded by {s.via}"
+        else:
+            why = f"stale-input via {s.via}"
+        print(f"{s.cache_key}  {s.producer_name:<20}  {why}")
+
+    n_superseded = sum(1 for s in rows if s.reason == staleness.SUPERSEDED)
+    n_downstream = len(rows) - n_superseded
+    print(f"\n{len(rows)} stale "
+          f"({n_superseded} superseded, {n_downstream} stale-input)")
+    return 0
+
+
 def _cmd_transform(args: argparse.Namespace, config: Config) -> int:
     sub = args.transform_subcommand
     if sub is None:
@@ -732,5 +768,6 @@ _SUBCOMMANDS: dict[str, Callable[[argparse.Namespace, Config], int]] = {
     "rebuild-index": _cmd_rebuild_index,
     "search": _cmd_search,
     "serve": _cmd_serve,
+    "stale": _cmd_stale,
     "transform": _cmd_transform,
 }
