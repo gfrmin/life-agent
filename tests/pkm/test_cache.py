@@ -552,3 +552,38 @@ def test_sweep_removes_orphan_with_lineage(migrated_root: Path) -> None:
         removed = sweep_orphans(migrated_root, conn)
     assert cache_key in removed
     assert not d.exists()
+
+
+# --- has_success_artifact (SPEC §18.11 cache-first check) -------------------
+
+
+def test_has_success_artifact_states(migrated_root: Path) -> None:
+    """SPEC §18.11 cache-first check: success row + content on disk ⇒ True;
+    absent or failed ⇒ False; success row with missing content fails loudly
+    (§6.2 asymmetric recovery, same contract as ``write_artifact``)."""
+    from pkm.cache import has_success_artifact
+
+    ok_key = "ab" * 32
+    failed_key = "cd" * 32
+    with open_catalogue(migrated_root) as conn:
+        assert has_success_artifact(migrated_root, conn, "ef" * 32) is False
+
+        write_artifact(
+            migrated_root, conn, cache_key=ok_key, input_hash="11" * 32,
+            producer_name="pandoc", producer_version="3", producer_config={},
+            result=_success(),
+        )
+        write_artifact(
+            migrated_root, conn, cache_key=failed_key, input_hash="22" * 32,
+            producer_name="pandoc", producer_version="3", producer_config={},
+            result=ProducerResult(
+                status="failed", content=None, content_type=None,
+                content_encoding=None, error_message="boom",
+                producer_metadata={}),
+        )
+        assert has_success_artifact(migrated_root, conn, ok_key) is True
+        assert has_success_artifact(migrated_root, conn, failed_key) is False
+
+        content_file(migrated_root, ok_key).unlink()
+        with pytest.raises(CacheInconsistencyError):
+            has_success_artifact(migrated_root, conn, ok_key)
