@@ -532,6 +532,29 @@ def _row_exists(conn: duckdb.DuckDBPyConnection, cache_key: str) -> bool:
     return row is not None
 
 
+def has_success_artifact(
+    root: Path, conn: duckdb.DuckDBPyConnection, cache_key: str,
+) -> bool:
+    """True iff a ``status='success'`` catalogue row exists for ``cache_key``
+    AND its content file is on disk — the cache-first check of SPEC §18.11.
+
+    A success row whose content file is missing raises
+    ``CacheInconsistencyError`` (§6.2 asymmetric recovery): treating it as a
+    miss would silently re-spend the model over a corrupted cache.
+    """
+    row = conn.execute(
+        "SELECT status FROM artifacts WHERE cache_key = ?", [cache_key]
+    ).fetchone()
+    if row is None or row[0] != "success":
+        return False
+    if not content_file(root, cache_key).exists():
+        raise CacheInconsistencyError(
+            f"catalogue row for {cache_key} is status='success' "
+            f"but its content file is missing"
+        )
+    return True
+
+
 def _fetch_artifacts_row(
     conn: duckdb.DuckDBPyConnection, cache_key: str
 ) -> dict[str, Any] | None:
