@@ -20,12 +20,16 @@ Run (from the repo root, for pkm.retrieval + duckdb):
 from __future__ import annotations
 
 import argparse
+import contextlib
+import json
 import os
 import re
 import readline  # noqa: F401  -- enables line editing / history at the input() prompts
 import sys
+from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 import citation_guard as guard  # sibling script: deterministic citation-faithfulness gate
 import duckdb
@@ -35,6 +39,8 @@ import yaml
 # PKM_CONFIG paths) lives in the installed life_agent package (see life-agent's pyproject).
 import life_agent.core as C
 from life_agent import owner
+from life_agent.core import derivations as D
+from pkm.hashing import canonical_json
 
 DEFAULT_K = 8  # matches phase1_answer.py's synthesis-context default
 
@@ -102,14 +108,60 @@ ANSWER_SYSTEM = (
 
 
 # --- retrieval over the LIVE corpus --------------------------------------- #
+def _pkm_root() -> Path | None:
+    """The pkm knowledge root, or None when unresolvable. None disables derivation
+    caching only (fail open) — answering itself goes through connect(), which raises."""
+    try:
+        cfg = yaml.safe_load(C.PKM_CONFIG.read_text(encoding="utf-8"))
+        return Path(cfg["root_dir"]).expanduser()
+    except (OSError, KeyError, TypeError, yaml.YAMLError):
+        return None
+
+
 def connect() -> duckdb.DuckDBPyConnection:
     """Open the live catalogue read-only (so a running extraction never blocks us)
     and load FTS. Mirrors phase1_answer._connect()."""
-    cfg = yaml.safe_load(C.PKM_CONFIG.read_text(encoding="utf-8"))
-    db = Path(cfg["root_dir"]).expanduser() / "catalogue.duckdb"
-    conn = duckdb.connect(str(db), read_only=True)
+    root = _pkm_root()
+    if root is None:
+        raise FileNotFoundError(f"unresolvable pkm root (config: {C.PKM_CONFIG})")
+    conn = duckdb.connect(str(root / "catalogue.duckdb"), read_only=True)
     conn.execute("INSTALL fts; LOAD fts;")
     return conn
+
+
+# --- the cached derivation DAG (pkm SPEC §18.9) ----------------------------- #
+# Each ask is a DAG of content-addressed stages — expand → retrieve → synthesize —
+# recorded file-first into the pkm cache (life_agent.core.derivations). Re-asking an
+# unchanged question against an unchanged corpus replays every stage from cache at zero
+# marginal cost; a changed input invalidates exactly the stages downstream of it (the
+# synthesize key hashes the retrieved CONTENT, so corpus growth that retrieves the same
+# evidence still replays the answer — early cutoff). Caching is strictly fail-open:
+# no resolvable root / no digest / a lock just means a fresh computation, never a failure.
+CACHE_STATS: dict[str, int] = defaultdict(int)
+
+
+def _count(stage: str, *, hit: bool) -> None:
+    CACHE_STATS[f"{stage}.{'hit' if hit else 'miss'}"] += 1
+
+
+def reset_cache_stats() -> None:
+    CACHE_STATS.clear()
+
+
+def cache_stats() -> dict[str, int]:
+    """A copy of the per-stage hit/miss counters (consumed by run_eval's report)."""
+    return dict(CACHE_STATS)
+
+
+def _corpus_digest(conn: duckdb.DuckDBPyConnection) -> str | None:
+    """corpus_digest, fail-open: None (caching off for this question) on any failure —
+    the cache must never break answering."""
+    from life_agent.core.corpus import corpus_digest
+
+    try:
+        return corpus_digest(conn)
+    except Exception:
+        return None
 
 
 def _is_lock_error(msg: str) -> bool:
@@ -133,21 +185,38 @@ def build_query(question: str, terms: str) -> str:
     return f"{question} {terms}".strip() if terms else question
 
 
-def _expand_terms(question: str, *, model: str = EXPAND_MODEL) -> str:
+def _expand_terms(question: str, *, model: str = EXPAND_MODEL,
+                  root: Path | None = None, no_cache: bool = False) -> str:
     """Impure edge: ask a cheap model for extra BM25 keywords. Returns a space-joined
     term string, or '' on any failure (caller falls back to the raw question — expansion
-    must never break the REPL)."""
+    must never break the REPL).
+
+    Cached derivation (corpus-independent: keyed on question + model + prompt template
+    only, so corpus growth never invalidates it). The RAW model reply is what is recorded;
+    ``_clean_terms`` is applied post-cache, so a cleanup tweak changes behaviour without
+    orphaning recorded expansions. Failures are never recorded."""
+    key = D.expand_key(question, model=model, prompt_template=EXPAND_SYSTEM,
+                       temperature=C.TEMPERATURE, max_tokens=120)
+    if root is not None and not no_cache:
+        cached = D.lookup(root, key.cache_key)
+        if cached is not None:
+            _count("expand", hit=True)
+            return _clean_terms(cached.decode("utf-8"))
     try:
         r = C.anthropic_complete(EXPAND_SYSTEM, question, model=model, max_tokens=120)
     except SystemExit:
         return ""
+    if root is not None:
+        _count("expand", hit=False)
+        D.record(root, key, r.text.encode("utf-8"), lineage=[],
+                 metadata={"in_tokens": r.in_tokens, "out_tokens": r.out_tokens})
     return _clean_terms(r.text)
 
 
-def retrieve(conn: duckdb.DuckDBPyConnection, question: str,
-             k: int) -> list[tuple[C.SourceCard, float]]:
+def _retrieve_set(conn: duckdb.DuckDBPyConnection, question: str, k: int) -> list[dict[str, Any]]:
     """FTS the given query over the whole corpus; dedupe by chunk text keeping the best
-    score; return the top-k as (numbered SourceCard, score) pairs. No snapshot filter."""
+    score; return the top-k as plain dicts — the cacheable retrieval-set content, carrying
+    each hit's artifact cache key for lineage. No snapshot filter."""
     from pkm.retrieval import search
 
     best: dict[str, object] = {}
@@ -156,8 +225,28 @@ def retrieve(conn: duckdb.DuckDBPyConnection, question: str,
         if prev is None or h.score > prev.score:  # type: ignore[attr-defined]
             best[h.chunk_text] = h
     top = sorted(best.values(), key=lambda h: h.score, reverse=True)[:k]
-    return [(C.SourceCard(n=i + 1, text=h.chunk_text.strip(), origin=h.source_path), h.score)
-            for i, h in enumerate(top)]
+    return [{"artifact_cache_key": h.artifact_cache_key, "chunk_text": h.chunk_text,
+             "score": h.score, "origin": h.source_path} for h in top]
+
+
+def _cards_from_set(hits: list[dict[str, Any]]) -> list[tuple[C.SourceCard, float]]:
+    """Pure: render a retrieval set (live or replayed from cache) as numbered cards."""
+    return [(C.SourceCard(n=i + 1, text=h["chunk_text"].strip(), origin=h["origin"]),
+             h["score"]) for i, h in enumerate(hits)]
+
+
+def _set_content(hits: list[dict[str, Any]]) -> bytes:
+    """Pure: the canonical bytes of a retrieval set — what gets recorded, and what the
+    synthesize key hashes (the early-cutoff hinge: equal evidence ⇒ equal hash, whatever
+    the corpus digest did)."""
+    return canonical_json({"format_version": 1, "hits": hits}).encode("utf-8")
+
+
+def retrieve(conn: duckdb.DuckDBPyConnection, question: str,
+             k: int) -> list[tuple[C.SourceCard, float]]:
+    """FTS query → top-k (numbered SourceCard, score) pairs. Composition of the two
+    halves above; kept as the uncached convenience seam."""
+    return _cards_from_set(_retrieve_set(conn, question, k))
 
 
 def retrieval_is_weak(scores: dict[int, float], *, floor: float, min_hits: int) -> bool:
@@ -167,30 +256,78 @@ def retrieval_is_weak(scores: dict[int, float], *, floor: float, min_hits: int) 
 
 
 def answer(conn: duckdb.DuckDBPyConnection, question: str,
-           k: int, *, expand: bool = True) -> tuple[str, list[C.SourceCard], dict[int, float]]:
+           k: int, *, expand: bool = True,
+           no_cache: bool = False) -> tuple[str, list[C.SourceCard], dict[int, float]]:
     """Retrieve then synthesise a cited answer. The authoritative owner profile (who "I"/"my"
     is) is prepended as an OWNER block so the model never mistakes a relative's document for the
     owner's. Retrieval uses the question expanded with cheap-model keywords by default
     (``expand=False`` for the raw-question A/B baseline).
+
+    Every stage is a cached, content-addressed derivation (SPEC §18.9): expand keyed on the
+    question; retrieve keyed on (query, corpus digest, k); synthesize keyed on (question,
+    retrieval-set content hash, owner-profile hash). ``no_cache`` recomputes every stage
+    (recording stays write-once, so existing derivations stand). Caching is fail-open.
     Returns (answer_text, cards, {card_n: score})."""
+    root = _pkm_root()
     profile = owner.load_profile()
-    terms = _expand_terms(question) if expand else ""
+    terms = _expand_terms(question, root=root, no_cache=no_cache) if expand else ""
     if terms:
         print(f"  ↳ expanded: {terms}")
-    hits = retrieve(conn, build_query(question, terms), k)
-    cards = [c for c, _ in hits]
-    scores = {c.n: s for c, s in hits}
+    query = build_query(question, terms)
+
+    # retrieve — deterministic given the corpus state, so keyed on its digest
+    digest = _corpus_digest(conn) if root is not None else None
+    rkey = D.retrieve_key(query, digest, k=k) if digest is not None else None
+    hits: list[dict[str, Any]] | None = None
+    if root is not None and rkey is not None and not no_cache:
+        cached = D.lookup(root, rkey.cache_key)
+        if cached is not None:
+            _count("retrieve", hit=True)
+            hits = json.loads(cached.decode("utf-8"))["hits"]
+    if hits is None:
+        hits = _retrieve_set(conn, query, k)
+        if root is not None and rkey is not None:
+            _count("retrieve", hit=False)
+            lineage = [{"cache_key": ck, "role": "retrieved"}
+                       for ck in dict.fromkeys(h["artifact_cache_key"] for h in hits)]
+            D.record(root, rkey, _set_content(hits), lineage=lineage)
+
+    pairs = _cards_from_set(hits)
+    cards = [c for c, _ in pairs]
+    scores = {c.n: s for c, s in pairs}
     # Abstain on weak retrieval (subsumes the zero-hit case) unless the owner profile can answer
     # an identity question on its own. Returns the weak cards so the dogfood loop sees the misses.
+    # No synthesize derivation is recorded for an abstention — it is a refusal, not an answer.
     if retrieval_is_weak(scores, floor=WEAK_SCORE_FLOOR, min_hits=MIN_STRONG_HITS) and not profile:
         return (ABSTENTION, cards, scores)
+
+    # synthesize — keyed on the retrieved CONTENT (early cutoff) and the profile hash
+    skey = D.synthesize_key(question, D.content_hash(_set_content(hits)),
+                            D.content_hash(profile.encode("utf-8")),
+                            model=C.DEFAULT_ANSWER_MODEL, prompt_template=ANSWER_SYSTEM,
+                            temperature=C.TEMPERATURE, max_tokens=600)
+    if root is not None and not no_cache:
+        cached = D.lookup(root, skey.cache_key)
+        if cached is not None:
+            _count("synthesize", hit=True)
+            return (cached.decode("utf-8"), cards, scores)
+
     blocks = []
     if profile:
         blocks.append(f'OWNER (authoritative — who "I"/"my" refers to):\n{profile}')
     blocks.append(f"SOURCES:\n{C.render_sources_block(cards) if cards else '(none retrieved)'}")
     user = f"QUESTION: {question}\n\n" + "\n\n".join(blocks)
     r = C.anthropic_complete(ANSWER_SYSTEM, user, max_tokens=600)
-    return (r.text.strip(), cards, scores)
+    text = r.text.strip()
+    if root is not None:
+        _count("synthesize", hit=False)
+        lineage = ([{"cache_key": rkey.cache_key, "role": "retrieval_set"}] if rkey else [])
+        lineage += [{"cache_key": ck, "role": "source"}
+                    for ck in dict.fromkeys(h["artifact_cache_key"] for h in hits)]
+        D.record(root, skey, text.encode("utf-8"), lineage=lineage,
+                 metadata={"in_tokens": r.in_tokens, "out_tokens": r.out_tokens,
+                           "seconds": round(r.seconds, 3)})
+    return (text, cards, scores)
 
 
 # --- presentation --------------------------------------------------------- #
@@ -278,9 +415,9 @@ def capture(question: str, text: str, cards: list[C.SourceCard], scores: dict[in
 
 # --- one question, end to end --------------------------------------------- #
 def ask_once(conn: duckdb.DuckDBPyConnection, question: str, k: int,
-             *, expand: bool = True) -> None:
-    text, cards, scores = answer(conn, question, k, expand=expand)
-    audit = guard.audit(text, cards)
+             *, expand: bool = True, no_cache: bool = False) -> None:
+    text, cards, scores = answer(conn, question, k, expand=expand, no_cache=no_cache)
+    audit = guard.audit(text, cards)  # pure and cheap — recomputed, never cached
     render(text, cards, scores, audit)
     capture(question, text, cards, scores, audit)
 
@@ -298,7 +435,8 @@ def remember(fact: str) -> None:
 
 
 # --- REPL ----------------------------------------------------------------- #
-def repl(conn: duckdb.DuckDBPyConnection, k: int, *, expand: bool = True) -> None:
+def repl(conn: duckdb.DuckDBPyConnection, k: int, *, expand: bool = True,
+         no_cache: bool = False) -> None:
     print("ask anything about your life — '/i <fact>' to teach me about you, "
           "Ctrl-D or /q to quit\n")
     while True:
@@ -314,7 +452,7 @@ def repl(conn: duckdb.DuckDBPyConnection, k: int, *, expand: bool = True) -> Non
         if question.startswith(("/i ", "/me ")):
             remember(question.split(" ", 1)[1])
             continue
-        ask_once(conn, question, k, expand=expand)
+        ask_once(conn, question, k, expand=expand, no_cache=no_cache)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -325,6 +463,9 @@ def main(argv: list[str] | None = None) -> int:
                     help=f"top-k retrieval context (default {DEFAULT_K})")
     ap.add_argument("--no-expand", action="store_true",
                     help="disable cheap-model query expansion (raw-question BM25 baseline)")
+    ap.add_argument("--no-cache", action="store_true",
+                    help="recompute every stage instead of replaying cached derivations "
+                         "(recording stays write-once — existing derivations stand)")
     ap.add_argument("--tell", metavar="FACT",
                     help="record an authoritative owner fact (e.g. 'My name is …') and exit")
     args = ap.parse_args(argv)
@@ -335,6 +476,15 @@ def main(argv: list[str] | None = None) -> int:
         remember(args.tell)
         return 0
 
+    # Opportunistic catalogue reconciliation (SPEC §18.9): insert the rows for any
+    # file-first derivations recorded by earlier sessions, BEFORE our read-only connection
+    # opens (a writer and a reader cannot coexist). A held lock just means next time.
+    root = _pkm_root()
+    if root is not None:
+        # best-effort by contract; on any failure the files stay authoritative
+        with contextlib.suppress(Exception):
+            D.reconcile(root)
+
     try:
         conn = connect()
     except duckdb.Error as e:
@@ -344,9 +494,9 @@ def main(argv: list[str] | None = None) -> int:
         raise
 
     if args.question:
-        ask_once(conn, " ".join(args.question), args.k, expand=expand)
+        ask_once(conn, " ".join(args.question), args.k, expand=expand, no_cache=args.no_cache)
     else:
-        repl(conn, args.k, expand=expand)
+        repl(conn, args.k, expand=expand, no_cache=args.no_cache)
     return 0
 
 

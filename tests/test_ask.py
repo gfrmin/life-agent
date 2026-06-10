@@ -57,7 +57,8 @@ def test_log_entry_no_sources_omits_sources_line() -> None:
 # --- retrieve() dedupe + rank (no DuckDB; pkm.retrieval.search monkeypatched) #
 
 def _hit(text: str, score: float, path: str = "/data/p/doc"):
-    return SimpleNamespace(chunk_text=text, score=score, source_path=path)
+    return SimpleNamespace(chunk_text=text, score=score, source_path=path,
+                           artifact_cache_key="a" * 64)
 
 
 def test_retrieve_dedupes_keeping_best_score_and_ranks(monkeypatch) -> None:
@@ -186,9 +187,11 @@ def test_retrieval_is_weak_truth_table() -> None:
 
 def test_answer_abstains_on_weak_retrieval_without_calling_llm(monkeypatch) -> None:
     monkeypatch.setattr(owner, "load_profile", lambda: "")  # no profile to answer from
+    monkeypatch.setattr(ask, "_pkm_root", lambda: None)     # hermetic: no live cache I/O
     monkeypatch.setattr(
-        ask, "retrieve",
-        lambda conn, q, k: [(SourceCard(n=1, text="x", origin="/data/a.pdf"), 1.0)],  # weak score
+        ask, "_retrieve_set",
+        lambda conn, q, k: [{"artifact_cache_key": "a" * 64, "chunk_text": "x",
+                             "score": 1.0, "origin": "/data/a.pdf"}],  # weak score
     )
     monkeypatch.setattr(
         ask.C, "anthropic_complete",
