@@ -1,0 +1,10 @@
+What is this document's own primary date — the date it was issued, written, or sent
+(an invoice's issue date, a letter's date line, a report's publication date)?
+NOT today's date, NOT a due date, NOT an ingestion or scan date. If several dates
+appear, choose the one identifying when the document itself was created. Reply with
+JSON only: {"format_version": 1, "date": "YYYY-MM-DD"} or, if no such date appears
+in the text, {"format_version": 1, "date": null}.
+
+---
+{text}
+---

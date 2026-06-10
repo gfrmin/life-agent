@@ -1,0 +1,4 @@
+Deterministic producer: this file exists because every transform declaration names a
+prompt (SPEC §18.2) and its hash keys the cache. The "prompt" of doc_date_email is the
+rendered header block itself; this text documents the contract and versions it.
+Parse the `Date:` line of the rendered email header block (SPEC §7.2) to an ISO date.
