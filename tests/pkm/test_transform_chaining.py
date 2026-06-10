@@ -329,3 +329,36 @@ def test_eligible_sources_ordered_most_recent_first(migrated_root: Path) -> None
         eligible = _find_eligible_sources(conn, _decl(producer="email"))
 
     assert [e.extractor_cache_key for e in eligible] == [cks["new"], cks["old"]]
+
+
+# --- pay-on-hit fix (SPEC §18.11): a warm sweep makes zero model calls --------
+
+
+class _CountingItemCountProducer(_ItemCountProducer):
+    """Counts model calls — proves a warm sweep makes none (SPEC §18.11)."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.calls = 0
+
+    def call_model(self, prompt: str) -> ModelResponse:
+        self.calls += 1
+        return super().call_model(prompt)
+
+
+def test_warm_sweep_makes_zero_model_calls(migrated_root: Path) -> None:
+    """The pay-on-hit fix: the second run's cache hit is decided BEFORE the
+    producer is dispatched, so the model is never called on a warm entry."""
+    root = migrated_root
+    _seed_chain(root)
+    config = _write_item_count_declaration(root)
+
+    first = _CountingItemCountProducer()
+    run_transform(root, config, "item_count", producer_override=first)
+    assert first.calls == 1
+
+    second = _CountingItemCountProducer()
+    result2 = run_transform(root, config, "item_count", producer_override=second)
+    assert result2.cache_hits == 1
+    assert result2.succeeded == 0
+    assert second.calls == 0

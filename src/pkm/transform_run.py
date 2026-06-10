@@ -19,7 +19,7 @@ from typing import Any
 
 import duckdb
 
-from pkm.cache import content_file, write_artifact
+from pkm.cache import content_file, has_success_artifact, write_artifact
 from pkm.catalogue import open_catalogue
 from pkm.config import Config
 from pkm.hashing import compute_cache_key
@@ -32,12 +32,19 @@ from pkm.policy import (
     evaluate_policies,
 )
 from pkm.policy_loader import load_policy
+from pkm.producer import ProducerResult
 from pkm.telemetry import TransformLogEntry, log_transform_execution
 from pkm.transform import TransformProducer
 from pkm.transform_declaration import TransformDeclaration, load_transform_declaration
 from pkm.transforms._shared import estimate_cost, make_producer
 
 logger = logging.getLogger(__name__)
+
+# Telemetry stand-in for a cache hit: no model was called, nothing was written.
+_CACHE_HIT_RESULT = ProducerResult(
+    status="success", content=None, content_type=None,
+    content_encoding=None, error_message=None, producer_metadata={},
+)
 
 
 @dataclass(frozen=True)
@@ -301,6 +308,36 @@ def _execute_run(
             input_content = cf.read_bytes()
             input_hash = hashlib.sha256(input_content).hexdigest()
 
+            # Cache-first (SPEC §18.11): the schema-3 key is fully determined
+            # before the model is called — a warm entry must cost nothing.
+            prompt_template_hash = hashlib.sha256(
+                decl.prompt_text.encode("utf-8")
+            ).hexdigest()
+            cache_key = compute_cache_key(
+                input_hash=input_hash,
+                producer_name=producer.name,
+                producer_version=producer.version,
+                producer_config={},
+                schema_version=3,
+                model_identity=producer.model_identity,
+                engine_version=producer.engine_version,
+                prompt_template_hash=prompt_template_hash,
+                output_schema=decl.output_schema,
+            )
+
+            if has_success_artifact(root, conn, cache_key):
+                cache_hits += 1
+                _log_telemetry(
+                    root, decl, producer, cache_key, src,
+                    _CACHE_HIT_RESULT, False,
+                )
+                if progress is not None:
+                    progress(
+                        f"[{i}/{len(eligible)}] "
+                        f"{src.source_id[:12]}... hit"
+                    )
+                continue
+
             result = producer.produce(cf, input_hash, {})
 
             prompt_hash = result.producer_metadata.get("prompt_hash", "")
@@ -317,21 +354,6 @@ def _execute_run(
                         f"{src.source_id[:12]}... {result.status}{suffix}"
                     )
                 continue
-
-            prompt_template_hash = hashlib.sha256(
-                decl.prompt_text.encode("utf-8")
-            ).hexdigest()
-            cache_key = compute_cache_key(
-                input_hash=input_hash,
-                producer_name=producer.name,
-                producer_version=producer.version,
-                producer_config={},
-                schema_version=3,
-                model_identity=producer.model_identity,
-                engine_version=producer.engine_version,
-                prompt_template_hash=prompt_template_hash,
-                output_schema=decl.output_schema,
-            )
 
             lineage = [
                 {"cache_key": src.extractor_cache_key, "role": decl.input_role},
