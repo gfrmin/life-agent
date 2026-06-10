@@ -278,6 +278,8 @@ def make_producer(declaration: TransformDeclaration) -> Any:
     """
     # Imported lazily to avoid an import cycle (the producers import this module).
     from pkm.transforms.action_items import ActionItemsProducer
+    from pkm.transforms.doc_date import DocDateProducer
+    from pkm.transforms.doc_date_email import DocDateEmailProducer
     from pkm.transforms.email_triage import EmailTriageProducer
     from pkm.transforms.entity_extraction import EntityExtractionProducer
 
@@ -288,6 +290,10 @@ def make_producer(declaration: TransformDeclaration) -> Any:
             ActionItemsProducer,
         "pkm.transforms.email_triage.EmailTriageProducer":
             EmailTriageProducer,
+        "pkm.transforms.doc_date.DocDateProducer":
+            DocDateProducer,
+        "pkm.transforms.doc_date_email.DocDateEmailProducer":
+            DocDateEmailProducer,
     }
     cls = table.get(declaration.producer_class)
     if cls is None:

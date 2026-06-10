@@ -1,0 +1,17 @@
+name: doc_date_email
+version: "0.1.0"
+producer_class: pkm.transforms.doc_date_email.DocDateEmailProducer
+model:
+  provider: deterministic
+  model: stdlib-email-utils
+prompt:
+  name: doc_date_email_v1
+  file: prompts/doc_date_email_v1.txt
+output_schema:
+  name: doc_date_v1
+  file: schemas/doc_date_v1.json
+policies: []
+input:
+  producer: email
+  role: source_text
+  required_status: success
