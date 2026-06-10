@@ -76,10 +76,35 @@ known-first-party = ["life_agent", "pkm"]
 "src/life_agent/reach/digest.py" = ["E501"]
 
 [tool.mypy]
-# pkm's strict type gate is preserved; life_agent is not yet under strict mypy (future).
-strict = true
+# `uv run mypy` (no args) checks all production code: the source packages (pkm +
+# life_agent) under the full strict gate (override below — both already pass), and
+# scripts/ under this lenient baseline (real type bugs surface, annotations not demanded).
+# tests/ are deliberately NOT gated: the suite passes intentional fakes — wrong types to
+# assert rejection (e.g. test_hashing → compute_cache_key), fetchone()[0] without a
+# None-guard, partial protocol stand-ins — so strict body-checking there fights the test
+# design rather than finding bugs (a full tests pass surfaced 0 production bugs). pytest
+# is the gate for tests.
+files = ["src", "scripts"]
 warn_unreachable = true
-files = ["src/pkm"]
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_unused_configs = true
+
+[[tool.mypy.overrides]]
+# The library surface (both packages already pass) is held to the full strict gate.
+# `strict = true` is not honoured per-module (it leaks global), so the flags are spelt out.
+module = ["pkm.*", "life_agent.*"]
+disallow_any_generics = true
+disallow_subclassing_any = true
+disallow_untyped_calls = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+warn_return_any = true
+no_implicit_reexport = true
+strict_equality = true
+extra_checks = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
