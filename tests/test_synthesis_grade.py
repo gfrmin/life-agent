@@ -67,3 +67,23 @@ def test_judge_once_parses_strict_json(monkeypatch) -> None:
     out = re_._synthesis_judge_once(
         {"question": "q", "answer": "x"}, "ans", [{"n": 1, "text": "x"}], "RUBRIC")
     assert out["faithfulness"] == 3 and out["citation_fidelity"] == 2 and out["_served"] == "gpt-x"
+
+
+def test_cache_line_formats_per_stage_hit_rates() -> None:
+    cache = {"expand.hit": 9, "expand.miss": 1, "retrieve.miss": 10,
+             "synthesize.hit": 10}
+    assert re_._cache_line(cache) == (
+        "Derivation cache hits: expand 9/10 · retrieve 0/10 · synthesize 10/10")
+    assert re_._cache_line({}) == ""  # caching off → no line
+
+
+def test_synthesis_report_carries_the_cache_line() -> None:
+    rates = {"hallucination_rate": 0.0, "n_hallucinated": 0, "n": 1,
+             "grounded_rate": 1.0, "n_grounded": 1, "n_answerable": 1,
+             "abstention_honesty": None, "n_honest": 0, "n_unanswerable": 0}
+    row = {"id": "q-001", "faithfulness": 3, "citation_fidelity": 3, "structural_ok": True,
+           "hallucinated": False, "synthesis_pass": True, "question": "q?"}
+    with_cache = re_.format_synthesis_report([row], rates, 8, 1.0, {"synthesize.hit": 1})
+    assert "Derivation cache hits: synthesize 1/1" in with_cache
+    without = re_.format_synthesis_report([row], rates, 8, 1.0)
+    assert "Derivation cache" not in without
