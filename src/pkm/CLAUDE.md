@@ -15,7 +15,7 @@ This project uses `uv` for dependency management and `pytest` / `ruff` /
 - **Lint**: `uv run ruff check src tests` (rule selection in `pyproject.toml`).
 - **Typecheck**: `uv run mypy` (strict mode, `src/pkm` only, per `pyproject.toml`).
 - **CLI**: `uv run pkm <subcommand>` — subcommands include `ingest`, `extract`,
-  `migrate`, `rebuild-catalogue`. Entry point: `pkm.cli:main` (see
+  `derive`, `migrate`, `rebuild-catalogue`. Entry point: `pkm.cli:main` (see
   `pyproject.toml` `[project.scripts]`). `python -m pkm` also works.
 - **Python**: pinned to `>=3.13,<3.14` in `pyproject.toml`.
 
