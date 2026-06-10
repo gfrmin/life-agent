@@ -1,6 +1,6 @@
 # SPEC.md — technical specification
 
-Version: 0.10.0 (draft)
+Version: 0.11.0 (draft)
 Status: Phase 1 complete (extraction layer with content-addressed
 caching, chunking, and FTS keyword retrieval); Phase 1.5 OCR-PDF
 fallback applied to the live corpus; source paths are stored as
@@ -11,8 +11,11 @@ query surface exposes FTS retrieval over stdio (§17); the Phase 2
 **transform** layer is specified (§18) — LLM/local-model perspectives
 over artifacts, with a grounding contract, incl. the `action_items`
 transform behind email→GTD; v0.9.0 makes transforms **composable** —
-a transform's output may be another transform's input (§18.7). This spec
-is the contract. Changes require a separate commit with justification.
+a transform's output may be another transform's input (§18.7); v0.11.0
+admits **external derivations** (§18.9) — components outside pkm may
+record their own derivations in the cache, file-first, under namespaced
+producer names. This spec is the contract. Changes require a separate
+commit with justification.
 
 This spec is intentionally strict. See §14 for the principles of
 first-principles debuggability that govern every decision below.
@@ -1483,8 +1486,59 @@ extraction prompt mislabels automated digests and newsletters as tasks (a 37-row
 37 grounded-but-useless "tasks"); routing those whole emails out by category is what the classifier
 buys, and it is orthogonal to the grounding gate (§18.5), which keeps preventing fabrication.
 
+### 18.9 External derivations (file-first)
+
+A component outside pkm MAY record its own derivations in the cache under a **namespaced
+producer name** (today: `life_agent.ask.*` — the agent's question-answering stages). The
+rationale is the project's kernel (life-agent `PRINCIPLES.md` §1–§2): an answer is a derivation
+of the corpus and belongs in the same content-addressed DAG as every other derived artifact —
+keyed, cited via lineage, and replayable — not in a parallel store.
+
+The contract:
+
+- **Keys.** Cache keys MUST come from `compute_cache_key` (§4.3) — `schema_version=1` for
+  deterministic stages, `schema_version=3` for model stages (§18.4 semantics: model identity,
+  engine version, prompt *template* hash, output schema). The `input_hash` is the SHA-256 of
+  the canonical-JSON inputs object (question, upstream content hashes, config digests), which
+  the writer also records in `meta.json.producer_metadata` so the inputs stay `jq`-inspectable
+  (§14.1).
+- **File-first writes.** External derivations are written in the §6.2 order — content →
+  `lineage.json` → `meta.json`, same formats as §5/§18.4, each file staged and renamed
+  atomically — **without** a catalogue connection. `meta.json` is authoritative and the
+  catalogue is a rebuildable index (§13.1), so a lagging row is a consistent state, not a
+  corruption. This path exists because external readers hold *read-only* catalogue connections
+  (so a running extraction never blocks an answer); a write connection from the same surface
+  would deadlock against that, and against extraction itself.
+- **Reconciliation.** A pending queue at `<root>/external/pending.txt` (one cache key per
+  line, append-only) lists artifacts whose catalogue rows have not yet been inserted.
+  Reconciliation — idempotent inserts into `artifacts` + `artifact_lineage` built from the
+  on-disk `meta.json`/`lineage.json`, preserving the original `produced_at` — runs
+  opportunistically whenever a writer can take the lock (e.g. at ask startup, before its
+  read-only connection opens). Losing a queue entry delays a row; it never loses truth
+  (§13.1 — the catalogue is rebuildable from `meta.json`).
+- **Not retrievable.** External content types are NOT in `CHUNKABLE_CONTENT_TYPES` (§15.1):
+  external derivations never enter chunking or FTS. This is a deliberate gate — a derived
+  answer must not silently re-enter retrieval (and compete with primary sources) before
+  staleness tooling can flag descendants of superseded inputs. Lifting the gate is a future
+  spec change, not a config knob.
+- **No truth claims.** pkm records external derivations exactly as it records its own
+  (SPEC-PRINCIPLES §4): it owes them cache/lineage/catalogue semantics and nothing else.
+  Failed model calls are NOT recorded — only successful derivations are cached, so a transient
+  failure is never frozen as the replayed result. Append-only discipline (§6.2) applies:
+  reconciliation inserts rows, never rewrites cache files.
+
 ## 16. Change log
 
+- 0.11.0 (draft): §18.9 (new) — *external derivations (file-first)*. Authorises components
+  outside pkm to record derivations in the cache under namespaced producer names
+  (`life_agent.ask.*`), keyed through `compute_cache_key` (§4.3), written file-first in the
+  §6.2 order with `meta.json` authoritative (§13.1), catalogue rows reconciled opportunistically
+  via a pending queue (`<root>/external/pending.txt`). External content types are not
+  chunk-eligible — derived answers must not re-enter retrieval before staleness tooling exists.
+  Motivated by the life-agent north star: `answer = f(corpus_state, question)` as a
+  content-addressed derivation in the same DAG as every other artifact (life-agent
+  `PRINCIPLES.md` §1–§2). No migration, no new dependency, no pkm code change — the section
+  binds external writers to existing formats and invariants.
 - 0.10.0 (draft): §18.8 (new) — the `email_triage` transform. A grammar-constrained classifier
   (`email` → one of six categories + a reason; no grounding) that gives email→GTD precision by
   **composition** (§18.7) rather than a larger prompt: `email_triage` and `action_items` run
