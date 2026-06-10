@@ -309,3 +309,44 @@ def test_derive_explicit_input_key_pins(migrated_root: Path) -> None:
     assert result.status == "success"
     assert up.calls == 1
     assert result.nodes[0].input_cache_key == email_ck
+
+
+def test_derive_policy_gate_prevents_model_call(migrated_root: Path) -> None:
+    """A gated transform never reaches the model on a derive miss."""
+    import shutil
+
+    root = migrated_root
+    source_id, _ = _seed_email(root)
+    _write_decl(root, "t_upper", input_producer="email",
+                schema=_UPPER_SCHEMA, policies="[sensitive_doc_gate]")
+    (root / "policies").mkdir(exist_ok=True)
+    examples = (
+        Path(__file__).resolve().parents[2] / "docs" / "pkm" / "examples"
+        / "transforms" / "entity_extraction" / "v1" / "policies"
+    )
+    shutil.copy2(examples / "sensitive_doc_gate.py",
+                 root / "policies" / "sensitive_doc_gate.py")
+    with open_catalogue(root) as conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO source_tags (source_id, tag) VALUES (?, ?)",
+            [source_id, "sensitive"],
+        )
+    cfg_path = root / "config.yaml"
+    cfg_path.write_text(
+        f"root_dir: {root}\n"
+        "policies:\n"
+        "  sensitive_doc_gate:\n"
+        "    tags: [\"sensitive\"]\n"
+        "    path_patterns: []\n",
+        encoding="utf-8",
+    )
+    config = load_config(cfg_path)
+    up, _, ov = _overrides()
+
+    result = derive(root, config, "t_upper", source_id=source_id,
+                    producer_overrides=ov)
+
+    assert result.status in ("blocked", "approval_required")
+    assert up.calls == 0
+    if result.status == "approval_required":
+        assert result.approval_id
