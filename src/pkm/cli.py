@@ -322,6 +322,40 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
 
+    p_derive = subparsers.add_parser(
+        "derive",
+        help="Demand one transform-chain target, cache-first (SPEC §18.11).",
+        description=(
+            "Resolve one (input, declared transform chain) target "
+            "cache-first: compute every node's cache key before any model "
+            "call, materialise only misses. --source binds the chain's leaf "
+            "to the current extractor artifact for that source; --input pins "
+            "an explicit artifact cache key. A fully warm chain makes zero "
+            "model calls."
+        ),
+    )
+    p_derive.add_argument(
+        "transform", help="Transform declaration name (chain head).",
+    )
+    derive_input = p_derive.add_mutually_exclusive_group(required=True)
+    derive_input.add_argument(
+        "--source", metavar="SOURCE_ID",
+        help="Bind the leaf to the current artifact for this source "
+             "(SPEC §18.10).",
+    )
+    derive_input.add_argument(
+        "--input", dest="input_key", metavar="CACHE_KEY",
+        help="Pin the chain's input to an explicit artifact cache key.",
+    )
+    p_derive.add_argument(
+        "--caller", default="cli",
+        help="Demand-log caller label (default: cli).",
+    )
+    p_derive.add_argument(
+        "--approval-id", default=None,
+        help="Pre-approved approval ID (skips policy evaluation).",
+    )
+
     p_transform = subparsers.add_parser(
         "transform",
         help="Run and manage LLM transforms.",
@@ -609,6 +643,29 @@ def _cmd_stale(args: argparse.Namespace, config: Config) -> int:
     return 0
 
 
+def _cmd_derive(args: argparse.Namespace, config: Config) -> int:
+    from pkm.derive import derive
+
+    result = derive(
+        config.root_dir, config, args.transform,
+        source_id=args.source,
+        input_cache_key=args.input_key,
+        caller=args.caller,
+        approval_id=args.approval_id,
+    )
+    for node in result.nodes:
+        marker = "hit " if node.hit else "miss"
+        print(f"{marker}  {node.transform_name}  {node.cache_key}")
+    if result.status == "success":
+        print(f"target: {result.target_cache_key}")
+        return 0
+    if result.status == "approval_required":
+        print(f"approval required: {result.approval_id}")
+        return 3
+    print(f"{result.status}: {result.error_message}")
+    return 1
+
+
 def _cmd_transform(args: argparse.Namespace, config: Config) -> int:
     sub = args.transform_subcommand
     if sub is None:
@@ -769,5 +826,6 @@ _SUBCOMMANDS: dict[str, Callable[[argparse.Namespace, Config], int]] = {
     "search": _cmd_search,
     "serve": _cmd_serve,
     "stale": _cmd_stale,
+    "derive": _cmd_derive,
     "transform": _cmd_transform,
 }
