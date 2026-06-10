@@ -1,6 +1,6 @@
 # SPEC.md — technical specification
 
-Version: 0.13.0 (draft)
+Version: 0.14.0 (draft)
 Status: Phase 1 complete (extraction layer with content-addressed
 caching, chunking, and FTS keyword retrieval); Phase 1.5 OCR-PDF
 fallback applied to the live corpus; source paths are stored as
@@ -1606,8 +1606,38 @@ pushes a transform over every eligible input; derive pulls one input through a c
   per node and the target cache key. Exit 0 on success; 3 when approval is required (the
   approval id is printed); 1 on block or failure.
 
+### 18.12 The `doc_date` transforms
+
+`doc_date` projects one primary date per document — the temporal metadata the catalogue
+lacks (it records only ingestion/production times). Output schema (shared):
+`{format_version: 1, date: "YYYY-MM-DD" | null}`. `date` is the document's own primary date
+— an email's Date header; a letter/invoice/report's issue date — never the ingestion time.
+`null` means "no primary date determinable from the content": for temporal consumers this is
+the **indeterminate** marker (the derivation-engine design's coverage contract) — a consumer
+applying a date predicate must name null-dated and not-yet-derived documents in its answer,
+never silently drop them.
+
+Two producers, one contract:
+- **`doc_date_email`** (deterministic, input `email`): parses the rendered `Date:` header
+  line (§7.2's fixed header block) via the stdlib; no model. A missing or unparseable header
+  yields `date: null` (a *success* — the document determinately lacks a parseable date).
+- **`doc_date`** (LLM, provider `ollama`, grammar-constrained like §18.8): one declaration
+  per text extractor input (`docling`, `pandoc`, `tesseract`), all dispatching to the same
+  producer class — the projection is a function of content, not of which extractor produced
+  it. `post_validate` rejects a non-null `date` that is not a real ISO date (fail loudly,
+  not cached — §18.11 miss-path parity).
+
+No grounding step (§18.5 does not apply — a date is a classification, not a quote). Like
+§18.8, the model only fills a closed shape; *what a consumer does with the date* (filter,
+rank, window) is deterministic consumer-side policy.
+
 ## 16. Change log
 
+- 0.14.0 (draft): §18.12 (new) — *doc_date*, one primary date per document
+  (`{format_version, date|null}`): deterministic Date-header parse for email, a
+  grammar-constrained local-model projection for text extractors. `null` is the
+  indeterminate marker for temporal consumers — named downstream, never dropped. No
+  schema change, no migration.
 - 0.13.0 (draft): §18.11 (new) — *derive*, demand-driven resolution of one (input, declared
   chain) target: static chain resolution over declarations, leaf bound to the §18.10-current
   artifact, cache keys computed before model calls (a warm chain makes zero model calls), policy
