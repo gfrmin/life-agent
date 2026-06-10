@@ -15,6 +15,8 @@ a **derive → project → reach** shape (PRINCIPLES §6):
 
 - **derive (`src/pkm`):** sources → primary artifacts → composable transforms → cited, cached,
   idempotent artifacts (SPEC §18.7 chaining; small auditable steps, never a mega-transform).
+  `pkm derive` resolves one (input, transform-chain) target cache-first (SPEC §18.11) — a warm
+  chain makes zero model calls — demand-logged under `logs/demand/`.
 - **project (`src/life_agent/tasks/project.py`):** a thin immutable→mutable bridge — terminal
   `action_items` artifacts filed **once** into the GTD inbox with a `[src:email <id>]` citation.
 - **reach (`src/life_agent/reach`):** Telegram as a dumb transport; "Jarvis" is just the persona.
