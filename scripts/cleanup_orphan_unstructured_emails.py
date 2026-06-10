@@ -60,11 +60,12 @@ def main() -> int:
         n_chunks = 0
         if keys:
             placeholders = ",".join("?" * len(keys))
-            (n_chunks,) = conn.execute(
+            row = conn.execute(
                 "SELECT count(*) FROM artifact_chunks "
                 f"WHERE artifact_cache_key IN ({placeholders})",
                 keys,
             ).fetchone()
+            n_chunks = row[0] if row else 0
 
         print(
             f"orphan unstructured-email artifacts: {len(keys)} "

@@ -217,12 +217,12 @@ def _retrieve_set(conn: duckdb.DuckDBPyConnection, question: str, k: int) -> lis
     """FTS the given query over the whole corpus; dedupe by chunk text keeping the best
     score; return the top-k as plain dicts — the cacheable retrieval-set content, carrying
     each hit's artifact cache key for lineage. No snapshot filter."""
-    from pkm.retrieval import search
+    from pkm.retrieval import SearchResult, search
 
-    best: dict[str, object] = {}
+    best: dict[str, SearchResult] = {}
     for h in search(conn, question, k=k * 4):  # over-fetch, then dedupe down to k
         prev = best.get(h.chunk_text)
-        if prev is None or h.score > prev.score:  # type: ignore[attr-defined]
+        if prev is None or h.score > prev.score:
             best[h.chunk_text] = h
     top = sorted(best.values(), key=lambda h: h.score, reverse=True)[:k]
     return [{"artifact_cache_key": h.artifact_cache_key, "chunk_text": h.chunk_text,

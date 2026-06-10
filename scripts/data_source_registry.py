@@ -188,11 +188,11 @@ def ingestable_formats() -> dict[str, str]:
     Iterated low-to-high preference so the more representative producer wins a
     shared extension (e.g. ``.pdf`` -> docling, images -> tesseract, ``.md`` ->
     pandoc, ``.eml`` -> email)."""
-    from pkm.producers.docling import DoclingProducer  # type: ignore[import-untyped]
-    from pkm.producers.email_producer import EmailProducer  # type: ignore[import-untyped]
-    from pkm.producers.pandoc import PandocProducer  # type: ignore[import-untyped]
-    from pkm.producers.tesseract import TesseractProducer  # type: ignore[import-untyped]
-    from pkm.producers.unstructured import UnstructuredProducer  # type: ignore[import-untyped]
+    from pkm.producers.docling import DoclingProducer
+    from pkm.producers.email_producer import EmailProducer
+    from pkm.producers.pandoc import PandocProducer
+    from pkm.producers.tesseract import TesseractProducer
+    from pkm.producers.unstructured import UnstructuredProducer
 
     mapping: dict[str, str] = {}
     for prod in (

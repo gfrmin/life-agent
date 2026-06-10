@@ -116,7 +116,8 @@ def main() -> int:
         a_is_p0 = rng.random() < 0.5            # randomise which system is shown as "A"
         ans_a, ans_b = (a0, a1) if a_is_p0 else (a1, a0)
 
-        per_dim = {"phase0": {d: [] for d in DIMS}, "phase1": {d: [] for d in DIMS}}
+        per_dim: dict[str, dict[str, list[int]]] = {
+            "phase0": {d: [] for d in DIMS}, "phase1": {d: [] for d in DIMS}}
         for _ in range(C.JUDGE_N):
             j = judge_once(q, ans_a, ans_b, rubric)
             if not j:

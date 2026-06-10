@@ -35,10 +35,10 @@ def _connect():
 
 def retrieve_s(conn, queries: list[str], s_paths: set[str], k: int) -> list[C.SourceCard]:
     """Union FTS over queries, filter to S, dedupe by chunk text, keep top-k by score."""
-    from pkm.retrieval import search
+    from pkm.retrieval import SearchResult, search
 
     seen: dict[str, float] = {}
-    best: dict[str, object] = {}
+    best: dict[str, SearchResult] = {}
     for q in queries:
         for h in search(conn, q, k=OVERFETCH):
             if h.source_path not in s_paths:
