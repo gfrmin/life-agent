@@ -1,6 +1,6 @@
 # SPEC.md — technical specification
 
-Version: 0.12.0 (draft)
+Version: 0.13.0 (draft)
 Status: Phase 1 complete (extraction layer with content-addressed
 caching, chunking, and FTS keyword retrieval); Phase 1.5 OCR-PDF
 fallback applied to the live corpus; source paths are stored as
@@ -1567,8 +1567,53 @@ no schema change.
   walk. Staleness covers re-derivation already recorded in the catalogue, not yet-unobserved
   edits to source files.
 
+### 18.11 Derive (demand-driven resolution)
+
+`derive` resolves ONE target — `(input, declared transform chain)` — cache-first, materialising
+only what is missing. It is the demand-side complement to the eager sweep (§18.1): the sweep
+pushes a transform over every eligible input; derive pulls one input through a chain.
+
+- **Target.** A chain head (a transform declaration name) plus exactly one input: a
+  `source_id`, or an explicit artifact `cache_key` (a deliberate pin, for inspection and
+  debugging). The chain is resolved statically from declarations: an `input.producer` naming
+  another declaration (`<root>/transforms/<name>.yaml` exists) recurses; any other name is the
+  **leaf producer** (a Phase-1 extractor). Cycles fail loudly.
+- **Leaf binding (current).** The `source_id` form binds the leaf to the §18.10-**current**
+  artifact of `(source_id, leaf_producer)` — most recent success, `cache_key` tiebreak. No
+  current leaf artifact means derive fails with a pointer to `pkm extract`: extraction is §7–§9's
+  job, not derive's. Binding to current is what makes rederivation lazy (§18.10): a superseded
+  upstream changes the downstream `input_hash`, so the stale suffix — and only the stale suffix —
+  misses and rederives on next demand.
+- **Cache-first (the §18.4 key, computed before the model).** Each node's schema-3 cache key is
+  computed from the declaration and the upstream content *before* any model call. A key whose
+  success artifact exists (catalogue row + content on disk) is a **hit**: zero model calls, zero
+  writes. A fully warm chain performs no model calls at all. (The eager sweep performs the same
+  check before dispatching the producer — previously it paid the model on warm entries and let
+  `write_artifact` dedupe the write.)
+- **Miss path.** Policy evaluation (§22) over the single input — `Block` and `RequireApproval`
+  behave exactly as in a sweep, scoped to one input — then produce, then `write_artifact` with
+  the §18.4/§18.7 lineage edge (`input.role`). Failures are returned loudly and are NOT cached,
+  matching the sweep's behaviour.
+- **Demand telemetry.** Every node resolution appends one JSONL line to
+  `<root>/logs/demand/<YYYY-MM-DD>.jsonl`: `timestamp`, `caller` (free-form — `cli`, or a
+  consumer-supplied label), `transform_name`, `cache_key`, `input_cache_key`, `hit`, `cost_usd`,
+  `latency_ms`. Append-only, `jq`-inspectable (§14.1). Node-key reuse — `group by cache_key` —
+  is the demand signal this log exists to accumulate; it cannot be backfilled.
+- **Idempotent.** Deriving the same target twice yields the same target `cache_key`; the second
+  derive is all hits and writes nothing. Append-only (§6.2) is unchanged: derive never deletes,
+  never overwrites.
+- **`pkm derive <transform> (--source <id> | --input <cache_key>)`.** Prints one hit/miss line
+  per node and the target cache key. Exit 0 on success; 3 when approval is required (the
+  approval id is printed); 1 on block or failure.
+
 ## 16. Change log
 
+- 0.13.0 (draft): §18.11 (new) — *derive*, demand-driven resolution of one (input, declared
+  chain) target: static chain resolution over declarations, leaf bound to the §18.10-current
+  artifact, cache keys computed before model calls (a warm chain makes zero model calls), policy
+  gate + lineage on the miss path, failures not cached, demand telemetry under `logs/demand/`.
+  The eager sweep adopts the same cache-first check, fixing the defect where a warm entry paid
+  the model and relied on `write_artifact` deduping the write. No schema change, no migration.
 - 0.12.0 (draft): §18.10 (new) — *staleness*. Defines the read-only, deterministic operation
   that flags artifacts a later derivation has already replaced. *Current* = the §18.1-maximal
   artifact in each `(input_hash, producer_name, status='success')` group; *superseded* = the
