@@ -67,8 +67,6 @@ def _email_year(eml: Path) -> int | None:
         dt = email.utils.parsedate_to_datetime(m.group(1).strip())
     except (TypeError, ValueError):
         return None
-    if dt is None:
-        return None
     return dt.year
 
 
@@ -123,7 +121,8 @@ def main() -> int:
     print(f"mail dated {mail_year}: {len(emls)}")
     staging = stage_mail(emls)
 
-    manifest = []
+    manifest: list[dict[str, object]] = []
+    total_bytes = 0
     for p in [*docs, *emls]:
         try:
             digest, n = _sha256(p)
@@ -131,6 +130,7 @@ def main() -> int:
             print(f"  skip (unreadable): {p} ({e})")
             continue
         manifest.append({"path": str(p), "sha256": digest, "bytes": n})
+        total_bytes += n
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     snap = OUT_DIR / "snapshot_S.json"
@@ -140,7 +140,7 @@ def main() -> int:
                 "pinned_utc": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
                 "rules": {"doc_roots": doc_roots, "mail_year": mail_year},
                 "n_files": len(manifest),
-                "total_bytes": sum(m["bytes"] for m in manifest),
+                "total_bytes": total_bytes,
                 "files": manifest,
             },
             indent=2,
@@ -148,11 +148,11 @@ def main() -> int:
         ),
         encoding="utf-8",
     )
-    print(f"wrote {snap}  ({len(manifest)} files, {sum(m['bytes'] for m in manifest)/1e6:.1f} MB)")
+    print(f"wrote {snap}  ({len(manifest)} files, {total_bytes / 1e6:.1f} MB)")
 
     # pkm sources.yaml for the Phase-1 comparison catalogue: doc files one-per-entry,
     # plus the mail-window staging dir as one recursive entry.
-    sources = [{"path": str(p)} for p in docs]
+    sources: list[dict[str, object]] = [{"path": str(p)} for p in docs]
     sources.append({"path": str(staging), "recursive": True, "tags": ["email"]})
     comp_sources = OUT_DIR / "comparison_sources.yaml"
     comp_sources.write_text(
