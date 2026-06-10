@@ -41,7 +41,7 @@ jobs:
         # guard's own lint rot unnoticed.
         run: uv run ruff check .
 
-      - name: Typecheck (mypy — strict on src/pkm)
+      - name: Typecheck (mypy — strict on src, lenient on scripts; see pyproject)
         run: uv run mypy
 
       - name: Tests
