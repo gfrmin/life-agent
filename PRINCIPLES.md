@@ -53,10 +53,16 @@ Value-bearing facts (IDs, numbers, proper nouns) are deterministically verified 
 cited source before display; anything unverifiable is flagged, not presented as true. Weak
 retrieval abstains rather than guesses.
 
-**§9. Dogfood — FAILURES-driven building.** Build only what the failure log
-(`$LIFE_AGENT_KB/FAILURES.md`) demands; speculative features go to a backlog, not a PR.
-**Research reports are candidate inputs, never mandates** — they inform decisions and bind
-nothing (e.g. [`docs/nix-for-documents-report.md`](./docs/nix-for-documents-report.md)).
+**§9. Dogfood — evidence-driven building.** The failure log (`$LIFE_AGENT_KB/FAILURES.md`)
+is the system's evidence stream: every dogfood miss is logged, and every shipped change
+names the failure(s) it addresses or the design section it executes. Since 2026-06-11
+(owner directive) the log no longer *gates* sequencing: the adopted system design
+([`docs/system-design.md`](./docs/system-design.md),
+[`docs/derivation-engine-design.md`](./docs/derivation-engine-design.md)) executes
+continuously, phase by phase, verified by answer-grounded eval gates. Speculative features
+outside the adopted design still go to a backlog, not a PR. **Research reports are
+candidate inputs, never mandates** — they inform decisions and bind nothing
+(e.g. [`docs/nix-for-documents-report.md`](./docs/nix-for-documents-report.md)).
 
 **§10. Determinism is semantic, defined in pkm.** The determinism contract (semantic
 equivalence, not byte-equality; a cache hit is deterministic regardless of model behaviour on a
@@ -87,14 +93,32 @@ publicly; never use `tailscale serve`/funnel.
   ([`SPEC-comparison.md`](./SPEC-comparison.md) is the frozen record), and rejected — compiling
   a summary of everything does not scale and hallucinates; answers ground in retrieved,
   cited extractions (§8).
+- **The derivation framework is adopted (2026-06-11):**
+  [`docs/system-design.md`](./docs/system-design.md) (the whole-system view) and
+  [`docs/derivation-engine-design.md`](./docs/derivation-engine-design.md) (the derivation
+  leg). Demand-driven materialisation; deterministic operators executor-side, LLM only in
+  cached per-document projections; GTD/CRM/ask converge on one substrate; act ledgers gain
+  knowledge projections.
 
 **§15. Open decisions.** Decided when their phase arrives, not before:
 - **The spine** (Phase 2): pi-mono (TS) vs a Python loop vs Claude Code as interim. Criteria:
   openness/extensibility vs lock-in; whether it consumes the §5 seams unchanged; the cost of
   always-on operation. The owner is neutral; nothing in the tree may presuppose the answer.
 - **The goals/utility representation** (Phase 2): the form the expected-utility model takes.
-- **The CRM rebuild**: the seven decisions in
-  [`docs/crm-architecture-decisions.md`](./docs/crm-architecture-decisions.md).
+- **The CRM rebuild**: of the seven decisions in
+  [`docs/crm-architecture-decisions.md`](./docs/crm-architecture-decisions.md), #1, #2, #5
+  and #6 were resolved by the adopted framework (noted there); #3 (mutable notes/reminders)
+  and #4 (alias dedup) remain open.
+
+**§16. The asymptote.** *Believing, computing, and acting are the same move, scheduled by
+value of information, over an immutable log whose only invariant is that truth is the
+fold.* The geodesic runs **derivation → query-with-confidence → bounded action, in that
+order**; the VOI governor is deliberately last (it needs the demand logs and the confidence
+layer to calibrate against). Corollary, binding now: **every derivation, aggregation, and
+model call is a content-addressed node with lineage edges on one DAG** — no computation in
+the answer path is off-ledger ([`docs/system-design.md`](./docs/system-design.md) §3).
+Knowledge grows from answers and actions: act ledgers project back into the KB, and answers
+are themselves artifacts.
 
 ## Diagnostics (one-question tests)
 

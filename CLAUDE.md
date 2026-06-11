@@ -3,7 +3,9 @@
 You are an agent working in `.`, the composition root of a personal life-management
 assistant. **Read [`PRINCIPLES.md`](./PRINCIPLES.md) first** — it is the single source of the
 philosophy (the kernel, the derive/act boundary, resolved and open decisions); this file is
-only the operating manual. Then [`ROADMAP.md`](./ROADMAP.md) for the plan and
+only the operating manual. Then [`docs/system-design.md`](./docs/system-design.md) — the
+adopted whole-system design (one DAG; everything is an edge on it; act ledgers project back
+into knowledge) — then [`ROADMAP.md`](./ROADMAP.md) for the plan and
 [`GETTING_STARTED.md`](./GETTING_STARTED.md) for the immediate tasks. The owner is a strong
 engineer (builds Julia DSLs, TS, Python data platforms) — be precise, terse, and don't
 over-build (PRINCIPLES §4: compose, don't rebuild).
@@ -33,9 +35,16 @@ Every human-facing surface is governed by
 [`docs/interaction-contract.md`](./docs/interaction-contract.md) — read it before touching
 a command, intent, flag, or reply string.
 
+**Adopted, being built (Phase 1.6):** the derivation framework —
+[`docs/system-design.md`](./docs/system-design.md) +
+[`docs/derivation-engine-design.md`](./docs/derivation-engine-design.md) (D0–D1 landed;
+next: the GTD ledger's knowledge projection + pkm retrieval currency, then engine D2–D4).
+Sequencing is continuous and eval-gated, not dogfood-gated (PRINCIPLES §9 as amended).
+
 **Not built, deliberately:** the agent-loop spine (open decision — PRINCIPLES §15), credence
-wiring, a live MCP server (`src/pkm/mcp_server.py` is dormant-by-design — PRINCIPLES §5). One
-candidate spine+brain composition is documented at
+wiring, the VOI governor (last on the geodesic — PRINCIPLES §16), a live MCP server
+(`src/pkm/mcp_server.py` is dormant-by-design — PRINCIPLES §5). One candidate spine+brain
+composition is documented at
 [`docs/candidates/brain-design.md`](./docs/candidates/brain-design.md) — a candidate, not the
 plan; the related external repos (`../credence/apps/credence-pi`, `../pi-mono`) are reference
 material for that candidate only.
@@ -122,5 +131,6 @@ dogfood) live in [`PRINCIPLES.md`](./PRINCIPLES.md) — they are not restated he
 1. Read [`PRINCIPLES.md`](./PRINCIPLES.md), then [`ROADMAP.md`](./ROADMAP.md) (phases), then
    `$LIFE_AGENT_KB/docs/data-seams.md` (the verified, machine-specific data map — out of tree;
    saves you a re-exploration).
-2. Follow [`GETTING_STARTED.md`](./GETTING_STARTED.md). Current phase: **Phase 1.5 — mature
-   memory, dogfood-driven** (build only what `$LIFE_AGENT_KB/FAILURES.md` demands).
+2. Follow [`GETTING_STARTED.md`](./GETTING_STARTED.md). Current phase: **Phase 1.6 — the
+   derivation framework** (`docs/system-design.md` §8 is the program; FAILURES.md remains
+   the evidence log, no longer the gate — PRINCIPLES §9).

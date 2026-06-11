@@ -1,9 +1,12 @@
 # Derivation engine — demand-driven materialisation over pkm
 
-> **Status: candidate design, awaiting owner approval — no code, no SPEC edits yet.** The
-> genesis research report ([`nix-for-documents-report.md`](./nix-for-documents-report.md),
-> April 2026) is an input to this design, not a mandate (PRINCIPLES §9: build only what
-> FAILURES.md demands). Every in-tree claim verified against the working tree on 2026-06-10.
+> **Status: adopted 2026-06-11 (owner-approved).** D0 and D1 are landed; D2–D4 execute
+> continuously, gated by the §11 eval gates — not by per-phase dogfood demand (owner
+> directive, PRINCIPLES §9 as amended). The whole-system view this leg belongs to is
+> [`system-design.md`](./system-design.md). The genesis research report
+> ([`nix-for-documents-report.md`](./nix-for-documents-report.md), April 2026) is an input
+> to this design, not a mandate. Every in-tree claim verified against the working tree on
+> 2026-06-10.
 
 ## 0. North star, and what this document is
 
@@ -42,7 +45,8 @@ The machinery is accordingly derived as *consequences*, not features:
   changed"; the governor will say "and it matters enough to recompute". Until then the cascade
   is pruned by demand itself (§7 below).
 
-Whether to lift the north-star statement into PRINCIPLES.md is the owner's call (§13).
+The north-star statement is lifted into PRINCIPLES.md §16 (resolved 2026-06-11; was §13's
+first open question).
 
 ## 1. The four failures and what each minimally demands
 
@@ -395,7 +399,8 @@ confidence layer exist to calibrate against.
 
 ## 13. Open questions
 
-- Lift the north-star statement (§0) into PRINCIPLES.md?
+- ~~Lift the north-star statement (§0) into PRINCIPLES.md?~~ Done — PRINCIPLES §16
+  (2026-06-11).
 - Planner escape hatch: free-form DAG emission / organic taxonomy emergence — what failure
   evidence opens it?
 - Disjunctive/nested predicates ("supplier X or Y, not yet paid") — beyond the AND-only

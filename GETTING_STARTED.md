@@ -13,9 +13,12 @@ operating manual) first; [`ROADMAP.md`](./ROADMAP.md) has the full plan.
 (NVMe catalogue, ~13k sources / ~400k chunks). The read path is `scripts/ask.py`, dogfooded via
 **`bin/ask-live`**. The GTD act layer is live and event-sourced (`life_agent.tasks`), reached
 over Telegram (`life_agent.reach`); email→GTD auto-files cited tasks off a timer.
-**Active phase = mature memory (Phase 1.5): dogfood, log misses to `$LIFE_AGENT_KB/FAILURES.md`,
-build only what the failure log demands** (PRINCIPLES §9). The agent loop / brain / spine are
-later phases (spine = open decision, PRINCIPLES §15).
+**Active phase = the derivation framework (Phase 1.6):** execute
+[`docs/system-design.md`](./docs/system-design.md) §8 in order (act-ledger knowledge
+projection → engine D2 → D3 → D4), eval-gated; dogfood misses still go to
+`$LIFE_AGENT_KB/FAILURES.md` as evidence, but no longer gate the next phase (PRINCIPLES §9
+as amended). The agent loop / brain / spine are later phases (spine = open decision,
+PRINCIPLES §15).
 
 **Knowledge lives outside this repo**, at `$LIFE_AGENT_KB` (default `$HOME/.life-agent/kb`) —
 see [`docs/kb-schema.md`](./docs/kb-schema.md).
@@ -34,17 +37,19 @@ are read via `secret-tool`, never from `.env`.
 - Secrets, if needed, come from gnome-keyring (`secret-tool lookup service env key VARNAME`);
   never read `~/.env`.
 
-## The dogfood loop (Phase 1.5 — the active work)
+## The loop (Phase 1.6 — the active work)
 
-1. **Ask real questions** you'd want a PA to answer: `bin/ask-live "…"`. Answers must cite;
-   weak retrieval abstains.
-2. **Log every miss** to `$LIFE_AGENT_KB/FAILURES.md`, one entry per the template
-   ([`docs/failures-template.md`](./docs/failures-template.md)): the question, why it failed,
-   what capability would fix it.
-3. **Build only what the log demands** — trace every change to a logged failure; speculative
-   features go to a backlog, not the tree.
-4. **Measure**: `uv run python scripts/run_eval.py` grades answers against the eval set
+1. **Execute the program** in order ([`docs/system-design.md`](./docs/system-design.md) §8);
+   each phase lands SPEC-first/TDD where it touches pkm and must pass its eval gate
+   ([`docs/derivation-engine-design.md`](./docs/derivation-engine-design.md) §11).
+2. **Keep asking real questions** (`bin/ask-live "…"`) and **log every miss** to
+   `$LIFE_AGENT_KB/FAILURES.md` per the template
+   ([`docs/failures-template.md`](./docs/failures-template.md)) — evidence, not a gate
+   (PRINCIPLES §9): it shapes priorities within the program and verifies phases against
+   reality.
+3. **Measure**: `uv run python scripts/run_eval.py` grades answers against the eval set
    (`$LIFE_AGENT_KB/eval/questions.yaml`); add a question when a new answer shape appears.
+4. Anything outside the adopted design goes to the backlog, not the tree.
 
 Useful side-tools: `scripts/needle.sh "<term>"` (OCR+grep document finder, works on scans);
 `python scripts/data_source_registry.py --report` (what's on the system vs what's ingested);
