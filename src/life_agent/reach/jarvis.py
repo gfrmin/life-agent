@@ -96,6 +96,7 @@ Rules:
 - If the user says "today" or "what's for today", use "list" with list "today".
 - If the user says "show @work" or "list @health", use "list" with tag "work" / "health" (the tag without @).
 - If the user says "focus on 3" or "today 3", use "mark_today" with is_today true.
+- If the user says "untoday 3" or "unmark 3", use "mark_today" with is_today false.
 - If the user says "schedule X for next tuesday", convert to a date and use "add" with list "scheduled".
 - If the user says "move 5 to next", use "move" with the task_id and list.
 - For greetings, small talk, or questions not about tasks, use "chat" with a brief friendly response.

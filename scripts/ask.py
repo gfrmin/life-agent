@@ -210,7 +210,8 @@ GRAMMAR: tuple[tuple[str, str, str], ...] = (
      "/recent any invoices?"),
     ("/since YYYY-MM-DD QUESTION", "only sources dated on/after (excluded are named)",
      "/since 2026-05-01 appointments"),
-    ("/until YYYY-MM-DD QUESTION", "only sources dated on/before",
+    ("/until YYYY-MM-DD QUESTION", "only sources dated on/before "
+                                   "(combine with /since for a range)",
      "/until 2026-06-01 appointments"),
     ("/tell FACT", "record an authoritative owner fact",
      "/tell My name is Ada Lovelace"),
@@ -706,9 +707,19 @@ def repl(conn: duckdb.DuckDBPyConnection, k: int, *, expand: bool = True,
                 run_derive(derive_targets)
                 derive_targets = []
             finally:
-                conn = connect()
+                try:
+                    conn = connect()
+                except duckdb.Error as e:
+                    # An extraction grabbed the catalogue mid-derive: close with
+                    # the named error (invariant 3), never a traceback.
+                    if not _is_lock_error(str(e)):
+                        raise
+                    print("corpus locked by extraction — REPL closing; "
+                          "rerun bin/ask-live in a moment")
+                    return
             print()
             continue
+        assert p.kind == "ask", p.kind  # parse_line's kind space is closed
         derive_targets = ask_once(conn, p.question, k, expand=expand,
                                   no_cache=no_cache, since=p.since,
                                   until=p.until, recent=p.recent)

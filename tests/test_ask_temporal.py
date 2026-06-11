@@ -193,6 +193,31 @@ def test_footer_empty_view_is_quiet() -> None:
 # --- /derive: fail-open, never crashes the REPL ------------------------------ #
 
 
+def test_repl_derive_reconnect_lock_exits_gracefully(
+    monkeypatch, capsys,  # type: ignore[no-untyped-def]
+) -> None:
+    """The /derive reconnect can hit a catalogue lock (an extraction started
+    mid-derive). The REPL must close with the named error, never a traceback."""
+    import builtins
+    from types import SimpleNamespace
+
+    import duckdb
+
+    lines = iter(["/recent any invoices?", "/derive"])
+    monkeypatch.setattr(builtins, "input", lambda _prompt="": next(lines))
+    monkeypatch.setattr(ask, "ask_once",
+                        lambda *a, **k: [("doc_date_pandoc", "ff" * 32)])
+    monkeypatch.setattr(ask, "run_derive", lambda targets: None)
+
+    def locked() -> None:
+        raise duckdb.Error("Could not set lock on file: Conflicting lock")
+
+    monkeypatch.setattr(ask, "connect", locked)
+    ask.repl(SimpleNamespace(close=lambda: None), k=8)  # returns, never raises
+
+    assert "corpus locked" in capsys.readouterr().out
+
+
 def test_run_derive_fail_open_on_any_error(
     monkeypatch, capsys,  # type: ignore[no-untyped-def]
 ) -> None:

@@ -117,6 +117,14 @@ def test_prompt_mentions_the_tag_rule() -> None:
     assert "@work" in jarvis.SYSTEM_PROMPT
 
 
+def test_prompt_teaches_the_unmark_form_help_promises() -> None:
+    # Help advertises "untoday 3" — the Rules must teach the model that form,
+    # or help promises a capability the NLU never emits (invariant 4's spirit,
+    # between the help table and the hand-written Rules prose).
+    assert "untoday" in jarvis.SYSTEM_PROMPT
+    assert "is_today false" in jarvis.SYSTEM_PROMPT
+
+
 def test_prompt_today_substitution_survives_literal_braces() -> None:
     # Schema lines contain literal {} — {today} is substituted by .replace, and
     # the rendered prompt must carry the date and no leftover placeholder.

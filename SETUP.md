@@ -89,9 +89,10 @@ bin/ask-live "/tell My national ID is <id>"
 bin/ask-live "when does my passport expire?"
 ```
 
-`rebuild-index` is required after adding chunks — it refreshes the FTS index the
-live query reads. (`ingest_sources.py --extract --chunk` does everything up to
-that point.)
+`ingest_sources.py --chunk` finishes by rebuilding the FTS index the live query
+reads, so new chunks are searchable immediately — no separate `rebuild-index`
+step. (Running the `pkm` primitives by hand? Then `pkm rebuild-index` after
+`pkm chunk --backfill` is on you.)
 
 ## Reliability
 

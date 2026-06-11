@@ -85,7 +85,7 @@ Free-text Telegram messages, parsed by a local model into one of these intents
 | `complete` | "done 3", "done buy milk" | `Completed: TEXT` |
 | `delete` | "delete 5" | `Deleted: TEXT` |
 | `move` | "move 5 to next" | `Moved [5] TEXT to #next` |
-| `mark_today` | "today 3", "focus on 3" | `Marked for today: [3] TEXT` |
+| `mark_today` | "today 3", "focus on 3"; "untoday 3" unmarks | `Marked for today: [3] TEXT` |
 | `clear_today` | "clear today" | `Cleared today flag from N tasks.` |
 | `list` | "show inbox", "show all", "today", "overdue", "show @work" | `[id] ★ TEXT #list (due D)` per task |
 | `counts` | "counts", "stats" | per-list counts |
