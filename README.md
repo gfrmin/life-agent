@@ -32,6 +32,24 @@ synthesises a `[n]`-cited answer, and runs the citation guard before printing. F
 prerequisites, and troubleshooting in [`SETUP.md`](./SETUP.md); more sample questions and the
 identity-guard demo in [`examples/README.md`](./examples/README.md).
 
+## How it fits together
+
+```
+your files ──┐ ingest
+your email ──┴──▶  pkm — cited, searchable memory ──▶  bin/ask-live     you ask; every fact cited
+                    │
+                    │  grounded action items (local model, cited, auto-filed)
+                    ▼
+                   GTD task ledger (event-sourced) ──▶  Telegram bot    you manage tasks in plain language
+                                                   ──▶  morning digest  it pushes a summary to you
+```
+
+You interact in exactly **two places**: `bin/ask-live` to *know* (questions in, cited answers
+out) and the Telegram bot to *act* (tasks). Everything else — email→tasks, the digest — runs
+unattended on timers. Every command, intent, and reply across these surfaces is governed by one
+contract: [`docs/interaction-contract.md`](./docs/interaction-contract.md). Setting up the task
+half: [`SETUP.md`](./SETUP.md), step 4.
+
 ## Why the answers are trustworthy
 
 The promise is **cited, no-hallucination** answers, and it is structural rather than aspirational:
@@ -95,6 +113,7 @@ CLAUDE.md             operating manual for an agent working in this repo
 LICENSE               AGPL-3.0-or-later
 bin/
   ask-live            THE entrypoint: cited answers over the live corpus, fact-verified
+  mail-to-tasks       email→GTD timer entrypoint: grounded action items, auto-filed with citations
 src/
   pkm/                the KB — content-addressed extraction + transforms + DuckDB catalogue
   life_agent/         the agent — retrieval/citation guard, event-sourced GTD (tasks), Telegram reach
@@ -111,7 +130,10 @@ scripts/
   ask.py                the ask-live implementation (retrieve → synthesise → verify)
   ingest_sources.py     register + extract + chunk your declared data roots into pkm
 docs/
+  interaction-contract.md       every human-facing surface: one grammar per concept, nothing silent
+  act-layer-events.md           the GTD's event-sourced design (ledger = truth, SQLite = projection)
   kb-schema.md                  the knowledge-base schema (what lives under $LIFE_AGENT_KB)
+  failures-template.md          the dogfood log entry format (misses drive development)
   pkm/                          pkm's SPEC + phase docs
   nix-for-documents-report.md   commissioned research on the memory-core architecture
 ```

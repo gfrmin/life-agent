@@ -1,5 +1,10 @@
 # Getting started — first session
 
+> **Audience note:** this is the maintainer's working checklist for an *agent
+> session on the live deployment* — the status and prerequisites below describe
+> that machine, not a fresh clone. A human setting up from scratch starts at
+> [`SETUP.md`](./SETUP.md).
+
 This is the concrete checklist for a fresh agent/session. Read
 [`PRINCIPLES.md`](./PRINCIPLES.md) (the philosophy) and [`CLAUDE.md`](./CLAUDE.md) (the
 operating manual) first; [`ROADMAP.md`](./ROADMAP.md) has the full plan.

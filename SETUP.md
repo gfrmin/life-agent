@@ -94,6 +94,64 @@ reads, so new chunks are searchable immediately — no separate `rebuild-index`
 step. (Running the `pkm` primitives by hand? Then `pkm rebuild-index` after
 `pkm chunk --backfill` is on you.)
 
+## 4. Optional: the task half (Telegram + email→GTD)
+
+Everything above is the **know** half — ask, get a cited answer. There is also
+an **act** half: a GTD task list you manage in plain language over Telegram,
+which your email can auto-file into. It is optional and layers on separately.
+
+```bash
+# a) a Telegram bot: talk to @BotFather, /newbot, copy the token.
+#    Your numeric user id: message @userinfobot and it replies with it.
+export TELEGRAM_TOKEN=123456:ABC...
+export JARVIS_USER_ID=<your numeric id>      # the bot answers only this user
+
+# b) a local chat model for the language→intent step (no cloud call)
+ollama pull qwen2.5:7b-instruct              # any small instruct model works
+export OLLAMA_MODEL=qwen2.5:7b-instruct      # default: qwen3.5:9b
+
+# c) run the bot (a long-running poller — supervise it however you like:
+#    a systemd --user service, tmux, whatever you already use)
+uv run --project . python -m life_agent.reach.jarvis
+```
+
+Message it `help` for what it understands (`add buy milk`, `list inbox`,
+`done 3`, …). Secrets resolve from the environment first, then gnome-keyring
+(`secret-tool`) if you have one — plain `export` is fine.
+
+**Email→GTD (optional, on top).** Once your mail is ingested into pkm (declare
+your maildir in `data-sources.yaml`, step 3), `bin/mail-to-tasks` extracts
+**grounded** action items from new mail with the local model and files each one
+once into the GTD inbox, cited `[src:email <Message-ID>]`; you triage in
+Telegram. `--dry-run` previews without writing anything. Meant to run from a
+timer after your mail sync.
+
+**Morning digest (optional).** `uv run --project . python -m
+life_agent.reach.digest` sends a today / overdue / inbox summary through the
+same bot — timer material.
+
+Internals (the event ledger, why the SQLite is safe to delete):
+[`docs/act-layer-events.md`](./docs/act-layer-events.md).
+
+## 5. Day to day
+
+You interact in exactly **two places**; everything else runs on timers.
+
+- **To know — `bin/ask-live`.** One-shot for a quick question; run it bare for
+  a REPL session. One line grammar, identical in both: a plain question,
+  `/since 2026-01-01 …`, `/until …`, `/recent …`, `/tell <fact about you>`,
+  `/derive`. The full grammar and its rules:
+  [`docs/interaction-contract.md`](./docs/interaction-contract.md).
+- **To act — the Telegram bot.** Capture and triage tasks in plain language;
+  say `help` for the vocabulary.
+
+**The verdict prompt is how it gets better.** After each REPL answer, ask-live
+asks `[g]ood / [b]ad / [n]ote / Enter` — one key, logged to a dated journal at
+`$LIFE_AGENT_KB/eval/dogfood-YYYY-MM-DD.md` (never the repo). Misses that
+matter get promoted to `$LIFE_AGENT_KB/FAILURES.md` (template:
+[`docs/failures-template.md`](./docs/failures-template.md)); the failure log —
+not speculation — is what drives what gets built next.
+
 ## Reliability
 
 The promise is **cited, no-hallucination** answers, and it is structural, not
