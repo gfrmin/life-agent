@@ -111,7 +111,8 @@ dogfood) live in [`PRINCIPLES.md`](./PRINCIPLES.md) — they are not restated he
   ImageMagick 7, ghostscript, libreoffice.
 - **Search:** `rg 15.1`, **`rga 0.10.10`** (ripgrep-all, searches inside PDFs), `sqlite3 3.53`
   (FTS5), `pandoc`, `jq`. (No `fd`/`fzf`/`recoll`.) **DuckDB 1.5.2.**
-- **Langs:** Python 3.14 + `uv`; Node 26 + `pnpm`/`bun`; Julia (for credence).
+- **Langs:** Python 3.14 system-wide, but **this project pins 3.13** via `uv`
+  (`pyproject.toml` `requires-python`); Node 26 + `pnpm`/`bun`; Julia (for credence).
 - **Running services:** `jarvis.service`, PhotoPrism, Tuwunel + mautrix bridges +
   `matrix-archiver`, n8n, miniflux, invidious; timers `mbsync` (mail) + `renavon-inbox-ingest`;
   bi-hourly borg backup.
