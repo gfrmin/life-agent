@@ -81,3 +81,31 @@ def test_footer_empty_view_is_quiet() -> None:
     assert "1 admitted" in footer
     assert "excluded" not in footer
     assert "derive" not in footer
+
+
+# --- /derive: fail-open, never crashes the REPL ------------------------------ #
+
+
+def test_run_derive_fail_open_on_any_error(
+    monkeypatch, capsys,  # type: ignore[no-untyped-def]
+) -> None:
+    """A derive that raises (non-lock) prints and moves on — the docstring's
+    'nothing crashes the REPL' contract — and later targets still run."""
+    import pkm.config
+    import pkm.derive
+
+    monkeypatch.setattr(pkm.config, "load_config",
+                        lambda _: type("Cfg", (), {"root_dir": Path("/x")})())
+    calls: list[str] = []
+
+    def boom(_root, _cfg, decl, **_kw):  # type: ignore[no-untyped-def]
+        calls.append(decl)
+        raise RuntimeError("model offline")
+
+    monkeypatch.setattr(pkm.derive, "derive", boom)
+    ask.run_derive([("doc_date_pandoc", "dd" * 32),
+                    ("doc_date_docling", "ee" * 32)])
+
+    out = capsys.readouterr().out
+    assert calls == ["doc_date_pandoc", "doc_date_docling"]  # second still ran
+    assert out.count("derive failed") == 2

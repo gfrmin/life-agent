@@ -82,7 +82,6 @@ def project_dates(
     """
     if not hit_keys:
         return []
-    t0 = time.monotonic()
 
     placeholders = ", ".join("?" for _ in hit_keys)
     extractor_of = dict(conn.execute(
@@ -109,6 +108,7 @@ def project_dates(
 
     hits: list[DatedHit] = []
     for key in hit_keys:
+        t0 = time.monotonic()  # per-hit, so latency_ms is not cumulative
         extractor = str(extractor_of.get(key, ""))
         projection = current.get(key)
         if projection is None:

@@ -564,7 +564,11 @@ def run_derive(targets: list[tuple[str, str]]) -> None:
             if _is_lock_error(str(e)):
                 print("corpus locked by extraction — try /derive again in a moment")
                 return
-            raise
+            print(f"derive failed  {decl}: {e}")
+            continue
+        except Exception as e:
+            print(f"derive failed  {decl}: {e}")
+            continue
         if result.status == "success":
             print(f"derived  {decl}  {result.target_cache_key}")
         else:
