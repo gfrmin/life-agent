@@ -78,6 +78,62 @@ def test_handle_chat_and_help_and_unknown() -> None:
     assert "not sure" in jarvis.handle_action({"action": "frobnicate"}, USER)
 
 
+def test_handle_list_with_tag_routes_to_tag_view() -> None:
+    commands.add(USER, "Email accountant @work")
+    commands.add(USER, "Water plants")
+    reply = jarvis.handle_action({"action": "list", "tag": "work"}, USER)
+    assert "Email accountant" in reply
+    assert "Water plants" not in reply
+
+
+# --- INTENTS: one table feeds prompt and help; drift gates enforce it ----------
+# (docs/interaction-contract.md invariant 4: a vocabulary nothing enforces will
+# quietly diverge — these tests are what make the table the single source.)
+
+
+def test_every_intent_dispatches() -> None:
+    # An action named in INTENTS that handle_action doesn't route hits the
+    # unknown-fallback and fails here (no params: each handler asks or no-ops).
+    for action, _schema, _help in jarvis.INTENTS:
+        reply = jarvis.handle_action({"action": action}, USER)
+        assert "not sure" not in reply, action
+
+
+def test_prompt_renders_every_intent_schema() -> None:
+    for action, schema, _help in jarvis.INTENTS:
+        assert f'"action": "{action}"' in jarvis.SYSTEM_PROMPT, action
+        assert schema in jarvis.SYSTEM_PROMPT, action
+
+
+def test_help_renders_every_intent_example() -> None:
+    help_text = jarvis.handle_action({"action": "help"}, USER)
+    for action, _schema, help_line in jarvis.INTENTS:
+        assert help_line in help_text, action
+
+
+def test_prompt_mentions_the_tag_rule() -> None:
+    # The list intent's tag form must be exemplified in Rules, or a small local
+    # model never emits it (the path itself is wired in handle_action).
+    assert "@work" in jarvis.SYSTEM_PROMPT
+
+
+def test_prompt_teaches_the_unmark_form_help_promises() -> None:
+    # Help advertises "untoday 3" — the Rules must teach the model that form,
+    # or help promises a capability the NLU never emits (invariant 4's spirit,
+    # between the help table and the hand-written Rules prose).
+    assert "untoday" in jarvis.SYSTEM_PROMPT
+    assert "is_today false" in jarvis.SYSTEM_PROMPT
+
+
+def test_prompt_today_substitution_survives_literal_braces() -> None:
+    # Schema lines contain literal {} — {today} is substituted by .replace, and
+    # the rendered prompt must carry the date and no leftover placeholder.
+    rendered = jarvis.render_prompt("2026-06-11")
+    assert "2026-06-11" in rendered
+    assert "{today}" not in rendered
+    assert '{"action": "add"' in rendered  # literal braces intact
+
+
 # --- NLU (mocked Ollama) ------------------------------------------------------
 
 

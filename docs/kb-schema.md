@@ -33,7 +33,7 @@ in your `PKM_CONFIG` yaml.)
 - **`jarvis/jarvis.db`** — the legacy pre-event-sourcing GTD store, kept **read-only** as a
   natural pre-cutover snapshot (`scripts/migrate_jarvis_to_events.py`).
 - **`ocr-cache/`** — on-demand OCR results from `scripts/needle.sh` (cached, re-used).
-- **`owner.md`** — the owner profile (`bin/ask-live --tell "…"`): the identity lens that pins
+- **`owner.md`** — the owner profile (`bin/ask-live "/tell …"`): the identity lens that pins
   who "I" is in answers.
 - **`docs/data-seams.md`** — the verified, machine-specific data map (which data lives where on
   this machine). Out-of-tree because it names personal paths.
