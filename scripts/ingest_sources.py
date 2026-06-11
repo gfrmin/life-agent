@@ -206,6 +206,21 @@ def _write_sources(sources_yaml: Path, entries: list[dict]) -> None:
 # --------------------------------------------------------------------------- #
 
 
+def stages(*, extract: bool, chunk: bool) -> list[list[str]]:
+    """Pure: the `pkm` stage sequence for one promote. `ingest` alone only
+    registers sources; `--extract`/`--chunk` complete the searchable promote.
+    Porcelain owns the sequencing knowledge (docs/interaction-contract.md):
+    a chunk pass is always followed by `rebuild-index`, because chunks the
+    FTS index hasn't seen are silently invisible to search."""
+    plan: list[list[str]] = [["ingest"]]
+    if extract:
+        plan.append(["extract"])
+    if chunk:
+        plan.append(["chunk", "--backfill"])
+        plan.append(["rebuild-index"])
+    return plan
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--registry", type=Path, default=default_registry_path())
@@ -224,7 +239,8 @@ def main() -> int:
     )
     ap.add_argument(
         "--chunk", action="store_true",
-        help="after extract, run `pkm chunk --backfill` (index for search)",
+        help="after extract, run `pkm chunk --backfill` then `pkm rebuild-index` "
+             "(make the new chunks searchable)",
     )
     args = ap.parse_args()
 
@@ -269,15 +285,7 @@ def main() -> int:
         print("skipping `pkm ingest` (--no-ingest)")
         return 0
 
-    # Register → (optionally) extract → (optionally) chunk. `ingest` alone only
-    # registers sources; `--extract`/`--chunk` complete the searchable promote.
-    stages: list[list[str]] = [["ingest"]]
-    if args.extract:
-        stages.append(["extract"])
-    if args.chunk:
-        stages.append(["chunk", "--backfill"])
-
-    for stage in stages:
+    for stage in stages(extract=args.extract, chunk=args.chunk):
         print(f"running `pkm {' '.join(stage)}`...")
         proc = subprocess.run(
             ["uv", "run", "--project", str(PKM_DIR), "pkm", "--config",

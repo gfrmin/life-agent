@@ -77,6 +77,22 @@ class TestComplete:
     def test_complete_id_zero(self) -> None:
         assert "not found" in commands.complete(USER, task_id=0)
 
+    def test_complete_by_text_ambiguous_lists_matches_and_completes_nothing(self) -> None:
+        # Interaction-contract invariant 3: ambiguity is surfaced as a question,
+        # never resolved by an arbitrary pick (the old LIMIT 1 took the first).
+        commands.add(USER, "call dentist")
+        commands.add(USER, "call plumber")
+        r = commands.complete(USER, text_match="call")
+        assert "2 tasks match" in r and "done <id>" in r
+        assert "call dentist" in r and "call plumber" in r
+        active = store.get_tasks(USER)
+        assert "call dentist" in active and "call plumber" in active  # both still open
+
+    def test_complete_by_text_unique_match_still_completes(self) -> None:
+        commands.add(USER, "call dentist")
+        commands.add(USER, "water plants")
+        assert "Completed: call dentist" in commands.complete(USER, text_match="dentist")
+
 
 class TestDelete:
     def test_delete(self) -> None:

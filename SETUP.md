@@ -80,19 +80,19 @@ $EDITOR "$LIFE_AGENT_KB/config/data-sources.yaml"   # point roots at your dirs
 # c) build the memory: register → extract → chunk → make searchable
 uv run --project . pkm --config "$PKM_CONFIG" migrate
 uv run --project . python scripts/ingest_sources.py --extract --chunk
-uv run --project . pkm --config "$PKM_CONFIG" rebuild-index
 
 # d) teach it who you are (stops other people's docs being read as yours)
-bin/ask-live --tell "My name is <you>"
-bin/ask-live --tell "My national ID is <id>"
+bin/ask-live "/tell My name is <you>"
+bin/ask-live "/tell My national ID is <id>"
 
 # e) ask
 bin/ask-live "when does my passport expire?"
 ```
 
-`rebuild-index` is required after adding chunks — it refreshes the FTS index the
-live query reads. (`ingest_sources.py --extract --chunk` does everything up to
-that point.)
+`ingest_sources.py --chunk` finishes by rebuilding the FTS index the live query
+reads, so new chunks are searchable immediately — no separate `rebuild-index`
+step. (Running the `pkm` primitives by hand? Then `pkm rebuild-index` after
+`pkm chunk --backfill` is on you.)
 
 ## Reliability
 
@@ -106,7 +106,7 @@ aspirational:
 - **Weak retrieval abstains.** If nothing in your corpus is a strong enough
   match, the assistant says so instead of guessing (tune with
   `LIFE_AGENT_SCORE_FLOOR` / `LIFE_AGENT_MIN_HITS`).
-- **Identity is pinned.** An owner profile (`--tell`) is the lens for who "I" is,
+- **Identity is pinned.** An owner profile (`/tell`) is the lens for who "I" is,
   so a relative's or co-signer's document is never attributed to you.
 
 What is **not** guaranteed: facts pkm extracted wrong upstream (e.g. OCR

@@ -122,13 +122,16 @@ def resolve_by_id(
     return row
 
 
-def resolve_by_text(conn: sqlite3.Connection, user_id: int, text_match: str) -> sqlite3.Row | None:
-    row: sqlite3.Row | None = conn.execute(
+def resolve_by_text(conn: sqlite3.Connection, user_id: int, text_match: str) -> list[sqlite3.Row]:
+    """Every active task whose text contains the match, in id order. The caller
+    surfaces a multi-match as a question — ambiguity is never resolved by an
+    arbitrary pick (docs/interaction-contract.md invariant 3)."""
+    rows: list[sqlite3.Row] = conn.execute(
         "SELECT * FROM tasks WHERE user_id = ? AND completed_at IS NULL "
-        "AND text LIKE ? ORDER BY id LIMIT 1",
+        "AND text LIKE ? ORDER BY id",
         (user_id, f"%{text_match}%"),
-    ).fetchone()
-    return row
+    ).fetchall()
+    return rows
 
 
 # --- validation + rendering (ported from jarvis/db.py) -------------------------

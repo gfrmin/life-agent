@@ -42,7 +42,7 @@ The promise is **cited, no-hallucination** answers, and it is structural rather 
   not presented as true.
 - **Weak retrieval abstains.** If nothing in your corpus is a strong enough match, it says so
   instead of guessing (tunable via `LIFE_AGENT_SCORE_FLOOR` / `LIFE_AGENT_MIN_HITS`).
-- **Identity is pinned.** An owner profile (`bin/ask-live --tell "…"`) is the lens for who "I" is, so
+- **Identity is pinned.** An owner profile (`bin/ask-live "/tell …"`) is the lens for who "I" is, so
   a relative's or co-signer's document is never reported as yours.
 
 Answers are grounded in [`pkm`](./src/pkm/)'s content-addressed, source-cited extractions — *not* a
@@ -56,7 +56,7 @@ OCR garble) and the prose faithfulness of paraphrase — that is *measured* (`sc
 Your data never enters the repo. Copy `config/data-sources.example.yaml` to `$LIFE_AGENT_KB/config/`,
 point its roots at your folders, then `migrate → ingest → extract → chunk → rebuild-index` (one
 script: `scripts/ingest_sources.py --extract --chunk`). Teach it who you are with `bin/ask-live
---tell "My name is …"`. Step-by-step in [`SETUP.md`](./SETUP.md#3-point-it-at-your-own-data).
+"/tell My name is …"`. Step-by-step in [`SETUP.md`](./SETUP.md#3-point-it-at-your-own-data).
 
 ## What's live vs the vision
 

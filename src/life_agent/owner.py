@@ -10,8 +10,8 @@ Architectural placement (decided deliberately): owner-truth lives **life-agent-s
 pkm. Putting "my name is X" into the content-addressed corpus would make it just one more
 rankable chunk competing with a family member's document — it would not fix identity confusion.
 So the profile is a small markdown file under ``$LIFE_AGENT_KB`` (out of the public repo, out of
-pkm). The owner extends it opportunistically — ``ask-live --tell "My name is …"`` or ``/i …`` in
-the REPL — which appends here.
+pkm). The owner extends it opportunistically — ``/tell My name is …``, the same form in the
+REPL and one-shot argv (docs/interaction-contract.md) — which appends here.
 """
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ from pathlib import Path
 
 from life_agent.core import KB
 
-# Authoritative owner profile. Seeded by hand and grown by `--tell` / `/i`.
+# Authoritative owner profile. Seeded by hand and grown by `/tell`.
 # Module-level so tests can repoint it at a tmp path.
 PROFILE = KB / "owner.md"
 
