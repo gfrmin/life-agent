@@ -1,8 +1,9 @@
-"""Pure temporal helpers of the ask REPL (D1): command parsing + footer.
+"""Pure line-grammar of the ask REPL (the interaction contract) + the D1 footer.
 
 Same dependency-free style as tests/test_ask.py — the live projection path is
-covered by tests/test_temporal.py; here we pin the REPL grammar and the
-nothing-vanishes rendering contract.
+covered by tests/test_temporal.py; here we pin the ONE line grammar (identical
+in REPL and one-shot argv, docs/interaction-contract.md), its composition
+rules (nothing silent, nothing arbitrary), and the nothing-vanishes rendering.
 """
 
 from __future__ import annotations
@@ -17,33 +18,139 @@ import ask
 
 from life_agent.core.temporal import TemporalView
 
-# --- /recent and /since parsing -------------------------------------------- #
+# --- the line grammar: plain asks ------------------------------------------- #
 
 
-def test_plain_question_has_no_temporal() -> None:
-    q, since, until, recent = ask.parse_temporal_command("what is my ID?")
-    assert (q, since, until, recent) == ("what is my ID?", None, None, False)
+def test_plain_question_is_an_untemporal_ask() -> None:
+    p = ask.parse_line("what is my ID?")
+    assert p.kind == "ask"
+    assert (p.question, p.since, p.until, p.recent) == ("what is my ID?", None, None, False)
 
 
-def test_recent_prefix() -> None:
-    q, since, until, recent = ask.parse_temporal_command("/recent any invoices?")
-    assert (q, since, until, recent) == ("any invoices?", None, None, True)
+def test_empty_line_is_empty() -> None:
+    assert ask.parse_line("   ").kind == "empty"
+
+
+# --- temporal prefixes ------------------------------------------------------- #
+
+
+def test_recent_prefix_ranks_only() -> None:
+    p = ask.parse_line("/recent any invoices?")
+    assert p.kind == "ask"
+    assert (p.question, p.since, p.until, p.recent) == ("any invoices?", None, None, True)
 
 
 def test_since_prefix() -> None:
-    q, since, until, recent = ask.parse_temporal_command(
-        "/since 2026-05-01 appointments")
-    assert q == "appointments"
-    assert since == date(2026, 5, 1)
-    assert until is None
-    assert recent is False
+    p = ask.parse_line("/since 2026-05-01 appointments")
+    assert p.kind == "ask"
+    assert p.question == "appointments"
+    assert p.since == date(2026, 5, 1)
+    assert p.until is None and p.recent is False
 
 
-def test_since_with_bad_date_is_not_swallowed() -> None:
-    q, since, until, recent = ask.parse_temporal_command("/since soon dentist")
-    # An unparseable date must not silently become an untemporal question:
-    # the whole line is returned unchanged so the REPL can complain.
-    assert (q, since, until, recent) == ("/since soon dentist", None, None, False)
+def test_until_prefix() -> None:
+    p = ask.parse_line("/until 2026-06-01 appointments")
+    assert p.kind == "ask"
+    assert p.question == "appointments"
+    assert p.until == date(2026, 6, 1)
+    assert p.since is None and p.recent is False
+
+
+def test_since_and_until_compose_into_a_range() -> None:
+    p = ask.parse_line("/since 2026-01-01 /until 2026-03-31 what invoices?")
+    assert p.kind == "ask"
+    assert p.question == "what invoices?"
+    assert (p.since, p.until) == (date(2026, 1, 1), date(2026, 3, 31))
+
+
+def test_bounds_compose_in_either_order() -> None:
+    p = ask.parse_line("/until 2026-03-31 /since 2026-01-01 what invoices?")
+    assert p.kind == "ask"
+    assert (p.since, p.until) == (date(2026, 1, 1), date(2026, 3, 31))
+
+
+def test_single_day_range_is_valid() -> None:
+    p = ask.parse_line("/since 2026-05-01 /until 2026-05-01 anything?")
+    assert p.kind == "ask"
+
+
+# --- composition errors: rejected with the rule, never silently resolved ----- #
+
+
+def test_bad_date_is_a_loud_error() -> None:
+    p = ask.parse_line("/since soon dentist")
+    assert p.kind == "error"
+    assert "YYYY-MM-DD" in p.error
+
+
+def test_duplicate_bound_is_an_error() -> None:
+    p = ask.parse_line("/since 2026-01-01 /since 2026-02-01 q")
+    assert p.kind == "error"
+    assert "once" in p.error
+
+
+def test_recent_with_a_bound_is_an_error_naming_the_rule() -> None:
+    p = ask.parse_line("/recent /since 2026-01-01 q")
+    assert p.kind == "error"
+    assert "newest-first" in p.error  # the rule, spelled out
+
+
+def test_empty_range_is_an_error() -> None:
+    p = ask.parse_line("/since 2026-06-01 /until 2026-01-01 q")
+    assert p.kind == "error"
+    assert "empty range" in p.error
+
+
+def test_unknown_slash_command_is_an_error_naming_the_grammar() -> None:
+    # The silent-typo bug: '/sinc …' must never be asked as a literal question.
+    p = ask.parse_line("/sinc 2026-01-01 dentist")
+    assert p.kind == "error"
+    assert "/sinc" in p.error
+    assert "/since YYYY-MM-DD QUESTION" in p.error  # the grammar is named
+
+
+def test_temporal_prefix_without_a_question_is_an_error() -> None:
+    assert ask.parse_line("/recent").kind == "error"
+    assert ask.parse_line("/since 2026-01-01").kind == "error"
+
+
+# --- teaching, deriving, quitting -------------------------------------------- #
+
+
+def test_tell_carries_the_fact() -> None:
+    p = ask.parse_line("/tell My name is Ada Lovelace")
+    assert p.kind == "tell"
+    assert p.fact == "My name is Ada Lovelace"
+
+
+def test_tell_without_a_fact_is_an_error() -> None:
+    assert ask.parse_line("/tell").kind == "error"
+
+
+def test_derive_is_recognised() -> None:
+    assert ask.parse_line("/derive").kind == "derive"
+
+
+def test_quit_forms_all_quit() -> None:
+    # The contract's one named exception: /q, /quit, /exit (and EOF) all quit.
+    for form in ("/q", "/quit", "/exit"):
+        assert ask.parse_line(form).kind == "quit", form
+
+
+# --- drift gates: the GRAMMAR table is enforced, not aspirational ------------ #
+
+
+def test_every_grammar_example_parses_without_error() -> None:
+    for form, _meaning, example in ask.GRAMMAR:
+        p = ask.parse_line(example)
+        assert p.kind != "error", f"{form}: example {example!r} -> {p.error}"
+
+
+def test_grammar_text_renders_every_form_and_meaning() -> None:
+    text = ask.grammar_text()
+    for form, meaning, _example in ask.GRAMMAR:
+        assert form in text
+        assert meaning in text
 
 
 # --- footer: nothing vanishes ----------------------------------------------- #

@@ -26,9 +26,12 @@ The GTD is event-sourced: an append-only ledger is truth, the SQLite read-model 
 (`bin/mail-to-tasks` is the timer/debug entrypoint): the `action_items` transform (local
 Ollama, grounded quotes) auto-files cited tasks; the grounding gate is the safety; triage
 happens in Telegram. The ask-anything read path is `scripts/ask.py`, dogfooded via
-`bin/ask-live`; its temporal mode (`--recent`, `--since`, REPL `/recent`/`/since`/`/derive`)
-filters by the `doc_date` projection (SPEC §18.12) read-side, naming undated and
-not-yet-derived hits instead of dropping them.
+`bin/ask-live`; its temporal mode (`/recent`, `/since`, `/until`, `/derive` — one line
+grammar, identical in the REPL and one-shot argv) filters by the `doc_date` projection
+(SPEC §18.12) read-side, naming undated and not-yet-derived hits instead of dropping them.
+Every human-facing surface is governed by
+[`docs/interaction-contract.md`](./docs/interaction-contract.md) — read it before touching
+a command, intent, flag, or reply string.
 
 **Not built, deliberately:** the agent-loop spine (open decision — PRINCIPLES §15), credence
 wiring, a live MCP server (`src/pkm/mcp_server.py` is dormant-by-design — PRINCIPLES §5). One

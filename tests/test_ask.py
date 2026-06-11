@@ -167,12 +167,54 @@ def test_main_returns_2_on_locked_corpus(monkeypatch, capsys) -> None:
 
 
 def test_tell_records_fact_without_touching_corpus(monkeypatch, tmp_path) -> None:
-    # --tell is corpus-free: connect() must never be called, yet the fact lands in the profile.
+    # /tell is corpus-free: connect() must never be called, yet the fact lands in the profile.
     monkeypatch.setattr(owner, "PROFILE", tmp_path / "owner.md")
     monkeypatch.setattr(ask, "connect", lambda: (_ for _ in ()).throw(AssertionError("connected")))
 
-    assert ask.main(["--tell", "My name is Ada Lovelace"]) == 0
+    assert ask.main(["/tell", "My name is Ada Lovelace"]) == 0
     assert "My name is Ada Lovelace" in owner.load_profile()
+
+
+# --- one-shot argv routes through the SAME line grammar as the REPL --------- #
+
+def test_one_shot_temporal_routing(monkeypatch) -> None:
+    # The argv words are joined and parsed by parse_line; the predicate reaches ask_once.
+    monkeypatch.setattr(ask, "_pkm_root", lambda: None)   # hermetic: no reconcile I/O
+    monkeypatch.setattr(ask, "connect", lambda: None)
+    seen: dict = {}
+
+    def fake_ask_once(conn, question, k, **kw):  # type: ignore[no-untyped-def]
+        seen.update(question=question, **kw)
+        return []
+
+    monkeypatch.setattr(ask, "ask_once", fake_ask_once)
+    assert ask.main(["/since", "2026-01-01", "what", "invoices?"]) == 0
+    assert seen["question"] == "what invoices?"
+    assert str(seen["since"]) == "2026-01-01"
+    assert seen["until"] is None and seen["recent"] is False
+
+
+def test_one_shot_grammar_error_exits_2(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(ask, "connect", lambda: (_ for _ in ()).throw(AssertionError("connected")))
+    assert ask.main(["/since", "soon", "dentist"]) == 2
+    assert "YYYY-MM-DD" in capsys.readouterr().err
+
+
+def test_one_shot_derive_is_an_error(monkeypatch, capsys) -> None:
+    # /derive is stateful (needs the prior answer's targets) — REPL only.
+    monkeypatch.setattr(ask, "connect", lambda: (_ for _ in ()).throw(AssertionError("connected")))
+    assert ask.main(["/derive"]) == 2
+    assert "/derive" in capsys.readouterr().err
+
+
+def test_removed_flags_stay_removed() -> None:
+    # One grammar: the line expresses these concepts; the flags are gone (invariant 5).
+    import pytest
+
+    for argv in (["--tell", "x"], ["--since", "2026-01-01", "q"],
+                 ["--until", "2026-01-01", "q"], ["--recent", "q"]):
+        with pytest.raises(SystemExit):
+            ask.main(argv)
 
 
 # --- reliability: weak-retrieval abstention floor -------------------------- #

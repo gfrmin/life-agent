@@ -12,10 +12,13 @@ minus the frozen-snapshot filter (dogfood asks over the whole corpus, not a pinn
 and minus the per-question hand-written search_queries (the raw question IS the query —
 an honest "ask anything" test that surfaces retrieval gaps as signal).
 
-Run (from the repo root, for pkm.retrieval + duckdb):
-    bin/ask-live                      # interactive REPL
-    bin/ask-live "what is my ID?"     # answer once, then prompt for a verdict
-    bin/ask-live --k 12               # wider retrieval context
+Run (from the repo root, for pkm.retrieval + duckdb). One-shot argv is the SAME line
+grammar as the REPL (docs/interaction-contract.md):
+    bin/ask-live                                   # interactive REPL
+    bin/ask-live "what is my ID?"                  # answer once, prompt for a verdict
+    bin/ask-live "/since 2026-01-01 what invoices?"  # temporal predicate, same grammar
+    bin/ask-live "/tell My name is …"              # record an authoritative owner fact
+    bin/ask-live --k 12 "what is my ID?"           # wider retrieval context
 """
 from __future__ import annotations
 
@@ -197,23 +200,106 @@ class TemporalReport:
 TEMPORAL_LAST: TemporalReport | None = None
 
 
-def parse_temporal_command(
-    line: str,
-) -> tuple[str, _date | None, _date | None, bool]:
-    """Pure: split a REPL line into (question, since, until, recent).
-    `/recent q` and `/since YYYY-MM-DD q` are the two temporal forms; an
-    unparseable /since date returns the line unchanged (the REPL complains
-    rather than silently asking an untemporal question)."""
-    if line.startswith("/recent "):
-        return line[len("/recent "):].strip(), None, None, True
-    if line.startswith("/since "):
-        rest = line[len("/since "):].strip()
-        head, _, q = rest.partition(" ")
-        try:
-            return q.strip(), _date.fromisoformat(head), None, False
-        except ValueError:
-            return line, None, None, False
-    return line, None, None, False
+# The ONE line grammar (docs/interaction-contract.md): identical in the REPL and in
+# one-shot argv. Each entry is (form, meaning, example); the example is parsed by the
+# drift-gate test, so an entry the parser stops accepting fails CI, not the owner.
+GRAMMAR: tuple[tuple[str, str, str], ...] = (
+    ("QUESTION", "cited answer over the live corpus",
+     "what is my ID?"),
+    ("/recent QUESTION", "rank dated sources newest-first (ranks only; excludes nothing)",
+     "/recent any invoices?"),
+    ("/since YYYY-MM-DD QUESTION", "only sources dated on/after (excluded are named)",
+     "/since 2026-05-01 appointments"),
+    ("/until YYYY-MM-DD QUESTION", "only sources dated on/before",
+     "/until 2026-06-01 appointments"),
+    ("/tell FACT", "record an authoritative owner fact",
+     "/tell My name is Ada Lovelace"),
+    ("/derive", "materialise the doc_dates the last answer named as underived",
+     "/derive"),
+    ("/q", "quit (also /quit, /exit, Ctrl-D)",
+     "/q"),
+)
+
+
+def grammar_text() -> str:
+    """Pure: the grammar table rendered for humans — the REPL banner, every usage
+    error, and the --help epilog all print THIS, so they cannot disagree."""
+    width = max(len(form) for form, _, _ in GRAMMAR)
+    return "\n".join(f"  {form.ljust(width)}  {meaning}" for form, meaning, _ in GRAMMAR)
+
+
+@dataclass(frozen=True)
+class Parsed:
+    """One parsed input line. ``kind`` dispatches; the rest is that kind's payload."""
+    kind: str  # "ask" | "tell" | "derive" | "quit" | "empty" | "error"
+    question: str = ""
+    fact: str = ""
+    since: _date | None = None
+    until: _date | None = None
+    recent: bool = False
+    error: str = ""
+
+
+def _error(message: str) -> Parsed:
+    return Parsed(kind="error", error=f"{message}\nthe grammar:\n{grammar_text()}")
+
+
+def parse_line(line: str) -> Parsed:
+    """Pure: parse one input line under the contract's composition rules.
+    /since and /until are bounds (a range, each at most once); /recent is a ranking
+    directive and stands alone (a bound already ranks newest-first — see
+    life_agent.core.temporal.apply_temporal). Anything ambiguous or unknown is a
+    loud ``error`` naming the rule — never silently reinterpreted (invariant 3)."""
+    line = line.strip()
+    if not line:
+        return Parsed(kind="empty")
+    if line in ("/q", "/quit", "/exit"):
+        return Parsed(kind="quit")
+    if line == "/derive":
+        return Parsed(kind="derive")
+    if line == "/tell" or line.startswith("/tell "):
+        fact = line[len("/tell"):].strip()
+        return Parsed(kind="tell", fact=fact) if fact else _error("usage: /tell FACT")
+    if not line.startswith("/"):
+        return Parsed(kind="ask", question=line)
+
+    tokens = line.split()
+    since: _date | None = None
+    until: _date | None = None
+    recent = False
+    i = 0
+    while i < len(tokens) and tokens[i].startswith("/"):
+        t = tokens[i]
+        if t == "/recent":
+            if recent:
+                return _error("/recent may appear only once")
+            recent = True
+            i += 1
+        elif t in ("/since", "/until"):
+            if (t == "/since" and since) or (t == "/until" and until):
+                return _error(f"{t} may appear only once — bounds form one range")
+            if i + 1 >= len(tokens):
+                return _error(f"usage: {t} YYYY-MM-DD QUESTION")
+            try:
+                bound = _date.fromisoformat(tokens[i + 1])
+            except ValueError:
+                return _error(f"usage: {t} YYYY-MM-DD QUESTION (got {tokens[i + 1]!r})")
+            if t == "/since":
+                since = bound
+            else:
+                until = bound
+            i += 2
+        else:
+            return _error(f"unknown command {t!r}")
+    if recent and (since or until):
+        return _error("/recent with a bound is redundant — /since and /until already "
+                      "rank newest-first; drop /recent")
+    if since and until and since > until:
+        return _error(f"empty range: /since {since} is after /until {until}")
+    question = " ".join(tokens[i:])
+    if not question:
+        return _error("missing QUESTION after the temporal prefix")
+    return Parsed(kind="ask", question=question, since=since, until=until, recent=recent)
 
 
 def temporal_footer(view: T.TemporalView, name_of: dict[str, str]) -> str:
@@ -591,24 +677,26 @@ def remember(fact: str) -> None:
 # --- REPL ----------------------------------------------------------------- #
 def repl(conn: duckdb.DuckDBPyConnection, k: int, *, expand: bool = True,
          no_cache: bool = False) -> None:
-    print("ask anything about your life — '/i <fact>' to teach me about you, "
-          "'/recent <q>' or '/since YYYY-MM-DD <q>' for date-filtered answers, "
-          "'/derive' to materialise missing dates, Ctrl-D or /q to quit\n")
+    print(f"ask anything about your life — the grammar:\n{grammar_text()}\n")
     derive_targets: list[tuple[str, str]] = []
     while True:
         try:
-            line = input("ask> ").strip()
+            line = input("ask> ")
         except EOFError:
             print()
             return
-        if not line:
+        p = parse_line(line)
+        if p.kind == "empty":
             continue
-        if line in ("/q", "/quit", "/exit"):
+        if p.kind == "quit":
             return
-        if line.startswith(("/i ", "/me ")):
-            remember(line.split(" ", 1)[1])
+        if p.kind == "error":
+            print(f"{p.error}\n")
             continue
-        if line == "/derive":
+        if p.kind == "tell":
+            remember(p.fact)
+            continue
+        if p.kind == "derive":
             if not derive_targets:
                 print("nothing to derive — ask a /recent or /since question first\n")
                 continue
@@ -621,19 +709,18 @@ def repl(conn: duckdb.DuckDBPyConnection, k: int, *, expand: bool = True,
                 conn = connect()
             print()
             continue
-        question, since, until, recent = parse_temporal_command(line)
-        if question == line and line.startswith("/since "):
-            print("usage: /since YYYY-MM-DD <question>\n")
-            continue
-        derive_targets = ask_once(conn, question, k, expand=expand,
-                                  no_cache=no_cache, since=since,
-                                  until=until, recent=recent)
+        derive_targets = ask_once(conn, p.question, k, expand=expand,
+                                  no_cache=no_cache, since=p.since,
+                                  until=p.until, recent=p.recent)
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("question", nargs="*", help="ask once non-interactively; omit for the REPL")
+                                 formatter_class=argparse.RawDescriptionHelpFormatter,
+                                 epilog=f"the line grammar (REPL and one-shot):\n"
+                                        f"{grammar_text()}")
+    ap.add_argument("question", nargs="*",
+                    help="one line in the grammar below; omit for the REPL")
     ap.add_argument("--k", type=int, default=DEFAULT_K,
                     help=f"top-k retrieval context (default {DEFAULT_K})")
     ap.add_argument("--no-expand", action="store_true",
@@ -641,21 +728,28 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--no-cache", action="store_true",
                     help="recompute every stage instead of replaying cached derivations "
                          "(recording stays write-once — existing derivations stand)")
-    ap.add_argument("--tell", metavar="FACT",
-                    help="record an authoritative owner fact (e.g. 'My name is …') and exit")
-    ap.add_argument("--since", type=_date.fromisoformat, metavar="YYYY-MM-DD",
-                    help="only sources dated on/after this date (others are named, not dropped)")
-    ap.add_argument("--until", type=_date.fromisoformat, metavar="YYYY-MM-DD",
-                    help="only sources dated on/before this date")
-    ap.add_argument("--recent", action="store_true",
-                    help="rank dated sources newest-first (nothing excluded)")
     args = ap.parse_args(argv)
     expand = not args.no_expand
 
-    # Teaching is corpus-free: it works even while an extraction holds the catalogue lock.
-    if args.tell:
-        remember(args.tell)
-        return 0
+    # One-shot argv is the SAME grammar as a REPL line (invariant 1). The corpus-free
+    # kinds are handled BEFORE any catalogue I/O: /tell works even while an extraction
+    # holds the lock; a grammar error never costs a connection.
+    p = parse_line(" ".join(args.question)) if args.question else None
+    if p is not None and p.kind == "empty":
+        p = None  # a blank argv question means the REPL, same as no question
+    if p is not None:
+        if p.kind == "error":
+            print(p.error, file=sys.stderr)
+            return 2
+        if p.kind == "derive":
+            print("/derive needs the targets a prior answer named — REPL only",
+                  file=sys.stderr)
+            return 2
+        if p.kind == "tell":
+            remember(p.fact)
+            return 0
+        if p.kind == "quit":
+            return 0
 
     # Opportunistic catalogue reconciliation (SPEC §18.9): insert the rows for any
     # file-first derivations recorded by earlier sessions, BEFORE our read-only connection
@@ -674,10 +768,10 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         raise
 
-    if args.question:
-        ask_once(conn, " ".join(args.question), args.k, expand=expand,
-                 no_cache=args.no_cache, since=args.since, until=args.until,
-                 recent=args.recent)
+    if p is not None:
+        ask_once(conn, p.question, args.k, expand=expand,
+                 no_cache=args.no_cache, since=p.since, until=p.until,
+                 recent=p.recent)
     else:
         repl(conn, args.k, expand=expand, no_cache=args.no_cache)
     return 0

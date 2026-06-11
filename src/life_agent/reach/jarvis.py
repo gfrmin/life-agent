@@ -33,22 +33,58 @@ OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434")
 OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "qwen3.5:9b")
 POLL_TIMEOUT = 30
 
-SYSTEM_PROMPT = """You are Jarvis, a GTD (Getting Things Done) task manager assistant. Parse the user's message and return a JSON object with the action to take.
+# The canonical intent vocabulary (docs/interaction-contract.md): one table, three
+# renderings — the NLU prompt's "Available actions" block, and the help reply. Each
+# entry is (action, JSON schema line for the model, help line for the human). The
+# drift gates in tests/test_reach.py assert every action dispatches and appears in
+# both renderings, so the table cannot quietly diverge from the behaviour.
+INTENTS: tuple[tuple[str, str, str], ...] = (
+    ("add",
+     '{"action": "add", "text": "task description", "list": "inbox|next|scheduled|someday", "due_date": "YYYY-MM-DD or null"}',
+     'Add: "buy milk", "call dentist @health", "schedule report for 2026-05-01"'),
+    ("complete",
+     '{"action": "complete", "task_id": number_or_null, "text_match": "partial text or null"}',
+     'Complete: "done 3" or "done buy milk"'),
+    ("delete",
+     '{"action": "delete", "task_id": number}',
+     'Delete: "delete 5"'),
+    ("move",
+     '{"action": "move", "task_id": number, "list": "inbox|next|scheduled|someday", "due_date": "YYYY-MM-DD or null"}',
+     'Move: "move 5 to next"'),
+    ("mark_today",
+     '{"action": "mark_today", "task_id": number, "is_today": true|false}',
+     'Focus: "today 3" or "focus on 3"; "untoday 3" to unmark'),
+    ("clear_today",
+     '{"action": "clear_today"}',
+     'Clear focus: "clear today"'),
+    ("list",
+     '{"action": "list", "list": "inbox|next|scheduled|someday|all|today|overdue|null", "tag": "tag_name or null"}',
+     'Lists: "show inbox", "show all", "today", "overdue", "show @work"'),
+    ("counts",
+     '{"action": "counts"}',
+     'Counts: "counts" or "stats"'),
+    ("completed",
+     '{"action": "completed"}',
+     'Done this week: "completed"'),
+    ("help",
+     '{"action": "help"}',
+     'Help: "help" or "?"'),
+    ("chat",
+     '{"action": "chat", "response": "your conversational reply"}',
+     "Anything else: I'll just chat"),
+)
 
-Today's date is {today}.
+_ACTIONS_BLOCK = "\n".join(f"- {schema}" for _, schema, _ in INTENTS)
+
+# {today} is substituted by render_prompt's .replace (NOT .format — the schema lines
+# carry literal JSON braces). Rules stay hand-written prose: small local models follow
+# a few concrete examples better than abstraction.
+SYSTEM_PROMPT = f"""You are Jarvis, a GTD (Getting Things Done) task manager assistant. Parse the user's message and return a JSON object with the action to take.
+
+Today's date is {{today}}.
 
 Available actions:
-- {{"action": "add", "text": "task description", "list": "inbox|next|scheduled|someday", "due_date": "YYYY-MM-DD or null"}}
-- {{"action": "complete", "task_id": number_or_null, "text_match": "partial text or null"}}
-- {{"action": "delete", "task_id": number}}
-- {{"action": "move", "task_id": number, "list": "inbox|next|scheduled|someday", "due_date": "YYYY-MM-DD or null"}}
-- {{"action": "mark_today", "task_id": number, "is_today": true|false}}
-- {{"action": "clear_today"}}
-- {{"action": "list", "list": "inbox|next|scheduled|someday|all|today|overdue|null", "tag": "tag_name or null"}}
-- {{"action": "counts"}}
-- {{"action": "completed"}}
-- {{"action": "help"}}
-- {{"action": "chat", "response": "your conversational reply"}}
+{_ACTIONS_BLOCK}
 
 Rules:
 - Default list for new tasks is "inbox" unless the user specifies otherwise.
@@ -58,6 +94,7 @@ Rules:
 - If the user says "show inbox" or "list next", use "list" with the appropriate list name.
 - If the user says "show all" or "tasks" or "show tasks", use "list" with list null.
 - If the user says "today" or "what's for today", use "list" with list "today".
+- If the user says "show @work" or "list @health", use "list" with tag "work" / "health" (the tag without @).
 - If the user says "focus on 3" or "today 3", use "mark_today" with is_today true.
 - If the user says "schedule X for next tuesday", convert to a date and use "add" with list "scheduled".
 - If the user says "move 5 to next", use "move" with the task_id and list.
@@ -66,13 +103,19 @@ Rules:
 - If ambiguous, prefer "add" to inbox — better to capture than to lose."""
 
 
+def render_prompt(today: str) -> str:
+    """The system prompt with the date substituted. .replace, not .format: the
+    schema lines contain literal {} that .format would mangle."""
+    return SYSTEM_PROMPT.replace("{today}", today)
+
+
 def _user_id() -> int:
     """Whose messages the bot accepts — a personal id from env/keyring, never hard-coded."""
     return int(secret("JARVIS_USER_ID"))
 
 
 def parse_with_ollama(message: str) -> dict[str, Any]:
-    prompt = SYSTEM_PROMPT.format(today=date.today().isoformat())
+    prompt = render_prompt(date.today().isoformat())
     body = {
         "model": OLLAMA_MODEL,
         "messages": [
@@ -154,17 +197,10 @@ def handle_action(parsed: dict[str, Any], user_id: int) -> str:
         return store.get_completed_this_week(user_id)
 
     if action == "help":
-        return (
-            "I'm Jarvis, your GTD assistant. You can:\n"
-            '• Add tasks: "buy milk", "call dentist @health"\n'
-            '• Complete: "done buy milk" or "done 3"\n'
-            '• Lists: "show inbox", "show all", "today"\n'
-            '• Schedule: "schedule report for 2026-05-01"\n'
-            '• Move: "move 5 to next"\n'
-            '• Focus: "today 3" to mark for today\n'
-            '• Tags: "show @work"\n'
-            '• Stats: "counts" or "completed"'
-        )
+        # Rendered from INTENTS — the same table the NLU prompt is built from
+        # (invariant 4: help and capability cannot drift apart).
+        examples = "\n".join(f"• {help_line}" for _, _, help_line in INTENTS)
+        return f"I'm Jarvis, your GTD assistant. You can:\n{examples}"
 
     if action == "chat":
         return str(parsed.get("response", "I'm here to help with your tasks."))
