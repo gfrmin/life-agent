@@ -77,14 +77,28 @@ OCR+grep needle-finder (`scripts/needle.sh`) survives as a standalone tool.
 > Dogfooding surfaced a real retrieval miss (query-expansion, shipped) and a synthesis miss
 > (own-corpus attribution, fixed) — exactly the FAILURES-driven signal the loop is for (§9).
 
-### Phase 1.5 — Mature memory · **ACTIVE, dogfood-driven**
-Build **only what `$LIFE_AGENT_KB/FAILURES.md` demands** (PRINCIPLES §9), dogfooding between
-changes. Known candidate levers (not a fixed list — promote by evidence):
-- **OCR the image-PDFs** — route the failed/empty-text extractions through the Tesseract producer so
-  scanned docs become searchable (the standing extraction-quality frontier).
-- **Retrieval ranking** — nudge `EXPAND_SYSTEM` to always emit document-type nouns
-  (agreement/contract/certificate) so authoritative docs surface for status/identity phrasings.
-- **Coverage** — new source `kind` adapters (matrix chat, CardDAV contacts) as dogfood calls for them.
+### Phase 1.5 — Mature memory · **superseded 2026-06-11**
+Was dogfood-gated ("build only what FAILURES.md demands"); superseded by the adopted
+framework below (owner directive; PRINCIPLES §9 as amended). Its open levers (OCR the
+image-PDFs; `EXPAND_SYSTEM` ranking nudges; new source-`kind` adapters) remain valid
+backlog items, promoted by evidence as before.
+
+### Phase 1.6 — The derivation framework · **ACTIVE**
+The adopted system design ([`docs/system-design.md`](./docs/system-design.md)) executed
+continuously, eval-gated (engine design §11); the derivation engine
+([`docs/derivation-engine-design.md`](./docs/derivation-engine-design.md)) D0–D1 are landed.
+Remaining program, in dependency order:
+1. **The act ledger becomes knowledge** — pkm retrieval currency for evolving sources
+   (SPEC-first); `tasks/knowledge.py` (pure fold→markdown projection of the GTD ledger);
+   demand-led refresh in the ask path (no new grammar — "what's next on my gtd list?" just
+   works).
+2. **D2 — subject** — `doc_subject` closed-enum transform + executor-side owner-profile
+   filter (profile never enters pkm).
+3. **D3 — aggregation + planner v0** — `filter`/`agg` operators, field-extraction
+   transforms, template router with predicate slots, the coverage contract end-to-end
+   ("how much money did I spend last year?" runs as a planned derivation).
+4. **D4 — threads** — `assemble` SPEC amendment, email `_VERSION` bump (budget the
+   corpus-wide reclassification), `thread_state`, `thread` template ("awaiting reply?").
 
 ### Phase 2 — Goals/utility model + first agent loop (read-only) · future
 - Design the **goals/utility representation** (the unbuilt faculty) — how the agent learns and
@@ -103,8 +117,9 @@ PRINCIPLES §15 is the canonical list, with criteria:
 - **The spine** (Phase 2): pi-mono vs a Python agent loop vs Claude Code as an interim loop. One
   candidate composition is sketched in [`docs/candidates/brain-design.md`](./docs/candidates/brain-design.md).
 - **The goals/utility representation** (Phase 2).
-- **The CRM rebuild** — the seven decisions in
-  [`docs/crm-architecture-decisions.md`](./docs/crm-architecture-decisions.md).
+- **The CRM rebuild** — #1/#2/#5/#6 resolved by the adopted framework (recorded in
+  [`docs/crm-architecture-decisions.md`](./docs/crm-architecture-decisions.md)); #3
+  (mutable notes) and #4 (alias dedup) remain open.
 
 ## Critical files
 - **`.` (this repo):** `src/life_agent/core/` (shared infra: LLM calls, secrets, config, source

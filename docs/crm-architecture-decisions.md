@@ -1,10 +1,25 @@
-# CRM — open architectural decisions
+# CRM — architectural decisions (four resolved by the adopted framework)
+
+> **Resolution note (2026-06-11).** The adopted framework
+> ([`system-design.md`](./system-design.md), [`derivation-engine-design.md`](./derivation-engine-design.md))
+> resolves the crux and most of its dependents:
+> **#1** — both, by kind: LLM projections (per-thread classification, `thread_state`) are
+> pkm transforms, cached forever; deterministic reads (direction/counterparty from headers,
+> filters, aggregates) are executor-side query-layer operators — never a bespoke faculty.
+> **#2** — moot: deterministic operators live in the life_agent executor, so no model-free
+> transform-substrate change; the one pkm shape change is D4's `assemble`.
+> **#5** — ask (*know* mode) is the CRM read surface; Telegram intents deferred.
+> **#6** — identity/owned-domains knowledge lives life_agent-side (with the owner profile);
+> it never enters pkm.
+> "Awaiting reply" lands as engine phase D4. **#3 (mutable notes/reminders) and #4 (alias
+> dedup) remain open** — if #3 lands as a ledger, it inherits the knowledge-projection
+> pattern (system design §5).
 
 Context: the attempt to "incorporate the renavon CRM, like email→GTD" first produced a full
 event-sourced `life_agent.crm` faculty, which was then torn down on the principle that **the CRM
 is "just pkm in another form"** — interactions are immutable derived facts (pure pkm), not a
 mutable act-layer that warrants its own ledger/store/CLI. The working tree is back to the pre-CRM
-state. These are the decisions that need taking before rebuilding.
+state. These were the decisions that needed taking before rebuilding (resolutions above).
 
 Ordered by how much each gates the rest; the crux of each is in **bold**.
 
