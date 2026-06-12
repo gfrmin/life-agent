@@ -96,9 +96,12 @@ Bayesian Ask rather than deterministic pipelines. Remaining program, in dependen
    `tasks/knowledge.py`, demand-led refresh in the ask path.
 2. **(done)** D2 — subject — `doc_subject` closed-enum transform + executor-side
    owner-profile filter (profile never enters pkm).
-3. **Ask v0** — slice 0: outcomes log + scoring-rule eval (first — the evidence stream
-   cannot be backfilled); slice 1: the credence seam (`src/life_agent/core/brain.py`
-   over the skin's JSON-RPC-over-stdio); slice 2: the lookup family; slice 3: narrative
+3. **Ask v0** — slice 0 **(done)**: outcomes log + scoring-rule eval (the evidence
+   stream cannot be backfilled); slice 1 **(done)**: the credence seam
+   (`src/life_agent/core/brain.py` over the skin's JSON-RPC-over-stdio; live Julia
+   smoke green); slice 2: the lookup family + the **utility posterior v0** + the
+   decision log (utility is a learned belief about the owner — foundations §4.4/§10 as
+   amended 2026-06-12: one utility, the agent has none of its own); slice 3: narrative
    subsumption.
 4. **The aggregate family** (subsumes D3): recall term + completeness priors,
    missing-mass posterior, dedup-as-inference — the spending question answered as a
