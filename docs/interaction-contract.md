@@ -68,6 +68,16 @@ range is almost certainly a typo), an unparseable date, an unknown slash-command
 **Flags** (run-config only): `--k N` retrieval width, `--no-expand` raw-question BM25
 baseline, `--no-cache` recompute every stage.
 
+**Act-layer state.** A plain `QUESTION` covers the GTD — no special grammar. The task
+ledger's knowledge projection (`life_agent.tasks.knowledge` →
+`$LIFE_AGENT_KB/tasks/state.md`) is re-projected and re-ingested **on demand**, before a
+question is answered, whenever the ledger has moved past it; retrieval then finds current
+task state like any source (pkm SPEC §15.4 keeps only the newest version of an evolving
+document retrievable). The refresh is announced, never silent: `gtd state refreshed @
+event N` on success, or the named fail-open degradation `gtd state refresh failed (…) —
+answering over the corpus as-is` (same contract as `/derive`). When fresh: nothing
+printed, nothing written. The strings are one table (`ask.REFRESH_NOTES`), drift-gated.
+
 **After each answer:** sources are listed with scores; a temporal answer carries the
 nothing-vanishes footer (admitted / excluded-by-date / undated / not-yet-derived, each set
 named with its remedy); unverified citations are flagged by the citation guard; then one
@@ -124,8 +134,9 @@ The primitives stay separate; the composition remembers the order.
 ## Conformance
 
 The vocabularies live in code as single sources: `ask.GRAMMAR` (banner, usage errors,
-`--help` epilog) and `jarvis.INTENTS` (NLU prompt, help reply). Drift gates in
-`tests/test_ask_temporal.py` and `tests/test_reach.py` assert every table entry parses or
-dispatches and appears in every rendering; `tests/test_gtd.py` pins the ambiguity rule;
+`--help` epilog), `ask.REFRESH_NOTES` (the GTD refresh announcements), and
+`jarvis.INTENTS` (NLU prompt, help reply). Drift gates in `tests/test_ask_temporal.py`,
+`tests/test_ask_gtd_refresh.py`, and `tests/test_reach.py` assert every table entry
+parses, dispatches, or renders and appears in every rendering; `tests/test_gtd.py` pins the ambiguity rule;
 `tests/test_ingest_sources.py` pins the porcelain sequencing. Removing redundancy is cheap;
 keeping it removed is these tests.

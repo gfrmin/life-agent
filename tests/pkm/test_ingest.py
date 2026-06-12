@@ -516,3 +516,60 @@ def test_ingest_overwrites_tags_on_re_ingest(
     )
     ingest_sources(migrated_root)
     assert _tags_for(migrated_root, sid) == ["c"]
+
+
+# --- Restricted ingest (SPEC §8.2, one evolving source) --------------------
+
+
+def test_ingest_only_paths_restriction(migrated_root: Path, tmp_path: Path) -> None:
+    """``only_paths`` registers just the named declared path(s); the rest of
+    the manifest is untouched (no hash, no last_seen bump). Per-path semantics
+    are identical to a full sweep."""
+    a = tmp_path / "a.txt"
+    b = tmp_path / "b.txt"
+    _write_file(a, b"alpha")
+    _write_file(b, b"beta")
+    _write_sources_yaml(
+        migrated_root, [{"path": str(a)}, {"path": str(b)}]
+    )
+
+    result = ingest_sources(migrated_root, only_paths=[a])
+    assert result.new_sources == 1
+    assert _count_sources(migrated_root) == 1
+    with open_catalogue(migrated_root) as conn:
+        (path,) = conn.execute("SELECT current_path FROM sources").fetchone()
+    assert path == str(a)
+
+    # The full sweep afterwards registers the rest; the restricted ingest
+    # changed nothing about b's eventual registration.
+    ingest_sources(migrated_root)
+    assert _count_sources(migrated_root) == 2
+
+    # Restricting to a path not in the manifest ingests nothing.
+    c = tmp_path / "c.txt"
+    _write_file(c, b"gamma")
+    result = ingest_sources(migrated_root, only_paths=[c])
+    assert result.ingested == 0
+    assert _count_sources(migrated_root) == 2
+
+
+def test_ingest_only_paths_reingest_changed_content(
+    migrated_root: Path, tmp_path: Path
+) -> None:
+    """A restricted re-ingest of one grown file registers the new version
+    (new source_id, same declared path) — the §15.4 evolving-source flow."""
+    state = tmp_path / "state.md"
+    _write_file(state, b"version one")
+    _write_sources_yaml(migrated_root, [{"path": str(state)}])
+
+    ingest_sources(migrated_root, only_paths=[state])
+    _write_file(state, b"version two, longer")
+    result = ingest_sources(migrated_root, only_paths=[state])
+
+    assert result.new_sources == 1
+    with open_catalogue(migrated_root) as conn:
+        rows = conn.execute(
+            "SELECT source_id, current_path FROM sources ORDER BY first_seen"
+        ).fetchall()
+    assert len(rows) == 2
+    assert {r[1] for r in rows} == {str(state)}

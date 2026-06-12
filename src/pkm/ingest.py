@@ -111,6 +111,7 @@ def ingest_sources(
     root: Path,
     *,
     sources_yaml: Path | None = None,
+    only_paths: list[Path] | None = None,
 ) -> IngestResult:
     """Ingest sources from ``<root>/sources/sources.yaml`` (or an
     explicit override) into the catalogue.
@@ -134,6 +135,11 @@ def ingest_sources(
         root: Knowledge root. Must have a migrated catalogue.
         sources_yaml: Optional override for the manifest path.
             Defaults to ``sources_yaml_path(root)``.
+        only_paths: Optional restriction (SPEC §8.2): register only the
+            manifest entries whose declared path is in this list —
+            per-path semantics identical to a full sweep, nothing else
+            is hashed or touched. For re-registering a single evolving
+            source without sweeping the whole manifest.
 
     Returns:
         IngestResult with counts and the list of skipped yaml paths.
@@ -145,6 +151,11 @@ def ingest_sources(
     """
     path = sources_yaml if sources_yaml is not None else sources_yaml_path(root)
     entries = _load_manifest(path)
+    restrict: set[str] | None = (
+        {os.path.abspath(os.path.expanduser(str(p))) for p in only_paths}
+        if only_paths is not None
+        else None
+    )
 
     skipped: list[str] = []
     ingested = 0
@@ -156,6 +167,8 @@ def ingest_sources(
         conn.execute("BEGIN TRANSACTION")
         try:
             for file_path, raw_path, tags in _iter_entries(entries, skipped):
+                if restrict is not None and str(file_path) not in restrict:
+                    continue
                 try:
                     sid, size = _hash_and_size(file_path)
                 except OSError as e:

@@ -21,6 +21,10 @@ TASKS_LEDGER = KB / "tasks" / "events.jsonl"
 # derived view (NOT the truth; safe to delete and rebuild). The owner's Telegram id is NOT
 # stored here — it's resolved at write time from JARVIS_USER_ID (env / gnome-keyring).
 GTD_DB_PATH = Path(os.environ.get("GTD_DB_PATH", str(KB / "tasks" / "gtd.db"))).expanduser()
+# The ledger's knowledge projection (tasks/knowledge.py): fold(TASKS_LEDGER) rendered as one
+# markdown document at a stable declared path, ingested into pkm so the ask path retrieves GTD
+# state like any source. Derived, stamped with the ledger head; safe to delete and re-render.
+TASKS_STATE = KB / "tasks" / "state.md"
 # The legacy pre-event-sourcing store. The migration reads it **read-only** (the new system
 # never writes it), so it stays untouched as a natural pre-cutover snapshot. See
 # scripts/migrate_jarvis_to_events.py.
