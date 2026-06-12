@@ -7,6 +7,7 @@ eval-harness or agent-loop concerns.
 from __future__ import annotations
 
 from life_agent.core.config import (
+    DECISIONS_LOG,
     GTD_DB_PATH,
     JARVIS_DB_PATH,
     KB,
@@ -14,6 +15,8 @@ from life_agent.core.config import (
     PKM_CONFIG,
     TASKS_LEDGER,
     TASKS_STATE,
+    UTILITY_ELICITATIONS,
+    UTILITY_MODEL,
 )
 from life_agent.core.llm import (
     DEFAULT_ANSWER_MODEL,
@@ -26,6 +29,7 @@ from life_agent.core.llm import (
 from life_agent.core.sources import SourceCard, render_sources_block
 
 __all__ = [
+    "DECISIONS_LOG",
     "DEFAULT_ANSWER_MODEL",
     "GTD_DB_PATH",
     "JARVIS_DB_PATH",
@@ -35,6 +39,8 @@ __all__ = [
     "TASKS_LEDGER",
     "TASKS_STATE",
     "TEMPERATURE",
+    "UTILITY_ELICITATIONS",
+    "UTILITY_MODEL",
     "LLMResult",
     "SourceCard",
     "anthropic_complete",

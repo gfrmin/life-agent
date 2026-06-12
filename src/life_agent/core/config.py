@@ -38,3 +38,14 @@ JARVIS_DB_PATH = Path(
 # order is the canonical replay order (the fold is order-defined, foundations §2). The
 # claims it records are personal data, hence under $LIFE_AGENT_KB (PRINCIPLES §12).
 OUTCOMES_LOG = KB / "calibration" / "outcomes.jsonl"
+# The decision log (foundations §8): every EU decision's context — without it, owner
+# reactions are not readable as choices. Append-only, order-defined, unbackfillable;
+# no EU decision is ever made unlogged.
+DECISIONS_LOG = KB / "calibration" / "decisions.jsonl"
+
+# --- The utility posterior (foundations §4.4 — utility as inference) ---
+# Gauge pins + grid priors (owner-editable; schema example in
+# config/utility-model.example.yaml) and the append-only elicitation evidence
+# (statements condition the posterior — evidence, never definition). Personal data.
+UTILITY_MODEL = KB / "utility" / "model.yaml"
+UTILITY_ELICITATIONS = KB / "utility" / "elicitations.jsonl"

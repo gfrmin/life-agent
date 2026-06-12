@@ -1,0 +1,31 @@
+# Schema example for $LIFE_AGENT_KB/utility/model.yaml — the utility posterior's
+# gauge + priors (bayesian-foundations §4.4: utility as inference).
+#
+# The real file lives OUT OF TREE (values are personal data, PRINCIPLES §12) and is
+# owner-editable: editing a prior is a stated modelling change; stating a number you
+# believe belongs in elicitations.jsonl instead (evidence, never definition).
+#
+# - gauge: convention, not estimate — behaviour identifies utility only up to positive
+#   affine transform. Never edit (load_model verifies it).
+# - latents: each gets an inclusive evenly spaced grid plus a gaussian prior discretised
+#   onto it. A grid is a truncation: choose bounds wide enough that endpoint mass stays
+#   negligible — the posterior monitors it and warns "widen" (never renormalise).
+# - tau: the rationality temperature. Marginalised against this prior, never updated —
+#   τ and U are non-identifiable from choice data in principle, so this prior does
+#   permanent, load-bearing work (§4.4). Its grid is positive by domain (a noise scale),
+#   which is a constraint, not a preference (§10).
+# - Units: u(correct) = +1, u(abstain) = 0. "u_wrong: -5" means a wrong report is five
+#   correct-answers-worth of bad.
+format_version: 1
+gauge:
+  u_correct: 1.0
+  u_abstain: 0.0
+latents:
+  u_wrong:    {grid: {lo: -20.0, hi: 2.0, n: 45}, prior: {type: gaussian, mu: -5.0, sigma: 4.0}}
+  u_hedged:   {grid: {lo: -2.0, hi: 1.5, n: 36},  prior: {type: gaussian, mu: 0.4, sigma: 0.4}}
+  lambda_int: {grid: {lo: -0.5, hi: 6.0, n: 27},  prior: {type: gaussian, mu: 1.0, sigma: 1.0}}
+  kappa_att:  {grid: {lo: -0.2, hi: 1.0, n: 25},  prior: {type: gaussian, mu: 0.05, sigma: 0.1}}
+tau:
+  grid: {lo: 0.2, hi: 5.0, n: 8}
+  prior: {type: gaussian, mu: 1.0, sigma: 1.0}
+endpoint_mass_warn: 0.01
