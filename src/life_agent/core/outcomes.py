@@ -46,6 +46,9 @@ GRADERS: dict[str, frozenset[str]] = {
     }),
     # scripts/run_eval.py synthesis grader — the monolithic answer instrument
     "eval_synthesis": frozenset({"PASS", "WEAK", "HALLUCINATED", "ABSTAINED_OK"}),
+    # scripts/run_eval.py lookup grader — per-claim grading of the typed family's
+    # credence-bearing claims (each event carries the asserted probability)
+    "eval_lookup": frozenset({"CORRECT", "INCORRECT"}),
     # §8 grader 2 — spot-check audits against source bytes (stratum declared now)
     "audit": frozenset({"correct", "incorrect"}),
     # §8 grader 3 — owner corrections; "unrouted" is the matcher's honest failure mode
@@ -58,6 +61,7 @@ GRADERS: dict[str, frozenset[str]] = {
 CORRECT_GRADES: dict[str, frozenset[str]] = {
     "eval_retrieval": frozenset({"PASS"}),
     "eval_synthesis": frozenset({"PASS", "ABSTAINED_OK"}),
+    "eval_lookup": frozenset({"CORRECT"}),
     "audit": frozenset({"correct"}),
     "owner": frozenset({"correct"}),
 }

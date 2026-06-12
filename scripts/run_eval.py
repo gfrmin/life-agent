@@ -233,6 +233,67 @@ def _append_outcomes(events: list, log_path: Path | None = None) -> Path:
     return log
 
 
+def lookup_claim_rows(q: dict, lk) -> list[dict]:
+    """Pure: per-claim grading rows for one routed lookup result (foundations §3 —
+    every answer is a claim set). Each candidate is the binary claim "V = candidate"
+    with its asserted credence; the none-of-the-retrieved atom is the claim "V is not
+    among the candidates". Correctness via the shared token-boundary matcher; an
+    unanswerable question (no ground-truth value) makes every candidate claim false
+    and the none claim true."""
+    rows: list[dict] = []
+    any_match = False
+    for cand, cred in zip(lk.candidates, lk.credences, strict=True):
+        correct = bool(q.get("answer")) and answer_matches(
+            q["answer"], q.get("answer_variants", []), cand)
+        any_match = any_match or correct
+        rows.append({"claim": cand, "probability": cred, "correct": correct})
+    rows.append({"claim": "(none of the retrieved)", "probability": lk.p_none,
+                 "correct": not any_match})
+    return rows
+
+
+def lookup_outcome(q: dict, lk, row: dict, *, run_id: str):
+    """One credence-bearing outcome event for one lookup claim — the first events
+    proper scoring can consume (probability is set)."""
+    from life_agent.core import outcomes as O
+
+    return O.OutcomeEvent(
+        tx_time=O.now_iso(), run_id=run_id, question_id=str(q["id"]),
+        claim=str(row["claim"]), construct=str(lk.construct),
+        grade="CORRECT" if row["correct"] else "INCORRECT", grader="eval_lookup",
+        instrument_identity={"producer_name": "life_agent.ask.lookup_answer"},
+        lineage_keys=(lk.answer_cache_key,),
+        probability=float(row["probability"]),
+    )
+
+
+def format_lookup_report(rows: list[dict], k: int, elapsed: float) -> str:
+    n_routed = sum(1 for r in rows if r["routed"])
+    actions = Counter(r["action"] for r in rows if r["routed"])
+    reports = [r for r in rows if r["action"] == "report"]
+    n_report_correct = sum(1 for r in reports if r["top_correct"])
+    lines = [
+        "# Lookup-family eval log (Ask v0 — credence-bearing claims)",
+        "",
+        f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M')}   k={k}   elapsed={elapsed:.1f}s",
+        "",
+        f"Routed to lookup: {n_routed}/{len(rows)}   actions: "
+        + " · ".join(f"{a}={c}" for a, c in sorted(actions.items())),
+        f"Report accuracy: {n_report_correct}/{len(reports)} top candidates correct.",
+        "",
+        "| ID | action | top candidate | p | correct | Q |",
+        "|---|---|---|---|---|---|",
+    ]
+    for r in rows:
+        if not r["routed"]:
+            lines.append(f"| {r['id']} | narrative | — | — | — | {r['question'][:44]} |")
+            continue
+        ok = {True: "✓", False: "✗", None: "—"}[r["top_correct"]]
+        lines.append(f"| {r['id']} | {r['action']} | {r['top'][:28]} | {r['top_p']:.2f} "
+                     f"| {ok} | {r['question'][:44]} |")
+    return "\n".join(lines) + "\n"
+
+
 # --- synthesis grader (end-to-end: the advertisable hallucination-rate number) ----------
 # Grades the PRODUCTION answer path (ask.answer) with two instruments: a deterministic
 # citation audit (citation_guard, no LLM) + a single-answer cross-provider LLM judge
@@ -467,6 +528,12 @@ def main() -> int:
              "(recording stays write-once — existing derivations stand)",
     )
     parser.add_argument(
+        "--lookup", action="store_true",
+        help="run the lookup-family eval: route every question through the production "
+             "answer path, grade the typed family's credence-bearing claims, and "
+             "report proper scores (log/Brier) — the first calibrated numbers",
+    )
+    parser.add_argument(
         "--no-outcomes", action="store_true",
         help="skip appending graded outcomes to the calibration log "
              "($LIFE_AGENT_KB/calibration/outcomes.jsonl) — dry runs only; the log "
@@ -487,6 +554,52 @@ def main() -> int:
         from pkm.retrieval import build_fts_index
         print("Building FTS index …")
         build_fts_index(conn)
+
+    if args.lookup:
+        print(f"Running lookup-family eval (k={args.k}) over {len(questions)} questions "
+              f"(production answer path; route + extraction cached, so re-runs are "
+              f"near-free) …")
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import ask
+
+        t0 = time.monotonic()
+        run_id = f"eval-lookup-{datetime.now().strftime('%Y%m%dT%H%M%S')}"
+        rows: list[dict] = []
+        events: list = []
+        for q in questions:
+            ask.answer(conn, q["question"], args.k)
+            lk = ask.LOOKUP_LAST
+            if lk is None:
+                rows.append({"id": q["id"], "question": q["question"],
+                             "routed": False, "action": None, "top": "",
+                             "top_p": 0.0, "top_correct": None})
+                print(f"  · {q['id']}: narrative")
+                continue
+            claim_rows = lookup_claim_rows(q, lk)
+            events.extend(lookup_outcome(q, lk, row, run_id=run_id)
+                          for row in claim_rows)
+            top = lk.candidates[0] if lk.candidates else "(none)"
+            top_correct = claim_rows[0]["correct"] if lk.candidates else None
+            rows.append({"id": q["id"], "question": q["question"], "routed": True,
+                         "action": lk.action, "top": top,
+                         "top_p": lk.credences[0] if lk.credences else 0.0,
+                         "top_correct": top_correct})
+            mark = "✓" if top_correct else "✗"
+            print(f"  {mark} {q['id']}: {lk.action} — {top[:36]!r} "
+                  f"p={rows[-1]['top_p']:.2f}")
+        elapsed = time.monotonic() - t0
+
+        out = _kb_root() / "eval/lookup_log.md"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(format_lookup_report(rows, args.k, elapsed), encoding="utf-8")
+        print(f"\nLookup report → {out}")
+        if not args.no_outcomes and events:
+            _append_outcomes(events)
+        n_routed = sum(1 for r in rows if r["routed"])
+        reports = [r for r in rows if r["action"] == "report"]
+        print(f"  routed {n_routed}/{len(rows)} · report accuracy "
+              f"{sum(1 for r in reports if r['top_correct'])}/{len(reports)}")
+        return 0
 
     if args.synthesis:
         import json

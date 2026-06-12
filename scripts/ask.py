@@ -46,6 +46,7 @@ import yaml
 import life_agent.core as C
 from life_agent import owner
 from life_agent.core import derivations as D
+from life_agent.core import lookup as LK
 from life_agent.core import subject as S
 from life_agent.core import temporal as T
 from life_agent.tasks import events as ev
@@ -208,6 +209,11 @@ TEMPORAL_LAST: TemporalReport | None = None
 # TEMPORAL_LAST so answer()'s public 3-tuple stays unchanged; the eval harness reads it
 # for outcome lineage attribution (bayesian-foundations §8 — the outcomes log).
 STAGES_LAST: dict[str, str] = {}
+
+# The last answer's lookup-family result (foundations §4), or None when the narrative
+# path answered (not routed as a lookup, zero grounded observations, or a named
+# fail-open). Travels like TEMPORAL_LAST; run_eval's --lookup grader consumes it.
+LOOKUP_LAST: LK.LookupResult | None = None
 
 # --- subject (D2): the owner filter + the same nothing-vanishes contract --- #
 # A first-person possessive question ("my X") filters hits by projected
@@ -552,10 +558,11 @@ def answer(conn: duckdb.DuckDBPyConnection, question: str,
     retrieval-set content hash, owner-profile hash). ``no_cache`` recomputes every stage
     (recording stays write-once, so existing derivations stand). Caching is fail-open.
     Returns (answer_text, cards, {card_n: score})."""
-    global TEMPORAL_LAST, SUBJECT_LAST, STAGES_LAST
+    global TEMPORAL_LAST, SUBJECT_LAST, STAGES_LAST, LOOKUP_LAST
     TEMPORAL_LAST = None
     SUBJECT_LAST = None
     STAGES_LAST = {}
+    LOOKUP_LAST = None
     root = _pkm_root()
     profile = owner.load_profile()
     terms = _expand_terms(question, root=root, no_cache=no_cache) if expand else ""
@@ -611,6 +618,23 @@ def answer(conn: duckdb.DuckDBPyConnection, question: str,
     # No synthesize derivation is recorded for an abstention — it is a refusal, not an answer.
     if retrieval_is_weak(scores, floor=WEAK_SCORE_FLOOR, min_hits=MIN_STRONG_HITS) and not profile:
         return (ABSTENTION, cards, scores)
+
+    # The lookup family (Ask v0, foundations §4): typed point-fact questions take the
+    # Bayesian path — grounded per-hit observations → tempered mixture posterior → EU
+    # response under the utility posterior — and its decision IS the answer. Routed
+    # conservatively: a declined route or zero grounded observations falls to the
+    # narrative path (the §9 no-hard-zeros routing), and any failure is fail-open and
+    # NAMED (interaction contract), never silent.
+    if root is not None:
+        try:
+            lk = LK.lookup_answer(root, question, hits)
+        except Exception as e:  # fail-open by contract, reason printed
+            print(LK.GRAMMAR["fallthrough"].format(reason=f"failed: {e}"))
+            lk = None
+        if lk is not None:
+            LOOKUP_LAST = lk
+            STAGES_LAST["lookup_answer"] = lk.answer_cache_key
+            return (lk.rendered, cards, scores)
 
     # synthesize — keyed on the retrieved CONTENT (early cutoff) and the profile hash
     skey = D.synthesize_key(question, D.content_hash(_set_content(hits)),

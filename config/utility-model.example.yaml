@@ -21,9 +21,9 @@ gauge:
   u_correct: 1.0
   u_abstain: 0.0
 latents:
-  u_wrong:    {grid: {lo: -20.0, hi: 2.0, n: 45}, prior: {type: gaussian, mu: -5.0, sigma: 4.0}}
+  u_wrong:    {grid: {lo: -26.0, hi: 2.0, n: 57}, prior: {type: gaussian, mu: -5.0, sigma: 4.0}}
   u_hedged:   {grid: {lo: -2.0, hi: 1.5, n: 36},  prior: {type: gaussian, mu: 0.4, sigma: 0.4}}
-  lambda_int: {grid: {lo: -0.5, hi: 6.0, n: 27},  prior: {type: gaussian, mu: 1.0, sigma: 1.0}}
+  lambda_int: {grid: {lo: -2.5, hi: 6.0, n: 35},  prior: {type: gaussian, mu: 1.0, sigma: 1.0}}
   kappa_att:  {grid: {lo: -0.2, hi: 1.0, n: 25},  prior: {type: gaussian, mu: 0.05, sigma: 0.1}}
 tau:
   grid: {lo: 0.2, hi: 5.0, n: 8}
