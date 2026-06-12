@@ -31,3 +31,10 @@ TASKS_STATE = KB / "tasks" / "state.md"
 JARVIS_DB_PATH = Path(
     os.environ.get("JARVIS_DB_PATH", str(KB / "jarvis" / "jarvis.db"))
 ).expanduser()
+
+# --- Calibration (the Bayesian foundations' empirical leg) ---
+# The outcomes log (bayesian-foundations §8): append-only third evidence stream — graded
+# outcomes attributed to instrument identities. It cannot be backfilled, and its append
+# order is the canonical replay order (the fold is order-defined, foundations §2). The
+# claims it records are personal data, hence under $LIFE_AGENT_KB (PRINCIPLES §12).
+OUTCOMES_LOG = KB / "calibration" / "outcomes.jsonl"
