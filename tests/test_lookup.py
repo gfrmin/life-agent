@@ -9,8 +9,10 @@ Run: uv run --project . python -m pytest tests/test_lookup.py
 """
 from __future__ import annotations
 
+import dataclasses
 import json
 import math
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -67,12 +69,20 @@ def _hit(key: str, chunk: str, origin: str = "/data/doc.pdf") -> dict[str, Any]:
 
 # --- route (cached §18.9 verdict) ---------------------------------------------------------
 
-def test_route_lookup_returns_construct_and_caches(migrated_root: Path) -> None:
+def test_route_lookup_returns_route_and_caches(migrated_root: Path) -> None:
     client = FakeClient({"lookup": True, "construct": "passport number"})
     c1 = route_question(migrated_root, "what is my passport number?", client=client)
     c2 = route_question(migrated_root, "what is my passport number?", client=client)
-    assert c1 == c2 == "passport number"
+    # a reply without time_indexed defaults to False (permanent fact — no attenuation)
+    assert c1 == c2 == LK.Route(construct="passport number", time_indexed=False)
     assert client.calls == 1  # replayed from cache
+
+
+def test_route_time_indexed_classification(migrated_root: Path) -> None:
+    client = FakeClient({"lookup": True, "construct": "home address",
+                         "time_indexed": True})
+    r = route_question(migrated_root, "what is my home address?", client=client)
+    assert r == LK.Route(construct="home address", time_indexed=True)
 
 
 def test_route_non_lookup_is_none(migrated_root: Path) -> None:
@@ -151,6 +161,54 @@ def test_authority_classes() -> None:
     assert authority_for("/x/blob") == LK._AUTHORITY_DEFAULT  # PII-OK
 
 
+# --- §4.1 covariates on a_i (doc_subject / doc_date enter the likelihood) ------------------
+
+def test_subject_factor_partition() -> None:
+    assert LK.subject_factor(None) == 1.0      # channel absent — no covariate
+    assert LK.subject_factor("owner") == 1.0
+    assert LK.subject_factor("other") == LK._A_SUBJECT_OTHER
+    assert LK.subject_factor("generic") == LK._A_SUBJECT_OTHER
+    indet = (LK._P_OWNER_GIVEN_INDET
+             + (1 - LK._P_OWNER_GIVEN_INDET) * LK._A_SUBJECT_OTHER)
+    assert LK.subject_factor("unclear") == pytest.approx(indet)
+    assert LK.subject_factor("underived") == pytest.approx(indet)
+    with pytest.raises(ValueError):  # junk from the annotation seam surfaces, loud
+        LK.subject_factor("admitted")
+
+
+def test_time_factor_decay() -> None:
+    today = date(2026, 6, 13)
+    # a permanent construct never attenuates, whatever the doc age
+    assert LK.time_factor("2010-01-01", time_indexed=False, today=today) == 1.0
+    # projected-but-unknown date under a time-indexed construct: stated attenuation
+    assert LK.time_factor(None, time_indexed=True, today=today) == LK._A_TIME_UNKNOWN
+    assert LK.time_factor("2026-06-13", time_indexed=True, today=today) == 1.0
+    one_half_life = LK.time_factor("2021-06-13", time_indexed=True, today=today)
+    assert one_half_life == pytest.approx(0.5, abs=0.01)
+    # future-dated documents clamp to 1.0 — no covariate bonus
+    assert LK.time_factor("2030-01-01", time_indexed=True, today=today) == 1.0
+
+
+def test_observe_hits_carries_covariates(migrated_root: Path) -> None:
+    chunk = "Address: 1 Old Road"
+    client = FakeClient({"found": True, "value": "1 Old Road",
+                         "quote": "Address: 1 Old Road"})
+    cov = LK.HitCovariates(subject_state={"a" * 64: "underived"},
+                           doc_date={"a" * 64: "2016-06-13"})
+    obs, _ = observe_hits(migrated_root, "my address?", [_hit("a" * 64, chunk)],
+                          client=client, covariates=cov, time_indexed=True,
+                          today=date(2026, 6, 13))
+    assert obs[0].subject_factor == pytest.approx(LK.subject_factor("underived"))
+    assert obs[0].time_factor == pytest.approx(0.25, abs=0.01)  # two half-lives
+
+
+def test_observe_hits_absent_covariates_are_unit(migrated_root: Path) -> None:
+    client = FakeClient({"found": True, "value": "v", "quote": "v"})
+    obs, _ = observe_hits(migrated_root, "q?", [_hit("a" * 64, "v here")],
+                          client=client, time_indexed=True)
+    assert obs[0].subject_factor == 1.0 and obs[0].time_factor == 1.0
+
+
 # --- the posterior's pure parts -----------------------------------------------------------
 
 def _obs(key: str, value: str, n: int = 1, authority: float = 0.95) -> Observation:
@@ -190,6 +248,15 @@ def test_observation_densities_shape_and_orientation() -> None:
     assert rows[2] == pytest.approx([log_miss, log_miss])   # NONE never matches
     half = observation_densities(o, ["v1", "v2"], rho=0.8, scale=0.5)
     assert half[0][0] == pytest.approx(0.5 * log_match)     # the temper scales logs
+
+
+def test_observation_densities_compose_covariates() -> None:
+    o = dataclasses.replace(_obs("a" * 64, "v1", authority=1.0),
+                            subject_factor=0.5, time_factor=0.5)
+    rows = observation_densities(o, ["v1"], rho=0.8, scale=1.0)
+    r = 0.8 * 0.5 * 0.5  # rho * a_i with both covariates composed in
+    assert rows[0][0] == pytest.approx(math.log(r + (1 - r) / LK._A_ALTERNATIVES))
+    assert rows[1][0] == pytest.approx(math.log((1 - r) / LK._A_ALTERNATIVES))
 
 
 def test_action_utilities_under_u_bar() -> None:
@@ -318,11 +385,19 @@ def test_lookup_answer_end_to_end(migrated_root: Path, tmp_path: Path,
     assert logged[0].utility_fold_version == result.utility_fold_version
 
     # the answer artifact is on the ledger with observation lineage
-    from pkm.cache import lineage_file, meta_file
+    from pkm.cache import content_file, lineage_file, meta_file
     assert meta_file(migrated_root, result.answer_cache_key).exists()
     lineage = json.loads(lineage_file(migrated_root, result.answer_cache_key)
                          .read_text(encoding="utf-8"))["inputs"]
     assert [e["role"] for e in lineage] == ["observation"]
+
+    # the §4.1 covariates are decision inputs — recorded with the answer (audit)
+    content = json.loads(content_file(migrated_root, result.answer_cache_key)
+                         .read_text(encoding="utf-8"))
+    assert content["time_indexed"] is False
+    assert content["covariates"] == [
+        {"obs": result.observations[0].obs_cache_key,
+         "subject_factor": 1.0, "time_factor": 1.0}]
 
 
 def test_lookup_answer_none_when_not_routed(migrated_root: Path) -> None:
