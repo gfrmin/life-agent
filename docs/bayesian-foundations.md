@@ -7,6 +7,13 @@
 > know, each answered empirically** — every entry names the evidence that decides it and
 > the stage where that evidence first exists. The §13 governance deltas are applied; the
 > build slices are unblocked.
+>
+> **Amendment in confer (2026-06-12, owner-directed): §4.4 and §10 — utility as
+> inference, one utility.** The utility function becomes a posterior learned from the
+> owner's behaviour (elicitation demoted to evidence), and metareasoning is denominated
+> in that one utility — the agent has none of its own. Drafted below; §14 records the
+> override; the pixel6 pass and owner approval gate the slice-2 build. The rest of the
+> document stands adopted.
 > This document is the deliberation record for an expensive-to-reverse choice: the
 > probabilistic semantics of the knowledge layer. It composes with
 > [`system-design.md`](./system-design.md) (the L0–L4 loop) and
@@ -59,10 +66,11 @@ invariant this document actually enforces is: **no action enters the answer path
 set without an error model — possibly a maximally wide one.** The remedy for a tempting
 shortcut is never prohibition but pricing: give it the widest stated prior and let EU
 decide (the same move as §9's no-hard-zeros rule). One dependence named now, while it is
-free: this invariant keeps EU well-defined only under **bounded utilities** — true of
-the v0 table (§4.4); if stage 7's goals faculty (§12) introduces unbounded utilities, a
-maximally wide error model no longer yields a finite, comparable EU, and the invariant
-must be revisited together with it.
+free: this invariant keeps EU well-defined only under **bounded utilities** — true in
+v0 by construction (§4.4: gauge-pinned, decisions taken under the posterior mean, which
+is finite); if stage 7's goals faculty (§12) introduces unbounded utilities, a maximally
+wide error model no longer yields a finite, comparable EU, and the invariant must be
+revisited together with it.
 
 ## 1. The generative model, and the four named moves
 
@@ -100,10 +108,10 @@ rule**, the one thing not being approximated:
   implicit uncalibrated inference at the last step, is the one component this document
   retires (by subsumption, §7 — not by deletion).
 - **M4 — Respond by expected utility; measure calibration.** The response is
-  `optimise(posterior, {report, hedge, ask-clarify, abstain}, utility)` over an explicit
-  v0 utility table (§4.4). Whether the whole construction works is an empirical question
-  answered by measurement (§8 — decision-weighted gates, proper-scoring diagnostics),
-  never by fiat.
+  `optimise(posterior, {report, hedge, ask-clarify, abstain}, utility)` under the §4.4
+  utility posterior's mean (utility is itself a learned belief about the owner — §4.4).
+  Whether the whole construction works is an empirical question answered by measurement
+  (§8 — decision-weighted gates, proper-scoring diagnostics), never by fiat.
 
 ## 2. Instruments — the epistemic contract on every edge
 
@@ -215,8 +223,8 @@ edge contract as every other instrument rather than standing outside the paradig
 serves. Four parts:
 
 1. **Inclusion is a decision, not a compliance rule.** Which claims appear is per-claim
-   `optimise` under a relevance/attention utility (the attention cost lives in the §4.4
-   table). Named approximation, per §0's own rule: per-claim selection is the marginal,
+   `optimise` under a relevance/attention utility (the attention cost κ_att is a §4.4
+   latent). Named approximation, per §0's own rule: per-claim selection is the marginal,
    greedy form of what is exactly a *joint* subset selection — claim redundancy and
    synergy break additivity — adopted in v0 under a stated additive-utility assumption,
    with joint selection the successor if redundant claim sets show up in outcomes. Every
@@ -288,25 +296,93 @@ in the retrieved set; missing evidence widens the "none of the retrieved" mass r
 than biasing among candidates. The posterior's honest output for a dispersed mixture is
 exactly the abstain/hedge decision. (For aggregates the term dominates — §5.)
 
-**4.4 Utility v0 — preferences as constants, beliefs as priors.** The line is
-principled: **utilities are preferences and may be elicited as constants** — they are
-the owner's to set, not the world's to reveal; **beliefs about the world may not be
-point-pinned**. The preference side is the explicit owner-set table under
-`$LIFE_AGENT_KB` (values are personal data, PRINCIPLES §12): u(correct report), u(wrong
-report), u(abstain), u(hedged report), u(interruption | owner state), and a per-claim
-attention cost (it prices rendering inclusion, §3). Versioned; consulted via `optimise`. The belief side of pricing a clarifying ask is held as **wide
-priors over latents, not constants**: owner-as-oracle reliability (a Beta prior,
-conditioned on clarify-interaction outcomes — did the answer in fact resolve V?) and
-owner availability (a latent with a wide prior; context covariates — hour, focus state —
-are named successors, not v0 machinery). Provisional-as-wide-prior, not
-provisional-as-constant: `voi` prices the ask in expectation over these latents.
+**4.4 Utility v0 — the utility posterior (owner directive, 2026-06-12).** The round-2
+disposition drew the line at "utilities are preferences and may be elicited as
+constants". The owner overrode it, completing the reviewer's original finding rather
+than refining it: the *truth* is the owner's preferences — normative authority stays
+his — but the **agent's representation of them is a belief about him**, and beliefs may
+not be point-pinned. So the utility function is a latent like any other: a posterior,
+learned chiefly by observing behaviour, with elicitation demoted from definition to
+**evidence**.
+
+**Not imitation.** "Learn my utility from my behaviour" is not "predict what I would
+do". Behaviour is *noisy evidence of* preference, read through a rationality temperature
+τ: the owner usually chooses what he prefers — not always (tired, rushed, options
+unseen). Inference inverts that channel to recover the *why*; the agent then applies the
+why with **its own information and options** — sometimes doing what the owner wouldn't
+have done but would endorse (it knows its two sources conflict; he doesn't). Where
+information, options, and deliberateness coincide, the EU-maximising action *is* what he
+would do: that special case is the training signal, never the target. (Revealed
+preference / inverse decision theory — deliberately not behavioural cloning, which fails
+exactly where the agent's action sets stop resembling the owner's history.)
+
+**The collapse theorem, stated so deference is honest.** For a one-shot decision,
+expected utility under utility uncertainty collapses to EU under the posterior mean:
+max_a E_U[EU_a(U)] = max_a EU_a(Ū). Posterior *width* does not make a myopic decision
+cautious — claiming it does would smuggle in a non-vNM risk posture over U, declined.
+Where width genuinely matters, exactly: (i) the **VOI of preference evidence** — asking
+the owner about his preferences is an action priced by the posterior's width; (ii) the
+**sequential option value** of learning U (the governor's territory, §12 stage 6);
+(iii) the **gate** (§8 — adoption integrates over P(U)). v0 caution comes from
+conservative prior *means*, stated as such.
+
+**Gauge.** Behaviour identifies utility only up to positive affine transform, so two
+pins are convention, never estimate: u(correct report) = +1, u(abstain) = 0. The
+latents, learned in those units (v0 lookup scope): u(wrong report), u(hedged report),
+the interruption cost λ_int, the per-claim attention cost κ_att (it prices rendering
+inclusion, §3), and τ (hierarchical — how noisily behaviour reflects preference).
+Priors are soft-signed — u(wrong) holds its mass below zero with no hard truncation
+(§9's no-hard-zeros, self-applied: evidence could reveal a regime where the owner
+prefers a wrong guess to silence, and the model must be able to say so). Priors and
+gauge live at `$LIFE_AGENT_KB/utility/model.yaml`, versioned (values are personal data,
+PRINCIPLES §12).
+
+**Evidence streams — preference instruments under the §2 contract** (each an
+observation model with an error model, like every other edge):
+
+1. **Elicitation as evidence**: a stated number or ratio conditions the posterior under
+   a generous noise likelihood (`$LIFE_AGENT_KB/utility/elicitations.jsonl`,
+   append-only). Zero elicitations is a working state — the prior carries v0 and
+   behaviour does the rest.
+2. **ask-live verdicts** (the existing g/b capture): a logistic likelihood on the
+   realised response's utility.
+3. **Owner corrections** (§8 grader 3): effort-bounded evidence on |u(wrong)| — he
+   corrects when the error mattered.
+4. **Clarify-ask reactions** (answered / ignored / latency): logit choice evidence on
+   λ_int — joining the oracle-reliability and availability latents already held as wide
+   priors for pricing the ask (Beta on "did the answer resolve V"; availability with
+   context covariates as successors).
+5. **Re-asks after an abstention**: evidence the abstention under-delivered.
+6. **GTD disposals** (§12 stage 4's filing governor): the same machinery, later.
+
+All are discrete-choice (random-utility) observations, and the conditioning route exists
+in the skin today: grid-discretised latents (a product of categoricals) conditioned
+through `tabular_log_density` kernels, `plackett_luce` where the observation is a choice
+among ranked options — no new Julia.
+
+**Identification, honestly.** The **preference-evidence selection channel** is M2 on
+this stream: the owner reacts only to what the policy chose to surface — named now,
+carried formally when the data warrants. τ confounds noise with preference; corrections
+are partially observed (he corrects the errors he *sees*); preferences drift and depend
+on context — non-stationarity and context covariates are §12 stage 7's, with the
+trigger stated: systematic disagreement between the posterior's predictions and fresh
+behaviour.
+
+**Resource arguments.** Money, latency, and the owner's attention are *arguments of
+this one utility function* — there is no second, agent-owned objective that values them
+(§10). λ_int and κ_att are the first two such arguments; compute cost joins when the
+governor does.
+
 **Explicitly v0 of the goals/utility faculty (PRINCIPLES §15), not its resolution** —
-the faculty's real design lands at §12 stage 7.
+stage 7 *extends* the posterior (context-dependence, goal structure, drift). It no
+longer "replaces a table", because there is no table to replace: there is a belief,
+already learning.
 
 **4.5 The pipeline** (every stage §18.9 file-first, content-addressed, demand-logged —
 the binding invariant of system-design §3 holds unchanged): typed-lookup router →
 retrieve (selection recorded) → demand observations per hit → condition in credence
-(§11) → `optimise` (response and per-claim inclusion, §3) → render + conformance audit.
+(§11) → `optimise` (response and per-claim inclusion, §3, under the §4.4 posterior
+mean) → render + conformance audit → the decision logged (§8 — never unlogged).
 
 ## 5. The aggregate family — derived now, built second
 
@@ -396,6 +472,16 @@ self-uncertainty × negligible cost: the EU calculation does itself:
     (tx_time, instrument_identity {schema-3 key components}, construct, claim,
      grade, grader, question_id, lineage_keys, format_version)
 
+**The decision log — the fourth stream, same arithmetic.** Owner reactions are readable
+as *choices* (§4.4's preference evidence) only against the decision context, which
+nothing else records: what the agent chose, among which actions, under which posterior.
+`$LIFE_AGENT_KB/calibration/decisions.jsonl` — append-only and order-defined like the
+outcomes log — records every EU decision: (tx_time, question_id, family, action_set,
+posterior summary, utility_fold_version, chosen_action, predicted_eu). Reactions join by
+question_id (verdicts, corrections, re-asks). **No EU decision is ever made unlogged** —
+the log lands with the first decision it must witness (§12 stage 1 slice 2), by the same
+option-value derivation as above. It also feeds §10's accounting.
+
 Three graders feed it:
 
 1. **The eval harness** — `scripts/run_eval.py` (answer-grounded; modes
@@ -440,22 +526,23 @@ matrices) so small-n behaves honestly: priors stated, posteriors wide until evid
 arrives. **The gate for Ask v0** (§12 stage 1) is **decision-weighted, because adoption
 is an action, not a hypothesis test — and the comparison is itself Bayesian**, because
 two corpus-mean EUs are noisy estimates and the corpus is sparsest exactly when the gate
-first runs. From per-question utility outcomes under the v0 table (§4.4) we hold a
-posterior over the EU gap Δ = EU(typed) − EU(monolithic); the gate is **P(Δ > δ) at or
-above a stated level**, with the materiality margin δ and the level frozen in the gate's
-definition alongside the table — never a point "≥" on two noisy means. The disagreement
+first runs. From per-question utility outcomes under the §4.4 utility posterior we hold
+a posterior over the EU gap Δ = EU(typed) − EU(monolithic); the gate is **P(Δ > δ) at or
+above a stated level, integrated over P(U)**, with the materiality margin δ and the
+level frozen in the gate's definition — never a point "≥" on two noisy means. The disagreement
 region — questions where the two policies choose different actions (tails, abstentions,
 confident errors) — is examined explicitly, since a system can lose on mean log score
 yet win exactly where the action changes, and a raw-score gate would reject it wrongly.
-A decision-weighted gate puts the utility table *inside* the gate, where a timid table
+A decision-weighted gate puts the utility model *inside* the gate, where a timid one
 (abstention priced high) passes by abstaining everywhere — and reliability diagrams
 cannot catch that, since they only score claims actually made. Three defenses, none of
-them a bright line: the table is **frozen before any gate result is seen** (the
-blind-comparison discipline extended to the table itself); the gap posterior is reported
-across a **stated range of plausible tables**, with adoption expected to hold across the
-range rather than at one point (adoption is a choice under utility uncertainty; the
-range's width is itself a stated choice — an open question, §14); and the **answer rate
-is published** as a named diagnostic.
+them a bright line: the **utility prior and the preference-evidence cutoff are frozen
+before any gate result is seen** (the blind-comparison discipline, extended from the
+retired table to the posterior's inputs); the gap posterior **integrates over the §4.4
+utility posterior** — adoption is a choice under utility uncertainty, and the former
+"stated range of plausible tables" is no longer an ad-hoc band but P(U) itself, which
+**resolves the §14 open question on the range's width** (the width is now
+evidence-driven); and the **answer rate is published** as a named diagnostic.
 A hard answer-rate floor is declined on this document's own grounds — a structural
 constraint where a priced quantity belongs. Log score (proper and local) and Brier
 remain the published diagnostics, with reliability diagrams per family, under
@@ -503,7 +590,51 @@ its grading instrumented before anything else is built (§7, §8).
 ## 10. Metareasoning — which transforms to run, and when
 
 Russell–Wefald (already cited at engine §0): a computation is an action priced by its
-expected value. The questions "which transforms do we want to run?" and "when?" decompose:
+expected value. **Priced in whose utility? The owner's — the agent has none of its own
+(owner-supplied derivation, 2026-06-12).** Metareasoning is not a second decision
+theory: it is the same EU maximisation with the action set enlarged to *think more*,
+*call a tool*, *derive*, *ask the owner* — each resource cost charged against the §4.4
+utility, each information benefit priced by VOI denominated in the same. The supporting
+distinctions, each load-bearing:
+
+- **Constraints are not preferences** (bounded optimality, Russell–Subramanian). How
+  much compute exists, how fast the model runs, how many tokens fit — facts about the
+  world bounding the feasible programs. The *valuation* of spending them lives in the
+  owner's utility; a limit does not become a preference because it binds. The
+  commensurability fork, stated: a *soft* cost (the owner would pay more for better) is
+  an argument of his utility; a *hard* cost (a fixed budget) is a constraint on the
+  feasible set — constrained EU maximisation either way, never an agent utility.
+- **Apparent agent-goals reduce.** Instrumental subgoals — gather information, don't
+  crash, keep the ability to act — are instrumental to the owner's utility, never
+  terminal (Omohundro's drives are what an unconstrained maximiser *acquires*, not what
+  this design *wants*). And under utility *uncertainty* (§4.4) the agent does not
+  terminally value its own continuation — the off-switch property. Routing cost and
+  time through the owner's utility is therefore **the safety property, not hygiene**:
+  an agent with its own terminal utility for compute or continuation is exactly the
+  misaligned one.
+- **The cost proxy is an instrument.** A bounded agent cannot evaluate the owner's full
+  utility per micro-decision — that is what bounded means — so it carries a model of
+  "expected owner-cost of this compute / latency / interruption": operationally an
+  internal cost term, conceptually a **proxy for the resource-arguments of the owner's
+  utility**, calibrated against it. When proxy and owner disagree, recalibrate to the
+  owner — never split the difference. A drifted proxy is Goodhart on the cost model
+  (the metareasoning-level twin of an overconfident posterior); in this document's own
+  terms it is an edge with an error model, graded against outcomes like every other
+  (§2, §8).
+- **The regress terminates without an agent utility.** Deliberating about whether to
+  deliberate is cut by amortisation: compile an approximately bounded-optimal policy
+  offline, query it online — and the offline training objective is *still the owner's
+  utility*. "All the way up" ends in a compiled approximation to bounded optimality
+  with respect to one utility; no intrinsic objective is ever introduced.
+- **The stage-6 failure mode, named now because it would be silent.** A governor
+  scheduling derive / audit / ask / act against a separate "system efficiency" or
+  "minimise compute" objective has quietly installed a second master — economising
+  compute the owner would gladly spend, interrupting to save latency he doesn't value.
+  The governor's VOI is denominated in the owner's utility, resource costs included
+  (§12 stage 6's gate says so). Single-principal keeps it clean: one utility to be
+  steward of, no aggregation — "whose cost?" always has the same answer.
+
+The questions "which transforms do we want to run?" and "when?" decompose:
 
 - **Which exist** (define): instruments earn existence by a demanded hypothesis family
   (§1) and a calibratable error model (§2); they earn retention by reuse (node-key
@@ -557,26 +688,26 @@ its gate and what part of the asymptote it discharges.
 | Stage | Builds | Gate | Asymptote part discharged |
 |---|---|---|---|
 | **0** | This document conferred (pixel6) + owner-adopted; §13 deltas applied | owner approval | the constitution |
-| **1 — Ask v0** | Slice 0: outcomes log + scoring-rule eval (first — the t=0 option-value argument, §8). Slice 1: the credence seam (§11). Slice 2: lookup family (§4). Slice 3: narrative subsumption (§7) | §8 gate (decision-weighted, Bayesian comparison): P(EU gap > stated margin) ≥ stated level across the table range, disagreement region examined; log-score/Brier diagnostics + reliability diagrams published; double-run idempotency; pytest/ruff/mypy green | believing = computing, for point facts; honest abstention |
+| **1 — Ask v0** | Slice 0: outcomes log + scoring-rule eval (first — the t=0 option-value argument, §8) — *landed*. Slice 1: the credence seam (§11) — *landed*. Slice 2: lookup family (§4) + the utility posterior v0 + the decision log (§4.4, §8). Slice 3: narrative subsumption (§7) | §8 gate (decision-weighted, Bayesian comparison): P(EU gap > stated margin) ≥ stated level integrated over P(U), disagreement region examined; log-score/Brier diagnostics + reliability diagrams published; double-run idempotency; pytest/ruff/mypy green | believing = computing, for point facts; honest abstention; the owner's preferences become a belief |
 | **2 — Aggregate family** | recall term + completeness priors, missing-mass posterior, dedup-as-inference (§5); subsumes D3 | the spending question answered as a posterior with both coverage readouts; structure prior resolves a real duplicate pair | Occam appearance 1; M2 in full |
 | **3 — Thread family** | `assemble` SPEC amendment (engine §10), `thread_state` instrument (§6); subsumes D4 | "awaiting reply?" green with membership-recall term; reclassification budget honoured (engine §11 D4) | the last fixed-pipeline failure family |
-| **4 — Standing EU decisions #2–#3** | email→GTD filing governor (file/skip/ask on `optimise`+`voi`; beliefs conditioned on ledger disposal outcomes — `commands.complete`/`delete` dispose with reasons `done`/`dropped`; includes wiring the absent `mail-to-tasks` timer) · VOI-scheduled audit sampling (§8) | filing decisions logged with posteriors; ask-rate falls as posteriors sharpen; audit VOI beats stratified on calibration-per-audit | acting joins the move; the interruption cost gets measured (engine §13's placeholder, retired) |
+| **4 — Standing EU decisions #2–#3** | email→GTD filing governor (file/skip/ask on `optimise`+`voi`; beliefs conditioned on ledger disposal outcomes — `commands.complete`/`delete` dispose with reasons `done`/`dropped`; disposals are §4.4 choice evidence, consumed by the same utility machinery; includes wiring the absent `mail-to-tasks` timer) · VOI-scheduled audit sampling (§8) | filing decisions logged with posteriors; ask-rate falls as posteriors sharpen; audit VOI beats stratified on calibration-per-audit | acting joins the move; λ_int gets dense evidence (engine §13's placeholder, retired) |
 | **5 — Structure learning** | `program_space` complexity priors over schemas/taxonomies (§9 appearance 3) | a schema revision proposed by posterior, validated on the eval corpus | the hypothesis-space distribution; Occam in full |
-| **6 — The unified VOI governor (L3)** | one queue over derive / audit / ask / act — now permitted (≥3 concrete EU implementations: §4.4 response, stage-4 filing, stage-4 audits) and calibratable (cost + demand + outcomes, §10) | governor decisions beat demand-only scheduling on measured utility | *scheduled by value of information* — the asymptote's verb |
-| **7 — Goals/utility + bounded action** | the real goals/utility faculty (replaces the v0 table; PRINCIPLES §15) → outward write-actions (email drafts, calendar) under ask/proceed/block; the spine decision lands here, unchanged | no autonomous write-action before the utility model (PRINCIPLES §3) — the standing constraint | acting in the world; the loop closes at L4→L0 |
+| **6 — The unified VOI governor (L3)** | one queue over derive / audit / ask / act — now permitted (≥3 concrete EU implementations: §4.4 response, stage-4 filing, stage-4 audits) and calibratable (cost + demand + outcomes + decisions, §10) | governor decisions beat demand-only scheduling on measured **owner** utility, resource costs included — never a separate "efficiency" objective (§10's second-master failure mode) | *scheduled by value of information* — the asymptote's verb |
+| **7 — Goals/utility + bounded action** | the full goals/utility faculty (extends the §4.4 posterior: context-dependence, goal structure, drift; PRINCIPLES §15) → outward write-actions (email drafts, calendar) under ask/proceed/block; the spine decision lands here, unchanged | no autonomous write-action before the utility model (PRINCIPLES §3) — the standing constraint | acting in the world; the loop closes at L4→L0 |
 
 Stages 2–7 are dependency-ordered, not timed; each is independently valuable; gates are
 eval-gated per the amended PRINCIPLES §9. Re-prioritisation within the order is itself
 the §7 EU calculation once stage 1's calibration data exists.
 
 **The write-action line, drawn now because stage 6 will lean on it.** Stage 4's filing
-governor writes the GTD ledger under the v0 utility table, which sits next to "no
+governor writes the GTD ledger under the v0 utility posterior, which sits next to "no
 autonomous write-action before the utility model" (PRINCIPLES §3, stage 7's gate). The
 line is **internal bookkeeping vs outward action**: a ledger append is
 act-layer-internal — append-only, reversible by a later event, surfaced for owner triage
-in reach — so it runs under the v0 table; outward actions (email, calendar — anything a
-third party can observe, or that appending cannot undo) wait for stage 7's real utility
-model. The stage-6 governor inherits this line as stated, not as folklore.
+in reach — so it runs under the v0 posterior; outward actions (email, calendar —
+anything a third party can observe, or that appending cannot undo) wait for stage 7's
+full faculty. The stage-6 governor inherits this line as stated, not as folklore.
 
 ## 13. Governance deltas (applied on adoption, not before)
 
@@ -649,6 +780,21 @@ calibration leg (§8). The two nitpicks, folded: per-claim inclusion named as th
 marginal approximation to joint subset selection (§3); the table range's width added to
 the open questions below. The declined answer-rate floor was endorsed in this pass.
 
+**The §4.4 override (owner, 2026-06-12) — utility as inference.** The round-2 refinement
+("utilities are preferences and may remain elicited constants") is superseded by owner
+directive: *"treat [utility] as an uncertain function too and model it, learning about
+it by observing my behaviour."* The agent's representation of the owner's preferences is
+a belief about him, so the utility function becomes a posterior learned chiefly from
+choice observations, with elicitation demoted to noisy evidence (§4.4 as amended). The
+round-2 reviewer's original finding — constants where latents belong, applied to the
+utility table itself — stands completed rather than refined; the disposition record
+remains honest about which way that argument finally went. Same directive, second
+derivation, also owner-supplied: **metareasoning is denominated in the one utility; the
+agent has none of its own** (§10 as amended — constraints vs preferences, the cost proxy
+as an instrument, the amortisation cut of the regress, the stage-6 second-master failure
+mode). Resolved by this amendment: the open question on the gate's table range — the
+range *is* P(U) (§8). New unbackfillable stream declared: the decision log (§8).
+
 **Counterarguments, recorded with answers:**
 
 - *"This is confidence decoration on a working pipeline — complexity without new
@@ -691,8 +837,32 @@ on this list. Answers land here by amendment, citing their evidence.
   needs valid-time inference rather than the recency covariate. *Decided by* corrections
   where the cited document was right *for its era* — recurring construct-validity
   failures of that shape are the trigger. *First evidence:* stage 1 outcomes.
-- **The gate's table range (§8).** Unknown: the width of "plausible", a stated choice
-  doing quiet work. *Decided by* stage 4's revealed-preference data. Until then: stated
-  and frozen with the gate.
+- **The gate's table range (§8) — RESOLVED 2026-06-12** by the §4.4 amendment: the
+  "range of plausible tables" is the utility posterior P(U) itself; its width is
+  evidence-driven, not a stated band. (Evidence: the owner's utility-as-inference
+  directive; the §14 override record.)
+- **τ identifiability (§4.4).** Unknown: whether the rationality temperature separates
+  from the utility latents at realistic data volumes (noise vs preference). *Decided by*
+  posterior correlation diagnostics on the choice-evidence fold. *First evidence:*
+  stage 1 (decision log + verdict joins).
+- **The preference-evidence selection channel (§4.4).** Unknown: how much the policy's
+  own choices bias which preference evidence arrives (M2 on this stream), and when the
+  term must be carried formally. *Decided by* comparing utility posteriors conditioned
+  on policy-surfaced vs owner-initiated evidence. *First evidence:* stage 1, sharpening
+  at stage 4 (filing decisions generate denser reactions).
+- **Preference drift / context-dependence trigger (§4.4).** Unknown: when the
+  stationary-utility assumption breaks. *Decided by* systematic disagreement between the
+  posterior's behaviour predictions and fresh choices (the stated stage-7 trigger).
+  *First evidence:* whenever the decision log is mature enough to test predictions —
+  stage 4 realistically.
+- **Verdict-stream evidence rate (§4.4).** Unknown: whether g/b verdicts arrive often
+  enough to move the utility posterior meaningfully before stage 4's denser streams.
+  *Decided by* the per-month count of joined decision–verdict pairs. *First evidence:*
+  stage 1.
+- **Cost-proxy calibration cadence (§10).** Unknown: how often the learned
+  owner-cost proxy must be re-graded against outcomes before drift (Goodhart on the
+  cost model) becomes material. *Decided by* proxy-vs-outcome divergence in the
+  decision log. *First evidence:* stage 6's first compiled policy (the proxy exists
+  only then; named now so its grading stream is designed in, not bolted on).
 - **The skin's batch throughput (§11).** Unknown: per-question subprocess vs pooled
   daemon. *Decided by* latency measured at stage 1; promoted per §11 if it demands.
