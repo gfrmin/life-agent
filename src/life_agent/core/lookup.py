@@ -25,8 +25,11 @@ Stated channel parameters (each a prior choice calibration will move — §2, §
 ``_A_ALTERNATIVES`` (effective wrong-value alternatives), ``_BETA_ANCESTRY`` /
 ``_BETA_MODEL`` (the §4.2 tempering exponents), ``_RHO_PRIOR_*`` (the
 grounded-extraction reliability prior, moved by audit outcomes), ``_ORACLE_P``
-(the owner-as-oracle prior for pricing ask_clarify), and the declared source-authority
-classes (§4.1's v0 lattice).
+(the owner-as-oracle prior for pricing ask_clarify), the declared source-authority
+classes (§4.1's v0 lattice), and the §4.1 covariate factors (``_A_SUBJECT_*`` /
+``_TIME_HALF_LIFE_YEARS`` / ``_A_TIME_UNKNOWN`` — doc_subject and doc_date enter
+a_i: a document about someone else, or from the wrong era, supports a different
+variable; construct validity, not noise).
 """
 from __future__ import annotations
 
@@ -35,7 +38,9 @@ import dataclasses
 import hashlib
 import json
 import math
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -57,10 +62,16 @@ point fact. NOT a lookup: anything needing summarising, listing, aggregating, co
 or explaining — and any question asking for MULTIPLE values at once (e.g. "lender,
 amount, and end date" asks three).
 
+If it IS a lookup, also classify the value's persistence. TIME-INDEXED means the value
+is a current state that can change over a life: an address, phone number, employer,
+salary, balance, status, expiry. NOT time-indexed means the value is permanent or
+historical once set: a birth date, a national ID, the date an event happened.
+
 QUESTION: {question}
 
 Reply with JSON only:
-{{"lookup": true, "construct": "<3-8 words naming the value asked for>"}}
+{{"lookup": true, "construct": "<3-8 words naming the value asked for>", \
+"time_indexed": true|false}}
 or {{"lookup": false}}
 """
 
@@ -70,6 +81,7 @@ ROUTE_SCHEMA: dict[str, Any] = {
     "properties": {
         "lookup": {"type": "boolean"},
         "construct": {"type": "string"},
+        "time_indexed": {"type": "boolean"},
     },
 }
 
@@ -135,6 +147,15 @@ _AUTHORITY_CLASSES: tuple[tuple[tuple[str, ...], str, float], ...] = (
 _AUTHORITY_MAIL_MARKERS = ("/mail/", "/cur/", "/new/")
 _AUTHORITY_DEFAULT = ("other", 0.85)
 
+# §4.1's covariates on a_i (stated priors, calibrated later from outcomes). The second
+# eval run's remaining confident-wrong reports were exactly these two channels: documents
+# about someone else agreeing on their value, and stale documents agreeing on a
+# superseded one — construct validity, entering the likelihood, never a rank heuristic.
+_A_SUBJECT_OTHER = 0.05      # P(a doc about someone else asserts the owner's value)
+_P_OWNER_GIVEN_INDET = 0.5   # P(the doc is about the owner | subject indeterminate)
+_TIME_HALF_LIFE_YEARS = 5.0  # current-state facts: P(assertion still current | doc age)
+_A_TIME_UNKNOWN = 0.6        # undated/underived doc date under a time-indexed construct
+
 # The response actions, in the optimise action-space order. Names are the
 # decisions.ACTIONS vocabulary; ask-about-U is deliberately absent (§4.4).
 _ACTION_ORDER: tuple[str, ...] = ("report", "hedge", "ask_clarify", "abstain")
@@ -158,6 +179,57 @@ GRAMMAR: dict[str, str] = {
 
 
 @dataclass(frozen=True)
+class Route:
+    """The cached route verdict for a typed lookup (§4.1)."""
+
+    construct: str
+    time_indexed: bool
+
+
+@dataclass(frozen=True)
+class HitCovariates:
+    """Read-side §4.1 covariates per hit artifact, keyed on artifact_cache_key.
+
+    Carried OUTSIDE the hit dicts so the retrieval-set bytes (and every key hashed
+    from them) stay untouched. Absent key = the channel was not projected for that
+    hit (factor 1.0). ``subject_state`` values are the owner-filter partition states
+    ("owner" | "unclear" | "underived" | "other" | "generic"); ``doc_date`` is an
+    ISO date, or None for a projected-but-unknown date (undated/underived)."""
+
+    subject_state: Mapping[str, str] = field(default_factory=dict)
+    doc_date: Mapping[str, str | None] = field(default_factory=dict)
+
+
+def subject_factor(state: str | None) -> float:
+    """The doc_subject covariate on a_i. None = no covariate (not an owner-scoped
+    question, or not projected). A state outside the partition raises — junk from
+    the annotation seam must surface, not silently weight evidence."""
+    if state is None or state == "owner":
+        return 1.0
+    if state in ("other", "generic"):
+        return _A_SUBJECT_OTHER
+    if state in ("unclear", "underived"):
+        return (_P_OWNER_GIVEN_INDET
+                + (1.0 - _P_OWNER_GIVEN_INDET) * _A_SUBJECT_OTHER)
+    raise ValueError(f"subject covariate outside the partition: {state!r}")
+
+
+def time_factor(date_iso: str | None, *, time_indexed: bool,
+                today: date | None = None) -> float:
+    """The doc_date covariate on a_i: for a time-indexed construct, the probability a
+    document's assertion is still current decays with document age (stated half-life).
+    ``date_iso`` None = projected but unknown (undated/underived) — the stated marginal
+    attenuation. Future-dated documents clamp to 1.0 (no covariate bonus)."""
+    if not time_indexed:
+        return 1.0
+    if date_iso is None:
+        return _A_TIME_UNKNOWN
+    now = today if today is not None else datetime.now(UTC).date()
+    age_years = max((now - date.fromisoformat(date_iso)).days, 0) / 365.25
+    return float(0.5 ** (age_years / _TIME_HALF_LIFE_YEARS))
+
+
+@dataclass(frozen=True)
 class Observation:
     """One grounded extraction over one retrieval hit (§4.1's o_i)."""
 
@@ -169,6 +241,8 @@ class Observation:
     quote: str
     authority_class: str
     authority: float
+    subject_factor: float = 1.0  # §4.1 doc_subject covariate on a_i
+    time_factor: float = 1.0     # §4.1 doc_date covariate on a_i
 
 
 @dataclass(frozen=True)
@@ -251,9 +325,10 @@ def _client() -> Any:
 
 
 def route_question(root: Path, question: str, *,
-                   client: Any | None = None) -> str | None:
-    """The cached route verdict: the construct name if this is a typed lookup, else
-    None. A verdict outside the schema raises and is never recorded."""
+                   client: Any | None = None) -> Route | None:
+    """The cached route verdict: the Route (construct + time-indexedness) if this is
+    a typed lookup, else None. A verdict outside the schema raises and is never
+    recorded."""
     if client is None:
         client = _client()
     key = D.lookup_route_key(question, model=LOOKUP_MODEL,
@@ -275,19 +350,25 @@ def route_question(root: Path, question: str, *,
                  lineage=[])
     if not parsed.get("lookup"):
         return None
-    return str(parsed.get("construct") or "the asked value")
+    return Route(construct=str(parsed.get("construct") or "the asked value"),
+                 time_indexed=bool(parsed.get("time_indexed", False)))
 
 
 def observe_hits(root: Path, question: str, hits: list[dict[str, Any]], *,
                  client: Any | None = None,
                  reliability: float | None = None,
+                 covariates: HitCovariates | None = None,
+                 time_indexed: bool = False,
+                 today: date | None = None,
                  ) -> tuple[list[Observation], int]:
     """One grounded extraction per hit (cached). Returns (grounded observations,
     indeterminate count). Indeterminate = the instrument returned ⊥ (not found) or its
     quote failed the grounding gate — recorded either way, counted, never silently
-    dropped (§4.2's indeterminacy term)."""
+    dropped (§4.2's indeterminacy term). ``covariates`` carries the §4.1 doc_subject /
+    doc_date factors into each observation's a_i."""
     if client is None:
         client = _client()
+    cov = covariates if covariates is not None else HitCovariates()
     observations: list[Observation] = []
     indeterminate = 0
     for i, hit in enumerate(hits):
@@ -319,15 +400,23 @@ def observe_hits(root: Path, question: str, hits: list[dict[str, Any]], *,
             indeterminate += 1
             continue
         klass, authority = authority_for(str(hit.get("origin", "")))
+        artifact_key = str(hit["artifact_cache_key"])
+        # the doc_date covariate distinguishes "channel not projected" (key absent,
+        # factor 1.0) from "projected but unknown" (None — the stated attenuation)
+        t_factor = (time_factor(cov.doc_date[artifact_key],
+                                time_indexed=time_indexed, today=today)
+                    if artifact_key in cov.doc_date else 1.0)
         observations.append(Observation(
             card_n=i + 1,
-            artifact_cache_key=str(hit["artifact_cache_key"]),
+            artifact_cache_key=artifact_key,
             obs_cache_key=key.cache_key,
             value_raw=str(parsed["value"]).strip(),
             value_norm=_norm_value(str(parsed["value"])),
             quote=str(parsed["quote"]),
             authority_class=klass,
             authority=authority,
+            subject_factor=subject_factor(cov.subject_state.get(artifact_key)),
+            time_factor=t_factor,
         ))
     return observations, indeterminate
 
@@ -364,9 +453,11 @@ def observation_densities(observation: Observation, candidates: list[str],
                           rho: float, scale: float) -> list[list[float]]:
     """The tempered tabular_log_density rows for one observation: source atoms are the
     K candidates + NONE (last), target atoms the K candidate indices. With reliability
-    r = rho*authority, a match carries r + (1-r)/A and any miss (1-r)/A — NONE misses
-    everything (§4.2's noisy channel)."""
-    r = rho * observation.authority
+    r = rho * a_i (authority composed with the §4.1 subject/time covariates), a match
+    carries r + (1-r)/A and any miss (1-r)/A — NONE misses everything (§4.2's noisy
+    channel)."""
+    r = (rho * observation.authority
+         * observation.subject_factor * observation.time_factor)
     log_match = scale * math.log(max(r + (1.0 - r) / _A_ALTERNATIVES, _PROB_EPS))
     log_miss = scale * math.log(max((1.0 - r) / _A_ALTERNATIVES, _PROB_EPS))
     k = len(candidates)
@@ -519,17 +610,21 @@ def lookup_answer(root: Path, question: str, hits: list[dict[str, Any]], *,
                   brain: Brain | None = None,
                   route_client: Any | None = None,
                   extract_client: Any | None = None,
+                  covariates: HitCovariates | None = None,
                   decisions_path: Path | None = None,
                   run_id: str = "ask",
                   ) -> LookupResult | None:
     """Run the lookup family over admitted hits. None ⇒ the narrative path answers
     (not routed as a lookup, or zero grounded observations — a coverage statement,
     not an abstention; the caller names the fallthrough)."""
-    construct = route_question(root, question, client=route_client)
-    if construct is None:
+    route = route_question(root, question, client=route_client)
+    if route is None:
         return None
+    construct = route.construct
     observations, indeterminate = observe_hits(root, question, hits,
-                                               client=extract_client)
+                                               client=extract_client,
+                                               covariates=covariates,
+                                               time_indexed=route.time_indexed)
     if not observations:
         return None
 
@@ -550,14 +645,27 @@ def lookup_answer(root: Path, question: str, hits: list[dict[str, Any]], *,
     p_none = weights[-1]
 
     # the answer artifact (§18.9): claim set + posterior + decision inputs, lineage to
-    # every observation — the lookup family's computation stays on the ledger
+    # every observation — the lookup family's computation stays on the ledger. The
+    # per-observation covariate factors are decision inputs, so they enter both the
+    # key (via params) and the recorded content (auditability).
+    obs_covariates = [
+        {"obs": o.obs_cache_key, "subject_factor": o.subject_factor,
+         "time_factor": o.time_factor}
+        for o in observations]
     params = {"A": _A_ALTERNATIVES, "beta_ancestry": _BETA_ANCESTRY,
               "beta_model": _BETA_MODEL, "oracle_p": _ORACLE_P,
-              "p_none_prior": _P_NONE_PRIOR, "rho": rho}
+              "p_none_prior": _P_NONE_PRIOR, "rho": rho,
+              "a_subject_other": _A_SUBJECT_OTHER,
+              "p_owner_indet": _P_OWNER_GIVEN_INDET,
+              "time_half_life_years": _TIME_HALF_LIFE_YEARS,
+              "a_time_unknown": _A_TIME_UNKNOWN,
+              "time_indexed": route.time_indexed,
+              "covariates": _sha(json.dumps(obs_covariates, sort_keys=True))}
     obs_hash = _sha(json.dumps(sorted(o.obs_cache_key for o in observations)))
     akey = D.lookup_answer_key(question, obs_hash, fold_ver, params)
     content = json.dumps({
         "format_version": 1, "question": question, "construct": construct,
+        "time_indexed": route.time_indexed, "covariates": obs_covariates,
         "candidates": list(cands), "credences": list(creds), "p_none": p_none,
         "action": action, "eu": eu, "utility_fold_version": fold_ver,
     }, sort_keys=True, ensure_ascii=False).encode("utf-8")

@@ -430,20 +430,23 @@ def subject_footer(view: S.SubjectView, name_of: dict[str, str]) -> str:
 def _apply_subject_to_hits(
     conn: duckdb.DuckDBPyConnection, root: Path | None,
     hits: list[dict[str, Any]], *, profile: str,
-) -> tuple[list[dict[str, Any]], TemporalReport]:
+) -> tuple[list[dict[str, Any]], TemporalReport, dict[str, str]]:
     """Project + owner-filter the chunk hits by ARTIFACT subject. Chunks of
     one artifact share its fate; admitted chunks keep their retrieval order
     (the filter excludes, it does not rank). Fail-open at every seam, never
     silently: no pkm root or no profile disables the filter with an explicit
     notice; a failed owner-match verdict leaves that subject unclear (kept
-    and named in the footer)."""
+    and named in the footer). The third return value maps each admitted
+    artifact key to its partition state ("owner" | "unclear" | "underived")
+    — the lookup family's §4.1 subject covariate (carried OUTSIDE the hit
+    dicts, so the retrieval-set bytes stay untouched)."""
     if root is None:
         return hits, TemporalReport(
-            footer="owner filter UNAVAILABLE (no pkm root) — showing all hits")
+            footer="owner filter UNAVAILABLE (no pkm root) — showing all hits"), {}
     if not profile:
         return hits, TemporalReport(
             footer="owner filter UNAVAILABLE (no owner profile — "
-                   "/tell who you are) — showing all hits")
+                   "/tell who you are) — showing all hits"), {}
     keys = list(dict.fromkeys(h["artifact_cache_key"] for h in hits))
     shits = S.project_subjects(conn, root, keys)
     verdicts: dict[str, str] = {}
@@ -457,12 +460,15 @@ def _apply_subject_to_hits(
     name_of = {h["artifact_cache_key"]: Path(h["origin"]).name for h in hits}
     admitted = set(view.admitted)
     admitted_hits = [h for h in hits if h["artifact_cache_key"] in admitted]
+    indeterminate = {**dict.fromkeys(view.unclear, "unclear"),
+                     **dict.fromkeys(view.underived, "underived")}
+    state_of = {k: indeterminate.get(k, "owner") for k in admitted}
     targets = []
     for remedy in view.remedies:  # "pkm derive <decl> --input <ck>"
         words = remedy.split()
         targets.append((words[2], words[4]))
     return admitted_hits, TemporalReport(
-        footer=subject_footer(view, name_of), targets=targets)
+        footer=subject_footer(view, name_of), targets=targets), state_of
 
 
 def build_query(question: str, terms: str) -> str:
@@ -605,9 +611,10 @@ def answer(conn: duckdb.DuckDBPyConnection, question: str,
     # synthesize key, so the admitted set IS the evidence. The predicates
     # compose — each footer names its own partition over what reached it; the
     # full retrieval set is already recorded above.
+    subject_state_of: dict[str, str] = {}
     if owner_question(question):
-        hits, sreport = _apply_subject_to_hits(conn, root, hits,
-                                               profile=profile)
+        hits, sreport, subject_state_of = _apply_subject_to_hits(
+            conn, root, hits, profile=profile)
         SUBJECT_LAST = sreport
 
     pairs = _cards_from_set(hits)
@@ -627,7 +634,19 @@ def answer(conn: duckdb.DuckDBPyConnection, question: str,
     # NAMED (interaction contract), never silent.
     if root is not None:
         try:
-            lk = LK.lookup_answer(root, question, hits)
+            # §4.1 covariates, projected read-side and carried OUTSIDE the hit
+            # dicts (the retrieval-set bytes — and every key hashed from them —
+            # stay untouched): the owner-filter partition states from above, and
+            # the doc_date projection (None = projected but undated/underived).
+            hit_keys = list(dict.fromkeys(h["artifact_cache_key"] for h in hits))
+            date_of: dict[str, str | None] = {
+                d.artifact_cache_key:
+                    (d.date.isoformat() if d.date is not None else None)
+                for d in T.project_dates(conn, root, hit_keys,
+                                         caller="ask.lookup")}
+            cov = LK.HitCovariates(subject_state=subject_state_of,
+                                   doc_date=date_of)
+            lk = LK.lookup_answer(root, question, hits, covariates=cov)
         except Exception as e:  # fail-open by contract, reason printed
             print(LK.GRAMMAR["fallthrough"].format(reason=f"failed: {e}"))
             lk = None
