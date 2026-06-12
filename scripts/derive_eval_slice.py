@@ -23,6 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import ask  # noqa: E402
 from run_eval import load_questions  # noqa: E402
 
+from life_agent.core import config as C  # noqa: E402
 from life_agent.core import subject as S  # noqa: E402
 from life_agent.core import temporal as T  # noqa: E402
 
@@ -88,13 +89,15 @@ def main() -> int:
         for decl, key in pairs:
             print(f"pkm derive {decl} --input {key}")
         return 0
+    # the derive subprocesses need the catalogue's write lock — release ours first
+    conn.close()
 
     failures = 0
     for i, (decl, key) in enumerate(pairs, 1):
         print(f"[{i}/{len(pairs)}] pkm derive {decl} --input {key[:16]}…", flush=True)
         proc = subprocess.run(
-            ["uv", "run", "pkm", "derive", decl, "--input", key,
-             "--caller", "derive_eval_slice"],
+            ["uv", "run", "pkm", "--config", str(C.PKM_CONFIG),
+             "derive", decl, "--input", key, "--caller", "derive_eval_slice"],
             capture_output=True, text=True)
         if proc.returncode != 0:
             failures += 1
