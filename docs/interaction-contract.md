@@ -101,6 +101,27 @@ compose — both footers print when both modes ran; unverified citations are fla
 citation guard; then one verdict key — `g`ood / `b`ad / `n`ote / Enter to skip — logs to
 the dogfood journal that feeds `FAILURES.md`.
 
+## Credence rendering — one grammar for uncertainty
+
+Binding from Ask v0 slice 2 ([`bayesian-foundations.md`](./bayesian-foundations.md) §3,
+adopted 2026-06-12): every *know* answer is a claim set with posteriors, and its
+rendering obeys one grammar — uncertainty named, never mumbled (invariant 3 extended to
+credence):
+
+| element | form |
+|---------|------|
+| claim credence | every rendered claim carries its credence in one vocabulary across surfaces — never per-surface prose inventions |
+| hedge | when no value dominates, the mixture is reported as alternatives with credences — never a silent pick of the leader |
+| abstention | a named reason from a closed set (dispersed posterior · no admitted evidence · below the relevance floor) — never an empty or evasive reply |
+| clarifying ask | asked only when `voi` prices it above the interruption belief×cost; the question names what it would resolve |
+| withheld claims | inclusion is a decision (foundations §3): withheld claims are counted with their EU reason — `n claims withheld: low relevance` |
+| indeterminates | carried and named, as in the temporal/subject footers — the §18.12/§18.13 contract generalised |
+
+Rendering order is posterior order, not rhetorical order; LLM paraphrase stays within
+claim boundaries; the conformance audit (the citation guard extended to claim coverage)
+runs per render, never cached. The strings live in one table (`ask.CREDENCE_GRAMMAR`
+when slice 2 lands), drift-gated like `GRAMMAR` and `REFRESH_NOTES`.
+
 ## act — Jarvis
 
 Free-text Telegram messages, parsed by a local model into one of these intents

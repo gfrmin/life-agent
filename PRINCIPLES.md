@@ -99,6 +99,15 @@ publicly; never use `tailscale serve`/funnel.
   leg). Demand-driven materialisation; deterministic operators executor-side, LLM only in
   cached per-document projections; GTD/CRM/ask converge on one substrate; act ledgers gain
   knowledge projections.
+- **The Bayesian foundations are adopted (2026-06-12):**
+  [`docs/bayesian-foundations.md`](./docs/bayesian-foundations.md) — the knowledge layer's
+  probabilistic semantics. Every derivation edge is a measurement instrument with a
+  declared error model; every answer is a claim set with posteriors; the response is an
+  expected-utility decision; calibration is measured (the outcomes log + proper scoring
+  rules; adoption gates are decision-weighted with Bayesian comparison). The engine's
+  D3–D4 are re-scoped as Ask's aggregate and thread families. Adopted with a binding
+  rider: the document's §14 open questions are a live ledger of what we don't know, each
+  entry naming the evidence that will decide it.
 
 **§15. Open decisions.** Decided when their phase arrives, not before:
 - **The spine** (Phase 2): pi-mono (TS) vs a Python loop vs Claude Code as interim. Criteria:
@@ -114,7 +123,11 @@ publicly; never use `tailscale serve`/funnel.
 value of information, over an immutable log whose only invariant is that truth is the
 fold.* The geodesic runs **derivation → query-with-confidence → bounded action, in that
 order**; the VOI governor is deliberately last (it needs the demand logs and the confidence
-layer to calibrate against). Corollary, binding now: **every derivation, aggregation, and
+layer to calibrate against). The middle leg was re-scoped on 2026-06-12:
+**query-with-confidence is not a successor annotation but the Bayesian re-derivation of
+Ask** ([`docs/bayesian-foundations.md`](./docs/bayesian-foundations.md)), executing now —
+answers are claim sets with posteriors, responses are EU decisions, and calibration is
+measured against an append-only outcomes log. Corollary, binding now: **every derivation, aggregation, and
 model call is a content-addressed node with lineage edges on one DAG** — no computation in
 the answer path is off-ledger ([`docs/system-design.md`](./docs/system-design.md) §3).
 Knowledge grows from answers and actions: act ledgers project back into the KB, and answers

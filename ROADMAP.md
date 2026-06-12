@@ -19,7 +19,7 @@ view** — what each faculty is and where it stands.
 | Faculty | System / language | Status |
 |---|---|---|
 | **Memory** — recall + retrieval | **PKM** (`src/pkm`, Python) + **`life_agent`** (this repo, Python) | **Live.** PKM: content-addressed extraction + DuckDB `fts`/`vss` + **composable transforms** (chained, cited perspectives — SPEC §18.7). `life_agent` adds the retrieval/synthesis read path (`scripts/ask.py`, dogfooded via `bin/ask-live`). |
-| **Brain** — beliefs under uncertainty; value-of-information → ask/proceed/block | **credence** (`../credence/apps/credence-pi`, Julia posterior) | Not wired. *The confidence-gated autonomy* — the core of "maximise expected utility". |
+| **Brain** — beliefs under uncertainty; value-of-information → ask/proceed/block | **credence** (`../credence`, Julia; the skin's JSON-RPC-over-stdio seam) | **Adopted, being wired (Phase 1.6 / Ask v0):** [`docs/bayesian-foundations.md`](./docs/bayesian-foundations.md) — answers become claim sets with posteriors; responses are EU decisions through `src/life_agent/core/brain.py` (slice 1). The VOI governor stays last. |
 | **Hands** — capabilities/actions | **GTD** (`life_agent.tasks`, event-sourced) reached via **`life_agent.reach`** (Telegram transport + persona); email (`msmtp`/JMAP), calendar (CalDAV/Google), chat (matrix) | GTD live, ledger-as-truth (PRINCIPLES §7); **email→GTD shipped (M2)** — the `action_items` transform (local model, grounded quotes) **auto-files** cited tasks to the inbox; you triage in Telegram. Rest not wired. |
 | **Goals / Utility** — what the owner values | *(new, unbuilt)* | **The hardest missing piece.** EU-maximisation presupposes it; owed a design before any autonomous *action* (PRINCIPLES §3). |
 | **Spine** — the agent loop + routing | **TBD — open decision** | Deferred to Phase 2 (PRINCIPLES §15). Candidates: pi-mono (TS), a Python loop, or Claude Code as an interim loop. |
@@ -83,22 +83,29 @@ framework below (owner directive; PRINCIPLES §9 as amended). Its open levers (O
 image-PDFs; `EXPAND_SYSTEM` ranking nudges; new source-`kind` adapters) remain valid
 backlog items, promoted by evidence as before.
 
-### Phase 1.6 — The derivation framework · **ACTIVE**
+### Phase 1.6 — The derivation framework · **ACTIVE** (re-scoped 2026-06-12)
 The adopted system design ([`docs/system-design.md`](./docs/system-design.md)) executed
-continuously, eval-gated (engine design §11); the derivation engine
-([`docs/derivation-engine-design.md`](./docs/derivation-engine-design.md)) D0–D1 are landed.
-Remaining program, in dependency order:
-1. **The act ledger becomes knowledge** — pkm retrieval currency for evolving sources
-   (SPEC-first); `tasks/knowledge.py` (pure fold→markdown projection of the GTD ledger);
-   demand-led refresh in the ask path (no new grammar — "what's next on my gtd list?" just
-   works).
-2. **D2 — subject** — `doc_subject` closed-enum transform + executor-side owner-profile
-   filter (profile never enters pkm).
-3. **D3 — aggregation + planner v0** — `filter`/`agg` operators, field-extraction
-   transforms, template router with predicate slots, the coverage contract end-to-end
-   ("how much money did I spend last year?" runs as a planned derivation).
-4. **D4 — threads** — `assemble` SPEC amendment, email `_VERSION` bump (budget the
-   corpus-wide reclassification), `thread_state`, `thread` template ("awaiting reply?").
+continuously, eval-gated (engine design §11); engine D0–D2 and the GTD ledger's knowledge
+projection are landed. On 2026-06-12 the owner adopted the **Bayesian foundations**
+([`docs/bayesian-foundations.md`](./docs/bayesian-foundations.md)): Ask is re-derived as
+inference — answers are claim sets with posteriors, responses are EU decisions,
+calibration is measured — and the old D3/D4 are re-scoped as question families of
+Bayesian Ask rather than deterministic pipelines. Remaining program, in dependency order
+(the doc's §12 roadmap governs; gates per its §8):
+1. **(done)** The act ledger becomes knowledge — currency rule (pkm SPEC §15.4),
+   `tasks/knowledge.py`, demand-led refresh in the ask path.
+2. **(done)** D2 — subject — `doc_subject` closed-enum transform + executor-side
+   owner-profile filter (profile never enters pkm).
+3. **Ask v0** — slice 0: outcomes log + scoring-rule eval (first — the evidence stream
+   cannot be backfilled); slice 1: the credence seam (`src/life_agent/core/brain.py`
+   over the skin's JSON-RPC-over-stdio); slice 2: the lookup family; slice 3: narrative
+   subsumption.
+4. **The aggregate family** (subsumes D3): recall term + completeness priors,
+   missing-mass posterior, dedup-as-inference — the spending question answered as a
+   posterior with both coverage readouts.
+5. **The thread family** (subsumes D4): `assemble` SPEC amendment, email `_VERSION` bump
+   (budget the corpus-wide reclassification), `thread_state` instrument, membership
+   recall ("awaiting reply?").
 
 ### Phase 2 — Goals/utility model + first agent loop (read-only) · future
 - Design the **goals/utility representation** (the unbuilt faculty) — how the agent learns and
