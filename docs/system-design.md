@@ -1,8 +1,9 @@
 # System design — one framework, every component adapted to it
 
-> **Status: adopted 2026-06-11 (owner-approved).** This is the whole-system view: the
-> objects, the one binding invariant, the loop, and the adaptation map for everything
-> already in the tree. The philosophy lives in [`PRINCIPLES.md`](../PRINCIPLES.md); the
+> **Status: adopted 2026-06-11 (owner-approved); sequencing amended 2026-06-12 by
+> [`bayesian-foundations.md`](./bayesian-foundations.md) (§8 below).** This is the
+> whole-system view: the objects, the one binding invariant, the loop, and the adaptation
+> map for everything already in the tree. The philosophy lives in [`PRINCIPLES.md`](../PRINCIPLES.md); the
 > derivation leg's detailed design lives in
 > [`derivation-engine-design.md`](./derivation-engine-design.md) (adopted the same day) and
 > is referenced, not restated. Sequencing changed with adoption: phases execute
@@ -66,7 +67,7 @@ governor's future calibration corpus (engine design §9.3).
 L0  event logs            GTD ledger (events.jsonl) · future act ledgers     [truth = fold]
     + immutable sources   documents, mail, notes, chat                       [pkm sources]
 L1  derivation DAG        pkm transforms + derive · executor operators · plans · answers
-L2  credence              assertions as distributions + provenance           [future; ../credence]
+L2  credence              assertions as distributions + provenance           [being wired — Ask v0; ../credence]
 L3  VOI governor          derive / ask / act ranked in one queue             [future, last]
 L4  act seam + reach      Telegram GTD commands · digest · email→GTD projector
 ```
@@ -120,19 +121,22 @@ nothing silent.
 | owner profile (`/tell`) | identity policy, agent-side only | unchanged; D2's filter consumes it — it never enters pkm |
 | `scripts/run_eval.py` (answer-grounded) | the gates | per-phase gate assertions (engine design §11) |
 | `src/pkm/mcp_server.py` (dormant) | endorsed seam for the future spine | unchanged |
-| `../credence` (Julia) | L2 reference material | unwired until query-with-confidence design |
+| `../credence` (Julia) | **L2 — the brain** | **wired (Phase 1.6 / Ask v0)**: the skin's JSON-RPC-over-stdio seam behind `src/life_agent/core/brain.py`; query-with-confidence executes now as the Bayesian re-derivation of Ask ([`bayesian-foundations.md`](./bayesian-foundations.md)) |
 | CRM (dissolved faculty) | resolved into the framework | LLM projections = transforms; deterministic reads = executor-side; threads/awaiting-reply = D4; mutable notes (#3) & alias dedup (#4) stay open |
 
 ## 8. Sequencing
 
 The execution plan (owner-approved 2026-06-11): **Phase 0** adopt + doc adaptation (this
 document) → **Phase 1** the act ledger becomes knowledge (currency rule · `tasks/knowledge.py`
-· demand-led refresh in ask) → **Phase 2** = engine D2 (subject + owner filter) →
-**Phase 3** = engine D3 (aggregation + planner v0 — the spending question) → **Phase 4** =
-engine D4 (threads — `assemble`, the one SPEC shape change; sequenced last for its
-corpus-wide reclassification cost). Each phase lands SPEC-first/TDD where it touches pkm,
-gated by the engine design's §11 eval gates. Successors, named not designed:
-query-with-confidence, embeddings/hybrid, the VOI governor, the §18.9 gate lift.
+· demand-led refresh in ask) → **Phase 2** = engine D2 (subject + owner filter) — both
+landed. **Amended 2026-06-12** ([`bayesian-foundations.md`](./bayesian-foundations.md),
+owner-adopted): from here the program is that document's §12 — **Ask v0** (outcomes log →
+credence seam → lookup family → narrative subsumption), then the **aggregate family**
+(subsumes engine D3: its planner/operators are built as the family's machinery) and the
+**thread family** (subsumes engine D4: `assemble` remains the one SPEC shape change).
+Each stage lands SPEC-first/TDD where it touches pkm, gated by the foundations doc's §8
+decision-weighted gates. Successors, named not designed: structure learning
+(`program_space`), the VOI governor, the §18.9 gate lift.
 
 ## 9. Boundaries that hold (unchanged, restated as commitments)
 

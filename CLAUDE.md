@@ -47,11 +47,18 @@ a command, intent, flag, or reply string.
 **Adopted, being built (Phase 1.6):** the derivation framework —
 [`docs/system-design.md`](./docs/system-design.md) +
 [`docs/derivation-engine-design.md`](./docs/derivation-engine-design.md) (D0–D2 and the
-GTD ledger's knowledge projection + pkm path-currency landed; next: engine D3–D4).
-Sequencing is continuous and eval-gated, not dogfood-gated (PRINCIPLES §9 as amended).
+GTD ledger's knowledge projection + pkm path-currency landed) — and, adopted 2026-06-12,
+the **Bayesian foundations**
+([`docs/bayesian-foundations.md`](./docs/bayesian-foundations.md)): Ask re-derived as
+inference (answers = claim sets with posteriors; responses = EU decisions; calibration
+measured). Next: Ask v0 — outcomes log → credence seam → lookup family → narrative
+subsumption — with old D3–D4 re-scoped as its aggregate/thread families. The doc's §14
+open questions are a **live empirical ledger** (owner's adoption rider): each entry names
+the evidence that decides it — keep it current. Sequencing is continuous and eval-gated,
+not dogfood-gated (PRINCIPLES §9 as amended).
 
-**Not built, deliberately:** the agent-loop spine (open decision — PRINCIPLES §15), credence
-wiring, the VOI governor (last on the geodesic — PRINCIPLES §16), a live MCP server
+**Not built, deliberately:** the agent-loop spine (open decision — PRINCIPLES §15),
+the VOI governor (last on the geodesic — PRINCIPLES §16), a live MCP server
 (`src/pkm/mcp_server.py` is dormant-by-design — PRINCIPLES §5). One candidate spine+brain
 composition is documented at
 [`docs/candidates/brain-design.md`](./docs/candidates/brain-design.md) — a candidate, not the
