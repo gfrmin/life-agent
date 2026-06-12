@@ -683,10 +683,10 @@ def gtd_stale() -> bool:
     No ledger (GTD unused) is never stale; a missing or unstamped doc is."""
     if not C.TASKS_LEDGER.exists():
         return False
-    sha = hashlib.sha256(C.TASKS_LEDGER.read_bytes()).hexdigest()
     try:
+        sha = hashlib.sha256(C.TASKS_LEDGER.read_bytes()).hexdigest()
         text = C.TASKS_STATE.read_text(encoding="utf-8")
-    except OSError:
+    except (OSError, ValueError):  # unreadable/corrupt (incl. UnicodeDecodeError) = stale
         return True
     return knowledge.parse_stamp(text) != (sha, knowledge.RENDER_VERSION)
 
@@ -745,6 +745,14 @@ def ensure_gtd_fresh() -> None:
         _reingest_state(root, C.TASKS_STATE)
         print(REFRESH_NOTES["refreshed"].format(n=len(events)))
     except Exception as e:  # fail-open by contract (mirror run_derive)
+        # The stamp is the freshness oracle and write_state runs BEFORE the
+        # re-ingest, so a failure here must un-stamp the doc: a stamped doc
+        # whose ingest failed would read as fresh, the retry would never
+        # happen, and every answer in the window would silently serve stale
+        # catalogue state. Un-stamped, the next question retries and the
+        # failure is re-named each time — degraded, never silent.
+        with contextlib.suppress(OSError):
+            C.TASKS_STATE.unlink(missing_ok=True)
         print(REFRESH_NOTES["failed"].format(error=e))
 
 

@@ -75,8 +75,10 @@ question is answered, whenever the ledger has moved past it; retrieval then find
 task state like any source (pkm SPEC §15.4 keeps only the newest version of an evolving
 document retrievable). The refresh is announced, never silent: `gtd state refreshed @
 event N` on success, or the named fail-open degradation `gtd state refresh failed (…) —
-answering over the corpus as-is` (same contract as `/derive`). When fresh: nothing
-printed, nothing written. The strings are one table (`ask.REFRESH_NOTES`), drift-gated.
+answering over the corpus as-is` (same contract as `/derive`). A failed refresh leaves the
+state stale: the next question retries and the failure is re-named each time — degraded,
+never silent. When fresh: nothing printed, nothing written. The strings are one table
+(`ask.REFRESH_NOTES`), drift-gated.
 
 **After each answer:** sources are listed with scores; a temporal answer carries the
 nothing-vanishes footer (admitted / excluded-by-date / undated / not-yet-derived, each set
