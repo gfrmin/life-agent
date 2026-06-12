@@ -1,6 +1,6 @@
 # SPEC.md — technical specification
 
-Version: 0.15.0 (draft)
+Version: 0.16.0 (draft)
 Status: Phase 1 complete (extraction layer with content-addressed
 caching, chunking, and FTS keyword retrieval); Phase 1.5 OCR-PDF
 fallback applied to the live corpus; source paths are stored as
@@ -1670,8 +1670,51 @@ No grounding step (§18.5 does not apply — a date is a classification, not a q
 §18.8, the model only fills a closed shape; *what a consumer does with the date* (filter,
 rank, window) is deterministic consumer-side policy.
 
+### 18.13 The `doc_subject` transform
+
+`doc_subject` projects one primary subject per document — *who or what the document is
+about*, the provenance dimension `source_id` cannot carry ("an ID number in the owner's
+corpus" is not "the owner's ID number"). Output schema:
+`{format_version: 1, subject_kind: "person" | "organisation" | "generic", subject: string | null}`.
+
+- **`subject_kind`** is the closed enum (§18.8 pattern):
+  - `person` — the document is about one specific person (an ID card, a payslip, a medical
+    report). `subject` carries that person's name **as written in the document** (any
+    language; no transliteration, no normalisation — matching is the consumer's problem).
+  - `organisation` — about one specific organisation or legal entity (a company tax form,
+    an LLC filing). `subject` carries the entity name as written.
+  - `generic` — determinately about no specific entity: blank forms, templates,
+    instructions, reference material, marketing. `subject` is `null`. This is a *success*,
+    not an indeterminate — the §18.12 `null`-date analogue. The distinction is load-bearing:
+    a consumer filtering by subject may *exclude* a `generic` document (it is determinately
+    nobody's), but a document whose projection is merely absent is **indeterminate** and
+    must be named, never silently dropped (the derivation-engine coverage contract).
+- **One primary subject**, mirroring §18.12's one primary date. A document about several
+  entities (a joint contract, an email thread) projects the single entity it is *primarily*
+  about; when no single entity dominates, `generic` is the honest answer. Multi-subject
+  projection is a future format_version, not a v1 concern.
+- **Identity never enters pkm.** The projection extracts the subject *as written*; it knows
+  nothing of who the owner is. Matching a subject against an owner profile (or any other
+  identity) is consumer-side policy above the §18.9 seam, exactly as §18.8 keeps
+  category-policy out of the model call.
+
+One LLM producer (provider `ollama`, grammar-constrained), declared once per input
+producer (`docling`, `pandoc`, `tesseract`, `email`) and dispatching to the same class —
+like §18.12, the projection is a function of content, not of which extractor produced it.
+`post_validate` enforces the shape's internal consistency: `subject` must be non-null
+exactly when `subject_kind` is `person` or `organisation` (fail loudly, not cached —
+§18.11 miss-path parity). No grounding step (a classification, not a quote).
+
 ## 16. Change log
 
+- 0.16.0 (draft): §18.13 (new) — *doc_subject*, one primary subject per document
+  (`{format_version, subject_kind, subject}`): a grammar-constrained local-model projection
+  of who or what a document is about, with the closed enum `person | organisation | generic`.
+  `generic` (templates, blank forms, reference material) is a determinate "about nobody",
+  distinct from an absent projection (indeterminate — named, never dropped). The subject is
+  extracted as written; identity matching (owner or otherwise) stays consumer-side above the
+  §18.9 seam. Motivated by the subject/domain collision failure class ("an ID in the corpus"
+  ≠ "the owner's ID"; field-mention retrieval surfacing blank templates).
 - 0.15.0 (draft): §15.4 (new) — *source-path currency in retrieval*: among sources sharing
   a declared `current_path`, only the most recent (`last_seen`/`first_seen`/`source_id`
   descending) is retrievable; superseded path-versions stay catalogued (flag-never-delete),

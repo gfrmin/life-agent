@@ -52,7 +52,7 @@ A capability lives in exactly one mode. Mutating a task is *act*; asking about y
 | `/since YYYY-MM-DD QUESTION` | admit sources dated on/after; the excluded are named, not dropped |
 | `/until YYYY-MM-DD QUESTION` | admit sources dated on/before |
 | `/tell FACT` | record an authoritative owner fact (corpus-free: works even while extraction holds the catalogue lock) |
-| `/derive` | materialise the doc_dates the last answer named as underived, then re-ask |
+| `/derive` | materialise the projections (doc_date, doc_subject) the last answer named as underived, then re-ask |
 | `/q` (or `/quit`, `/exit`, EOF) | quit |
 
 One-shot is the same grammar: `bin/ask-live "/since 2026-01-01 what invoices arrived?"`.
@@ -80,11 +80,26 @@ state stale: the next question retries and the failure is re-named each time —
 never silent. When fresh: nothing printed, nothing written. The strings are one table
 (`ask.REFRESH_NOTES`), drift-gated.
 
+**The owner filter (subject mode).** A plain `QUESTION` with an *unchained* first-person
+possessive — "what is **my** Israeli ID?", "the **owner's** mortgage" — filters hits by
+each document's projected subject (pkm SPEC §18.13 `doc_subject`) matched against the
+owner profile. The match is consumer-side (the profile never enters pkm): a cached local-
+model verdict per distinct subject string, so the per-question filter is deterministic. A
+*relational* possessive — "my **partner's** ID" — does NOT trigger it (filtering for the
+owner there would exclude exactly the right answer). Only documents *determinately* about
+someone else, or determinately about nobody (`generic`: templates, blank forms), are
+excluded — each named in the footer; an absent or unclear classification is indeterminate:
+**kept** in the evidence and named, never silently excluded. No pkm root, no profile, or a
+failed verdict degrades fail-open with a printed notice. Underived subjects carry `pkm
+derive` remedies; `/derive` materialises them alongside doc_dates.
+
 **After each answer:** sources are listed with scores; a temporal answer carries the
 nothing-vanishes footer (admitted / excluded-by-date / undated / not-yet-derived, each set
-named with its remedy); unverified citations are flagged by the citation guard; then one
-verdict key — `g`ood / `b`ad / `n`ote / Enter to skip — logs to the dogfood journal that
-feeds `FAILURES.md`.
+named with its remedy); an owner-filtered answer carries the same contract's subject footer
+(admitted / someone-else's / generic-template / unclear-kept / underived-kept); the two
+compose — both footers print when both modes ran; unverified citations are flagged by the
+citation guard; then one verdict key — `g`ood / `b`ad / `n`ote / Enter to skip — logs to
+the dogfood journal that feeds `FAILURES.md`.
 
 ## act — Jarvis
 
@@ -140,5 +155,7 @@ The vocabularies live in code as single sources: `ask.GRAMMAR` (banner, usage er
 `jarvis.INTENTS` (NLU prompt, help reply). Drift gates in `tests/test_ask_temporal.py`,
 `tests/test_ask_gtd_refresh.py`, and `tests/test_reach.py` assert every table entry
 parses, dispatches, or renders and appears in every rendering; `tests/test_gtd.py` pins the ambiguity rule;
-`tests/test_ingest_sources.py` pins the porcelain sequencing. Removing redundancy is cheap;
-keeping it removed is these tests.
+`tests/test_ingest_sources.py` pins the porcelain sequencing; `tests/test_ask_subject.py`
+pins the owner-filter trigger (possessive vs relational), the subject footer's totality,
+and the temporal+subject report composition. Removing redundancy is cheap; keeping it
+removed is these tests.
