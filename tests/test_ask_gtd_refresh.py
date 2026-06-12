@@ -62,6 +62,15 @@ def test_projected_state_is_fresh_until_ledger_moves(
     assert ask.gtd_stale() is True
 
 
+def test_gtd_stale_on_unreadable_state_doc(gtd_paths: tuple[Path, Path]) -> None:
+    """A corrupt state doc is stale, never an exception — gtd_stale() is called
+    outside the fail-open try in the REPL loop, so it must not raise."""
+    ledger, state = gtd_paths
+    _seed_ledger(ledger)
+    state.write_bytes(b"\xff\xfe not utf-8 \xff")
+    assert ask.gtd_stale() is True
+
+
 def test_old_render_version_is_stale(
     gtd_paths: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -120,6 +129,33 @@ def test_refresh_failure_is_fail_open_and_named(
     out = capsys.readouterr().out
     assert "catalogue locked" in out
     assert ask.REFRESH_NOTES["failed"].split("{")[0] in out
+
+
+def test_failed_refresh_stays_stale_and_retries(
+    gtd_paths: tuple[Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The stamp is the freshness oracle, and write_state runs BEFORE the
+    re-ingest — so a failed ingest must un-stamp, or the stamped doc masks the
+    failure: gtd_stale() would report fresh, the retry would never happen, and
+    every answer in the window would silently serve stale catalogue state."""
+    ledger, _ = gtd_paths
+    _seed_ledger(ledger)
+    calls: list[Path] = []
+
+    def boom(root: Path, p: Path) -> None:
+        calls.append(p)
+        raise RuntimeError("catalogue locked")
+
+    monkeypatch.setattr(ask, "_reingest_state", boom)
+    monkeypatch.setattr(ask, "_pkm_root", lambda: Path("/fake/root"))
+
+    ask.ensure_gtd_fresh()
+    assert ask.gtd_stale() is True  # the failure is not masked by the stamp
+    ask.ensure_gtd_fresh()  # ...so the next question retries and re-names it
+    assert len(calls) == 2
+    assert capsys.readouterr().out.count("catalogue locked") == 2
 
 
 def test_refresh_without_pkm_root_is_fail_open(
