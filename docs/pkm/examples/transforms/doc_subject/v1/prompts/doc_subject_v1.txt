@@ -1,0 +1,21 @@
+Who or what is this document primarily ABOUT — its subject, not its author, sender,
+or recipient? Classify and reply with JSON only:
+
+- A document about one specific person (an identity card, a payslip, a medical or
+  insurance record, a personal certificate):
+  {"subject_kind": "person", "subject": "<that person's name exactly as written in the
+  document, in its original language>"}
+- A document about one specific organisation or legal entity (a company tax filing, a
+  business registration, an entity's bank statement):
+  {"subject_kind": "organisation", "subject": "<the entity's name as written>"}
+- A document about no specific person or entity — a blank form, an unfilled template,
+  instructions, reference or marketing material:
+  {"subject_kind": "generic", "subject": null}
+
+If the document concerns several people or entities, name the single one it is
+primarily about; if no single one dominates, classify it as generic. Copy the name
+exactly as it appears — do not translate or transliterate it.
+
+---
+{text}
+---

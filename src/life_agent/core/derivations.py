@@ -50,6 +50,7 @@ ENGINE_VERSION = "life_agent.core.llm/1"
 EXPAND_VERSION = "1"
 RETRIEVE_VERSION = "1"
 SYNTHESIZE_VERSION = "1"
+OWNER_MATCH_VERSION = "1"
 
 # Free-text output contract for both LLM stages (schema-3 keys require an output schema).
 TEXT_OUTPUT_SCHEMA: dict[str, Any] = {"type": "string"}
@@ -59,6 +60,7 @@ TEXT_OUTPUT_SCHEMA: dict[str, Any] = {"type": "string"}
 CONTENT_TYPE_EXPAND = "application/x-ask-expand"
 CONTENT_TYPE_RETRIEVAL_SET = "application/x-ask-retrieval-set+json"
 CONTENT_TYPE_ANSWER = "application/x-ask-answer"
+CONTENT_TYPE_OWNER_MATCH = "application/x-ask-owner-match+json"
 
 _PENDING_QUEUE = Path("external") / "pending.txt"
 
@@ -155,6 +157,32 @@ def synthesize_key(question: str, retrieval_set_hash: str, profile_hash: str, *,
                     producer_name="life_agent.ask.synthesize",
                     producer_version=SYNTHESIZE_VERSION, producer_config={},
                     schema_version=3, inputs=inputs, content_type=CONTENT_TYPE_ANSWER)
+
+
+def owner_match_key(subject: str, profile_hash: str, *, model: str,
+                    prompt_template: str, engine_version: str,
+                    output_schema: dict[str, Any]) -> StageKey:
+    """Key for one owner-match verdict (D2): is this projected document subject
+    the owner? Keyed on the subject STRING (verdicts are shared across every
+    document naming the same subject) and the profile hash (a ``/tell`` or
+    profile edit invalidates exactly the verdicts). Local model — the profile
+    never leaves the machine and never enters pkm."""
+    inputs = {"profile": profile_hash, "subject": subject}
+    input_hash = _sha256(canonical_json(inputs))
+    cache_key = compute_cache_key(
+        input_hash, "life_agent.ask.owner_match", OWNER_MATCH_VERSION, {},
+        schema_version=3,
+        model_identity={"provider": "ollama", "model": model,
+                        "inference_params": {"temperature": 0.0}},
+        engine_version=engine_version,
+        prompt_template_hash=_sha256(prompt_template),
+        output_schema=output_schema,
+    )
+    return StageKey(cache_key=cache_key, input_hash=input_hash,
+                    producer_name="life_agent.ask.owner_match",
+                    producer_version=OWNER_MATCH_VERSION, producer_config={},
+                    schema_version=3, inputs=inputs,
+                    content_type=CONTENT_TYPE_OWNER_MATCH)
 
 
 # --- file-first cache I/O --------------------------------------------------- #
