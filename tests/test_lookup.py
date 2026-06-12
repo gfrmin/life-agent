@@ -123,6 +123,26 @@ def test_observation_cache_is_per_chunk(migrated_root: Path) -> None:
     assert client.calls == 2  # both replayed
 
 
+def test_extractor_reliability_learns_from_eval_outcomes(tmp_path: Path) -> None:
+    from life_agent.core import outcomes as O
+
+    log = tmp_path / "outcomes.jsonl"
+    assert LK.extractor_reliability(log) == pytest.approx(0.5)  # the wide prior
+    for grade in ("INCORRECT", "INCORRECT", "CORRECT"):
+        O.append(log, O.OutcomeEvent(
+            tx_time="t", run_id="r", question_id="q", claim="v", construct="c",
+            grade=grade, grader="eval_lookup",
+            instrument_identity={"producer_name": "life_agent.ask.lookup_answer"},
+            probability=0.9))
+    # the none-claim grades the posterior, not the instrument: excluded
+    O.append(log, O.OutcomeEvent(
+        tx_time="t", run_id="r", question_id="q", claim="(none of the retrieved)",
+        construct="c", grade="CORRECT", grader="eval_lookup",
+        instrument_identity={"producer_name": "life_agent.ask.lookup_answer"},
+        probability=0.1))
+    assert LK.extractor_reliability(log) == pytest.approx((4 + 1) / (8 + 3))
+
+
 def test_authority_classes() -> None:
     # synthetic placeholder paths, never real corpus locations
     assert authority_for("/x/statement.pdf") == ("document", 0.95)  # PII-OK
