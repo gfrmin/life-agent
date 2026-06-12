@@ -38,6 +38,26 @@ _FTS_TABLE = "artifact_chunks"
 # neither a Unicode letter (\\p{L}) nor a Unicode digit (\\p{N}).
 _FTS_IGNORE = "[^\\p{L}\\p{N}]+"
 
+# SPEC §15.4 source-path currency: among sources sharing a declared
+# current_path, exactly one is path-current — the most recent by
+# (last_seen, first_seen, source_id) descending (deterministic tiebreaks,
+# mirroring §18.10's most-recent-first ordering). Retrieval admits chunks
+# only from path-current sources; superseded path-versions stay catalogued.
+_PATH_CURRENT_CTE = """
+    path_current AS (
+        SELECT source_id FROM (
+            SELECT
+                source_id,
+                row_number() OVER (
+                    PARTITION BY current_path
+                    ORDER BY last_seen DESC, first_seen DESC, source_id DESC
+                ) AS rn
+            FROM sources
+        )
+        WHERE rn = 1
+    )
+"""
+
 
 @dataclass(frozen=True)
 class SearchResult:
@@ -77,6 +97,25 @@ def build_fts_index(conn: duckdb.DuckDBPyConnection) -> None:
     )
 
 
+def count_path_superseded_chunks(conn: duckdb.DuckDBPyConnection) -> int:
+    """How many chunks the §15.4 currency filter excludes from retrieval.
+
+    Read-only; SPEC §14.6 (no hidden state): callers can surface the
+    narrowing instead of having the retrievable corpus shrink silently.
+    """
+    row = conn.execute(
+        f"""
+        WITH {_PATH_CURRENT_CTE}
+        SELECT count(*)
+        FROM {_FTS_TABLE} ac
+        JOIN artifacts a ON ac.artifact_cache_key = a.cache_key
+        JOIN sources s ON a.input_hash = s.source_id
+        WHERE s.source_id NOT IN (SELECT source_id FROM path_current)
+        """
+    ).fetchone()
+    return int(row[0]) if row is not None else 0
+
+
 def search(
     conn: duckdb.DuckDBPyConnection,
     query: str,
@@ -91,6 +130,10 @@ def search(
     Join path: ``artifact_chunks`` → ``artifacts`` (on
     ``artifact_cache_key = cache_key``) → ``sources`` (on
     ``input_hash = source_id``) to resolve the original file path.
+
+    Source-path currency (SPEC §15.4): only chunks from the path-current
+    version of each declared path are returned; superseded path-versions
+    remain catalogued but never surface here.
 
     Args:
         conn: Open DuckDB connection.
@@ -108,6 +151,7 @@ def search(
         # that fail when the outer query has JOIN-expanded rows).
         rows = conn.execute(
             f"""
+            WITH {_PATH_CURRENT_CTE}
             SELECT
                 scored.chunk_text,
                 scored.score,
@@ -129,6 +173,7 @@ def search(
             ) scored
             JOIN artifacts a ON scored.artifact_cache_key = a.cache_key
             JOIN sources s ON a.input_hash = s.source_id
+            JOIN path_current pc ON s.source_id = pc.source_id
             WHERE scored.score IS NOT NULL
             ORDER BY scored.score DESC
             LIMIT ?

@@ -35,27 +35,35 @@ def get_db() -> sqlite3.Connection:
     return conn
 
 
+def create_schema(conn: sqlite3.Connection) -> None:
+    """Create the ``tasks`` projection schema on any connection.
+
+    Single source of the read-model DDL — used by ``init_db`` (the on-disk
+    read-model) and by pure in-memory folds (``tasks.knowledge``)."""
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS tasks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            identity TEXT NOT NULL UNIQUE,
+            user_id INTEGER NOT NULL,
+            text TEXT NOT NULL,
+            list TEXT NOT NULL DEFAULT 'inbox',
+            due_date TEXT,
+            is_today INTEGER DEFAULT 0,
+            origin TEXT NOT NULL DEFAULT 'human',
+            created_at TEXT DEFAULT (datetime('now')),
+            completed_at TEXT
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_user_id ON tasks (user_id)")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_tasks_user_list "
+        "ON tasks (user_id, list) WHERE completed_at IS NULL"
+    )
+
+
 def init_db() -> None:
     with get_db() as conn:
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS tasks (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                identity TEXT NOT NULL UNIQUE,
-                user_id INTEGER NOT NULL,
-                text TEXT NOT NULL,
-                list TEXT NOT NULL DEFAULT 'inbox',
-                due_date TEXT,
-                is_today INTEGER DEFAULT 0,
-                origin TEXT NOT NULL DEFAULT 'human',
-                created_at TEXT DEFAULT (datetime('now')),
-                completed_at TEXT
-            )
-        """)
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_user_id ON tasks (user_id)")
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_tasks_user_list "
-            "ON tasks (user_id, list) WHERE completed_at IS NULL"
-        )
+        create_schema(conn)
 
 
 # --- projection: fold one event / rebuild the whole ledger ---------------------

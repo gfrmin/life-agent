@@ -6,7 +6,14 @@ eval-harness or agent-loop concerns.
 """
 from __future__ import annotations
 
-from life_agent.core.config import GTD_DB_PATH, JARVIS_DB_PATH, KB, PKM_CONFIG, TASKS_LEDGER
+from life_agent.core.config import (
+    GTD_DB_PATH,
+    JARVIS_DB_PATH,
+    KB,
+    PKM_CONFIG,
+    TASKS_LEDGER,
+    TASKS_STATE,
+)
 from life_agent.core.llm import (
     DEFAULT_ANSWER_MODEL,
     TEMPERATURE,
@@ -24,6 +31,7 @@ __all__ = [
     "KB",
     "PKM_CONFIG",
     "TASKS_LEDGER",
+    "TASKS_STATE",
     "TEMPERATURE",
     "LLMResult",
     "SourceCard",

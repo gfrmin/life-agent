@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import hashlib
 import json
 import os
 import re
@@ -46,6 +47,8 @@ import life_agent.core as C
 from life_agent import owner
 from life_agent.core import derivations as D
 from life_agent.core import temporal as T
+from life_agent.tasks import events as ev
+from life_agent.tasks import knowledge
 from pkm.hashing import canonical_json
 
 DEFAULT_K = 8  # matches phase1_answer.py's synthesis-context default
@@ -663,6 +666,88 @@ def run_derive(targets: list[tuple[str, str]]) -> None:
                   f"{result.error_message or result.approval_id}")
 
 
+# --- GTD: the act ledger's knowledge projection, refreshed on demand ------- #
+# system-design.md §5: before a question is answered, if the GTD ledger has
+# moved past its projected state document, re-project and re-ingest it — the
+# degenerate (deterministic, near-zero-cost) case of derive-when-stale, so the
+# decision is simply "always derive". Nothing silent: the outcome is printed
+# from this single-source table (drift-gated in tests/test_ask_gtd_refresh.py).
+REFRESH_NOTES: dict[str, str] = {
+    "refreshed": "gtd state refreshed @ event {n}",
+    "failed": "gtd state refresh failed ({error}) — answering over the corpus as-is",
+}
+
+
+def gtd_stale() -> bool:
+    """Cheap staleness check — ledger bytes vs the stamp in the state doc.
+    No ledger (GTD unused) is never stale; a missing or unstamped doc is."""
+    if not C.TASKS_LEDGER.exists():
+        return False
+    sha = hashlib.sha256(C.TASKS_LEDGER.read_bytes()).hexdigest()
+    try:
+        text = C.TASKS_STATE.read_text(encoding="utf-8")
+    except OSError:
+        return True
+    return knowledge.parse_stamp(text) != (sha, knowledge.RENDER_VERSION)
+
+
+def _ensure_declared(root: Path, state: Path) -> None:
+    """Idempotently declare the state doc in the pkm manifest (SPEC §8.1)."""
+    from pkm.ingest import sources_yaml_path
+
+    manifest = sources_yaml_path(root)
+    data: Any = None
+    if manifest.exists():
+        data = yaml.safe_load(manifest.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        data = {"version": 1, "sources": []}
+    sources = data.setdefault("sources", [])
+    declared = str(state)
+    if any(isinstance(e, dict) and e.get("path") == declared for e in sources):
+        return
+    sources.append({"path": declared, "tags": ["gtd", "tasks"]})
+    manifest.parent.mkdir(parents=True, exist_ok=True)
+    manifest.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+
+
+def _reingest_state(root: Path, state: Path) -> None:
+    """ingest → extract → rebuild-index for the one state document.
+    The porcelain order is load-bearing (interaction contract invariant 3:
+    a chunk pass whose index is stale silently misses new content)."""
+    from pkm.catalogue import open_catalogue
+    from pkm.config import load_config as pkm_load_config
+    from pkm.extract import extract as pkm_extract
+    from pkm.ingest import ingest_sources
+    from pkm.retrieval import build_fts_index
+
+    _ensure_declared(root, state)
+    ingest_sources(root, only_paths=[state])
+    cfg = pkm_load_config(C.PKM_CONFIG)
+    prefix = hashlib.sha256(state.read_bytes()).hexdigest()[:16]
+    pkm_extract(root, cfg, source_prefix=prefix)
+    with open_catalogue(root) as wconn:
+        build_fts_index(wconn)
+
+
+def ensure_gtd_fresh() -> None:
+    """Project + re-ingest the GTD state when stale; quiet no-op when fresh.
+    The CALLER must hold no read-only catalogue connection (a writer and a
+    reader cannot coexist — same contract as run_derive). Fail-open: never
+    raises; the outcome is printed (REFRESH_NOTES), never silent."""
+    if not gtd_stale():
+        return
+    try:
+        events = ev.load(C.TASKS_LEDGER)
+        knowledge.write_state(C.TASKS_LEDGER, C.TASKS_STATE)
+        root = _pkm_root()
+        if root is None:
+            raise FileNotFoundError(f"unresolvable pkm root (config: {C.PKM_CONFIG})")
+        _reingest_state(root, C.TASKS_STATE)
+        print(REFRESH_NOTES["refreshed"].format(n=len(events)))
+    except Exception as e:  # fail-open by contract (mirror run_derive)
+        print(REFRESH_NOTES["failed"].format(error=e))
+
+
 # --- teaching: opportunistically record an authoritative owner fact ------- #
 def remember(fact: str) -> None:
     """Append an owner-told fact ('My name is …') to the owner profile. This is identity
@@ -720,6 +805,20 @@ def repl(conn: duckdb.DuckDBPyConnection, k: int, *, expand: bool = True,
             print()
             continue
         assert p.kind == "ask", p.kind  # parse_line's kind space is closed
+        if gtd_stale():
+            # Same reader/writer dance as /derive: close, refresh, reopen.
+            conn.close()
+            try:
+                ensure_gtd_fresh()
+            finally:
+                try:
+                    conn = connect()
+                except duckdb.Error as e:
+                    if not _is_lock_error(str(e)):
+                        raise
+                    print("corpus locked by extraction — REPL closing; "
+                          "rerun bin/ask-live in a moment")
+                    return
         derive_targets = ask_once(conn, p.question, k, expand=expand,
                                   no_cache=no_cache, since=p.since,
                                   until=p.until, recent=p.recent)
@@ -770,6 +869,11 @@ def main(argv: list[str] | None = None) -> int:
         # best-effort by contract; on any failure the files stay authoritative
         with contextlib.suppress(Exception):
             D.reconcile(root)
+
+    # Demand-led GTD refresh (system-design.md §5), BEFORE the read-only
+    # connection opens: a one-shot question and the REPL's first question both
+    # see fresh act-layer state. Mid-REPL changes are caught per-question.
+    ensure_gtd_fresh()
 
     try:
         conn = connect()
