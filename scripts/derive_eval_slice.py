@@ -20,12 +20,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import ask  # noqa: E402
-from run_eval import load_questions  # noqa: E402
+import ask
+from run_eval import load_questions
 
-from life_agent.core import config as C  # noqa: E402
-from life_agent.core import subject as S  # noqa: E402
-from life_agent.core import temporal as T  # noqa: E402
+from life_agent.core import config as C
+from life_agent.core import subject as S
+from life_agent.core import temporal as T
 
 
 def slice_keys(conn, root, questions: list[dict], k: int) -> list[str]:

@@ -255,13 +255,17 @@ def lookup_claim_rows(q: dict, lk) -> list[dict]:
 def lookup_outcome(q: dict, lk, row: dict, *, run_id: str):
     """One credence-bearing outcome event for one lookup claim — the first events
     proper scoring can consume (probability is set)."""
+    from life_agent.core import lookup as LK
     from life_agent.core import outcomes as O
 
     return O.OutcomeEvent(
         tx_time=O.now_iso(), run_id=run_id, question_id=str(q["id"]),
         claim=str(row["claim"]), construct=str(lk.construct),
         grade="CORRECT" if row["correct"] else "INCORRECT", grader="eval_lookup",
-        instrument_identity={"producer_name": "life_agent.ask.lookup_answer"},
+        # the extract hash pins the EXACT instrument these claims grade (§2): a
+        # prompt change starts a new reliability posterior, never pooling the old
+        instrument_identity={"producer_name": "life_agent.ask.lookup_answer",
+                             "extract_prompt_hash": LK.extract_instrument_hash()},
         lineage_keys=(lk.answer_cache_key,),
         probability=float(row["probability"]),
     )

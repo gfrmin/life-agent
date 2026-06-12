@@ -90,6 +90,15 @@ def test_route_non_lookup_is_none(migrated_root: Path) -> None:
     assert route_question(migrated_root, "summarise my year", client=client) is None
 
 
+def test_prompt_templates_are_single_braced() -> None:
+    # These templates are substituted with .replace(), NOT .format(): a doubled
+    # brace reaches the model verbatim as a malformed JSON example. The 7b extract
+    # model answered found:false on trivially present values until this was fixed
+    # — drift-gated so the defect class cannot silently return.
+    for template in (LK.ROUTE_PROMPT, LK.EXTRACT_PROMPT):
+        assert "{{" not in template and "}}" not in template
+
+
 # --- observe (grounding gate, caching, authority) -----------------------------------------
 
 def test_observe_grounded_extraction(migrated_root: Path) -> None:
@@ -117,6 +126,19 @@ def test_ungrounded_quote_is_indeterminate_and_recorded(migrated_root: Path) -> 
     assert client.calls == 1
 
 
+def test_scrambled_quote_with_present_value_is_grounded(migrated_root: Path) -> None:
+    # RTL PDF extraction scrambles visual order: the chunk reads "<value> : תעודת
+    # זהות" while the model quotes in logical order. The VALUE is verbatim in the
+    # chunk — the gate's anti-hallucination construct holds, so the observation
+    # stands. The number is synthetic (checksum-invalid).
+    chunk = "999999991 :\nתעודת זהות\nאישור יתרה"  # noqa: RUF001 — deliberate RTL fixture
+    client = FakeClient({"found": True, "value": "999999991",
+                         "quote": "תעודת זהות\n999999991"})
+    obs, ind = observe_hits(migrated_root, "tax id?", [_hit("a" * 64, chunk)],
+                            client=client)
+    assert ind == 0 and len(obs) == 1 and obs[0].value_raw == "999999991"
+
+
 def test_not_found_is_indeterminate(migrated_root: Path) -> None:
     client = FakeClient({"found": False})
     obs, ind = observe_hits(migrated_root, "q?", [_hit("b" * 64, "irrelevant")],
@@ -138,18 +160,25 @@ def test_extractor_reliability_learns_from_eval_outcomes(tmp_path: Path) -> None
 
     log = tmp_path / "outcomes.jsonl"
     assert LK.extractor_reliability(log) == pytest.approx(0.5)  # the wide prior
+    identity = {"producer_name": "life_agent.ask.lookup_answer",
+                "extract_prompt_hash": LK.extract_instrument_hash()}
     for grade in ("INCORRECT", "INCORRECT", "CORRECT"):
         O.append(log, O.OutcomeEvent(
             tx_time="t", run_id="r", question_id="q", claim="v", construct="c",
-            grade=grade, grader="eval_lookup",
-            instrument_identity={"producer_name": "life_agent.ask.lookup_answer"},
+            grade=grade, grader="eval_lookup", instrument_identity=identity,
             probability=0.9))
     # the none-claim grades the posterior, not the instrument: excluded
     O.append(log, O.OutcomeEvent(
         tx_time="t", run_id="r", question_id="q", claim="(none of the retrieved)",
         construct="c", grade="CORRECT", grader="eval_lookup",
+        instrument_identity=identity, probability=0.1))
+    # an outcome from a SUPERSEDED instrument (different prompt hash, or none at
+    # all) never conditions the current posterior — §2's exact-identity keying
+    O.append(log, O.OutcomeEvent(
+        tx_time="t", run_id="r", question_id="q", claim="v", construct="c",
+        grade="INCORRECT", grader="eval_lookup",
         instrument_identity={"producer_name": "life_agent.ask.lookup_answer"},
-        probability=0.1))
+        probability=0.9))
     assert LK.extractor_reliability(log) == pytest.approx((4 + 1) / (8 + 3))
 
 

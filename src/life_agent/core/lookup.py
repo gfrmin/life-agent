@@ -70,9 +70,9 @@ historical once set: a birth date, a national ID, the date an event happened.
 QUESTION: {question}
 
 Reply with JSON only:
-{{"lookup": true, "construct": "<3-8 words naming the value asked for>", \
-"time_indexed": true|false}}
-or {{"lookup": false}}
+{"lookup": true, "construct": "<3-8 words naming the value asked for>", \
+"time_indexed": true|false}
+or {"lookup": false}
 """
 
 ROUTE_SCHEMA: dict[str, Any] = {
@@ -93,18 +93,19 @@ QUESTION: {question}
 EXCERPT:
 {chunk}
 
-Reply {{"found": true, ...}} ONLY if the excerpt contains the specific value that
-answers this question — for the right person and the right thing. Strict rules:
+Reply {"found": true, ...} ONLY if the excerpt contains the specific value the
+question asks for. Strict rules:
 - NEVER extract a form label, field name, or heading (e.g. "Any other status:") — only
   an actual filled-in value.
-- If the excerpt shows a value of the right KIND but for a different person, a
-  different account, or a different context than the question asks, reply found false.
-- If you are not confident the value answers the question, reply found false.
+- If the excerpt shows a value of the right KIND but explicitly for a different person,
+  a different account, or a different context than the question asks, reply found false.
+- If no such value is present in the excerpt, reply found false. Report what the
+  excerpt shows — whether the document itself is trustworthy is judged downstream.
 
 If the answering value is present, reply with JSON:
-{{"found": true, "value": "<the value, concise>", \
-"quote": "<verbatim text copied from the excerpt containing the value>"}}
-Otherwise reply: {{"found": false}}
+{"found": true, "value": "<the value, concise>", \
+"quote": "<verbatim text copied from the excerpt containing the value>"}
+Otherwise reply: {"found": false}
 """
 
 EXTRACT_SCHEMA: dict[str, Any] = {
@@ -272,9 +273,16 @@ def _norm_value(value: str) -> str:
     return " ".join(value.split()).casefold()
 
 
-def _grounded(quote: str, chunk: str) -> bool:
-    """Whitespace-normalised verbatim containment (the action_items precedent)."""
-    return " ".join(quote.split()) in " ".join(chunk.split())
+def _grounded(quote: str, value: str, chunk: str) -> bool:
+    """Whitespace-normalised verbatim containment of the quote OR the value (the
+    action_items precedent, widened): the gate ties the observation to the excerpt
+    (anti-hallucination), and must not fail a value that is plainly present just
+    because RTL PDF extraction scrambled the visual order the model quoted in.
+    Either anchor suffices; neither present = ungrounded."""
+    norm_chunk = " ".join(chunk.split())
+    quote_in = bool(quote.strip()) and " ".join(quote.split()) in norm_chunk
+    value_in = bool(value.strip()) and " ".join(value.split()) in norm_chunk
+    return quote_in or value_in
 
 
 def authority_for(origin: str) -> tuple[str, float]:
@@ -291,16 +299,29 @@ def authority_for(origin: str) -> tuple[str, float]:
 _NONE_CLAIM = "(none of the retrieved)"
 
 
+def extract_instrument_hash() -> str:
+    """The extract instrument's identity component that prompt surgery moves — graded
+    outcomes carry it so reliability conditions on the EXACT instrument (§2), never
+    pooling evidence about a superseded prompt into the current one's posterior."""
+    return _sha(EXTRACT_PROMPT)
+
+
 def extractor_reliability(outcomes_path: Path = config.OUTCOMES_LOG) -> float:
     """rho for "this observation's value is the true V": the wide Beta(4,4) prior
     conditioned on the graded evidence — audit outcomes on the extract instrument, and
     the lookup eval's per-candidate claim outcomes (each candidate claim grades one
     observed value against ground truth; the none-claim grades the posterior, not the
-    instrument, and is excluded). The system learns whether to trust its own extractor
-    from its own outcomes log — the §8 loop, closed."""
+    instrument, and is excluded). Only outcomes carrying the CURRENT extract instrument
+    hash condition (§2 — reliability is per exact identity; a prompt change starts the
+    new instrument at the prior, and events predating the hash field stay with their
+    old instrument). The system learns whether to trust its own extractor from its own
+    outcomes log — the §8 loop, closed."""
+    current = extract_instrument_hash()
     correct = 0
     n = 0
     for event in O.read(outcomes_path):
+        if event.instrument_identity.get("extract_prompt_hash") != current:
+            continue
         producer = event.instrument_identity.get("producer_name")
         if event.grader == "audit" and producer == "life_agent.ask.lookup_extract":
             n += 1
@@ -386,17 +407,21 @@ def observe_hits(root: Path, question: str, hits: list[dict[str, Any]], *,
             response = client.complete(prompt, EXTRACT_SCHEMA)
             raw = json.loads(response.raw_text)
             found = bool(raw.get("found")) and bool(str(raw.get("value") or "").strip())
-            quote = str(raw.get("quote") or "")
-            grounded = found and _grounded(quote, chunk)
             parsed = {"format_version": 1, "found": found,
-                      "value": str(raw.get("value") or ""), "quote": quote,
-                      "grounded": grounded}
+                      "value": str(raw.get("value") or ""),
+                      "quote": str(raw.get("quote") or "")}
             D.record(root, key,
                      json.dumps(parsed, sort_keys=True,
                                 ensure_ascii=False).encode("utf-8"),
                      lineage=[{"cache_key": str(hit["artifact_cache_key"]),
                                "role": "source"}])
-        if not (parsed.get("found") and parsed.get("grounded")):
+        # The grounding gate is consumer-side policy over the RAW recorded reply
+        # (the expand/_clean_terms precedent): gate surgery re-gates replayed
+        # records instead of orphaning them. Records predating this carry a
+        # write-time "grounded" field — ignored, recomputed here.
+        if not (parsed.get("found")
+                and _grounded(str(parsed.get("quote") or ""),
+                              str(parsed.get("value") or ""), chunk)):
             indeterminate += 1
             continue
         klass, authority = authority_for(str(hit.get("origin", "")))
