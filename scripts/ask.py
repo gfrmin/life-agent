@@ -46,6 +46,7 @@ import yaml
 import life_agent.core as C
 from life_agent import owner
 from life_agent.core import derivations as D
+from life_agent.core import subject as S
 from life_agent.core import temporal as T
 from life_agent.tasks import events as ev
 from life_agent.tasks import knowledge
@@ -202,6 +203,27 @@ class TemporalReport:
 
 TEMPORAL_LAST: TemporalReport | None = None
 
+# --- subject (D2): the owner filter + the same nothing-vanishes contract --- #
+# A first-person possessive question ("my X") filters hits by projected
+# doc_subject (SPEC §18.13) matched against the owner profile — consumer-side,
+# the profile never enters pkm. Only determinate non-owner subjects and
+# generic documents (templates, blank forms) are excluded, each named; an
+# absent or unclear classification is indeterminate — KEPT and named (the D2
+# gate). The report travels like TEMPORAL_LAST; /derive consumes both.
+SUBJECT_LAST: TemporalReport | None = None
+
+# The trigger: an UNCHAINED first-person possessive. "my X" fires; a
+# relational possessive — "my partner's X" — hands the subject to someone
+# else, where filtering for the owner would exclude exactly the right answer.
+_OWNER_POSSESSIVE = re.compile(
+    r"\b(?:my|mine|the owner'?s)\b(?!\s+\S+['’]s\b)",  # noqa: RUF001 — typographic apostrophe is deliberate
+    re.IGNORECASE)
+
+
+def owner_question(question: str) -> bool:
+    """Pure: does the question ask about the owner's own things?"""
+    return _OWNER_POSSESSIVE.search(question) is not None
+
 
 # The ONE line grammar (docs/interaction-contract.md): identical in the REPL and in
 # one-shot argv. Each entry is (form, meaning, example); the example is parsed by the
@@ -218,7 +240,8 @@ GRAMMAR: tuple[tuple[str, str, str], ...] = (
      "/until 2026-06-01 appointments"),
     ("/tell FACT", "record an authoritative owner fact",
      "/tell My name is Ada Lovelace"),
-    ("/derive", "materialise the doc_dates the last answer named as underived",
+    ("/derive", "materialise the projections (doc_date, doc_subject) the last "
+                 "answer named as underived",
      "/derive"),
     ("/q", "quit (also /quit, /exit, Ctrl-D)",
      "/q"),
@@ -361,6 +384,75 @@ def _apply_temporal_to_hits(
         footer=temporal_footer(view, name_of), targets=targets)
 
 
+def subject_footer(view: S.SubjectView, name_of: dict[str, str]) -> str:
+    """Pure: render the total partition — every retrieved artifact is either
+    admitted, someone else's (named with the subject as written), generic
+    (template/blank — determinately nobody's), subject-unclear (KEPT), or
+    underived (KEPT, with its remedy). Indeterminates are never dropped
+    (the D2 coverage contract)."""
+    def names(keys: list[str]) -> str:
+        return ", ".join(name_of.get(k, k[:12] + "…") for k in keys)
+
+    parts = [f"{len(view.admitted)} admitted"]
+    if view.excluded_other:
+        listed = ", ".join(
+            f"{name_of.get(k, k[:12] + '…')} ({s})"
+            for k, s in view.excluded_other)
+        parts.append(f"{len(view.excluded_other)} someone else's ({listed})")
+    if view.excluded_generic:
+        parts.append(f"{len(view.excluded_generic)} generic/template "
+                     f"({names(view.excluded_generic)})")
+    if view.unclear:
+        parts.append(f"{len(view.unclear)} subject unclear — kept "
+                     f"({names(view.unclear)})")
+    if view.underived:
+        parts.append(f"{len(view.underived)} not yet subject-derived — kept "
+                     f"({names(view.underived)})")
+    footer = "owner filter: " + " · ".join(parts)
+    if view.remedies:
+        footer += ("\n  /derive to materialise, or run:\n    "
+                   + "\n    ".join(view.remedies))
+    return footer
+
+
+def _apply_subject_to_hits(
+    conn: duckdb.DuckDBPyConnection, root: Path | None,
+    hits: list[dict[str, Any]], *, profile: str,
+) -> tuple[list[dict[str, Any]], TemporalReport]:
+    """Project + owner-filter the chunk hits by ARTIFACT subject. Chunks of
+    one artifact share its fate; admitted chunks keep their retrieval order
+    (the filter excludes, it does not rank). Fail-open at every seam, never
+    silently: no pkm root or no profile disables the filter with an explicit
+    notice; a failed owner-match verdict leaves that subject unclear (kept
+    and named in the footer)."""
+    if root is None:
+        return hits, TemporalReport(
+            footer="owner filter UNAVAILABLE (no pkm root) — showing all hits")
+    if not profile:
+        return hits, TemporalReport(
+            footer="owner filter UNAVAILABLE (no owner profile — "
+                   "/tell who you are) — showing all hits")
+    keys = list(dict.fromkeys(h["artifact_cache_key"] for h in hits))
+    shits = S.project_subjects(conn, root, keys)
+    verdicts: dict[str, str] = {}
+    for subj in sorted({h.subject for h in shits
+                        if h.state == "named" and h.subject}):
+        try:
+            verdicts[subj] = S.owner_verdict(root, subj, profile)
+        except Exception as e:  # fail-open per subject: unclear, kept, named
+            print(f"  owner match failed for {subj!r} ({e}) — kept as unclear")
+    view = S.apply_owner_filter(shits, verdicts)
+    name_of = {h["artifact_cache_key"]: Path(h["origin"]).name for h in hits}
+    admitted = set(view.admitted)
+    admitted_hits = [h for h in hits if h["artifact_cache_key"] in admitted]
+    targets = []
+    for remedy in view.remedies:  # "pkm derive <decl> --input <ck>"
+        words = remedy.split()
+        targets.append((words[2], words[4]))
+    return admitted_hits, TemporalReport(
+        footer=subject_footer(view, name_of), targets=targets)
+
+
 def build_query(question: str, terms: str) -> str:
     """Pure: combine the raw question with expansion terms into one disjunctive BM25
     query. The original words are ALWAYS retained, so expansion can only *add* recall —
@@ -454,8 +546,9 @@ def answer(conn: duckdb.DuckDBPyConnection, question: str,
     retrieval-set content hash, owner-profile hash). ``no_cache`` recomputes every stage
     (recording stays write-once, so existing derivations stand). Caching is fail-open.
     Returns (answer_text, cards, {card_n: score})."""
-    global TEMPORAL_LAST
+    global TEMPORAL_LAST, SUBJECT_LAST
     TEMPORAL_LAST = None
+    SUBJECT_LAST = None
     root = _pkm_root()
     profile = owner.load_profile()
     terms = _expand_terms(question, root=root, no_cache=no_cache) if expand else ""
@@ -489,6 +582,17 @@ def answer(conn: duckdb.DuckDBPyConnection, question: str,
         hits, report = _apply_temporal_to_hits(
             conn, root, hits, since=since, until=until, recent=recent)
         TEMPORAL_LAST = report
+
+    # subject (D2): owner-filter the (possibly already date-filtered) hits by
+    # projected doc_subject when the question is an unchained first-person
+    # possessive. Same placement reasoning as temporal: BEFORE cards and the
+    # synthesize key, so the admitted set IS the evidence. The predicates
+    # compose — each footer names its own partition over what reached it; the
+    # full retrieval set is already recorded above.
+    if owner_question(question):
+        hits, sreport = _apply_subject_to_hits(conn, root, hits,
+                                               profile=profile)
+        SUBJECT_LAST = sreport
 
     pairs = _cards_from_set(hits)
     cards = [c for c, _ in pairs]
@@ -618,22 +722,23 @@ def ask_once(conn: duckdb.DuckDBPyConnection, question: str, k: int,
              *, expand: bool = True, no_cache: bool = False,
              since: _date | None = None, until: _date | None = None,
              recent: bool = False) -> list[tuple[str, str]]:
-    """Answer + render + capture. Returns the temporal report's derive targets
-    (empty when untemporal) so the REPL can offer `/derive`."""
+    """Answer + render + capture. Returns the derive targets the answer's
+    reports named as underived (doc_date and doc_subject alike — empty when
+    neither filter ran) so the REPL can offer `/derive`."""
     text, cards, scores = answer(conn, question, k, expand=expand,
                                  no_cache=no_cache, since=since, until=until,
                                  recent=recent)
     audit = guard.audit(text, cards)  # pure and cheap — recomputed, never cached
-    report = TEMPORAL_LAST
+    reports = [r for r in (TEMPORAL_LAST, SUBJECT_LAST) if r is not None]
     render(text, cards, scores, audit,
-           footer=report.footer if report is not None else "")
+           footer="\n".join(r.footer for r in reports if r.footer))
     capture(question, text, cards, scores, audit)
-    return report.targets if report is not None else []
+    return [t for r in reports for t in r.targets]
 
 
 # --- /derive: explicit, demand-driven materialisation ---------------------- #
 def run_derive(targets: list[tuple[str, str]]) -> None:
-    """Materialise the named doc_date targets via pkm.derive (SPEC §18.11).
+    """Materialise the named projection targets via pkm.derive (SPEC §18.11).
     The CALLER must have closed any read-only catalogue connection first — a
     reader and a writer cannot coexist on the DuckDB file. Fail-open: a held
     lock (an extraction running) prints and returns; nothing crashes the REPL."""

@@ -1,0 +1,18 @@
+name: doc_subject_email
+version: "0.1.0"
+producer_class: pkm.transforms.doc_subject.DocSubjectProducer
+model:
+  provider: ollama
+  model: qwen2.5:7b-instruct
+  inference_params: {temperature: 0}
+prompt:
+  name: doc_subject_v1
+  file: prompts/doc_subject_v1.txt
+output_schema:
+  name: doc_subject_v1
+  file: schemas/doc_subject_v1.json
+policies: [cost_gate]
+input:
+  producer: email
+  role: source_text
+  required_status: success

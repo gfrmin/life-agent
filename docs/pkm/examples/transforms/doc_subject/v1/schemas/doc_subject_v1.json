@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["format_version", "subject_kind", "subject"],
+  "properties": {
+    "format_version": {"const": 1},
+    "subject_kind": {
+      "type": "string",
+      "enum": ["person", "organisation", "generic"]
+    },
+    "subject": {"type": ["string", "null"]}
+  }
+}
