@@ -51,6 +51,9 @@ EXPAND_VERSION = "1"
 RETRIEVE_VERSION = "1"
 SYNTHESIZE_VERSION = "1"
 OWNER_MATCH_VERSION = "1"
+LOOKUP_ROUTE_VERSION = "1"
+LOOKUP_EXTRACT_VERSION = "1"
+LOOKUP_ANSWER_VERSION = "1"
 
 # Free-text output contract for both LLM stages (schema-3 keys require an output schema).
 TEXT_OUTPUT_SCHEMA: dict[str, Any] = {"type": "string"}
@@ -61,6 +64,9 @@ CONTENT_TYPE_EXPAND = "application/x-ask-expand"
 CONTENT_TYPE_RETRIEVAL_SET = "application/x-ask-retrieval-set+json"
 CONTENT_TYPE_ANSWER = "application/x-ask-answer"
 CONTENT_TYPE_OWNER_MATCH = "application/x-ask-owner-match+json"
+CONTENT_TYPE_LOOKUP_ROUTE = "application/x-ask-lookup-route+json"
+CONTENT_TYPE_LOOKUP_OBSERVATION = "application/x-ask-lookup-observation+json"
+CONTENT_TYPE_LOOKUP_ANSWER = "application/x-ask-lookup-answer+json"
 
 _PENDING_QUEUE = Path("external") / "pending.txt"
 
@@ -183,6 +189,75 @@ def owner_match_key(subject: str, profile_hash: str, *, model: str,
                     producer_version=OWNER_MATCH_VERSION, producer_config={},
                     schema_version=3, inputs=inputs,
                     content_type=CONTENT_TYPE_OWNER_MATCH)
+
+
+def lookup_route_key(question: str, *, model: str, prompt_template: str,
+                     engine_version: str, output_schema: dict[str, Any]) -> StageKey:
+    """Key for one lookup-route verdict (foundations §4.1): is this question a typed
+    point-fact lookup? Local model, cached per question — a confusion-matrix-class
+    instrument whose misroutes fall to the narrative path (§9 no-hard-zeros)."""
+    inputs = {"question": question}
+    input_hash = _sha256(canonical_json(inputs))
+    cache_key = compute_cache_key(
+        input_hash, "life_agent.ask.lookup_route", LOOKUP_ROUTE_VERSION, {},
+        schema_version=3,
+        model_identity={"provider": "ollama", "model": model,
+                        "inference_params": {"temperature": 0.0}},
+        engine_version=engine_version,
+        prompt_template_hash=_sha256(prompt_template),
+        output_schema=output_schema,
+    )
+    return StageKey(cache_key=cache_key, input_hash=input_hash,
+                    producer_name="life_agent.ask.lookup_route",
+                    producer_version=LOOKUP_ROUTE_VERSION, producer_config={},
+                    schema_version=3, inputs=inputs,
+                    content_type=CONTENT_TYPE_LOOKUP_ROUTE)
+
+
+def lookup_extract_key(question: str, chunk_sha: str, *, model: str,
+                       prompt_template: str, engine_version: str,
+                       output_schema: dict[str, Any]) -> StageKey:
+    """Key for one question-parameterised grounded extraction (foundations §4.1): the
+    per-hit instrument observation. life_agent-side because the prompt binds the
+    question — pkm transforms stay question-free. Keyed on (question, chunk content),
+    so the same evidence answers the same question from cache forever."""
+    inputs = {"chunk": chunk_sha, "question": question}
+    input_hash = _sha256(canonical_json(inputs))
+    cache_key = compute_cache_key(
+        input_hash, "life_agent.ask.lookup_extract", LOOKUP_EXTRACT_VERSION, {},
+        schema_version=3,
+        model_identity={"provider": "ollama", "model": model,
+                        "inference_params": {"temperature": 0.0}},
+        engine_version=engine_version,
+        prompt_template_hash=_sha256(prompt_template),
+        output_schema=output_schema,
+    )
+    return StageKey(cache_key=cache_key, input_hash=input_hash,
+                    producer_name="life_agent.ask.lookup_extract",
+                    producer_version=LOOKUP_EXTRACT_VERSION, producer_config={},
+                    schema_version=3, inputs=inputs,
+                    content_type=CONTENT_TYPE_LOOKUP_OBSERVATION)
+
+
+def lookup_answer_key(question: str, observations_hash: str,
+                      utility_fold_version: str,
+                      params: dict[str, Any]) -> StageKey:
+    """Key for the lookup family's answer artifact (the claim set + posterior +
+    decision): deterministic given the observations, the utility fold, and the stated
+    channel parameters (schema-1 — no model identity; the models live upstream in the
+    observation keys this artifact's lineage names)."""
+    inputs = {"observations": observations_hash, "question": question,
+              "utility_fold": utility_fold_version}
+    input_hash = _sha256(canonical_json(inputs))
+    cache_key = compute_cache_key(
+        input_hash, "life_agent.ask.lookup_answer", LOOKUP_ANSWER_VERSION, params,
+        schema_version=1,
+    )
+    return StageKey(cache_key=cache_key, input_hash=input_hash,
+                    producer_name="life_agent.ask.lookup_answer",
+                    producer_version=LOOKUP_ANSWER_VERSION, producer_config=params,
+                    schema_version=1, inputs=inputs,
+                    content_type=CONTENT_TYPE_LOOKUP_ANSWER)
 
 
 # --- file-first cache I/O --------------------------------------------------- #
