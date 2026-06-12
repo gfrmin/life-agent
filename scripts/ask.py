@@ -203,6 +203,12 @@ class TemporalReport:
 
 TEMPORAL_LAST: TemporalReport | None = None
 
+# The last answer's §18.9 stage cache keys ({"retrieve": ..., "synthesize": ...}; absent
+# entries mean the stage never keyed — e.g. no synthesize on an abstention). Travels like
+# TEMPORAL_LAST so answer()'s public 3-tuple stays unchanged; the eval harness reads it
+# for outcome lineage attribution (bayesian-foundations §8 — the outcomes log).
+STAGES_LAST: dict[str, str] = {}
+
 # --- subject (D2): the owner filter + the same nothing-vanishes contract --- #
 # A first-person possessive question ("my X") filters hits by projected
 # doc_subject (SPEC §18.13) matched against the owner profile — consumer-side,
@@ -546,9 +552,10 @@ def answer(conn: duckdb.DuckDBPyConnection, question: str,
     retrieval-set content hash, owner-profile hash). ``no_cache`` recomputes every stage
     (recording stays write-once, so existing derivations stand). Caching is fail-open.
     Returns (answer_text, cards, {card_n: score})."""
-    global TEMPORAL_LAST, SUBJECT_LAST
+    global TEMPORAL_LAST, SUBJECT_LAST, STAGES_LAST
     TEMPORAL_LAST = None
     SUBJECT_LAST = None
+    STAGES_LAST = {}
     root = _pkm_root()
     profile = owner.load_profile()
     terms = _expand_terms(question, root=root, no_cache=no_cache) if expand else ""
@@ -559,6 +566,8 @@ def answer(conn: duckdb.DuckDBPyConnection, question: str,
     # retrieve — deterministic given the corpus state, so keyed on its digest
     digest = _corpus_digest(conn) if root is not None else None
     rkey = D.retrieve_key(query, digest, k=k) if digest is not None else None
+    if rkey is not None:
+        STAGES_LAST["retrieve"] = rkey.cache_key
     hits: list[dict[str, Any]] | None = None
     if root is not None and rkey is not None and not no_cache:
         cached = D.lookup(root, rkey.cache_key)
@@ -608,6 +617,7 @@ def answer(conn: duckdb.DuckDBPyConnection, question: str,
                             D.content_hash(profile.encode("utf-8")),
                             model=C.DEFAULT_ANSWER_MODEL, prompt_template=ANSWER_SYSTEM,
                             temperature=C.TEMPERATURE, max_tokens=600)
+    STAGES_LAST["synthesize"] = skey.cache_key
     if root is not None and not no_cache:
         cached = D.lookup(root, skey.cache_key)
         if cached is not None:

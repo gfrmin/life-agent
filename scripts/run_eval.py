@@ -27,6 +27,14 @@ The synthesis path inherits the ask derivation cache (pkm SPEC §18.9): a re-run
 unchanged corpus replays every answer from cache (only judge calls spend). Per-stage hit/miss
 counters land in the report; --fresh forces recomputation (recording stays write-once).
 
+Every graded question additionally appends one outcome event to the calibration log
+($LIFE_AGENT_KB/calibration/outcomes.jsonl — bayesian-foundations §8, the third evidence
+stream; append-only, never backfilled; --no-outcomes for dry runs). Retrieval verdicts
+grade the selection channel; synthesis verdicts grade the monolithic answer instrument,
+with the answer's §18.9 stage cache keys as lineage. No probability is asserted by the
+current pipeline, so events are logged for attribution and excluded from proper scoring
+until Ask v0 (slice 2) asserts credences.
+
 Usage (run in this monorepo's env for pkm.retrieval + DuckDB):
     uv run --project . python scripts/run_eval.py [--config PATH] [--k N] \
         [--rebuild-index] [--synthesis] [--fresh]
@@ -149,6 +157,82 @@ def grade_retrieval(conn, q: dict, k: int) -> dict:
     }
 
 
+# --- outcome events (bayesian-foundations §8: the calibration log) ----------------------
+# Pure builders mapping graded rows to OutcomeEvents (unit-tested without IO). The grade
+# vocabularies are validated at construction against life_agent.core.outcomes.GRADERS —
+# an unknown verdict is a loud error here, never a silent new category in the log.
+
+def synthesis_grade_label(row: dict) -> str:
+    """Pure: one closed grade from the synthesis row's verdict booleans.
+
+    Precedence: HALLUCINATED > ABSTAINED_OK (unanswerable, honestly declined) > PASS >
+    WEAK (answerable, neither grounded nor fabricated)."""
+    if row["hallucinated"]:
+        return "HALLUCINATED"
+    if not row["answerable"] and row["abstained_correctly"]:
+        return "ABSTAINED_OK"
+    if row["synthesis_pass"]:
+        return "PASS"
+    return "WEAK"
+
+
+def retrieval_outcome(r: dict, q: dict, *, k: int, run_id: str):
+    """One outcome event from a retrieval-grader row: the selection channel (M2)
+    graded — was the true value in the admitted evidence? ABSENT_* grades record
+    coverage facts, not instrument errors; the fold differentiates by grade."""
+    from life_agent.core import outcomes as O
+
+    return O.OutcomeEvent(
+        tx_time=O.now_iso(), run_id=run_id, question_id=str(r["id"]),
+        claim=q.get("answer") or "(none — known-unanswerable)",
+        construct="selection", grade=r["verdict"], grader="eval_retrieval",
+        instrument_identity={"producer_name": "pkm.retrieval.search",
+                             "producer_config": {"k": k,
+                                                 "queries": "union(search_queries)"}},
+    )
+
+
+def synthesis_outcome(row: dict, *, run_id: str):
+    """One outcome event from a synthesis-grader row: the monolithic answer instrument
+    graded end-to-end. Lineage is the answer's §18.9 stage cache keys (captured from
+    ask.STAGES_LAST by synthesis_grade); the synthesize key pins the exact instrument
+    identity — the dict here is the grouping identity, not a duplicate of every key
+    component."""
+    from life_agent.core import derivations as D
+    from life_agent.core import outcomes as O
+    from life_agent.core.llm import DEFAULT_ANSWER_MODEL
+
+    return O.OutcomeEvent(
+        tx_time=O.now_iso(), run_id=run_id, question_id=str(row["id"]),
+        claim=row["answer"],
+        construct="grounded-answer", grade=synthesis_grade_label(row),
+        grader="eval_synthesis",
+        instrument_identity={"producer_name": "life_agent.ask.synthesize",
+                             "producer_version": D.SYNTHESIZE_VERSION,
+                             "engine_version": D.ENGINE_VERSION,
+                             "model": DEFAULT_ANSWER_MODEL},
+        lineage_keys=tuple(row.get("lineage_keys", ())),
+    )
+
+
+def _append_outcomes(events: list, log_path: Path | None = None) -> Path:
+    """Append events to the calibration log (durable, append-only) and report scoring
+    when any event asserted a probability (none do until Ask v0 slice 2)."""
+    from life_agent.core import OUTCOMES_LOG
+    from life_agent.core import outcomes as O
+
+    log = log_path or OUTCOMES_LOG
+    for e in events:
+        O.append(log, e)
+    print(f"Outcomes: {len(events)} appended → {log}")
+    pairs = O.scored_pairs(events)
+    if pairs:
+        s = O.summarize_scores(pairs)
+        print(f"  proper scores: n={s.n} mean_log={s.mean_log:.4f} "
+              f"mean_brier={s.mean_brier:.4f}")
+    return log
+
+
 # --- synthesis grader (end-to-end: the advertisable hallucination-rate number) ----------
 # Grades the PRODUCTION answer path (ask.answer) with two instruments: a deterministic
 # citation audit (citation_guard, no LLM) + a single-answer cross-provider LLM judge
@@ -241,6 +325,9 @@ def synthesis_grade(conn, q: dict, k: int, *, fresh: bool = False) -> dict:
     from blind_judge import _rubric_text, modal
 
     text, cards, _ = ask.answer(conn, q["question"], k, no_cache=fresh)
+    # §18.9 stage cache keys of THIS answer (outcome lineage; empty on the pre-key paths)
+    lineage_keys = tuple(ask.STAGES_LAST[s] for s in ("retrieve", "synthesize")
+                         if s in ask.STAGES_LAST)
     sources = [{"n": c.n, "text": c.text} for c in cards]
     audit = citation_guard.audit(text, cards)
     rubric = _rubric_text()
@@ -265,7 +352,8 @@ def synthesis_grade(conn, q: dict, k: int, *, fresh: bool = False) -> dict:
     return {
         "id": q["id"], "question": q["question"], "answerable": answerable,
         "faithfulness": f_modal, "citation_fidelity": c_modal, "structural_ok": audit.ok,
-        "answer": text[:140].replace("\n", " "), "served": sorted(served), **verdict,
+        "answer": text[:140].replace("\n", " "), "served": sorted(served),
+        "lineage_keys": lineage_keys, **verdict,
     }
 
 
@@ -378,6 +466,12 @@ def main() -> int:
         help="bypass the ask derivation cache: recompute every answer "
              "(recording stays write-once — existing derivations stand)",
     )
+    parser.add_argument(
+        "--no-outcomes", action="store_true",
+        help="skip appending graded outcomes to the calibration log "
+             "($LIFE_AGENT_KB/calibration/outcomes.jsonl) — dry runs only; the log "
+             "is append-only evidence and cannot be backfilled",
+    )
     args = parser.parse_args()
 
     import duckdb
@@ -428,6 +522,10 @@ def main() -> int:
               f"abstention-honesty={rates['abstention_honesty']}")
         if (cl := _cache_line(cache)):
             print(f"  {cl}")
+
+        if not args.no_outcomes:
+            run_id = f"eval-synthesis-{datetime.now().strftime('%Y%m%dT%H%M%S')}"
+            _append_outcomes([synthesis_outcome(row, run_id=run_id) for row in rows])
         return 0 if (rates["hallucination_rate"] or 0.0) == 0.0 else 1
 
     print(f"Running answer-grounded eval (k={args.k}) over {len(questions)} questions …")
@@ -440,6 +538,11 @@ def main() -> int:
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(report, encoding="utf-8")
     print(f"\nReport written to {out}\n")
+
+    if not args.no_outcomes:
+        run_id = f"eval-retrieval-{datetime.now().strftime('%Y%m%dT%H%M%S')}"
+        _append_outcomes([retrieval_outcome(r, q, k=args.k, run_id=run_id)
+                          for r, q in zip(results, questions, strict=True)])
 
     # stdout summary
     counts = Counter(r["verdict"] for r in results)

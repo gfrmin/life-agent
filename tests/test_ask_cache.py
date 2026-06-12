@@ -145,6 +145,25 @@ def test_abstention_records_no_synthesis_derivation(h: Harness, tmp_path: Path) 
     assert producers == {"life_agent.ask.expand", "life_agent.ask.retrieve"}
 
 
+# --- STAGES_LAST (outcome lineage — bayesian-foundations §8) ------------------ #
+
+def test_stages_last_exposes_this_answers_stage_keys(h: Harness) -> None:
+    _ask()
+    first = dict(ask.STAGES_LAST)
+    assert set(first) == {"retrieve", "synthesize"}
+    _ask()  # replay: the same derivation, so the same keys (hit or miss alike)
+    assert first == ask.STAGES_LAST
+
+
+def test_stages_last_has_no_synthesize_key_on_abstention(h: Harness) -> None:
+    h.hits = [{**HIT, "score": 1.0}]  # below the relevance floor
+    text, _, _ = _ask()
+    assert text == ask.ABSTENTION
+    # a refusal is not an answer: no synthesize derivation, so no synthesize key
+    assert "synthesize" not in ask.STAGES_LAST
+    assert "retrieve" in ask.STAGES_LAST
+
+
 # --- --no-cache and fail-open ------------------------------------------------ #
 
 def test_no_cache_recomputes_but_never_overwrites(h: Harness) -> None:
