@@ -8,12 +8,11 @@
 > the stage where that evidence first exists. The §13 governance deltas are applied; the
 > build slices are unblocked.
 >
-> **Amendment in confer (2026-06-12, owner-directed): §4.4 and §10 — utility as
-> inference, one utility.** The utility function becomes a posterior learned from the
-> owner's behaviour (elicitation demoted to evidence), and metareasoning is denominated
-> in that one utility — the agent has none of its own. Drafted below; §14 records the
-> override; the pixel6 pass and owner approval gate the slice-2 build. The rest of the
-> document stands adopted.
+> **Amendment (2026-06-12, owner-directed; conferred same day, residuals folded — §14):
+> §4.4 and §10 — utility as inference, one utility.** The utility function becomes a
+> posterior learned from the owner's behaviour (elicitation demoted to evidence), and
+> metareasoning is denominated in that one utility — the agent has none of its own.
+> Owner approval gates the slice-2 build.
 > This document is the deliberation record for an expensive-to-reverse choice: the
 > probabilistic semantics of the knowledge layer. It composes with
 > [`system-design.md`](./system-design.md) (the L0–L4 loop) and
@@ -66,11 +65,11 @@ invariant this document actually enforces is: **no action enters the answer path
 set without an error model — possibly a maximally wide one.** The remedy for a tempting
 shortcut is never prohibition but pricing: give it the widest stated prior and let EU
 decide (the same move as §9's no-hard-zeros rule). One dependence named now, while it is
-free: this invariant keeps EU well-defined only under **bounded utilities** — true in
-v0 by construction (§4.4: gauge-pinned, decisions taken under the posterior mean, which
-is finite); if stage 7's goals faculty (§12) introduces unbounded utilities, a maximally
-wide error model no longer yields a finite, comparable EU, and the invariant must be
-revisited together with it.
+free: this invariant keeps EU well-defined only under **bounded utilities** — discharged
+in v0 by construction (§4.4: the grid-discretised utility posterior bounds U outright);
+if stage 7's goals faculty (§12) introduces unbounded utilities, a maximally wide error
+model no longer yields a finite, comparable EU, and the invariant must be revisited
+together with it.
 
 ## 1. The generative model, and the four named moves
 
@@ -320,11 +319,27 @@ exactly where the agent's action sets stop resembling the owner's history.)
 expected utility under utility uncertainty collapses to EU under the posterior mean:
 max_a E_U[EU_a(U)] = max_a EU_a(Ū). Posterior *width* does not make a myopic decision
 cautious — claiming it does would smuggle in a non-vNM risk posture over U, declined.
-Where width genuinely matters, exactly: (i) the **VOI of preference evidence** — asking
-the owner about his preferences is an action priced by the posterior's width; (ii) the
-**sequential option value** of learning U (the governor's territory, §12 stage 6);
-(iii) the **gate** (§8 — adoption integrates over P(U)). v0 caution comes from
-conservative prior *means*, stated as such.
+Where width genuinely matters, exactly: (i) the **value of learning U**, which is
+dominantly *sequential* — a preference answer conditions every future decision, so its
+worth is priced by the governor (§12 stage 6), never by any one response; (ii) the
+**gate** (§8 — adoption integrates over P(U)). v0 caution comes from conservative prior
+*means*, stated as such.
+
+**Utility learning is passive until the governor — a stated action-set coarsening.**
+The §3 response set contains ask-clarify *about V*; it deliberately does not contain
+ask-about-U. Precision about why, because the obvious argument is wrong: the collapse
+theorem does *not* zero the myopic VOI of a preference-ask — ask-then-decide is
+available within one episode, and E_answer[max_a EU_a(Ū_answer)] ≥ max_a EU_a(Ū),
+strictly whenever an answer could flip the action. The honest grounds are different:
+(a) a preference answer's value is overwhelmingly sequential — it is shared across all
+future decisions — so pricing it inside one response *misprices* it, and correct
+pricing needs the governor's horizon; (b) U-width is rarely pivotal for a single lookup
+(V-width is — that is why the question was asked), so the myopic component alone seldom
+clears λ_int. Excluding ask-about-U from the myopic action set is therefore a **named
+approximation** (an action-set coarsening, per §0's own rule), revisited when the
+governor lands. Until then utility learning is **passive only**: streams 2–6 as
+behaviour arrives, plus owner-initiated elicitation (stream 1) — which is also why the
+verdict-stream evidence rate is the right §14 worry.
 
 **Gauge.** Behaviour identifies utility only up to positive affine transform, so two
 pins are convention, never estimate: u(correct report) = +1, u(abstain) = 0. The
@@ -358,15 +373,23 @@ observation model with an error model, like every other edge):
 All are discrete-choice (random-utility) observations, and the conditioning route exists
 in the skin today: grid-discretised latents (a product of categoricals) conditioned
 through `tabular_log_density` kernels, `plackett_luce` where the observation is a choice
-among ranked options — no new Julia.
+among ranked options — no new Julia. **A grid is a truncation**, so the soft-sign claim
+above is stated exactly: no hard zero *within* bounds chosen wide enough that endpoint
+mass stays negligible, with endpoint mass monitored — mass piling at an edge means the
+grid is clipping the posterior, and the remedy is widening, never renormalising. The
+finite grid is also what *discharges* §0's bounded-utility dependence: U is bounded by
+construction, not by assertion.
 
 **Identification, honestly.** The **preference-evidence selection channel** is M2 on
 this stream: the owner reacts only to what the policy chose to surface — named now,
-carried formally when the data warrants. τ confounds noise with preference; corrections
-are partially observed (he corrects the errors he *sees*); preferences drift and depend
-on context — non-stationarity and context covariates are §12 stage 7's, with the
-trigger stated: systematic disagreement between the posterior's predictions and fresh
-behaviour.
+carried formally when the data warrants. **τ and U are non-identifiable from choice
+data in principle** (Armstrong–Mindermann): no volume of behaviour separates "he
+prefers this" from "he errs this way" — the hierarchical τ-prior does the separating,
+permanently, so that prior does load-bearing work forever (the no-hard-zeros humility,
+lifted to the values layer). Corrections are partially observed (he corrects the errors
+he *sees*); preferences drift and depend on context — non-stationarity and context
+covariates are §12 stage 7's, with the trigger stated: systematic disagreement between
+the posterior's predictions and fresh behaviour.
 
 **Resource arguments.** Money, latency, and the owner's attention are *arguments of
 this one utility function* — there is no second, agent-owned objective that values them
@@ -620,7 +643,12 @@ distinctions, each load-bearing:
   owner — never split the difference. A drifted proxy is Goodhart on the cost model
   (the metareasoning-level twin of an overconfident posterior); in this document's own
   terms it is an edge with an error model, graded against outcomes like every other
-  (§2, §8).
+  (§2, §8). One more honesty, named like its world-side analogue: the proxy's grading
+  *reference* is the λ_int/κ_att posterior, not an observable — it inherits that
+  posterior's miscalibration, and proxy-vs-posterior grading cannot catch
+  posterior-vs-owner drift. The cost proxy is only as good as the utility posterior it
+  approximates; the owner-side graders (§8 grader 3 and the §4.4 choice streams) are
+  what move the reference itself.
 - **The regress terminates without an agent utility.** Deliberating about whether to
   deliberate is cut by amortisation: compile an approximately bounded-optimal policy
   offline, query it online — and the offline training objective is *still the owner's
@@ -795,6 +823,21 @@ as an instrument, the amortisation cut of the regress, the stage-6 second-master
 mode). Resolved by this amendment: the open question on the gate's table range — the
 range *is* P(U) (§8). New unbackfillable stream declared: the decision log (§8).
 
+**The amendment confer (2026-06-12) — findings and dispositions.** Four residuals on
+the new material, all folded: (1) the myopic action set must exclude ask-about-U —
+ACCEPTED as a stated action-set coarsening (§4.4), with the reviewer's lemma corrected
+in place: the collapse theorem does *not* zero the myopic VOI of ask-then-decide
+(E[max] ≥ max E, strictly when an answer could flip the action); the exclusion stands
+on sequential dominance and the rarely-pivotal-per-lookup argument instead, and
+pre-governor utility learning is declared **passive only**. (2) τ/U non-identifiability
+is in-principle, not small-n — ACCEPTED (Armstrong–Mindermann); the ledger entry now
+measures prior adequacy, never data sufficiency. (3) the grid is a hard truncation
+contra the soft-sign claim — ACCEPTED; stated exactly (bounds wide, endpoint mass
+monitored, widen never renormalise), and noted as what discharges §0's bounded-utility
+dependence by construction. (4) the cost proxy's grading reference is the utility
+posterior, not ground truth — ACCEPTED and named (§10): the proxy inherits the
+posterior's miscalibration; the owner-side graders move the reference itself.
+
 **Counterarguments, recorded with answers:**
 
 - *"This is confidence decoration on a working pipeline — complexity without new
@@ -841,9 +884,12 @@ on this list. Answers land here by amendment, citing their evidence.
   "range of plausible tables" is the utility posterior P(U) itself; its width is
   evidence-driven, not a stated band. (Evidence: the owner's utility-as-inference
   directive; the §14 override record.)
-- **τ identifiability (§4.4).** Unknown: whether the rationality temperature separates
-  from the utility latents at realistic data volumes (noise vs preference). *Decided by*
-  posterior correlation diagnostics on the choice-evidence fold. *First evidence:*
+- **τ-prior adequacy (§4.4).** τ and U are non-identifiable from choice data *in
+  principle* (Armstrong–Mindermann) — no data volume separates them; the hierarchical
+  τ-prior does the separating, permanently. The unknown is therefore whether that prior
+  does *defensible* work, never whether data suffices. *Decided by* prior-sensitivity
+  analysis (vary the τ-prior, measure how far the utility posterior moves), with
+  posterior-correlation diagnostics read as prior-adequacy measures. *First evidence:*
   stage 1 (decision log + verdict joins).
 - **The preference-evidence selection channel (§4.4).** Unknown: how much the policy's
   own choices bias which preference evidence arrives (M2 on this stream), and when the
