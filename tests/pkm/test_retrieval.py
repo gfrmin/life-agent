@@ -155,6 +155,176 @@ def test_search_result_has_provenance(migrated_root: Path) -> None:
     assert r.artifact_cache_key == "b" * 64
 
 
+# ---------------------------------------------------------------------------
+# Source-path currency (SPEC §15.4)
+# ---------------------------------------------------------------------------
+
+
+def _seed_path_version(
+    migrated_root: Path,
+    *,
+    source_id: str,
+    path: str,
+    seen: str,
+    cache_key: str | None,
+    chunks: list[str],
+) -> None:
+    """Seed one ingested version of a declared path (source → artifact → chunks).
+
+    ``cache_key=None`` seeds the source row only — a version whose extraction
+    has not produced chunks yet (§15.4 content-currency).
+    """
+    with open_catalogue(migrated_root) as conn:
+        conn.execute(
+            "INSERT INTO sources (source_id, current_path, first_seen, "
+            "last_seen, size_bytes) VALUES (?, ?, CAST(? AS TIMESTAMP), "
+            "CAST(? AS TIMESTAMP), 0)",
+            [source_id, path, seen, seen],
+        )
+        if cache_key is None:
+            return
+        conn.execute(
+            """
+            INSERT INTO artifacts
+                (cache_key, input_hash, producer_name, producer_version,
+                 producer_config_hash, status, produced_at, content_type,
+                 content_path)
+            VALUES (?, ?, 'pandoc', '3.6', 'fakehash', 'success',
+                    current_timestamp, 'text/plain', '/dev/null')
+            """,
+            [cache_key, source_id],
+        )
+        conn.executemany(
+            "INSERT INTO artifact_chunks "
+            "(artifact_cache_key, chunk_index, chunk_text, source_origin, chunk_id) "
+            "VALUES (?, ?, ?, 'test', nextval('seq_chunk_id'))",
+            [(cache_key, i, text) for i, text in enumerate(chunks)],
+        )
+
+
+def test_path_superseded_version_excluded(migrated_root: Path) -> None:
+    """Two ingested versions of one declared path: only the newest is retrievable.
+
+    SPEC §15.4 — the superseded version's chunks stay catalogued but never
+    surface in search results.
+    """
+    _seed_path_version(
+        migrated_root,
+        source_id="1" * 64,
+        path="/fake/tasks/state.md",
+        seen="2026-01-01 00:00:00",
+        cache_key="2" * 64,
+        chunks=["oldstate common"],
+    )
+    _seed_path_version(
+        migrated_root,
+        source_id="3" * 64,
+        path="/fake/tasks/state.md",
+        seen="2026-02-01 00:00:00",
+        cache_key="4" * 64,
+        chunks=["newstate common"],
+    )
+    with open_catalogue(migrated_root) as conn:
+        build_fts_index(conn)
+        common = search(conn, "common")
+        old_only = search(conn, "oldstate")
+        # Flag-never-delete: the superseded chunks are still catalogued.
+        (kept,) = conn.execute(
+            "SELECT count(*) FROM artifact_chunks WHERE artifact_cache_key = ?",
+            ["2" * 64],
+        ).fetchone()
+    assert [r.chunk_text for r in common] == ["newstate common"]
+    assert old_only == []
+    assert kept == 1
+
+
+def test_path_currency_single_version_unaffected(migrated_root: Path) -> None:
+    """A path ingested once (the overwhelming case) is admitted as before."""
+    _seed(migrated_root)
+    with open_catalogue(migrated_root) as conn:
+        results = search(conn, "invoices")
+    assert any("invoices" in r.chunk_text for r in results)
+
+
+def test_path_currency_tiebreak_deterministic(migrated_root: Path) -> None:
+    """Equal timestamps: the (last_seen, first_seen, source_id) DESC order picks
+    exactly one current version, deterministically (SPEC §15.4 tiebreak)."""
+    _seed_path_version(
+        migrated_root,
+        source_id="7" * 64,
+        path="/fake/tasks/tie.md",
+        seen="2026-03-01 00:00:00",
+        cache_key="a1" + "0" * 62,
+        chunks=["tieloser"],
+    )
+    _seed_path_version(
+        migrated_root,
+        source_id="8" * 64,
+        path="/fake/tasks/tie.md",
+        seen="2026-03-01 00:00:00",
+        cache_key="a2" + "0" * 62,
+        chunks=["tiewinner"],
+    )
+    with open_catalogue(migrated_root) as conn:
+        build_fts_index(conn)
+        winner = search(conn, "tiewinner")
+        loser = search(conn, "tieloser")
+    assert len(winner) == 1
+    assert loser == []
+
+
+def test_current_version_without_chunks_yields_nothing(migrated_root: Path) -> None:
+    """Content-currency, not chunk-availability (SPEC §15.4): a newer version
+    with no chunks yet must NOT resurrect the superseded version's chunks."""
+    _seed_path_version(
+        migrated_root,
+        source_id="5" * 64,
+        path="/fake/tasks/pending.md",
+        seen="2026-01-01 00:00:00",
+        cache_key="6" * 64,
+        chunks=["ghosttoken"],
+    )
+    _seed_path_version(
+        migrated_root,
+        source_id="9" * 64,
+        path="/fake/tasks/pending.md",
+        seen="2026-02-01 00:00:00",
+        cache_key=None,  # ingested, not yet extracted/chunked
+        chunks=[],
+    )
+    with open_catalogue(migrated_root) as conn:
+        build_fts_index(conn)
+        results = search(conn, "ghosttoken")
+    assert results == []
+
+
+def test_path_superseded_chunk_count(migrated_root: Path) -> None:
+    """The excluded set is countable (SPEC §15.4 / §14.6 no hidden state)."""
+    from pkm.retrieval import count_path_superseded_chunks
+
+    _seed(migrated_root)  # single-version corpus: nothing excluded
+    with open_catalogue(migrated_root) as conn:
+        assert count_path_superseded_chunks(conn) == 0
+    _seed_path_version(
+        migrated_root,
+        source_id="1" * 64,
+        path="/fake/tasks/state.md",
+        seen="2026-01-01 00:00:00",
+        cache_key="2" * 64,
+        chunks=["oldstate one", "oldstate two"],
+    )
+    _seed_path_version(
+        migrated_root,
+        source_id="3" * 64,
+        path="/fake/tasks/state.md",
+        seen="2026-02-01 00:00:00",
+        cache_key="4" * 64,
+        chunks=["newstate"],
+    )
+    with open_catalogue(migrated_root) as conn:
+        assert count_path_superseded_chunks(conn) == 2
+
+
 def test_search_returns_at_most_k_results(migrated_root: Path) -> None:
     """search() respects the ``k`` limit."""
     with open_catalogue(migrated_root) as conn:

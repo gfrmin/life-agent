@@ -1,6 +1,6 @@
 # SPEC.md — technical specification
 
-Version: 0.14.0 (draft)
+Version: 0.15.0 (draft)
 Status: Phase 1 complete (extraction layer with content-addressed
 caching, chunking, and FTS keyword retrieval); Phase 1.5 OCR-PDF
 fallback applied to the live corpus; source paths are stored as
@@ -639,6 +639,13 @@ several declared paths resolve to the same bytes there is a single
 recently declared one (last write wins) and every distinct declared
 path is retained in `source_paths`. Rationale: §13.6.
 
+**Restricted ingest (v0.15.0).** `ingest_sources(root, only_paths=[…])`
+registers only the manifest entries whose declared path is named —
+per-path semantics identical to a full sweep; nothing else is hashed
+or touched. This exists for evolving sources (§15.4): a single
+re-rendered file can be re-registered on demand without re-hashing the
+whole manifest.
+
 ## 9. Configuration
 
 A single file, `config.yaml`:
@@ -1269,6 +1276,38 @@ HKSAR passport) from "OCR-unrecoverable" to PASS: the number is in the corpus
 via typed sources (an email, a boarding card), which source-id matching —
 pinned to the OCR-garbled `<partner> passport.pdf` — could not see.
 
+### 15.4 Source-path currency in retrieval
+
+A declared path may be ingested more than once with different content — an evolving file
+(an append-only ledger's projection, a re-rendered document) hashes to a new `source_id`
+each time while carrying the same declared path in `sources.current_path` (§8.2). Without
+a currency rule, every version's chunks stay retrievable forever and a query can be
+answered from superseded state.
+
+The rule: **among sources sharing a `current_path`, exactly one is path-current — the most
+recent by (`last_seen`, `first_seen`, `source_id`) descending.** The tiebreaks are
+deterministic, mirroring §18.10's most-recent-first ordering; they are not meaningful.
+Retrieval (§15.2, and any retrieval surface built on it, incl. §17) returns chunks only
+from path-current sources.
+
+- **Nothing is deleted.** Superseded path-versions keep their `sources` rows (ghosts,
+  §13.2), artifacts, and chunks; the append-only contract (§6.2) is untouched. The filter
+  is query-side only.
+- **The excluded set is countable** (§14.6: no hidden state): `pkm.retrieval` exposes the
+  number of chunks excluded as path-superseded, so callers can surface the narrowing
+  rather than have the corpus shrink silently.
+- **Currency is content-currency, not chunk-availability.** If the newest version of a
+  path has no chunks yet (extraction pending or failed), retrieval returns nothing for
+  that path rather than silently serving a superseded version; the remedy is to extract
+  the current version, never to resurrect the old one.
+- Single-version paths — the overwhelming case — are unaffected: the filter admits the
+  only version.
+
+Distinct from §18.10: staleness flags superseded *artifacts* within one
+`(input_hash, producer_name)` group — same input, newer derivation. Path currency groups
+*sources* by declared path — same location, newer content. The two compose: a
+path-current source's artifacts remain subject to §18.10 within their chains.
+
 ## 17. Query surface (MCP server)
 
 ### 17.1 Purpose
@@ -1633,6 +1672,17 @@ rank, window) is deterministic consumer-side policy.
 
 ## 16. Change log
 
+- 0.15.0 (draft): §15.4 (new) — *source-path currency in retrieval*: among sources sharing
+  a declared `current_path`, only the most recent (`last_seen`/`first_seen`/`source_id`
+  descending) is retrievable; superseded path-versions stay catalogued (flag-never-delete),
+  the excluded chunk count is exposed, and currency is content-currency (a current version
+  with no chunks yields nothing rather than resurrecting the old version). Motivated by
+  evolving sources — the life-agent GTD ledger's knowledge projection re-ingested at one
+  stable path — and fixes the latent duplicate-hit defect where any re-ingested file's old
+  chunks linger in FTS results. Query-side filter only: no schema change, no migration, no
+  new dependency. Also §8.2: `ingest_sources` gains an `only_paths` restriction (identical
+  per-path semantics) so one evolving source re-registers on demand without a full
+  manifest sweep.
 - 0.14.0 (draft): §18.12 (new) — *doc_date*, one primary date per document
   (`{format_version, date|null}`): deterministic Date-header parse for email, a
   grammar-constrained local-model projection for text extractors. `null` is the

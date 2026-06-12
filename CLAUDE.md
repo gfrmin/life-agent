@@ -31,14 +31,19 @@ happens in Telegram. The ask-anything read path is `scripts/ask.py`, dogfooded v
 `bin/ask-live`; its temporal mode (`/recent`, `/since`, `/until`, `/derive` — one line
 grammar, identical in the REPL and one-shot argv) filters by the `doc_date` projection
 (SPEC §18.12) read-side, naming undated and not-yet-derived hits instead of dropping them.
+**The GTD ledger projects into knowledge** (`tasks/knowledge.py` →
+`$LIFE_AGENT_KB/tasks/state.md`, the mutable→knowledge mirror of `project.py`): the ask
+path re-projects + re-ingests it demand-led when the ledger head moves (announced, never
+silent), and pkm's path-currency rule (SPEC §15.4) keeps only the newest version
+retrievable — so "what's next on my gtd list?" is an ordinary cited `QUESTION`.
 Every human-facing surface is governed by
 [`docs/interaction-contract.md`](./docs/interaction-contract.md) — read it before touching
 a command, intent, flag, or reply string.
 
 **Adopted, being built (Phase 1.6):** the derivation framework —
 [`docs/system-design.md`](./docs/system-design.md) +
-[`docs/derivation-engine-design.md`](./docs/derivation-engine-design.md) (D0–D1 landed;
-next: the GTD ledger's knowledge projection + pkm retrieval currency, then engine D2–D4).
+[`docs/derivation-engine-design.md`](./docs/derivation-engine-design.md) (D0–D1 and the
+GTD ledger's knowledge projection + pkm path-currency landed; next: engine D2–D4).
 Sequencing is continuous and eval-gated, not dogfood-gated (PRINCIPLES §9 as amended).
 
 **Not built, deliberately:** the agent-loop spine (open decision — PRINCIPLES §15), credence
