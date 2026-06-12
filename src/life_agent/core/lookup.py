@@ -51,10 +51,11 @@ from life_agent.core.brain import Brain
 LOOKUP_MODEL = "qwen2.5:7b-instruct"
 
 ROUTE_PROMPT = """\
-Classify this question. A LOOKUP asks for one specific factual value that could be
-read off a personal document: a number, ID, date, name, address, amount, or similar
-point fact. Anything needing summarising, listing, aggregating, comparing, or
-explaining is NOT a lookup.
+Classify this question. A LOOKUP asks for exactly ONE specific factual value that could
+be read off a personal document: a number, ID, date, name, address, amount, or similar
+point fact. NOT a lookup: anything needing summarising, listing, aggregating, comparing,
+or explaining — and any question asking for MULTIPLE values at once (e.g. "lender,
+amount, and end date" asks three).
 
 QUESTION: {question}
 
@@ -80,10 +81,18 @@ QUESTION: {question}
 EXCERPT:
 {chunk}
 
-If the excerpt contains a specific value that answers the question, reply with JSON:
+Reply {{"found": true, ...}} ONLY if the excerpt contains the specific value that
+answers this question — for the right person and the right thing. Strict rules:
+- NEVER extract a form label, field name, or heading (e.g. "Any other status:") — only
+  an actual filled-in value.
+- If the excerpt shows a value of the right KIND but for a different person, a
+  different account, or a different context than the question asks, reply found false.
+- If you are not confident the value answers the question, reply found false.
+
+If the answering value is present, reply with JSON:
 {{"found": true, "value": "<the value, concise>", \
 "quote": "<verbatim text copied from the excerpt containing the value>"}}
-If it does not, reply: {{"found": false}}
+Otherwise reply: {{"found": false}}
 """
 
 EXTRACT_SCHEMA: dict[str, Any] = {
@@ -100,8 +109,18 @@ EXTRACT_SCHEMA: dict[str, Any] = {
 _A_ALTERNATIVES = 10.0   # effective number of wrong values a misreport spreads over
 _BETA_ANCESTRY = 0.3     # within one source document, m observations count as 1+beta*(m-1)
 _BETA_MODEL = 0.7        # across documents (one shared extractor), G groups likewise
-_RHO_PRIOR_A = 17.0      # grounded-extraction reliability prior Beta(17,3): mean 0.85
-_RHO_PRIOR_B = 3.0       # (post-surgery residual: wrong quote selected, quote misread)
+# The reliability prior for "this grounded observation's value IS the true V" —
+# end-to-end, construct validity included (a grounded form label or another person's
+# number is a wrong observation, not a misread). The first eval run refuted the original
+# Beta(17,3)=0.85 quote-fidelity prior for THIS construct (report accuracy 0/7): the
+# prior is now wide, and the eval's per-candidate claim outcomes condition it (see
+# extractor_reliability) — the instrument earns trust from evidence, never from fiat.
+_RHO_PRIOR_A = 4.0       # Beta(4,4): mean 0.5, wide
+_RHO_PRIOR_B = 4.0
+# The none-of-the-retrieved prior mass: the stated complement of an unproven extraction
+# channel — candidates share the rest uniformly. (Was uniform over K+1; the first eval
+# showed agreeing junk burying NONE at 0.98 credence.)
+_P_NONE_PRIOR = 0.5
 _ORACLE_P = 0.9          # owner-as-oracle prior mean for pricing ask_clarify (§4.4)
 _PROB_EPS = 1e-12
 
@@ -195,18 +214,28 @@ def authority_for(origin: str) -> tuple[str, float]:
     return _AUTHORITY_DEFAULT
 
 
+_NONE_CLAIM = "(none of the retrieved)"
+
+
 def extractor_reliability(outcomes_path: Path = config.OUTCOMES_LOG) -> float:
-    """rho for the lookup extractor: the Beta(17,3) grounded-extraction prior, moved by
-    audit-grader outcomes attributed to this instrument (none exist yet — the prior
-    carries v0, exactly as stated in §2)."""
+    """rho for "this observation's value is the true V": the wide Beta(4,4) prior
+    conditioned on the graded evidence — audit outcomes on the extract instrument, and
+    the lookup eval's per-candidate claim outcomes (each candidate claim grades one
+    observed value against ground truth; the none-claim grades the posterior, not the
+    instrument, and is excluded). The system learns whether to trust its own extractor
+    from its own outcomes log — the §8 loop, closed."""
     correct = 0
     n = 0
     for event in O.read(outcomes_path):
-        if (event.grader == "audit"
-                and event.instrument_identity.get("producer_name")
-                == "life_agent.ask.lookup_extract"):
+        producer = event.instrument_identity.get("producer_name")
+        if event.grader == "audit" and producer == "life_agent.ask.lookup_extract":
             n += 1
             correct += event.grade in O.CORRECT_GRADES["audit"]
+        elif (event.grader == "eval_lookup"
+                and producer == "life_agent.ask.lookup_answer"
+                and event.claim != _NONE_CLAIM):
+            n += 1
+            correct += event.grade in O.CORRECT_GRADES["eval_lookup"]
     return (_RHO_PRIOR_A + correct) / (_RHO_PRIOR_A + _RHO_PRIOR_B + n)
 
 
@@ -357,7 +386,9 @@ def lookup_posterior(brain: Brain, observations: list[Observation],
     state id — still open for `optimise`; the caller destroys it)."""
     k = len(candidates)
     atoms = [float(j) for j in range(k + 1)]
-    prior = [1.0 / (k + 1)] * (k + 1)  # stated: uniform over candidates + NONE
+    # stated prior: _P_NONE_PRIOR on none-of-the-retrieved, the rest uniform over
+    # candidates (the complement of an unproven extraction channel)
+    prior = [(1.0 - _P_NONE_PRIOR) / k] * k + [_P_NONE_PRIOR]
     state_id = brain.create_state({
         "type": "categorical",
         "space": {"type": "finite", "values": atoms},
@@ -521,7 +552,8 @@ def lookup_answer(root: Path, question: str, hits: list[dict[str, Any]], *,
     # the answer artifact (§18.9): claim set + posterior + decision inputs, lineage to
     # every observation — the lookup family's computation stays on the ledger
     params = {"A": _A_ALTERNATIVES, "beta_ancestry": _BETA_ANCESTRY,
-              "beta_model": _BETA_MODEL, "oracle_p": _ORACLE_P, "rho": rho}
+              "beta_model": _BETA_MODEL, "oracle_p": _ORACLE_P,
+              "p_none_prior": _P_NONE_PRIOR, "rho": rho}
     obs_hash = _sha(json.dumps(sorted(o.obs_cache_key for o in observations)))
     akey = D.lookup_answer_key(question, obs_hash, fold_ver, params)
     content = json.dumps({
