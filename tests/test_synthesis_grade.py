@@ -80,9 +80,11 @@ def test_cache_line_formats_per_stage_hit_rates() -> None:
 def test_synthesis_report_carries_the_cache_line() -> None:
     rates = {"hallucination_rate": 0.0, "n_hallucinated": 0, "n": 1,
              "grounded_rate": 1.0, "n_grounded": 1, "n_answerable": 1,
-             "abstention_honesty": None, "n_honest": 0, "n_unanswerable": 0}
+             "abstention_honesty": None, "n_honest": 0, "n_unanswerable": 0,
+             "declined_rate": 0.0, "n_declined": 0}
     row = {"id": "q-001", "faithfulness": 3, "citation_fidelity": 3, "structural_ok": True,
-           "hallucinated": False, "synthesis_pass": True, "question": "q?"}
+           "hallucinated": False, "synthesis_pass": True, "question": "q?",
+           "answerable": True}
     with_cache = re_.format_synthesis_report([row], rates, 8, 1.0, {"synthesize.hit": 1})
     assert "Derivation cache hits: synthesize 1/1" in with_cache
     without = re_.format_synthesis_report([row], rates, 8, 1.0)

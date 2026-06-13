@@ -31,3 +31,25 @@ TASKS_STATE = KB / "tasks" / "state.md"
 JARVIS_DB_PATH = Path(
     os.environ.get("JARVIS_DB_PATH", str(KB / "jarvis" / "jarvis.db"))
 ).expanduser()
+
+# --- Calibration (the Bayesian foundations' empirical leg) ---
+# The outcomes log (bayesian-foundations §8): append-only third evidence stream — graded
+# outcomes attributed to instrument identities. It cannot be backfilled, and its append
+# order is the canonical replay order (the fold is order-defined, foundations §2). The
+# claims it records are personal data, hence under $LIFE_AGENT_KB (PRINCIPLES §12).
+OUTCOMES_LOG = KB / "calibration" / "outcomes.jsonl"
+# The decision log (foundations §8): every EU decision's context — without it, owner
+# reactions are not readable as choices. Append-only, order-defined, unbackfillable;
+# no EU decision is ever made unlogged.
+DECISIONS_LOG = KB / "calibration" / "decisions.jsonl"
+# The reaction log (foundations §4.4 reaction loop): owner verdicts on the agent's
+# decisions, joined to DECISIONS_LOG by decision_id. The calibration leg's third
+# append-only log; the utility posterior folds the clean abstain-verdicts from it.
+REACTIONS_LOG = KB / "calibration" / "reactions.jsonl"
+
+# --- The utility posterior (foundations §4.4 — utility as inference) ---
+# Gauge pins + grid priors (owner-editable; schema example in
+# config/utility-model.example.yaml) and the append-only elicitation evidence
+# (statements condition the posterior — evidence, never definition). Personal data.
+UTILITY_MODEL = KB / "utility" / "model.yaml"
+UTILITY_ELICITATIONS = KB / "utility" / "elicitations.jsonl"
