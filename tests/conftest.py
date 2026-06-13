@@ -32,3 +32,13 @@ def _hermetic_lookup(monkeypatch: pytest.MonkeyPatch) -> None:
     from life_agent.core import lookup as LK
 
     monkeypatch.setattr(LK, "lookup_answer", lambda *a, **k: None)
+
+
+@pytest.fixture(autouse=True)
+def _hermetic_narrative(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Same reasoning for the narrative family (it spawns the Julia skin for Ū and
+    appends to the live decision log): stubbed to None — ask.answer's disabled seam —
+    unless the test binds the real functions by name (tests/test_narrative.py)."""
+    from life_agent.core import narrative as N
+
+    monkeypatch.setattr(N, "narrative_answer", lambda *a, **k: None)

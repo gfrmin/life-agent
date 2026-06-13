@@ -248,3 +248,39 @@ def test_log_entry_records_unverified_line() -> None:
     e = ask.log_entry("q?", "ID 222222222 [1]", _cards(), {1: 0.5, 2: 0.4},
                       "BAD", "", when="10:00", unverified="[1] ID 222222222")
     assert "unverified: [1] ID 222222222" in e
+
+
+# --- the narrative scorer seam (foundations §7 wiring) ---------------------- #
+
+def test_narrative_scored_returns_labeled_render(monkeypatch) -> None:
+    from life_agent.core import narrative as N
+
+    fake = SimpleNamespace(rendered="- claim — credence 0.900\n\nfooter",
+                           answer_cache_key="nk")
+    monkeypatch.setattr(N, "narrative_answer", lambda *a, **k: fake)
+    ask.STAGES_LAST = {"synthesize": "sk"}
+    out = ask._narrative_scored(Path("/fake/root"), "q?", "raw prose [1]", _cards())
+    assert out == fake.rendered
+    assert ask.NARRATIVE_LAST is fake
+    assert ask.STAGES_LAST["narrative_answer"] == "nk"
+
+
+def test_narrative_scored_fail_open_is_named(monkeypatch, capsys) -> None:
+    from life_agent.core import narrative as N
+
+    def _boom(*a, **k):
+        raise RuntimeError("fold exploded")
+
+    monkeypatch.setattr(N, "narrative_answer", _boom)
+    ask.NARRATIVE_LAST = None
+    out = ask._narrative_scored(Path("/fake/root"), "q?", "raw prose [1]", _cards())
+    assert out == "raw prose [1]"  # the proposal still reaches the owner
+    assert ask.NARRATIVE_LAST is None
+    printed = capsys.readouterr().out
+    assert N.GRAMMAR["fallthrough"].format(reason="failed: fold exploded") in printed
+
+
+def test_narrative_scored_disabled_seam_returns_prose() -> None:
+    # the conftest autouse stub (narrative_answer -> None) IS the disabled seam
+    out = ask._narrative_scored(Path("/fake/root"), "q?", "raw prose [1]", _cards())
+    assert out == "raw prose [1]"

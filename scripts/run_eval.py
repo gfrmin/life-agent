@@ -271,6 +271,66 @@ def lookup_outcome(q: dict, lk, row: dict, *, run_id: str):
     )
 
 
+def narrative_claim_rows(q: dict, nv) -> list[dict]:
+    """Pure: the gradeable claim rows for one narrative-family result (§7 move 2's
+    evidence). Deterministically gradeable claims only: one containing the gold
+    answer (token-boundary, variants) grades CORRECT; one containing a wrong-subject
+    distractor (and not the gold) grades INCORRECT. Everything else is ungradeable at
+    claim level and emits nothing — DISCLOSED selection on the grading channel: the
+    stream reaches value-bearing claims, so cells it cannot reach stay at their wide
+    priors (narrative.py docstring, move 2)."""
+    rows: list[dict] = []
+    for c in nv.claims:
+        has_gold = bool(q.get("answer")) and answer_matches(
+            q["answer"], q.get("answer_variants", []), c.text)
+        has_distractor = any(answer_matches(d, [], c.text)
+                             for d in (q.get("distractors") or []))
+        if not has_gold and not has_distractor:
+            continue
+        rows.append({"claim": c.text[:200], "probability": c.credence,
+                     "correct": has_gold,
+                     "signals": {"audit_cell": c.cell, "included": c.included}})
+    return rows
+
+
+def narrative_claim_outcome(q: dict, nv, row: dict, *, run_id: str):
+    """One credence-bearing outcome event for one narrative claim — the population
+    stream the per-cell Beta fold conditions on (grader ``eval_claim``)."""
+    from life_agent.core import narrative as N
+    from life_agent.core import outcomes as O
+
+    return O.OutcomeEvent(
+        tx_time=O.now_iso(), run_id=run_id, question_id=str(q["id"]),
+        claim=str(row["claim"]), construct="claim",
+        grade="CORRECT" if row["correct"] else "INCORRECT", grader="eval_claim",
+        instrument_identity=N.instrument_identity(),
+        lineage_keys=(nv.answer_cache_key,),
+        probability=float(row["probability"]),
+        signals=dict(row["signals"]),
+    )
+
+
+def coverage_outcome(q: dict, nv, *, run_id: str):
+    """One proposal-coverage event (§7 move 3): did the proposal set contain the gold
+    claim at all? A MISSED event is an observed proposer miss — the open-world tail's
+    evidence. Answerable questions only (None otherwise: nothing to propose)."""
+    from life_agent.core import narrative as N
+    from life_agent.core import outcomes as O
+
+    if not q.get("answer"):
+        return None
+    proposed = any(answer_matches(q["answer"], q.get("answer_variants", []), c.text)
+                   for c in nv.claims)
+    return O.OutcomeEvent(
+        tx_time=O.now_iso(), run_id=run_id, question_id=str(q["id"]),
+        claim=str(q["answer"]), construct="proposal-coverage",
+        grade="PROPOSED" if proposed else "MISSED", grader="eval_coverage",
+        instrument_identity=N.instrument_identity(),
+        lineage_keys=(nv.answer_cache_key,),
+        signals={"n_claims": len(nv.claims)},
+    )
+
+
 def format_lookup_report(rows: list[dict], k: int, elapsed: float) -> str:
     n_routed = sum(1 for r in rows if r["routed"])
     actions = Counter(r["action"] for r in rows if r["routed"])
@@ -393,6 +453,7 @@ def synthesis_grade(conn, q: dict, k: int, *, fresh: bool = False) -> dict:
     # §18.9 stage cache keys of THIS answer (outcome lineage; empty on the pre-key paths)
     lineage_keys = tuple(ask.STAGES_LAST[s] for s in ("retrieve", "synthesize")
                          if s in ask.STAGES_LAST)
+    nv = ask.NARRATIVE_LAST  # the §7 claim set behind this answer (None off-path)
     sources = [{"n": c.n, "text": c.text} for c in cards]
     audit = citation_guard.audit(text, cards)
     rubric = _rubric_text()
@@ -418,7 +479,7 @@ def synthesis_grade(conn, q: dict, k: int, *, fresh: bool = False) -> dict:
         "id": q["id"], "question": q["question"], "answerable": answerable,
         "faithfulness": f_modal, "citation_fidelity": c_modal, "structural_ok": audit.ok,
         "answer": text[:140].replace("\n", " "), "served": sorted(served),
-        "lineage_keys": lineage_keys, **verdict,
+        "lineage_keys": lineage_keys, "_nv": nv, **verdict,
     }
 
 
@@ -642,7 +703,23 @@ def main() -> int:
 
         if not args.no_outcomes:
             run_id = f"eval-synthesis-{datetime.now().strftime('%Y%m%dT%H%M%S')}"
-            _append_outcomes([synthesis_outcome(row, run_id=run_id) for row in rows])
+            events = [synthesis_outcome(row, run_id=run_id) for row in rows]
+            # §7 slice 3: the claim-level + proposal-coverage streams (the narrative
+            # family's population and open-world-tail evidence — §8 grader 1)
+            n_claim = n_cov = 0
+            for q, row in zip(questions, rows, strict=True):
+                nv = row.get("_nv")
+                if nv is None:
+                    continue
+                for crow in narrative_claim_rows(q, nv):
+                    events.append(narrative_claim_outcome(q, nv, crow, run_id=run_id))
+                    n_claim += 1
+                cov = coverage_outcome(q, nv, run_id=run_id)
+                if cov is not None:
+                    events.append(cov)
+                    n_cov += 1
+            print(f"  narrative streams: {n_claim} claim events · {n_cov} coverage events")
+            _append_outcomes(events)
         return 0 if (rates["hallucination_rate"] or 0.0) == 0.0 else 1
 
     print(f"Running answer-grounded eval (k={args.k}) over {len(questions)} questions …")

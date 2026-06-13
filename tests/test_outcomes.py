@@ -59,6 +59,40 @@ def test_every_declared_grader_has_correct_grades_subset() -> None:
         assert correct <= O.GRADERS[grader]
 
 
+def test_claim_and_coverage_graders_declared() -> None:
+    # slice 3 (foundations §7): the narrative family's claim-level grader and the
+    # proposal-coverage grader, each a closed vocabulary
+    assert O.GRADERS["eval_claim"] == frozenset({"CORRECT", "INCORRECT"})
+    assert O.GRADERS["eval_coverage"] == frozenset({"PROPOSED", "MISSED"})
+    assert O.CORRECT_GRADES["eval_claim"] == frozenset({"CORRECT"})
+    assert O.CORRECT_GRADES["eval_coverage"] == frozenset({"PROPOSED"})
+
+
+def test_signals_round_trip_and_default(tmp_path: Path) -> None:
+    # §7 move 2: population calibration conditions on observable signals — the event
+    # carries the signals it was graded under. Optional: absent on old lines.
+    log = tmp_path / "outcomes.jsonl"
+    with_signals = _event(grader="eval_claim", grade="CORRECT", construct="claim",
+                          probability=0.61,
+                          signals={"audit_cell": "verified", "included": True})
+    O.append(log, with_signals)
+    O.append(log, _event())
+    read = O.read(log)
+    assert read[0].signals == {"audit_cell": "verified", "included": True}
+    assert read[1].signals is None
+
+
+def test_pre_signals_line_still_reads(tmp_path: Path) -> None:
+    # a line written before the signals field existed parses with signals=None
+    log = tmp_path / "outcomes.jsonl"
+    O.append(log, _event())
+    obj = json.loads(log.read_text(encoding="utf-8").splitlines()[0])
+    obj.pop("signals", None)
+    log.write_text(json.dumps(obj, sort_keys=True, ensure_ascii=False,
+                              separators=(",", ":")) + "\n", encoding="utf-8")
+    assert O.read(log)[0].signals is None
+
+
 # --- append-only round trip ------------------------------------------------------------
 
 def test_append_creates_parents_and_round_trips(tmp_path: Path) -> None:
