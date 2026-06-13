@@ -351,6 +351,11 @@ def narrative_answer(root: Path, question: str, text: str,
                    posterior_summary={
                        "n_proposed": len(claims),
                        "n_included": sum(1 for c in claims if c.included),
+                       # §7.1 inversion cut-point: p_max = the marginal (best proposed)
+                       # claim's credence, sorted first; None when no claim was proposed
+                       # (NO_CLAIMS — a coverage failure, not a foldable utility call).
+                       "marginal_credence": (claims[0].credence if claims else None),
+                       "abstain_reason": reason,
                        "cells": {k: list(v) for k, v in sorted(cells.items())},
                        "coverage": list(coverage), "coverage_n": coverage_n,
                    },

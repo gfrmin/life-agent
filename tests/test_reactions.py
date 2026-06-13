@@ -16,7 +16,9 @@ from pathlib import Path
 import pytest
 
 from life_agent.core import decisions as DEC
+from life_agent.core import narrative as N
 from life_agent.core import reactions as R
+from life_agent.core import utility as UT
 
 # --- the schema (closed vocabulary) -----------------------------------------------------
 
@@ -143,3 +145,75 @@ def test_supersession_latest_verdict_per_decision_wins(tmp_path: Path) -> None:
                          kind="verdict", valence="bad")])
     out = R.load_reactions(rpath, dpath)
     assert len(out) == 1 and out[0].reacted is False  # last write (bad) wins, once
+
+
+# --- the narrative family: the joint (u_wrong, κ_att) margin fold (§7.1) -----------------
+
+def _narrative_abstain(decision_id: str, p_max: float | None, *, reason: str,
+                       coverage: tuple[float, float] = (3.0, 1.0)) -> DEC.DecisionEvent:
+    return DEC.DecisionEvent(
+        tx_time="t", run_id="ask", question_id="q", family="narrative",
+        action_set=("report", "abstain"),
+        posterior_summary={"n_proposed": 2, "n_included": 0,
+                           "marginal_credence": p_max, "abstain_reason": reason,
+                           "coverage": list(coverage), "coverage_n": 5},
+        utility_fold_version="fv", chosen_action="abstain", predicted_eu=0.0,
+        decision_id=decision_id)
+
+
+def test_narrative_all_withheld_good_folds_to_a_joint_margin(tmp_path: Path) -> None:
+    # good on ALL_WITHHELD at p_max ⇒ a MarginReaction coupling u_wrong and κ_att (§7.1)
+    p = 0.6
+    rpath, dpath = _write(
+        tmp_path, [_narrative_abstain("d1", p, reason=N.REASON_ALL_WITHHELD)],
+        [R.ReactionEvent(tx_time="t", question_id="q", decision_id="d1",
+                         kind="verdict", valence="good")])
+    out = R.load_reactions(rpath, dpath)
+    assert len(out) == 1
+    mr = out[0]
+    assert isinstance(mr, UT.MarginReaction)
+    assert mr.reacted is True and mr.sign == -1.0 and mr.tau_group == "narrative"
+    assert dict(mr.coeffs) == pytest.approx({"kappa_att": -1.0, "u_wrong": p * (1 - p)})
+    assert mr.offset == pytest.approx(-(p ** 2))  # margin g = p(1-p)u_wrong - κ + p²
+
+
+def test_narrative_bad_folds_as_counterpressure_when_coverage_clears_bar(
+        tmp_path: Path) -> None:
+    # coverage mean 3/4 = 0.75 ≥ 0.5 ⇒ the bad row is genuine counter-pressure (reacted False)
+    rpath, dpath = _write(
+        tmp_path, [_narrative_abstain("d1", 0.6, reason=N.REASON_ALL_WITHHELD,
+                                      coverage=(3.0, 1.0))],
+        [R.ReactionEvent(tx_time="t", question_id="q", decision_id="d1",
+                         kind="verdict", valence="bad", reason="I wanted an answer")])
+    out = R.load_reactions(rpath, dpath)
+    assert len(out) == 1 and isinstance(out[0], UT.MarginReaction) and out[0].reacted is False
+
+
+def test_narrative_bad_is_quarantined_below_the_coverage_bar(tmp_path: Path) -> None:
+    # coverage mean 1/5 = 0.2 < 0.5 ⇒ likely a recall failure, recorded-not-folded
+    rpath, dpath = _write(
+        tmp_path, [_narrative_abstain("d1", 0.6, reason=N.REASON_ALL_WITHHELD,
+                                      coverage=(1.0, 4.0))],
+        [R.ReactionEvent(tx_time="t", question_id="q", decision_id="d1",
+                         kind="verdict", valence="bad")])
+    assert R.load_reactions(rpath, dpath) == []
+
+
+def test_narrative_good_is_coverage_ungated(tmp_path: Path) -> None:
+    # even at low coverage, a good (endorsing the *shown* withheld set) folds — §7.1
+    rpath, dpath = _write(
+        tmp_path, [_narrative_abstain("d1", 0.6, reason=N.REASON_ALL_WITHHELD,
+                                      coverage=(1.0, 4.0))],
+        [R.ReactionEvent(tx_time="t", question_id="q", decision_id="d1",
+                         kind="verdict", valence="good")])
+    out = R.load_reactions(rpath, dpath)
+    assert len(out) == 1 and out[0].reacted is True
+
+
+def test_narrative_no_claims_does_not_fold(tmp_path: Path) -> None:
+    # NO_CLAIMS (no p_max) is a proposal/coverage failure, not a foldable utility call
+    rpath, dpath = _write(
+        tmp_path, [_narrative_abstain("d1", None, reason=N.REASON_NO_CLAIMS)],
+        [R.ReactionEvent(tx_time="t", question_id="q", decision_id="d1",
+                         kind="verdict", valence="good")])
+    assert R.load_reactions(rpath, dpath) == []
