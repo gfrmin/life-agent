@@ -49,6 +49,14 @@ GRADERS: dict[str, frozenset[str]] = {
     # scripts/run_eval.py lookup grader — per-claim grading of the typed family's
     # credence-bearing claims (each event carries the asserted probability)
     "eval_lookup": frozenset({"CORRECT", "INCORRECT"}),
+    # scripts/run_eval.py claim grader (slice 3, §7) — per-claim grading of the
+    # narrative family's proposed claims (gold/distractor containment; each event
+    # carries the asserted credence and its audit-cell signal)
+    "eval_claim": frozenset({"CORRECT", "INCORRECT"}),
+    # scripts/run_eval.py coverage grader (§7 move 3) — did the proposal instrument
+    # propose the true claim at all? A MISSED event is an observed proposer miss,
+    # the evidence stream the open-world tail conditions on.
+    "eval_coverage": frozenset({"PROPOSED", "MISSED"}),
     # §8 grader 2 — spot-check audits against source bytes (stratum declared now)
     "audit": frozenset({"correct", "incorrect"}),
     # §8 grader 3 — owner corrections; "unrouted" is the matcher's honest failure mode
@@ -62,6 +70,8 @@ CORRECT_GRADES: dict[str, frozenset[str]] = {
     "eval_retrieval": frozenset({"PASS"}),
     "eval_synthesis": frozenset({"PASS", "ABSTAINED_OK"}),
     "eval_lookup": frozenset({"CORRECT"}),
+    "eval_claim": frozenset({"CORRECT"}),
+    "eval_coverage": frozenset({"PROPOSED"}),
     "audit": frozenset({"correct"}),
     "owner": frozenset({"correct"}),
 }
@@ -82,6 +92,9 @@ class OutcomeEvent:
     are the §18.9 stage cache keys of the answer this outcome grades — empty when the
     grader never touched the ask path. ``probability`` is the credence the system
     asserted for the claim; ``None`` means none was asserted (logged, not scored).
+    ``signals`` are the observable conditioning signals the claim was graded under
+    (§7 move 2 — e.g. the audit cell); optional and additive, so pre-slice-3 lines
+    read back with ``signals=None``.
     """
 
     tx_time: str
@@ -94,6 +107,7 @@ class OutcomeEvent:
     instrument_identity: dict[str, Any]
     lineage_keys: tuple[str, ...] = ()
     probability: float | None = None
+    signals: dict[str, Any] | None = None
     format_version: int = field(default=FORMAT_VERSION)
 
     def __post_init__(self) -> None:

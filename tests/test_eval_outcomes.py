@@ -98,3 +98,70 @@ def test_unknown_verdict_fails_loudly() -> None:
     with pytest.raises(ValueError, match="grade"):
         re_.retrieval_outcome({"id": "q", "verdict": "SHRUG"}, {"answer": "x"},
                               k=20, run_id="r")
+
+
+# --- the narrative family's claim + coverage streams (§7, slice 3) -----------------------
+
+def _nv(*claims):
+    from types import SimpleNamespace
+
+    return SimpleNamespace(claims=list(claims), answer_cache_key="nak")
+
+
+def _claim(text: str, cell: str = "verified", credence: float = 0.7,
+           included: bool = True):
+    from types import SimpleNamespace
+
+    return SimpleNamespace(text=text, cell=cell, credence=credence, included=included)
+
+
+_Q = {"id": "q-042", "answer": "999999991", "answer_variants": [],
+      "distractors": ["888888884"]}
+
+
+def test_narrative_claim_rows_grade_gold_and_distractor_only() -> None:
+    nv = _nv(_claim("Your number is 999999991."),
+             _claim("Another card shows 888888884.", cell="unsupported",
+                    credence=0.25, included=False),
+             _claim("It is renewed annually.", cell="unverifiable", credence=0.5))
+    rows = re_.narrative_claim_rows(_Q, nv)
+    assert [(r["correct"], r["signals"]["audit_cell"]) for r in rows] == [
+        (True, "verified"), (False, "unsupported")]
+    assert rows[0]["probability"] == 0.7
+    assert rows[1]["signals"]["included"] is False
+
+
+def test_narrative_claim_rows_gold_wins_over_distractor() -> None:
+    nv = _nv(_claim("Mine is 999999991, the other card 888888884."))
+    rows = re_.narrative_claim_rows(_Q, nv)
+    assert len(rows) == 1 and rows[0]["correct"] is True
+
+
+def test_narrative_claim_outcome_event() -> None:
+    from life_agent.core import narrative as N
+
+    nv = _nv(_claim("Your number is 999999991."))
+    row = re_.narrative_claim_rows(_Q, nv)[0]
+    e = re_.narrative_claim_outcome(_Q, nv, row, run_id="r")
+    assert e.grader == "eval_claim" and e.grade == "CORRECT"
+    assert e.construct == "claim"
+    assert e.probability == 0.7
+    assert e.signals == {"audit_cell": "verified", "included": True}
+    assert e.instrument_identity == N.instrument_identity()
+    assert e.lineage_keys == ("nak",)
+
+
+def test_coverage_outcome_proposed_missed_and_unanswerable() -> None:
+    proposed = re_.coverage_outcome(_Q, _nv(_claim("It is 999999991.")), run_id="r")
+    assert proposed.grade == "PROPOSED" and proposed.grader == "eval_coverage"
+    assert proposed.signals == {"n_claims": 1}
+    missed = re_.coverage_outcome(_Q, _nv(_claim("No number found.")), run_id="r")
+    assert missed.grade == "MISSED"
+    # an unproposable question (no gold answer) emits nothing
+    assert re_.coverage_outcome({"id": "q", "answer": ""}, _nv(), run_id="r") is None
+
+
+def test_coverage_counts_withheld_proposals_too() -> None:
+    # coverage measures the PROPOSER, pre-decision: a withheld gold claim is PROPOSED
+    nv = _nv(_claim("It is 999999991.", included=False, credence=0.3))
+    assert re_.coverage_outcome(_Q, nv, run_id="r").grade == "PROPOSED"

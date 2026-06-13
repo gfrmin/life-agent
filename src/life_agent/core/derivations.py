@@ -54,6 +54,7 @@ OWNER_MATCH_VERSION = "1"
 LOOKUP_ROUTE_VERSION = "1"
 LOOKUP_EXTRACT_VERSION = "1"
 LOOKUP_ANSWER_VERSION = "1"
+NARRATIVE_ANSWER_VERSION = "1"
 
 # Free-text output contract for both LLM stages (schema-3 keys require an output schema).
 TEXT_OUTPUT_SCHEMA: dict[str, Any] = {"type": "string"}
@@ -67,6 +68,7 @@ CONTENT_TYPE_OWNER_MATCH = "application/x-ask-owner-match+json"
 CONTENT_TYPE_LOOKUP_ROUTE = "application/x-ask-lookup-route+json"
 CONTENT_TYPE_LOOKUP_OBSERVATION = "application/x-ask-lookup-observation+json"
 CONTENT_TYPE_LOOKUP_ANSWER = "application/x-ask-lookup-answer+json"
+CONTENT_TYPE_NARRATIVE_ANSWER = "application/x-ask-narrative-answer+json"
 
 _PENDING_QUEUE = Path("external") / "pending.txt"
 
@@ -258,6 +260,29 @@ def lookup_answer_key(question: str, observations_hash: str,
                     producer_version=LOOKUP_ANSWER_VERSION, producer_config=params,
                     schema_version=1, inputs=inputs,
                     content_type=CONTENT_TYPE_LOOKUP_ANSWER)
+
+
+def narrative_answer_key(question: str, claims_hash: str,
+                         utility_fold_version: str,
+                         params: dict[str, Any]) -> StageKey:
+    """Key for the narrative family's answer artifact (foundations §7: the scored
+    claim set + per-claim inclusion decisions + the coverage tail): deterministic
+    given the parsed claims, the utility fold, and the stated scorer parameters
+    (cell posteriors, coverage posterior — schema-1, no model identity; the
+    generator lives upstream in the synthesize artifact this lineage names)."""
+    inputs = {"claims": claims_hash, "question": question,
+              "utility_fold": utility_fold_version}
+    input_hash = _sha256(canonical_json(inputs))
+    cache_key = compute_cache_key(
+        input_hash, "life_agent.ask.narrative_answer", NARRATIVE_ANSWER_VERSION,
+        params, schema_version=1,
+    )
+    return StageKey(cache_key=cache_key, input_hash=input_hash,
+                    producer_name="life_agent.ask.narrative_answer",
+                    producer_version=NARRATIVE_ANSWER_VERSION,
+                    producer_config=params,
+                    schema_version=1, inputs=inputs,
+                    content_type=CONTENT_TYPE_NARRATIVE_ANSWER)
 
 
 # --- file-first cache I/O --------------------------------------------------- #

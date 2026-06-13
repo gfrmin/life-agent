@@ -35,7 +35,7 @@ from dataclasses import dataclass, field
 from datetime import date as _date
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import citation_guard as guard  # sibling script: deterministic citation-faithfulness gate
 import duckdb
@@ -47,6 +47,7 @@ import life_agent.core as C
 from life_agent import owner
 from life_agent.core import derivations as D
 from life_agent.core import lookup as LK
+from life_agent.core import narrative as N
 from life_agent.core import subject as S
 from life_agent.core import temporal as T
 from life_agent.tasks import events as ev
@@ -214,6 +215,11 @@ STAGES_LAST: dict[str, str] = {}
 # path answered (not routed as a lookup, zero grounded observations, or a named
 # fail-open). Travels like TEMPORAL_LAST; run_eval's --lookup grader consumes it.
 LOOKUP_LAST: LK.LookupResult | None = None
+
+# The last answer's narrative-family result (foundations §7), or None when the lookup
+# path answered, the answer abstained pre-synthesis, or narrative scoring failed
+# (named fail-open). run_eval's claim + coverage graders consume it.
+NARRATIVE_LAST: N.NarrativeResult | None = None
 
 # --- subject (D2): the owner filter + the same nothing-vanishes contract --- #
 # A first-person possessive question ("my X") filters hits by projected
@@ -564,11 +570,12 @@ def answer(conn: duckdb.DuckDBPyConnection, question: str,
     retrieval-set content hash, owner-profile hash). ``no_cache`` recomputes every stage
     (recording stays write-once, so existing derivations stand). Caching is fail-open.
     Returns (answer_text, cards, {card_n: score})."""
-    global TEMPORAL_LAST, SUBJECT_LAST, STAGES_LAST, LOOKUP_LAST
+    global TEMPORAL_LAST, SUBJECT_LAST, STAGES_LAST, LOOKUP_LAST, NARRATIVE_LAST
     TEMPORAL_LAST = None
     SUBJECT_LAST = None
     STAGES_LAST = {}
     LOOKUP_LAST = None
+    NARRATIVE_LAST = None
     root = _pkm_root()
     profile = owner.load_profile()
     terms = _expand_terms(question, root=root, no_cache=no_cache) if expand else ""
@@ -661,28 +668,57 @@ def answer(conn: duckdb.DuckDBPyConnection, question: str,
                             model=C.DEFAULT_ANSWER_MODEL, prompt_template=ANSWER_SYSTEM,
                             temperature=C.TEMPERATURE, max_tokens=600)
     STAGES_LAST["synthesize"] = skey.cache_key
+    text: str | None = None
     if root is not None and not no_cache:
         cached = D.lookup(root, skey.cache_key)
         if cached is not None:
             _count("synthesize", hit=True)
-            return (cached.decode("utf-8"), cards, scores)
+            text = cached.decode("utf-8")
 
-    blocks = []
-    if profile:
-        blocks.append(f'OWNER (authoritative — who "I"/"my" refers to):\n{profile}')
-    blocks.append(f"SOURCES:\n{C.render_sources_block(cards) if cards else '(none retrieved)'}")
-    user = f"QUESTION: {question}\n\n" + "\n\n".join(blocks)
-    r = C.anthropic_complete(ANSWER_SYSTEM, user, max_tokens=600)
-    text = r.text.strip()
-    if root is not None:
-        _count("synthesize", hit=False)
-        lineage = ([{"cache_key": rkey.cache_key, "role": "retrieval_set"}] if rkey else [])
-        lineage += [{"cache_key": ck, "role": "source"}
-                    for ck in dict.fromkeys(h["artifact_cache_key"] for h in hits)]
-        D.record(root, skey, text.encode("utf-8"), lineage=lineage,
-                 metadata={"in_tokens": r.in_tokens, "out_tokens": r.out_tokens,
-                           "seconds": round(r.seconds, 3)})
-    return (text, cards, scores)
+    if text is None:
+        blocks = []
+        if profile:
+            blocks.append(f'OWNER (authoritative — who "I"/"my" refers to):\n{profile}')
+        blocks.append(
+            f"SOURCES:\n{C.render_sources_block(cards) if cards else '(none retrieved)'}")
+        user = f"QUESTION: {question}\n\n" + "\n\n".join(blocks)
+        r = C.anthropic_complete(ANSWER_SYSTEM, user, max_tokens=600)
+        text = r.text.strip()
+        if root is not None:
+            _count("synthesize", hit=False)
+            lineage = ([{"cache_key": rkey.cache_key, "role": "retrieval_set"}] if rkey else [])
+            lineage += [{"cache_key": ck, "role": "source"}
+                        for ck in dict.fromkeys(h["artifact_cache_key"] for h in hits)]
+            D.record(root, skey, text.encode("utf-8"), lineage=lineage,
+                     metadata={"in_tokens": r.in_tokens, "out_tokens": r.out_tokens,
+                               "seconds": round(r.seconds, 3)})
+    return (_narrative_scored(root, question, text, cards), cards, scores)
+
+
+def _narrative_scored(root: Path | None, question: str, text: str,
+                      cards: list[C.SourceCard]) -> str:
+    """The narrative family's scorer (foundations §7) over the synthesize proposal:
+    parse → audit cells → population credences → per-claim EU decision → labeled
+    render. Read-side policy — the proposal artifact and its keys are untouched —
+    rerun on every call so scorer/fold movement re-scores cached prose. Any failure
+    is fail-open and NAMED: the raw prose still reaches the owner, marked unscored
+    (interaction contract — nothing silent)."""
+    global NARRATIVE_LAST
+    if root is None:
+        return text
+    try:
+        # cast: the seam may be stubbed to None (the conftest hermetic fixture)
+        nv = cast("N.NarrativeResult | None",
+                  N.narrative_answer(root, question, text, cards,
+                                     synthesize_cache_key=STAGES_LAST.get("synthesize")))
+    except Exception as e:  # fail-open by contract, reason printed
+        print(N.GRAMMAR["fallthrough"].format(reason=f"failed: {e}"))
+        return text
+    if nv is None:  # the disabled seam (hermetic tests stub the family to None)
+        return text
+    NARRATIVE_LAST = nv
+    STAGES_LAST["narrative_answer"] = nv.answer_cache_key
+    return nv.rendered
 
 
 # --- presentation --------------------------------------------------------- #
