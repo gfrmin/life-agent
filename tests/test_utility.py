@@ -270,3 +270,36 @@ def test_live_fold_matches_reference_and_moves_u_wrong_correctly(
     z = sum(ref)
     ref = [r / z for r in ref]
     assert list(post.latents["u_wrong"].weights) == pytest.approx(ref, abs=1e-9)
+
+
+@pytest.mark.system
+def test_live_reaction_loop_good_on_abstain_lowers_u_wrong(
+        model: U.UtilityModel, tmp_path: Path) -> None:
+    """The §4.4 loop end to end through the real skin: a good-on-abstain verdict, joined
+    to its decision by decision_id, produces a Reaction that lowers Ū(u_wrong) — the
+    owner's behaviour, not a fabricated number, moving the belief."""
+    repo = Path(B.CREDENCE_REPO)
+    if not (repo / "apps/skin/server.jl").exists():
+        pytest.skip(f"credence repo not found at {repo}")
+    from life_agent.core import decisions as DEC
+    from life_agent.core import reactions as R
+
+    dpath, rpath = tmp_path / "decisions.jsonl", tmp_path / "reactions.jsonl"
+    DEC.append(dpath, DEC.DecisionEvent(
+        tx_time="t", run_id="ask", question_id="q", family="lookup",
+        action_set=("report", "hedge", "ask_clarify", "abstain"),
+        posterior_summary={"credences": [0.3, 0.7]}, utility_fold_version="fv",
+        chosen_action="abstain", predicted_eu=0.0, decision_id="d1"))
+    R.append(rpath, R.ReactionEvent(tx_time="t", question_id="q", decision_id="d1",
+                                    kind="verdict", valence="good"))
+    events = R.load_reactions(rpath, dpath)
+    assert len(events) == 1  # the producer folds the clean abstain row
+
+    with B.Brain.spawn() as b:
+        b.initialize()
+        post = U.posterior(b, model, list(events))
+    spec = model.latents["u_wrong"]
+    grid = spec.grid.values()
+    prior_mean = sum(w * x for w, x in zip(
+        U.gaussian_weights(grid, spec.prior_mu, spec.prior_sigma), grid, strict=True))
+    assert post.latents["u_wrong"].mean < prior_mean

@@ -16,10 +16,11 @@ duplication, the third extracts a helper.)
 from __future__ import annotations
 
 import json
-import os
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
+
+from life_agent.core import jsonl_log
 
 FORMAT_VERSION = 1
 
@@ -43,6 +44,11 @@ class DecisionEvent:
     exactly which utility posterior valued the actions
     (:func:`life_agent.core.utility.fold_version`). ``predicted_eu`` is the chosen
     action's expected utility at decision time — the quantity later reactions grade.
+    ``decision_id`` is the **per-decision** join key the reaction loop binds verdicts to
+    (§4.4): the answer's §18.9 cache key, content-addressed so two truly identical
+    decisions coalesce. It is *not* ``run_id`` (per-*run* on the eval path — overloading it
+    would give one field two cardinalities). Empty only on pre-reaction-loop lines, which
+    no verdict joins.
     """
 
     tx_time: str
@@ -54,6 +60,7 @@ class DecisionEvent:
     utility_fold_version: str
     chosen_action: str
     predicted_eu: float
+    decision_id: str = ""
     format_version: int = field(default=FORMAT_VERSION)
 
     def __post_init__(self) -> None:
@@ -86,18 +93,11 @@ def _from_line(line: str) -> DecisionEvent:
 
 
 def append(path: Path, event: DecisionEvent) -> None:
-    """Append one decision line, durably (flush + fsync — evidence, like outcomes)."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8") as fh:
-        fh.write(_to_line(event) + "\n")
-        fh.flush()
-        os.fsync(fh.fileno())
+    """Append one decision line, durably (the shared append-only mechanics)."""
+    jsonl_log.append_line(path, _to_line(event))
 
 
 def read(path: Path) -> list[DecisionEvent]:
     """Every decision in file order — the canonical replay order. Malformed lines
     raise; a missing file means no decisions yet."""
-    if not path.exists():
-        return []
-    return [_from_line(line)
-            for line in path.read_text(encoding="utf-8").splitlines() if line]
+    return [_from_line(line) for line in jsonl_log.read_lines(path)]

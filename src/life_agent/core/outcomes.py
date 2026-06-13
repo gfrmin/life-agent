@@ -23,11 +23,12 @@ from __future__ import annotations
 
 import json
 import math
-import os
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+from life_agent.core import jsonl_log
 
 FORMAT_VERSION = 1
 
@@ -140,15 +141,8 @@ def _from_line(line: str) -> OutcomeEvent:
 
 
 def append(path: Path, event: OutcomeEvent) -> None:
-    """Append one outcome line, durably (flush + fsync — this is an evidence log).
-
-    Append-only by construction: the file is opened in ``"a"`` and never rewritten.
-    """
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8") as fh:
-        fh.write(_to_line(event) + "\n")
-        fh.flush()
-        os.fsync(fh.fileno())
+    """Append one outcome line, durably (the shared append-only mechanics)."""
+    jsonl_log.append_line(path, _to_line(event))
 
 
 def read(path: Path) -> list[OutcomeEvent]:
@@ -157,10 +151,7 @@ def read(path: Path) -> list[OutcomeEvent]:
     A malformed line raises: a corrupt evidence log is a loud failure, never a skip.
     Missing file means no evidence yet: an empty list.
     """
-    if not path.exists():
-        return []
-    return [_from_line(line)
-            for line in path.read_text(encoding="utf-8").splitlines() if line]
+    return [_from_line(line) for line in jsonl_log.read_lines(path)]
 
 
 # --- proper scoring rules (bayesian-foundations §8) ------------------------------------
