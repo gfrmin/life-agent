@@ -117,12 +117,15 @@ def test_note_valence_does_not_fold(tmp_path: Path) -> None:
     assert R.load_reactions(rpath, dpath) == []
 
 
-def test_narrative_abstain_has_no_credence_so_does_not_fold(tmp_path: Path) -> None:
+def test_narrative_summary_without_schema_fields_is_held_not_folded(tmp_path: Path) -> None:
+    # a narrative decision logged before the §7.1 schema (no abstain_reason / marginal_credence)
+    # carries no invertible margin — held, never folded or crashed (pre-schema degradation).
+    # The meaningful in-schema non-fold (NO_CLAIMS) is covered separately, below.
     rpath, dpath = _write(
         tmp_path, [_abstain_decision("d1", 0.0, family="narrative")],
         [R.ReactionEvent(tx_time="t", question_id="q", decision_id="d1",
                          kind="verdict", valence="good")])
-    assert R.load_reactions(rpath, dpath) == []  # narrative mapping is a later cycle
+    assert R.load_reactions(rpath, dpath) == []
 
 
 # --- the join: unrouted, and supersession -----------------------------------------------

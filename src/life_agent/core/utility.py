@@ -200,7 +200,9 @@ class MarginReaction:
     (event-shape keyed, §4.4). Carries the multi-latent narrative inclusion boundary
     (u_wrong, κ_att). The margin is **raw** (gauge units), so per-latent informativeness
     is ∂margin/∂x_l = coeffs[l] — the correct weighting, not normalised. ``coeffs`` is a
-    sorted tuple of (latent, coefficient) pairs (frozen/hashable; deterministic fold)."""
+    tuple of (latent, coefficient) pairs, normalised to sorted order in ``__post_init__``:
+    the fold is order-independent, but ``fold_version`` hashes the event verbatim, so a
+    canonical order keeps the cache key deterministic across constructions."""
 
     tx_time: str
     coeffs: tuple[tuple[str, float], ...]
@@ -208,6 +210,9 @@ class MarginReaction:
     reacted: bool
     sign: float
     tau_group: str = "narrative"
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "coeffs", tuple(sorted(self.coeffs)))
 
 
 Evidence = Elicitation | Reaction | MarginReaction

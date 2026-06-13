@@ -374,3 +374,26 @@ def test_live_narrative_good_on_abstain_moves_both_latents(model: U.UtilityModel
     assert post.latents["u_wrong"].mean < prior_mean("u_wrong")
     assert post.latents["kappa_att"].mean > prior_mean("kappa_att")
     assert post.latents["u_hedged"].mean == pytest.approx(prior_mean("u_hedged"))
+
+
+@pytest.mark.system
+def test_lookup_u_wrong_marginal_is_invariant_when_pulled_into_a_joint(
+        model: U.UtilityModel) -> None:
+    """Lookup is byte-identical until narrative evidence shares u(wrong)'s component, then
+    *equivalent* — pinned here through the real skin (SeqTransport returns scripted uniform
+    weights, so this numeric property cannot be hermetic). A margin reaction flat in u(wrong)
+    (coeff 0) structurally pulls it into the {u_wrong, κ_att} joint, but — independent prior
+    product, lookup likelihood flat in κ_att — the joint factorises, so the marginalised
+    u(wrong) must equal the standalone 1-D fold to machine precision."""
+    repo = Path(B.CREDENCE_REPO)
+    if not (repo / "apps/skin/server.jl").exists():
+        pytest.skip(f"credence repo not found at {repo}")
+    lookup = U.Reaction(tx_time="t", latent="u_wrong", reacted=True, sign=-1.0, threshold=0.5)
+    flat = U.MarginReaction(tx_time="t", coeffs=(("kappa_att", -1.0), ("u_wrong", 0.0)),
+                            offset=0.0, reacted=True, sign=-1.0, tau_group="narrative")
+    with B.Brain.spawn() as b:
+        b.initialize()
+        one_d = U.posterior(b, model, [lookup])
+        joint = U.posterior(b, model, [lookup, flat])
+    assert joint.latents["u_wrong"].weights == pytest.approx(
+        one_d.latents["u_wrong"].weights, rel=1e-6, abs=1e-9)
