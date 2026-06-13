@@ -44,8 +44,13 @@ GRADERS: dict[str, frozenset[str]] = {
         "PASS", "RETRIEVAL_MISS",
         "ABSENT_COVERAGE", "ABSENT_EXTRACTION", "ABSENT_UNSPECIFIED",
     }),
-    # scripts/run_eval.py synthesis grader — the monolithic answer instrument
-    "eval_synthesis": frozenset({"PASS", "WEAK", "HALLUCINATED", "ABSTAINED_OK"}),
+    # scripts/run_eval.py synthesis grader — the monolithic answer instrument.
+    # DECLINED (classifier v2, slice 3): the production EU decision was an
+    # abstention on an answerable question — asserts nothing, neither pass nor
+    # hallucination. Events carry signals.classifier_version; the 2026-06-13
+    # seeding run predates v2 and graded answerable abstentions PASS.
+    "eval_synthesis": frozenset({"PASS", "WEAK", "HALLUCINATED", "ABSTAINED_OK",
+                                 "DECLINED"}),
     # scripts/run_eval.py lookup grader — per-claim grading of the typed family's
     # credence-bearing claims (each event carries the asserted probability)
     "eval_lookup": frozenset({"CORRECT", "INCORRECT"}),
