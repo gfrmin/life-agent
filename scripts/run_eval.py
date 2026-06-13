@@ -163,10 +163,16 @@ def grade_retrieval(conn, q: dict, k: int) -> dict:
 # an unknown verdict is a loud error here, never a silent new category in the log.
 
 def synthesis_grade_label(row: dict) -> str:
-    """Pure: one closed grade from the synthesis row's verdict booleans.
+    """Pure: one closed grade from the synthesis row's verdict booleans
+    (classifier v2 — slice 3 added DECLINED).
 
-    Precedence: HALLUCINATED > ABSTAINED_OK (unanswerable, honestly declined) > PASS >
-    WEAK (answerable, neither grounded nor fabricated)."""
+    Precedence: ABSTAINED_OK / DECLINED (the production decision was an EU
+    abstention — it asserts nothing, so it can neither pass nor hallucinate;
+    the first seeding run's judge gave abstentions 3/3 against answerable
+    questions, silently counting declines as grounded) > HALLUCINATED >
+    PASS > WEAK (answerable, neither grounded nor fabricated)."""
+    if row.get("declined"):
+        return "DECLINED" if row["answerable"] else "ABSTAINED_OK"
     if row["hallucinated"]:
         return "HALLUCINATED"
     if not row["answerable"] and row["abstained_correctly"]:
@@ -212,6 +218,9 @@ def synthesis_outcome(row: dict, *, run_id: str):
                              "engine_version": D.ENGINE_VERSION,
                              "model": DEFAULT_ANSWER_MODEL},
         lineage_keys=tuple(row.get("lineage_keys", ())),
+        # classifier v2 disclosure: pre-v2 events graded answerable abstentions
+        # PASS (the 2026-06-13 seeding run) — fold readers can condition on this
+        signals={"classifier_version": 2, "declined": bool(row.get("declined"))},
     )
 
 
@@ -365,24 +374,38 @@ def format_lookup_report(rows: list[dict], k: int, elapsed: float) -> str:
 # classification + rate math are split out so they are unit-tested without any API call.
 
 def _classify_synthesis(*, faithfulness: int, citation_fidelity: int,
-                        structural_unsupported: bool, answerable: bool) -> dict:
-    """Pure: map modal judge scores + the deterministic audit to verdict booleans.
+                        structural_unsupported: bool, answerable: bool,
+                        declined: bool = False) -> dict:
+    """Pure: map modal judge scores + the deterministic audit to verdict booleans
+    (classifier v2).
 
-    - synthesis_pass: faithfulness>=2 AND citation_fidelity>=2 (honest abstention scores 3/3).
+    - declined: the production path's EU decision was an abstention (lookup or
+      narrative). A decline asserts NOTHING: it cannot pass and it cannot
+      hallucinate — the judge's scores against an abstention render are noise
+      (the seeding run produced both 3/3 "PASS" and a cite=0 "HALLUCINATED" for
+      abstentions), so the deterministic decision verdict overrides the judge.
+    - synthesis_pass: faithfulness>=2 AND citation_fidelity>=2 AND not declined.
     - hallucinated: a fabricated / wrong-subject / mis-cited assertion — faithfulness<=1, OR
       citation_fidelity==0, OR the deterministic guard found an unsupported verbatim citation.
-    - abstained_correctly (unanswerable only): the answer honestly declined (faithfulness>=2)."""
+    - abstained_correctly (unanswerable only): declining IS the correct response;
+      otherwise the judge's honesty read (faithfulness>=2) stands."""
     return {
-        "synthesis_pass": faithfulness >= 2 and citation_fidelity >= 2,
-        "hallucinated": faithfulness <= 1 or citation_fidelity == 0 or structural_unsupported,
-        "abstained_correctly": (not answerable) and faithfulness >= 2,
+        "declined": declined,
+        "synthesis_pass": faithfulness >= 2 and citation_fidelity >= 2 and not declined,
+        "hallucinated": (not declined) and (
+            faithfulness <= 1 or citation_fidelity == 0 or structural_unsupported),
+        "abstained_correctly": (not answerable) and (declined or faithfulness >= 2),
     }
 
 
 def synthesis_rates(rows: list[dict]) -> dict:
-    """Pure: the three headline reliability numbers from a list of graded rows."""
+    """Pure: the headline reliability numbers from a list of graded rows. A declined
+    answerable question is its own bucket (classifier v2): never grounded, never a
+    hallucination — the EU layer choosing silence is a measured behaviour, not a
+    pass."""
     answerable = [r for r in rows if r["answerable"]]
     unanswerable = [r for r in rows if not r["answerable"]]
+    declined = [r for r in answerable if r.get("declined")]
     grounded = [r for r in answerable if r["synthesis_pass"]]
     hallucinated = [r for r in rows if r["hallucinated"]]
     honest = [r for r in unanswerable if r["abstained_correctly"]]
@@ -393,10 +416,12 @@ def synthesis_rates(rows: list[dict]) -> dict:
     return {
         "n": len(rows),
         "n_answerable": len(answerable), "n_unanswerable": len(unanswerable),
-        "n_grounded": len(grounded), "n_hallucinated": len(hallucinated), "n_honest": len(honest),
+        "n_grounded": len(grounded), "n_hallucinated": len(hallucinated),
+        "n_honest": len(honest), "n_declined": len(declined),
         "grounded_rate": _rate(grounded, answerable),
         "hallucination_rate": _rate(hallucinated, rows),
         "abstention_honesty": _rate(honest, unanswerable),
+        "declined_rate": _rate(declined, answerable),
     }
 
 
@@ -454,6 +479,11 @@ def synthesis_grade(conn, q: dict, k: int, *, fresh: bool = False) -> dict:
     lineage_keys = tuple(ask.STAGES_LAST[s] for s in ("retrieve", "synthesize")
                          if s in ask.STAGES_LAST)
     nv = ask.NARRATIVE_LAST  # the §7 claim set behind this answer (None off-path)
+    lk = ask.LOOKUP_LAST
+    # the production path's own decision: an EU abstention asserts nothing — the
+    # deterministic decline verdict, not the judge, classifies it (classifier v2)
+    declined = ((nv is not None and nv.action == "abstain")
+                or (lk is not None and lk.action in ("abstain", "ask_clarify")))
     sources = [{"n": c.n, "text": c.text} for c in cards]
     audit = citation_guard.audit(text, cards)
     rubric = _rubric_text()
@@ -474,6 +504,7 @@ def synthesis_grade(conn, q: dict, k: int, *, fresh: bool = False) -> dict:
     verdict = _classify_synthesis(
         faithfulness=f_modal, citation_fidelity=c_modal,
         structural_unsupported=bool(audit.unsupported), answerable=answerable,
+        declined=declined,
     )
     return {
         "id": q["id"], "question": q["question"], "answerable": answerable,
@@ -511,6 +542,8 @@ def format_synthesis_report(rows: list[dict], rates: dict, k: int, elapsed: floa
         f"({rates['n_hallucinated']}/{rates['n']} answers fabricated / wrong-subject / mis-cited).",
         f"**Grounded-answer rate: {_pct(rates['grounded_rate'])}** "
         f"({rates['n_grounded']}/{rates['n_answerable']} answerable questions).",
+        f"**Declined (EU abstention on answerable): {_pct(rates.get('declined_rate'))}** "
+        f"({rates.get('n_declined', 0)}/{rates['n_answerable']}).",
         f"**Abstention-honesty: {_pct(rates['abstention_honesty'])}** "
         f"({rates['n_honest']}/{rates['n_unanswerable']} known-unanswerable questions).",
         "",
@@ -522,7 +555,7 @@ def format_synthesis_report(rows: list[dict], rates: dict, k: int, elapsed: floa
         "|---|---|---|---|---|---|",
     ]
     for r in rows:
-        v = "HALLUCINATED" if r["hallucinated"] else ("PASS" if r["synthesis_pass"] else "weak")
+        v = synthesis_grade_label(r)
         struct = "ok" if r["structural_ok"] else "⚠"
         lines.append(f"| {r['id']} | {r['faithfulness']} | {r['citation_fidelity']} | {struct} "
                      f"| {v} | {r['question'][:48]} |")

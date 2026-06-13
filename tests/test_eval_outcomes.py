@@ -53,6 +53,41 @@ def test_label_weak_when_neither_grounded_nor_fabricated() -> None:
     assert re_.synthesis_grade_label(row) == "WEAK"
 
 
+def test_label_declined_overrides_judge_scores() -> None:
+    # classifier v2: an EU abstention asserts nothing — whatever the judge scored
+    # (3/3 "pass" or cite=0 "hallucination", both seen in the seeding run), the
+    # deterministic decline verdict wins
+    assert re_.synthesis_grade_label(
+        _synth_row(declined=True, synthesis_pass=True)) == "DECLINED"
+    assert re_.synthesis_grade_label(
+        _synth_row(declined=True, hallucinated=True)) == "DECLINED"
+    # declining an unanswerable question is the correct response
+    assert re_.synthesis_grade_label(
+        _synth_row(answerable=False, declined=True)) == "ABSTAINED_OK"
+
+
+def test_classify_declined_neither_passes_nor_hallucinates() -> None:
+    v = re_._classify_synthesis(faithfulness=3, citation_fidelity=0,
+                                structural_unsupported=False, answerable=True,
+                                declined=True)
+    assert v["declined"] and not v["synthesis_pass"] and not v["hallucinated"]
+    u = re_._classify_synthesis(faithfulness=0, citation_fidelity=0,
+                                structural_unsupported=False, answerable=False,
+                                declined=True)
+    assert u["abstained_correctly"]
+
+
+def test_rates_count_declines_outside_grounded() -> None:
+    rows = [_synth_row(),
+            _synth_row(declined=True, synthesis_pass=False),
+            _synth_row(answerable=False, abstained_correctly=True,
+                       synthesis_pass=False)]
+    rates = re_.synthesis_rates(rows)
+    assert rates["n_grounded"] == 1 and rates["n_declined"] == 1
+    assert rates["declined_rate"] == 0.5  # of the 2 answerable
+    assert rates["grounded_rate"] == 0.5
+
+
 def test_every_label_is_in_the_grader_vocabulary() -> None:
     # drift gate: the builder can only emit grades the log accepts
     rows = [
@@ -60,6 +95,8 @@ def test_every_label_is_in_the_grader_vocabulary() -> None:
         _synth_row(hallucinated=True),
         _synth_row(answerable=False, abstained_correctly=True),
         _synth_row(synthesis_pass=False),
+        _synth_row(declined=True),
+        _synth_row(answerable=False, declined=True),
     ]
     for row in rows:
         assert re_.synthesis_grade_label(row) in O.GRADERS["eval_synthesis"]

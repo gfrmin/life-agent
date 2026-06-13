@@ -51,11 +51,15 @@ GTD ledger's knowledge projection + pkm path-currency landed) — and, adopted 2
 the **Bayesian foundations**
 ([`docs/bayesian-foundations.md`](./docs/bayesian-foundations.md)): Ask re-derived as
 inference (answers = claim sets with posteriors; responses = EU decisions; calibration
-measured). Ask v0 slices 0–1 are landed (the outcomes log accrues at
-`$LIFE_AGENT_KB/calibration/outcomes.jsonl`; `core/brain.py` is the credence skin seam);
-next is slice 2 — the lookup family + the **utility posterior** (utility is a learned
-belief about the owner, §4.4/§10 as amended: one utility, the agent has none of its
-own) — with old D3–D4 re-scoped as Ask's aggregate/thread families. The doc's §14 open
+measured). Ask v0 slices 0–3 are landed: the outcomes + decision logs accrue under
+`$LIFE_AGENT_KB/calibration/`; `core/brain.py` is the credence skin seam; the **utility
+posterior** (`core/utility.py` — utility is a learned belief about the owner, §4.4/§10
+as amended: one utility, the agent has none of its own); the **lookup family**
+(`core/lookup.py` — §4 with §4.1 covariates); and **narrative subsumption**
+(`core/narrative.py` — §7: synthesize is a proposal distribution; claims audited into
+cells, population-calibrated per-cell from the eval_claim stream, per-claim EU inclusion
+under Ū, the proposal-coverage tail named). Next: the §8 decision-weighted gate, then
+old D3–D4 re-scoped as Ask's aggregate/thread families. The doc's §14 open
 questions are a **live empirical ledger** (owner's adoption rider): each entry names the
 evidence that decides it — keep it current. Sequencing is continuous and eval-gated,
 not dogfood-gated (PRINCIPLES §9 as amended).

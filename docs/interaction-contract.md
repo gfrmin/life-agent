@@ -119,8 +119,11 @@ credence):
 
 Rendering order is posterior order, not rhetorical order; LLM paraphrase stays within
 claim boundaries; the conformance audit (the citation guard extended to claim coverage)
-runs per render, never cached. The strings live in one table (`ask.CREDENCE_GRAMMAR`
-when slice 2 lands), drift-gated like `GRAMMAR` and `REFRESH_NOTES`.
+runs per render, never cached. The strings live in per-family tables
+(`lookup.GRAMMAR`, `narrative.GRAMMAR` — landed with slices 2b/3), drift-gated like
+`GRAMMAR` and `REFRESH_NOTES`. The narrative family adds two contract points (§7):
+withheld claims are *counted* with the inclusion reason, and the proposal-coverage
+posterior is named in every footer — "this may be incomplete" is a number, not a vibe.
 
 ## act — Jarvis
 
