@@ -21,3 +21,24 @@ import life_agent.core as C
 def _hermetic_gtd_paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(C, "TASKS_LEDGER", tmp_path / "hermetic-events.jsonl")
     monkeypatch.setattr(C, "TASKS_STATE", tmp_path / "hermetic-state.md")
+
+
+@pytest.fixture(autouse=True)
+def _hermetic_lookup(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No test routes through the lookup family unless it asks to: the router would
+    call the live local model and the family would spawn the Julia skin. Tests of the
+    family itself bind the real functions by name at import time (tests/test_lookup.py),
+    which this attribute patch deliberately does not reach."""
+    from life_agent.core import lookup as LK
+
+    monkeypatch.setattr(LK, "lookup_answer", lambda *a, **k: None)
+
+
+@pytest.fixture(autouse=True)
+def _hermetic_narrative(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Same reasoning for the narrative family (it spawns the Julia skin for Ū and
+    appends to the live decision log): stubbed to None — ask.answer's disabled seam —
+    unless the test binds the real functions by name (tests/test_narrative.py)."""
+    from life_agent.core import narrative as N
+
+    monkeypatch.setattr(N, "narrative_answer", lambda *a, **k: None)

@@ -47,11 +47,33 @@ a command, intent, flag, or reply string.
 **Adopted, being built (Phase 1.6):** the derivation framework —
 [`docs/system-design.md`](./docs/system-design.md) +
 [`docs/derivation-engine-design.md`](./docs/derivation-engine-design.md) (D0–D2 and the
-GTD ledger's knowledge projection + pkm path-currency landed; next: engine D3–D4).
-Sequencing is continuous and eval-gated, not dogfood-gated (PRINCIPLES §9 as amended).
+GTD ledger's knowledge projection + pkm path-currency landed) — and, adopted 2026-06-12,
+the **Bayesian foundations**
+([`docs/bayesian-foundations.md`](./docs/bayesian-foundations.md)): Ask re-derived as
+inference (answers = claim sets with posteriors; responses = EU decisions; calibration
+measured). Ask v0 slices 0–3 are landed: the outcomes + decision logs accrue under
+`$LIFE_AGENT_KB/calibration/`; `core/brain.py` is the credence skin seam; the **utility
+posterior** (`core/utility.py` — utility is a learned belief about the owner, §4.4/§10
+as amended: one utility, the agent has none of its own); the **lookup family**
+(`core/lookup.py` — §4 with §4.1 covariates); and **narrative subsumption**
+(`core/narrative.py` — §7: synthesize is a proposal distribution; claims audited into
+cells, population-calibrated per-cell from the eval_claim stream, per-claim EU inclusion
+under Ū, the proposal-coverage tail named); and the **§8 decision-weighted adoption
+gate** (`core/gate.py`, `run_eval --gate` → `$LIFE_AGENT_KB/eval/gate/`: a posterior
+over Δ = EU(typed) − EU(monolithic) by MC over P(U) × the Bayesian bootstrap, P(Δ>δ)≥
+level with δ/level frozen blind; the disagreement region + answer rates published). It
+ran (2026-06-13): **FAIL** at P(Δ>0.05)=0.848 (gate 0.90) — Δ̄=+2.23 but the interval
+crosses zero on the wide u_wrong prior + the 21-question corpus; typed answer rate 0.11
+vs monolithic 1.00. The two named levers (§14 ledger): narrow P(U) (elicit/reveal
+wrong-answer cost) or raise the typed answer rate (retrieval coverage). Next: retrieval
+coverage for point facts (q-002/q-014 class), then old D3–D4 re-scoped as Ask's
+aggregate/thread families. The doc's §14 open questions are a **live empirical ledger**
+(owner's adoption rider): each entry names the evidence that decides it — keep it
+current. Sequencing is continuous and eval-gated, not dogfood-gated (PRINCIPLES §9 as
+amended).
 
-**Not built, deliberately:** the agent-loop spine (open decision — PRINCIPLES §15), credence
-wiring, the VOI governor (last on the geodesic — PRINCIPLES §16), a live MCP server
+**Not built, deliberately:** the agent-loop spine (open decision — PRINCIPLES §15),
+the VOI governor (last on the geodesic — PRINCIPLES §16), a live MCP server
 (`src/pkm/mcp_server.py` is dormant-by-design — PRINCIPLES §5). One candidate spine+brain
 composition is documented at
 [`docs/candidates/brain-design.md`](./docs/candidates/brain-design.md) — a candidate, not the

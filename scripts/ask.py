@@ -35,7 +35,7 @@ from dataclasses import dataclass, field
 from datetime import date as _date
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import citation_guard as guard  # sibling script: deterministic citation-faithfulness gate
 import duckdb
@@ -46,6 +46,10 @@ import yaml
 import life_agent.core as C
 from life_agent import owner
 from life_agent.core import derivations as D
+from life_agent.core import lookup as LK
+from life_agent.core import narrative as N
+from life_agent.core import outcomes as O
+from life_agent.core import reactions as R
 from life_agent.core import subject as S
 from life_agent.core import temporal as T
 from life_agent.tasks import events as ev
@@ -202,6 +206,22 @@ class TemporalReport:
 
 
 TEMPORAL_LAST: TemporalReport | None = None
+
+# The last answer's §18.9 stage cache keys ({"retrieve": ..., "synthesize": ...}; absent
+# entries mean the stage never keyed — e.g. no synthesize on an abstention). Travels like
+# TEMPORAL_LAST so answer()'s public 3-tuple stays unchanged; the eval harness reads it
+# for outcome lineage attribution (bayesian-foundations §8 — the outcomes log).
+STAGES_LAST: dict[str, str] = {}
+
+# The last answer's lookup-family result (foundations §4), or None when the narrative
+# path answered (not routed as a lookup, zero grounded observations, or a named
+# fail-open). Travels like TEMPORAL_LAST; run_eval's --lookup grader consumes it.
+LOOKUP_LAST: LK.LookupResult | None = None
+
+# The last answer's narrative-family result (foundations §7), or None when the lookup
+# path answered, the answer abstained pre-synthesis, or narrative scoring failed
+# (named fail-open). run_eval's claim + coverage graders consume it.
+NARRATIVE_LAST: N.NarrativeResult | None = None
 
 # --- subject (D2): the owner filter + the same nothing-vanishes contract --- #
 # A first-person possessive question ("my X") filters hits by projected
@@ -418,20 +438,23 @@ def subject_footer(view: S.SubjectView, name_of: dict[str, str]) -> str:
 def _apply_subject_to_hits(
     conn: duckdb.DuckDBPyConnection, root: Path | None,
     hits: list[dict[str, Any]], *, profile: str,
-) -> tuple[list[dict[str, Any]], TemporalReport]:
+) -> tuple[list[dict[str, Any]], TemporalReport, dict[str, str]]:
     """Project + owner-filter the chunk hits by ARTIFACT subject. Chunks of
     one artifact share its fate; admitted chunks keep their retrieval order
     (the filter excludes, it does not rank). Fail-open at every seam, never
     silently: no pkm root or no profile disables the filter with an explicit
     notice; a failed owner-match verdict leaves that subject unclear (kept
-    and named in the footer)."""
+    and named in the footer). The third return value maps each admitted
+    artifact key to its partition state ("owner" | "unclear" | "underived")
+    — the lookup family's §4.1 subject covariate (carried OUTSIDE the hit
+    dicts, so the retrieval-set bytes stay untouched)."""
     if root is None:
         return hits, TemporalReport(
-            footer="owner filter UNAVAILABLE (no pkm root) — showing all hits")
+            footer="owner filter UNAVAILABLE (no pkm root) — showing all hits"), {}
     if not profile:
         return hits, TemporalReport(
             footer="owner filter UNAVAILABLE (no owner profile — "
-                   "/tell who you are) — showing all hits")
+                   "/tell who you are) — showing all hits"), {}
     keys = list(dict.fromkeys(h["artifact_cache_key"] for h in hits))
     shits = S.project_subjects(conn, root, keys)
     verdicts: dict[str, str] = {}
@@ -445,12 +468,15 @@ def _apply_subject_to_hits(
     name_of = {h["artifact_cache_key"]: Path(h["origin"]).name for h in hits}
     admitted = set(view.admitted)
     admitted_hits = [h for h in hits if h["artifact_cache_key"] in admitted]
+    indeterminate = {**dict.fromkeys(view.unclear, "unclear"),
+                     **dict.fromkeys(view.underived, "underived")}
+    state_of = {k: indeterminate.get(k, "owner") for k in admitted}
     targets = []
     for remedy in view.remedies:  # "pkm derive <decl> --input <ck>"
         words = remedy.split()
         targets.append((words[2], words[4]))
     return admitted_hits, TemporalReport(
-        footer=subject_footer(view, name_of), targets=targets)
+        footer=subject_footer(view, name_of), targets=targets), state_of
 
 
 def build_query(question: str, terms: str) -> str:
@@ -534,6 +560,7 @@ def retrieval_is_weak(scores: dict[int, float], *, floor: float, min_hits: int) 
 def answer(conn: duckdb.DuckDBPyConnection, question: str,
            k: int, *, expand: bool = True,
            no_cache: bool = False,
+           families: bool = True,
            since: _date | None = None, until: _date | None = None,
            recent: bool = False) -> tuple[str, list[C.SourceCard], dict[int, float]]:
     """Retrieve then synthesise a cited answer. The authoritative owner profile (who "I"/"my"
@@ -545,10 +572,18 @@ def answer(conn: duckdb.DuckDBPyConnection, question: str,
     question; retrieve keyed on (query, corpus digest, k); synthesize keyed on (question,
     retrieval-set content hash, owner-profile hash). ``no_cache`` recomputes every stage
     (recording stays write-once, so existing derivations stand). Caching is fail-open.
+
+    ``families=False`` is the **monolithic instrument** seam (the adoption-gate baseline,
+    bayesian-foundations §8): skip the typed lookup route AND the narrative scorer, so the
+    raw synthesize prose is returned — the pre-Bayesian answer the gate weighs the typed
+    families against. Default ``True`` preserves the production path exactly.
     Returns (answer_text, cards, {card_n: score})."""
-    global TEMPORAL_LAST, SUBJECT_LAST
+    global TEMPORAL_LAST, SUBJECT_LAST, STAGES_LAST, LOOKUP_LAST, NARRATIVE_LAST
     TEMPORAL_LAST = None
     SUBJECT_LAST = None
+    STAGES_LAST = {}
+    LOOKUP_LAST = None
+    NARRATIVE_LAST = None
     root = _pkm_root()
     profile = owner.load_profile()
     terms = _expand_terms(question, root=root, no_cache=no_cache) if expand else ""
@@ -559,6 +594,8 @@ def answer(conn: duckdb.DuckDBPyConnection, question: str,
     # retrieve — deterministic given the corpus state, so keyed on its digest
     digest = _corpus_digest(conn) if root is not None else None
     rkey = D.retrieve_key(query, digest, k=k) if digest is not None else None
+    if rkey is not None:
+        STAGES_LAST["retrieve"] = rkey.cache_key
     hits: list[dict[str, Any]] | None = None
     if root is not None and rkey is not None and not no_cache:
         cached = D.lookup(root, rkey.cache_key)
@@ -589,9 +626,10 @@ def answer(conn: duckdb.DuckDBPyConnection, question: str,
     # synthesize key, so the admitted set IS the evidence. The predicates
     # compose — each footer names its own partition over what reached it; the
     # full retrieval set is already recorded above.
+    subject_state_of: dict[str, str] = {}
     if owner_question(question):
-        hits, sreport = _apply_subject_to_hits(conn, root, hits,
-                                               profile=profile)
+        hits, sreport, subject_state_of = _apply_subject_to_hits(
+            conn, root, hits, profile=profile)
         SUBJECT_LAST = sreport
 
     pairs = _cards_from_set(hits)
@@ -603,33 +641,94 @@ def answer(conn: duckdb.DuckDBPyConnection, question: str,
     if retrieval_is_weak(scores, floor=WEAK_SCORE_FLOOR, min_hits=MIN_STRONG_HITS) and not profile:
         return (ABSTENTION, cards, scores)
 
+    # The lookup family (Ask v0, foundations §4): typed point-fact questions take the
+    # Bayesian path — grounded per-hit observations → tempered mixture posterior → EU
+    # response under the utility posterior — and its decision IS the answer. Routed
+    # conservatively: a declined route or zero grounded observations falls to the
+    # narrative path (the §9 no-hard-zeros routing), and any failure is fail-open and
+    # NAMED (interaction contract), never silent.
+    if families and root is not None:
+        try:
+            # §4.1 covariates, projected read-side and carried OUTSIDE the hit
+            # dicts (the retrieval-set bytes — and every key hashed from them —
+            # stay untouched): the owner-filter partition states from above, and
+            # the doc_date projection (None = projected but undated/underived).
+            hit_keys = list(dict.fromkeys(h["artifact_cache_key"] for h in hits))
+            date_of: dict[str, str | None] = {
+                d.artifact_cache_key:
+                    (d.date.isoformat() if d.date is not None else None)
+                for d in T.project_dates(conn, root, hit_keys,
+                                         caller="ask.lookup")}
+            cov = LK.HitCovariates(subject_state=subject_state_of,
+                                   doc_date=date_of)
+            lk = LK.lookup_answer(root, question, hits, covariates=cov)
+        except Exception as e:  # fail-open by contract, reason printed
+            print(LK.GRAMMAR["fallthrough"].format(reason=f"failed: {e}"))
+            lk = None
+        if lk is not None:
+            LOOKUP_LAST = lk
+            STAGES_LAST["lookup_answer"] = lk.answer_cache_key
+            return (lk.rendered, cards, scores)
+
     # synthesize — keyed on the retrieved CONTENT (early cutoff) and the profile hash
     skey = D.synthesize_key(question, D.content_hash(_set_content(hits)),
                             D.content_hash(profile.encode("utf-8")),
                             model=C.DEFAULT_ANSWER_MODEL, prompt_template=ANSWER_SYSTEM,
                             temperature=C.TEMPERATURE, max_tokens=600)
+    STAGES_LAST["synthesize"] = skey.cache_key
+    text: str | None = None
     if root is not None and not no_cache:
         cached = D.lookup(root, skey.cache_key)
         if cached is not None:
             _count("synthesize", hit=True)
-            return (cached.decode("utf-8"), cards, scores)
+            text = cached.decode("utf-8")
 
-    blocks = []
-    if profile:
-        blocks.append(f'OWNER (authoritative — who "I"/"my" refers to):\n{profile}')
-    blocks.append(f"SOURCES:\n{C.render_sources_block(cards) if cards else '(none retrieved)'}")
-    user = f"QUESTION: {question}\n\n" + "\n\n".join(blocks)
-    r = C.anthropic_complete(ANSWER_SYSTEM, user, max_tokens=600)
-    text = r.text.strip()
-    if root is not None:
-        _count("synthesize", hit=False)
-        lineage = ([{"cache_key": rkey.cache_key, "role": "retrieval_set"}] if rkey else [])
-        lineage += [{"cache_key": ck, "role": "source"}
-                    for ck in dict.fromkeys(h["artifact_cache_key"] for h in hits)]
-        D.record(root, skey, text.encode("utf-8"), lineage=lineage,
-                 metadata={"in_tokens": r.in_tokens, "out_tokens": r.out_tokens,
-                           "seconds": round(r.seconds, 3)})
-    return (text, cards, scores)
+    if text is None:
+        blocks = []
+        if profile:
+            blocks.append(f'OWNER (authoritative — who "I"/"my" refers to):\n{profile}')
+        blocks.append(
+            f"SOURCES:\n{C.render_sources_block(cards) if cards else '(none retrieved)'}")
+        user = f"QUESTION: {question}\n\n" + "\n\n".join(blocks)
+        r = C.anthropic_complete(ANSWER_SYSTEM, user, max_tokens=600)
+        text = r.text.strip()
+        if root is not None:
+            _count("synthesize", hit=False)
+            lineage = ([{"cache_key": rkey.cache_key, "role": "retrieval_set"}] if rkey else [])
+            lineage += [{"cache_key": ck, "role": "source"}
+                        for ck in dict.fromkeys(h["artifact_cache_key"] for h in hits)]
+            D.record(root, skey, text.encode("utf-8"), lineage=lineage,
+                     metadata={"in_tokens": r.in_tokens, "out_tokens": r.out_tokens,
+                               "seconds": round(r.seconds, 3)})
+    if not families:  # the monolithic instrument: raw synthesize prose, unscored
+        return (text, cards, scores)
+    return (_narrative_scored(root, question, text, cards), cards, scores)
+
+
+def _narrative_scored(root: Path | None, question: str, text: str,
+                      cards: list[C.SourceCard]) -> str:
+    """The narrative family's scorer (foundations §7) over the synthesize proposal:
+    parse → audit cells → population credences → per-claim EU decision → labeled
+    render. Read-side policy — the proposal artifact and its keys are untouched —
+    rerun on every call so scorer/fold movement re-scores cached prose. Any failure
+    is fail-open and NAMED: the raw prose still reaches the owner, marked unscored
+    (interaction contract — nothing silent)."""
+    global NARRATIVE_LAST
+    if root is None:
+        return text
+    try:
+        # cast: the seam may be stubbed to None (the conftest hermetic fixture)
+        nv = cast("N.NarrativeResult | None",
+                  N.narrative_answer(root, question, text, cards,
+                                     synthesize_cache_key=STAGES_LAST.get("synthesize")))
+    except Exception as e:  # fail-open by contract, reason printed
+        print(N.GRAMMAR["fallthrough"].format(reason=f"failed: {e}"))
+        return text
+    if nv is None:  # the disabled seam (hermetic tests stub the family to None)
+        return text
+    NARRATIVE_LAST = nv
+    STAGES_LAST["narrative_answer"] = nv.answer_cache_key
+    return nv.rendered
 
 
 # --- presentation --------------------------------------------------------- #
@@ -715,6 +814,27 @@ def capture(question: str, text: str, cards: list[C.SourceCard], scores: dict[in
                                when=f"{datetime.now():%H:%M}",
                                unverified=_unverified_summary(audit)))
     print(f"→ logged {verdict} to {log}\n")
+    _record_reaction(question, verdict, note)
+
+
+def _record_reaction(question: str, verdict: str, note: str) -> None:
+    """§4.4 reaction loop: record the verdict as a structured reaction, joined to the
+    decision it grades by ``decision_id`` (the answer's cache key). The producer
+    (`reactions.load_reactions`) decides what folds — v0 conditions u(wrong) only on clean
+    lookup abstain-verdicts; everything else is recorded, not folded. Fail-open and named:
+    a calibration-log write must never break the dogfood loop."""
+    decision_id = (LOOKUP_LAST.answer_cache_key if LOOKUP_LAST is not None
+                   else NARRATIVE_LAST.answer_cache_key if NARRATIVE_LAST is not None
+                   else "")
+    try:
+        R.append(C.REACTIONS_LOG, R.ReactionEvent(
+            tx_time=O.now_iso(),
+            question_id=hashlib.sha256(question.encode("utf-8")).hexdigest()[:16],
+            decision_id=decision_id, kind="verdict",
+            valence={"GOOD": "good", "BAD": "bad", "NOTE": "note"}[verdict],
+            reason=note or None))
+    except Exception as e:  # fail-open by contract, reason printed
+        print(f"  (reaction not recorded: {e})")
 
 
 # --- one question, end to end --------------------------------------------- #
