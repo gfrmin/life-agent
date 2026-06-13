@@ -381,15 +381,118 @@ finite grid is also what *discharges* §0's bounded-utility dependence: U is bou
 construction, not by assertion.
 
 **Identification, honestly.** The **preference-evidence selection channel** is M2 on
-this stream: the owner reacts only to what the policy chose to surface — named now,
-carried formally when the data warrants. **τ and U are non-identifiable from choice
-data in principle** (Armstrong–Mindermann): no volume of behaviour separates "he
-prefers this" from "he errs this way" — the hierarchical τ-prior does the separating,
-permanently, so that prior does load-bearing work forever (the no-hard-zeros humility,
-lifted to the values layer). Corrections are partially observed (he corrects the errors
-he *sees*); preferences drift and depend on context — non-stationarity and context
-covariates are §12 stage 7's, with the trigger stated: systematic disagreement between
-the posterior's predictions and fresh behaviour.
+this stream: the owner reacts only to what the policy chose to surface — named now, with
+its promotion trigger and the grounds for deferring it stated in the reaction loop below.
+**τ and U are non-identifiable from choice data in principle** (Armstrong–Mindermann)
+*in generic IRL, where the rationality model is unobserved*: there no volume of behaviour
+separates "he prefers this" from "he errs this way", and the hierarchical τ-prior does the
+separating. The reaction loop below is **not** generic IRL — its cut-points are
+**exogenous**: the agent's own credence `p` sets each verdict's threshold `−p/(1−p)`, not
+the owner's preference, and exogenous cut-point variation is exactly what separates slope
+(τ) from location (u(wrong)). So the τ-prior does *permanent* separating work only in the
+**clustered-threshold regime** (all `p` alike → all thresholds alike → only a bound on
+u(wrong)); with `p` *spread*, the verdicts bracket u(wrong) and recover τ from the curve.
+Threshold spread is therefore an identification lever the design can engineer — do not
+clamp the lookup family to a narrow credence band. Corrections are partially observed (he
+corrects the errors he *sees*); preferences drift and depend on context — non-stationarity
+and context covariates are §12 stage 7's, with the trigger stated: systematic disagreement
+between the posterior's predictions and fresh behaviour.
+
+**The reaction loop — the concrete mechanism (v0: the verdict stream).** Streams 2–6
+share one shape, because *every agent action is already a logged EU choice and the
+owner's reaction to it is a discrete-choice observation about U*. The loop is a fold,
+parallel to the outcomes and decision logs:
+
+    reactions.jsonl  ⋈(question_id)  decisions.jsonl  →  Reaction events  →  the posterior fold
+
+- **The reaction log** — the calibration leg's third append-only log beside outcomes and
+  decisions, `$LIFE_AGENT_KB/calibration/reactions.jsonl`, under the same discipline (file
+  order is the canonical replay order; a closed `kind`/`valence` vocabulary raises on junk;
+  durable append; unbackfillable, so it lands now). One line is
+  `(tx_time, question_id, decision_id, kind, valence, reason)`; v0 carries `kind = verdict`,
+  `valence ∈ {good, bad, note}` from the existing ask-live g/b/n capture, plus a **nullable
+  `reason`** — the free-text note `capture` already prompts for on `bad`/`note`. The reason
+  is the *one disambiguator that cannot be reconstructed after the fact* (it resolves the
+  contamination below); it is opt-in and one keystroke, so logging it breaches no
+  passivity, and the slot lands now even mostly empty. The vocabulary grows by edit as the
+  later streams land (`correction`, `reask`, `clarify_reaction`, `disposal`).
+  **The join is on a per-decision `decision_id`, not `question_id`.** `question_id =
+  sha(question)` is not unique across runs (re-asks are stream 5, designed in), and a
+  within-session re-ask is itself a *new* decision — new retrieval, new posterior, new `p` —
+  that must carry a different id, because the verdict binds to the exact decision whose `p`
+  and action set its threshold. `run_id` is the wrong field to overload: it is per-*run* on
+  the eval path (one id across a run's questions), so making it per-decision on the ask-live
+  path would give one field two cardinalities depending on who wrote it — the
+  silent-contract divergence the discipline disowns. So the decision log mints a
+  **per-decision `decision_id`** (the answer's §18.9 cache key serves — content-addressed,
+  so two *truly identical* decisions coalesce to one id and one threshold, which is correct),
+  the verdict carries it, and the join is on it. Unbackfillable *on the decision side*: a
+  decision logged without it orphans the scarce early reactions forever, so it lands before
+  the first reaction. (Latency-delta and lineage keys stay *off* the row — both fall out of
+  the join and the two `tx_time`s.) **Supersession, not accumulation:** the owner may revise
+  a verdict (`good` then `bad`) or fire two valences on one answer; the order-defined fold
+  takes the **latest verdict per `(decision_id, kind)`** (last-write-wins), so one decision
+  contributes one threshold observation — the "disjoint, not double-counted" guarantee the
+  sign table rests on holds *at the fold*, not merely per appended row.
+
+- **The reading is inverse decision theory, not a label.** A verdict alone is valence; it
+  becomes evidence only against *the decision it grades* — what the agent chose, and at
+  what credence. For a lookup decision the agent reported iff
+  `EU(report) = p·u(correct) + (1−p)·u(wrong) > 0` (and beat hedge/clarify), where `p` is
+  the MAP candidate's posterior weight recorded in the decision's posterior summary. So
+  the report/abstain boundary sits at a **credence-implied indifference point**,
+  `u(wrong)*(p) = −p/(1−p)`, and each verdict is a *soft (τ-smoothed) threshold
+  observation on `u(wrong)` located there*, oriented by (verdict, action):
+
+  | verdict | action @ credence p | reads as | moves u(wrong) |
+  |---|---|---|---|
+  | **bad** | report | the confident report was unwelcome/wrong | **below −p/(1−p)** (the "confidently-wrong is a no-no" signal) |
+  | good | report | reporting at p was endorsed | above −p/(1−p) (corroborates) |
+  | **good** | abstain | "glad you didn't guess" — a report would have been net-negative | **below −p/(1−p)** |
+  | bad | abstain | "I wanted an answer" — silence under-delivered | above −p/(1−p) |
+
+  Each row is one `Reaction(latent="u_wrong", sign, threshold)` through the existing
+  `reaction_probability` kernel, the threshold computed from `p` — the sign table above is
+  exact (a verdict on an abstention cannot co-fire with its opposite, so the two
+  "u(wrong)-up/down" pressures are disjoint, not double-counted). **But the report rows
+  (1–2) are contaminated and the abstain rows (3–4) are clean, and the difference is
+  load-bearing.** A `bad` on a *report* can mean (a) wrong value, (b) right value / wrong
+  *subject*, or (c) "I didn't want a report at all" — readings (b) and (c) belong to *other
+  latents* (the subject instrument's construct validity; λ_int / relevance), and **τ cannot
+  launder them onto u(wrong)**: τ tempers magnitude on the modelled axis, it does not
+  reassign attribution across latents. Worse, the contamination is **signed and
+  gate-favourable** — (b) and (c) both push u(wrong) more negative, which makes the typed
+  family abstain more and the gate's Δ rise, so a fold fed raw report-verdicts would
+  manufacture *adoption-direction* evidence out of misread verdicts (the
+  observation-model-from-messages hazard). The abstain rows carry no such *cross-latent*
+  confound: nothing was reported, so there is no wrong value or wrong subject to mistake for
+  a preference — a `good`/`bad` on an abstention is **dominantly** "should you have
+  guessed?", which *is* a u(wrong) observation. (Two precisions the confer drew: the
+  politeness/noise on any `good` verdict is *within-latent*, exactly what τ absorbs, whereas
+  the report rows' defect was *cross-latent*, which τ cannot touch; and the abstain rows'
+  faint residual is an abstain-over-*clarify* λ_int signal, second-order, disambiguated by
+  the `reason` slot if it bites.) **So v0 conditions the utility fold on the clean abstain
+  rows only.**
+  Report-verdicts are recorded but not folded until each is routed through the §8 grader-3
+  attribution (a wrong-subject `bad` is then an *instrument-failure outcome*, not a u(wrong)
+  threshold — excluding it is correct, not lossy); that attribution is the named successor,
+  and the `reason` slot is what makes its routing decidable, so that approximation stays
+  *falsifiable* on the real rows. Identification does not wait on it — the clean
+  abstain-verdicts already bracket u(wrong) through the spread of `−p/(1−p)` across
+  questions (next paragraph). Hedge/clarify verdicts (rare; → u(hedged), λ_int) and the
+  narrative family (coarser — the boundary is over the included claims' credences) are the
+  same shape, later. A verdict whose question never logged a decision (a weak-retrieval
+  abstention asserts nothing) joins nothing and is held **unrouted** — never mis-assigned,
+  the §8 grader-3 humility reused at the values layer.
+
+- **The fold extends, it does not change.** The utility posterior already folds
+  `Evidence = Elicitation | Reaction` and already version-stamps the whole event list, so
+  the producer adds the joined `Reaction`s to the same fold; a new verdict moves the
+  fold-version, and the ask path and the §8 gate re-read demand-led. Conditioning is the
+  skin's existing `tabular_log_density` over the grid latents — no new Julia. Learning
+  stays **passive** (above): the agent conditions on verdicts the owner volunteers through
+  the unchanged, frictionless g/b/n prompt; it never probes preferences. The
+  human-facing surface is untouched — the verdict simply also emits a structured line.
 
 **Resource arguments.** Money, latency, and the owner's attention are *arguments of
 this one utility function* — there is no second, agent-owned objective that values them
@@ -504,6 +607,43 @@ posterior summary, utility_fold_version, chosen_action, predicted_eu). Reactions
 question_id (verdicts, corrections, re-asks). **No EU decision is ever made unlogged** —
 the log lands with the first decision it must witness (§12 stage 1 slice 2), by the same
 option-value derivation as above. It also feeds §10's accounting.
+
+**The reaction log — where this leg closes the gate, and the two firewalls it needs.** The
+join of owner reactions onto those decisions (`$LIFE_AGENT_KB/calibration/reactions.jsonl`,
+the §4.4 reaction loop) is the channel through which the gate actually moves: the first §8
+gate run failed at P(Δ>δ)=0.848 not because the typed families lose but because `u(wrong)`
+was a wide *prior* with no behaviour behind it, and the verdict stream is the genuine new
+evidence that narrows it. Conditioning on post-cutoff reactions and re-reading is the live
+ledger working as intended — but the blind-comparison discipline needs **two** firewalls
+here, and the temporal cutoff is only one.
+
+- **The real firewall is passivity, not the cutoff.** The cutoff is temporal (`tx_time >
+  cutoff`); the threat is *informational* — the owner now knows the gate failed at 0.848
+  and which direction moves it, so a verdict-generating process *run in order to* move the
+  gate (priming "bad" on confident-wrong reports because adoption is wanted) contaminates
+  the stream with the result even with every timestamp post-cutoff. The word "seeding" is
+  the tell. So verdicts must be **byproducts of ordinary use**, not a gate-directed marking
+  session; and if a dedicated pass is ever unavoidable, the owner verdicts **blind to the
+  producing family and blind to the current gate reading**. (Note the v0 fold uses only the
+  clean abstain rows, §4.4 — which also blunts this: "glad you didn't guess" is harder to
+  fake toward adoption than a hunt for reports to mark wrong.)
+- **The re-read uses an always-valid criterion, to avoid optional stopping.** Demand-led
+  re-reads against a fixed `P(Δ>δ) ≥ 0.90`, taken however often verdicts arrive, will cross
+  0.90 on fluctuation if you look enough — the same sin as a confident-wrong answer scoring
+  at max, which the eval discipline already disowns. A pre-committed increment (re-read
+  after `k` folded verdicts, `k` fixed in advance) closes it, and is valid even though `k`
+  is chosen knowing the gate failed — the bar δ/level was frozen blind at the gate build,
+  and a schedule blind to its own future data cannot select a favourable fluctuation or
+  force the direction of movement (that is set by whether the owner's abstain-verdicts run
+  `good` or `bad`). But pre-committed-`k` is brittle for a ledger whose purpose is
+  *continuous* re-reading — one shot, then restart the firewall, and "`k` then `k′`" is
+  optional stopping by the back door. So the **primary** criterion is always-valid: a
+  confidence sequence / e-process, which licenses a look after *every* folded verdict, as
+  often as wanted, with no optional-stopping penalty and **no `k` to choose**.
+
+Both hold for the typed-vs-monolithic gate and for every later adoption gate. Movement is
+then attributable to a changed fold-version under a pre-registered look, never to a hand
+moved on the prior or an opportune glance.
 
 Three graders feed it:
 
@@ -838,6 +978,47 @@ dependence by construction. (4) the cost proxy's grading reference is the utilit
 posterior, not ground truth — ACCEPTED and named (§10): the proxy inherits the
 posterior's miscalibration; the owner-side graders move the reference itself.
 
+**The reaction-loop confer (2026-06-13) — findings and dispositions.** The §4.4 reaction
+loop (learning u(wrong) from verdicts) was conferred before build; the four-row sign table
+was confirmed correct (no sign error, no double-count). Five concerns returned, all folded
+above: (1) **two schema fields must land now** — `run_id` on the decision-side join
+(`question_id` is not unique across runs; re-asks are designed in) and a nullable
+free-text `reason` on `bad` (the one unreconstructable disambiguator; without it the
+report-row approximation is permanently unfalsifiable) — ACCEPTED; latency-delta and
+lineage keys correctly omitted (reconstructable from the join). (2) the mapping was **too
+clever** — collapsing wrong-value / wrong-subject / didn't-want-report onto one u(wrong)
+threshold is cross-latent contamination τ cannot launder, and it is signed *gate-favourable*
+— ACCEPTED: v0 folds the **clean abstain rows only**; report-verdicts are recorded but
+attribution-gated (§8 grader-3) and kept falsifiable by the reason slot. (3) identification
+is **regime-dependent on threshold spread**, not the permanent τ/U degeneracy the draft
+asserted (the cut-points are exogenous) — ACCEPTED: the τ claim softened, the §14 worry
+reframed to bracketing verdicts, the recovery check made to sweep dispersion. (4) the
+selection caveat holds but on **V-width-dominates-U-width** grounds, not low N, with a
+stated promotion trigger and the retrieval-coverage coupling named — ACCEPTED. (5) the
+blind-comparison firewall is **passivity, not the temporal cutoff** (the owner now knows
+the gate result, so verdicts must be ordinary-use byproducts / blind-if-dedicated), and
+demand-led re-reads are **optional stopping** — ACCEPTED: §8 gains both firewalls
+(byproduct-of-use; a pre-committed evidence increment, never a fixed threshold re-checked).
+
+**The reaction-loop confer, round 2 (2026-06-13) — the dispositioned design re-conferred.**
+All five round-1 dispositions verified faithful; the sign table unchanged. The crux —
+does "abstain rows only" trade contamination for an *identification* failure? — resolved
+**for the conservative cut**, the worry inverted: under the prior the abstain band
+`p ∈ [floor, 0.833]` spans thresholds `[0, −5]` (not a cluster), the gate is pivotal near
+u(wrong) ≈ −0.72 (`p ≈ 0.42`, inside the retained band), and the discarded report rows sit
+below −5 where the gate is insensitive — so the cut keeps the gate-pivotal rows and drops
+the irrelevant deep-negative ones. The proposed un-correction (fold report rows through the
+*built* `doc_subject` check) was **rejected**: it buys deep-region resolution the gate
+doesn't need and still ships reading (c) "didn't-want-report" (λ_int, signed
+gate-favourable) — a partial clean is worse than a clean defer. Four fixes folded: (i) a
+**supersession rule** (latest verdict per `(decision_id, kind)`) against double-counting
+revised verdicts; (ii) a dedicated **`decision_id`** rather than overloading `run_id` (per-
+*run* on the eval path — a silent-contract divergence); (iii) "purely" → **"dominantly"** on
+abstain cleanliness (within-latent politeness vs the cross-latent leak); (iv) the
+**always-valid criterion** (confidence sequence / e-process) promoted to the primary
+re-read, retiring the `k`-choice. The one named weak regime (bimodal retrieval) is the
+retrieval-coverage coupling, not a fold defect.
+
 **Counterarguments, recorded with answers:**
 
 - *"This is confidence decoration on a working pipeline — complexity without new
@@ -911,28 +1092,62 @@ on this list. Answers land here by amendment, citing their evidence.
   typed answer rate** — retrieval coverage so the narrative family reports instead of
   blanket-abstaining, turning conceded −u_correct into earned +u_correct; *first
   evidence:* the retrieval-coverage work (the q-002/q-014 point-fact class). The gate
-  re-runs deterministically (seeded); re-reading after either stream moves is the test.
-- **τ-prior adequacy (§4.4).** τ and U are non-identifiable from choice data *in
-  principle* (Armstrong–Mindermann) — no data volume separates them; the hierarchical
-  τ-prior does the separating, permanently. The unknown is therefore whether that prior
-  does *defensible* work, never whether data suffices. *Decided by* prior-sensitivity
-  analysis (vary the τ-prior, measure how far the utility posterior moves), with
-  posterior-correlation diagnostics read as prior-adequacy measures. *First evidence:*
-  stage 1 (decision log + verdict joins).
-- **The preference-evidence selection channel (§4.4).** Unknown: how much the policy's
-  own choices bias which preference evidence arrives (M2 on this stream), and when the
-  term must be carried formally. *Decided by* comparing utility posteriors conditioned
-  on policy-surfaced vs owner-initiated evidence. *First evidence:* stage 1, sharpening
-  at stage 4 (filing decisions generate denser reactions).
+  re-runs deterministically (seeded), but the re-read is **pre-committed** — after `k`
+  newly folded verdicts, or an always-valid criterion, never an opportune glance — and
+  the verdicts must be **ordinary-use byproducts**, not a gate-directed marking session
+  (§8's two firewalls; reaction-loop confer 2026-06-13). Lever (2) was *attempted and
+  refuted* on 2026-06-13: both mechanical answer-rate levers (subject decoupling, RRF
+  retrieval fusion) either dispersed the lookup posterior or manufactured a confident-wrong
+  report — the answer rate is the owner's confident-wrong aversion working, so lever (1),
+  the §4.4 reaction loop, is the live path.
+- **τ-prior adequacy (§4.4) — regime-dependent, per the reaction-loop confer.** τ and U
+  are non-identifiable from choice data *in generic IRL* (Armstrong–Mindermann); but the
+  reaction loop's cut-points are **exogenous** (the agent's credence `p` sets each
+  threshold), so the τ-prior does *permanent* separating work only in the
+  clustered-threshold regime — with `p` spread, exogenous cut-point variation separates τ
+  from u(wrong). The unknown is therefore two-fold: whether the τ-prior is *defensible*
+  where it does bind (clustered `p`), and whether ordinary use yields enough threshold
+  *spread* to lean on identification instead. *Decided by* prior-sensitivity analysis (vary
+  the τ-prior, measure posterior movement) **and** the dispersion sweep in the recovery
+  check below. *First evidence:* stage 1 (decision log + verdict joins).
+- **The preference-evidence selection channel (§4.4) — caveat now, on the confer's
+  grounds.** The owner verdicts only what the policy surfaced (M2 on this stream). The
+  confer corrected the *grounds* for deferring it to a caveat: not "low N" but the §4.4
+  V-width-dominates-U-width separation — the low answer rate is a retrieval-coverage
+  artefact (dispersed posteriors), not a pessimistic u(wrong), so the policy-choice ⟂
+  u(wrong) confound is weak and pure IRL's absorbing-timid-basin trap does not bite.
+  **Promotion trigger:** carry it as a modelled term once the answer rate rises enough that
+  report/abstain is decided where U-width *is* pivotal. **Coupling, named:** the loop cannot
+  leave the timid basin by itself — what licenses more reporting (hence the report-verdict
+  stream) is retrieval coverage (gate stream 2) sharpening `p`; v0's clean abstain-verdict
+  signal is *not* so gated (p spreads across abstentions), the report-verdict stream is.
+  *Decided by* divergence between posteriors conditioned on policy-surfaced vs
+  owner-initiated evidence. *First evidence:* stage 1, sharpening at stage 4.
 - **Preference drift / context-dependence trigger (§4.4).** Unknown: when the
   stationary-utility assumption breaks. *Decided by* systematic disagreement between the
   posterior's behaviour predictions and fresh choices (the stated stage-7 trigger).
   *First evidence:* whenever the decision log is mature enough to test predictions —
   stage 4 realistically.
-- **Verdict-stream evidence rate (§4.4).** Unknown: whether g/b verdicts arrive often
-  enough to move the utility posterior meaningfully before stage 4's denser streams.
-  *Decided by* the per-month count of joined decision–verdict pairs. *First evidence:*
-  stage 1.
+- **The reaction loop's identification + evidence rate (§4.4) — reframed by the confer.**
+  The verdict stream *identifies* (not merely bounds) u(wrong), but the identifying
+  variation is the **spread of `−p/(1−p)` across reacted-to decisions**, not the verdict
+  count: clustered credences return only a bound, spread credences bracket u(wrong) and
+  recover τ from the slope. So the worry is the rate of **bracketing** verdicts (a
+  report→bad and an abstain→bad at nearby thresholds beat fifty clustered ones), not
+  verdicts-per-month. The abstain-only cut is *well-placed*, not merely clean (confer round
+  2): under the prior the agent abstains across `p ∈ [floor, 0.833]` → thresholds spanning
+  `[0, −5]`, and the gate is pivotal near u(wrong) ≈ −0.72 (the monolithic's ~0.42 accuracy
+  on the disagreement set), i.e. `p ≈ 0.42`, an ordinary abstain credence *inside* the
+  retained band — while the discarded report rows sit below −5, the region the gate is
+  insensitive to. *Decided by* a recovery check that **sweeps threshold dispersion over the
+  abstain-reachable range** — synthetic verdicts at a known u(wrong) across the `−p/(1−p)`
+  band the abstain-only fold can actually produce, conditioned on the realised
+  `p`-distribution of real abstentions (not an idealised uniform spread, or it certifies
+  identification using cut-points the fold can never generate) — plus the always-valid gate
+  re-read (§8). The one genuinely weak regime is **bimodal retrieval** (abstentions cluster
+  near `p ≈ 0.1`, thresholds near −0.11, short of the pivot); no fold strategy rescues it
+  (report rows at `p ≈ 0.95` sit even further, near −19), so it is the retrieval-coverage
+  coupling, fixed only by better retrieval. *First evidence:* stage 1.
 - **Cost-proxy calibration cadence (§10).** Unknown: how often the learned
   owner-cost proxy must be re-graded against outcomes before drift (Goodhart on the
   cost model) becomes material. *Decided by* proxy-vs-outcome divergence in the
