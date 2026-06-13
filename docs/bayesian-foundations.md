@@ -479,9 +479,9 @@ parallel to the outcomes and decision logs:
   and the `reason` slot is what makes its routing decidable, so that approximation stays
   *falsifiable* on the real rows. Identification does not wait on it — the clean
   abstain-verdicts already bracket u(wrong) through the spread of `−p/(1−p)` across
-  questions (next paragraph). Hedge/clarify verdicts (rare; → u(hedged), λ_int) and the
-  narrative family (coarser — the boundary is over the included claims' credences) are the
-  same shape, later. A verdict whose question never logged a decision (a weak-retrieval
+  questions (next paragraph). Hedge/clarify verdicts (rare; → u(hedged), λ_int) are the
+  same shape, later; the **narrative family is multi-latent** — its boundary couples
+  u(wrong) and κ_att, folded jointly (§7.1, built 2026-06-14). A verdict whose question never logged a decision (a weak-retrieval
   abstention asserts nothing) joins nothing and is held **unrouted** — never mis-assigned,
   the §8 grader-3 humility reused at the values layer.
 
@@ -493,6 +493,29 @@ parallel to the outcomes and decision logs:
   stays **passive** (above): the agent conditions on verdicts the owner volunteers through
   the unchanged, frictionless g/b/n prompt; it never probes preferences. The
   human-facing surface is untouched — the verdict simply also emits a structured line.
+
+- **The kernel generalises to a margin functional (narrative, 2026-06-14).** A `Reaction`
+  is, in full, a soft observation on the **sign of the EU-margin of the action the owner
+  reacted to**: `margin(x) = Σ_l coeffs[l]·x_l − offset`, with
+  `P(react=1|x) = Σ_τ w_τ·sigmoid(sign·margin/τ)`. Lookup is the single-latent special case
+  (`coeffs={u_wrong:1}`, `offset = threshold`) — its existing form and already-folded
+  evidence are **frozen, never re-folded**; the functional is *additive* for the multi-latent
+  families. Two commitments fall out and are load-bearing. (i) **Raw, not normalised** — the
+  margin is the EU difference in gauge units, so the per-latent informativeness of a verdict
+  is automatically `∂EU/∂x_l` (the margin's gradient), the correct weighting: a narrative
+  verdict at `p=0.5` genuinely says *less* about u(wrong) (slope `p(1−p)=0.25`) because the
+  reliance-squared structure down-weights it there. Normalising by `‖coeffs‖` would erase that;
+  normalising by the u(wrong) coefficient (lookup's `−p/(1−p)`) is worse — it blows κ_att's
+  coefficient up at extreme `p`. Lookup's threshold form is itself the mild (frozen, ≈1.7× at
+  mid-`p`) misspecification — *not* the target to match. (ii) **τ is keyed on event-shape**
+  (single-latent-lookup vs joint-narrative), so the two forms' scales never silently
+  cross-weight; the hierarchical τ-prior groups on shape. Conditioning is still the skin's
+  `tabular_log_density`; multi-latent margins condition a **joint block** — the connected
+  components of the latent co-occurrence graph (a latent pair sharing any likelihood term
+  shares one joint categorical over the product grid; the product prior is independent — no
+  invented correlation; **marginalise to 1-D only at readout, never persist the marginals**,
+  or a later event loses the induced correlation and the fold silently reverts to the wrong
+  collapse-then-recondition order).
 
 **Resource arguments.** Money, latency, and the owner's attention are *arguments of
 this one utility function* — there is no second, agent-owned objective that values them
@@ -582,6 +605,68 @@ on its wide credences. **Which family to formalise next is itself an EU calculat
 demand (plan-key frequency, D0 logs) × the monolithic instrument's calibrated error on
 that question shape = the expected gain of formalisation. Even roadmap prioritisation is
 decision-theoretic (§12).
+
+**7.1 The narrative reaction fold — (u(wrong), κ_att) jointly (built 2026-06-14, conferred).**
+The §4.4 verdict stream folds narrative answers, but the boundary it inverts is multi-latent.
+Each claim is included iff `EU(include|p) = p·(p·u(correct) + (1−p)·u(wrong)) − κ_att > 0`
+(the reliance-linear labeled-claim model; κ_att the per-claim attention cost), so under the
+gauge the **inclusion margin** of a claim at credence `p` is
+
+    g(U) = p·(1−p)·u(wrong) − κ_att + p²        — LINEAR in (u(wrong), κ_att): a *line*.
+
+A narrative `ALL_WITHHELD` abstention (claims proposed, all withheld — *not* `NO_CLAIMS`, a
+proposal failure) reacted to at the marginal claim's credence `p_max` is therefore a soft
+observation on `sign g(U)`, emitted as `Reaction(coeffs={u_wrong: p_max(1−p_max),
+kappa_att: −1}, offset=−p_max², sign=−1, reacted=(valence=="good"))`. This is **κ_att's only
+evidence stream** (no other v0 family's decision touches it — temporarily: aggregate/thread
+will feed it later). Identification is *lookup pins u(wrong) → the narrative lines pin κ_att*
+in the decision-pivotal band (`θ(p)=p(1−p)u(wrong)+p²` spans ≈`[−1.04, 0.06]` at u(wrong)≈−5,
+exactly where κ_att flips include/withhold), from the **spread of `p_max`**; κ_att inherits
+u(wrong)'s residual width (bounded by `p(1−p)·sd ≤ 0.25·sd`), which the joint fold propagates
+correctly. The plug-in alternative (κ_att fixed at its prior) is *actively wrong*: the cut-point
+depends on κ_att, so it injects κ_att's error into u(wrong), the gate-pivotal latent.
+
+**The cleanliness inverts from lookup — the load-bearing finding (confer, 2026-06-14).** In
+lookup both abstain valences were clean and the *report* rows were deferred. Narrative
+`ALL_WITHHELD` proposed claims, so the valences are asymmetric: `good` ("right to withhold the
+set") is clean and **one-directional** (pushes the margin down — u(wrong)↓, κ_att↑); `bad`
+("I wanted an answer") is contaminated (coverage: the proposer may have missed the wanted claim,
+so `p_max` understates it; which-claim: the owner may have wanted a *lower*-credence proposed
+claim, so `p_max` is the wrong cut-point; relevance the uniform κ_att doesn't model) and pushes
+the margin **up**. So folding the clean valence only — the lookup instinct — is **one-directional
+evidence that runs the posterior to the grid edge** (κ_att→top, u(wrong)→bottom), concluding
+"abstention is always right" and **passing the gate spuriously**. The contaminated `bad` rows are
+therefore the **only counter-pressure** and are structurally essential: **v0 folds both valences.**
+The contamination is **anti-gate-favourable** (a spurious `bad` pushes the margin up, making typed
+abstain *less* and look more like the monolith, lowering Δ), so its risk is not gate-gaming but
+**utility-corruption** (κ_att driven spuriously low → chronic over-inclusion downstream) — which is
+why the `bad` rows are cleaned even though they cannot compromise the gate's pass-integrity.
+
+**Cleaning — what ships and what is owed evidence first.** Two cleanings, separated (owner,
+2026-06-14): (1) **mandatory in v0 — coverage-gate the `bad` rows.** Fold a `bad`-on-`ALL_WITHHELD`
+as counter-pressure only when that question's coverage posterior mean (§7 move 3) clears a stated
+bar; below it the "I wanted an answer" is more likely a proposal-recall failure than a utility
+complaint, and folding it corrupts κ_att. The `good` rows are **ungated** (endorsing withholding the
+*shown* set is valid regardless of what was missed). This filters the *contaminated* `bad` rows
+while keeping the genuine counter-pressure, so no runaway; the §4.4 endpoint-mass monitor on the
+joint marginals is the detectable backstop if the bar is mis-tuned. (2) **deferred — the which-claim
+residual.** A closed-vocabulary reaction reason (which-claim / wanted-more / wanted-more-certain) is
+the *successor*, not v0 — because, unlike lookup's destroyed-if-unlogged reason slot, the **free-text
+reason is already captured on narrative `bad`**, so the evidence is retained; the which-claim κ_att
+mis-location is **bounded** (within the θ-band), **anti-gate-favourable** (no adoption-integrity
+risk), and **reversible** (re-parse the retained reasons + refold when the vocab lands). **Promotion
+trigger (stated now):** a measured which-claim rate in the retained free-text reasons above a stated
+bar, or a gate false-negative diagnosed to which-claim. `NO_CLAIMS` abstentions (no `p_max`) and
+narrative *report*-verdicts (the lookup-report attribution successor) are recorded-not-folded.
+
+**The reliance form is fixed, and priced.** `EU(include|p)` bakes in reliance-linear `r(p)=p`;
+reliance and u(wrong) are confounded in the margin (both scale the wrong-claim term), so inclusion
+verdicts alone cannot separate the *form* — that needs an act-on-a-claim stream (GTD disposals,
+corrections, claim-citing re-asks) that does not exist yet. So `r(p)=p` is fixed for v0 and the
+reliance-measurement stream named as successor — but the misspecification is **not benign**:
+over-reliance (`r>p`, the default human failure with confident-looking output) makes wrong claims
+hurt more than the line predicts, pushing u(wrong)↓/κ_att↑, both **gate-favourable** (a model-form
+error masquerading as a utility update). Priced by the §14 reliance-sensitivity band on the gate.
 
 ## 8. Calibration — the empirical leg
 
@@ -1019,6 +1104,31 @@ abstain cleanliness (within-latent politeness vs the cross-latent leak); (iv) th
 re-read, retiring the `k`-choice. The one named weak regime (bimodal retrieval) is the
 retrieval-coverage coupling, not a fold defect.
 
+**The narrative joint-fold confer (2026-06-14) — findings and dispositions.** §7.1 (folding
+the narrative family — verdicts learning (u(wrong), κ_att) **jointly**) was conferred before
+build. The joint fold, the connected-component factorisation, and the margin-functional
+generalisation were endorsed; seven concerns returned. (1) **τ-scale** — do *not* normalise;
+the raw EU-margin's varying steepness *is* the correct per-latent informativeness (`∂EU/∂x`),
+τ keyed on event-shape — ACCEPTED (lookup's threshold-normalisation reframed as the mild frozen
+misspecification, not the target to match). (2)+(6) **the cleanliness inverts** — narrative's
+clean `good`-on-`ALL_WITHHELD` rows are one-directional, so folding clean-only runs the posterior
+to the grid edge and passes the gate *spuriously*; the contaminated `bad` rows are the only
+counter-pressure, structurally essential — ACCEPTED: v0 folds **both** valences, the contamination
+anti-gate-favourable (utility-corruption, not gate-gaming). (3) **κ_att identifies** in the
+decision-pivotal θ-band conditional on lookup pinning u(wrong), from `p_max` spread — ACCEPTED
+(the recovery sweep checks `p_max` mass at the vertex ≈0.42). (4) **the joint fold** is the
+connected components of the latent co-occurrence graph; marginalise only at readout — ACCEPTED.
+(5) **reliance-linear** is forced (separating reliance from u(wrong) needs an act-on-a-claim
+stream) but unsafe in the over-reliance (gate-favourable) direction — ACCEPTED: priced by a
+reliance-sensitivity gate band, not merely a named successor. (7) **joint over plug-in** (the
+plug-in injects κ_att's error into u(wrong)) — ACCEPTED. The one disposition the **owner revised**
+(2026-06-14): the confer bundled coverage-gating + a closed-vocab reaction reason as the v0
+`bad`-row clean; the owner **split** them — the runaway dies with fold-both + coverage-gating
+alone (both **mandatory**), and the closed-vocab is the *deferred* which-claim residual clean,
+safe to defer because the free-text reason is **already retained** (the mis-location is bounded,
+anti-gate-favourable, reversible by refold), with a stated promotion trigger. The reviewer
+concurred on re-read: "load-bearing in v1" was true of the coverage gate, overstated for the vocab.
+
 **Counterarguments, recorded with answers:**
 
 - *"This is confidence decoration on a working pipeline — complexity without new
@@ -1148,6 +1258,26 @@ on this list. Answers land here by amendment, citing their evidence.
   near `p ≈ 0.1`, thresholds near −0.11, short of the pivot); no fold strategy rescues it
   (report rows at `p ≈ 0.95` sit even further, near −19), so it is the retrieval-coverage
   coupling, fixed only by better retrieval. *First evidence:* stage 1.
+- **Narrative κ_att identification (§7.1) — OPEN, first evidence stage 1.** Unknown: whether
+  ordinary use yields enough `p_max` spread to *identify* κ_att (not merely bound it) in the
+  decision-pivotal θ-band, given κ_att inherits u(wrong)'s residual width (`≤ 0.25·sd`).
+  *Decided by* the recovery sweep over the abstain-reachable `p_max` range (checking mass at the
+  vertex ≈0.42 — the mediocre-proposals failure) plus the joint marginals' live endpoint mass.
+  *First evidence:* stage 1 narrative abstain-verdicts.
+- **Reliance-form misspecification (§7.1) — OPEN, priced not deferred.** Unknown: whether the
+  fixed `r(p)=p` biases the gate — over-reliance pushes u(wrong)↓/κ_att↑, gate-favourable (a
+  model-form error masquerading as a utility update). *Decided by* the §8 gate run under a
+  **reliance-form band** (`r=p`, `r=1`, `r=1{p>p₀}`): robust across the band ⇒ safe to adopt on;
+  a flip ⇒ reliance is gate-pivotal and narrative evidence may not be adopted until the
+  reliance-measurement stream (GTD disposals / corrections / claim-citing re-asks) exists.
+  *First evidence:* the next gate run after narrative verdicts accrue.
+- **The narrative which-claim residual (§7.1) — OPEN, owner-deferred 2026-06-14 with a stated
+  trigger.** Unknown: the rate at which a `bad`-on-`ALL_WITHHELD` is about a *different* proposed
+  claim than `p_max` (mis-locating κ_att within the θ-band — bounded, anti-gate-favourable,
+  reversible). *Decided by* the measured which-claim rate in the **retained free-text reasons** on
+  narrative `bad` rows. **Promotion trigger:** that rate above a stated bar, or a gate
+  false-negative diagnosed to which-claim → build the closed-vocab reaction reason, re-parse the
+  retained reasons, refold. *First evidence:* stage 1.
 - **Cost-proxy calibration cadence (§10).** Unknown: how often the learned
   owner-cost proxy must be re-graded against outcomes before drift (Goodhart on the
   cost model) becomes material. *Decided by* proxy-vs-outcome divergence in the
