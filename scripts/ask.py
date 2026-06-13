@@ -48,6 +48,8 @@ from life_agent import owner
 from life_agent.core import derivations as D
 from life_agent.core import lookup as LK
 from life_agent.core import narrative as N
+from life_agent.core import outcomes as O
+from life_agent.core import reactions as R
 from life_agent.core import subject as S
 from life_agent.core import temporal as T
 from life_agent.tasks import events as ev
@@ -812,6 +814,27 @@ def capture(question: str, text: str, cards: list[C.SourceCard], scores: dict[in
                                when=f"{datetime.now():%H:%M}",
                                unverified=_unverified_summary(audit)))
     print(f"→ logged {verdict} to {log}\n")
+    _record_reaction(question, verdict, note)
+
+
+def _record_reaction(question: str, verdict: str, note: str) -> None:
+    """§4.4 reaction loop: record the verdict as a structured reaction, joined to the
+    decision it grades by ``decision_id`` (the answer's cache key). The producer
+    (`reactions.load_reactions`) decides what folds — v0 conditions u(wrong) only on clean
+    lookup abstain-verdicts; everything else is recorded, not folded. Fail-open and named:
+    a calibration-log write must never break the dogfood loop."""
+    decision_id = (LOOKUP_LAST.answer_cache_key if LOOKUP_LAST is not None
+                   else NARRATIVE_LAST.answer_cache_key if NARRATIVE_LAST is not None
+                   else "")
+    try:
+        R.append(C.REACTIONS_LOG, R.ReactionEvent(
+            tx_time=O.now_iso(),
+            question_id=hashlib.sha256(question.encode("utf-8")).hexdigest()[:16],
+            decision_id=decision_id, kind="verdict",
+            valence={"GOOD": "good", "BAD": "bad", "NOTE": "note"}[verdict],
+            reason=note or None))
+    except Exception as e:  # fail-open by contract, reason printed
+        print(f"  (reaction not recorded: {e})")
 
 
 # --- one question, end to end --------------------------------------------- #

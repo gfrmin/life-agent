@@ -42,6 +42,10 @@ OUTCOMES_LOG = KB / "calibration" / "outcomes.jsonl"
 # reactions are not readable as choices. Append-only, order-defined, unbackfillable;
 # no EU decision is ever made unlogged.
 DECISIONS_LOG = KB / "calibration" / "decisions.jsonl"
+# The reaction log (foundations §4.4 reaction loop): owner verdicts on the agent's
+# decisions, joined to DECISIONS_LOG by decision_id. The calibration leg's third
+# append-only log; the utility posterior folds the clean abstain-verdicts from it.
+REACTIONS_LOG = KB / "calibration" / "reactions.jsonl"
 
 # --- The utility posterior (foundations §4.4 — utility as inference) ---
 # Gauge pins + grid priors (owner-editable; schema example in

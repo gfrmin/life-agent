@@ -48,6 +48,7 @@ from life_agent.core import config
 from life_agent.core import decisions as DEC
 from life_agent.core import derivations as D
 from life_agent.core import outcomes as O
+from life_agent.core import reactions as R
 from life_agent.core import utility as UT
 from life_agent.core.brain import Brain
 
@@ -619,6 +620,9 @@ def current_u_bar(brain: Brain) -> tuple[dict[str, float], str]:
     model = UT.load_model(config.UTILITY_MODEL)
     events: list[UT.Evidence] = list(
         UT.load_elicitations(config.UTILITY_ELICITATIONS, model))
+    # §4.4 reaction loop: the owner's clean abstain-verdicts, joined to the decision log,
+    # condition u(wrong). fold_version covers them, so a new verdict re-folds Ū demand-led.
+    events += R.load_reactions(config.REACTIONS_LOG, config.DECISIONS_LOG)
     version = UT.fold_version(model, events)
     if _U_BAR is not None and _U_BAR[0] == version:
         return _U_BAR[1], version
@@ -718,5 +722,6 @@ def lookup_answer(root: Path, question: str, hits: list[dict[str, Any]], *,
                        "n_indeterminate": indeterminate,
                    },
                    utility_fold_version=fold_ver,
-                   chosen_action=action, predicted_eu=eu))
+                   chosen_action=action, predicted_eu=eu,
+                   decision_id=akey.cache_key))
     return result

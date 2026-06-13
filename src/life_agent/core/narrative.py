@@ -355,7 +355,8 @@ def narrative_answer(root: Path, question: str, text: str,
                        "coverage": list(coverage), "coverage_n": coverage_n,
                    },
                    utility_fold_version=utility_fold_version,
-                   chosen_action=action, predicted_eu=eu))
+                   chosen_action=action, predicted_eu=eu,
+                   decision_id=akey.cache_key))
     return result
 
 
