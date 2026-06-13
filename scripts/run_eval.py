@@ -340,6 +340,79 @@ def coverage_outcome(q: dict, nv, *, run_id: str):
     )
 
 
+# --- the adoption gate (bayesian-foundations §8): typed families vs the monolithic ------
+# The grading model lives here (a driver concern); the math + the stated realised-utility
+# model live in life_agent.core.gate. Each policy is graded on ONE common answer-grounded
+# scale (gold token-containment), so the comparison values them identically.
+
+def _typed_response(lk, nv, typed_text: str, q: dict, abstention: str):
+    """The typed policy's realised answer on one question, from the family decisions the
+    production path just took (LOOKUP_LAST / NARRATIVE_LAST)."""
+    from life_agent.core import gate as GATE
+
+    gold, variants = q.get("answer", ""), q.get("answer_variants", [])
+    if lk is not None:
+        if lk.action == "report":
+            asserted = [lk.candidates[0]] if lk.candidates else []
+        elif lk.action == "hedge":
+            asserted = list(lk.candidates)
+        else:  # abstain | ask_clarify — a withholding
+            return GATE.RealisedResponse(action=lk.action, correct=None)
+        return GATE.RealisedResponse(
+            action=lk.action, correct=GATE.realised_report(asserted, gold, variants))
+    if nv is not None:
+        if nv.action == "report":
+            asserted = [c.text for c in nv.claims if c.included]
+            return GATE.RealisedResponse(
+                action="report", correct=GATE.realised_report(asserted, gold, variants))
+        return GATE.RealisedResponse(action="abstain", correct=None)
+    # no family decided: the weak-retrieval abstention (shared with the monolithic) or
+    # the family seam disabled — either way the typed path asserted nothing
+    return GATE.RealisedResponse(action="abstain", correct=None)
+
+
+def _monolithic_response(mono_text: str, q: dict, abstention: str):
+    """The monolithic instrument's realised answer: the raw synthesize prose, graded by
+    the same gold-containment. It abstains only where retrieval is too weak to synthesize
+    (the guard it shares with the typed path)."""
+    from life_agent.core import gate as GATE
+
+    if mono_text == abstention:
+        return GATE.RealisedResponse(action="abstain", correct=None)
+    correct = GATE.realised_report([mono_text], q.get("answer", ""),
+                                   q.get("answer_variants", []))
+    return GATE.RealisedResponse(action="report", correct=correct)
+
+
+def gate_paired_outcomes(conn, questions: list[dict], k: int, ask) -> list:
+    """Run both policies over the corpus and pair their realised answers per question.
+    The typed pass IS the production path (ask.answer); the monolithic pass is the same
+    path with the typed families switched off (families=False → raw synthesize prose)."""
+    from life_agent.core import gate as GATE
+
+    paired = []
+    for q in questions:
+        typed_text, _, _ = ask.answer(conn, q["question"], k)
+        lk, nv = ask.LOOKUP_LAST, ask.NARRATIVE_LAST  # capture before the next call resets
+        typed = _typed_response(lk, nv, typed_text, q, ask.ABSTENTION)
+        mono_text, _, _ = ask.answer(conn, q["question"], k, families=False)
+        mono = _monolithic_response(mono_text, q, ask.ABSTENTION)
+        answerable = bool(q.get("answerable", bool(q.get("answer"))))
+        paired.append(GATE.PairedOutcome(
+            question_id=str(q["id"]), answerable=answerable, typed=typed, mono=mono))
+        tmark = "·" if not typed.asserts() else ("✓" if typed.correct else "✗")
+        mmark = "·" if not mono.asserts() else ("✓" if mono.correct else "✗")
+        print(f"  {q['id']}: typed {tmark}{typed.action[:6]:<6} "
+              f"mono {mmark}{mono.action[:6]}")
+    return paired
+
+
+def _paired_to_dict(p) -> dict:
+    return {"question_id": p.question_id, "answerable": p.answerable,
+            "typed": {"action": p.typed.action, "correct": p.typed.correct},
+            "mono": {"action": p.mono.action, "correct": p.mono.correct}}
+
+
 def format_lookup_report(rows: list[dict], k: int, elapsed: float) -> str:
     n_routed = sum(1 for r in rows if r["routed"])
     actions = Counter(r["action"] for r in rows if r["routed"])
@@ -632,6 +705,12 @@ def main() -> int:
              "report proper scores (log/Brier) — the first calibrated numbers",
     )
     parser.add_argument(
+        "--gate", action="store_true",
+        help="run the decision-weighted adoption gate (bayesian-foundations §8): the "
+             "typed families vs the monolithic instrument over the corpus, P(Δ>δ) "
+             "integrated over the utility posterior → eval/gate/{report.md,paired.jsonl}",
+    )
+    parser.add_argument(
         "--no-outcomes", action="store_true",
         help="skip appending graded outcomes to the calibration log "
              "($LIFE_AGENT_KB/calibration/outcomes.jsonl) — dry runs only; the log "
@@ -652,6 +731,56 @@ def main() -> int:
         from pkm.retrieval import build_fts_index
         print("Building FTS index …")
         build_fts_index(conn)
+
+    if args.gate:
+        import json
+
+        from life_agent.core import config as LCFG
+        from life_agent.core import gate as GATE
+        from life_agent.core import lookup as LK
+        from life_agent.core import utility as UT
+
+        print(f"Running the adoption gate (k={args.k}) over {len(questions)} questions "
+              f"(both policies; the typed pass is the production path, the monolithic "
+              f"pass switches the families off) …")
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import ask
+
+        t0 = time.monotonic()
+        run_id = f"gate-{datetime.now().strftime('%Y%m%dT%H%M%S')}"
+        paired = gate_paired_outcomes(conn, questions, args.k, ask)
+
+        # the FULL utility posterior (marginals, not just Ū — the gate samples P(U)),
+        # folded from the FROZEN model + elicitations (blind discipline: untouched here)
+        brain = LK.shared_brain()
+        model = UT.load_model(LCFG.UTILITY_MODEL)
+        evidence = list(UT.load_elicitations(LCFG.UTILITY_ELICITATIONS, model))
+        post = UT.posterior(brain, model, evidence)
+        for warning in post.endpoint_warnings(model.endpoint_mass_warn):
+            print(f"  ⚠ {warning}")
+
+        result = GATE.delta_posterior(paired, post, oracle_p=LK._ORACLE_P)
+        elapsed = time.monotonic() - t0
+
+        gate_dir = _kb_root() / "eval" / "gate"
+        gate_dir.mkdir(parents=True, exist_ok=True)
+        (gate_dir / "report.md").write_text(
+            GATE.render_report(result, run_id=run_id, elapsed=elapsed), encoding="utf-8")
+        (gate_dir / "paired.jsonl").write_text(
+            "".join(json.dumps(_paired_to_dict(p), sort_keys=True) + "\n"
+                    for p in paired), encoding="utf-8")
+        print(f"\nGate report → {gate_dir / 'report.md'}")
+        verdict = "PASS" if result.passed else "FAIL"
+        print(f"  verdict {verdict} · P(Δ>{result.materiality_delta})="
+              f"{result.p_delta_gt:.3f} (gate ≥ {result.level:.2f}) · "
+              f"Δ̄={result.delta_mean:+.3f} "
+              f"[{result.delta_lo:+.3f}, {result.delta_hi:+.3f}]")
+        d = result.diagnostics
+        ar = lambda x: "n/a" if x is None else f"{x:.2f}"  # noqa: E731
+        print(f"  answer rate: typed {ar(d.typed_answer_rate)} · "
+              f"mono {ar(d.mono_answer_rate)} · disagreement {d.disagreement_n}/{d.n}")
+        # the gate reads evidence; it makes no graded claims and logs no decisions
+        return 0 if result.passed else 1
 
     if args.lookup:
         print(f"Running lookup-family eval (k={args.k}) over {len(questions)} questions "
