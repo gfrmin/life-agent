@@ -303,3 +303,74 @@ def test_live_reaction_loop_good_on_abstain_lowers_u_wrong(
     prior_mean = sum(w * x for w, x in zip(
         U.gaussian_weights(grid, spec.prior_mu, spec.prior_sigma), grid, strict=True))
     assert post.latents["u_wrong"].mean < prior_mean
+
+
+# --- the narrative joint fold: (u_wrong, κ_att) coupled (§7.1) --------------------------
+
+def _margin_good(p: float) -> U.MarginReaction:
+    """A good-on-ALL_WITHHELD narrative verdict's MarginReaction at credence p."""
+    return U.MarginReaction(
+        tx_time="t1", coeffs=(("kappa_att", -1.0), ("u_wrong", p * (1 - p))),
+        offset=-(p ** 2), reacted=True, sign=-1.0, tau_group="narrative")
+
+
+def test_margin_reaction_folds_on_one_joint_grid(model: U.UtilityModel) -> None:
+    t = SeqTransport()
+    post = U.posterior(B.Brain(t), model, [_margin_good(0.6)])
+    creates = [r for r in t.sent if r["method"] == "create_state"]
+    nuw = model.latents["u_wrong"].grid.n
+    nka = model.latents["kappa_att"].grid.n
+    sizes = [len(c["params"]["space"]["values"]) for c in creates]
+    # one JOINT categorical of size |u_wrong|*|κ_att|, plus 1-D states for the two
+    # untouched latents — and NO standalone u_wrong / κ_att state
+    assert sizes.count(nuw * nka) == 1
+    assert len(creates) == 3 and nuw not in sizes and nka not in sizes
+    # both coupled latents get a normalised marginal of the right length (a readout)
+    assert len(post.latents["u_wrong"].weights) == nuw
+    assert len(post.latents["kappa_att"].weights) == nka
+    assert sum(post.latents["kappa_att"].weights) == pytest.approx(1.0)
+
+
+def test_lookup_and_narrative_u_wrong_share_one_joint(model: U.UtilityModel) -> None:
+    # a lookup Reaction on u_wrong and a narrative MarginReaction co-occur u_wrong, so they
+    # fold on ONE joint grid — never u_wrong 1-D then narrative joint (the interleave error)
+    t = SeqTransport()
+    events: list[U.Evidence] = [
+        U.Reaction(tx_time="t1", latent="u_wrong", reacted=True, sign=-1.0, threshold=0.5),
+        _margin_good(0.6),
+    ]
+    U.posterior(B.Brain(t), model, events)
+    creates = [r for r in t.sent if r["method"] == "create_state"]
+    conditions = [r for r in t.sent if r["method"] == "condition"]
+    nuw = model.latents["u_wrong"].grid.n
+    nka = model.latents["kappa_att"].grid.n
+    sizes = [len(c["params"]["space"]["values"]) for c in creates]
+    assert nuw * nka in sizes and nuw not in sizes  # u_wrong absorbed into the joint
+    joint_idx = next(i for i, c in enumerate(creates)
+                     if len(c["params"]["space"]["values"]) == nuw * nka)
+    joint_id = f"s_{joint_idx + 1}"  # SeqTransport assigns ids in create order
+    # both events condition the SAME joint state
+    assert sum(1 for c in conditions if c["params"]["state_id"] == joint_id) == 2
+
+
+@pytest.mark.system
+def test_live_narrative_good_on_abstain_moves_both_latents(model: U.UtilityModel) -> None:
+    """The §7.1 joint fold end to end through the real skin: a good-on-abstain verdict
+    ("right to withhold") is a low-margin observation, pushing u(wrong) DOWN and κ_att UP
+    jointly; the untouched latents stay at their prior."""
+    repo = Path(B.CREDENCE_REPO)
+    if not (repo / "apps/skin/server.jl").exists():
+        pytest.skip(f"credence repo not found at {repo}")
+    with B.Brain.spawn() as b:
+        b.initialize()
+        post = U.posterior(b, model, [_margin_good(0.6)])
+
+    def prior_mean(name: str) -> float:
+        s = model.latents[name]
+        g = s.grid.values()
+        return sum(w * x for w, x in zip(
+            U.gaussian_weights(g, s.prior_mu, s.prior_sigma), g, strict=True))
+
+    assert post.latents["u_wrong"].mean < prior_mean("u_wrong")
+    assert post.latents["kappa_att"].mean > prior_mean("kappa_att")
+    assert post.latents["u_hedged"].mean == pytest.approx(prior_mean("u_hedged"))

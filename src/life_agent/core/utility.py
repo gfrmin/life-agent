@@ -33,6 +33,7 @@ The model file (gauge + grids + priors) lives at ``$LIFE_AGENT_KB/utility/model.
 from __future__ import annotations
 
 import hashlib
+import itertools
 import json
 import math
 from dataclasses import asdict, dataclass
@@ -87,6 +88,10 @@ class UtilityModel:
     gauge: dict[str, float]
     latents: dict[str, LatentSpec]
     tau: LatentSpec
+    # The narrative event-shape τ-prior (§4.4: τ keyed on event-shape so the lookup
+    # threshold form and the raw narrative margin do not silently cross-weight). Falls
+    # back to ``tau`` when the model file omits it (pre-narrative models).
+    tau_narrative: LatentSpec
     endpoint_mass_warn: float
 
 
@@ -116,11 +121,14 @@ def load_model(path: Path) -> UtilityModel:
         raise ValueError(f"model is missing required latent(s): {missing}")
     latents = {name: _latent_spec(name, latents_raw[name]) for name in REQUIRED_LATENTS}
     tau = _latent_spec("tau", raw["tau"])
+    tau_narrative = (_latent_spec("tau_narrative", raw["tau_narrative"])
+                     if "tau_narrative" in raw else tau)
     return UtilityModel(
         format_version=int(raw["format_version"]),
         gauge=gauge,
         latents=latents,
         tau=tau,
+        tau_narrative=tau_narrative,
         endpoint_mass_warn=float(raw["endpoint_mass_warn"]),
     )
 
@@ -174,7 +182,8 @@ class Reaction:
     """§4.4 streams 2-5 in their common v0 shape: a binary owner reaction read as
     logistic choice evidence on one latent (τ marginalised). ``sign`` orients the
     latent (-1: more-negative utility makes reaction likelier, the correction shape);
-    ``threshold`` is the stated effort bound."""
+    ``threshold`` is the stated effort bound. The single-latent (lookup) special case
+    of :class:`MarginReaction` — frozen in this form, never re-folded (§4.4)."""
 
     tx_time: str
     latent: str
@@ -183,7 +192,25 @@ class Reaction:
     threshold: float
 
 
-Evidence = Elicitation | Reaction
+@dataclass(frozen=True)
+class MarginReaction:
+    """§4.4/§7.1: a soft observation on the **sign of an EU-margin linear in several
+    latents** — ``margin(x) = Σ coeffs[l]·x_l - offset``, with
+    ``P(react=1|x) = Σ_τ w_τ·sigmoid(sign·margin/τ)``, τ drawn from ``tau_group``'s prior
+    (event-shape keyed, §4.4). Carries the multi-latent narrative inclusion boundary
+    (u_wrong, κ_att). The margin is **raw** (gauge units), so per-latent informativeness
+    is ∂margin/∂x_l = coeffs[l] — the correct weighting, not normalised. ``coeffs`` is a
+    sorted tuple of (latent, coefficient) pairs (frozen/hashable; deterministic fold)."""
+
+    tx_time: str
+    coeffs: tuple[tuple[str, float], ...]
+    offset: float
+    reacted: bool
+    sign: float
+    tau_group: str = "narrative"
+
+
+Evidence = Elicitation | Reaction | MarginReaction
 
 
 def load_elicitations(path: Path, model: UtilityModel) -> list[Elicitation]:
@@ -271,6 +298,7 @@ def _kernel_for(event: Evidence, values: tuple[float, ...],
                   "target_vals": [event.stated_value],
                   "densities": [[d] for d in ld]}
         return kernel, event.stated_value
+    assert isinstance(event, Reaction)  # _fold_1d never routes a MarginReaction here
     tau_values = model.tau.grid.values()
     tau_weights = gaussian_weights(tau_values, model.tau.prior_mu, model.tau.prior_sigma)
     p1 = reaction_probability(values, tau_values, tau_weights,
@@ -284,34 +312,156 @@ def _kernel_for(event: Evidence, values: tuple[float, ...],
     return kernel, 1.0 if event.reacted else 0.0
 
 
+def _event_latents(event: Evidence) -> frozenset[str]:
+    """The latents an event's likelihood touches — one for Elicitation/Reaction, the
+    whole coeff set for a MarginReaction (its margin couples them)."""
+    if isinstance(event, MarginReaction):
+        return frozenset(name for name, _ in event.coeffs)
+    return frozenset({event.latent})
+
+
+def _components(latents: dict[str, LatentSpec],
+                events: list[Evidence]) -> list[frozenset[str]]:
+    """Connected components of the latent co-occurrence graph (§4.4): two latents share a
+    component iff some event's likelihood couples them. A latent touched by nothing is its
+    own singleton (it keeps its prior). Order is deterministic (by least latent name)."""
+    parent: dict[str, str] = {n: n for n in latents}
+
+    def find(a: str) -> str:
+        while parent[a] != a:
+            parent[a] = parent[parent[a]]
+            a = parent[a]
+        return a
+
+    for event in events:
+        touched = sorted(_event_latents(event))
+        for other in touched[1:]:
+            parent[find(touched[0])] = find(other)
+
+    groups: dict[str, set[str]] = {}
+    for n in parent:
+        groups.setdefault(find(n), set()).add(n)
+    # Order by model position of each component's earliest latent, so the single-latent
+    # fold order (hence the brain-call choreography) is byte-identical to v0.
+    order = {name: i for i, name in enumerate(latents)}
+    return sorted((frozenset(g) for g in groups.values()),
+                  key=lambda c: min(order[n] for n in c))
+
+
+def _fold_1d(brain: Brain, model: UtilityModel, name: str,
+             events: list[Evidence]) -> LatentPosterior:
+    """The single-latent fold — unchanged from v0, so lookup is byte-identical: a 1-D
+    categorical over the grid, conditioned by each event's kernel in order."""
+    spec = model.latents[name]
+    values = spec.grid.values()
+    prior = gaussian_weights(values, spec.prior_mu, spec.prior_sigma)
+    state_id = brain.create_state({
+        "type": "categorical",
+        "space": {"type": "finite", "values": list(values)},
+        "log_weights": [math.log(max(w, _PROB_EPS)) for w in prior],
+    })
+    try:
+        for event in events:
+            kernel, observation = _kernel_for(event, values, model)
+            brain.condition(state_id, kernel=kernel, observation=observation)
+        weights = tuple(brain.weights(state_id))
+    finally:
+        brain.destroy_state(state_id)
+    return LatentPosterior(name=name, values=values, weights=weights)
+
+
+def _joint_kernel(event: Evidence, points: list[tuple[float, ...]], names: list[str],
+                  idx_vals: list[float], model: UtilityModel) -> tuple[dict[str, Any], float]:
+    """The (kernel, observation) for one event over the flattened joint grid — the event's
+    likelihood evaluated at each product point. A single-latent event is flat in the other
+    latents; a MarginReaction's margin couples them (raw, τ from its event-shape group)."""
+    if isinstance(event, Elicitation):
+        j = names.index(event.latent)
+        const = -math.log(event.noise_sigma * math.sqrt(2 * math.pi))
+        ld = [-0.5 * ((event.stated_value - pt[j]) / event.noise_sigma) ** 2 + const
+              for pt in points]
+        return ({"type": "tabular_log_density", "source_vals": idx_vals,
+                 "target_vals": [event.stated_value], "densities": [[d] for d in ld]},
+                event.stated_value)
+    if isinstance(event, Reaction):
+        j = names.index(event.latent)
+        tv = model.tau.grid.values()
+        tw = gaussian_weights(tv, model.tau.prior_mu, model.tau.prior_sigma)
+        p1 = reaction_probability(tuple(pt[j] for pt in points), tv, tw,
+                                  sign=event.sign, threshold=event.threshold)
+    else:  # MarginReaction — the raw margin, event-shape τ
+        tspec = model.tau_narrative if event.tau_group == "narrative" else model.tau
+        tv = tspec.grid.values()
+        tw = gaussian_weights(tv, tspec.prior_mu, tspec.prior_sigma)
+        coeffs = dict(event.coeffs)
+        margins = tuple(sum(coeffs[n] * pt[names.index(n)] for n in coeffs) - event.offset
+                        for pt in points)
+        p1 = reaction_probability(margins, tv, tw, sign=event.sign, threshold=0.0)
+    densities = [[math.log(max(1.0 - p, _PROB_EPS)), math.log(max(p, _PROB_EPS))] for p in p1]
+    return ({"type": "tabular_log_density", "source_vals": idx_vals,
+             "target_vals": [0.0, 1.0], "densities": densities},
+            1.0 if event.reacted else 0.0)
+
+
+def _fold_joint(brain: Brain, model: UtilityModel, comp: frozenset[str],
+                events: list[Evidence]) -> dict[str, LatentPosterior]:
+    """The multi-latent fold (§7.1): one categorical over the flattened product grid of
+    the component's latents (prior = product of the per-latent gaussians — independent, no
+    invented correlation), conditioned by every event touching the component in order, then
+    **marginalised back** to each latent. The marginals are a readout, never persisted —
+    the next event must sharpen through the joint correlation, not a collapsed copy."""
+    names = sorted(comp)
+    grids = [model.latents[n].grid.values() for n in names]
+    priors = [gaussian_weights(g, model.latents[n].prior_mu, model.latents[n].prior_sigma)
+              for n, g in zip(names, grids, strict=True)]
+    index_tuples = list(itertools.product(*(range(len(g)) for g in grids)))
+    points = [tuple(grids[j][ix[j]] for j in range(len(names))) for ix in index_tuples]
+    idx_vals = [float(i) for i in range(len(points))]
+    log_prior = [sum(math.log(max(priors[j][ix[j]], _PROB_EPS)) for j in range(len(names)))
+                 for ix in index_tuples]
+    state_id = brain.create_state({
+        "type": "categorical",
+        "space": {"type": "finite", "values": idx_vals},
+        "log_weights": log_prior,
+    })
+    try:
+        for event in events:
+            kernel, observation = _joint_kernel(event, points, names, idx_vals, model)
+            brain.condition(state_id, kernel=kernel, observation=observation)
+        joint = brain.weights(state_id)
+    finally:
+        brain.destroy_state(state_id)
+
+    out: dict[str, LatentPosterior] = {}
+    for j, name in enumerate(names):
+        gvals = grids[j]
+        marg = [0.0] * len(gvals)
+        for k, ix in enumerate(index_tuples):
+            marg[ix[j]] += joint[k]
+        out[name] = LatentPosterior(name=name, values=gvals, weights=tuple(marg))
+    return out
+
+
 def posterior(brain: Brain, model: UtilityModel,
               events: list[Evidence]) -> UtilityPosterior:
     """fold(model prior, evidence) → the utility posterior, conditioned through the
-    credence skin. Events are consumed in the given order (the canonical replay order);
-    the gauge pins are never conditioned — they have no state to condition."""
-    by_latent: dict[str, list[Evidence]] = {name: [] for name in model.latents}
+    credence skin. Events are consumed in order (the canonical replay order). Latents a
+    MarginReaction couples fold on a joint grid; independent latents fold 1-D — the
+    connected components of the latent co-occurrence graph (§4.4). The gauge pins are
+    never conditioned — they have no state to condition."""
     for event in events:
-        if event.latent not in by_latent:
-            raise ValueError(f"evidence names unknown latent {event.latent!r}")
-        by_latent[event.latent].append(event)
+        for name in _event_latents(event):
+            if name not in model.latents:
+                raise ValueError(f"evidence names unknown latent {name!r}")
 
     latents: dict[str, LatentPosterior] = {}
-    for name, spec in model.latents.items():
-        values = spec.grid.values()
-        prior = gaussian_weights(values, spec.prior_mu, spec.prior_sigma)
-        state_id = brain.create_state({
-            "type": "categorical",
-            "space": {"type": "finite", "values": list(values)},
-            "log_weights": [math.log(max(w, _PROB_EPS)) for w in prior],
-        })
-        try:
-            for event in by_latent[name]:
-                kernel, observation = _kernel_for(event, values, model)
-                brain.condition(state_id, kernel=kernel, observation=observation)
-            weights = tuple(brain.weights(state_id))
-        finally:
-            brain.destroy_state(state_id)
-        latents[name] = LatentPosterior(name=name, values=values, weights=weights)
+    for comp in _components(model.latents, events):
+        comp_events = [e for e in events if _event_latents(e) & comp]
+        if len(comp) == 1 and not any(isinstance(e, MarginReaction) for e in comp_events):
+            (name,) = tuple(comp)
+            latents[name] = _fold_1d(brain, model, name, comp_events)
+        else:
+            latents.update(_fold_joint(brain, model, comp, comp_events))
 
     return UtilityPosterior(
         gauge=dict(model.gauge),

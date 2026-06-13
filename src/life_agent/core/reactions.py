@@ -17,8 +17,18 @@ observation on u(wrong): ``good`` ("glad you didn't guess") favours u(wrong) bel
 ``bad`` ("I wanted an answer") above it. Verdicts on *reports* are cross-latent
 contaminated (wrong-subject / didn't-want-report) and signed gate-favourable, so they are
 recorded but NOT folded until the §8 grader-3 attribution lands — that is the named
-successor. Narrative abstains (no single credence), notes, and unrouted verdicts are
-likewise recorded but not folded.
+successor. Notes, report-verdicts, and unrouted verdicts are recorded but not folded.
+
+**Narrative abstains fold jointly (§7.1).** A narrative ``ALL_WITHHELD`` abstention reacted
+to at the marginal claim's credence ``p_max`` is a soft observation on the inclusion margin
+``g(U) = p(1-p)·u(wrong) - κ_att + p²`` — a :class:`~life_agent.core.utility.MarginReaction`
+coupling u(wrong) and κ_att. The cleanliness *inverts* from lookup: the clean ``good`` rows
+are one-directional, so **both** valences fold (the contaminated ``bad`` rows are the only
+counter-pressure — without them the posterior runs to the grid edge and the gate passes
+spuriously). The ``bad`` rows are coverage-gated (a low-coverage "I wanted an answer" is more
+likely a proposal-recall failure than a utility complaint); the ``good`` rows are ungated. The
+which-claim residual is left in the retained free-text ``reason`` (foundations §14 successor).
+``NO_CLAIMS`` abstains (no ``p_max``) and narrative reports are recorded but not folded.
 
 **Supersession, not accumulation:** the owner may revise a verdict; the fold takes the
 latest verdict per ``(decision_id, kind)`` (file order is replay order), so one decision
@@ -29,6 +39,7 @@ from __future__ import annotations
 import json
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from typing import Any
 
 from life_agent.core import decisions as DEC
 from life_agent.core import jsonl_log
@@ -43,6 +54,13 @@ VALENCES: dict[str, frozenset[str]] = {"verdict": frozenset({"good", "bad", "not
 
 # Valences that carry a binary utility signal; ``note`` is text-only (logged, not folded).
 _FOLDED_VALENCES: frozenset[str] = frozenset({"good", "bad"})
+
+# §7.1: a narrative `bad`-on-ALL_WITHHELD folds as counter-pressure only when the proposal
+# coverage posterior mean clears this bar; below it the "I wanted an answer" is more likely a
+# recall failure than a utility complaint. The wide coverage prior (Beta(2,2), mean 0.5) keeps
+# the gate permissive until eval_coverage evidence sharpens it; the joint endpoint-mass monitor
+# is the backstop. Frozen-blind (never tuned to a gate result).
+_COVERAGE_BAR: float = 0.5
 
 
 @dataclass(frozen=True)
@@ -92,32 +110,81 @@ def _abstain_threshold(p: float) -> float:
     return p / (1.0 - p)
 
 
-def load_reactions(reactions_path: Path, decisions_path: Path) -> list[UT.Reaction]:
-    """Join verdicts ⋈ decisions by ``decision_id`` and emit ``utility.Reaction`` events
-    for the **clean abstain rows only** (good/bad-on-abstain in the lookup family). Report
-    verdicts, narrative abstains, notes, and unrouted verdicts are skipped — recorded in
-    the log, never folded (§4.4)."""
+def _coverage_mean(summary: dict[str, Any]) -> float | None:
+    """The proposal-coverage posterior mean from a narrative decision's summary, or None."""
+    cov = summary.get("coverage")
+    if not isinstance(cov, list) or len(cov) != 2:
+        return None
+    a, b = float(cov[0]), float(cov[1])
+    return a / (a + b) if (a + b) > 0 else None
+
+
+def _lookup_reaction(r: ReactionEvent, d: DEC.DecisionEvent) -> UT.Reaction | None:
+    """A clean lookup abstain-verdict → a u(wrong) threshold observation at -p/(1-p) (§4.4)."""
+    creds = d.posterior_summary.get("credences") or []
+    if not creds:
+        return None  # an abstention with no candidate carries no u(wrong) threshold
+    p = float(creds[0])
+    if not 0.0 <= p < 1.0:
+        return None
+    return UT.Reaction(tx_time=r.tx_time, latent="u_wrong",
+                       reacted=(r.valence == "good"), sign=-1.0,
+                       threshold=_abstain_threshold(p))
+
+
+def _narrative_reaction(r: ReactionEvent, d: DEC.DecisionEvent) -> UT.MarginReaction | None:
+    """A clean narrative ``ALL_WITHHELD`` abstain-verdict → a joint (u(wrong), κ_att) margin
+    observation at the marginal claim's ``p_max`` (§7.1). Both valences fold (the ``bad`` rows
+    are the only counter-pressure); the ``bad`` rows are coverage-gated; ``NO_CLAIMS`` (no
+    ``p_max``) does not fold. The free-text ``reason`` is retained on the row (which-claim
+    residual evidence — §14)."""
+    from life_agent.core import narrative as N  # lazy: keep the import graph acyclic
+    if d.posterior_summary.get("abstain_reason") != N.REASON_ALL_WITHHELD:
+        return None
+    raw = d.posterior_summary.get("marginal_credence")
+    if raw is None:
+        return None
+    p = float(raw)
+    if not 0.0 <= p < 1.0:
+        return None
+    if r.valence == "bad":
+        cov = _coverage_mean(d.posterior_summary)
+        if cov is None or cov < _COVERAGE_BAR:
+            return None  # recorded-not-folded: low coverage ⇒ likely a recall failure
+    return UT.MarginReaction(
+        tx_time=r.tx_time,
+        coeffs=(("kappa_att", -1.0), ("u_wrong", p * (1.0 - p))),
+        offset=-(p ** 2), reacted=(r.valence == "good"), sign=-1.0,
+        tau_group="narrative")
+
+
+def load_reactions(reactions_path: Path,
+                   decisions_path: Path) -> list[UT.Reaction | UT.MarginReaction]:
+    """Join verdicts ⋈ decisions by ``decision_id`` and emit utility evidence for the clean
+    rows: lookup abstain-verdicts → ``Reaction`` (u(wrong) threshold, §4.4); narrative
+    ``ALL_WITHHELD`` abstain-verdicts → ``MarginReaction`` (joint u(wrong), κ_att; §7.1). Report
+    verdicts, ``NO_CLAIMS`` abstains, notes, coverage-gated narrative ``bad`` rows, and unrouted
+    verdicts are recorded in the log, never folded."""
     decisions = {d.decision_id: d for d in DEC.read(decisions_path) if d.decision_id}
     # supersession: latest verdict per (decision_id, kind); file order is replay order
     latest: dict[tuple[str, str], ReactionEvent] = {}
     for r in read(reactions_path):
         latest[(r.decision_id, r.kind)] = r
 
-    out: list[UT.Reaction] = []
+    out: list[UT.Reaction | UT.MarginReaction] = []
     for r in latest.values():
         if r.kind != "verdict" or r.valence not in _FOLDED_VALENCES:
             continue
         d = decisions.get(r.decision_id)
-        if d is None or d.chosen_action != "abstain" or d.family != "lookup":
-            continue  # unrouted, a report row, or a non-lookup (narrative) abstain
-        creds = d.posterior_summary.get("credences") or []
-        if not creds:
-            continue  # an abstention with no candidate carries no u(wrong) threshold
-        p = float(creds[0])
-        if not 0.0 <= p < 1.0:
-            continue
-        out.append(UT.Reaction(
-            tx_time=r.tx_time, latent="u_wrong",
-            reacted=(r.valence == "good"), sign=-1.0,
-            threshold=_abstain_threshold(p)))
+        if d is None or d.chosen_action != "abstain":
+            continue  # unrouted, or a report row (recorded-not-folded)
+        ev: UT.Reaction | UT.MarginReaction | None
+        if d.family == "lookup":
+            ev = _lookup_reaction(r, d)
+        elif d.family == "narrative":
+            ev = _narrative_reaction(r, d)
+        else:
+            ev = None
+        if ev is not None:
+            out.append(ev)
     return out

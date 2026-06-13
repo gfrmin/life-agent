@@ -28,4 +28,11 @@ latents:
 tau:
   grid: {lo: 0.2, hi: 5.0, n: 8}
   prior: {type: gaussian, mu: 1.0, sigma: 1.0}
+# The narrative event-shape τ (§4.4/§7.1): the raw inclusion margin is in gauge units (O(1)),
+# so τ here is the owner's choice-noise scale in those units — kept separate from `tau` above,
+# which tempers lookup's *normalised* threshold form, so the two never silently cross-weight.
+# Optional: omitting it falls back to `tau`. Frozen-blind (never tuned to a gate result).
+tau_narrative:
+  grid: {lo: 0.1, hi: 3.0, n: 8}
+  prior: {type: gaussian, mu: 0.5, sigma: 0.5}
 endpoint_mass_warn: 0.01
