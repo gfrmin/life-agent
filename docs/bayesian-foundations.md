@@ -846,7 +846,10 @@ posterior's miscalibration; the owner-side graders move the reference itself.
   recall (F1), abstention thresholds unprincipled (engine §13). And the claim is
   falsifiable by construction: if stage 1's decision-weighted gate (§8) shows the typed
   family does not beat the monolithic instrument, that result is published and the
-  design answers for it.
+  design answers for it. **It did, on the first run (2026-06-13): the gate returned
+  FAIL — not because typed loses (its mean gap is large and positive) but because the
+  bar is not cleared at the stated level; the result is published, the design answers
+  for it, and the two evidence streams that would flip it are named (ledger below).**
 - *"The error models are themselves models — turtles all the way down."* Yes, and the
   regress is cut explicitly (§2: audited-code priors) and empirically (§8: end-to-end
   scoring catches mis-modelling wherever it hides). The alternative — implicit total
@@ -884,6 +887,31 @@ on this list. Answers land here by amendment, citing their evidence.
   "range of plausible tables" is the utility posterior P(U) itself; its width is
   evidence-driven, not a stated band. (Evidence: the owner's utility-as-inference
   directive; the §14 override record.)
+- **Adoption of the typed families (§8/§12 stage 1) — OPEN, first reading
+  2026-06-13.** The decision-weighted gate is built (`life_agent.core.gate`,
+  `run_eval --gate` → `$LIFE_AGENT_KB/eval/gate/`) and ran over the 21-question slice
+  with the **frozen** utility prior (no elicitations yet, so P(U) is the pure prior:
+  u_wrong ~ N(−5, 4)) and δ = 0.05, level = 0.90, both frozen blind in the module.
+  Reading: **FAIL** at P(Δ > δ) = **0.848** (< 0.90), with Δ̄ = **+2.23** per question
+  [90% interval −1.19, +6.09]. The mean strongly favours typed — but the gate is not a
+  point test on the mean: the interval crosses zero because (a) u_wrong is only a wide
+  prior and (b) the corpus is 21 questions (the Bayesian bootstrap carries that). The
+  diagnostic that names the crux: typed answer rate **0.11** vs monolithic **1.00**,
+  disagreement region **19/21** (all *typed-abstains × monolithic-reports*) — typed wins
+  there *only* insofar as a wrong report is costly (it concedes −u_correct on the ~8
+  questions the monolithic answers correctly and typed abstains). So the gate did
+  exactly what §8 demands: a timid policy (11% answer rate) did **not** auto-pass. The
+  result is honestly conservative — gold-token-containment grading penalises the
+  monolithic on fuzzy questions it may answer well, which only inflates the typed gap,
+  yet the gate still fails. *Decided by* two named streams, either of which flips it:
+  (1) **narrowing P(U)** — elicited or revealed evidence that wrong answers are as
+  costly as the prior believes lifts P(Δ > δ) toward the level (the ~16% upper-tail mass
+  of u_wrong near zero is what the 0.848 leaves on the table); *first evidence:* the
+  elicitation stream + stage-1 decision-log/verdict joins (§4.4). (2) **raising the
+  typed answer rate** — retrieval coverage so the narrative family reports instead of
+  blanket-abstaining, turning conceded −u_correct into earned +u_correct; *first
+  evidence:* the retrieval-coverage work (the q-002/q-014 point-fact class). The gate
+  re-runs deterministically (seeded); re-reading after either stream moves is the test.
 - **τ-prior adequacy (§4.4).** τ and U are non-identifiable from choice data *in
   principle* (Armstrong–Mindermann) — no data volume separates them; the hierarchical
   τ-prior does the separating, permanently. The unknown is therefore whether that prior

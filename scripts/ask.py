@@ -558,6 +558,7 @@ def retrieval_is_weak(scores: dict[int, float], *, floor: float, min_hits: int) 
 def answer(conn: duckdb.DuckDBPyConnection, question: str,
            k: int, *, expand: bool = True,
            no_cache: bool = False,
+           families: bool = True,
            since: _date | None = None, until: _date | None = None,
            recent: bool = False) -> tuple[str, list[C.SourceCard], dict[int, float]]:
     """Retrieve then synthesise a cited answer. The authoritative owner profile (who "I"/"my"
@@ -569,6 +570,11 @@ def answer(conn: duckdb.DuckDBPyConnection, question: str,
     question; retrieve keyed on (query, corpus digest, k); synthesize keyed on (question,
     retrieval-set content hash, owner-profile hash). ``no_cache`` recomputes every stage
     (recording stays write-once, so existing derivations stand). Caching is fail-open.
+
+    ``families=False`` is the **monolithic instrument** seam (the adoption-gate baseline,
+    bayesian-foundations §8): skip the typed lookup route AND the narrative scorer, so the
+    raw synthesize prose is returned — the pre-Bayesian answer the gate weighs the typed
+    families against. Default ``True`` preserves the production path exactly.
     Returns (answer_text, cards, {card_n: score})."""
     global TEMPORAL_LAST, SUBJECT_LAST, STAGES_LAST, LOOKUP_LAST, NARRATIVE_LAST
     TEMPORAL_LAST = None
@@ -639,7 +645,7 @@ def answer(conn: duckdb.DuckDBPyConnection, question: str,
     # conservatively: a declined route or zero grounded observations falls to the
     # narrative path (the §9 no-hard-zeros routing), and any failure is fail-open and
     # NAMED (interaction contract), never silent.
-    if root is not None:
+    if families and root is not None:
         try:
             # §4.1 covariates, projected read-side and carried OUTSIDE the hit
             # dicts (the retrieval-set bytes — and every key hashed from them —
@@ -692,6 +698,8 @@ def answer(conn: duckdb.DuckDBPyConnection, question: str,
             D.record(root, skey, text.encode("utf-8"), lineage=lineage,
                      metadata={"in_tokens": r.in_tokens, "out_tokens": r.out_tokens,
                                "seconds": round(r.seconds, 3)})
+    if not families:  # the monolithic instrument: raw synthesize prose, unscored
+        return (text, cards, scores)
     return (_narrative_scored(root, question, text, cards), cards, scores)
 
 

@@ -58,11 +58,19 @@ as amended: one utility, the agent has none of its own); the **lookup family**
 (`core/lookup.py` — §4 with §4.1 covariates); and **narrative subsumption**
 (`core/narrative.py` — §7: synthesize is a proposal distribution; claims audited into
 cells, population-calibrated per-cell from the eval_claim stream, per-claim EU inclusion
-under Ū, the proposal-coverage tail named). Next: the §8 decision-weighted gate, then
-old D3–D4 re-scoped as Ask's aggregate/thread families. The doc's §14 open
-questions are a **live empirical ledger** (owner's adoption rider): each entry names the
-evidence that decides it — keep it current. Sequencing is continuous and eval-gated,
-not dogfood-gated (PRINCIPLES §9 as amended).
+under Ū, the proposal-coverage tail named); and the **§8 decision-weighted adoption
+gate** (`core/gate.py`, `run_eval --gate` → `$LIFE_AGENT_KB/eval/gate/`: a posterior
+over Δ = EU(typed) − EU(monolithic) by MC over P(U) × the Bayesian bootstrap, P(Δ>δ)≥
+level with δ/level frozen blind; the disagreement region + answer rates published). It
+ran (2026-06-13): **FAIL** at P(Δ>0.05)=0.848 (gate 0.90) — Δ̄=+2.23 but the interval
+crosses zero on the wide u_wrong prior + the 21-question corpus; typed answer rate 0.11
+vs monolithic 1.00. The two named levers (§14 ledger): narrow P(U) (elicit/reveal
+wrong-answer cost) or raise the typed answer rate (retrieval coverage). Next: retrieval
+coverage for point facts (q-002/q-014 class), then old D3–D4 re-scoped as Ask's
+aggregate/thread families. The doc's §14 open questions are a **live empirical ledger**
+(owner's adoption rider): each entry names the evidence that decides it — keep it
+current. Sequencing is continuous and eval-gated, not dogfood-gated (PRINCIPLES §9 as
+amended).
 
 **Not built, deliberately:** the agent-loop spine (open decision — PRINCIPLES §15),
 the VOI governor (last on the geodesic — PRINCIPLES §16), a live MCP server
