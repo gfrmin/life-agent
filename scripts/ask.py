@@ -557,6 +557,15 @@ def retrieval_is_weak(scores: dict[int, float], *, floor: float, min_hits: int) 
     return sum(1 for s in scores.values() if s >= floor) < min_hits
 
 
+def _typed_lookup_applies(lk: LK.LookupResult | None) -> bool:
+    """The routing criterion (§9 no-hard-zeros): the lookup family answered iff it returned a
+    result. It returns None in exactly two cases — the question was not classified as a typed
+    lookup, or it produced zero grounded observations — and both are coverage failures, not
+    abstentions: the narrative path covers what lookup can't, by design. Naming the predicate
+    keeps the dispatch a stated rule, not a bare ``is not None`` at the call site."""
+    return lk is not None
+
+
 def answer(conn: duckdb.DuckDBPyConnection, question: str,
            k: int, *, expand: bool = True,
            no_cache: bool = False,
@@ -665,7 +674,7 @@ def answer(conn: duckdb.DuckDBPyConnection, question: str,
         except Exception as e:  # fail-open by contract, reason printed
             print(LK.GRAMMAR["fallthrough"].format(reason=f"failed: {e}"))
             lk = None
-        if lk is not None:
+        if _typed_lookup_applies(lk):
             LOOKUP_LAST = lk
             STAGES_LAST["lookup_answer"] = lk.answer_cache_key
             return (lk.rendered, cards, scores)

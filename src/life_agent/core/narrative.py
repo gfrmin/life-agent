@@ -65,6 +65,7 @@ from life_agent.core import derivations as D
 from life_agent.core import llm as LLM
 from life_agent.core import outcomes as O
 from life_agent.core.citation import SourceLike, extract_citations, value_spans
+from life_agent.core.decide import u_assert
 from life_agent.core.matching import answer_matches
 
 # --- stated scorer parameters (priors; the claim-level stream moves them — §2/§7) -------
@@ -96,7 +97,7 @@ GRAMMAR: dict[str, str] = {
     "fallthrough": "(narrative: {reason} — unscored prose)",
 }
 
-_ACTION_ORDER: tuple[str, ...] = ("report", "abstain")
+_ACTION_ORDER: tuple[str, ...] = DEC.NARRATIVE_ACTION_ORDER
 
 
 def _sha(text: str) -> str:
@@ -226,17 +227,22 @@ def coverage_posterior(outcomes_path: Path = config.OUTCOMES_LOG
 
 def include_eu(p: float, u_bar: Mapping[str, float]) -> float:
     """The reliance-linear labeled-claim EU (stated model — module docstring):
-    EU(include | p) = p·(p·u_correct + (1-p)·u_wrong) - κ_att. Withholding is the
-    per-claim abstention at the gauge zero."""
-    return (p * (p * u_bar["u_correct"] + (1.0 - p) * u_bar["u_wrong"])
-            - u_bar["kappa_att"])
+    ``EU(include | p) = p·u_assert(p) - κ_att`` — the reliance ``p`` scales the assertion
+    atom :func:`life_agent.core.decide.u_assert`, minus the per-claim attention cost.
+    Withholding is the per-claim abstention at the gauge zero; the inclusion threshold
+    ``include_eu(p) > u_abstain`` is the exact powerset argmax under claim independence
+    (the separability proof in :mod:`life_agent.core.decide`)."""
+    return p * u_assert(p, u_bar) - u_bar["kappa_att"]
 
 
 def decide_claims(scored: list[tuple[str, tuple[int, ...], str, float]],
                   u_bar: Mapping[str, float]
                   ) -> tuple[tuple[Claim, ...], str, float, str]:
     """Per-claim inclusion under Ū; the answer action is ``report`` iff any claim
-    clears (EU(report) = Σ included EU — the empty sum IS the abstain gauge).
+    clears (EU(report) = Σ included EU — the empty sum IS the abstain gauge). The per-claim
+    threshold is the exact argmax over the 2ⁿ inclusion subsets — claims are independent and
+    answer utility additive, so the powerset optimum factorises (the separability proof in
+    :mod:`life_agent.core.decide`).
     Returns (claims in posterior order, action, eu, abstain_reason)."""
     claims = []
     for text, cites, cell, p in scored:

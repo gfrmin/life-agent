@@ -33,6 +33,16 @@ FAMILIES: frozenset[str] = frozenset({"lookup", "narrative"})
 # coarsening).
 ACTIONS: frozenset[str] = frozenset({"report", "hedge", "ask_clarify", "abstain"})
 
+# Per-family action subsets of ACTIONS — the single vocabulary, named once and imported by
+# the families (never re-declared in a family module). The ordering is load-bearing: lookup
+# maps brain.optimise's finite action indices through LOOKUP_ACTION_ORDER. NARRATIVE is the
+# restricted set {report, abstain} — a *principled* restriction (hedge over a per-claim
+# posterior is not yet defined; that is the deferred recency/u_hedged work), not an accident.
+# The subset and partition invariants (these <= ACTIONS; LOOKUP - NARRATIVE == the lookup-only
+# actions; gate's assert/withhold union == ACTIONS) are drift-gated in tests/test_decide.py.
+LOOKUP_ACTION_ORDER: tuple[str, ...] = ("report", "hedge", "ask_clarify", "abstain")
+NARRATIVE_ACTION_ORDER: tuple[str, ...] = ("report", "abstain")
+
 
 @dataclass(frozen=True)
 class DecisionEvent:
