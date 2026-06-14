@@ -174,6 +174,10 @@ GRAMMAR: dict[str, str] = {
     "hedge": "Unresolved — candidates: {alts}",
     "ask_clarify": "Worth asking you directly — the evidence does not settle it: {alts}",
     "abstain": "No answer asserted ({reason}).",
+    # abstain still shows the candidate(s) it withheld below the assert threshold — the
+    # held-back "thinking" that makes the decision verdictable (is that value right?) rather
+    # than a blind "should you have answered?". Used when the posterior held ≥1 candidate.
+    "abstain_withheld": "No answer asserted ({reason}). Held back: {alts}",
     "footer": ("lookup: {n_hits} hits → {n_obs} grounded observations"
                " · {n_ind} indeterminate · none-of-retrieved {p_none:.3f}"
                " · decision {action} (EU {eu:.2f})"),
@@ -584,6 +588,8 @@ def render(result: LookupResult) -> str:
         body = GRAMMAR["hedge"].format(alts=alts)
     elif result.action == "ask_clarify":
         body = GRAMMAR["ask_clarify"].format(alts=alts)
+    elif result.candidates:
+        body = GRAMMAR["abstain_withheld"].format(reason=REASON_DISPERSED, alts=alts)
     else:
         body = GRAMMAR["abstain"].format(reason=REASON_DISPERSED)
     footer = GRAMMAR["footer"].format(

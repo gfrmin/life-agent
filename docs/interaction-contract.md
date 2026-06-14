@@ -123,7 +123,7 @@ credence):
 |---------|------|
 | claim credence | every rendered claim carries its credence in one vocabulary across surfaces — never per-surface prose inventions |
 | hedge | when no value dominates, the mixture is reported as alternatives with credences — never a silent pick of the leader |
-| abstention | a named reason from a closed set (dispersed posterior · no admitted evidence · below the relevance floor) — never an empty or evasive reply |
+| abstention | a named reason from a closed set (dispersed posterior · no admitted evidence · below the relevance floor) — never an empty or evasive reply; and when the posterior held candidates below the assert threshold, it names them with credences (`Held back: …`) — the withheld "thinking" the owner verdicts the abstain *decision* against, never a blind "should you have answered?" |
 | clarifying ask | asked only when `voi` prices it above the interruption belief×cost; the question names what it would resolve |
 | withheld claims | inclusion is a decision (foundations §3): withheld claims are counted with their EU reason — `n claims withheld: low relevance` |
 | indeterminates | carried and named, as in the temporal/subject footers — the §18.12/§18.13 contract generalised |
