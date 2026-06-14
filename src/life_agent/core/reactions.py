@@ -112,7 +112,10 @@ def append(path: Path, event: ReactionEvent) -> None:
 
 
 def read(path: Path) -> list[ReactionEvent]:
-    """Every reaction in file order — the canonical replay order. Malformed lines raise."""
+    """Every reaction in file order — the canonical replay order. Structurally-malformed lines
+    raise (bad JSON, a missing required field, an out-of-vocabulary kind/valence); keys no
+    longer in the schema are dropped (``_from_line``), so the append-only log replays across a
+    field retirement rather than crashing on an old row."""
     return [_from_line(line) for line in jsonl_log.read_lines(path)]
 
 

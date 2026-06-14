@@ -588,7 +588,7 @@ def render(result: LookupResult) -> str:
         body = GRAMMAR["hedge"].format(alts=alts)
     elif result.action == "ask_clarify":
         body = GRAMMAR["ask_clarify"].format(alts=alts)
-    elif result.candidates:
+    elif result.action == "abstain" and result.candidates:
         body = GRAMMAR["abstain_withheld"].format(reason=REASON_DISPERSED, alts=alts)
     else:
         body = GRAMMAR["abstain"].format(reason=REASON_DISPERSED)
