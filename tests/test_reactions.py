@@ -39,12 +39,21 @@ def test_append_read_roundtrip_and_order(tmp_path: Path) -> None:
     a = R.ReactionEvent(tx_time="1", question_id="q1", decision_id="d1",
                         kind="verdict", valence="good")
     b = R.ReactionEvent(tx_time="2", question_id="q2", decision_id="d2",
-                        kind="verdict", valence="bad", reason="wrong subject")
+                        kind="verdict", valence="bad")
     R.append(p, a)
     R.append(p, b)
     back = R.read(p)
     assert back == [a, b]  # file order is replay order
-    assert back[1].reason == "wrong subject"
+
+
+def test_read_tolerates_retired_reason_field(tmp_path: Path) -> None:
+    # the log is append-only and predates the retirement of the free-text ``reason``; a legacy
+    # row carrying it still reads (the unknown key is dropped), never crashes the replay.
+    p = tmp_path / "reactions.jsonl"
+    p.write_text('{"tx_time":"1","question_id":"q","decision_id":"d","kind":"verdict",'
+                 '"valence":"bad","reason":null,"format_version":1}\n', encoding="utf-8")
+    back = R.read(p)
+    assert len(back) == 1 and back[0].valence == "bad" and not hasattr(back[0], "reason")
 
 
 # --- the producer: a clean abstain verdict → one u_wrong threshold observation ----------
@@ -93,7 +102,7 @@ def test_bad_on_abstain_folds_with_reacted_false(tmp_path: Path) -> None:
     rpath, dpath = _write(
         tmp_path, [_abstain_decision("d1", 0.4)],
         [R.ReactionEvent(tx_time="t", question_id="q", decision_id="d1",
-                         kind="verdict", valence="bad", reason="I wanted an answer")])
+                         kind="verdict", valence="bad")])
     out = R.load_reactions(rpath, dpath)
     assert len(out) == 1 and out[0].reacted is False and out[0].sign == -1.0
     assert out[0].threshold == pytest.approx(0.4 / 0.6)
@@ -109,12 +118,12 @@ def test_report_verdict_is_recorded_but_not_folded(tmp_path: Path) -> None:
     assert R.load_reactions(rpath, dpath) == []  # cross-latent contamination — deferred
 
 
-def test_note_valence_does_not_fold(tmp_path: Path) -> None:
-    rpath, dpath = _write(
-        tmp_path, [_abstain_decision("d1", 0.4)],
-        [R.ReactionEvent(tx_time="t", question_id="q", decision_id="d1",
-                         kind="verdict", valence="note", reason="fyi")])
-    assert R.load_reactions(rpath, dpath) == []
+def test_note_valence_is_rejected(tmp_path: Path) -> None:
+    # the verdict is one bit — good/bad. The retired ``note`` valence (a no-op the fold never
+    # read) is no longer in the vocabulary: constructing it is a loud error, not a silent skip.
+    with pytest.raises(ValueError, match="valence"):
+        R.ReactionEvent(tx_time="t", question_id="q", decision_id="d1",
+                        kind="verdict", valence="note")
 
 
 def test_narrative_summary_without_schema_fields_is_held_not_folded(tmp_path: Path) -> None:
@@ -187,7 +196,7 @@ def test_narrative_bad_folds_as_counterpressure_when_coverage_clears_bar(
         tmp_path, [_narrative_abstain("d1", 0.6, reason=N.REASON_ALL_WITHHELD,
                                       coverage=(3.0, 1.0))],
         [R.ReactionEvent(tx_time="t", question_id="q", decision_id="d1",
-                         kind="verdict", valence="bad", reason="I wanted an answer")])
+                         kind="verdict", valence="bad")])
     out = R.load_reactions(rpath, dpath)
     assert len(out) == 1 and isinstance(out[0], UT.MarginReaction) and out[0].reacted is False
 

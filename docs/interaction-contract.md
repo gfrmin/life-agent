@@ -53,12 +53,12 @@ A capability lives in exactly one mode. Mutating a task is *act*; asking about y
 | `/until YYYY-MM-DD QUESTION` | admit sources dated on/before |
 | `/tell FACT` | record an authoritative owner fact (corpus-free: works even while extraction holds the catalogue lock) |
 | `/derive` | materialise the projections (doc_date, doc_subject) the last answer named as underived, then re-ask |
-| `/react ID g\|b\|n [note]` | verdict a past answer by its `decision_id` — a **deferred** dogfood verdict (corpus-free) |
+| `/react ID g\|b` | verdict a past answer by its `decision_id` — a **deferred** dogfood verdict, one bit, corpus-free |
 | `/q` (or `/quit`, `/exit`, EOF) | quit |
 
 One-shot is the same grammar: `bin/ask-live "/since 2026-01-01 what invoices arrived?"`.
 
-**Deferred verdicts.** The inline `g`/`b`/`n` key grades the answer you just saw; `/react`
+**Deferred verdicts.** The inline `g`/`b` key grades the answer you just saw; `/react`
 grades one you saw *earlier*, addressed by its content-addressed `decision_id` (or a unique
 prefix of it, resolved git-style — zero or several is a loud error, never a silent pick).
 This decouples asking from judging: a batch of questions can be answered now and verdicted
@@ -67,6 +67,12 @@ whenever, the verdict still binding to the answer **as it stood at decision time
 regardless; whether it *moves* the utility posterior is the fold's call, not the command's
 (`reactions.load_reactions` folds only clean abstain-verdicts — `/react` names that fate in
 its reply rather than implying every verdict counts).
+
+**The verdict is one bit.** Good or bad — nothing more is elicited from the owner. The loop
+treats the owner's free text as its only expensive resource, so it never asks for a note: any
+richer signal must be measured cheaply (auto-derived, or a bit per claim), never typed. Cheap
+auto-measurement (the decision, its held-back candidates, the posterior) is unconstrained and
+already logged; only the elicitation is rationed.
 
 **Temporal composition.** `/since` and `/until` are bounds: together they form a range, each
 may appear at most once. `/recent` is a ranking directive and stands alone — applying any

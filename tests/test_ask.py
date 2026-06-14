@@ -30,28 +30,19 @@ def _cards():
             SourceCard(n=2, text="y", origin="/data/2024-01-15.eml")]
 
 
-def test_log_entry_good_omits_note_line() -> None:
+def test_log_entry_good_format() -> None:
     entry = ask.log_entry("q?", "the answer [1]", _cards(), {1: 0.89, 2: 0.76},
-                          "GOOD", "", when="14:32")
+                          "GOOD", when="14:32")
     assert entry.startswith("## 14:32  GOOD\n")
     assert "Q: q?" in entry
     assert "A: the answer [1]" in entry
     assert "sources: id_scan.pdf(0.89), 2024-01-15.eml(0.76)" in entry
-    assert "note:" not in entry
-
-
-def test_log_entry_bad_includes_note() -> None:
-    entry = ask.log_entry("q?", "wrong", _cards(), {1: 0.5, 2: 0.4},
-                          "BAD", "OCR garbled the digits", when="09:01")
-    assert "## 09:01  BAD" in entry
-    assert "note: OCR garbled the digits" in entry
+    assert "note:" not in entry        # the verdict is one bit — no free text is ever logged
 
 
 def test_log_entry_no_sources_omits_sources_line() -> None:
-    entry = ask.log_entry("q?", "nothing retrieved", [], {}, "BAD", "missing source",
-                          when="00:00")
+    entry = ask.log_entry("q?", "nothing retrieved", [], {}, "BAD", when="00:00")
     assert "sources:" not in entry
-    assert "note: missing source" in entry
 
 
 # --- retrieve() dedupe + rank (no DuckDB; pkm.retrieval.search monkeypatched) #
@@ -246,7 +237,7 @@ def test_answer_abstains_on_weak_retrieval_without_calling_llm(monkeypatch) -> N
 
 def test_log_entry_records_unverified_line() -> None:
     e = ask.log_entry("q?", "ID 222222222 [1]", _cards(), {1: 0.5, 2: 0.4},
-                      "BAD", "", when="10:00", unverified="[1] ID 222222222")
+                      "BAD", when="10:00", unverified="[1] ID 222222222")
     assert "unverified: [1] ID 222222222" in e
 
 

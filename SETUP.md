@@ -146,7 +146,7 @@ You interact in exactly **two places**; everything else runs on timers.
   say `help` for the vocabulary.
 
 **The verdict prompt is how it gets better.** After each REPL answer, ask-live
-asks `[g]ood / [b]ad / [n]ote / Enter` — one key, logged to a dated journal at
+asks `[g]ood / [b]ad / Enter` — one bit, logged to a dated journal at
 `$LIFE_AGENT_KB/eval/dogfood-YYYY-MM-DD.md` (never the repo). Misses that
 matter get promoted to `$LIFE_AGENT_KB/FAILURES.md` (template:
 [`docs/failures-template.md`](./docs/failures-template.md)); the failure log —
