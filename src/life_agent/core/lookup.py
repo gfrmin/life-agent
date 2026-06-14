@@ -51,6 +51,7 @@ from life_agent.core import outcomes as O
 from life_agent.core import reactions as R
 from life_agent.core import utility as UT
 from life_agent.core.brain import Brain
+from life_agent.core.decide import u_assert
 
 # The local model for route + extract (the 8 GB card's working model; both verdicts are
 # cached, so call counts are bounded by distinct questions x distinct chunks).
@@ -160,7 +161,7 @@ _A_TIME_UNKNOWN = 0.6        # undated/underived doc date under a time-indexed c
 
 # The response actions, in the optimise action-space order. Names are the
 # decisions.ACTIONS vocabulary; ask-about-U is deliberately absent (§4.4).
-_ACTION_ORDER: tuple[str, ...] = ("report", "hedge", "ask_clarify", "abstain")
+_ACTION_ORDER: tuple[str, ...] = DEC.LOOKUP_ACTION_ORDER
 
 # Closed abstention reasons (the credence grammar — interaction contract).
 REASON_DISPERSED = "dispersed posterior"
@@ -527,16 +528,19 @@ def lookup_posterior(brain: Brain, observations: list[Observation],
 def action_utilities(weights: list[float], u_bar: dict[str, float]
                      ) -> dict[str, list[float]]:
     """Per-action utility vectors over the hypothesis atoms (K candidates + NONE),
-    under the §4.4 posterior mean (the collapse theorem). report asserts the MAP
-    candidate; hedge asserts the candidate set (misleading iff the truth is NONE);
-    ask_clarify is priced flat by the oracle prior against λ_int; abstain is the
-    gauge zero."""
+    under the §4.4 posterior mean (the collapse theorem). The correctness slots derive
+    from :func:`life_agent.core.decide.u_assert` (the one written atom): report asserts
+    the MAP candidate (``u_assert(1)``); every other atom and NONE is a wrong report
+    (``u_assert(0)`` = u_wrong); hedge asserts the candidate set (``u_hedged``), misleading
+    only when the truth is NONE; ask_clarify is the oracle price (NOT a u_assert outcome —
+    the oracle is infallible when it knows); abstain is the gauge zero."""
     k = len(weights) - 1
     j_star = max(range(k), key=lambda j: weights[j]) if k else None
-    u_wrong = u_bar["u_wrong"]
-    report = [(u_bar["u_correct"] if j == j_star else u_wrong) for j in range(k)]
-    report.append(u_wrong)  # NONE: the report misleads
-    hedge = [u_bar["u_hedged"]] * k + [u_wrong]
+    u_correct_report = u_assert(1.0, u_bar)
+    u_wrong_report = u_assert(0.0, u_bar)
+    report = [(u_correct_report if j == j_star else u_wrong_report) for j in range(k)]
+    report.append(u_wrong_report)  # NONE: the report misleads
+    hedge = [u_bar["u_hedged"]] * k + [u_wrong_report]
     ask = [_ORACLE_P * u_bar["u_correct"] - u_bar["lambda_int"]] * (k + 1)
     abstain = [u_bar["u_abstain"]] * (k + 1)
     return {"report": report, "hedge": hedge, "ask_clarify": ask, "abstain": abstain}
