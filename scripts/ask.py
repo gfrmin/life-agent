@@ -35,7 +35,7 @@ from dataclasses import dataclass, field
 from datetime import date as _date
 from datetime import datetime
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, TypeGuard, cast
 
 import citation_guard as guard  # sibling script: deterministic citation-faithfulness gate
 import duckdb
@@ -45,6 +45,7 @@ import yaml
 # PKM_CONFIG paths) lives in the installed life_agent package (see life-agent's pyproject).
 import life_agent.core as C
 from life_agent import owner
+from life_agent.core import decisions as DEC
 from life_agent.core import derivations as D
 from life_agent.core import lookup as LK
 from life_agent.core import narrative as N
@@ -263,6 +264,9 @@ GRAMMAR: tuple[tuple[str, str, str], ...] = (
     ("/derive", "materialise the projections (doc_date, doc_subject) the last "
                  "answer named as underived",
      "/derive"),
+    ("/react ID g|b|n [note]", "verdict a past answer by its decision-id — a deferred "
+                               "dogfood verdict (only abstain verdicts move the fold)",
+     "/react 8af95b2f bad stale"),
     ("/q", "quit (also /quit, /exit, Ctrl-D)",
      "/q"),
 )
@@ -278,13 +282,22 @@ def grammar_text() -> str:
 @dataclass(frozen=True)
 class Parsed:
     """One parsed input line. ``kind`` dispatches; the rest is that kind's payload."""
-    kind: str  # "ask" | "tell" | "derive" | "quit" | "empty" | "error"
+    kind: str  # "ask" | "tell" | "derive" | "react" | "quit" | "empty" | "error"
     question: str = ""
     fact: str = ""
     since: _date | None = None
     until: _date | None = None
     recent: bool = False
+    did: str = ""       # /react: the decision-id prefix to verdict
+    valence: str = ""   # /react: the canonical verdict ("good" | "bad" | "note")
+    note: str = ""      # /react: the optional free-text reason
     error: str = ""
+
+
+# /react accepts the one-key verdict (same as the inline prompt) or its spelled-out form,
+# normalised to the reactions.VALENCES vocabulary.
+_VALENCE_ALIASES: dict[str, str] = {"g": "good", "good": "good", "b": "bad", "bad": "bad",
+                                    "n": "note", "note": "note"}
 
 
 def _error(message: str) -> Parsed:
@@ -307,6 +320,16 @@ def parse_line(line: str) -> Parsed:
     if line == "/tell" or line.startswith("/tell "):
         fact = line[len("/tell"):].strip()
         return Parsed(kind="tell", fact=fact) if fact else _error("usage: /tell FACT")
+    if line == "/react" or line.startswith("/react "):
+        parts = line[len("/react"):].strip().split(maxsplit=2)
+        if len(parts) < 2:
+            return _error("usage: /react DECISION_ID g|b|n [note]")
+        valence = _VALENCE_ALIASES.get(parts[1].lower())
+        if valence is None:
+            return _error(f"usage: /react DECISION_ID g|b|n [note] "
+                          f"(verdict must be g/b/n, got {parts[1]!r})")
+        return Parsed(kind="react", did=parts[0], valence=valence,
+                      note=parts[2] if len(parts) > 2 else "")
     if not line.startswith("/"):
         return Parsed(kind="ask", question=line)
 
@@ -557,12 +580,14 @@ def retrieval_is_weak(scores: dict[int, float], *, floor: float, min_hits: int) 
     return sum(1 for s in scores.values() if s >= floor) < min_hits
 
 
-def _typed_lookup_applies(lk: LK.LookupResult | None) -> bool:
+def _typed_lookup_applies(lk: LK.LookupResult | None) -> TypeGuard[LK.LookupResult]:
     """The routing criterion (§9 no-hard-zeros): the lookup family answered iff it returned a
     result. It returns None in exactly two cases — the question was not classified as a typed
     lookup, or it produced zero grounded observations — and both are coverage failures, not
     abstentions: the narrative path covers what lookup can't, by design. Naming the predicate
-    keeps the dispatch a stated rule, not a bare ``is not None`` at the call site."""
+    keeps the dispatch a stated rule, not a bare ``is not None`` at the call site. The
+    ``TypeGuard`` lets the name narrow ``lk`` to a ``LookupResult`` for the type-checker exactly
+    as the bare ``is not None`` did — wrapping it in a function must not cost that narrowing."""
     return lk is not None
 
 
@@ -846,6 +871,50 @@ def _record_reaction(question: str, verdict: str, note: str) -> None:
         print(f"  (reaction not recorded: {e})")
 
 
+def react(did_prefix: str, valence: str, note: str,
+          *, decisions_path: Path = C.DECISIONS_LOG,
+          reactions_path: Path = C.REACTIONS_LOG) -> int:
+    """Deferred dogfood verdict (interaction-contract `know` mode): bind a verdict the owner
+    authors *now* to a decision recorded *earlier*, by content-addressed ``decision_id``
+    prefix — no model recompute, so it grades the answer exactly as it stood. The prefix
+    resolves git-style: a unique match is required; zero or several is a loud error naming the
+    options (invariant 3), never a silent pick. On a match it appends the §4.4 ``ReactionEvent``
+    the fold joins, copying the decision's own ``question_id`` for linkage. Returns 0 on
+    success, 2 on a resolve error. The fold (`reactions.load_reactions`) still decides what
+    *moves*: this only records the owner's verdict — a report decision is recorded-not-folded,
+    named so here. (The owner authors every valence; this is transcription, never authorship.)"""
+    try:
+        decisions = DEC.read(decisions_path)
+    except Exception as e:
+        print(f"cannot read the decisions log: {e}", file=sys.stderr)
+        return 2
+    ids = sorted({d.decision_id for d in decisions
+                  if d.decision_id and d.decision_id.startswith(did_prefix)})
+    if not ids:
+        print(f"no decision matches id prefix {did_prefix!r} "
+              f"({len(decisions)} decisions on file)", file=sys.stderr)
+        return 2
+    if len(ids) > 1:
+        shown = ", ".join(i[:12] for i in ids[:8])
+        print(f"ambiguous id prefix {did_prefix!r} matches {len(ids)} decisions: "
+              f"{shown}{' …' if len(ids) > 8 else ''} — give more characters", file=sys.stderr)
+        return 2
+    did = ids[0]
+    d = [dd for dd in decisions if dd.decision_id == did][-1]  # latest row; context shared
+    try:
+        R.append(reactions_path, R.ReactionEvent(
+            tx_time=O.now_iso(), question_id=d.question_id, decision_id=did,
+            kind="verdict", valence=valence, reason=note or None))
+    except Exception as e:
+        print(f"verdict not recorded: {e}", file=sys.stderr)
+        return 2
+    folds = d.chosen_action == "abstain" and valence in ("good", "bad")
+    fate = ("folds into the utility posterior on the next gate run" if folds
+            else "recorded — not folded (only abstain verdicts move the fold)")
+    print(f"→ {valence.upper()} on {d.family}/{d.chosen_action} {did[:12]} — {fate}")
+    return 0
+
+
 # --- one question, end to end --------------------------------------------- #
 def ask_once(conn: duckdb.DuckDBPyConnection, question: str, k: int,
              *, expand: bool = True, no_cache: bool = False,
@@ -1024,6 +1093,9 @@ def repl(conn: duckdb.DuckDBPyConnection, k: int, *, expand: bool = True,
         if p.kind == "tell":
             remember(p.fact)
             continue
+        if p.kind == "react":
+            react(p.did, p.valence, p.note)
+            continue
         if p.kind == "derive":
             if not derive_targets:
                 print("nothing to derive — ask a /recent or /since question first\n")
@@ -1100,6 +1172,8 @@ def main(argv: list[str] | None = None) -> int:
         if p.kind == "tell":
             remember(p.fact)
             return 0
+        if p.kind == "react":
+            return react(p.did, p.valence, p.note)
         if p.kind == "quit":
             return 0
 
