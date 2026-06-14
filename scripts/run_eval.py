@@ -754,7 +754,10 @@ def main() -> int:
         # folded from the FROZEN model + elicitations (blind discipline: untouched here)
         brain = LK.shared_brain()
         model = UT.load_model(LCFG.UTILITY_MODEL)
-        evidence = list(UT.load_elicitations(LCFG.UTILITY_ELICITATIONS, model))
+        # widen to the Evidence union so the invariant list[...] matches posterior's
+        # parameter (only Elicitations exist on this path; reactions fold elsewhere)
+        evidence: list[UT.Evidence] = list(UT.load_elicitations(LCFG.UTILITY_ELICITATIONS,
+                                                                 model))
         post = UT.posterior(brain, model, evidence)
         for warning in post.endpoint_warnings(model.endpoint_mass_warn):
             print(f"  ⚠ {warning}")
