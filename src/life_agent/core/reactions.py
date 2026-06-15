@@ -17,7 +17,13 @@ observation on u(wrong): ``good`` ("glad you didn't guess") favours u(wrong) bel
 ``bad`` ("I wanted an answer") above it. Verdicts on *reports* are cross-latent
 contaminated (wrong-subject / didn't-want-report) and signed gate-favourable, so they are
 recorded but NOT folded until the §8 grader-3 attribution lands — that is the named
-successor. Notes, report-verdicts, and unrouted verdicts are recorded but not folded.
+successor. Report-verdicts and unrouted verdicts are recorded but not folded.
+
+**The verdict is one bit.** The owner answers only ``good`` or ``bad`` — the loop elicits no
+free text, because the one expensive resource here is the owner's prose (cheap auto-measurement
+— decisions, candidates, posteriors — is unconstrained and already logged). So there is no
+``reason``/note: any richer signal must be auto-derived or elicited cheaply (a bit per claim),
+never typed by the owner.
 
 **Narrative abstains fold jointly (§7.1).** A narrative ``ALL_WITHHELD`` abstention reacted
 to at the marginal claim's credence ``p_max`` is a soft observation on the inclusion margin
@@ -26,9 +32,10 @@ coupling u(wrong) and κ_att. The cleanliness *inverts* from lookup: the clean `
 are one-directional, so **both** valences fold (the contaminated ``bad`` rows are the only
 counter-pressure — without them the posterior runs to the grid edge and the gate passes
 spuriously). The ``bad`` rows are coverage-gated (a low-coverage "I wanted an answer" is more
-likely a proposal-recall failure than a utility complaint); the ``good`` rows are ungated. The
-which-claim residual is left in the retained free-text ``reason`` (foundations §14 successor).
-``NO_CLAIMS`` abstains (no ``p_max``) and narrative reports are recorded but not folded.
+likely a proposal-recall failure than a utility complaint); the ``good`` rows are ungated. Any
+which-claim residual is left unmeasured (the §14 successor must elicit it cheaply — a bit per
+claim — never as free text). ``NO_CLAIMS`` abstains (no ``p_max``) and narrative reports are
+recorded but not folded.
 
 **Supersession, not accumulation:** the owner may revise a verdict; the fold takes the
 latest verdict per ``(decision_id, kind)`` (file order is replay order), so one decision
@@ -37,7 +44,7 @@ contributes one threshold observation.
 from __future__ import annotations
 
 import json
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 from typing import Any
 
@@ -50,9 +57,10 @@ FORMAT_VERSION = 1
 # Closed vocabularies (grow by edit as the later streams land: correction, reask,
 # clarify_reaction, disposal). An event outside them is a loud construction error.
 KINDS: frozenset[str] = frozenset({"verdict"})
-VALENCES: dict[str, frozenset[str]] = {"verdict": frozenset({"good", "bad", "note"})}
+VALENCES: dict[str, frozenset[str]] = {"verdict": frozenset({"good", "bad"})}
 
-# Valences that carry a binary utility signal; ``note`` is text-only (logged, not folded).
+# Valences that carry a binary utility signal. Equals the verdict vocabulary today; kept
+# distinct as the fold's gate for when non-folding valences land under a later kind (§ above).
 _FOLDED_VALENCES: frozenset[str] = frozenset({"good", "bad"})
 
 # §7.1: a narrative `bad`-on-ALL_WITHHELD folds as counter-pressure only when the proposal
@@ -65,16 +73,15 @@ _COVERAGE_BAR: float = 0.5
 
 @dataclass(frozen=True)
 class ReactionEvent:
-    """One owner reaction to one decision (§4.4 schema, format_version 1). ``reason`` is
-    the nullable free-text note ``capture`` prompts for on ``bad``/``note`` — the one
-    disambiguator that cannot be reconstructed later, kept even when mostly empty."""
+    """One owner reaction to one decision (§4.4 schema, format_version 1). The verdict is a
+    single bit — ``valence`` good/bad — and nothing more: the loop elicits no free text from
+    the owner (their prose is its only expensive resource), so there is no note/``reason``."""
 
     tx_time: str
     question_id: str
     decision_id: str
     kind: str
     valence: str
-    reason: str | None = None
     format_version: int = FORMAT_VERSION
 
     def __post_init__(self) -> None:
@@ -86,12 +93,17 @@ class ReactionEvent:
                 f"{sorted(VALENCES[self.kind])}")
 
 
+_FIELDS: frozenset[str] = frozenset(f.name for f in fields(ReactionEvent))
+
+
 def _to_line(event: ReactionEvent) -> str:
     return json.dumps(asdict(event), sort_keys=True, ensure_ascii=False, separators=(",", ":"))
 
 
 def _from_line(line: str) -> ReactionEvent:
-    return ReactionEvent(**json.loads(line))
+    # Drop keys no longer in the schema — the append-only log predates the retirement of the
+    # free-text ``reason``, so old rows carry a (null) ``reason`` the current schema omits.
+    return ReactionEvent(**{k: v for k, v in json.loads(line).items() if k in _FIELDS})
 
 
 def append(path: Path, event: ReactionEvent) -> None:
@@ -100,7 +112,10 @@ def append(path: Path, event: ReactionEvent) -> None:
 
 
 def read(path: Path) -> list[ReactionEvent]:
-    """Every reaction in file order — the canonical replay order. Malformed lines raise."""
+    """Every reaction in file order — the canonical replay order. Structurally-malformed lines
+    raise (bad JSON, a missing required field, an out-of-vocabulary kind/valence); keys no
+    longer in the schema are dropped (``_from_line``), so the append-only log replays across a
+    field retirement rather than crashing on an old row."""
     return [_from_line(line) for line in jsonl_log.read_lines(path)]
 
 
@@ -136,8 +151,8 @@ def _narrative_reaction(r: ReactionEvent, d: DEC.DecisionEvent) -> UT.MarginReac
     """A clean narrative ``ALL_WITHHELD`` abstain-verdict → a joint (u(wrong), κ_att) margin
     observation at the marginal claim's ``p_max`` (§7.1). Both valences fold (the ``bad`` rows
     are the only counter-pressure); the ``bad`` rows are coverage-gated; ``NO_CLAIMS`` (no
-    ``p_max``) does not fold. The free-text ``reason`` is retained on the row (which-claim
-    residual evidence — §14)."""
+    ``p_max``) does not fold. The which-claim residual is left unmeasured — the §14 successor
+    must elicit it cheaply (a bit per claim), never as free text."""
     from life_agent.core import narrative as N  # lazy: keep the import graph acyclic
     if d.posterior_summary.get("abstain_reason") != N.REASON_ALL_WITHHELD:
         return None

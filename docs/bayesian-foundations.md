@@ -409,13 +409,15 @@ parallel to the outcomes and decision logs:
   decisions, `$LIFE_AGENT_KB/calibration/reactions.jsonl`, under the same discipline (file
   order is the canonical replay order; a closed `kind`/`valence` vocabulary raises on junk;
   durable append; unbackfillable, so it lands now). One line is
-  `(tx_time, question_id, decision_id, kind, valence, reason)`; v0 carries `kind = verdict`,
-  `valence ∈ {good, bad, note}` from the existing ask-live g/b/n capture, plus a **nullable
-  `reason`** — the free-text note `capture` already prompts for on `bad`/`note`. The reason
-  is the *one disambiguator that cannot be reconstructed after the fact* (it resolves the
-  contamination below); it is opt-in and one keystroke, so logging it breaches no
-  passivity, and the slot lands now even mostly empty. The vocabulary grows by edit as the
-  later streams land (`correction`, `reask`, `clarify_reaction`, `disposal`).
+  `(tx_time, question_id, decision_id, kind, valence)`; v0 carries `kind = verdict`,
+  `valence ∈ {good, bad}` from the ask-live g/b capture. **The verdict is one bit** — no
+  free-text note. The loop's only expensive resource is the owner's prose, so it is never
+  elicited: cheap auto-measurement (the decision, its held-back candidates, the posterior) is
+  unconstrained and already logged, and only the *elicitation* is rationed. A richer signal
+  (e.g. the which-claim disambiguator below) must therefore be auto-derived or elicited
+  cheaply (a bit per claim), never typed — so the earlier nullable-`reason` slot was retired
+  (the append-only reader drops the legacy key). The vocabulary grows by edit as the later
+  streams land (`correction`, `reask`, `clarify_reaction`, `disposal`).
   **The join is on a per-decision `decision_id`, not `question_id`.** `question_id =
   sha(question)` is not unique across runs (re-asks are stream 5, designed in), and a
   within-session re-ask is itself a *new* decision — new retrieval, new posterior, new `p` —
@@ -491,7 +493,7 @@ parallel to the outcomes and decision logs:
   fold-version, and the ask path and the §8 gate re-read demand-led. Conditioning is the
   skin's existing `tabular_log_density` over the grid latents — no new Julia. Learning
   stays **passive** (above): the agent conditions on verdicts the owner volunteers through
-  the unchanged, frictionless g/b/n prompt; it never probes preferences. The
+  the frictionless g/b prompt (one bit, no free text); it never probes preferences. The
   human-facing surface is untouched — the verdict simply also emits a structured line.
 
 - **The kernel generalises to a margin functional (narrative, 2026-06-14).** A `Reaction`

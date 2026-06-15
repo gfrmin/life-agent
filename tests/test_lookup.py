@@ -322,8 +322,26 @@ def test_render_hedge_names_alternatives_with_credences() -> None:
     assert "V1 (0.700) [1]" in text and "V2 (0.200) [3]" in text
 
 
-def test_render_abstain_names_closed_reason() -> None:
-    assert LK.REASON_DISPERSED in render(_result("abstain"))
+def test_render_abstain_names_reason_and_shows_held_back_candidates() -> None:
+    # an abstain must surface the candidate(s) it withheld, with credences, so the owner can
+    # verdict the *decision* against what it was sitting on — not a blind "should you have
+    # answered?" (the candidate is the held-back "thinking"; report/hedge already show it).
+    text = render(_result("abstain"))
+    assert LK.REASON_DISPERSED in text
+    assert "V1 (0.700) [1]" in text and "V2 (0.200) [3]" in text
+    assert "decision abstain" in text
+
+
+def test_render_abstain_without_candidates_omits_held_back() -> None:
+    # genuine nothing-to-show (all observations indeterminate): no "Held back:" dangling.
+    r = LK.LookupResult(
+        question="q?", construct="c", action="abstain", eu=0.0,
+        candidates=(), credences=(), p_none=1.0, observations=(),
+        n_hits=2, n_indeterminate=2, utility_fold_version="f" * 64,
+        answer_cache_key="k" * 64, rendered="")
+    text = render(r)
+    assert LK.REASON_DISPERSED in text
+    assert "Held back" not in text
 
 
 def test_grammar_templates_all_render() -> None:
@@ -332,6 +350,7 @@ def test_grammar_templates_all_render() -> None:
     LK.GRAMMAR["hedge"].format(alts="a")
     LK.GRAMMAR["ask_clarify"].format(alts="a")
     LK.GRAMMAR["abstain"].format(reason="r")
+    LK.GRAMMAR["abstain_withheld"].format(reason="r", alts="a")
     LK.GRAMMAR["footer"].format(n_hits=1, n_obs=1, n_ind=0, p_none=0.1,
                                 action="report", eu=0.5)
     LK.GRAMMAR["fallthrough"].format(reason="r")

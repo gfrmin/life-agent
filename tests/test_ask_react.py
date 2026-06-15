@@ -28,21 +28,22 @@ def test_react_parses_one_key_verdict() -> None:
     assert p.kind == "react"
     assert p.did == "8af95b2f"
     assert p.valence == "good"   # normalised to the reactions.VALENCES vocabulary
-    assert p.note == ""
 
 
-def test_react_parses_spelled_verdict_and_multiword_note() -> None:
-    p = ask.parse_line("/react be618230 bad stale, I left that job")
+def test_react_parses_spelled_verdict() -> None:
+    p = ask.parse_line("/react be618230 bad")
     assert (p.kind, p.did, p.valence) == ("react", "be618230", "bad")
-    assert p.note == "stale, I left that job"   # everything after the verdict is the note
 
 
 def test_react_parse_errors_are_loud() -> None:
     assert ask.parse_line("/react").kind == "error"             # no id, no verdict
     assert ask.parse_line("/react 8af95b2f").kind == "error"    # missing verdict
-    bad = ask.parse_line("/react 8af95b2f maybe")               # not g/b/n
+    assert ask.parse_line("/react 8af95b2f n").kind == "error"  # 'n'/note is gone — one bit only
+    # the verdict is a single bit: no trailing free text is accepted (it is not elicited)
+    assert ask.parse_line("/react 8af95b2f bad stale").kind == "error"
+    bad = ask.parse_line("/react 8af95b2f maybe")               # not g/b
     assert bad.kind == "error"
-    assert "g/b/n" in bad.error
+    assert "g/b" in bad.error
 
 
 def test_react_is_in_the_single_grammar_source() -> None:
@@ -80,16 +81,14 @@ def test_lookup_abstain_verdict_is_recorded_and_folds(tmp_path: Path, capsys) ->
     did = "dead" + "b" * 60  # 64-hex-ish; prefix-addressable
     dec_path, react_path = _seed(tmp_path, _decision(did, family="lookup", action="abstain"))
 
-    rc = ask.react("deadb", "bad", "should have known",
-                   decisions_path=dec_path, reactions_path=react_path)
+    rc = ask.react("deadb", "bad", decisions_path=dec_path, reactions_path=react_path)
     assert rc == 0
 
     rows = R.read(react_path)
     assert len(rows) == 1
     r = rows[0]
     assert r.decision_id == did            # the prefix resolved to the full id
-    assert (r.kind, r.valence) == ("verdict", "bad")   # the OWNER's valence, verbatim
-    assert r.reason == "should have known"
+    assert (r.kind, r.valence) == ("verdict", "bad")   # the OWNER's valence (one bit), verbatim
     assert r.question_id == f"q-{did[:6]}"  # copied from the decision, not the prefix
 
     # an abstain verdict is fold-eligible — load_reactions emits utility evidence
@@ -101,7 +100,7 @@ def test_report_verdict_is_recorded_but_not_folded(tmp_path: Path, capsys) -> No
     did = "beef" + "a" * 60
     dec_path, react_path = _seed(tmp_path, _decision(did, family="lookup", action="report"))
 
-    rc = ask.react("beef", "good", "", decisions_path=dec_path, reactions_path=react_path)
+    rc = ask.react("beef", "good", decisions_path=dec_path, reactions_path=react_path)
     assert rc == 0
     assert len(R.read(react_path)) == 1                       # recorded
     assert R.load_reactions(react_path, dec_path) == []       # but not folded (report row)
@@ -111,7 +110,7 @@ def test_report_verdict_is_recorded_but_not_folded(tmp_path: Path, capsys) -> No
 def test_unknown_prefix_errors_and_writes_nothing(tmp_path: Path) -> None:
     did = "abc" + "0" * 61
     dec_path, react_path = _seed(tmp_path, _decision(did))
-    rc = ask.react("ffffff", "bad", "", decisions_path=dec_path, reactions_path=react_path)
+    rc = ask.react("ffffff", "bad", decisions_path=dec_path, reactions_path=react_path)
     assert rc == 2
     assert not react_path.exists() or R.read(react_path) == []   # no verdict authored
 
@@ -119,6 +118,6 @@ def test_unknown_prefix_errors_and_writes_nothing(tmp_path: Path) -> None:
 def test_ambiguous_prefix_errors_and_writes_nothing(tmp_path: Path) -> None:
     a, b = "ab" + "1" * 62, "ab" + "2" * 62  # share the prefix "ab"
     dec_path, react_path = _seed(tmp_path, _decision(a), _decision(b))
-    rc = ask.react("ab", "bad", "", decisions_path=dec_path, reactions_path=react_path)
+    rc = ask.react("ab", "bad", decisions_path=dec_path, reactions_path=react_path)
     assert rc == 2
     assert not react_path.exists() or R.read(react_path) == []
