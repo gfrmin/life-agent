@@ -4,7 +4,7 @@
 Phase-1 dogfood interface. One command -> an `ask> ` loop that, per question:
 retrieves top-k chunks from the whole live corpus (BM25 FTS, Hebrew-aware), has the
 pinned answer model synthesise a concise answer that cites [n] into those chunks, then
-captures a one-key verdict (+ optional note) into a dated session log under
+captures a one-key good/bad verdict into a dated session log under
 $LIFE_AGENT_KB. The captured misses are the FAILURES-driven spec for what to build next.
 
 This is pure composition of the comparison harness: it is `phase1_answer.answer_one`
@@ -264,9 +264,9 @@ GRAMMAR: tuple[tuple[str, str, str], ...] = (
     ("/derive", "materialise the projections (doc_date, doc_subject) the last "
                  "answer named as underived",
      "/derive"),
-    ("/react ID g|b|n [note]", "verdict a past answer by its decision-id — a deferred "
-                               "dogfood verdict (only abstain verdicts move the fold)",
-     "/react 8af95b2f bad stale"),
+    ("/react ID g|b", "verdict a past answer by its decision-id — a deferred "
+                      "dogfood verdict (only abstain verdicts move the fold)",
+     "/react 8af95b2f bad"),
     ("/q", "quit (also /quit, /exit, Ctrl-D)",
      "/q"),
 )
@@ -289,15 +289,14 @@ class Parsed:
     until: _date | None = None
     recent: bool = False
     did: str = ""       # /react: the decision-id prefix to verdict
-    valence: str = ""   # /react: the canonical verdict ("good" | "bad" | "note")
-    note: str = ""      # /react: the optional free-text reason
+    valence: str = ""   # /react: the canonical verdict ("good" | "bad")
     error: str = ""
 
 
-# /react accepts the one-key verdict (same as the inline prompt) or its spelled-out form,
-# normalised to the reactions.VALENCES vocabulary.
-_VALENCE_ALIASES: dict[str, str] = {"g": "good", "good": "good", "b": "bad", "bad": "bad",
-                                    "n": "note", "note": "note"}
+# /react takes a single bit — the same one-key verdict as the inline prompt, or its
+# spelled-out form, normalised to the reactions.VALENCES vocabulary. No free text: the only
+# expensive resource in the loop is the owner's prose, so we elicit only the bit.
+_VALENCE_ALIASES: dict[str, str] = {"g": "good", "good": "good", "b": "bad", "bad": "bad"}
 
 
 def _error(message: str) -> Parsed:
@@ -321,15 +320,14 @@ def parse_line(line: str) -> Parsed:
         fact = line[len("/tell"):].strip()
         return Parsed(kind="tell", fact=fact) if fact else _error("usage: /tell FACT")
     if line == "/react" or line.startswith("/react "):
-        parts = line[len("/react"):].strip().split(maxsplit=2)
-        if len(parts) < 2:
-            return _error("usage: /react DECISION_ID g|b|n [note]")
+        parts = line[len("/react"):].strip().split()
+        if len(parts) != 2:
+            return _error("usage: /react DECISION_ID g|b")
         valence = _VALENCE_ALIASES.get(parts[1].lower())
         if valence is None:
-            return _error(f"usage: /react DECISION_ID g|b|n [note] "
-                          f"(verdict must be g/b/n, got {parts[1]!r})")
-        return Parsed(kind="react", did=parts[0], valence=valence,
-                      note=parts[2] if len(parts) > 2 else "")
+            return _error(f"usage: /react DECISION_ID g|b "
+                          f"(verdict must be g/b, got {parts[1]!r})")
+        return Parsed(kind="react", did=parts[0], valence=valence)
     if not line.startswith("/"):
         return Parsed(kind="ask", question=line)
 
@@ -786,7 +784,7 @@ def render(text: str, cards: list[C.SourceCard], scores: dict[int, float],
 
 # --- feedback capture (the dogfood signal) -------------------------------- #
 def log_entry(question: str, text: str, cards: list[C.SourceCard],
-              scores: dict[int, float], verdict: str, note: str, *, when: str,
+              scores: dict[int, float], verdict: str, *, when: str,
               unverified: str = "") -> str:
     """Render one dogfood log block. Pure (no I/O, no clock) so it is unit-tested."""
     lines = [
@@ -798,8 +796,6 @@ def log_entry(question: str, text: str, cards: list[C.SourceCard],
         lines.append(f"sources: {_sources_inline(cards, scores)}")
     if unverified:  # citation-guard flagged a cited fact not present in its source
         lines.append(f"unverified: {unverified}")
-    if note:
-        lines.append(f"note: {note}")
     return "\n".join(lines) + "\n"
 
 
@@ -828,32 +824,27 @@ def _unverified_summary(audit: guard.CitationAudit | None) -> str:
 
 def capture(question: str, text: str, cards: list[C.SourceCard], scores: dict[int, float],
             audit: guard.CitationAudit | None = None) -> None:
-    """One-key verdict (+ optional note). Frictionless: `g` logs immediately; `b`/`n`
-    prompt for a note; Enter skips. A citation-guard flag is logged regardless of verdict."""
+    """One-key good/bad verdict — a single bit, no free text (the only expensive resource in
+    the loop is the owner's prose). Frictionless: `g`/`b` logs immediately; Enter skips. A
+    citation-guard flag is logged regardless of verdict."""
     try:
-        choice = input("[g]ood / [b]ad / [n]ote / Enter=next > ").strip().lower()
+        choice = input("[g]ood / [b]ad / Enter=next > ").strip().lower()
     except EOFError:
         print()
         return
-    verdict = {"g": "GOOD", "b": "BAD", "n": "NOTE"}.get(choice)
+    verdict = {"g": "GOOD", "b": "BAD"}.get(choice)
     if not verdict:
         return
-    note = ""
-    if verdict in ("BAD", "NOTE"):
-        try:
-            note = input("note> ").strip()
-        except EOFError:
-            print()
-    log = append_log(log_entry(question, text, cards, scores, verdict, note,
+    log = append_log(log_entry(question, text, cards, scores, verdict,
                                when=f"{datetime.now():%H:%M}",
                                unverified=_unverified_summary(audit)))
     print(f"→ logged {verdict} to {log}\n")
-    _record_reaction(question, verdict, note)
+    _record_reaction(question, verdict)
 
 
-def _record_reaction(question: str, verdict: str, note: str) -> None:
-    """§4.4 reaction loop: record the verdict as a structured reaction, joined to the
-    decision it grades by ``decision_id`` (the answer's cache key). The producer
+def _record_reaction(question: str, verdict: str) -> None:
+    """§4.4 reaction loop: record the verdict (one bit) as a structured reaction, joined to
+    the decision it grades by ``decision_id`` (the answer's cache key). The producer
     (`reactions.load_reactions`) decides what folds — v0 conditions u(wrong) only on clean
     lookup abstain-verdicts; everything else is recorded, not folded. Fail-open and named:
     a calibration-log write must never break the dogfood loop."""
@@ -865,13 +856,12 @@ def _record_reaction(question: str, verdict: str, note: str) -> None:
             tx_time=O.now_iso(),
             question_id=hashlib.sha256(question.encode("utf-8")).hexdigest()[:16],
             decision_id=decision_id, kind="verdict",
-            valence={"GOOD": "good", "BAD": "bad", "NOTE": "note"}[verdict],
-            reason=note or None))
+            valence={"GOOD": "good", "BAD": "bad"}[verdict]))
     except Exception as e:  # fail-open by contract, reason printed
         print(f"  (reaction not recorded: {e})")
 
 
-def react(did_prefix: str, valence: str, note: str,
+def react(did_prefix: str, valence: str,
           *, decisions_path: Path = C.DECISIONS_LOG,
           reactions_path: Path = C.REACTIONS_LOG) -> int:
     """Deferred dogfood verdict (interaction-contract `know` mode): bind a verdict the owner
@@ -879,10 +869,11 @@ def react(did_prefix: str, valence: str, note: str,
     prefix — no model recompute, so it grades the answer exactly as it stood. The prefix
     resolves git-style: a unique match is required; zero or several is a loud error naming the
     options (invariant 3), never a silent pick. On a match it appends the §4.4 ``ReactionEvent``
-    the fold joins, copying the decision's own ``question_id`` for linkage. Returns 0 on
-    success, 2 on a resolve error. The fold (`reactions.load_reactions`) still decides what
-    *moves*: this only records the owner's verdict — a report decision is recorded-not-folded,
-    named so here. (The owner authors every valence; this is transcription, never authorship.)"""
+    the fold joins, copying the decision's own ``question_id`` for linkage. The verdict is one
+    bit — good/bad, no free text (the owner's prose is the loop's only expensive resource).
+    Returns 0 on success, 2 on a resolve error. The fold (`reactions.load_reactions`) still
+    decides what *moves*: this only records the owner's verdict — a report decision is
+    recorded-not-folded, named so here. (The owner authors the bit; this is transcription.)"""
     try:
         decisions = DEC.read(decisions_path)
     except Exception as e:
@@ -904,7 +895,7 @@ def react(did_prefix: str, valence: str, note: str,
     try:
         R.append(reactions_path, R.ReactionEvent(
             tx_time=O.now_iso(), question_id=d.question_id, decision_id=did,
-            kind="verdict", valence=valence, reason=note or None))
+            kind="verdict", valence=valence))
     except Exception as e:
         print(f"verdict not recorded: {e}", file=sys.stderr)
         return 2
@@ -1094,7 +1085,7 @@ def repl(conn: duckdb.DuckDBPyConnection, k: int, *, expand: bool = True,
             remember(p.fact)
             continue
         if p.kind == "react":
-            react(p.did, p.valence, p.note)
+            react(p.did, p.valence)
             continue
         if p.kind == "derive":
             if not derive_targets:
@@ -1173,7 +1164,7 @@ def main(argv: list[str] | None = None) -> int:
             remember(p.fact)
             return 0
         if p.kind == "react":
-            return react(p.did, p.valence, p.note)
+            return react(p.did, p.valence)
         if p.kind == "quit":
             return 0
 
