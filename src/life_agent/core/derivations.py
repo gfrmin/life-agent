@@ -47,7 +47,8 @@ ENGINE_VERSION = "life_agent.core.llm/1"
 
 # Stage producer versions — bump ONE deliberately to orphan that stage's cache when its
 # semantics change (e.g. the dedupe rule in retrieve, the rendering in synthesize).
-EXPAND_VERSION = "1"
+EXPAND_VERSION = "2"  # bumped: expander must emit native-script spellings of transliterated
+#                       Hebrew/loan terms (arnona->ארנונה) — English-only sandbagged Hebrew docs
 RETRIEVE_VERSION = "1"
 SYNTHESIZE_VERSION = "1"
 OWNER_MATCH_VERSION = "1"
