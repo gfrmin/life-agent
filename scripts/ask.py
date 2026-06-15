@@ -84,9 +84,15 @@ EXPAND_SYSTEM = (
     "(an income question is answered by a doc that says 'invoice', 'salary', 'Contractor', "
     "'עוסק מורשה' — never the phrase 'make money'). Output ONLY a space-separated list of "
     "8-15 concrete search terms: synonyms, the specific nouns such documents contain, and "
-    "their Hebrew equivalents. No punctuation, no numbering, no explanation. "
+    "their Hebrew equivalents. If a question word is itself a transliterated Hebrew or loan "
+    "word (e.g. 'arnona'->ארנונה, 'vaad'->ועד, 'bituach'->ביטוח, 'mas'->מס), you MUST output "
+    "its exact Hebrew spelling verbatim — that spelling is usually the single most "
+    "discriminative term, and the English transliteration matches nothing in the Hebrew "
+    "documents. No punctuation, no numbering, no explanation. "
     "Example — 'how do i make money' -> income salary invoice contractor self-employed "
-    "freelance fee earnings employer עוסק מורשה משכורת חשבונית."
+    "freelance fee earnings employer עוסק מורשה משכורת חשבונית. "
+    "Example — 'how much was my arnona' -> arnona property-tax municipal rates bill "
+    "ארנונה עירייה חשבון תשלום."
 )
 
 # Synthesis prompt. Deliberately NOT the comparison harness's CITATION_INSTRUCTION (in
