@@ -709,28 +709,19 @@ def current_u_bar(brain: Brain) -> tuple[dict[str, float], str]:
 
 # --- the family, end to end --------------------------------------------------------------
 
-def lookup_answer(root: Path, question: str, hits: list[dict[str, Any]], *,
-                  brain: Brain | None = None,
-                  route_client: Any | None = None,
-                  extract_client: Any | None = None,
-                  covariates: HitCovariates | None = None,
-                  decisions_path: Path | None = None,
-                  run_id: str = "ask",
-                  ) -> LookupResult | None:
-    """Run the lookup family over admitted hits. None ⇒ the narrative path answers
-    (not routed as a lookup, or zero grounded observations — a coverage statement,
-    not an abstention; the caller names the fallthrough)."""
-    route = route_question(root, question, client=route_client)
-    if route is None:
-        return None
-    construct = route.construct
-    observations, indeterminate = observe_hits(root, question, hits,
-                                               client=extract_client,
-                                               covariates=covariates,
-                                               time_indexed=route.time_indexed)
-    if not observations:
-        return None
-
+def decide_and_record(root: Path, question: str, construct: str,
+                      observations: list[Observation], indeterminate: int, *,
+                      n_hits: int, time_indexed: bool,
+                      brain: Brain | None = None,
+                      decisions_path: Path | None = None,
+                      run_id: str = "ask") -> LookupResult:
+    """The lookup family's tail: a grounded observation set → tempered posterior → EU
+    decision under Ū → recorded answer artifact (§18.9) + logged decision (§8). Shared by
+    the single-pass :func:`lookup_answer` and the gather-augmented loop
+    (:mod:`life_agent.core.gather`): both produce observations, then value and record them
+    identically. ``time_indexed`` enters the answer key + content (an auditable decision
+    input — the gather loop may set it differently from the route). Assumes
+    ``observations`` is non-empty (its caller routes the empty case to narrative)."""
     b = brain if brain is not None else shared_brain()
     u_bar, fold_ver = current_u_bar(b)
     rho = extractor_reliability()
@@ -762,13 +753,13 @@ def lookup_answer(root: Path, question: str, hits: list[dict[str, Any]], *,
               "p_owner_indet": _P_OWNER_GIVEN_INDET,
               "time_half_life_years": _TIME_HALF_LIFE_YEARS,
               "a_time_unknown": _A_TIME_UNKNOWN,
-              "time_indexed": route.time_indexed,
+              "time_indexed": time_indexed,
               "covariates": _sha(json.dumps(obs_covariates, sort_keys=True))}
     obs_hash = _sha(json.dumps(sorted(o.obs_cache_key for o in observations)))
     akey = D.lookup_answer_key(question, obs_hash, fold_ver, params)
     content = json.dumps({
         "format_version": 1, "question": question, "construct": construct,
-        "time_indexed": route.time_indexed, "covariates": obs_covariates,
+        "time_indexed": time_indexed, "covariates": obs_covariates,
         "candidates": list(cands), "credences": list(creds), "p_none": p_none,
         "action": action, "eu": eu, "utility_fold_version": fold_ver,
     }, sort_keys=True, ensure_ascii=False).encode("utf-8")
@@ -779,7 +770,7 @@ def lookup_answer(root: Path, question: str, hits: list[dict[str, Any]], *,
     result = LookupResult(
         question=question, construct=construct, action=action, eu=eu,
         candidates=cands, credences=creds, p_none=p_none,
-        observations=tuple(observations), n_hits=len(hits),
+        observations=tuple(observations), n_hits=n_hits,
         n_indeterminate=indeterminate, utility_fold_version=fold_ver,
         answer_cache_key=akey.cache_key, rendered="")
     result = dataclasses.replace(result, rendered=render(result))
@@ -799,3 +790,30 @@ def lookup_answer(root: Path, question: str, hits: list[dict[str, Any]], *,
                    chosen_action=action, predicted_eu=eu,
                    decision_id=akey.cache_key))
     return result
+
+
+def lookup_answer(root: Path, question: str, hits: list[dict[str, Any]], *,
+                  brain: Brain | None = None,
+                  route_client: Any | None = None,
+                  extract_client: Any | None = None,
+                  covariates: HitCovariates | None = None,
+                  decisions_path: Path | None = None,
+                  run_id: str = "ask",
+                  ) -> LookupResult | None:
+    """Run the single-pass lookup family over admitted hits. None ⇒ the narrative path
+    answers (not routed as a lookup, or zero grounded observations — a coverage statement,
+    not an abstention; the caller names the fallthrough). The gather-augmented variant is
+    :func:`life_agent.core.gather.gather_answer`; both share :func:`decide_and_record`."""
+    route = route_question(root, question, client=route_client)
+    if route is None:
+        return None
+    observations, indeterminate = observe_hits(root, question, hits,
+                                               client=extract_client,
+                                               covariates=covariates,
+                                               time_indexed=route.time_indexed)
+    if not observations:
+        return None
+    return decide_and_record(
+        root, question, route.construct, observations, indeterminate,
+        n_hits=len(hits), time_indexed=route.time_indexed, brain=brain,
+        decisions_path=decisions_path, run_id=run_id)
