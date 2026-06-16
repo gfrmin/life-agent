@@ -47,6 +47,7 @@ import life_agent.core as C
 from life_agent import owner
 from life_agent.core import decisions as DEC
 from life_agent.core import derivations as D
+from life_agent.core import gather as GA
 from life_agent.core import lookup as LK
 from life_agent.core import narrative as N
 from life_agent.core import outcomes as O
@@ -599,6 +600,7 @@ def answer(conn: duckdb.DuckDBPyConnection, question: str,
            k: int, *, expand: bool = True,
            no_cache: bool = False,
            families: bool = True,
+           gather: bool = False,
            since: _date | None = None, until: _date | None = None,
            recent: bool = False) -> tuple[str, list[C.SourceCard], dict[int, float]]:
     """Retrieve then synthesise a cited answer. The authoritative owner profile (who "I"/"my"
@@ -615,7 +617,12 @@ def answer(conn: duckdb.DuckDBPyConnection, question: str,
     bayesian-foundations §8): skip the typed lookup route AND the narrative scorer, so the
     raw synthesize prose is returned — the pre-Bayesian answer the gate weighs the typed
     families against. Default ``True`` preserves the production path exactly.
-    Returns (answer_text, cards, {card_n: score})."""
+
+    ``gather=True`` runs the lookup route through the **gather-augmented loop**
+    (:func:`life_agent.core.gather.gather_answer`): re-retrieve corroboration on the top
+    candidates, then re-weight by recency + whose-document before deciding. Default
+    ``False`` keeps the single-pass production path; the adoption gate turns it on for the
+    typed arm to measure it. Returns (answer_text, cards, {card_n: score})."""
     global TEMPORAL_LAST, SUBJECT_LAST, STAGES_LAST, LOOKUP_LAST, NARRATIVE_LAST
     TEMPORAL_LAST = None
     SUBJECT_LAST = None
@@ -687,19 +694,26 @@ def answer(conn: duckdb.DuckDBPyConnection, question: str,
     # NAMED (interaction contract), never silent.
     if families and root is not None:
         try:
-            # §4.1 covariates, projected read-side and carried OUTSIDE the hit
-            # dicts (the retrieval-set bytes — and every key hashed from them —
-            # stay untouched): the owner-filter partition states from above, and
-            # the doc_date projection (None = projected but undated/underived).
-            hit_keys = list(dict.fromkeys(h["artifact_cache_key"] for h in hits))
-            date_of: dict[str, str | None] = {
-                d.artifact_cache_key:
-                    (d.date.isoformat() if d.date is not None else None)
-                for d in T.project_dates(conn, root, hit_keys,
-                                         caller="ask.lookup")}
-            cov = LK.HitCovariates(subject_state=subject_state_of,
-                                   doc_date=date_of)
-            lk = LK.lookup_answer(root, question, hits, covariates=cov)
+            if gather:
+                # the gather-augmented loop projects its OWN covariates over the
+                # gathered union (recency + whose-document) — it does not reuse the
+                # baseline covariates computed above.
+                lk = GA.gather_answer(conn, root, question, hits, profile=profile,
+                                      owner_scoped=owner_question(question))
+            else:
+                # §4.1 covariates, projected read-side and carried OUTSIDE the hit
+                # dicts (the retrieval-set bytes — and every key hashed from them —
+                # stay untouched): the owner-filter partition states from above, and
+                # the doc_date projection (None = projected but undated/underived).
+                hit_keys = list(dict.fromkeys(h["artifact_cache_key"] for h in hits))
+                date_of: dict[str, str | None] = {
+                    d.artifact_cache_key:
+                        (d.date.isoformat() if d.date is not None else None)
+                    for d in T.project_dates(conn, root, hit_keys,
+                                             caller="ask.lookup")}
+                cov = LK.HitCovariates(subject_state=subject_state_of,
+                                       doc_date=date_of)
+                lk = LK.lookup_answer(root, question, hits, covariates=cov)
         except Exception as e:  # fail-open by contract, reason printed
             print(LK.GRAMMAR["fallthrough"].format(reason=f"failed: {e}"))
             lk = None

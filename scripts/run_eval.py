@@ -386,13 +386,15 @@ def _monolithic_response(mono_text: str, q: dict, abstention: str):
 
 def gate_paired_outcomes(conn, questions: list[dict], k: int, ask) -> list:
     """Run both policies over the corpus and pair their realised answers per question.
-    The typed pass IS the production path (ask.answer); the monolithic pass is the same
-    path with the typed families switched off (families=False → raw synthesize prose)."""
+    The typed pass is the production answer path with the **gather-augmented** lookup loop
+    (gather=True → re-retrieve corroboration on the top candidates, then re-weight by
+    recency + whose-document before deciding); the monolithic pass is the same path with
+    the typed families switched off (families=False → raw synthesize prose)."""
     from life_agent.core import gate as GATE
 
     paired = []
     for q in questions:
-        typed_text, _, _ = ask.answer(conn, q["question"], k)
+        typed_text, _, _ = ask.answer(conn, q["question"], k, gather=True)
         lk, nv = ask.LOOKUP_LAST, ask.NARRATIVE_LAST  # capture before the next call resets
         typed = _typed_response(lk, nv, typed_text, q, ask.ABSTENTION)
         mono_text, _, _ = ask.answer(conn, q["question"], k, families=False)
