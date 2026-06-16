@@ -283,6 +283,36 @@ def test_candidate_key_observation_maps_to_a_candidate() -> None:
     assert all(LK._candidate_key(o.value_raw) in keys for o in obs)
 
 
+def test_candidate_key_collapses_date_formats() -> None:
+    # the SAME calendar date in three formats is one candidate — extraction was already
+    # correct (q-003), only the format split the posterior mass. (synthetic date)
+    obs = [_obs("a" * 64, "1990-03-14"), _obs("b" * 64, "14/03/1990"),
+           _obs("c" * 64, "14.03.1990")]
+    assert candidates_from(obs) == ["1990-03-14"]
+
+
+def test_candidate_key_distinct_dates_stay_separate() -> None:
+    obs = [_obs("a" * 64, "1990-03-14"), _obs("b" * 64, "20 September 2019")]
+    assert candidates_from(obs) == ["1990-03-14", "20 September 2019"]
+
+
+def test_candidate_key_ambiguous_numeric_date_not_merged() -> None:
+    # both components <= 12: D/M vs M/D is ambiguous — NEVER merge (could be different dates)
+    obs = [_obs("a" * 64, "05/06/1991"), _obs("b" * 64, "06/05/1991")]
+    assert len(candidates_from(obs)) == 2
+
+
+def test_parse_date_unambiguous_and_ambiguous() -> None:
+    assert LK._parse_date("1990-03-14") == "1990-03-14"
+    assert LK._parse_date("14/03/1990") == "1990-03-14"      # 14>12 → D/M/Y
+    assert LK._parse_date("03/14/1990") == "1990-03-14"      # 14>12 → M/D/Y
+    assert LK._parse_date("20 September 2019") == "2019-09-20"
+    assert LK._parse_date("September 20, 2019") == "2019-09-20"
+    assert LK._parse_date("05/06/1991") is None              # ambiguous → unparsed
+    assert LK._parse_date("1234567") is None                 # not a date
+    assert LK._parse_date("13/13/1990") is None              # invalid
+
+
 def test_temper_scales_single_observation_is_unit() -> None:
     assert temper_scales([_obs("a" * 64, "v")]) == [1.0]
 
