@@ -251,6 +251,38 @@ def test_candidates_dedupe_by_normalised_value() -> None:
     assert candidates_from(obs) == ["P 1234", "X9"]
 
 
+def test_candidate_key_collapses_leading_zero_and_format_variants() -> None:
+    # one identifier written three ways (extra leading zero, hyphens) is ONE candidate —
+    # otherwise the OCR/format split disperses posterior mass below the report bar.
+    # (synthetic, non-real digit strings throughout these tests)
+    obs = [_obs("a" * 64, "07654321"), _obs("b" * 64, "7654321"),
+           _obs("c" * 64, "76-54-321")]
+    assert candidates_from(obs) == ["07654321"]  # first raw form, single candidate
+
+
+def test_candidate_key_keeps_distinct_identifiers_separate() -> None:
+    # the confident-wrong boundary: values with DIFFERENT significant digits never merge.
+    # two distinct identifiers and an OCR-truncated form all stay separate candidates.
+    obs = [_obs("a" * 64, "7654321"), _obs("b" * 64, "1234567"),
+           _obs("c" * 64, "765432")]
+    assert candidates_from(obs) == ["7654321", "1234567", "765432"]
+
+
+def test_candidate_key_short_numbers_fall_back_to_norm() -> None:
+    # below the identifier digit threshold: unchanged whitespace+case dedupe
+    assert candidates_from(
+        [_obs("a" * 64, "P 1234"), _obs("b" * 64, "p  1234")]) == ["P 1234"]
+
+
+def test_candidate_key_observation_maps_to_a_candidate() -> None:
+    # the lookup_posterior index invariant: every observation's key is among the
+    # candidate keys, so the conditioning never raises on a missing index
+    obs = [_obs("a" * 64, "07654321"), _obs("b" * 64, "7654321"),
+           _obs("c" * 64, "1234567")]
+    keys = [LK._candidate_key(c) for c in candidates_from(obs)]
+    assert all(LK._candidate_key(o.value_raw) in keys for o in obs)
+
+
 def test_temper_scales_single_observation_is_unit() -> None:
     assert temper_scales([_obs("a" * 64, "v")]) == [1.0]
 
