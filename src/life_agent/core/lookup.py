@@ -38,6 +38,7 @@ import dataclasses
 import hashlib
 import json
 import math
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
@@ -283,14 +284,58 @@ def _norm_value(value: str) -> str:
     return " ".join(value.split()).casefold()
 
 
+_MONTH_NAMES: dict[str, int] = {
+    "january": 1, "february": 2, "march": 3, "april": 4, "may": 5, "june": 6,
+    "july": 7, "august": 8, "september": 9, "october": 10, "november": 11,
+    "december": 12, "jan": 1, "feb": 2, "mar": 3, "apr": 4, "jun": 6, "jul": 7,
+    "aug": 8, "sep": 9, "sept": 9, "oct": 10, "nov": 11, "dec": 12,
+}
+
+
+def _iso_or_none(y: int, mo: int, d: int) -> str | None:
+    try:
+        return date(y, mo, d).isoformat()
+    except ValueError:
+        return None
+
+
+def _parse_date(value: str) -> str | None:
+    """An ISO date string iff ``value`` is an UNAMBIGUOUS calendar date, else None. A numeric
+    D/M/Y is parsed only when one of the first two components is > 12 (so day-vs-month is
+    forced); a fully ambiguous numeric date (both <= 12) stays unparsed — keeping two such
+    values as separate candidates is safer than risking a merge of two DIFFERENT dates."""
+    v = " ".join(value.split())
+    m = re.fullmatch(r"(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})", v)
+    if m:
+        return _iso_or_none(int(m[1]), int(m[2]), int(m[3]))
+    m = re.fullmatch(r"(\d{1,2})\s+([A-Za-z]+),?\s+(\d{4})", v)
+    if m and m[2].lower() in _MONTH_NAMES:
+        return _iso_or_none(int(m[3]), _MONTH_NAMES[m[2].lower()], int(m[1]))
+    m = re.fullmatch(r"([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})", v)
+    if m and m[1].lower() in _MONTH_NAMES:
+        return _iso_or_none(int(m[3]), _MONTH_NAMES[m[1].lower()], int(m[2]))
+    m = re.fullmatch(r"(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})", v)
+    if m:
+        a, b, y = int(m[1]), int(m[2]), int(m[3])
+        if a > 12 and b <= 12:
+            return _iso_or_none(y, b, a)
+        if b > 12 and a <= 12:
+            return _iso_or_none(y, a, b)
+    return None
+
+
 def _candidate_key(value: str) -> str:
-    """The identity key for candidate de-duplication (§4.2). For a numeric identifier
-    (>= _CANON_MIN_DIGITS digits) the key is its digit-string with leading zeros stripped:
-    OCR/format variants of one number — a dropped/added leading zero, embedded spaces or
-    punctuation — collapse to one candidate, while values with DIFFERENT significant digits
-    NEVER merge (the confident-wrong boundary: a misread truncation stays its own candidate,
-    two distinct people's IDs stay distinct). Non-identifier values fall back to the
-    whitespace+case norm, so existing dedupe behaviour is unchanged for them."""
+    """The identity key for candidate de-duplication (§4.2). A value that parses to an
+    unambiguous calendar date keys on that date, so the same date written in different
+    formats collapses (q-003). Otherwise a numeric identifier (>= _CANON_MIN_DIGITS digits)
+    keys on its digit-string with leading zeros stripped: OCR/format variants of one number
+    — a dropped/added leading zero, embedded spaces or punctuation — collapse to one
+    candidate, while values with DIFFERENT significant digits NEVER merge (the confident-wrong
+    boundary: a misread truncation stays its own candidate, two distinct people's IDs stay
+    distinct). All other values fall back to the whitespace+case norm (unchanged behaviour)."""
+    iso = _parse_date(value)
+    if iso is not None:
+        return f"date:{iso}"
     digits = "".join(ch for ch in value if ch.isdigit())
     if len(digits) >= _CANON_MIN_DIGITS:
         return digits.lstrip("0") or "0"
