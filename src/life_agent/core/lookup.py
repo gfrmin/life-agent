@@ -138,6 +138,10 @@ _RHO_PRIOR_B = 4.0
 _P_NONE_PRIOR = 0.5
 _ORACLE_P = 0.9          # owner-as-oracle prior mean for pricing ask_clarify (§4.4)
 _PROB_EPS = 1e-12
+# Candidate identity: a numeric identifier this many digits or longer is keyed on its
+# significant digits (leading zeros stripped) so OCR/format variants of ONE number collapse
+# instead of splitting posterior mass. Below it, identity stays the whitespace+case norm.
+_CANON_MIN_DIGITS = 5
 
 # §4.1's v0 source-authority lattice: P(document's assertion = W's value | doc class),
 # a declared prior keyed on what is observable (origin path), calibrated later from
@@ -277,6 +281,20 @@ def _sha(text: str) -> str:
 
 def _norm_value(value: str) -> str:
     return " ".join(value.split()).casefold()
+
+
+def _candidate_key(value: str) -> str:
+    """The identity key for candidate de-duplication (§4.2). For a numeric identifier
+    (>= _CANON_MIN_DIGITS digits) the key is its digit-string with leading zeros stripped:
+    OCR/format variants of one number — a dropped/added leading zero, embedded spaces or
+    punctuation — collapse to one candidate, while values with DIFFERENT significant digits
+    NEVER merge (the confident-wrong boundary: a misread truncation stays its own candidate,
+    two distinct people's IDs stay distinct). Non-identifier values fall back to the
+    whitespace+case norm, so existing dedupe behaviour is unchanged for them."""
+    digits = "".join(ch for ch in value if ch.isdigit())
+    if len(digits) >= _CANON_MIN_DIGITS:
+        return digits.lstrip("0") or "0"
+    return _norm_value(value)
 
 
 def _grounded(quote: str, value: str, chunk: str) -> bool:
@@ -455,10 +473,11 @@ def observe_hits(root: Path, question: str, hits: list[dict[str, Any]], *,
 # --- the posterior (pure builders; conditioning through the credence skin) -------------
 
 def candidates_from(observations: list[Observation]) -> list[str]:
-    """Distinct candidate values in first-seen order; display form = first raw form."""
+    """Distinct candidate values in first-seen order; display form = first raw form.
+    Identity is the §4.2 canonical key, so OCR/format variants of one number collapse."""
     seen: dict[str, str] = {}
     for o in observations:
-        seen.setdefault(o.value_norm, o.value_raw)
+        seen.setdefault(_candidate_key(o.value_raw), o.value_raw)
     return list(seen.values())
 
 
@@ -517,14 +536,14 @@ def lookup_posterior(brain: Brain, observations: list[Observation],
         "log_weights": [math.log(w) for w in prior],
     })
     scales = temper_scales(observations)
-    norms = [_norm_value(c) for c in candidates]
+    keys = [_candidate_key(c) for c in candidates]
     for o, scale in zip(observations, scales, strict=True):
         kernel = {"type": "tabular_log_density",
                   "source_vals": atoms,
                   "target_vals": [float(t) for t in range(k)],
                   "densities": observation_densities(o, candidates, rho, scale)}
         brain.condition(state_id, kernel=kernel,
-                        observation=float(norms.index(o.value_norm)))
+                        observation=float(keys.index(_candidate_key(o.value_raw))))
     weights = brain.weights(state_id)
     return weights, state_id
 
@@ -571,10 +590,10 @@ def render(result: LookupResult) -> str:
     per observation, the posterior named in the footer — nothing silent."""
     by_value: dict[str, list[int]] = {}
     for o in result.observations:
-        by_value.setdefault(_norm_value(o.value_raw), []).append(o.card_n)
+        by_value.setdefault(_candidate_key(o.value_raw), []).append(o.card_n)
 
     def _cites(value: str) -> str:
-        ns = sorted(set(by_value.get(_norm_value(value), [])))
+        ns = sorted(set(by_value.get(_candidate_key(value), [])))
         return "".join(f"[{n}]" for n in ns)
 
     alts = " · ".join(
