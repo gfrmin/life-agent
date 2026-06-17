@@ -159,6 +159,33 @@ def test_extract_threads_covariates_and_time_indexed_into_observe(
     assert seen["today"].isoformat() == "2026-06-17"
 
 
+def test_extract_projects_era_split_from_doc_date(
+        deps: BridgeDeps, monkeypatch: pytest.MonkeyPatch) -> None:
+    # The string-blind body cannot compute era_split (abstract obs carry no value/date); the
+    # bridge projects it from the RAW obs + doc_date. Two values >5y apart ⇒ True.
+    observations = [_obs("Vcur", "d_new"), _obs("Vstale", "d_old")]
+    monkeypatch.setattr(LK, "observe_hits", lambda *a, **k: (observations, 0))
+    monkeypatch.setattr(LK, "extractor_reliability", lambda: 0.7)
+    status, payload = _call(deps, "POST", "/extract", {
+        "question": "q", "hits": [{"chunk_text": "x"}],
+        "covariates": {"doc_date": {"d_new": "2026-01-01", "d_old": "2015-01-01"}},
+    })
+    assert status == 200
+    assert payload["era_split"] is True
+
+
+def test_extract_era_split_false_without_doc_date(
+        deps: BridgeDeps, monkeypatch: pytest.MonkeyPatch) -> None:
+    # No doc_date covariate ⇒ recency cannot discriminate ⇒ False (a permanent fact is not decayed).
+    observations = [_obs("Vcur", "d_new"), _obs("Vstale", "d_old")]
+    monkeypatch.setattr(LK, "observe_hits", lambda *a, **k: (observations, 0))
+    monkeypatch.setattr(LK, "extractor_reliability", lambda: 0.7)
+    status, payload = _call(deps, "POST", "/extract",
+                            {"question": "q", "hits": [{"chunk_text": "x"}]})
+    assert status == 200
+    assert payload["era_split"] is False
+
+
 # --- the probes ------------------------------------------------------------------------
 
 def test_probe_recency(deps: BridgeDeps, monkeypatch: pytest.MonkeyPatch) -> None:

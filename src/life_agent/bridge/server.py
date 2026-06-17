@@ -131,13 +131,19 @@ def _retrieve(deps: BridgeDeps, p: Payload) -> Payload:
 
 
 def _extract(deps: BridgeDeps, p: Payload) -> Payload:
+    cov = _covariates(p.get("covariates") or {})
     obs, indeterminate = LK.observe_hits(
         deps.root, _req_str(p, "question"), _req_list(p, "hits"),
-        client=deps.client, covariates=_covariates(p.get("covariates") or {}),
+        client=deps.client, covariates=cov,
         time_indexed=bool(p.get("time_indexed", False)), today=_opt_date(p.get("today")))
     candidates, abstract = to_abstract_observations(obs)
+    # era_split is the evidence shape the string-blind body cannot compute (the abstract obs
+    # carry no value/date); the bridge projects it from the RAW obs + the doc_date covariate and
+    # the daemon reads it as a bool (move-4-design §2C). No doc_date ⇒ False.
+    es = LK.era_split(obs, dict(cov.doc_date)) if cov.doc_date else False
     return {"candidates": candidates, "observations": abstract,
-            "rho": LK.extractor_reliability(), "indeterminate": indeterminate}
+            "rho": LK.extractor_reliability(), "indeterminate": indeterminate,
+            "era_split": es}
 
 
 def _probe_recency(deps: BridgeDeps, p: Payload) -> Payload:
