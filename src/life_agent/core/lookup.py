@@ -342,6 +342,33 @@ def _candidate_key(value: str) -> str:
     return _norm_value(value)
 
 
+def era_split(observations: list[Observation], doc_date: dict[str, str | None],
+              *, years: float = _TIME_HALF_LIFE_YEARS) -> bool:
+    """Do the candidate values split across eras? True iff, among candidates with at least one
+    dated supporting document, the span between the newest-dated and the oldest-dated candidate
+    exceeds ``years`` — the precondition for a stale-vs-current confusion, and so the signal that
+    recency discriminates. Fewer than two dated candidates ⇒ nothing to discriminate ⇒ False (a
+    permanent fact is not decayed).
+
+    This is the evidence *shape* the string-blind answer-brain body cannot compute itself — the
+    abstract observations carry no value/date (the parity boundary). The capability bridge
+    projects it from the raw observations + the doc_date covariate and the daemon reads it as a
+    bool (move-4-design §2C). ``gather._era_split`` delegates here."""
+    newest: dict[str, date] = {}
+    for o in observations:
+        iso = doc_date.get(o.artifact_cache_key)
+        if not iso:
+            continue
+        key = _candidate_key(o.value_raw)
+        d = date.fromisoformat(iso)
+        if key not in newest or d > newest[key]:
+            newest[key] = d
+    if len(newest) < 2:
+        return False
+    span_days = (max(newest.values()) - min(newest.values())).days
+    return span_days / 365.25 > years
+
+
 def _grounded(quote: str, value: str, chunk: str) -> bool:
     """Whitespace-normalised verbatim containment of the quote OR the value (the
     action_items precedent, widened): the gate ties the observation to the excerpt
