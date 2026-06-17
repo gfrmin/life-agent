@@ -21,3 +21,7 @@
 ~/.life-agent
 ~/.env
 ~/.msmtprc
+# answer-brain capability bridge: a two-segment HTTP route namespace (move-3-design), not a
+# filesystem path. `/probe/{recency,subject,authority,corroborate}` trips the path-shape
+# heuristic; it is public API surface across code/tests/docs, never personal data.
+/probe
