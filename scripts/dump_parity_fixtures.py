@@ -24,6 +24,7 @@ import argparse
 import json
 from pathlib import Path
 
+from life_agent.bridge.observations import to_abstract_observations
 from life_agent.core import lookup as LK
 from life_agent.core.brain import Brain
 
@@ -124,11 +125,8 @@ def _observation(i: int, value_label: str, group_label: str,
 
 def build_case(brain: Brain, case: dict) -> dict:
     observations = [_observation(i, *spec) for i, spec in enumerate(case["obs"])]
-    candidates = LK.candidates_from(observations)
-    cand_index = {LK._candidate_key(c): j for j, c in enumerate(candidates)}
-    group_order: dict[str, int] = {}
-    for o in observations:
-        group_order.setdefault(o.artifact_cache_key, len(group_order))
+    # The parity boundary, single-sourced (the bridge uses the same function — move-2-design §2).
+    candidates, emitted_obs = to_abstract_observations(observations)
 
     rho = float(case["rho"])
     weights, state_id = LK.lookup_posterior(brain, observations, candidates, rho)
@@ -137,14 +135,6 @@ def build_case(brain: Brain, case: dict) -> dict:
     finally:
         brain.destroy_state(state_id)
 
-    emitted_obs = [
-        {"reports": cand_index[LK._candidate_key(o.value_raw)],
-         "group": group_order[o.artifact_cache_key],
-         "authority": o.authority,
-         "subject_factor": o.subject_factor,
-         "time_factor": o.time_factor}
-        for o in observations
-    ]
     return {
         "name": case["name"],
         "k": len(candidates),
