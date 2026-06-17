@@ -54,9 +54,16 @@ from life_agent.core import outcomes as O
 from life_agent.core import reactions as R
 from life_agent.core import subject as S
 from life_agent.core import temporal as T
+from life_agent.core.retrieval import build_query, retrieve_set
 from life_agent.tasks import events as ev
 from life_agent.tasks import knowledge
 from pkm.hashing import canonical_json
+
+# The corpus-retrieval seam now lives in the package (life_agent.core.retrieval, imported above)
+# so the answer-brain capability bridge reuses it without a src↛scripts import. ``build_query``
+# is re-exported by that import; ``_retrieve_set`` keeps its private name (callers and tests
+# monkeypatch ask._retrieve_set). Query expansion (_expand_terms, below) stays script-side.
+_retrieve_set = retrieve_set
 
 DEFAULT_K = 8  # matches phase1_answer.py's synthesis-context default
 
@@ -507,14 +514,6 @@ def _apply_subject_to_hits(
         footer=subject_footer(view, name_of), targets=targets), state_of
 
 
-def build_query(question: str, terms: str) -> str:
-    """Pure: combine the raw question with expansion terms into one disjunctive BM25
-    query. The original words are ALWAYS retained, so expansion can only *add* recall —
-    a question that already hit on a rare literal term keeps its hit. Empty terms
-    (expansion failed/disabled) leaves the raw-question search unchanged."""
-    return f"{question} {terms}".strip() if terms else question
-
-
 def _expand_terms(question: str, *, model: str = EXPAND_MODEL,
                   root: Path | None = None, no_cache: bool = False) -> str:
     """Impure edge: ask a cheap model for extra BM25 keywords. Returns a space-joined
@@ -541,22 +540,6 @@ def _expand_terms(question: str, *, model: str = EXPAND_MODEL,
         D.record(root, key, r.text.encode("utf-8"), lineage=[],
                  metadata={"in_tokens": r.in_tokens, "out_tokens": r.out_tokens})
     return _clean_terms(r.text)
-
-
-def _retrieve_set(conn: duckdb.DuckDBPyConnection, question: str, k: int) -> list[dict[str, Any]]:
-    """FTS the given query over the whole corpus; dedupe by chunk text keeping the best
-    score; return the top-k as plain dicts — the cacheable retrieval-set content, carrying
-    each hit's artifact cache key for lineage. No snapshot filter."""
-    from pkm.retrieval import SearchResult, search
-
-    best: dict[str, SearchResult] = {}
-    for h in search(conn, question, k=k * 4):  # over-fetch, then dedupe down to k
-        prev = best.get(h.chunk_text)
-        if prev is None or h.score > prev.score:
-            best[h.chunk_text] = h
-    top = sorted(best.values(), key=lambda h: h.score, reverse=True)[:k]
-    return [{"artifact_cache_key": h.artifact_cache_key, "chunk_text": h.chunk_text,
-             "score": h.score, "origin": h.source_path} for h in top]
 
 
 def _cards_from_set(hits: list[dict[str, Any]]) -> list[tuple[C.SourceCard, float]]:
