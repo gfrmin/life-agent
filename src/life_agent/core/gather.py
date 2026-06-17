@@ -62,25 +62,10 @@ _K_GATHER = 6       # fresh documents to seek per candidate
 
 def _era_split(observations: list[LK.Observation],
                doc_date: dict[str, str | None], *, years: float) -> bool:
-    """Pure: do the candidate values split across eras? True iff, among candidates with at
-    least one dated supporting document, the spread between the newest-dated candidate and
-    the oldest-dated candidate exceeds ``years`` — the precondition for a stale-vs-current
-    confusion, and therefore the signal that recency discriminates (so the loop applies it
-    regardless of the router's noisy ``time_indexed``). Fewer than two dated candidates ⇒
-    nothing to discriminate ⇒ False (recency stays off; a permanent fact is not decayed)."""
-    newest: dict[str, date] = {}
-    for o in observations:
-        iso = doc_date.get(o.artifact_cache_key)
-        if not iso:
-            continue
-        key = LK._candidate_key(o.value_raw)
-        d = date.fromisoformat(iso)
-        if key not in newest or d > newest[key]:
-            newest[key] = d
-    if len(newest) < 2:
-        return False
-    span_days = (max(newest.values()) - min(newest.values())).days
-    return span_days / 365.25 > years
+    """Delegates to :func:`life_agent.core.lookup.era_split` — promoted to a permanent home so the
+    capability bridge can project this evidence shape for the string-blind body (move-4-design §2C),
+    while gather.py (and the gate driver's ``GA._era_split``) keep this name."""
+    return LK.era_split(observations, doc_date, years=years)
 
 
 def _top_candidates(brain: Brain, observations: list[LK.Observation],
