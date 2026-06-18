@@ -49,6 +49,7 @@ def deps(tmp_path: Path) -> BridgeDeps:
                        "u_abstain": 0.0, "oracle_p": 0.9, "lambda_int": 0.1,
                        "kappa_att": 0.0},
         decisions_path=tmp_path / "decisions.jsonl",
+        reactions_path=tmp_path / "reactions.jsonl",
         fold_version=lambda: "fold-test-v1",
     )
 
@@ -370,6 +371,69 @@ def test_log_decision_empty_credences_is_400(deps: BridgeDeps) -> None:
     status, _ = _call(deps, "POST", "/log_decision",
                       {"question": "q", "retrieval_keys": [],
                        "decision": {"effector": "abstain", "credences": []}})
+    assert status == 400
+
+
+# --- /log_reaction: the owner's one-bit verdict, appended for the fold --------------------
+# Symmetric to /log_decision: the app captures good/bad in-session and posts it; the bridge
+# appends a ReactionEvent (the decision's own question_id for linkage) that the EXISTING fold
+# joins by decision_id. Mirrors ask-live's `react()` (one bit, fold-fate echoed).
+
+def _log_a_decision(deps: BridgeDeps, effector: str = "abstain",
+                    credences: tuple[float, ...] = (0.5, 0.3)) -> str:
+    _, payload = _call(deps, "POST", "/log_decision",
+                       {"question": "my mobile?", "retrieval_keys": ["d0"],
+                        "decision": _decision(effector=effector, credences=credences,
+                                              candidates=("cur", "stale"))})
+    return str(payload["decision_id"])
+
+
+def test_log_reaction_appends_verdict_and_reports_fold_fate(deps: BridgeDeps) -> None:
+    did = _log_a_decision(deps, effector="abstain")
+    status, payload = _call(deps, "POST", "/log_reaction",
+                            {"decision_id": did, "valence": "bad"})
+    assert status == 200
+    assert payload["valence"] == "bad"
+    assert payload["chosen_action"] == "abstain"
+    assert payload["folds"] is True               # an abstain verdict moves u_wrong
+    events = RX.read(deps.reactions_path)
+    assert len(events) == 1
+    assert events[0].decision_id == did
+    assert events[0].kind == "verdict"
+    assert events[0].valence == "bad"
+    # the ReactionEvent carries the DECISION's question_id (the linkage react() copies)
+    assert events[0].question_id == DEC.read(deps.decisions_path)[0].question_id
+
+
+def test_log_reaction_round_trip_folds_into_u_wrong(deps: BridgeDeps) -> None:
+    # The full in-app path THROUGH THE BRIDGE: /log_decision (abstain) then /log_reaction (bad)
+    # → load_reactions folds one u_wrong threshold. No ask-live, no new fold code.
+    did = _log_a_decision(deps, effector="abstain", credences=(0.5, 0.3))
+    _call(deps, "POST", "/log_reaction", {"decision_id": did, "valence": "bad"})
+    folded = RX.load_reactions(deps.reactions_path, deps.decisions_path)
+    assert len(folded) == 1
+    assert folded[0].latent == "u_wrong"
+    assert folded[0].threshold == pytest.approx(1.0)   # p=0.5 → -p/(1-p) = 1.0
+
+
+def test_log_reaction_report_is_recorded_not_folded(deps: BridgeDeps) -> None:
+    did = _log_a_decision(deps, effector="report", credences=(0.9, 0.1))
+    status, payload = _call(deps, "POST", "/log_reaction",
+                            {"decision_id": did, "valence": "good"})
+    assert status == 200
+    assert payload["folds"] is False
+    assert RX.load_reactions(deps.reactions_path, deps.decisions_path) == []
+
+
+def test_log_reaction_unknown_decision_is_404(deps: BridgeDeps) -> None:
+    status, _ = _call(deps, "POST", "/log_reaction",
+                      {"decision_id": "ab-does-not-exist", "valence": "good"})
+    assert status == 404
+
+
+def test_log_reaction_bad_valence_is_400(deps: BridgeDeps) -> None:
+    did = _log_a_decision(deps)
+    status, _ = _call(deps, "POST", "/log_reaction", {"decision_id": did, "valence": "meh"})
     assert status == 400
 
 
