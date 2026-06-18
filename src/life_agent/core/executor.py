@@ -103,10 +103,18 @@ def answer_question(*, owner_scoped: bool, u_bar: dict[str, float],
                     calib_local: ReliabilityCurve, calib_joint: ReliabilityCurve,
                     local_fn: Callable[[], LK.LookupResult | None],
                     joint_extract_fn: Callable[[], JointResult],
-                    joint_decide_fn: Callable[[JointResult], LK.LookupResult]) -> ExecutorResult:
+                    joint_decide_fn: Callable[[JointResult, str], LK.LookupResult],
+                    ) -> ExecutorResult:
     """One escalation step (P1). Edges injected: ``local_fn`` (the typed lookup answer, None ⇒
-    MISS), ``joint_extract_fn`` (run the joint edge), ``joint_decide_fn`` (fold a non-null joint
-    result — :func:`decide_joint`)."""
+    MISS), ``joint_extract_fn`` (run the joint edge), ``joint_decide_fn(jr, construct)`` (fold a
+    non-null joint result at the local route's ``construct`` — :func:`decide_joint`).
+
+    v0 limitation, stated not silent: the joint edge only escalates from a *decided* local (a
+    commit or a withhold-with-observations). When ``local_fn`` returns None — the route declined,
+    or zero grounded observations (the pure attribution miss where every chunk is judged
+    "different subject") — there is no construct to escalate from, so the step is a MISS and the
+    caller falls through to the narrative path. Reaching the joint edge from a routing miss is a
+    P2 concern (it needs a construct source)."""
     floor = p_star(u_bar)
     lk = local_fn()
     if lk is None:
@@ -125,7 +133,7 @@ def answer_question(*, owner_scoped: bool, u_bar: dict[str, float],
             return ExecutorResult(lk, "local+verify", cloud)   # the joint edge confirms → keep
         return ExecutorResult(_abstain_like(lk), "verify_abstain", cloud)  # disagree → abstain
 
-    # local withheld / sub-floor → the joint edge replaces it
+    # local withheld / sub-floor → the joint edge replaces it (at the local route's construct)
     if jr.value is None:
         return ExecutorResult(_abstain_like(lk), "joint_abstain", cloud)
-    return ExecutorResult(joint_decide_fn(jr), "joint", cloud)
+    return ExecutorResult(joint_decide_fn(jr, lk.construct), "joint", cloud)
