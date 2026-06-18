@@ -25,18 +25,21 @@ import pytest
 
 from life_agent.bridge.observations import to_abstract_observations
 from life_agent.bridge.server import BridgeDeps, BridgeServer, dispatch
+from life_agent.core import decisions as DEC
 from life_agent.core import lookup as LK
 from life_agent.core import probes as P
+from life_agent.core import reactions as RX
 from life_agent.core import retrieval as RET
 from life_agent.core.lookup import Observation
 
 # --- fixtures: fake deps + a dispatch helper ------------------------------------------
 
 @pytest.fixture
-def deps() -> BridgeDeps:
+def deps(tmp_path: Path) -> BridgeDeps:
     """The warm handles, all sentinels — the seams that would use them are monkeypatched,
     so the bridge only passes them through. ``profile``/``u_bar`` are the server-side PII the
-    body never sends (move-3 §3)."""
+    body never sends (move-3 §3); ``decisions_path`` is a tmp calibration log so /log_decision
+    never touches the real KB; ``fold_version`` is a fixed sentinel."""
     return BridgeDeps(
         root=Path("/fake/root"),
         conn=object(),               # sentinel; retrieval/probes patched
@@ -45,6 +48,8 @@ def deps() -> BridgeDeps:
         u_bar=lambda: {"u_correct": 1.0, "u_wrong": -5.0, "u_hedged": 0.2,
                        "u_abstain": 0.0, "oracle_p": 0.9, "lambda_int": 0.1,
                        "kappa_att": 0.0},
+        decisions_path=tmp_path / "decisions.jsonl",
+        fold_version=lambda: "fold-test-v1",
     )
 
 
@@ -250,6 +255,122 @@ def test_utility_returns_u_bar(deps: BridgeDeps) -> None:
     assert payload["u_bar"]["u_wrong"] == -5.0
     assert set(payload["u_bar"]) == {"u_correct", "u_wrong", "u_hedged", "u_abstain",
                                      "oracle_p", "lambda_int", "kappa_att"}
+
+
+# --- /log_decision: emit answer-brain decisions into the calibration log ----------------
+# The verdict-emission seam (move-4 successor): the body posts the terminal decision the
+# governor enacted; the bridge writes it shaped exactly as the lookup family's own decisions,
+# so the owner's one-bit verdict folds into u(wrong) through the EXISTING reaction loop.
+
+def _decision(effector: str = "abstain", credences: tuple[float, ...] = (0.3, 0.5, 0.1),
+              candidates: tuple[str, ...] = ("A", "B", "C"),
+              p_none: float = 0.1, eu: float = 0.0) -> dict[str, Any]:
+    return {"effector": effector, "credences": list(credences),
+            "candidates": list(candidates), "p_none": p_none, "eu": eu, "n_obs": 3}
+
+
+def test_log_decision_appends_lookup_shaped_event_and_returns_id(deps: BridgeDeps) -> None:
+    status, payload = _call(deps, "POST", "/log_decision",
+                            {"question": "my mobile?", "retrieval_keys": ["d1", "d0"],
+                             "decision": _decision()})
+    assert status == 200
+    did = payload["decision_id"]
+    assert did and did.startswith("ab-")          # namespaced off the lookup §18.9 keys
+    logged = DEC.read(deps.decisions_path)
+    assert len(logged) == 1
+    d = logged[0]
+    assert d.family == "lookup"
+    assert d.chosen_action == "abstain"
+    assert d.action_set == DEC.LOOKUP_ACTION_ORDER
+    assert d.decision_id == did
+    assert d.run_id == "answer-brain"
+    assert d.utility_fold_version == "fold-test-v1"
+
+
+def test_log_decision_sorts_credences_leader_first(deps: BridgeDeps) -> None:
+    # The load-bearing parity: the daemon returns credences in CANDIDATE order (server.jl
+    # `w[1:k]`), but the fold reads credences[0] as the LEADER. The bridge must sort desc, or an
+    # abstain folds at the wrong p. Input (0.3, 0.5, 0.1)/(A,B,C) → leader B at 0.5.
+    _call(deps, "POST", "/log_decision",
+          {"question": "q", "retrieval_keys": ["d0"], "decision": _decision()})
+    d = DEC.read(deps.decisions_path)[0]
+    assert d.posterior_summary["credences"] == [0.5, 0.3, 0.1]
+    assert d.posterior_summary["candidates"] == ["B", "A", "C"]
+
+
+def test_log_decision_rejects_gather_steer(deps: BridgeDeps) -> None:
+    # `gather` is enacted by the body internally (re-extract + re-decide); it is never a
+    # terminal decision, so it must not be logged.
+    status, payload = _call(deps, "POST", "/log_decision",
+                            {"question": "q", "retrieval_keys": [],
+                             "decision": _decision(effector="gather")})
+    assert status == 400
+    assert "error" in payload
+    assert DEC.read(deps.decisions_path) == []
+
+
+def test_log_decision_id_is_stable_across_identical_calls(deps: BridgeDeps) -> None:
+    body = {"question": "q", "retrieval_keys": ["d0", "d1"], "decision": _decision()}
+    _, p1 = _call(deps, "POST", "/log_decision", body)
+    _, p2 = _call(deps, "POST", "/log_decision", body)
+    assert p1["decision_id"] == p2["decision_id"]   # content-addressed: re-runs coalesce
+
+
+def test_log_decision_id_changes_with_evidence(deps: BridgeDeps) -> None:
+    _, p1 = _call(deps, "POST", "/log_decision",
+                  {"question": "q", "retrieval_keys": ["d0"], "decision": _decision()})
+    _, p2 = _call(deps, "POST", "/log_decision",
+                  {"question": "q", "retrieval_keys": ["d0", "d9"], "decision": _decision()})
+    assert p1["decision_id"] != p2["decision_id"]   # a different retrieval set ⇒ a new decision
+
+
+def test_log_decision_abstain_verdict_folds_into_u_wrong(
+        deps: BridgeDeps, tmp_path: Path) -> None:
+    # THE seam proof: a logged answer-brain abstain + a one-bit verdict folds through the
+    # EXISTING reaction loop (reactions.load_reactions) into a u(wrong) threshold at -p/(1-p).
+    _, payload = _call(deps, "POST", "/log_decision",
+                       {"question": "my mobile?", "retrieval_keys": ["d0"],
+                        "decision": _decision(effector="abstain", credences=(0.5, 0.3),
+                                              candidates=("cur", "stale"))})
+    did = payload["decision_id"]
+    reactions_path = tmp_path / "reactions.jsonl"
+    RX.append(reactions_path, RX.ReactionEvent(
+        tx_time="2026-06-18T00:00:00Z", question_id="x", decision_id=did,
+        kind="verdict", valence="bad"))
+    folded = RX.load_reactions(reactions_path, deps.decisions_path)
+    assert len(folded) == 1
+    r = folded[0]
+    assert r.latent == "u_wrong"
+    assert r.reacted is False                       # "bad" → "I wanted an answer"
+    assert r.sign == -1.0
+    assert r.threshold == pytest.approx(0.5 / (1.0 - 0.5))   # leader p=0.5 → 1.0
+
+
+def test_log_decision_report_is_recorded_not_folded(
+        deps: BridgeDeps, tmp_path: Path) -> None:
+    # A verdict on a REPORT is cross-latent contaminated → recorded, never folded (the existing
+    # contract must hold for the new source too).
+    _, payload = _call(deps, "POST", "/log_decision",
+                       {"question": "q", "retrieval_keys": ["d0"],
+                        "decision": _decision(effector="report", credences=(0.9, 0.1))})
+    reactions_path = tmp_path / "reactions.jsonl"
+    RX.append(reactions_path, RX.ReactionEvent(
+        tx_time="2026-06-18T00:00:00Z", question_id="x",
+        decision_id=payload["decision_id"], kind="verdict", valence="good"))
+    assert RX.load_reactions(reactions_path, deps.decisions_path) == []
+
+
+def test_log_decision_requires_decision_object(deps: BridgeDeps) -> None:
+    status, _ = _call(deps, "POST", "/log_decision",
+                      {"question": "q", "retrieval_keys": []})
+    assert status == 400
+
+
+def test_log_decision_empty_credences_is_400(deps: BridgeDeps) -> None:
+    status, _ = _call(deps, "POST", "/log_decision",
+                      {"question": "q", "retrieval_keys": [],
+                       "decision": {"effector": "abstain", "credences": []}})
+    assert status == 400
 
 
 # --- malformed / unknown / method ------------------------------------------------------

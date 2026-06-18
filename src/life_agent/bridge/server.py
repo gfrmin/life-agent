@@ -7,9 +7,18 @@ pi-mono body (Move 4) has a warm, independently-tested backend beside the daemon
 decides**. No posterior is built here; `gather.py`'s policy stays out (it becomes the brain's
 VOI job) — `/extract` takes `time_indexed` + `covariates` as INPUTS, it never computes them.
 
-**Stateless**: every endpoint is a pure function of (corpus, request). The body holds the
-growing hit set + accumulated covariates and resends them each refinement (uniform with
-`/decide`), so two questions interleaved in one process cannot perturb each other.
+The one write is `/log_decision` (the verdict-emission seam): the body posts the terminal
+decision the governor enacted, and the bridge appends it to the calibration decision log
+(`core.decisions`) shaped exactly as the lookup family's own decisions — so the owner's
+one-bit verdict folds into u(wrong) through the EXISTING reaction loop (`core.reactions`) with
+no new fold code. The bridge owns the write because the daemon is stateless and the body is
+string-blind; it still does NOT decide (it records what it was told).
+
+**Stateless reads**: every read endpoint is a pure function of (corpus, request); the body
+holds the growing hit set + accumulated covariates and resends them each refinement (uniform
+with `/decide`), so two questions interleaved in one process cannot perturb each other.
+`/log_decision`'s append is content-addressed (a stable `decision_id`), so a re-post coalesces
+rather than double-counting.
 
 **PII stays server-side**: the owner profile and the utility posterior are read INSIDE the
 bridge (`BridgeDeps`), so `/probe/subject` and `/utility` carry neither over the wire; the
@@ -19,6 +28,7 @@ source of that mapping, so the brain stays string-blind.
 """
 from __future__ import annotations
 
+import hashlib
 import os
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -32,7 +42,10 @@ import duckdb
 
 from life_agent import owner
 from life_agent.bridge.observations import to_abstract_observations
+from life_agent.core import config
+from life_agent.core import decisions as DEC
 from life_agent.core import lookup as LK
+from life_agent.core import outcomes as O
 from life_agent.core import probes as P
 from life_agent.core import retrieval as RET
 
@@ -55,6 +68,8 @@ class BridgeDeps:
     client: Any                          # extraction client (Ollama) — route / observe / subject
     profile: str                         # owner profile, loaded server-side (never over the wire)
     u_bar: Callable[[], dict[str, float]]  # the utility posterior's u_bar (lazy brain)
+    decisions_path: Path                 # calibration decision log — /log_decision appends here
+    fold_version: Callable[[], str]      # current utility fold version (pins the logged decision)
 
 
 class BridgeError(Exception):
@@ -172,6 +187,78 @@ def _utility(deps: BridgeDeps, _p: Payload) -> Payload:
     return {"u_bar": deps.u_bar()}
 
 
+# Terminal brain actions (DEC.LOOKUP_ACTION_ORDER) each map to one logged lookup decision; the
+# steer `gather` is enacted by the body internally (re-extract + re-decide) and is never a
+# terminal decision, so /log_decision rejects it.
+_TERMINAL_ACTIONS: frozenset[str] = frozenset(DEC.LOOKUP_ACTION_ORDER)
+
+
+def _decision_id(question: str, retrieval_keys: list[str],
+                 credences: list[float], p_none: float) -> str:
+    """A stable, content-addressed id for one answer-brain decision: the question, the
+    retrieval set it was grounded on, and the posterior it was taken under. Namespaced
+    (``ab-``) so it never collides with the lookup family's §18.9 answer keys; the reaction
+    loop binds verdicts to it (``core.reactions`` join key). Identical re-runs coalesce."""
+    payload = dumps({"source": "answer-brain", "question": question,
+                     "retrieval_keys": sorted(retrieval_keys),
+                     "credences": credences, "p_none": p_none},
+                    sort_keys=True, ensure_ascii=False)
+    return "ab-" + hashlib.sha256(payload.encode("utf-8")).hexdigest()[:32]
+
+
+def _req_float_list(d: Payload, key: str) -> list[float]:
+    v = d.get(key)
+    if not isinstance(v, list) or not v:
+        raise BridgeError(400, f"decision.{key} must be a non-empty list")
+    try:
+        return [float(x) for x in v]
+    except (TypeError, ValueError) as e:
+        raise BridgeError(400, f"decision.{key} must be numbers: {e}") from e
+
+
+def _log_decision(deps: BridgeDeps, p: Payload) -> Payload:
+    """Append one answer-brain terminal decision to the calibration decision log, shaped
+    exactly as the lookup family's own decisions (:func:`core.lookup.decide_and_record`), so
+    the owner's one-bit verdict folds into u(wrong) through the EXISTING reaction loop with no
+    new fold code (:func:`core.reactions.load_reactions`). The body posts the decision the
+    governor enacted; the bridge owns the write — the daemon stays stateless, the body
+    string-blind. Returns the ``decision_id`` the owner reacts against."""
+    question = _req_str(p, "question")
+    retrieval_keys = [str(x) for x in _req_list(p, "retrieval_keys")]
+    decision = p.get("decision")
+    if not isinstance(decision, dict):
+        raise BridgeError(400, "field 'decision' must be a JSON object")
+    action = decision.get("effector")
+    if action not in _TERMINAL_ACTIONS:
+        raise BridgeError(
+            400, f"decision.effector {action!r} is not a terminal action "
+            f"{sorted(_TERMINAL_ACTIONS)} (gather is a steer, not a logged decision)")
+    credences = _req_float_list(decision, "credences")
+    candidates = [str(c) for c in (decision.get("candidates") or [])]
+    p_none = float(decision.get("p_none", 0.0))
+    eu = float(decision.get("eu", 0.0))
+    n_obs = int(decision.get("n_obs", 0))
+
+    # Leader-first: the daemon returns credences in CANDIDATE order (server.jl `w[1:k]`), but the
+    # fold reads ``credences[0]`` as the leader (lookup orders by weight desc). Sort here, or an
+    # abstain folds at the first candidate's p rather than the leader's.
+    order = sorted(range(len(credences)), key=lambda j: credences[j], reverse=True)
+    creds_sorted = [credences[j] for j in order]
+    cands_sorted = ([candidates[j] for j in order]
+                    if len(candidates) == len(credences) else candidates)
+
+    decision_id = _decision_id(question, retrieval_keys, creds_sorted, p_none)
+    DEC.append(deps.decisions_path, DEC.DecisionEvent(
+        tx_time=O.now_iso(), run_id="answer-brain",
+        question_id=hashlib.sha256(question.encode("utf-8")).hexdigest()[:16],
+        family="lookup", action_set=DEC.LOOKUP_ACTION_ORDER,
+        posterior_summary={"candidates": cands_sorted, "credences": creds_sorted,
+                           "p_none": p_none, "n_obs": n_obs},
+        utility_fold_version=deps.fold_version(),
+        chosen_action=action, predicted_eu=eu, decision_id=decision_id))
+    return {"decision_id": decision_id}
+
+
 Handler = Callable[[BridgeDeps, Payload], "Payload | None"]
 
 _POST: dict[str, Handler] = {
@@ -182,6 +269,7 @@ _POST: dict[str, Handler] = {
     "/probe/subject": _probe_subject,
     "/probe/authority": _probe_authority,
     "/probe/corroborate": _probe_corroborate,
+    "/log_decision": _log_decision,
 }
 _GET: dict[str, Handler] = {"/utility": _utility}
 
@@ -270,14 +358,21 @@ def build_deps() -> BridgeDeps:
         u_bar, _version = LK.current_u_bar(LK.shared_brain())
         return u_bar
 
+    def _fold_version() -> str:
+        # current_u_bar caches per fold version in-process, so this rides the /utility fold.
+        _u_bar, version = LK.current_u_bar(LK.shared_brain())
+        return version
+
     return BridgeDeps(root=root, conn=conn, client=LK._client(),
-                      profile=owner.load_profile(), u_bar=_u_bar)
+                      profile=owner.load_profile(), u_bar=_u_bar,
+                      decisions_path=config.DECISIONS_LOG, fold_version=_fold_version)
 
 
 def main() -> None:
     server = BridgeServer(build_deps())
     print(f"life-agent capability bridge → http://{HOST}:{PORT}")
     print("  POST /route /retrieve /extract /probe/{recency,subject,authority,corroborate}")
+    print("  POST /log_decision   (answer-brain verdict-emission seam)")
     print("  GET  /utility /ready")
     try:
         server.serve_forever()
