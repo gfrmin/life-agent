@@ -21,6 +21,7 @@ by design (prior conservatism is allowed; fitting to a gate is not).
 """
 from __future__ import annotations
 
+from collections import defaultdict
 from dataclasses import dataclass
 
 
@@ -30,6 +31,16 @@ class Outcome:
     (the owner's trichotomy verdict folded to a bit — ``correct`` true only for a current-value
     hit; stale and wrong both fold to false, since a stale answer is still wrong)."""
 
+    confidence: float
+    correct: bool
+
+
+@dataclass(frozen=True)
+class EdgeOutcome:
+    """An :class:`Outcome` tagged with the edge that produced it — the row the executor's demand
+    log emits (which edge committed, at what confidence, graded by the owner's verdict)."""
+
+    edge: str
     confidence: float
     correct: bool
 
@@ -88,3 +99,24 @@ def fit_reliability_curve(outcomes: list[Outcome], *, prior_alpha: float = 1.0,
     weights = [prior_alpha + prior_beta + nc + nw
                for nc, nw in zip(n_correct, n_wrong, strict=True)]
     return ReliabilityCurve(bin_reliability=tuple(_pav(means, weights)))
+
+
+def fit_edge_curves(records: list[EdgeOutcome], *, prior_alpha: float = 1.0,
+                    prior_beta: float = 3.0, n_bins: int = 10) -> dict[str, ReliabilityCurve]:
+    """Group graded outcomes by edge and fit one curve per edge — the executor's calibration
+    fold over the demand log. An edge with no records simply does not appear (the executor
+    falls back to the pessimistic prior via :func:`curve_for`)."""
+    by_edge: dict[str, list[Outcome]] = defaultdict(list)
+    for r in records:
+        by_edge[r.edge].append(Outcome(r.confidence, r.correct))
+    return {edge: fit_reliability_curve(outs, prior_alpha=prior_alpha,
+                                        prior_beta=prior_beta, n_bins=n_bins)
+            for edge, outs in by_edge.items()}
+
+
+def curve_for(curves: dict[str, ReliabilityCurve], edge: str, *, prior_alpha: float = 1.0,
+              prior_beta: float = 3.0, n_bins: int = 10) -> ReliabilityCurve:
+    """The fitted curve for an edge, or the pessimistic cold-start prior for one not yet seen —
+    so a brand-new (or starved) edge errs toward scope/abstain until evidence earns its trust."""
+    return curves.get(edge) or fit_reliability_curve([], prior_alpha=prior_alpha,
+                                                      prior_beta=prior_beta, n_bins=n_bins)
