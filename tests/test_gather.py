@@ -138,6 +138,7 @@ format_version: 1
 gauge: {u_correct: 1.0, u_abstain: 0.0}
 latents:
   u_wrong:    {grid: {lo: -10.0, hi: 0.0, n: 11}, prior: {type: gaussian, mu: -4.0, sigma: 3.0}}
+  u_wrong_scoped: {grid: {lo: -6.0, hi: 0.0, n: 9}, prior: {type: gaussian, mu: -2.0, sigma: 1.0}}
   u_hedged:   {grid: {lo: -1.0, hi: 1.0, n: 5},  prior: {type: gaussian, mu: 0.4, sigma: 0.4}}
   lambda_int: {grid: {lo: -0.5, hi: 4.0, n: 10}, prior: {type: gaussian, mu: 1.0, sigma: 1.0}}
   kappa_att:  {grid: {lo: -0.2, hi: 1.0, n: 7},  prior: {type: gaussian, mu: 0.05, sigma: 0.1}}
