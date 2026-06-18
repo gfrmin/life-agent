@@ -284,10 +284,13 @@ def test_candidate_key_observation_maps_to_a_candidate() -> None:
 
 
 def test_candidate_key_collapses_date_formats() -> None:
-    # the SAME calendar date in three formats is one candidate — extraction was already
-    # correct (q-003), only the format split the posterior mass. (synthetic date)
+    # the SAME calendar date in several formats is one candidate — extraction was already
+    # correct (q-003), only the format split the posterior mass. Includes the ordinal +
+    # abbreviated-month spellings (e.g. "14th Mar 1990") that a dogfood ask surfaced as
+    # competing with the numeric form and forcing an abstain. (synthetic date)
     obs = [_obs("a" * 64, "1990-03-14"), _obs("b" * 64, "14/03/1990"),
-           _obs("c" * 64, "14.03.1990")]
+           _obs("c" * 64, "14.03.1990"), _obs("d" * 64, "14th Mar 1990"),
+           _obs("e" * 64, "Mar 14th 1990")]
     assert candidates_from(obs) == ["1990-03-14"]
 
 
