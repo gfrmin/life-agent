@@ -176,6 +176,11 @@ REASON_DISPERSED = "dispersed posterior"
 # answer — a certainty the posterior never asserted (presentation error, §3).
 GRAMMAR: dict[str, str] = {
     "report": "{value} — credence {p:.3f} {cites}",
+    # the time-scoped assertion (scoped-claims design): a TRUE claim about the record when the
+    # current value is uncertain. Names the currency gap and the deferred upgrade, never silent.
+    "report_scoped": ("As of {as_of}: {value} — credence {p:.3f} {cites}\n"
+                      "  — the most recent record I found; I may be missing a newer one. "
+                      "A confirmed current figure would need a costlier check."),
     "hedge": "Unresolved — candidates: {alts}",
     "ask_clarify": "Worth asking you directly — the evidence does not settle it: {alts}",
     "abstain": "No answer asserted ({reason}).",
@@ -255,6 +260,10 @@ class Observation:
     authority: float
     subject_factor: float = 1.0  # §4.1 doc_subject covariate on a_i
     time_factor: float = 1.0     # §4.1 doc_date covariate on a_i
+    doc_date: str | None = None  # the supporting doc's projected ISO date (the scoped claim's
+    #                              as-of; None = undated/underived). Does not enter obs_cache_key
+    #                              (that is the extraction key) — a read-side covariate like the
+    #                              factors above.
 
 
 @dataclass(frozen=True)
@@ -274,6 +283,12 @@ class LookupResult:
     utility_fold_version: str
     answer_cache_key: str
     rendered: str
+    # report_scoped inputs (scoped-claims design), recorded whether or not scoped was chosen:
+    # the freshest-record value + its as-of date, and p_attested (the record's recency-off
+    # support). The render uses them only when action == "report_scoped".
+    as_of: str | None = None
+    scoped_value: str | None = None
+    scoped_p: float = 0.0
 
 
 def _sha(text: str) -> str:
@@ -538,6 +553,7 @@ def observe_hits(root: Path, question: str, hits: list[dict[str, Any]], *,
             authority=authority,
             subject_factor=subject_factor(cov.subject_state.get(artifact_key)),
             time_factor=t_factor,
+            doc_date=cov.doc_date.get(artifact_key),
         ))
     return observations, indeterminate
 
@@ -620,15 +636,23 @@ def lookup_posterior(brain: Brain, observations: list[Observation],
     return weights, state_id
 
 
-def action_utilities(weights: list[float], u_bar: dict[str, float]
-                     ) -> dict[str, list[float]]:
+def action_utilities(weights: list[float], u_bar: dict[str, float],
+                     p_attested: float) -> dict[str, list[float]]:
     """Per-action utility vectors over the hypothesis atoms (K candidates + NONE),
     under the §4.4 posterior mean (the collapse theorem). The correctness slots derive
     from :func:`life_agent.core.decide.u_assert` (the one written atom): report asserts
     the MAP candidate (``u_assert(1)``); every other atom and NONE is a wrong report
     (``u_assert(0)`` = u_wrong); hedge asserts the candidate set (``u_hedged``), misleading
     only when the truth is NONE; ask_clarify is the oracle price (NOT a u_assert outcome —
-    the oracle is infallible when it knows); abstain is the gauge zero."""
+    the oracle is infallible when it knows); abstain is the gauge zero.
+
+    ``report_scoped`` (scoped-claims design) asserts a TRUE time-scoped claim ("as of
+    <date>, X"). Its truth is about the *record*, not which current-value hypothesis holds,
+    so its row is **flat** — the optimise values it at exactly
+    ``p_attested*u_hedged + (1-p_attested)*u_wrong_scoped`` whatever the V_now posterior. A
+    miss is a citable misread (``u_wrong_scoped``), never the catastrophic current-value
+    ``u_wrong``. ``p_attested`` = P(the record attests the scoped value), the caller's
+    recency-off leader weight (0.0 ⇒ no datable record ⇒ the row stays below abstain)."""
     k = len(weights) - 1
     j_star = max(range(k), key=lambda j: weights[j]) if k else None
     u_correct_report = u_assert(1.0, u_bar)
@@ -638,13 +662,17 @@ def action_utilities(weights: list[float], u_bar: dict[str, float]
     hedge = [u_bar["u_hedged"]] * k + [u_wrong_report]
     ask = [_ORACLE_P * u_bar["u_correct"] - u_bar["lambda_int"]] * (k + 1)
     abstain = [u_bar["u_abstain"]] * (k + 1)
-    return {"report": report, "hedge": hedge, "ask_clarify": ask, "abstain": abstain}
+    scoped_eu = p_attested * u_bar["u_hedged"] + (1.0 - p_attested) * u_bar["u_wrong_scoped"]
+    report_scoped = [scoped_eu] * (k + 1)
+    return {"report": report, "report_scoped": report_scoped,
+            "hedge": hedge, "ask_clarify": ask, "abstain": abstain}
 
 
 def decide(brain: Brain, state_id: str, weights: list[float],
-           u_bar: dict[str, float]) -> tuple[str, float]:
-    """`optimise` over the response actions (M4) on the live posterior state."""
-    utilities = action_utilities(weights, u_bar)
+           u_bar: dict[str, float], p_attested: float = 0.0) -> tuple[str, float]:
+    """`optimise` over the response actions (M4) on the live posterior state. ``p_attested``
+    prices the report_scoped action (0.0 ⇒ no datable record ⇒ scoped never wins)."""
+    utilities = action_utilities(weights, u_bar, p_attested)
     preference = {
         "type": "functional_per_action",
         "actions": {str(i): {"type": "tabular", "values": utilities[name]}
@@ -675,6 +703,10 @@ def render(result: LookupResult) -> str:
         v = result.candidates[0]
         body = GRAMMAR["report"].format(value=v, p=result.credences[0],
                                         cites=_cites(v))
+    elif result.action == "report_scoped":
+        v = result.scoped_value or ""
+        body = GRAMMAR["report_scoped"].format(value=v, as_of=result.as_of,
+                                               p=result.scoped_p, cites=_cites(v))
     elif result.action == "hedge":
         body = GRAMMAR["hedge"].format(alts=alts)
     elif result.action == "ask_clarify":
@@ -736,6 +768,32 @@ def current_u_bar(brain: Brain) -> tuple[dict[str, float], str]:
 
 # --- the family, end to end --------------------------------------------------------------
 
+def _scoped_option(brain: Brain, observations: list[Observation],
+                   candidates: list[str], rho: float, *,
+                   weights_current: list[float], time_indexed: bool,
+                   ) -> tuple[float, str | None, str | None]:
+    """The report_scoped inputs (scoped-claims design): the freshest DATED observation gives
+    the scoped value V_s ("most recent record on file") and its as-of date; ``p_attested`` =
+    V_s's RECENCY-OFF posterior weight — what the record attests, ignoring currency. Returns
+    ``(p_attested, V_s, as_of)``; ``p_attested`` is 0.0 (scoped disabled — the flat row sits
+    below abstain) when no observation carries a date. The attested posterior is the current
+    one when recency was already off (a permanent fact), else a second pass with the time
+    decay removed — pure credence math, no new model calls."""
+    dated = [o for o in observations if o.doc_date]
+    if not dated:
+        return 0.0, None, None
+    freshest = max(dated, key=lambda o: o.doc_date or "")  # ISO dates sort lexicographically
+    if time_indexed:
+        attested_obs = [dataclasses.replace(o, time_factor=1.0) for o in observations]
+        weights_attested, sid = lookup_posterior(brain, attested_obs, candidates, rho)
+        brain.destroy_state(sid)
+    else:
+        weights_attested = weights_current
+    keys = [_candidate_key(c) for c in candidates]
+    p_attested = weights_attested[keys.index(_candidate_key(freshest.value_raw))]
+    return p_attested, freshest.value_raw, freshest.doc_date
+
+
 def decide_and_record(root: Path, question: str, construct: str,
                       observations: list[Observation], indeterminate: int, *,
                       n_hits: int, time_indexed: bool,
@@ -754,8 +812,11 @@ def decide_and_record(root: Path, question: str, construct: str,
     rho = extractor_reliability()
     candidates = candidates_from(observations)
     weights, state_id = lookup_posterior(b, observations, candidates, rho)
+    p_attested, scoped_value, as_of = _scoped_option(
+        b, observations, candidates, rho,
+        weights_current=weights, time_indexed=time_indexed)
     try:
-        action, eu = decide(b, state_id, weights, u_bar)
+        action, eu = decide(b, state_id, weights, u_bar, p_attested)
     finally:
         b.destroy_state(state_id)
 
@@ -781,6 +842,7 @@ def decide_and_record(root: Path, question: str, construct: str,
               "time_half_life_years": _TIME_HALF_LIFE_YEARS,
               "a_time_unknown": _A_TIME_UNKNOWN,
               "time_indexed": time_indexed,
+              "p_attested": round(p_attested, 6),  # the report_scoped decision input
               "covariates": _sha(json.dumps(obs_covariates, sort_keys=True))}
     obs_hash = _sha(json.dumps(sorted(o.obs_cache_key for o in observations)))
     akey = D.lookup_answer_key(question, obs_hash, fold_ver, params)
@@ -789,6 +851,10 @@ def decide_and_record(root: Path, question: str, construct: str,
         "time_indexed": time_indexed, "covariates": obs_covariates,
         "candidates": list(cands), "credences": list(creds), "p_none": p_none,
         "action": action, "eu": eu, "utility_fold_version": fold_ver,
+        # the scoped option recorded whether or not it was chosen — the deferred upgrade
+        # governor's evidence (scoped-claims design §6): the true partial that was available.
+        "scoped": {"value": scoped_value, "as_of": as_of,
+                   "p_attested": round(p_attested, 6)},
     }, sort_keys=True, ensure_ascii=False).encode("utf-8")
     D.record(root, akey, content,
              lineage=[{"cache_key": o.obs_cache_key, "role": "observation"}
@@ -799,7 +865,8 @@ def decide_and_record(root: Path, question: str, construct: str,
         candidates=cands, credences=creds, p_none=p_none,
         observations=tuple(observations), n_hits=n_hits,
         n_indeterminate=indeterminate, utility_fold_version=fold_ver,
-        answer_cache_key=akey.cache_key, rendered="")
+        answer_cache_key=akey.cache_key, rendered="",
+        as_of=as_of, scoped_value=scoped_value, scoped_p=p_attested)
     result = dataclasses.replace(result, rendered=render(result))
 
     DEC.append(decisions_path if decisions_path is not None else config.DECISIONS_LOG,

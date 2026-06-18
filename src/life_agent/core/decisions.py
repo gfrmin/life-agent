@@ -30,17 +30,22 @@ FAMILIES: frozenset[str] = frozenset({"lookup", "narrative"})
 
 # The M4 response actions (bayesian-foundations §3). ask-about-U is deliberately absent
 # — utility learning is passive until the governor (§4.4, a stated action-set
-# coarsening).
-ACTIONS: frozenset[str] = frozenset({"report", "hedge", "ask_clarify", "abstain"})
+# coarsening). report_scoped is the time-scoped assertion ("as of <date>, X" — scoped-claims
+# design): a true claim about the record, graded on attestation not currency, so it carries
+# u_wrong_scoped (a citable misread) not the catastrophic current-value u_wrong.
+ACTIONS: frozenset[str] = frozenset({"report", "report_scoped", "hedge",
+                                     "ask_clarify", "abstain"})
 
 # Per-family action subsets of ACTIONS — the single vocabulary, named once and imported by
 # the families (never re-declared in a family module). The ordering is load-bearing: lookup
 # maps brain.optimise's finite action indices through LOOKUP_ACTION_ORDER. NARRATIVE is the
-# restricted set {report, abstain} — a *principled* restriction (hedge over a per-claim
-# posterior is not yet defined; that is the deferred recency/u_hedged work), not an accident.
-# The subset and partition invariants (these <= ACTIONS; LOOKUP - NARRATIVE == the lookup-only
-# actions; gate's assert/withhold union == ACTIONS) are drift-gated in tests/test_decide.py.
-LOOKUP_ACTION_ORDER: tuple[str, ...] = ("report", "hedge", "ask_clarify", "abstain")
+# restricted set {report, abstain} — a *principled* restriction (hedge/report_scoped over a
+# per-claim posterior are not yet defined; that is the deferred recency/u_hedged work), not an
+# accident. The subset and partition invariants (these <= ACTIONS; LOOKUP - NARRATIVE == the
+# lookup-only actions; gate's assert/withhold union == ACTIONS) are drift-gated in
+# tests/test_decide.py.
+LOOKUP_ACTION_ORDER: tuple[str, ...] = ("report", "hedge", "ask_clarify", "abstain",
+                                        "report_scoped")
 NARRATIVE_ACTION_ORDER: tuple[str, ...] = ("report", "abstain")
 
 
