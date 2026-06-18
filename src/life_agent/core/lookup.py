@@ -323,10 +323,10 @@ def _parse_date(value: str) -> str | None:
     m = re.fullmatch(r"(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})", v)
     if m:
         return _iso_or_none(int(m[1]), int(m[2]), int(m[3]))
-    m = re.fullmatch(r"(\d{1,2})\s+([A-Za-z]+),?\s+(\d{4})", v)
+    m = re.fullmatch(r"(\d{1,2})(?:st|nd|rd|th)?\s+([A-Za-z]+),?\s+(\d{4})", v, re.IGNORECASE)
     if m and m[2].lower() in _MONTH_NAMES:
         return _iso_or_none(int(m[3]), _MONTH_NAMES[m[2].lower()], int(m[1]))
-    m = re.fullmatch(r"([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})", v)
+    m = re.fullmatch(r"([A-Za-z]+)\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})", v, re.IGNORECASE)
     if m and m[1].lower() in _MONTH_NAMES:
         return _iso_or_none(int(m[3]), _MONTH_NAMES[m[1].lower()], int(m[2]))
     m = re.fullmatch(r"(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})", v)
