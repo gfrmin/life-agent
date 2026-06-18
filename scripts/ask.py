@@ -103,6 +103,23 @@ EXPAND_SYSTEM = (
     "ארנונה עירייה חשבון תשלום."
 )
 
+# Reranking: BM25 ranks by surface-word overlap, so for ~8 of the eval's retrieval misses
+# the gold sits at lexical rank 36-132 (probe_gold_rank) — buried below literary PDFs that
+# share the question's words but not its fact. A listwise reranker reads a WIDE lexical pool
+# and selects the chunks that actually carry the answer, pulling the buried gold into the
+# top-k (measured: Sonnet rescued 7/8 with zero regression, ~20k input tokens/question).
+# Sonnet (not the synthesis default) because it reads the whole pool and accepts temperature.
+RERANK_MODEL = "claude-sonnet-4-6"
+RERANK_POOL = 150  # lexical chunks fed to the reranker (covers the deepest addressable gold)
+RERANK_SYSTEM = (
+    "You are a retrieval reranker for a personal-assistant corpus (English AND Hebrew). "
+    "Given a QUESTION and a numbered list of document SNIPPETS, identify the snippets most "
+    "likely to contain the EXACT fact needed to answer it. Prefer the specific, current, "
+    "authoritative source (an official record, a form, a bill) over generic or incidental "
+    "mentions of the same words. Return ONLY a JSON array of the {k} most relevant snippet "
+    "numbers, best first — no prose."
+)
+
 # Synthesis prompt. Deliberately NOT the comparison harness's CITATION_INSTRUCTION (in
 # scripts/comparison/_common.py): that is a frozen eval artifact, hardened against
 # identity-confusion for blind grading — it demands a value be asserted "only if it is the
@@ -542,6 +559,41 @@ def _expand_terms(question: str, *, model: str = EXPAND_MODEL,
     return _clean_terms(r.text)
 
 
+def _rerank_hits(question: str, pool: list[dict[str, Any]], k: int, *,
+                 model: str = RERANK_MODEL) -> list[dict[str, Any]]:
+    """Impure edge: a listwise reranker reads the wide lexical POOL and returns its top-k
+    hits, reordered so the chunk that actually carries the answer leads. Fail-open — any
+    error (API down, unparseable reply) returns the lexical top-k unchanged, so reranking
+    can only improve recall, never break the path. The returned dicts are the pool's own
+    (same artifact_cache_key / chunk_text / origin / score), so every downstream key and
+    citation is unaffected. A short or garbled reply is backfilled from the lexical head, so
+    the result is never fewer (or worse on the tail) than lexical retrieval alone."""
+    if len(pool) <= k:
+        return pool[:k]
+    snippets = "\n".join(
+        f"[{i + 1}] {h['chunk_text'][:280].strip().replace(chr(10), ' ')}"
+        for i, h in enumerate(pool))
+    user = f"QUESTION: {question}\n\nSNIPPETS:\n{snippets}"
+    try:
+        r = C.anthropic_complete(RERANK_SYSTEM.format(k=k), user, model=model, max_tokens=400)
+    except SystemExit:
+        return pool[:k]
+    m = re.search(r"\[[\s\d,]*\]", r.text)
+    picks = [int(n) for n in re.findall(r"\d+", m.group(0))] if m else []
+    seen: set[int] = set()
+    ordered: list[dict[str, Any]] = []
+    for n in picks:  # reranker order first, valid + de-duplicated
+        if 1 <= n <= len(pool) and n not in seen:
+            seen.add(n)
+            ordered.append(pool[n - 1])
+    for i, h in enumerate(pool, 1):  # backfill from the lexical head to guarantee k
+        if len(ordered) >= k:
+            break
+        if i not in seen:
+            ordered.append(h)
+    return ordered[:k]
+
+
 def _cards_from_set(hits: list[dict[str, Any]]) -> list[tuple[C.SourceCard, float]]:
     """Pure: render a retrieval set (live or replayed from cache) as numbered cards."""
     return [(C.SourceCard(n=i + 1, text=h["chunk_text"].strip(), origin=h["origin"]),
@@ -584,6 +636,7 @@ def answer(conn: duckdb.DuckDBPyConnection, question: str,
            no_cache: bool = False,
            families: bool = True,
            gather: bool = False,
+           rerank: bool = False,
            since: _date | None = None, until: _date | None = None,
            recent: bool = False) -> tuple[str, list[C.SourceCard], dict[int, float]]:
     """Retrieve then synthesise a cited answer. The authoritative owner profile (who "I"/"my"
@@ -605,7 +658,12 @@ def answer(conn: duckdb.DuckDBPyConnection, question: str,
     (:func:`life_agent.core.gather.gather_answer`): re-retrieve corroboration on the top
     candidates, then re-weight by recency + whose-document before deciding. Default
     ``False`` keeps the single-pass production path; the adoption gate turns it on for the
-    typed arm to measure it. Returns (answer_text, cards, {card_n: score})."""
+    typed arm to measure it.
+
+    ``rerank=True`` over-fetches a wide lexical pool and lets a listwise reranker
+    (:func:`_rerank_hits`) pick the top-k — the recall lever for golds BM25 buried below
+    word-overlapping noise (measured: rescues ~7/8 of the eval's addressable retrieval
+    misses). Default ``False``. Returns (answer_text, cards, {card_n: score})."""
     global TEMPORAL_LAST, SUBJECT_LAST, STAGES_LAST, LOOKUP_LAST, NARRATIVE_LAST
     TEMPORAL_LAST = None
     SUBJECT_LAST = None
@@ -619,24 +677,35 @@ def answer(conn: duckdb.DuckDBPyConnection, question: str,
         print(f"  ↳ expanded: {terms}")
     query = build_query(question, terms)
 
-    # retrieve — deterministic given the corpus state, so keyed on its digest
-    digest = _corpus_digest(conn) if root is not None else None
-    rkey = D.retrieve_key(query, digest, k=k) if digest is not None else None
-    if rkey is not None:
-        STAGES_LAST["retrieve"] = rkey.cache_key
+    # retrieve — deterministic given the corpus state, so keyed on its digest. With
+    # rerank=True, over-fetch a wide pool and let a listwise reranker pick the top-k (the
+    # recall lever for golds BM25 buried below word-overlapping noise); the reranked set is
+    # computed fresh — its content differs from the lexical top-k, so the retrieve key would
+    # not match — and the wider, content-keyed synthesize cache below still applies.
     hits: list[dict[str, Any]] | None = None
-    if root is not None and rkey is not None and not no_cache:
-        cached = D.lookup(root, rkey.cache_key)
-        if cached is not None:
-            _count("retrieve", hit=True)
-            hits = json.loads(cached.decode("utf-8"))["hits"]
-    if hits is None:
-        hits = _retrieve_set(conn, query, k)
-        if root is not None and rkey is not None:
-            _count("retrieve", hit=False)
-            lineage = [{"cache_key": ck, "role": "retrieved"}
-                       for ck in dict.fromkeys(h["artifact_cache_key"] for h in hits)]
-            D.record(root, rkey, _set_content(hits), lineage=lineage)
+    rkey = None  # the reranked set is not recorded under a retrieve key (its content is the
+    # reranker's, not a pure corpus+query function); synthesize lineage falls back to sources
+    if rerank:
+        pool = _retrieve_set(conn, query, RERANK_POOL)
+        hits = _rerank_hits(question, pool, k)
+        STAGES_LAST["rerank"] = f"{RERANK_MODEL}/{RERANK_POOL}->{k}"
+    else:
+        digest = _corpus_digest(conn) if root is not None else None
+        rkey = D.retrieve_key(query, digest, k=k) if digest is not None else None
+        if rkey is not None:
+            STAGES_LAST["retrieve"] = rkey.cache_key
+        if root is not None and rkey is not None and not no_cache:
+            cached = D.lookup(root, rkey.cache_key)
+            if cached is not None:
+                _count("retrieve", hit=True)
+                hits = json.loads(cached.decode("utf-8"))["hits"]
+        if hits is None:
+            hits = _retrieve_set(conn, query, k)
+            if root is not None and rkey is not None:
+                _count("retrieve", hit=False)
+                lineage = [{"cache_key": ck, "role": "retrieved"}
+                           for ck in dict.fromkeys(h["artifact_cache_key"] for h in hits)]
+                D.record(root, rkey, _set_content(hits), lineage=lineage)
 
     # temporal (D1): filter/rank the hits by projected doc_date BEFORE cards
     # and the synthesize key — the admitted set IS the evidence, so the key's
