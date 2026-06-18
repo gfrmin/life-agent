@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+# answer-brain — bring up the full answer-brain loop and drop into its REPL.
+#
+# Starts the two background services the pi-mono body needs — the credence decision daemon
+# (Julia, :8799) and the life-agent capability bridge (:8798) — waits for both to be ready,
+# then runs the answer-brain app in the foreground. Ollama must already be running (a user
+# service); we check and warn, never start it. On exit (Ctrl-C or quit) the background
+# services are torn down. Service logs go to a temp dir so the REPL stays clean.
+#
+#   answer-brain                      # REPL: ask, react [g]ood/[b]ad, repeat
+#   answer-brain "what is my X?"      # one question, react, exit
+#
+# Env: CREDENCE_DIR (default $HOME/git/credence); ANSWER_BRAIN_MODEL, OLLAMA_BASE_URL,
+#      ANSWER_BRAIN_PORT (daemon), LIFE_AGENT_BRIDGE_PORT pass through to the services/app.
+set -euo pipefail
+
+# Resolve through symlinks (e.g. ~/.local/bin/answer-brain) so root is always the repo.
+root="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+credence="${CREDENCE_DIR:-$HOME/git/credence}"
+daemon_port="${ANSWER_BRAIN_PORT:-8799}"
+bridge_port="${LIFE_AGENT_BRIDGE_PORT:-8798}"
+ollama_base="${OLLAMA_BASE_URL:-http://localhost:11434/v1}"; ollama_base="${ollama_base%/v1}"
+
+[ -d "$credence/apps/answer-brain" ] \
+  || { echo "answer-brain: credence checkout not found at $credence (set CREDENCE_DIR)" >&2; exit 1; }
+set -a; [ -f "$root/.env" ] && source "$root/.env"; set +a
+
+logdir="$(mktemp -d "${TMPDIR:-/tmp}/answer-brain.XXXXXX")"
+pids=()
+cleanup() {
+  for pid in "${pids[@]:-}"; do kill "$pid" 2>/dev/null || true; done
+}
+trap cleanup EXIT INT TERM
+
+wait_ready() {  # url label timeout_s
+  local url="$1" label="$2" timeout="${3:-90}" i
+  for ((i = 0; i < timeout; i++)); do
+    if curl -fsS --max-time 2 "$url" >/dev/null 2>&1; then echo "  $label ready"; return 0; fi
+    sleep 1
+  done
+  echo "answer-brain: $label did not come up at $url within ${timeout}s — see $logdir" >&2
+  return 1
+}
+
+# Ollama is a user service; check (don't start) and warn so a model failure is legible.
+curl -fsS --max-time 2 "$ollama_base/api/tags" >/dev/null 2>&1 \
+  || echo "answer-brain: WARNING — Ollama not reachable at $ollama_base (start it: 'ollama serve')" >&2
+
+echo "answer-brain: starting the decision daemon (:$daemon_port) — logs in $logdir/daemon.log"
+( cd "$credence" && exec julia --project=. apps/answer-brain/daemon/main.jl ) >"$logdir/daemon.log" 2>&1 &
+pids+=($!)
+
+echo "answer-brain: starting the capability bridge (:$bridge_port) — logs in $logdir/bridge.log"
+( exec uv run --project "$root" python -m life_agent.bridge.server ) >"$logdir/bridge.log" 2>&1 &
+pids+=($!)
+
+wait_ready "http://127.0.0.1:$daemon_port/ready" "daemon" 120  # Julia precompile on a cold start
+wait_ready "http://127.0.0.1:$bridge_port/ready" "bridge" 60
+
+echo "answer-brain: ready — launching the app (Ctrl-C to stop)"
+( cd "$credence/apps/answer-brain/app" && exec npm run --silent ask -- "$@" )
