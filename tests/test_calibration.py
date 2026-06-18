@@ -16,7 +16,13 @@ from itertools import pairwise
 
 import pytest
 
-from life_agent.core.calibration import Outcome, fit_reliability_curve
+from life_agent.core.calibration import (
+    EdgeOutcome,
+    Outcome,
+    curve_for,
+    fit_edge_curves,
+    fit_reliability_curve,
+)
 
 # the pessimistic prior the executor seeds with (Beta(1,3) → mean 0.25): cold-start errs toward
 # scope/abstain, evidence earns confidence.
@@ -67,3 +73,22 @@ def test_sparse_evidence_stays_shrunk() -> None:
     curve = fit_reliability_curve(_outcomes([(0.95, True)]),
                                   prior_alpha=1.0, prior_beta=3.0, n_bins=10)
     assert curve.calibrate(0.95) == pytest.approx(2.0 / 5.0, abs=1e-6)   # (1+1)/(1+3+1)
+
+
+# --- the per-edge fold (the calibration loop over the demand log) ------------
+
+
+def test_fit_edge_curves_separates_the_overconfident_local_from_a_good_joint() -> None:
+    records = (
+        [EdgeOutcome("local", 0.95, False)] * 8 + [EdgeOutcome("local", 0.95, True)] * 2
+        + [EdgeOutcome("joint", 0.9, True)] * 18 + [EdgeOutcome("joint", 0.9, False)] * 2)
+    curves = fit_edge_curves(records, prior_alpha=1.0, prior_beta=3.0, n_bins=10)
+    assert set(curves) == {"local", "joint"}
+    assert curves["local"].calibrate(0.9) < 0.4    # the overconfident-wrong edge held down
+    assert curves["joint"].calibrate(0.9) > 0.6     # the reliable edge earns its confidence
+
+
+def test_curve_for_unseen_edge_is_the_pessimistic_prior() -> None:
+    curves = fit_edge_curves([EdgeOutcome("local", 0.9, True)])
+    assert curve_for(curves, "joint").calibrate(0.9) == pytest.approx(PRIOR_MEAN)
+    assert curve_for(curves, "local") is curves["local"]
