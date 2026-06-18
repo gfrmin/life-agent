@@ -7,12 +7,13 @@ pi-mono body (Move 4) has a warm, independently-tested backend beside the daemon
 decides**. No posterior is built here; `gather.py`'s policy stays out (it becomes the brain's
 VOI job) — `/extract` takes `time_indexed` + `covariates` as INPUTS, it never computes them.
 
-The one write is `/log_decision` (the verdict-emission seam): the body posts the terminal
-decision the governor enacted, and the bridge appends it to the calibration decision log
-(`core.decisions`) shaped exactly as the lookup family's own decisions — so the owner's
-one-bit verdict folds into u(wrong) through the EXISTING reaction loop (`core.reactions`) with
-no new fold code. The bridge owns the write because the daemon is stateless and the body is
-string-blind; it still does NOT decide (it records what it was told).
+The two writes are the verdict-emission seam: `/log_decision` (the body posts the terminal
+decision the governor enacted, appended to the calibration decision log `core.decisions` shaped
+exactly as the lookup family's own decisions) and `/log_reaction` (the owner's one-bit good/bad
+verdict on a logged decision, appended to `core.reactions` — the in-session counterpart of
+ask-live's `/react`). Together they let the owner's verdict fold into u(wrong) through the
+EXISTING reaction loop with no new fold code. The bridge owns these writes because the daemon
+is stateless and the body string-blind; it still does NOT decide (it records what it was told).
 
 **Stateless reads**: every read endpoint is a pure function of (corpus, request); the body
 holds the growing hit set + accumulated covariates and resends them each refinement (uniform
@@ -47,6 +48,7 @@ from life_agent.core import decisions as DEC
 from life_agent.core import lookup as LK
 from life_agent.core import outcomes as O
 from life_agent.core import probes as P
+from life_agent.core import reactions as RX
 from life_agent.core import retrieval as RET
 
 HOST = os.environ.get("LIFE_AGENT_BRIDGE_HOST", "127.0.0.1")
@@ -69,6 +71,7 @@ class BridgeDeps:
     profile: str                         # owner profile, loaded server-side (never over the wire)
     u_bar: Callable[[], dict[str, float]]  # the utility posterior's u_bar (lazy brain)
     decisions_path: Path                 # calibration decision log — /log_decision appends here
+    reactions_path: Path                 # calibration reaction log — /log_reaction appends here
     fold_version: Callable[[], str]      # current utility fold version (pins the logged decision)
 
 
@@ -259,6 +262,30 @@ def _log_decision(deps: BridgeDeps, p: Payload) -> Payload:
     return {"decision_id": decision_id}
 
 
+def _log_reaction(deps: BridgeDeps, p: Payload) -> Payload:
+    """Append the owner's one-bit verdict on a logged decision (the in-session counterpart of
+    ask-live's ``/react``). Looks the decision up by ``decision_id`` for its ``question_id`` (the
+    linkage the fold copies), appends a ``ReactionEvent``, and reports the fold fate so the app
+    can echo it. The fold (:func:`core.reactions.load_reactions`) still decides what *moves*:
+    only an abstain verdict conditions u(wrong); a report verdict is recorded-not-folded. The
+    verdict is one bit — ``good``/``bad``, never free text (the owner's prose is the loop's one
+    expensive resource)."""
+    decision_id = _req_str(p, "decision_id")
+    valence = _req_str(p, "valence")
+    if valence not in ("good", "bad"):
+        raise BridgeError(400, f"valence must be 'good' or 'bad', got {valence!r}")
+    match = [d for d in DEC.read(deps.decisions_path) if d.decision_id == decision_id]
+    if not match:
+        raise BridgeError(404, f"no decision with id {decision_id!r}")
+    d = match[-1]  # latest row; identical decisions share a content-addressed id
+    RX.append(deps.reactions_path, RX.ReactionEvent(
+        tx_time=O.now_iso(), question_id=d.question_id, decision_id=decision_id,
+        kind="verdict", valence=valence))
+    folds = d.chosen_action == "abstain"  # only abstain verdicts move the fold (reactions §4.4)
+    return {"valence": valence, "family": d.family, "chosen_action": d.chosen_action,
+            "folds": folds}
+
+
 Handler = Callable[[BridgeDeps, Payload], "Payload | None"]
 
 _POST: dict[str, Handler] = {
@@ -270,6 +297,7 @@ _POST: dict[str, Handler] = {
     "/probe/authority": _probe_authority,
     "/probe/corroborate": _probe_corroborate,
     "/log_decision": _log_decision,
+    "/log_reaction": _log_reaction,
 }
 _GET: dict[str, Handler] = {"/utility": _utility}
 
@@ -365,14 +393,15 @@ def build_deps() -> BridgeDeps:
 
     return BridgeDeps(root=root, conn=conn, client=LK._client(),
                       profile=owner.load_profile(), u_bar=_u_bar,
-                      decisions_path=config.DECISIONS_LOG, fold_version=_fold_version)
+                      decisions_path=config.DECISIONS_LOG,
+                      reactions_path=config.REACTIONS_LOG, fold_version=_fold_version)
 
 
 def main() -> None:
     server = BridgeServer(build_deps())
     print(f"life-agent capability bridge → http://{HOST}:{PORT}")
     print("  POST /route /retrieve /extract /probe/{recency,subject,authority,corroborate}")
-    print("  POST /log_decision   (answer-brain verdict-emission seam)")
+    print("  POST /log_decision /log_reaction   (answer-brain verdict-emission seam)")
     print("  GET  /utility /ready")
     try:
         server.serve_forever()
