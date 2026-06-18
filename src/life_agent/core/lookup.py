@@ -799,17 +799,22 @@ def decide_and_record(root: Path, question: str, construct: str,
                       n_hits: int, time_indexed: bool,
                       brain: Brain | None = None,
                       decisions_path: Path | None = None,
-                      run_id: str = "ask") -> LookupResult:
+                      run_id: str = "ask",
+                      rho_override: float | None = None) -> LookupResult:
     """The lookup family's tail: a grounded observation set → tempered posterior → EU
     decision under Ū → recorded answer artifact (§18.9) + logged decision (§8). Shared by
     the single-pass :func:`lookup_answer` and the gather-augmented loop
     (:mod:`life_agent.core.gather`): both produce observations, then value and record them
     identically. ``time_indexed`` enters the answer key + content (an auditable decision
     input — the gather loop may set it differently from the route). Assumes
-    ``observations`` is non-empty (its caller routes the empty case to narrative)."""
+    ``observations`` is non-empty (its caller routes the empty case to narrative).
+
+    ``rho_override`` replaces the local-extractor reliability for an observation set produced
+    by a DIFFERENT instrument (the ``extract@<model>`` joint edge folds its calibrated
+    confidence here, not the local ``extractor_reliability``)."""
     b = brain if brain is not None else shared_brain()
     u_bar, fold_ver = current_u_bar(b)
-    rho = extractor_reliability()
+    rho = rho_override if rho_override is not None else extractor_reliability()
     candidates = candidates_from(observations)
     weights, state_id = lookup_posterior(b, observations, candidates, rho)
     p_attested, scoped_value, as_of = _scoped_option(
