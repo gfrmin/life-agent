@@ -36,9 +36,11 @@ class _Counter:
     def __init__(self, ret: object) -> None:
         self.ret = ret
         self.calls = 0
+        self.last_args: tuple[object, ...] = ()
 
-    def __call__(self, *_a: object) -> object:
+    def __call__(self, *a: object) -> object:
         self.calls += 1
+        self.last_args = a
         return self.ret
 
 
@@ -90,6 +92,15 @@ def test_owner_scoped_abstains_when_joint_contradicts() -> None:
 def test_local_withhold_lets_joint_replace() -> None:
     res, jx, jd = _run(owner_scoped=False, local=_lk(action="abstain"), joint=_jr("JV"))
     assert res.edge == "joint" and jx.calls == 1 and jd.calls == 1
+
+
+def test_joint_decide_receives_the_local_construct() -> None:
+    # the joint edge folds at the local route's construct — the threading the live wiring needs
+    # (decide_joint(root, question, construct, jr, ...) cannot be called without it).
+    res, _, jd = _run(owner_scoped=False, local=_lk(action="abstain"), joint=_jr("JV"))
+    assert res.edge == "joint" and jd.calls == 1
+    assert jd.last_args[0].value == "JV"          # (jr, construct): the joint result first
+    assert jd.last_args[1] == "the value"         # the local route's construct, threaded through
 
 
 def test_local_withhold_and_joint_null_abstains() -> None:
