@@ -38,6 +38,12 @@ from triage_grading import triage
 
 BRIDGE = os.environ.get("LIFE_AGENT_BRIDGE_URL", "http://127.0.0.1:8798")
 DAEMON = os.environ.get("ANSWER_BRAIN_URL", "http://127.0.0.1:8799")
+# the §2-A net_voi-gated corroborate budget the body offers the daemon: the cloud re-read's
+# reliability + its cost (utility units). The daemon rescues a below-bar leader with a corroborate
+# only when its VOI clears this cost. Constants for v0 (gather_rho matches the bridge's _JOINT_RHO);
+# Slice 3+ calibrates gather_rho from verdicts and gather_cost from tokens→utility.
+_GATHER_RHO = 0.95
+_GATHER_COST = 0.02
 
 
 def _post(url: str, payload: dict) -> dict | None:
@@ -83,7 +89,8 @@ def _decide_via_loop(question: str, k: int, *, rerank: bool = False) -> dict:
     def _decide(observations: list, r: float, era_split: bool, applied: list[str]) -> dict:
         return _post(f"{DAEMON}/decide", {
             "candidates": candidates, "observations": observations, "rho": r, "u_bar": u_bar,
-            "era_split": era_split, "owner_scoped": owner, "applied_probes": applied})
+            "era_split": era_split, "owner_scoped": owner, "applied_probes": applied,
+            "gather_rho": _GATHER_RHO, "gather_cost": _GATHER_COST})
 
     applied: list[str] = []
     dec = _decide(obs, rho, era, applied)
