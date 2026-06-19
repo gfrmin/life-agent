@@ -40,9 +40,14 @@ BRIDGE = os.environ.get("LIFE_AGENT_BRIDGE_URL", "http://127.0.0.1:8798")
 DAEMON = os.environ.get("ANSWER_BRAIN_URL", "http://127.0.0.1:8799")
 # the §2-A net_voi-gated corroborate budget the body offers the daemon: the cloud re-read's
 # reliability + its cost (utility units). The daemon rescues a below-bar leader with a corroborate
-# only when its VOI clears this cost. Constants for v0 (gather_rho matches the bridge's _JOINT_RHO);
-# Slice 3+ calibrates gather_rho from verdicts and gather_cost from tokens→utility.
-_GATHER_RHO = 0.95
+# only when its VOI clears this cost. GATED OFF (gather_rho=0) by default: the full-eval run showed
+# the §2-A RESCUE reports stale values (q-006 → the stale HK address) because the corroborate
+# observation carries time_factor=1.0, BYPASSING the construct's volatility decay (Slice 1) that the
+# local channel gets — the same "a lever needs its guard" finding as rerank. The net_voi mechanism
+# is validated (test_answer_brain §2-A + test_server wire); enabling the rescue safely needs the
+# corroborate obs to carry recency. The §2-C owner_scoped corroborate (Slice 2) is unaffected (it
+# is a disagreement check, not a rescue) and stays on. Set gather_rho>0 to exercise §2-A.
+_GATHER_RHO = 0.0
 _GATHER_COST = 0.02
 
 
