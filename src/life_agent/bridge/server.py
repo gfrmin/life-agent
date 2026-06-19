@@ -237,6 +237,9 @@ def _probe_corroborate(deps: BridgeDeps, p: Payload) -> Payload:
         hits = _req_list(p, "hits")
         candidates = [str(c) for c in (p.get("candidates") or [])]
         model = str(p.get("model") or _JOINT_MODEL)
+        # the scheduled tier's reliability (Slice 2): the re-decide conditions the re-read obs at the
+        # tier's ρ, so a weaker model's read is trusted less. Defaults to the opus-tier _JOINT_RHO.
+        tier_rho = float(p.get("rho") or _JOINT_RHO)
         jr = JE.extract_joint(deps.root, question, hits, model=model, k=len(hits))
         obs: list[Payload] = []
         if jr.value is not None:
@@ -251,7 +254,7 @@ def _probe_corroborate(deps: BridgeDeps, p: Payload) -> Payload:
                 tf = _corroborate_time_factor(jr, hits, p)
                 obs = [{"reports": idx, "group": 0, "authority": 1.0,
                         "subject_factor": 1.0, "time_factor": tf}]
-        return {"observations": obs, "gather_rho": _JOINT_RHO, "value": jr.value,
+        return {"observations": obs, "gather_rho": tier_rho, "value": jr.value,
                 "served_model": jr.served_model, "tokens": jr.in_tokens + jr.out_tokens}
     hits = P.probe_corroborate(
         deps.conn, question, _req_str(p, "leader_value"),
