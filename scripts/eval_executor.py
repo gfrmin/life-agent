@@ -67,16 +67,32 @@ def _decide_via_loop(question: str, k: int) -> dict:
     hits = _post(f"{BRIDGE}/retrieve", {"question": question, "k": k})["hits"]
     hit_keys = list(dict.fromkeys(h["artifact_cache_key"] for h in hits))
     subj = _post(f"{BRIDGE}/probe/subject", {"hit_keys": hit_keys})["subject_state"]
-    ext = _post(f"{BRIDGE}/extract", {
+    recency = _post(f"{BRIDGE}/probe/recency", {"hit_keys": hit_keys})["doc_date"]
+    ext = _post(f"{BRIDGE}/extract", {  # construct ⇒ bridge decays time_factor at its volatility
         "question": question, "hits": hits, "time_indexed": route["time_indexed"],
-        "covariates": {"subject_state": subj, "doc_date": {}}})  # no doc_date ⇒ era_split False
+        "construct": route["construct"],
+        "covariates": {"subject_state": subj, "doc_date": recency}})
     if not ext["candidates"]:  # zero grounded observations → the local edge declined
         return {"effector": "miss", "asserted": [], "candidates": [], "credences": [],
                 "p_none": None, "eu": None, "hits": hits, "route": route}
     u_bar = _get(f"{BRIDGE}/utility")["u_bar"]
-    dec = _post(f"{DAEMON}/decide", {
-        "candidates": ext["candidates"], "observations": ext["observations"], "rho": ext["rho"],
-        "u_bar": u_bar, "era_split": ext["era_split"], "owner_scoped": _owner_scoped(question)})
+
+    def _decide(applied: list[str]) -> dict:
+        return _post(f"{DAEMON}/decide", {
+            "candidates": ext["candidates"], "observations": ext["observations"],
+            "rho": ext["rho"], "u_bar": u_bar, "era_split": ext["era_split"],
+            "owner_scoped": _owner_scoped(question), "applied_probes": applied})
+
+    dec = _decide([])
+    # recency is PRE-APPLIED in /extract (the observation time_factors already decayed at the
+    # construct's volatility), so a recency-gather steer is acknowledged (mark applied, re-decide on
+    # the same decayed posterior), not re-extracted. The daemon then returns its terminal effector.
+    applied: list[str] = []
+    for _ in range(3):
+        if not (dec["effector"] == "gather" and dec.get("probe") == "recency"):
+            break
+        applied = ["recency"]
+        dec = _decide(applied)
     asserted = [dec["value"]] if dec["effector"] == "report" and dec["value"] else []
     return {"effector": dec["effector"], "asserted": asserted, "candidates": ext["candidates"],
             "credences": dec["credences"], "p_none": dec["p_none"], "eu": dec["eu"],

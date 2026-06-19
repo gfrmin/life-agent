@@ -232,18 +232,20 @@ def subject_factor(state: str | None) -> float:
 
 
 def time_factor(date_iso: str | None, *, time_indexed: bool,
-                today: date | None = None) -> float:
+                today: date | None = None,
+                half_life_years: float = _TIME_HALF_LIFE_YEARS) -> float:
     """The doc_date covariate on a_i: for a time-indexed construct, the probability a
-    document's assertion is still current decays with document age (stated half-life).
-    ``date_iso`` None = projected but unknown (undated/underived) — the stated marginal
-    attenuation. Future-dated documents clamp to 1.0 (no covariate bonus)."""
+    document's assertion is still current decays with document age at the construct's
+    ``half_life_years`` (the per-construct volatility prior; a permanent construct passes a
+    near-infinite half-life ⇒ no decay). ``date_iso`` None = projected but unknown
+    (undated/underived) — the stated marginal attenuation. Future-dated documents clamp to 1.0."""
     if not time_indexed:
         return 1.0
     if date_iso is None:
         return _A_TIME_UNKNOWN
     now = today if today is not None else datetime.now(UTC).date()
     age_years = max((now - date.fromisoformat(date_iso)).days, 0) / 365.25
-    return float(0.5 ** (age_years / _TIME_HALF_LIFE_YEARS))
+    return float(0.5 ** (age_years / half_life_years))
 
 
 @dataclass(frozen=True)
@@ -496,6 +498,7 @@ def observe_hits(root: Path, question: str, hits: list[dict[str, Any]], *,
                  covariates: HitCovariates | None = None,
                  time_indexed: bool = False,
                  today: date | None = None,
+                 half_life_years: float = _TIME_HALF_LIFE_YEARS,
                  ) -> tuple[list[Observation], int]:
     """One grounded extraction per hit (cached). Returns (grounded observations,
     indeterminate count). Indeterminate = the instrument returned ⊥ (not found) or its
@@ -544,7 +547,8 @@ def observe_hits(root: Path, question: str, hits: list[dict[str, Any]], *,
         # the doc_date covariate distinguishes "channel not projected" (key absent,
         # factor 1.0) from "projected but unknown" (None — the stated attenuation)
         t_factor = (time_factor(cov.doc_date[artifact_key],
-                                time_indexed=time_indexed, today=today)
+                                time_indexed=time_indexed, today=today,
+                                half_life_years=half_life_years)
                     if artifact_key in cov.doc_date else 1.0)
         observations.append(Observation(
             card_n=i + 1,
