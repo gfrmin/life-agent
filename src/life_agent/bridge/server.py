@@ -49,6 +49,7 @@ from life_agent.core import lookup as LK
 from life_agent.core import outcomes as O
 from life_agent.core import probes as P
 from life_agent.core import reactions as RX
+from life_agent.core import rerank as RR
 from life_agent.core import retrieval as RET
 from life_agent.core import volatility as VOL
 
@@ -145,8 +146,16 @@ def _route(deps: BridgeDeps, p: Payload) -> Payload | None:
 
 
 def _retrieve(deps: BridgeDeps, p: Payload) -> Payload:
-    query = RET.build_query(_req_str(p, "question"), str(p.get("terms", "")))
-    return {"hits": RET.retrieve_set(deps.conn, query, int(p.get("k", _DEFAULT_K)))}
+    question = _req_str(p, "question")
+    query = RET.build_query(question, str(p.get("terms", "")))
+    k = int(p.get("k", _DEFAULT_K))
+    # the body's recall action (Slice 4): over-fetch a wide lexical pool and listwise-rerank to
+    # top-k, surfacing a buried gold into extraction. A reorder, not a VOI gather — it grows the
+    # evidence the next /decide sees; discovery over a closed candidate set is outside net_voi.
+    if p.get("rerank"):
+        pool = RET.retrieve_set(deps.conn, query, RR.RERANK_POOL)
+        return {"hits": RR.rerank_hits(question, pool, k)}
+    return {"hits": RET.retrieve_set(deps.conn, query, k)}
 
 
 def _extract(deps: BridgeDeps, p: Payload) -> Payload:

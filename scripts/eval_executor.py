@@ -57,14 +57,14 @@ def _owner_scoped(question: str) -> bool:
     return bool(re.search(r"\b(?:my|mine|the owner's)\b", question, re.IGNORECASE))
 
 
-def _decide_via_loop(question: str, k: int) -> dict:
+def _decide_via_loop(question: str, k: int, *, rerank: bool = False) -> dict:
     """Drive one question through the live loop and return a normalized decision view:
     {effector, asserted, candidates, credences, p_none, eu, hits, route}."""
     route = _post(f"{BRIDGE}/route", {"question": question})
     if route is None:  # not a typed lookup → the brain's narrative case (a coverage MISS here)
         return {"effector": "narrative", "asserted": [], "candidates": [], "credences": [],
                 "p_none": None, "eu": None, "hits": [], "route": None}
-    hits = _post(f"{BRIDGE}/retrieve", {"question": question, "k": k})["hits"]
+    hits = _post(f"{BRIDGE}/retrieve", {"question": question, "k": k, "rerank": rerank})["hits"]
     hit_keys = list(dict.fromkeys(h["artifact_cache_key"] for h in hits))
     subj = _post(f"{BRIDGE}/probe/subject", {"hit_keys": hit_keys})["subject_state"]
     recency = _post(f"{BRIDGE}/probe/recency", {"hit_keys": hit_keys})["doc_date"]
@@ -175,6 +175,8 @@ def main() -> int:
     parser.add_argument("--k", type=int, default=20)
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--only", default="")
+    parser.add_argument("--rerank", action="store_true",
+                        help="recall lever (Slice 4): over-fetch + listwise rerank in /retrieve")
     args = parser.parse_args()
 
     import duckdb
@@ -208,7 +210,7 @@ def main() -> int:
     t0 = time.monotonic()
     packets: list[dict] = []
     for q in questions:
-        view = _decide_via_loop(q["question"], args.k)
+        view = _decide_via_loop(q["question"], args.k, rerank=args.rerank)
         p = _grade(conn, q, view, labels)
         packets.append(p)
         print(f"  {p['id']}: {p['effector']} → {p['bucket']}"
