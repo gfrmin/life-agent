@@ -47,6 +47,7 @@ from life_agent.core import config
 from life_agent.core import decisions as DEC
 from life_agent.core import joint_extract as JE
 from life_agent.core import lookup as LK
+from life_agent.core import matching as MATCH
 from life_agent.core import outcomes as O
 from life_agent.core import probes as P
 from life_agent.core import reactions as RX
@@ -200,6 +201,27 @@ def _probe_authority(_deps: BridgeDeps, p: Payload) -> Payload:
     return {"authority": {k: [klass, value] for k, (klass, value) in auth.items()}}
 
 
+def _corroborate_time_factor(jr: JE.JointResult, hits: list[Payload], p: Payload) -> float:
+    """The recency covariate for the corroborate re-read's observation — the construct's
+    volatility decay, the same projection `/extract` applies (`LK.time_factor`). Recency is a
+    document property, independent of WHOSE value it is, so the re-read value is as current as its
+    freshest SOURCE attestation: take the max doc_date among the hits whose text actually contains
+    the value (the shared date-aware matcher), falling back to the model's self-reported `as_of`,
+    then to None (undated time-indexed ⇒ the stated `_A_TIME_UNKNOWN` attenuation). A non
+    time-indexed construct passes through at 1.0 (no decay)."""
+    if not bool(p.get("time_indexed", False)):
+        return 1.0
+    hl = VOL.half_life(p.get("construct"))
+    doc_date = dict((p.get("covariates") or {}).get("doc_date") or {})
+    value = jr.value or ""
+    src_dates = [doc_date.get(h["artifact_cache_key"]) for h in hits
+                 if MATCH.answer_matches(value, [], str(h.get("chunk_text", "")))]
+    dated = sorted(d for d in src_dates if d)
+    date_iso = dated[-1] if dated else jr.as_of
+    return LK.time_factor(date_iso, time_indexed=True, today=_opt_date(p.get("today")),
+                          half_life_years=hl)
+
+
 def _probe_corroborate(deps: BridgeDeps, p: Payload) -> Payload:
     question = _req_str(p, "question")
     if p.get("reextract"):
@@ -221,8 +243,14 @@ def _probe_corroborate(deps: BridgeDeps, p: Payload) -> Payload:
             vn = LK._norm_value(jr.value)
             idx = next((i for i, c in enumerate(candidates) if LK._norm_value(c) == vn), None)
             if idx is not None:
+                # The keystone: the re-read obs flows through the SAME volatility projector
+                # /extract uses — no transform may hand-set time_factor=1.0 and report a stale
+                # value as current (the q-006 confident-stale bug that gated §2-A off). Recency is
+                # attribution-independent (a document property), so the re-read value is as current
+                # as its freshest SOURCE attestation.
+                tf = _corroborate_time_factor(jr, hits, p)
                 obs = [{"reports": idx, "group": 0, "authority": 1.0,
-                        "subject_factor": 1.0, "time_factor": 1.0}]
+                        "subject_factor": 1.0, "time_factor": tf}]
         return {"observations": obs, "gather_rho": _JOINT_RHO, "value": jr.value,
                 "served_model": jr.served_model, "tokens": jr.in_tokens + jr.out_tokens}
     hits = P.probe_corroborate(

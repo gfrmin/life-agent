@@ -39,15 +39,13 @@ from triage_grading import triage
 BRIDGE = os.environ.get("LIFE_AGENT_BRIDGE_URL", "http://127.0.0.1:8798")
 DAEMON = os.environ.get("ANSWER_BRAIN_URL", "http://127.0.0.1:8799")
 # the §2-A net_voi-gated corroborate budget the body offers the daemon: the cloud re-read's
-# reliability + its cost (utility units). The daemon rescues a below-bar leader with a corroborate
-# only when its VOI clears this cost. GATED OFF (gather_rho=0) by default: the full-eval run showed
-# the §2-A RESCUE reports stale values (q-006 → the stale HK address) because the corroborate
-# observation carries time_factor=1.0, BYPASSING the construct's volatility decay (Slice 1) that the
-# local channel gets — the same "a lever needs its guard" finding as rerank. The net_voi mechanism
-# is validated (test_answer_brain §2-A + test_server wire); enabling the rescue safely needs the
-# corroborate obs to carry recency. The §2-C owner_scoped corroborate (Slice 2) is unaffected (it
-# is a disagreement check, not a rescue) and stays on. Set gather_rho>0 to exercise §2-A.
-_GATHER_RHO = 0.0
+# reliability (= the bridge's _JOINT_RHO) + its cost (utility units). The daemon rescues a below-bar
+# leader with a corroborate only when its VOI clears this cost. RE-ENABLED now that the keystone fix
+# lands: `/probe/corroborate` routes its re-read observation through the SAME volatility projector
+# `/extract` uses (`_corroborate_time_factor`), so a stale value can no longer be reported as current
+# (the q-006 confident-stale bug that gated this off). The net_voi mechanism is validated
+# (test_answer_brain §2-A + test_server wire).
+_GATHER_RHO = 0.95
 _GATHER_COST = 0.02
 
 
@@ -112,7 +110,12 @@ def _decide_via_loop(question: str, k: int, *, rerank: bool = False) -> dict:
             # local channel. The joint's value → one observation (or NONE ⇒ empty ⇒ abstain).
             cr = _post(f"{BRIDGE}/probe/corroborate",
                        {"reextract": True, "question": question, "hits": hits,
-                        "candidates": candidates})
+                        "candidates": candidates,
+                        # the re-read obs flows through the construct's volatility (the keystone):
+                        # pass time_indexed + construct + the doc_date covariate so the bridge can
+                        # decay a stale re-read instead of hand-setting time_factor=1.0.
+                        "time_indexed": route["time_indexed"], "construct": route["construct"],
+                        "covariates": {"doc_date": recency}})
             obs, rho, era = cr["observations"], cr["gather_rho"], False
             applied = list(dict.fromkeys([*applied, "corroborate"]))
             dec = _decide(obs, rho, era, applied)
