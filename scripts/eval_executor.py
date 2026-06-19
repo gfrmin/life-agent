@@ -76,23 +76,36 @@ def _decide_via_loop(question: str, k: int, *, rerank: bool = False) -> dict:
         return {"effector": "miss", "asserted": [], "candidates": [], "credences": [],
                 "p_none": None, "eu": None, "hits": hits, "route": route}
     u_bar = _get(f"{BRIDGE}/utility")["u_bar"]
+    candidates = ext["candidates"]
+    owner = _owner_scoped(question)
+    obs, rho, era = ext["observations"], ext["rho"], ext["era_split"]
 
-    def _decide(applied: list[str]) -> dict:
+    def _decide(observations: list, r: float, era_split: bool, applied: list[str]) -> dict:
         return _post(f"{DAEMON}/decide", {
-            "candidates": ext["candidates"], "observations": ext["observations"],
-            "rho": ext["rho"], "u_bar": u_bar, "era_split": ext["era_split"],
-            "owner_scoped": _owner_scoped(question), "applied_probes": applied})
+            "candidates": candidates, "observations": observations, "rho": r, "u_bar": u_bar,
+            "era_split": era_split, "owner_scoped": owner, "applied_probes": applied})
 
-    dec = _decide([])
-    # recency is PRE-APPLIED in /extract (the observation time_factors already decayed at the
-    # construct's volatility), so a recency-gather steer is acknowledged (mark applied, re-decide on
-    # the same decayed posterior), not re-extracted. The daemon then returns its terminal effector.
     applied: list[str] = []
-    for _ in range(3):
-        if not (dec["effector"] == "gather" and dec.get("probe") == "recency"):
+    dec = _decide(obs, rho, era, applied)
+    for _ in range(4):  # the gather loop — each probe fires at most once (daemon guarantees)
+        if dec["effector"] != "gather":
             break
-        applied = ["recency"]
-        dec = _decide(applied)
+        if dec.get("probe") == "recency":
+            # recency is PRE-APPLIED in /extract (obs already decayed at the construct's
+            # volatility) → acknowledge (mark applied, re-decide on the same posterior).
+            applied = list(dict.fromkeys([*applied, "recency"]))
+            dec = _decide(obs, rho, era, applied)
+        elif dec.get("probe") == "corroborate":
+            # the owner_scoped attribution guard: a subject-aware whole-doc re-read REPLACES the
+            # local channel. The joint's value → one observation (or NONE ⇒ empty ⇒ abstain).
+            cr = _post(f"{BRIDGE}/probe/corroborate",
+                       {"reextract": True, "question": question, "hits": hits,
+                        "candidates": candidates})
+            obs, rho, era = cr["observations"], cr["gather_rho"], False
+            applied = list(dict.fromkeys([*applied, "corroborate"]))
+            dec = _decide(obs, rho, era, applied)
+        else:
+            break
     asserted = [dec["value"]] if dec["effector"] == "report" and dec["value"] else []
     return {"effector": dec["effector"], "asserted": asserted, "candidates": ext["candidates"],
             "credences": dec["credences"], "p_none": dec["p_none"], "eu": dec["eu"],
