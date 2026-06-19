@@ -88,13 +88,45 @@ def _owner_scoped(question: str) -> bool:
     return bool(re.search(r"\b(?:my|mine|the owner's)\b", question, re.IGNORECASE))
 
 
+_WITHHOLD = frozenset({"miss", "abstain", "hedge", "ask_clarify"})
+
+# Slice 3 — the :grow trigger is BUILT but GATED OFF by default (a lever needs its guard). When on,
+# a withholding/miss terminal enlarges the candidate set once (rerank) and re-decides. Measured live
+# (2026-06-20): grow lifts CORRECT 3→4/18 (q-019 recovered) BUT reopens the cardinal sin — q-014
+# ("my mobile") reports the owner's STALE HK number "+852 55500123" (gold is the Israeli mobile) as
+# CONFIDENT_WRONG. The rerank surfaces the stale value and the owner-scoped guard confirms ATTRIBUTION
+# (it IS the owner's number) but not VALUE-STALENESS; the keystone's "freshest attestation" recency
+# is fooled because the old HK number is *mentioned* in a recent doc (max doc-date stays high).
+# Discovery (grow) reopens a staleness hole the per-candidate volatility closed for the cheap pass.
+# The guard grow needs: a staleness-aware corroborate (the value's PRIMARY-assertion date, not its
+# freshest mention) — until it lands, grow stays off so the gate (0 confident-wrong) holds.
+_GROW = os.environ.get("ANSWER_BRAIN_GROW", "") == "1"
+
+
 def _decide_via_loop(question: str, k: int, *, rerank: bool = False) -> dict:
-    """Drive one question through the live loop and return a normalized decision view:
-    {effector, asserted, candidates, credences, p_none, eu, hits, route}."""
+    """Drive one question through the live loop, cheap recall first then a single :grow (gated).
+
+    Slice 3 — the :grow trigger (a non-VOI recall action; discovery over a closed candidate set is
+    outside net_voi, Plan §1). The cheap lexical pass runs first; when `_GROW` is enabled, a
+    WITHHOLDING or MISS terminal (∧ not-yet-grown) enlarges the candidate set ONCE — rerank over-
+    fetches a wide pool and listwise-reorders it, surfacing a buried gold into extraction — and
+    re-decides on the larger set. Adopt the grown decision when it reports, or when the cheap pass
+    found no candidates at all; else keep the cheap withhold. GATED OFF by default (see `_GROW`)."""
     route = _post(f"{BRIDGE}/route", {"question": question})
     if route is None:  # not a typed lookup → the brain's narrative case (a coverage MISS here)
         return {"effector": "narrative", "asserted": [], "candidates": [], "credences": [],
                 "p_none": None, "eu": None, "hits": [], "route": None}
+    view = _run(question, k, route, rerank=rerank)
+    if _GROW and not rerank and view["effector"] in _WITHHOLD:
+        grown = _run(question, k, route, rerank=True)
+        if grown["effector"] == "report" or not view["candidates"]:
+            view = grown
+    return view
+
+
+def _run(question: str, k: int, route: dict, *, rerank: bool) -> dict:
+    """One retrieve→probe→extract→decide pass at a given recall breadth (rerank grows K). Returns
+    the normalized view: {effector, asserted, candidates, credences, p_none, eu, hits, route}."""
     hits = _post(f"{BRIDGE}/retrieve", {"question": question, "k": k, "rerank": rerank})["hits"]
     hit_keys = list(dict.fromkeys(h["artifact_cache_key"] for h in hits))
     subj = _post(f"{BRIDGE}/probe/subject", {"hit_keys": hit_keys})["subject_state"]
