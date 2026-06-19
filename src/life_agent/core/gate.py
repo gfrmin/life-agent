@@ -72,8 +72,10 @@ DEFAULT_N_DRAWS = 20000
 DEFAULT_SEED = 8675309
 
 # The action partition that flips the utility sign: an assertion can be right or wrong;
-# a withholding sits at the gauge (abstain) or a priced meta-cost (ask_clarify).
-ASSERT_ACTIONS: frozenset[str] = frozenset({"report", "hedge"})
+# a withholding sits at the gauge (abstain) or a priced meta-cost (ask_clarify). report_scoped
+# is an assertion (it states a value), but a TRUE one about the record — it lands u_hedged or
+# costs only u_wrong_scoped (a citable misread), never the catastrophic current-value u_wrong.
+ASSERT_ACTIONS: frozenset[str] = frozenset({"report", "report_scoped", "hedge"})
 WITHHOLD_ACTIONS: frozenset[str] = frozenset({"abstain", "ask_clarify"})
 _ALL_ACTIONS = ASSERT_ACTIONS | WITHHOLD_ACTIONS
 
@@ -128,6 +130,10 @@ def realised_utility(resp: RealisedResponse, u: dict[str, float], *,
         return u["u_correct"] if resp.correct else u["u_wrong"]
     if a == "hedge":
         return u["u_hedged"] if resp.correct else u["u_wrong"]
+    if a == "report_scoped":
+        # a true scoped claim: lands the gold → u_hedged; a miss is a citable misread, not the
+        # catastrophic current-value wrong, so it costs only u_wrong_scoped (scoped-claims §3.1)
+        return u["u_hedged"] if resp.correct else u["u_wrong_scoped"]
     raise ValueError(f"unhandled action {a!r}")  # pragma: no cover (guarded at construction)
 
 

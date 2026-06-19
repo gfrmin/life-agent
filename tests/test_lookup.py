@@ -284,10 +284,13 @@ def test_candidate_key_observation_maps_to_a_candidate() -> None:
 
 
 def test_candidate_key_collapses_date_formats() -> None:
-    # the SAME calendar date in three formats is one candidate — extraction was already
-    # correct (q-003), only the format split the posterior mass. (synthetic date)
+    # the SAME calendar date in several formats is one candidate — extraction was already
+    # correct (q-003), only the format split the posterior mass. Includes the ordinal +
+    # abbreviated-month spellings (e.g. "14th Mar 1990") that a dogfood ask surfaced as
+    # competing with the numeric form and forcing an abstain. (synthetic date)
     obs = [_obs("a" * 64, "1990-03-14"), _obs("b" * 64, "14/03/1990"),
-           _obs("c" * 64, "14.03.1990")]
+           _obs("c" * 64, "14.03.1990"), _obs("d" * 64, "14th Mar 1990"),
+           _obs("e" * 64, "Mar 14th 1990")]
     assert candidates_from(obs) == ["1990-03-14"]
 
 
@@ -351,24 +354,38 @@ def test_observation_densities_compose_covariates() -> None:
 
 
 def test_action_utilities_under_u_bar() -> None:
-    ub = {"u_correct": 1.0, "u_abstain": 0.0, "u_wrong": -5.0, "u_hedged": 0.4,
-          "lambda_int": 1.0, "kappa_att": 0.05}
-    u = action_utilities([0.7, 0.2, 0.1], ub)   # two candidates + NONE
+    ub = {"u_correct": 1.0, "u_abstain": 0.0, "u_wrong": -5.0, "u_wrong_scoped": -2.0,
+          "u_hedged": 0.4, "lambda_int": 1.0, "kappa_att": 0.05}
+    u = action_utilities([0.7, 0.2, 0.1], ub, 0.9)   # two candidates + NONE; p_attested=0.9
     assert u["report"] == [1.0, -5.0, -5.0]     # MAP asserted; truth elsewhere → wrong
     assert u["hedge"] == [0.4, 0.4, -5.0]       # misleads only when truth is NONE
     assert u["ask_clarify"] == [pytest.approx(0.9 * 1.0 - 1.0)] * 3
     assert u["abstain"] == [0.0, 0.0, 0.0]
+    # report_scoped: flat row = p·u_hedged + (1-p)·u_wrong_scoped = 0.9*0.4 + 0.1*(-2) = 0.16
+    assert u["report_scoped"] == [pytest.approx(0.16)] * 3
+
+
+def test_action_utilities_scoped_below_abstain_when_no_record() -> None:
+    # p_attested = 0 (no datable record): the flat scoped row sits at u_wrong_scoped, strictly
+    # below abstain (the gauge zero) — scoped can never win without a dated record to scope to.
+    ub = {"u_correct": 1.0, "u_abstain": 0.0, "u_wrong": -5.0, "u_wrong_scoped": -2.0,
+          "u_hedged": 0.4, "lambda_int": 1.0, "kappa_att": 0.05}
+    u = action_utilities([0.6, 0.4], ub, 0.0)
+    assert u["report_scoped"] == [-2.0, -2.0]
+    assert all(s < ab for s, ab in zip(u["report_scoped"], u["abstain"], strict=True))
 
 
 # --- render (the credence grammar) --------------------------------------------------------
 
-def _result(action: str) -> LK.LookupResult:
-    return LK.LookupResult(
+def _result(action: str, **kw) -> LK.LookupResult:
+    base = dict(
         question="q?", construct="the value", action=action, eu=0.5,
         candidates=("V1", "V2"), credences=(0.7, 0.2), p_none=0.1,
         observations=(_obs("a" * 64, "V1", n=1), _obs("b" * 64, "V2", n=3)),
         n_hits=5, n_indeterminate=3, utility_fold_version="f" * 64,
         answer_cache_key="k" * 64, rendered="")
+    base.update(kw)
+    return LK.LookupResult(**base)
 
 
 def test_render_report_carries_credence_citation_and_footer() -> None:
@@ -382,6 +399,15 @@ def test_render_report_carries_credence_citation_and_footer() -> None:
 def test_render_hedge_names_alternatives_with_credences() -> None:
     text = render(_result("hedge"))
     assert "V1 (0.700) [1]" in text and "V2 (0.200) [3]" in text
+
+
+def test_render_scoped_names_as_of_value_and_currency_gap() -> None:
+    # report_scoped states the freshest record's value scoped to its date, names the gap.
+    text = render(_result("report_scoped", scoped_value="V1", as_of="2019-05-01",
+                          scoped_p=0.88))
+    assert "As of 2019-05-01: V1 — credence 0.880 [1]" in text
+    assert "I may be missing a newer one" in text
+    assert "decision report_scoped" in text
 
 
 def test_render_abstain_names_reason_and_shows_held_back_candidates() -> None:
@@ -409,6 +435,7 @@ def test_render_abstain_without_candidates_omits_held_back() -> None:
 def test_grammar_templates_all_render() -> None:
     # drift gate: every template formats with its declared slots
     LK.GRAMMAR["report"].format(value="v", p=0.5, cites="[1]")
+    LK.GRAMMAR["report_scoped"].format(value="v", as_of="2019-01-01", p=0.5, cites="[1]")
     LK.GRAMMAR["hedge"].format(alts="a")
     LK.GRAMMAR["ask_clarify"].format(alts="a")
     LK.GRAMMAR["abstain"].format(reason="r")
@@ -458,6 +485,7 @@ format_version: 1
 gauge: {u_correct: 1.0, u_abstain: 0.0}
 latents:
   u_wrong:    {grid: {lo: -10.0, hi: 0.0, n: 11}, prior: {type: gaussian, mu: -4.0, sigma: 3.0}}
+  u_wrong_scoped: {grid: {lo: -6.0, hi: 0.0, n: 7}, prior: {type: gaussian, mu: -2.0, sigma: 1.0}}
   u_hedged:   {grid: {lo: -1.0, hi: 1.0, n: 5},  prior: {type: gaussian, mu: 0.4, sigma: 0.4}}
   lambda_int: {grid: {lo: -0.5, hi: 4.0, n: 10}, prior: {type: gaussian, mu: 1.0, sigma: 1.0}}
   kappa_att:  {grid: {lo: -0.2, hi: 1.0, n: 7},  prior: {type: gaussian, mu: 0.05, sigma: 0.1}}

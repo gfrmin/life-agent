@@ -147,9 +147,10 @@ def test_extract_threads_covariates_and_time_indexed_into_observe(
     seen: dict[str, Any] = {}
 
     def fake_observe(root: Any, q: str, hits: list[dict[str, Any]], *, client: Any,
-                     covariates: LK.HitCovariates, time_indexed: bool,
-                     today: Any) -> tuple[list[Observation], int]:
+                     covariates: LK.HitCovariates, time_indexed: bool, today: Any,
+                     half_life_years: float = 5.0) -> tuple[list[Observation], int]:
         seen["cov"], seen["time_indexed"], seen["today"] = covariates, time_indexed, today
+        seen["half_life_years"] = half_life_years
         return [], 0
 
     monkeypatch.setattr(LK, "observe_hits", fake_observe)

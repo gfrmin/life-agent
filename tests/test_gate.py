@@ -174,7 +174,7 @@ def test_gate_constants_are_frozen() -> None:
     # (§8 blind-comparison discipline). A change here is a deliberate re-statement.
     assert G.MATERIALITY_DELTA == 0.05
     assert G.GATE_LEVEL == 0.90
-    assert frozenset({"report", "hedge"}) == G.ASSERT_ACTIONS
+    assert frozenset({"report", "report_scoped", "hedge"}) == G.ASSERT_ACTIONS
     assert frozenset({"abstain", "ask_clarify"}) == G.WITHHOLD_ACTIONS
 
 

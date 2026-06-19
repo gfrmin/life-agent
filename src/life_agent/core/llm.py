@@ -15,6 +15,7 @@ import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
+from typing import Any
 
 # Default synthesis model for production answers. Owned separately from the comparison
 # harness's pinned ANSWER_MODEL — they coincide today but are free to diverge (the eval
@@ -46,13 +47,19 @@ class LLMResult:
 
 
 def anthropic_complete(system: str, user: str, *, model: str = DEFAULT_ANSWER_MODEL,
-                       max_tokens: int = 1024) -> LLMResult:
-    body = json.dumps({
-        "model": model, "max_tokens": max_tokens, "temperature": TEMPERATURE,
+                       max_tokens: int = 1024,
+                       temperature: float | None = TEMPERATURE) -> LLMResult:
+    """One Anthropic completion. ``temperature=None`` OMITS the field — required for models
+    that reject it (Opus 4.8). Records the provider-served model snapshot for audit (an alias
+    that silently rolls is then visible against the dated snapshot the cache keyed on)."""
+    payload: dict[str, Any] = {
+        "model": model, "max_tokens": max_tokens,
         "system": system, "messages": [{"role": "user", "content": user}],
-    }).encode()
+    }
+    if temperature is not None:
+        payload["temperature"] = temperature
     req = urllib.request.Request(
-        "https://api.anthropic.com/v1/messages", data=body,
+        "https://api.anthropic.com/v1/messages", data=json.dumps(payload).encode(),
         headers={"content-type": "application/json", "x-api-key": secret("ANTHROPIC_API_KEY"),
                  "anthropic-version": "2023-06-01"},
     )
@@ -65,7 +72,8 @@ def anthropic_complete(system: str, user: str, *, model: str = DEFAULT_ANSWER_MO
     dt = time.monotonic() - t0
     text = "".join(b["text"] for b in data.get("content", []) if b.get("type") == "text")
     u = data.get("usage", {})
-    return LLMResult(text, u.get("input_tokens", 0), u.get("output_tokens", 0), dt)
+    return LLMResult(text, u.get("input_tokens", 0), u.get("output_tokens", 0), dt,
+                     served_model=str(data.get("model", model)))
 
 
 def openai_complete(system: str, user: str, *, model: str,

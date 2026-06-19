@@ -45,15 +45,22 @@ from life_agent import owner
 from life_agent.bridge.observations import to_abstract_observations
 from life_agent.core import config
 from life_agent.core import decisions as DEC
+from life_agent.core import joint_extract as JE
 from life_agent.core import lookup as LK
 from life_agent.core import outcomes as O
 from life_agent.core import probes as P
 from life_agent.core import reactions as RX
+from life_agent.core import rerank as RR
 from life_agent.core import retrieval as RET
+from life_agent.core import volatility as VOL
 
 HOST = os.environ.get("LIFE_AGENT_BRIDGE_HOST", "127.0.0.1")
 PORT = int(os.environ.get("LIFE_AGENT_BRIDGE_PORT", "8798"))  # adjacent to the daemon's 8799
 _DEFAULT_K = 20
+# the corroborate re-read's model + reliability. The cloud model is strong + subject-aware, so a
+# high constant reliability for v0; Slice 3 calibrates this from verdicts (calib(c)) instead.
+_JOINT_MODEL = "claude-opus-4-8"
+_JOINT_RHO = 0.95
 
 Payload = dict[str, Any]
 
@@ -144,24 +151,38 @@ def _route(deps: BridgeDeps, p: Payload) -> Payload | None:
 
 
 def _retrieve(deps: BridgeDeps, p: Payload) -> Payload:
-    query = RET.build_query(_req_str(p, "question"), str(p.get("terms", "")))
-    return {"hits": RET.retrieve_set(deps.conn, query, int(p.get("k", _DEFAULT_K)))}
+    question = _req_str(p, "question")
+    query = RET.build_query(question, str(p.get("terms", "")))
+    k = int(p.get("k", _DEFAULT_K))
+    # the body's recall action (Slice 4): over-fetch a wide lexical pool and listwise-rerank to
+    # top-k, surfacing a buried gold into extraction. A reorder, not a VOI gather — it grows the
+    # evidence the next /decide sees; discovery over a closed candidate set is outside net_voi.
+    if p.get("rerank"):
+        pool = RET.retrieve_set(deps.conn, query, RR.RERANK_POOL)
+        return {"hits": RR.rerank_hits(question, pool, k)}
+    return {"hits": RET.retrieve_set(deps.conn, query, k)}
 
 
 def _extract(deps: BridgeDeps, p: Payload) -> Payload:
     cov = _covariates(p.get("covariates") or {})
+    # the construct's volatility half-life (the world-knowledge currency prior): a volatile
+    # attribute's stale attestation decays in time_factor, a permanent one (DOB/id) does not.
+    # The brain never sees it — it is folded into each observation's already-multiplied time_factor.
+    hl = VOL.half_life(p.get("construct"))
     obs, indeterminate = LK.observe_hits(
         deps.root, _req_str(p, "question"), _req_list(p, "hits"),
         client=deps.client, covariates=cov,
-        time_indexed=bool(p.get("time_indexed", False)), today=_opt_date(p.get("today")))
+        time_indexed=bool(p.get("time_indexed", False)), today=_opt_date(p.get("today")),
+        half_life_years=hl)
     candidates, abstract = to_abstract_observations(obs)
     # era_split is the evidence shape the string-blind body cannot compute (the abstract obs
-    # carry no value/date); the bridge projects it from the RAW obs + the doc_date covariate and
-    # the daemon reads it as a bool (move-4-design §2C). No doc_date ⇒ False.
-    es = LK.era_split(obs, dict(cov.doc_date)) if cov.doc_date else False
+    # carry no value/date); the bridge projects it from the RAW obs + the doc_date covariate at
+    # the construct's volatility, and the daemon reads it as a bool (move-4-design §2C). No
+    # doc_date ⇒ False.
+    es = LK.era_split(obs, dict(cov.doc_date), years=hl) if cov.doc_date else False
     return {"candidates": candidates, "observations": abstract,
             "rho": LK.extractor_reliability(), "indeterminate": indeterminate,
-            "era_split": es}
+            "era_split": es, "half_life_years": hl}
 
 
 def _probe_recency(deps: BridgeDeps, p: Payload) -> Payload:
@@ -180,8 +201,32 @@ def _probe_authority(_deps: BridgeDeps, p: Payload) -> Payload:
 
 
 def _probe_corroborate(deps: BridgeDeps, p: Payload) -> Payload:
+    question = _req_str(p, "question")
+    if p.get("reextract"):
+        # The owner_scoped attribution guard's enactment (Slice 2b): a whole-document, SUBJECT-AWARE
+        # re-read that REPLACES the local channel (nested dependence — the same documents). It
+        # returns ONE abstract observation mapping the re-read value to an existing candidate index
+        # — or NO observation when the re-read withholds / names a value outside the set (the
+        # partner's-id case: the re-read says the leader is the OWNER's value, not the partner's).
+        # The body re-decides on
+        # this alone; an empty observation reverts the posterior to NONE-dominant ⇒ the report is
+        # withheld (disagree ⇒ abstain, with no NONE-report atom needed). The string→abstract map
+        # stays bridge-side (the brain stays string-blind).
+        hits = _req_list(p, "hits")
+        candidates = [str(c) for c in (p.get("candidates") or [])]
+        model = str(p.get("model") or _JOINT_MODEL)
+        jr = JE.extract_joint(deps.root, question, hits, model=model, k=len(hits))
+        obs: list[Payload] = []
+        if jr.value is not None:
+            vn = LK._norm_value(jr.value)
+            idx = next((i for i, c in enumerate(candidates) if LK._norm_value(c) == vn), None)
+            if idx is not None:
+                obs = [{"reports": idx, "group": 0, "authority": 1.0,
+                        "subject_factor": 1.0, "time_factor": 1.0}]
+        return {"observations": obs, "gather_rho": _JOINT_RHO, "value": jr.value,
+                "served_model": jr.served_model, "tokens": jr.in_tokens + jr.out_tokens}
     hits = P.probe_corroborate(
-        deps.conn, _req_str(p, "question"), _req_str(p, "leader_value"),
+        deps.conn, question, _req_str(p, "leader_value"),
         k=int(p.get("k", _DEFAULT_K)), exclude_keys=list(p.get("exclude_keys") or ()))
     return {"hits": hits}
 
