@@ -48,6 +48,28 @@ DAEMON = os.environ.get("ANSWER_BRAIN_URL", "http://127.0.0.1:8799")
 _GATHER_RHO = 0.95
 _GATHER_COST = 0.02
 
+# Slice 2 — the corroborate model-tier ladder declared as the per-question transform MENU (the body
+# owns the menu; the daemon prices + schedules it). Each :voi tier carries a stated reliability + a
+# stated cost-in-utility (frozen-blind world-knowledge priors, monotone in model strength; to be
+# calibrated from verdicts). The recency guard + the owner-scoped attribution guard ride the same
+# menu; the owner guard re-reads with the strongest model (probe → corroborate_opus). schedule_decide
+# gathers the net_voi-argmax tier (the cost-efficient one); the body enacts it by probe name.
+_TIER_MODEL = {"corroborate_haiku": "claude-haiku-4-5",
+               "corroborate_sonnet": "claude-sonnet-4-6",
+               "corroborate_opus": "claude-opus-4-8"}
+_TIER_RHO = {"corroborate_haiku": 0.80, "corroborate_sonnet": 0.90, "corroborate_opus": 0.95}
+_TRANSFORMS = [
+    {"name": "recency", "probe": "recency", "kind": "guard", "trigger": "era_split"},
+    {"name": "corroborate_owner", "probe": "corroborate_opus", "kind": "guard",
+     "trigger": "owner_report"},
+    {"name": "corroborate_haiku", "probe": "corroborate_haiku", "kind": "voi",
+     "trigger": "below_bar", "rho": 0.80, "cost": 0.004},
+    {"name": "corroborate_sonnet", "probe": "corroborate_sonnet", "kind": "voi",
+     "trigger": "below_bar", "rho": 0.90, "cost": 0.012},
+    {"name": "corroborate_opus", "probe": "corroborate_opus", "kind": "voi",
+     "trigger": "below_bar", "rho": 0.95, "cost": 0.020},
+]
+
 
 def _post(url: str, payload: dict) -> dict | None:
     req = urllib.request.Request(url, data=json.dumps(payload).encode(),
@@ -93,31 +115,36 @@ def _decide_via_loop(question: str, k: int, *, rerank: bool = False) -> dict:
         return _post(f"{DAEMON}/decide", {
             "candidates": candidates, "observations": observations, "rho": r, "u_bar": u_bar,
             "era_split": era_split, "owner_scoped": owner, "applied_probes": applied,
-            "gather_rho": _GATHER_RHO, "gather_cost": _GATHER_COST})
+            "transforms": _TRANSFORMS})  # the data-driven menu (Slice 2); supersedes gather_rho/cost
 
     applied: list[str] = []
     dec = _decide(obs, rho, era, applied)
-    for _ in range(4):  # the gather loop — each probe fires at most once (daemon guarantees)
+    for _ in range(2 + sum(t["kind"] == "voi" for t in _TRANSFORMS)):  # bounded: each probe fires once
         if dec["effector"] != "gather":
             break
-        if dec.get("probe") == "recency":
+        probe = dec.get("probe") or ""
+        if probe == "recency":
             # recency is PRE-APPLIED in /extract (obs already decayed at the construct's
             # volatility) → acknowledge (mark applied, re-decide on the same posterior).
             applied = list(dict.fromkeys([*applied, "recency"]))
             dec = _decide(obs, rho, era, applied)
-        elif dec.get("probe") == "corroborate":
-            # the owner_scoped attribution guard: a subject-aware whole-doc re-read REPLACES the
-            # local channel. The joint's value → one observation (or NONE ⇒ empty ⇒ abstain).
+        elif probe.startswith("corroborate"):
+            # a subject-aware whole-doc re-read at the scheduled TIER's model REPLACES the local
+            # channel. The joint's value → one observation (or NONE ⇒ empty ⇒ abstain). The tier is
+            # named by the probe (corroborate_{haiku,sonnet,opus}); the owner guard uses opus. Each
+            # tier fires at most once (dedup on the probe name) ⇒ escalation across tiers terminates.
+            model = _TIER_MODEL.get(probe, "claude-opus-4-8")
+            tier_rho = _TIER_RHO.get(probe, _GATHER_RHO)
             cr = _post(f"{BRIDGE}/probe/corroborate",
                        {"reextract": True, "question": question, "hits": hits,
-                        "candidates": candidates,
+                        "candidates": candidates, "model": model, "rho": tier_rho,
                         # the re-read obs flows through the construct's volatility (the keystone):
                         # pass time_indexed + construct + the doc_date covariate so the bridge can
                         # decay a stale re-read instead of hand-setting time_factor=1.0.
                         "time_indexed": route["time_indexed"], "construct": route["construct"],
                         "covariates": {"doc_date": recency}})
             obs, rho, era = cr["observations"], cr["gather_rho"], False
-            applied = list(dict.fromkeys([*applied, "corroborate"]))
+            applied = list(dict.fromkeys([*applied, probe]))
             dec = _decide(obs, rho, era, applied)
         else:
             break
