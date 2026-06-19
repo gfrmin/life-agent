@@ -56,9 +56,16 @@ LOOKUP_ROUTE_VERSION = "1"
 LOOKUP_EXTRACT_VERSION = "1"
 LOOKUP_ANSWER_VERSION = "1"
 NARRATIVE_ANSWER_VERSION = "1"
+JOINT_EXTRACT_VERSION = "1"
 
 # Free-text output contract for both LLM stages (schema-3 keys require an output schema).
 TEXT_OUTPUT_SCHEMA: dict[str, Any] = {"type": "string"}
+JOINT_EXTRACT_OUTPUT_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {"value": {"type": ["string", "null"]},
+                   "confidence": {"type": "number"},
+                   "as_of": {"type": ["string", "null"]}},
+}
 
 # Distinct content types per stage. None of these may EVER enter pkm's
 # CHUNKABLE_CONTENT_TYPES — that is the retrieval gate of SPEC §18.9.
@@ -70,6 +77,7 @@ CONTENT_TYPE_LOOKUP_ROUTE = "application/x-ask-lookup-route+json"
 CONTENT_TYPE_LOOKUP_OBSERVATION = "application/x-ask-lookup-observation+json"
 CONTENT_TYPE_LOOKUP_ANSWER = "application/x-ask-lookup-answer+json"
 CONTENT_TYPE_NARRATIVE_ANSWER = "application/x-ask-narrative-answer+json"
+CONTENT_TYPE_JOINT_EXTRACT = "application/x-ask-joint-extract+json"
 
 _PENDING_QUEUE = Path("external") / "pending.txt"
 
@@ -240,6 +248,34 @@ def lookup_extract_key(question: str, chunk_sha: str, *, model: str,
                     producer_version=LOOKUP_EXTRACT_VERSION, producer_config={},
                     schema_version=3, inputs=inputs,
                     content_type=CONTENT_TYPE_LOOKUP_OBSERVATION)
+
+
+def joint_extract_key(question: str, chunk_set_sha: str, *, model: str,
+                      prompt_template: str, engine_version: str,
+                      output_schema: dict[str, Any]) -> StageKey:
+    """Key for one whole-document joint extraction (the ``extract@<model>`` edge): a cloud
+    model reads the ORDERED chunk-set as one document and returns a single calibrated
+    candidate. Keyed on (question, the content-hash of the ordered chunk-set, the model
+    identity, the prompt version) — the chunk-set hash is the early-cutoff hinge (the reranked
+    pool is NOT a pure corpus+query function, so it cannot key on a corpus digest). ``model``
+    MUST be a dated snapshot (``claude-opus-4-8-YYYYMMDD``), never an alias — LLM APIs are
+    non-stationary, so an alias key would serve a cache entry computed under a different
+    model (the served snapshot is recorded in metadata for audit)."""
+    inputs = {"chunk_set": chunk_set_sha, "question": question}
+    input_hash = _sha256(canonical_json(inputs))
+    cache_key = compute_cache_key(
+        input_hash, "life_agent.ask.joint_extract", JOINT_EXTRACT_VERSION, {},
+        schema_version=3,
+        model_identity={"provider": "anthropic", "model": model},
+        engine_version=engine_version,
+        prompt_template_hash=_sha256(prompt_template),
+        output_schema=output_schema,
+    )
+    return StageKey(cache_key=cache_key, input_hash=input_hash,
+                    producer_name="life_agent.ask.joint_extract",
+                    producer_version=JOINT_EXTRACT_VERSION, producer_config={},
+                    schema_version=3, inputs=inputs,
+                    content_type=CONTENT_TYPE_JOINT_EXTRACT)
 
 
 def lookup_answer_key(question: str, observations_hash: str,

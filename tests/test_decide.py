@@ -22,7 +22,8 @@ from life_agent.core.decide import u_assert
 
 # A representative Ū (gauge + the action-pricing latents); values mirror the family tests.
 UB: dict[str, float] = {"u_correct": 1.0, "u_abstain": 0.0, "u_wrong": -5.0,
-                        "u_hedged": 0.4, "lambda_int": 1.0, "kappa_att": 0.05}
+                        "u_wrong_scoped": -2.0, "u_hedged": 0.4, "lambda_int": 1.0,
+                        "kappa_att": 0.05}
 
 
 # --- the atom -------------------------------------------------------------------------------
@@ -39,9 +40,9 @@ def test_u_assert_is_linear_in_reliance() -> None:
 
 # --- behaviour preservation: both families derive byte-identically from u_assert ------------
 
-def _legacy_action_utilities(weights: list[float], u_bar: dict[str, float]
-                             ) -> dict[str, list[float]]:
-    """The pre-refactor formula (hand-written u_correct/u_wrong) — the regression oracle."""
+def _legacy_action_utilities(weights: list[float], u_bar: dict[str, float],
+                             p_attested: float) -> dict[str, list[float]]:
+    """The hand-written formula (u_correct/u_wrong + the flat scoped row) — the oracle."""
     k = len(weights) - 1
     j_star = max(range(k), key=lambda j: weights[j]) if k else None
     u_wrong = u_bar["u_wrong"]
@@ -50,12 +51,16 @@ def _legacy_action_utilities(weights: list[float], u_bar: dict[str, float]
     hedge = [u_bar["u_hedged"]] * k + [u_wrong]
     ask = [LK._ORACLE_P * u_bar["u_correct"] - u_bar["lambda_int"]] * (k + 1)
     abstain = [u_bar["u_abstain"]] * (k + 1)
-    return {"report": report, "hedge": hedge, "ask_clarify": ask, "abstain": abstain}
+    scoped_eu = p_attested * u_bar["u_hedged"] + (1.0 - p_attested) * u_bar["u_wrong_scoped"]
+    return {"report": report, "report_scoped": [scoped_eu] * (k + 1),
+            "hedge": hedge, "ask_clarify": ask, "abstain": abstain}
 
 
 def test_lookup_action_utilities_unchanged_by_derivation() -> None:
     for weights in ([0.7, 0.2, 0.1], [0.4, 0.6], [0.34, 0.33, 0.33], [1.0]):
-        assert LK.action_utilities(weights, UB) == _legacy_action_utilities(weights, UB)
+        for p_att in (0.0, 0.5, 0.9):
+            assert (LK.action_utilities(weights, UB, p_att)
+                    == _legacy_action_utilities(weights, UB, p_att))
 
 
 def test_narrative_include_eu_unchanged_by_derivation() -> None:
@@ -72,10 +77,10 @@ def test_family_action_orders_are_subsets_of_the_vocabulary() -> None:
 
 
 def test_lookup_minus_narrative_is_exactly_the_deferred_actions() -> None:
-    # narrative's restriction is principled — it lacks exactly hedge + ask_clarify (the
-    # deferred recency/u_hedged and clarify moves), nothing else.
+    # narrative's restriction is principled — it lacks exactly hedge, ask_clarify, and
+    # report_scoped (the deferred recency/u_hedged + clarify + scoped-claim moves), nothing else.
     assert (frozenset(DEC.LOOKUP_ACTION_ORDER) - frozenset(DEC.NARRATIVE_ACTION_ORDER)
-            == frozenset({"hedge", "ask_clarify"}))
+            == frozenset({"hedge", "ask_clarify", "report_scoped"}))
 
 
 def test_families_import_the_vocabulary_never_redeclare() -> None:

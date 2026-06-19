@@ -52,7 +52,8 @@ GAUGE: dict[str, float] = {"u_correct": 1.0, "u_abstain": 0.0}
 
 # The v0 latents (lookup-family scope). Growing this set is a model.yaml + code change,
 # never a silent addition.
-REQUIRED_LATENTS: tuple[str, ...] = ("u_wrong", "u_hedged", "lambda_int", "kappa_att")
+REQUIRED_LATENTS: tuple[str, ...] = ("u_wrong", "u_wrong_scoped", "u_hedged",
+                                     "lambda_int", "kappa_att")
 
 # Probability floor inside log() — the stated finite-arithmetic convention (the
 # likelihood twin of outcomes.SCORE_EPS).
