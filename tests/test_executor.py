@@ -19,12 +19,13 @@ def _flat(r: float) -> ReliabilityCurve:
     return ReliabilityCurve(bin_reliability=(r,) * 10)
 
 
-def _lk(action: str = "report", value: str = "V1", cred: float = 0.95) -> LK.LookupResult:
+def _lk(action: str = "report", value: str = "V1", cred: float = 0.95,
+        time_indexed: bool = False) -> LK.LookupResult:
     return LK.LookupResult(
         question="q?", construct="the value", action=action, eu=0.5,
         candidates=(value,), credences=(cred,), p_none=0.05, observations=(),
         n_hits=3, n_indeterminate=0, utility_fold_version="f" * 64,
-        answer_cache_key="k" * 64, rendered="rendered")
+        answer_cache_key="k" * 64, rendered="rendered", time_indexed=time_indexed)
 
 
 def _jr(value: str | None, c: float = 0.95) -> JointResult:
@@ -94,13 +95,15 @@ def test_local_withhold_lets_joint_replace() -> None:
     assert res.edge == "joint" and jx.calls == 1 and jd.calls == 1
 
 
-def test_joint_decide_receives_the_local_construct() -> None:
-    # the joint edge folds at the local route's construct — the threading the live wiring needs
-    # (decide_joint(root, question, construct, jr, ...) cannot be called without it).
-    res, _, jd = _run(owner_scoped=False, local=_lk(action="abstain"), joint=_jr("JV"))
+def test_joint_decide_receives_the_local_construct_and_time_indexing() -> None:
+    # the joint edge folds at the local route's construct AND time-indexing — the threading the
+    # live wiring needs (decide_joint cannot apply the recency model without time_indexed).
+    res, _, jd = _run(owner_scoped=False, local=_lk(action="abstain", time_indexed=True),
+                      joint=_jr("JV"))
     assert res.edge == "joint" and jd.calls == 1
-    assert jd.last_args[0].value == "JV"          # (jr, construct): the joint result first
+    assert jd.last_args[0].value == "JV"          # (jr, construct, time_indexed): the joint result
     assert jd.last_args[1] == "the value"         # the local route's construct, threaded through
+    assert jd.last_args[2] is True                # the route's time-indexing, threaded through
 
 
 def test_local_withhold_and_joint_null_abstains() -> None:

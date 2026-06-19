@@ -80,22 +80,28 @@ def _abstain_like(lk: LK.LookupResult) -> LK.LookupResult:
 
 
 def decide_joint(root: Path, question: str, construct: str, jr: JointResult,
-                 calib: ReliabilityCurve, *, n_hits: int, brain: Brain | None = None,
-                 decisions_path: Path | None = None, run_id: str = "ask") -> LK.LookupResult:
+                 calib: ReliabilityCurve, *, n_hits: int, time_indexed: bool = False,
+                 brain: Brain | None = None, decisions_path: Path | None = None,
+                 run_id: str = "ask") -> LK.LookupResult:
     """Fold a non-null joint extraction as a K=1 posterior at its CALIBRATED reliability and
-    decide. ``rho_override = calib(c)`` (never raw ``c``); ``time_indexed=False`` because the
-    joint prompt already prices currency into ``c`` (the as-of is carried for the render). The
-    single observation re-folds against the prior — the nested-dependence "replace", not a pool
-    with the local channel (which would re-introduce corroboration-count stale amplification)."""
+    decide. ``rho_override = calib(c)`` (never raw ``c``). Currency is the recency model's job,
+    NOT the model's self-report: measured, the joint extractor dated the permanent facts and left
+    the stale values undated, and was underconfident on a correct read — so ``as_of``/``c`` can't
+    price staleness. Instead the observation carries the route's ``time_indexed`` and
+    ``time_factor(as_of, time_indexed)`` — the same age decay the single-pass path applies via its
+    per-hit covariates. A volatile construct with no usable date attenuates to the undated marginal;
+    a permanent construct does not decay (so a confident DOB read survives where a stale phone does
+    not). The single observation re-folds against the prior — the nested-dependence "replace"."""
     assert jr.value is not None
     r = calib.calibrate(jr.confidence)
+    tf = LK.time_factor(jr.as_of, time_indexed=time_indexed)
     obs = LK.Observation(
         card_n=1, artifact_cache_key=jr.cache_key, obs_cache_key=jr.cache_key,
         value_raw=jr.value, value_norm=LK._norm_value(jr.value), quote="",
-        authority_class="joint", authority=1.0, subject_factor=1.0, time_factor=1.0,
+        authority_class="joint", authority=1.0, subject_factor=1.0, time_factor=tf,
         doc_date=jr.as_of)
     return LK.decide_and_record(root, question, construct, [obs], 0, n_hits=n_hits,
-                                time_indexed=False, brain=brain,
+                                time_indexed=time_indexed, brain=brain,
                                 decisions_path=decisions_path, run_id=run_id, rho_override=r)
 
 
@@ -103,11 +109,13 @@ def answer_question(*, owner_scoped: bool, u_bar: dict[str, float],
                     calib_local: ReliabilityCurve, calib_joint: ReliabilityCurve,
                     local_fn: Callable[[], LK.LookupResult | None],
                     joint_extract_fn: Callable[[], JointResult],
-                    joint_decide_fn: Callable[[JointResult, str], LK.LookupResult],
+                    joint_decide_fn: Callable[[JointResult, str, bool], LK.LookupResult],
                     ) -> ExecutorResult:
     """One escalation step (P1). Edges injected: ``local_fn`` (the typed lookup answer, None ⇒
-    MISS), ``joint_extract_fn`` (run the joint edge), ``joint_decide_fn(jr, construct)`` (fold a
-    non-null joint result at the local route's ``construct`` — :func:`decide_joint`).
+    MISS), ``joint_extract_fn`` (run the joint edge), and ``joint_decide_fn(jr, construct,
+    time_indexed)`` — fold a non-null joint result at the local route's ``construct`` + its
+    time-indexing (the latter lets the recency model decay a stale volatile read; see
+    :func:`decide_joint`).
 
     v0 limitation, stated not silent: the joint edge only escalates from a *decided* local (a
     commit or a withhold-with-observations). When ``local_fn`` returns None — the route declined,
@@ -133,7 +141,8 @@ def answer_question(*, owner_scoped: bool, u_bar: dict[str, float],
             return ExecutorResult(lk, "local+verify", cloud)   # the joint edge confirms → keep
         return ExecutorResult(_abstain_like(lk), "verify_abstain", cloud)  # disagree → abstain
 
-    # local withheld / sub-floor → the joint edge replaces it (at the local route's construct)
+    # local withheld / sub-floor → the joint edge replaces it (at the local route's construct +
+    # its time-indexing, so the recency model decays a stale volatile read the same way)
     if jr.value is None:
         return ExecutorResult(_abstain_like(lk), "joint_abstain", cloud)
-    return ExecutorResult(joint_decide_fn(jr, lk.construct), "joint", cloud)
+    return ExecutorResult(joint_decide_fn(jr, lk.construct, lk.time_indexed), "joint", cloud)

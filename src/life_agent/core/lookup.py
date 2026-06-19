@@ -289,6 +289,10 @@ class LookupResult:
     as_of: str | None = None
     scoped_value: str | None = None
     scoped_p: float = 0.0
+    # the route's time-indexing of the construct (a volatile attribute decays with document age;
+    # a permanent one does not). Surfaced so a downstream edge (the joint extractor) can apply the
+    # same recency model the single-pass path applies via its per-hit covariates.
+    time_indexed: bool = False
 
 
 def _sha(text: str) -> str:
@@ -871,7 +875,8 @@ def decide_and_record(root: Path, question: str, construct: str,
         observations=tuple(observations), n_hits=n_hits,
         n_indeterminate=indeterminate, utility_fold_version=fold_ver,
         answer_cache_key=akey.cache_key, rendered="",
-        as_of=as_of, scoped_value=scoped_value, scoped_p=p_attested)
+        as_of=as_of, scoped_value=scoped_value, scoped_p=p_attested,
+        time_indexed=time_indexed)
     result = dataclasses.replace(result, rendered=render(result))
 
     DEC.append(decisions_path if decisions_path is not None else config.DECISIONS_LOG,
