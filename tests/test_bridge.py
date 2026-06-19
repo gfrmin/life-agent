@@ -87,3 +87,62 @@ def test_empty_observations_yield_empty_mapping() -> None:
     candidates, abstract = to_abstract_observations([])
     assert candidates == []
     assert abstract == []
+
+
+# ── The keystone: the corroborate re-read carries recency (no transform reports stale as current) ──
+from life_agent.bridge import server as SRV  # noqa: E402
+from life_agent.core.joint_extract import JointResult  # noqa: E402
+
+
+def _jr(value: str | None, as_of: str | None = None) -> JointResult:
+    return JointResult(value=value, confidence=0.9, as_of=as_of)
+
+
+def _hit(key: str, text: str) -> dict:
+    return {"artifact_cache_key": key, "chunk_text": text}
+
+
+def _p(time_indexed: bool, construct: str | None, doc_date: dict, today: str) -> dict:
+    return {"time_indexed": time_indexed, "construct": construct, "today": today,
+            "covariates": {"doc_date": doc_date}}
+
+
+def test_corroborate_time_factor_attenuates_a_stale_source() -> None:
+    # a re-read value whose only SOURCE doc is old must decay (the q-006 confident-stale bug):
+    # address half-life 7y, source dated 14y back ⇒ 0.5^(14/7) = 0.25, NOT 1.0.
+    jr = _jr("old st")
+    hits = [_hit("d0", "i live at old st now")]
+    tf = SRV._corroborate_time_factor(jr, hits, _p(True, "address", {"d0": "2010-01-01"}, "2024-01-01"))
+    assert tf < 0.3
+
+
+def test_corroborate_time_factor_keeps_a_fresh_source_current() -> None:
+    jr = _jr("new ave")
+    hits = [_hit("d0", "moved to new ave")]
+    tf = SRV._corroborate_time_factor(jr, hits, _p(True, "address", {"d0": "2023-09-01"}, "2024-01-01"))
+    assert tf > 0.9
+
+
+def test_corroborate_time_factor_takes_the_freshest_attestation() -> None:
+    # the value is attested in BOTH a stale and a recent doc ⇒ as current as its freshest source.
+    jr = _jr("main rd")
+    hits = [_hit("old", "main rd"), _hit("new", "main rd")]
+    p = _p(True, "address", {"old": "2008-01-01", "new": "2023-09-01"}, "2024-01-01")
+    assert SRV._corroborate_time_factor(jr, hits, p) > 0.9
+
+
+def test_corroborate_time_factor_undated_source_attenuates_to_unknown() -> None:
+    # value present but its source is undated under a time-indexed construct ⇒ _A_TIME_UNKNOWN.
+    from life_agent.core.lookup import _A_TIME_UNKNOWN
+    jr = _jr("somewhere")
+    hits = [_hit("d0", "somewhere")]
+    tf = SRV._corroborate_time_factor(jr, hits, _p(True, "address", {}, "2024-01-01"))
+    assert tf == _A_TIME_UNKNOWN
+
+
+def test_corroborate_time_factor_passes_through_a_permanent_construct() -> None:
+    # a non-time-indexed construct (a DOB/id) never decays — 1.0 regardless of source age.
+    jr = _jr("12345")
+    hits = [_hit("d0", "id 12345")]
+    tf = SRV._corroborate_time_factor(jr, hits, _p(False, "date_of_birth", {"d0": "2008-01-01"}, "2024-01-01"))
+    assert tf == 1.0
