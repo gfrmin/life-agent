@@ -50,6 +50,7 @@ from life_agent.core import outcomes as O
 from life_agent.core import probes as P
 from life_agent.core import reactions as RX
 from life_agent.core import retrieval as RET
+from life_agent.core import volatility as VOL
 
 HOST = os.environ.get("LIFE_AGENT_BRIDGE_HOST", "127.0.0.1")
 PORT = int(os.environ.get("LIFE_AGENT_BRIDGE_PORT", "8798"))  # adjacent to the daemon's 8799
@@ -150,18 +151,24 @@ def _retrieve(deps: BridgeDeps, p: Payload) -> Payload:
 
 def _extract(deps: BridgeDeps, p: Payload) -> Payload:
     cov = _covariates(p.get("covariates") or {})
+    # the construct's volatility half-life (the world-knowledge currency prior): a volatile
+    # attribute's stale attestation decays in time_factor, a permanent one (DOB/id) does not.
+    # The brain never sees it — it is folded into each observation's already-multiplied time_factor.
+    hl = VOL.half_life(p.get("construct"))
     obs, indeterminate = LK.observe_hits(
         deps.root, _req_str(p, "question"), _req_list(p, "hits"),
         client=deps.client, covariates=cov,
-        time_indexed=bool(p.get("time_indexed", False)), today=_opt_date(p.get("today")))
+        time_indexed=bool(p.get("time_indexed", False)), today=_opt_date(p.get("today")),
+        half_life_years=hl)
     candidates, abstract = to_abstract_observations(obs)
     # era_split is the evidence shape the string-blind body cannot compute (the abstract obs
-    # carry no value/date); the bridge projects it from the RAW obs + the doc_date covariate and
-    # the daemon reads it as a bool (move-4-design §2C). No doc_date ⇒ False.
-    es = LK.era_split(obs, dict(cov.doc_date)) if cov.doc_date else False
+    # carry no value/date); the bridge projects it from the RAW obs + the doc_date covariate at
+    # the construct's volatility, and the daemon reads it as a bool (move-4-design §2C). No
+    # doc_date ⇒ False.
+    es = LK.era_split(obs, dict(cov.doc_date), years=hl) if cov.doc_date else False
     return {"candidates": candidates, "observations": abstract,
             "rho": LK.extractor_reliability(), "indeterminate": indeterminate,
-            "era_split": es}
+            "era_split": es, "half_life_years": hl}
 
 
 def _probe_recency(deps: BridgeDeps, p: Payload) -> Payload:
