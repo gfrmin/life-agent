@@ -223,6 +223,46 @@ def coverage_posterior(outcomes_path: Path = config.OUTCOMES_LOG
     return (a, b), n
 
 
+# --- the verdict → cell learning loop (the owner IS the gold) ----------------------------
+
+def owner_claim_outcomes(result: "NarrativeResult", question_id: str,
+                         verdicts: Mapping[int, bool], *, run_id: str = "dogfood",
+                         ) -> list[O.OutcomeEvent]:
+    """Turn the owner's per-claim verdicts into ``eval_claim`` outcomes — the live twin of
+    ``run_eval.narrative_claim_outcome`` with the owner standing in for the gold. ``verdicts``
+    maps a claim index → True(correct) / False(incorrect); ONLY verdicted claims emit (DISCLOSED
+    selection — an unjudged claim leaves its cell at the current posterior, never a silent vote).
+    The events carry the claim's audit cell + asserted credence + the CURRENT instrument identity,
+    so ``population_posteriors`` re-folds the named cell on the next answer — closing the learning
+    loop the offline grader left open. Crucially, a grounded-but-stale claim verdicted INCORRECT
+    LOWERS its (verified) cell: the owner teaches that grounded ≠ current-correct."""
+    events: list[O.OutcomeEvent] = []
+    for i, c in enumerate(result.claims):
+        if i not in verdicts:
+            continue
+        events.append(O.OutcomeEvent(
+            tx_time=O.now_iso(), run_id=run_id, question_id=question_id,
+            claim=c.text[:200], construct="claim",
+            grade="CORRECT" if verdicts[i] else "INCORRECT", grader="eval_claim",
+            instrument_identity=instrument_identity(),
+            lineage_keys=(result.answer_cache_key,),
+            probability=c.credence,
+            signals={"audit_cell": c.cell, "included": c.included}))
+    return events
+
+
+def record_owner_verdicts(result: "NarrativeResult", question_id: str,
+                          verdicts: Mapping[int, bool], *, run_id: str = "dogfood",
+                          outcomes_path: Path = config.OUTCOMES_LOG) -> int:
+    """Append the owner's per-claim verdicts as ``eval_claim`` outcomes (the cell-learning fold).
+    Returns the number of outcomes written. Idempotent only by content-addressed reuse upstream —
+    callers dedupe by not re-judging the same answer."""
+    events = owner_claim_outcomes(result, question_id, verdicts, run_id=run_id)
+    for e in events:
+        O.append(outcomes_path, e)
+    return len(events)
+
+
 # --- M4: the per-claim inclusion decision under Ū ----------------------------------------
 
 def include_eu(p: float, u_bar: Mapping[str, float]) -> float:
