@@ -269,3 +269,41 @@ def test_narrative_answer_key_moves_with_the_folds(migrated_root: Path,
                            utility_fold_version="fold-1",
                            outcomes_path=opath, decisions_path=dpath)
     assert nv3.answer_cache_key != nv1.answer_cache_key
+
+
+def test_owner_verdicts_move_the_verified_cell(tmp_path: Path) -> None:
+    # The verdict → cell learning loop (the owner IS the gold): per-claim verdicts write eval_claim
+    # outcomes that population_posteriors folds. The q-007 lesson — a grounded-but-stale claim
+    # verdicted INCORRECT LOWERS the verified cell (grounded ≠ current-correct).
+    claims = (
+        N.Claim(text="ONE ZERO is your current bank", cites=(1,), cell="verified",
+                credence=0.71, included=False, eu_include=-0.4),
+        N.Claim(text="Hapoalim is your bank", cites=(2,), cell="verified",
+                credence=0.71, included=False, eu_include=-0.4),
+    )
+    result = N.NarrativeResult(
+        question="which banks hold my accounts?", action="abstain", eu=0.0,
+        abstain_reason="all claims below threshold", claims=claims, coverage=(7.0, 6.0),
+        coverage_n=13, cell_posteriors={}, utility_fold_version="v0", answer_cache_key="ak",
+        rendered="")
+    out = tmp_path / "outcomes.jsonl"
+    n = N.record_owner_verdicts(result, "q-007", {0: True, 1: False}, outcomes_path=out)
+    assert n == 2
+    post = N.population_posteriors(out)
+    assert post["verified"] == (4.0, 3.0)              # prior (3,2) +1 correct +1 incorrect
+    assert post["unsupported"] == N._CELL_PRIORS["unsupported"]   # an unjudged cell is untouched
+
+
+def test_owner_verdicts_only_emit_for_judged_claims(tmp_path: Path) -> None:
+    # DISCLOSED selection — an unjudged claim casts no silent vote.
+    claims = (N.Claim(text="x", cites=(1,), cell="verified", credence=0.6, included=False,
+                      eu_include=-0.1),
+              N.Claim(text="y", cites=(2,), cell="unverifiable", credence=0.5, included=False,
+                      eu_include=-0.2))
+    result = N.NarrativeResult(question="q", action="abstain", eu=0.0, abstain_reason="r",
+                               claims=claims, coverage=(1.0, 1.0), coverage_n=0,
+                               cell_posteriors={}, utility_fold_version="v0",
+                               answer_cache_key="ak", rendered="")
+    events = N.owner_claim_outcomes(result, "q-x", {0: True})   # only claim 0 judged
+    assert len(events) == 1 and events[0].grade == "CORRECT"
+    assert events[0].signals["audit_cell"] == "verified"
