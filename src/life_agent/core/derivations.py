@@ -57,6 +57,7 @@ LOOKUP_EXTRACT_VERSION = "1"
 LOOKUP_ANSWER_VERSION = "1"
 NARRATIVE_ANSWER_VERSION = "1"
 JOINT_EXTRACT_VERSION = "1"
+TEMPORAL_INTENT_VERSION = "1"
 
 # Free-text output contract for both LLM stages (schema-3 keys require an output schema).
 TEXT_OUTPUT_SCHEMA: dict[str, Any] = {"type": "string"}
@@ -78,6 +79,7 @@ CONTENT_TYPE_LOOKUP_OBSERVATION = "application/x-ask-lookup-observation+json"
 CONTENT_TYPE_LOOKUP_ANSWER = "application/x-ask-lookup-answer+json"
 CONTENT_TYPE_NARRATIVE_ANSWER = "application/x-ask-narrative-answer+json"
 CONTENT_TYPE_JOINT_EXTRACT = "application/x-ask-joint-extract+json"
+CONTENT_TYPE_TEMPORAL_INTENT = "application/x-ask-temporal-intent+json"
 
 _PENDING_QUEUE = Path("external") / "pending.txt"
 
@@ -223,6 +225,30 @@ def lookup_route_key(question: str, *, model: str, prompt_template: str,
                     producer_version=LOOKUP_ROUTE_VERSION, producer_config={},
                     schema_version=3, inputs=inputs,
                     content_type=CONTENT_TYPE_LOOKUP_ROUTE)
+
+
+def temporal_intent_key(question: str, *, model: str, prompt_template: str,
+                        engine_version: str, output_schema: dict[str, Any]) -> StageKey:
+    """Key for one temporal-intent verdict (temporal-scope stage): does the question ask about
+    the owner's PRESENT state, a HISTORICAL/ever reading, or AS-OF a named time? Local model,
+    cached per question — surfaced and recorded; a misclassification degrades to ``unscoped``
+    (the indeterminate, never a silent scope choice). Mirrors :func:`lookup_route_key`."""
+    inputs = {"question": question}
+    input_hash = _sha256(canonical_json(inputs))
+    cache_key = compute_cache_key(
+        input_hash, "life_agent.ask.temporal_intent", TEMPORAL_INTENT_VERSION, {},
+        schema_version=3,
+        model_identity={"provider": "ollama", "model": model,
+                        "inference_params": {"temperature": 0.0}},
+        engine_version=engine_version,
+        prompt_template_hash=_sha256(prompt_template),
+        output_schema=output_schema,
+    )
+    return StageKey(cache_key=cache_key, input_hash=input_hash,
+                    producer_name="life_agent.ask.temporal_intent",
+                    producer_version=TEMPORAL_INTENT_VERSION, producer_config={},
+                    schema_version=3, inputs=inputs,
+                    content_type=CONTENT_TYPE_TEMPORAL_INTENT)
 
 
 def lookup_extract_key(question: str, chunk_sha: str, *, model: str,
