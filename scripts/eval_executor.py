@@ -90,17 +90,16 @@ def _owner_scoped(question: str) -> bool:
 
 _WITHHOLD = frozenset({"miss", "abstain", "hedge", "ask_clarify"})
 
-# Slice 3 — the :grow trigger is BUILT but GATED OFF by default (a lever needs its guard). When on,
-# a withholding/miss terminal enlarges the candidate set once (rerank) and re-decides. Measured live
-# (2026-06-20): grow lifts CORRECT 3→4/18 (q-019 recovered) BUT reopens the cardinal sin — q-014
-# ("my mobile") reports the owner's STALE HK number "+852 56671348" (gold is the Israeli mobile) as
-# CONFIDENT_WRONG. The rerank surfaces the stale value and the owner-scoped guard confirms ATTRIBUTION
-# (it IS the owner's number) but not VALUE-STALENESS; the keystone's "freshest attestation" recency
-# is fooled because the old HK number is *mentioned* in a recent doc (max doc-date stays high).
-# Discovery (grow) reopens a staleness hole the per-candidate volatility closed for the cheap pass.
-# The guard grow needs: a staleness-aware corroborate (the value's PRIMARY-assertion date, not its
-# freshest mention) — until it lands, grow stays off so the gate (0 confident-wrong) holds.
-_GROW = os.environ.get("ANSWER_BRAIN_GROW", "") == "1"
+# Slice 3 — the :grow trigger, now ON by default (its guard landed). A withholding/miss terminal
+# enlarges the candidate set once (rerank) and re-decides. Grow first reopened the cardinal sin —
+# q-014 ("my mobile") reported the owner's STALE HK number as CONFIDENT_WRONG — but the trace found
+# the true cause: the route model mis-classified "mobile phone number" as time_indexed=False, so
+# volatility NEVER decayed it (every candidate tf=1.0 over 2011–2021 docs). The guard is the currency
+# fix in the bridge (`/route` derives time_indexed from the volatility table, not the model's guess):
+# mobile/address/employer decay, DOB/national-id/tax-id do not. With it, grow is SAFE — measured live
+# (2026-06-20): CORRECT 3→4/18 (q-019 recovered, q-014 now ABSTAINS) at real-CONFIDENT_WRONG 0.
+# `ANSWER_BRAIN_GROW=0` disables it.
+_GROW = os.environ.get("ANSWER_BRAIN_GROW", "1") != "0"
 
 
 def _decide_via_loop(question: str, k: int, *, rerank: bool = False) -> dict:
@@ -111,7 +110,7 @@ def _decide_via_loop(question: str, k: int, *, rerank: bool = False) -> dict:
     WITHHOLDING or MISS terminal (∧ not-yet-grown) enlarges the candidate set ONCE — rerank over-
     fetches a wide pool and listwise-reorders it, surfacing a buried gold into extraction — and
     re-decides on the larger set. Adopt the grown decision when it reports, or when the cheap pass
-    found no candidates at all; else keep the cheap withhold. GATED OFF by default (see `_GROW`)."""
+    found no candidates at all; else keep the cheap withhold. ON by default (see `_GROW`)."""
     route = _post(f"{BRIDGE}/route", {"question": question})
     if route is None:  # not a typed lookup → the brain's narrative case (a coverage MISS here)
         return {"effector": "narrative", "asserted": [], "candidates": [], "credences": [],
