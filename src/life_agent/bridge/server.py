@@ -45,6 +45,7 @@ from life_agent import owner
 from life_agent.bridge.observations import to_abstract_observations
 from life_agent.core import config
 from life_agent.core import decisions as DEC
+from life_agent.core import expansion as EXP
 from life_agent.core import joint_extract as JE
 from life_agent.core import lookup as LK
 from life_agent.core import matching as MATCH
@@ -160,7 +161,14 @@ def _route(deps: BridgeDeps, p: Payload) -> Payload | None:
 
 def _retrieve(deps: BridgeDeps, p: Payload) -> Payload:
     question = _req_str(p, "question")
-    query = RET.build_query(question, str(p.get("terms", "")))
+    # Query expansion (a :grow recall mode): the owner asks in English, the docs are English AND
+    # Hebrew, so a raw query can't reach a Hebrew doc — the dominant retrieval-miss (10/18). `expand`
+    # appends native-script keywords (build_query always keeps the raw words, so recall only grows).
+    # It DILUTES strong literals, so the body uses it only on the grow pass, never the cheap first.
+    terms = str(p.get("terms", ""))
+    if p.get("expand"):
+        terms = (terms + " " + EXP.expand_terms(question, root=deps.root)).strip()
+    query = RET.build_query(question, terms)
     k = int(p.get("k", _DEFAULT_K))
     # the body's recall action (Slice 4): over-fetch a wide lexical pool and listwise-rerank to
     # top-k, surfacing a buried gold into extraction. A reorder, not a VOI gather — it grows the
