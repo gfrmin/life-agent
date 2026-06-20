@@ -769,7 +769,8 @@ def answer(conn: duckdb.DuckDBPyConnection, question: str,
                                              caller="ask.lookup")}
                 cov = LK.HitCovariates(subject_state=subject_state_of,
                                        doc_date=date_of)
-                lk = LK.lookup_answer(root, question, hits, covariates=cov)
+                lk = LK.lookup_answer(root, question, hits, covariates=cov,
+                                      scope=INTENT_LAST or "unscoped")
         except Exception as e:  # fail-open by contract, reason printed
             print(LK.GRAMMAR["fallthrough"].format(reason=f"failed: {e}"))
             lk = None
@@ -789,11 +790,12 @@ def answer(conn: duckdb.DuckDBPyConnection, question: str,
     STAGES_LAST["synthesize"] = scache
     if not families:  # the monolithic instrument: raw synthesize prose, unscored
         return (text, cards, scores)
-    return (_narrative_scored(root, question, text, cards), cards, scores)
+    return (_narrative_scored(root, question, text, cards,
+                              scope=INTENT_LAST or "unscoped"), cards, scores)
 
 
 def _narrative_scored(root: Path | None, question: str, text: str,
-                      cards: list[C.SourceCard]) -> str:
+                      cards: list[C.SourceCard], *, scope: str = "unscoped") -> str:
     """The narrative family's scorer (foundations §7) over the synthesize proposal:
     parse → audit cells → population credences → per-claim EU decision → labeled
     render. Read-side policy — the proposal artifact and its keys are untouched —
@@ -806,7 +808,7 @@ def _narrative_scored(root: Path | None, question: str, text: str,
     try:
         # cast: the seam may be stubbed to None (the conftest hermetic fixture)
         nv = cast("N.NarrativeResult | None",
-                  N.narrative_answer(root, question, text, cards,
+                  N.narrative_answer(root, question, text, cards, scope=scope,
                                      synthesize_cache_key=STAGES_LAST.get("synthesize")))
     except Exception as e:  # fail-open by contract, reason printed
         print(N.GRAMMAR["fallthrough"].format(reason=f"failed: {e}"))
