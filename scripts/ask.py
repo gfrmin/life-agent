@@ -57,6 +57,7 @@ from life_agent.core import reactions as R
 from life_agent.core import subject as S
 from life_agent.core import synthesis as SYN
 from life_agent.core import temporal as T
+from life_agent.core import temporal_intent as TI
 from life_agent.core.retrieval import build_query, retrieve_set
 from life_agent.tasks import events as ev
 from life_agent.tasks import knowledge
@@ -237,6 +238,12 @@ NARRATIVE_LAST: N.NarrativeResult | None = None
 # absent or unclear classification is indeterminate — KEPT and named (the D2
 # gate). The report travels like TEMPORAL_LAST; /derive consumes both.
 SUBJECT_LAST: TemporalReport | None = None
+
+# The question's temporal SCOPE (present / historical / as_of / unscoped), classified once per
+# question and SURFACED in the footer (it changes no decision yet — the scope-aware inclusion
+# slice is gate-adjacent and frozen-blind). Travels like TEMPORAL_LAST; None when unresolved.
+INTENT_LAST: TI.Scope | None = None
+INTENT_FOOTER = "temporal scope: {scope}"
 
 # The trigger: an UNCHAINED first-person possessive. "my X" fires; a
 # relational possessive — "my partner's X" — hands the subject to someone
@@ -643,14 +650,25 @@ def answer(conn: duckdb.DuckDBPyConnection, question: str,
     (:func:`_rerank_hits`) pick the top-k — the recall lever for golds BM25 buried below
     word-overlapping noise (measured: rescues ~7/8 of the eval's addressable retrieval
     misses). Default ``False``. Returns (answer_text, cards, {card_n: score})."""
-    global TEMPORAL_LAST, SUBJECT_LAST, STAGES_LAST, LOOKUP_LAST, NARRATIVE_LAST
+    global TEMPORAL_LAST, SUBJECT_LAST, STAGES_LAST, LOOKUP_LAST, NARRATIVE_LAST, INTENT_LAST
     TEMPORAL_LAST = None
     SUBJECT_LAST = None
     STAGES_LAST = {}
     LOOKUP_LAST = None
     NARRATIVE_LAST = None
+    INTENT_LAST = None
     root = _pkm_root()
     profile = owner.load_profile()
+    # temporal-scope intent (cached, question-only): surfaced + recorded, decision-neutral.
+    # Gated on a live session (conn) — the cache-replay / eval path (conn=None) skips it, as the
+    # keystone's date probe does. Fail-open and NAMED (interaction contract): a classifier failure
+    # leaves no label, never a wrong one; the scope-aware inclusion that would USE it is the next,
+    # gate-adjacent slice.
+    if conn is not None and root is not None:
+        try:
+            INTENT_LAST = TI.intent_verdict(root, question)
+        except Exception as e:  # noqa: BLE001 — fail-open by contract, reason printed
+            print(f"  (temporal scope: unclassified — {e})")
     terms = _expand_terms(question, root=root, no_cache=no_cache) if expand else ""
     if terms:
         print(f"  ↳ expanded: {terms}")
@@ -956,8 +974,10 @@ def ask_once(conn: duckdb.DuckDBPyConnection, question: str, k: int,
                                  recent=recent)
     audit = guard.audit(text, cards)  # pure and cheap — recomputed, never cached
     reports = [r for r in (TEMPORAL_LAST, SUBJECT_LAST) if r is not None]
-    render(text, cards, scores, audit,
-           footer="\n".join(r.footer for r in reports if r.footer))
+    footer_lines = [r.footer for r in reports if r.footer]
+    if INTENT_LAST is not None:
+        footer_lines.append(INTENT_FOOTER.format(scope=INTENT_LAST))
+    render(text, cards, scores, audit, footer="\n".join(footer_lines))
     capture(question, text, cards, scores, audit)
     return [t for r in reports for t in r.targets]
 
