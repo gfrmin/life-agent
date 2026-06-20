@@ -113,8 +113,12 @@ derive` remedies; `/derive` materialises them alongside doc_dates.
 **After each answer:** sources are listed with scores; a temporal answer carries the
 nothing-vanishes footer (admitted / excluded-by-date / undated / not-yet-derived, each set
 named with its remedy); an owner-filtered answer carries the same contract's subject footer
-(admitted / someone-else's / generic-template / unclear-kept / underived-kept); the two
-compose — both footers print when both modes ran; unverified citations are flagged by the
+(admitted / someone-else's / generic-template / unclear-kept / underived-kept); every answer
+also carries a one-line **temporal-scope** footer (`temporal scope: present / historical /
+as_of / unscoped` — `life_agent.core.temporal_intent`, the question's tense classified once and
+cached) — surfaced and recorded only, it steers no decision yet (the scope-aware inclusion that
+would use it is gate-adjacent, frozen-blind); a classifier failure prints a notice and omits the
+line, never a wrong scope; the footers compose — all print when their modes ran; unverified citations are flagged by the
 citation guard; then one verdict key — `g`ood / `b`ad / `n`ote / Enter to skip — logs to
 the dogfood journal that feeds `FAILURES.md`.
 
