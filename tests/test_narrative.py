@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -29,6 +30,7 @@ from life_agent.core.narrative import (
     parse_claims,
     population_posteriors,
     render,
+    scope_decay,
 )
 
 # The utility posterior mean used throughout — explicit, so threshold arithmetic in
@@ -368,3 +370,66 @@ def test_owner_verdict_tags_claim_as_of_but_fold_reads_only_the_cell(tmp_path: P
     N.record_owner_verdicts(result, "q-007", {0: False}, outcomes_path=out)
     post = N.population_posteriors(out)
     assert post["verified"] == (3.0, 3.0)   # prior (3,2) + 1 incorrect — folded on the cell alone
+
+
+# --- scope-aware inclusion (slice 3): present-intent decays a DATED stale claim -------------
+
+_TODAY = date(2026, 1, 1)
+
+
+def test_scope_decay_only_present_and_dated() -> None:
+    # gate-safe: present + an OLD dated claim decays below its cell credence...
+    stale = scope_decay(0.9, "2010-01-01", "my address", "present", today=_TODAY)
+    assert stale < 0.9
+    # ...a RECENT dated claim is ~unchanged (factor ≈ 1)...
+    fresh = scope_decay(0.9, "2025-12-01", "my address", "present", today=_TODAY)
+    assert fresh == pytest.approx(0.9, abs=0.02)
+    # ...an UNDATED claim is untouched (a derivation gap, never penalised)...
+    assert scope_decay(0.9, None, "my address", "present", today=_TODAY) == 0.9
+    # ...and a NON-present scope is untouched whatever the date.
+    for sc in ("historical", "as_of", "unscoped"):
+        assert scope_decay(0.9, "2010-01-01", "my address", sc, today=_TODAY) == 0.9
+
+
+def test_scope_decay_never_raises_credence() -> None:
+    # the gate-safety invariant: the factor is in [0, 1], so decay can only lower p
+    for as_of in ("2000-01-01", "2025-06-01", "2026-01-01", None):
+        assert scope_decay(0.8, as_of, "my salary", "present", today=_TODAY) <= 0.8
+
+
+def _deep_verified(opath: Path, n: int = 8) -> None:
+    for _ in range(n):
+        O.append(opath, _claim_event(cell="verified", grade="CORRECT"))
+
+
+def test_narrative_answer_present_decays_a_dated_stale_claim(migrated_root: Path,
+                                                            tmp_path: Path) -> None:
+    # a dated STALE claim, includable under unscoped (cell ≈ 0.846), is decayed by a present-intent
+    # question — its rendered credence drops, and far enough back it falls below inclusion.
+    text = "Your registration number is 999999991. [1] It is renewed annually."
+    cards = [Card(n=1, text="certificate: registration number 999999991", as_of="2005-01-01")]
+    opath, dpath = tmp_path / "o.jsonl", tmp_path / "d.jsonl"
+    _deep_verified(opath)
+    base = narrative_answer(migrated_root, "q?", text, cards, scope="unscoped",
+                            u_bar=U, utility_fold_version="f", outcomes_path=opath,
+                            decisions_path=dpath)
+    pres = narrative_answer(migrated_root, "what is my registration number now?", text, cards,
+                            scope="present", u_bar=U, utility_fold_version="f",
+                            outcomes_path=opath, decisions_path=dpath)
+    base_c = base.claims[0].credence
+    pres_c = pres.claims[0].credence
+    assert pres_c < base_c                       # the present-intent decay lowered it
+    assert base.claims[0].as_of == "2005-01-01"  # the keystone date still threaded
+
+
+def test_narrative_answer_non_present_scope_matches_unscoped(migrated_root: Path,
+                                                            tmp_path: Path) -> None:
+    text = "Your registration number is 999999991. [1]"
+    cards = [Card(n=1, text="certificate: registration number 999999991", as_of="2005-01-01")]
+    opath, dpath = tmp_path / "o.jsonl", tmp_path / "d.jsonl"
+    _deep_verified(opath)
+    un = narrative_answer(migrated_root, "q?", text, cards, scope="unscoped", u_bar=U,
+                          utility_fold_version="f", outcomes_path=opath, decisions_path=dpath)
+    hist = narrative_answer(migrated_root, "q?", text, cards, scope="historical", u_bar=U,
+                            utility_fold_version="f", outcomes_path=opath, decisions_path=dpath)
+    assert hist.claims[0].credence == un.claims[0].credence  # historical does NOT decay

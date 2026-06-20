@@ -552,3 +552,32 @@ def test_lookup_answer_none_on_zero_grounded_observations(
                         [_hit("a" * 64, "nothing here")],
                         route_client=route, extract_client=extract)
     assert out is None  # coverage fallthrough — the narrative path answers
+
+
+def test_lookup_answer_scope_modulates_recency(monkeypatch: Any,
+                                               tmp_path: Path) -> None:
+    # The temporal-scope finish: a historical/as_of question suppresses the present-tense decay
+    # (you want the era value, not the current one); present/unscoped keep the construct's verdict.
+    # Gate-safe — it only removes a penalty. Seam test: capture the time_indexed observe_hits gets.
+    captured: dict[str, bool] = {}
+    monkeypatch.setattr(
+        LK, "route_question",
+        lambda root, q, client=None: LK.Route(construct="bank", time_indexed=True))
+
+    def _fake_observe(root: Path, q: str, hits: list[Any], **kw: Any) -> tuple[list[Any], int]:
+        captured["time_indexed"] = kw["time_indexed"]
+        return [], 0  # zero observations ⇒ lookup_answer returns None before any decision
+
+    monkeypatch.setattr(LK, "observe_hits", _fake_observe)
+
+    # call the REAL lookup_answer imported at module top (the autouse _hermetic_lookup stubs
+    # LK.lookup_answer to None, but our import bound the real function before that fixture ran).
+    assert lookup_answer(tmp_path, "what was my bank in 2022?", [],
+                         scope="historical") is None
+    assert captured["time_indexed"] is False
+    lookup_answer(tmp_path, "what is my bank?", [], scope="present")
+    assert captured["time_indexed"] is True          # present keeps the route verdict
+    lookup_answer(tmp_path, "my bank as of X?", [], scope="as_of")
+    assert captured["time_indexed"] is False
+    lookup_answer(tmp_path, "my bank?", [], scope="unscoped")
+    assert captured["time_indexed"] is True
