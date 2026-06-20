@@ -865,6 +865,7 @@ def decide_and_record(root: Path, question: str, construct: str,
 
 
 def lookup_answer(root: Path, question: str, hits: list[dict[str, Any]], *,
+                  scope: str = "unscoped",
                   brain: Brain | None = None,
                   route_client: Any | None = None,
                   extract_client: Any | None = None,
@@ -875,17 +876,24 @@ def lookup_answer(root: Path, question: str, hits: list[dict[str, Any]], *,
     """Run the single-pass lookup family over admitted hits. None ⇒ the narrative path
     answers (not routed as a lookup, or zero grounded observations — a coverage statement,
     not an abstention; the caller names the fallthrough). The gather-augmented variant is
-    :func:`life_agent.core.gather.gather_answer`; both share :func:`decide_and_record`."""
+    :func:`life_agent.core.gather.gather_answer`; both share :func:`decide_and_record`.
+
+    ``scope`` is the question's temporal intent (:mod:`life_agent.core.temporal_intent`). The
+    recency decay assumes a PRESENT reading; a ``historical``/``as_of`` question must NOT penalise
+    old attested values (you want the era value, not the current one), so it suppresses the decay
+    (``time_indexed`` off). ``present``/``unscoped`` keep the construct's volatility verdict —
+    unchanged on the present-tense path. Gate-safe: it only ever REMOVES a penalty."""
     route = route_question(root, question, client=route_client)
     if route is None:
         return None
+    effective_ti = route.time_indexed and scope not in ("historical", "as_of")
     observations, indeterminate = observe_hits(root, question, hits,
                                                client=extract_client,
                                                covariates=covariates,
-                                               time_indexed=route.time_indexed)
+                                               time_indexed=effective_ti)
     if not observations:
         return None
     return decide_and_record(
         root, question, route.construct, observations, indeterminate,
-        n_hits=len(hits), time_indexed=route.time_indexed, brain=brain,
+        n_hits=len(hits), time_indexed=effective_ti, brain=brain,
         decisions_path=decisions_path, run_id=run_id)

@@ -56,6 +56,7 @@ import hashlib
 import json
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -348,8 +349,26 @@ def render(result: NarrativeResult) -> str:
 
 # --- the family, end to end ---------------------------------------------------------------
 
+def scope_decay(credence: float, as_of: str | None, claim_text: str, scope: str,
+                *, today: "date | None" = None) -> float:
+    """The present-intent staleness decay (temporal-scope slice 3) — GATE-SAFE: it only ever
+    LOWERS a credence, so it can add abstention but never a new confident-wrong. Applies ONLY to
+    a present-scope question and ONLY to a DATED claim (an undated claim is a derivation gap, not
+    evidence of staleness — never penalise recall, [[verdict-rule-truth-relevance]]); a non-present
+    scope leaves the cell credence untouched. The decay is the lookup family's own
+    :func:`life_agent.core.lookup.time_factor` at the claim's volatility half-life — a recent
+    ``as_of`` → factor ≈ 1; an old one → < 1."""
+    if scope != "present" or as_of is None:
+        return credence
+    from life_agent.core import lookup as LK
+    from life_agent.core import volatility as VOL
+    return credence * LK.time_factor(as_of, time_indexed=True, today=today,
+                                     half_life_years=VOL.half_life(claim_text))
+
+
 def narrative_answer(root: Path, question: str, text: str,
                      cards: Iterable[SourceLike], *,
+                     scope: str = "unscoped",
                      u_bar: Mapping[str, float] | None = None,
                      utility_fold_version: str | None = None,
                      outcomes_path: Path | None = None,
@@ -377,8 +396,11 @@ def narrative_answer(root: Path, question: str, text: str,
     for claim_text, cites in parsed:
         cell = audit_cell(claim_text, cites, cards_by_n)
         a, b_ = cells[cell]
-        scored.append((claim_text, cites, cell, a / (a + b_),
-                       freshest_as_of(cites, as_of_by_n)))
+        as_of = freshest_as_of(cites, as_of_by_n)
+        # scope-aware inclusion: a present-intent question decays a DATED stale claim below the
+        # bar (gate-safe — only lowers p); the cell credence is recoverable from cell_posteriors.
+        credence = scope_decay(a / (a + b_), as_of, claim_text, scope)
+        scored.append((claim_text, cites, cell, credence, as_of))
     claims, action, eu, reason = decide_claims(scored, u_bar)
     coverage, coverage_n = coverage_posterior(opath)
 
@@ -388,13 +410,14 @@ def narrative_answer(root: Path, question: str, text: str,
     params = {"cells": {k: list(v) for k, v in sorted(cells.items())},
               "coverage": list(coverage),
               "kappa_att": u_bar["kappa_att"], "u_wrong": u_bar["u_wrong"],
+              "scope": scope,  # a decision input (the present-intent decay) — new scope ⇒ new artifact
               "instrument": instrument_identity()}
     claims_hash = _sha(json.dumps([{"text": t, "cites": list(c)} for t, c in parsed],
                                   sort_keys=True, ensure_ascii=False))
     akey = D.narrative_answer_key(question, claims_hash, utility_fold_version, params)
     content = json.dumps({
         "format_version": 1, "question": question, "action": action, "eu": eu,
-        "abstain_reason": reason,
+        "abstain_reason": reason, "scope": scope,
         "claims": [{"text": c.text, "cites": list(c.cites), "cell": c.cell,
                     "credence": c.credence, "included": c.included} for c in claims],
         "coverage": list(coverage), "coverage_n": coverage_n,
