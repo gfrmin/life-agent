@@ -11,7 +11,7 @@ byte-identical here — a divergence would orphan recorded syntheses).
 """
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -40,9 +40,14 @@ ANSWER_SYSTEM = (
 )
 
 
-def cards_from_hits(hits: Sequence[dict[str, Any]]) -> list[C.SourceCard]:
-    """Pure: number a retrieval set as cited source cards (mirrors ask.py `_cards_from_set`)."""
-    return [C.SourceCard(n=i + 1, text=h["chunk_text"].strip(), origin=h["origin"])
+def cards_from_hits(hits: Sequence[dict[str, Any]],
+                    dates: Mapping[str, str | None] | None = None) -> list[C.SourceCard]:
+    """Pure: number a retrieval set as cited source cards (mirrors ask.py `_cards_from_set`).
+    ``dates`` (artifact_cache_key → ISO doc_date, from :func:`probes.probe_recency`) attaches each
+    card's ``as_of`` for the temporal-scope render; omitted ⇒ ``as_of`` stays ``None`` (date-blind,
+    back-compat). The dates ride display only — the synthesize key still hashes hits, not cards."""
+    return [C.SourceCard(n=i + 1, text=h["chunk_text"].strip(), origin=h["origin"],
+                         as_of=(dates.get(h["artifact_cache_key"]) if dates else None))
             for i, h in enumerate(hits)]
 
 

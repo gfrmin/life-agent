@@ -14,6 +14,8 @@ class SourceCard:
     n: int
     text: str            # the cited text (a retrieved chunk)
     origin: str = ""     # provenance for the harness/display only; never shown to a blind judge
+    as_of: str | None = None  # the chunk's doc_date (ISO), display/provenance only — never shown to
+                              # the model (the synthesize prompt reads n+text); the temporal-scope render
 
 
 def render_sources_block(cards: list[SourceCard]) -> str:

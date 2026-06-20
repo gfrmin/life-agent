@@ -88,7 +88,8 @@ REASON_ALL_WITHHELD = "all claims below the inclusion threshold"
 
 # One grammar table for every rendered string (drift-gated; interaction contract).
 GRAMMAR: dict[str, str] = {
-    "claim": "- {text} {cites}— credence {p:.3f}",
+    "claim": "- {text} {cites}— credence {p:.3f}{asof}",
+    "as_of": ", as of {date}",   # the temporal-scope suffix; empty when the claim is undated
     "withheld": "({n} claims withheld: EU below inclusion at the utility posterior)",
     "abstain": "No answer asserted ({reason}).",
     "footer": ("narrative: {n_proposed} claims proposed → {n_included} included"
@@ -115,6 +116,8 @@ class Claim:
     credence: float
     included: bool
     eu_include: float
+    as_of: str | None = None   # freshest doc_date among the claim's cited cards (ISO), or None
+                               # when none is dated — the temporal-scope render + the outcome tag
 
 
 @dataclass(frozen=True)
@@ -235,7 +238,10 @@ def owner_claim_outcomes(result: "NarrativeResult", question_id: str,
     The events carry the claim's audit cell + asserted credence + the CURRENT instrument identity,
     so ``population_posteriors`` re-folds the named cell on the next answer — closing the learning
     loop the offline grader left open. Crucially, a grounded-but-stale claim verdicted INCORRECT
-    LOWERS its (verified) cell: the owner teaches that grounded ≠ current-correct."""
+    LOWERS its (verified) cell: the owner teaches that grounded ≠ current-correct. The event also
+    carries the claim's ``claim_as_of`` signal — recorded so a later slice can SEPARATE a
+    stale-INCORRECT from a never-true-INCORRECT; the current per-cell fold still reads only the
+    audit cell (the keystone is fold-neutral)."""
     events: list[O.OutcomeEvent] = []
     for i, c in enumerate(result.claims):
         if i not in verdicts:
@@ -247,7 +253,8 @@ def owner_claim_outcomes(result: "NarrativeResult", question_id: str,
             instrument_identity=instrument_identity(),
             lineage_keys=(result.answer_cache_key,),
             probability=c.credence,
-            signals={"audit_cell": c.cell, "included": c.included}))
+            signals={"audit_cell": c.cell, "included": c.included,
+                     "claim_as_of": c.as_of}))
     return events
 
 
@@ -275,20 +282,30 @@ def include_eu(p: float, u_bar: Mapping[str, float]) -> float:
     return p * u_assert(p, u_bar) - u_bar["kappa_att"]
 
 
-def decide_claims(scored: list[tuple[str, tuple[int, ...], str, float]],
+def freshest_as_of(cites: tuple[int, ...],
+                   as_of_by_n: Mapping[int, str | None]) -> str | None:
+    """The freshest (max ISO) doc_date among a claim's CITED cards, or None when none is dated.
+    ISO date strings order chronologically under lexicographic max — a present-intent reader can
+    see at a glance whether the cited evidence is current or stale (the keystone of temporal scope)."""
+    dated = [d for n in cites if (d := as_of_by_n.get(n)) is not None]
+    return max(dated) if dated else None
+
+
+def decide_claims(scored: list[tuple[str, tuple[int, ...], str, float, str | None]],
                   u_bar: Mapping[str, float]
                   ) -> tuple[tuple[Claim, ...], str, float, str]:
     """Per-claim inclusion under Ū; the answer action is ``report`` iff any claim
     clears (EU(report) = Σ included EU — the empty sum IS the abstain gauge). The per-claim
     threshold is the exact argmax over the 2ⁿ inclusion subsets — claims are independent and
     answer utility additive, so the powerset optimum factorises (the separability proof in
-    :mod:`life_agent.core.decide`).
+    :mod:`life_agent.core.decide`). Each scored tuple carries the claim's freshest cited ``as_of``
+    (display + outcome tag; it does NOT enter the inclusion EU — keystone is decision-neutral).
     Returns (claims in posterior order, action, eu, abstain_reason)."""
     claims = []
-    for text, cites, cell, p in scored:
+    for text, cites, cell, p, as_of in scored:
         eu_i = include_eu(p, u_bar)
         claims.append(Claim(text=text, cites=cites, cell=cell, credence=p,
-                            included=eu_i > u_bar["u_abstain"], eu_include=eu_i))
+                            included=eu_i > u_bar["u_abstain"], eu_include=eu_i, as_of=as_of))
     claims.sort(key=lambda c: c.credence, reverse=True)
     included = [c for c in claims if c.included]
     if not claims:
@@ -310,9 +327,10 @@ def render(result: NarrativeResult) -> str:
             if not c.included:
                 continue
             cites = "".join(f"[{n}]" for n in c.cites)
+            asof = GRAMMAR["as_of"].format(date=c.as_of) if c.as_of else ""
             lines.append(GRAMMAR["claim"].format(
                 text=" ".join(c.text.split()), cites=f"{cites} " if cites else "",
-                p=c.credence))
+                p=c.credence, asof=asof))
         n_withheld = sum(1 for c in result.claims if not c.included)
         if n_withheld:
             lines.append(GRAMMAR["withheld"].format(n=n_withheld))
@@ -347,14 +365,19 @@ def narrative_answer(root: Path, question: str, text: str,
         u_bar, utility_fold_version = LK.current_u_bar(b)
 
     opath = outcomes_path if outcomes_path is not None else config.OUTCOMES_LOG
+    cards = list(cards)
     cards_by_n = {c.n: c.text for c in cards}
+    # the card's doc_date (None when the card type or the projection is dateless — a card need only
+    # satisfy SourceLike, which carries no date, so read it optionally and degrade to undated)
+    as_of_by_n = {c.n: getattr(c, "as_of", None) for c in cards}
     parsed = parse_claims(text)
     cells = population_posteriors(opath)
     scored = []
     for claim_text, cites in parsed:
         cell = audit_cell(claim_text, cites, cards_by_n)
         a, b_ = cells[cell]
-        scored.append((claim_text, cites, cell, a / (a + b_)))
+        scored.append((claim_text, cites, cell, a / (a + b_),
+                       freshest_as_of(cites, as_of_by_n)))
     claims, action, eu, reason = decide_claims(scored, u_bar)
     coverage, coverage_n = coverage_posterior(opath)
 

@@ -395,7 +395,9 @@ def _narrative(deps: BridgeDeps, p: Payload) -> Payload:
     pool = RET.retrieve_set(deps.conn, RET.build_query(question, terms), RR.RERANK_POOL)
     hits = RR.rerank_hits(question, pool, k)
     text, _key, _cached = SYN.synthesize(deps.root, question, hits, deps.profile)
-    cards = SYN.cards_from_hits(hits)
+    dates = P.probe_recency(deps.conn, deps.root,
+                            list(dict.fromkeys(h["artifact_cache_key"] for h in hits)))
+    cards = SYN.cards_from_hits(hits, dates)
     nv = NARR.narrative_answer(deps.root, question, text, cards)
     asserted = [c.text for c in nv.claims if c.included]
     return {"action": nv.action, "asserted": asserted, "rendered": nv.rendered,
