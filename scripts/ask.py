@@ -53,6 +53,7 @@ from life_agent.core import gather as GA
 from life_agent.core import lookup as LK
 from life_agent.core import narrative as N
 from life_agent.core import outcomes as O
+from life_agent.core import probes as P
 from life_agent.core import reactions as R
 from life_agent.core import subject as S
 from life_agent.core import temporal as T
@@ -566,9 +567,14 @@ def _rerank_hits(question: str, pool: list[dict[str, Any]], k: int, *,
     return ordered[:k]
 
 
-def _cards_from_set(hits: list[dict[str, Any]]) -> list[tuple[C.SourceCard, float]]:
-    """Pure: render a retrieval set (live or replayed from cache) as numbered cards."""
-    return [(C.SourceCard(n=i + 1, text=h["chunk_text"].strip(), origin=h["origin"]),
+def _cards_from_set(hits: list[dict[str, Any]],
+                    dates: dict[str, str | None] | None = None
+                    ) -> list[tuple[C.SourceCard, float]]:
+    """Pure: render a retrieval set (live or replayed from cache) as numbered cards. ``dates``
+    (artifact_cache_key → ISO doc_date) attaches each card's ``as_of`` for the temporal-scope
+    render; omitted ⇒ undated (back-compat — the retrieve() convenience seam stays date-blind)."""
+    return [(C.SourceCard(n=i + 1, text=h["chunk_text"].strip(), origin=h["origin"],
+                          as_of=(dates.get(h["artifact_cache_key"]) if dates else None)),
              h["score"]) for i, h in enumerate(hits)]
 
 
@@ -701,7 +707,13 @@ def answer(conn: duckdb.DuckDBPyConnection, question: str,
             conn, root, hits, profile=profile)
         SUBJECT_LAST = sreport
 
-    pairs = _cards_from_set(hits)
+    # attach each card's freshest doc_date (probe_recency adds the email-Date-header fallback for the
+    # un-projected sliver) so the narrative render surfaces "as of <date>" — the temporal-scope
+    # keystone. Read-only; display only (the synthesize key hashes hits, not cards).
+    card_dates = (P.probe_recency(conn, root, list(dict.fromkeys(
+        h["artifact_cache_key"] for h in hits)))
+        if conn is not None and root is not None and hits else None)
+    pairs = _cards_from_set(hits, card_dates)
     cards = [c for c, _ in pairs]
     scores = {c.n: s for c, s in pairs}
     # Abstain on weak retrieval (subsumes the zero-hit case) unless the owner profile can answer
