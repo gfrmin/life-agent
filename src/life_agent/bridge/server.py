@@ -49,11 +49,13 @@ from life_agent.core import expansion as EXP
 from life_agent.core import joint_extract as JE
 from life_agent.core import lookup as LK
 from life_agent.core import matching as MATCH
+from life_agent.core import narrative as NARR
 from life_agent.core import outcomes as O
 from life_agent.core import probes as P
 from life_agent.core import reactions as RX
 from life_agent.core import rerank as RR
 from life_agent.core import retrieval as RET
+from life_agent.core import synthesis as SYN
 from life_agent.core import volatility as VOL
 
 HOST = os.environ.get("LIFE_AGENT_BRIDGE_HOST", "127.0.0.1")
@@ -379,10 +381,34 @@ def _log_reaction(deps: BridgeDeps, p: Payload) -> Payload:
 
 Handler = Callable[[BridgeDeps, Payload], "Payload | None"]
 
+def _narrative(deps: BridgeDeps, p: Payload) -> Payload:
+    """The narrative family (foundations §7) — the answer-brain's SECOND family, run when the typed
+    router declines (a list / aggregate / compound question). Retrieve with the full recall
+    (expansion + rerank), synthesize a CITED answer, then `narrative_answer` audits each claim against
+    its cited card and includes it only if grounded AND EU-positive. Gate-safe by construction: an
+    ungrounded or weak claim is dropped → abstain; it never confidently asserts a wrong value. The
+    PII profile stays bridge-side (synthesis resolves "my"/"I" via it). `asserted` = the included
+    claims' text, so the grader matches the gold inside a grounded claim."""
+    question = _req_str(p, "question")
+    k = int(p.get("k", _DEFAULT_K))
+    terms = EXP.expand_terms(question, root=deps.root)
+    pool = RET.retrieve_set(deps.conn, RET.build_query(question, terms), RR.RERANK_POOL)
+    hits = RR.rerank_hits(question, pool, k)
+    text, _key, _cached = SYN.synthesize(deps.root, question, hits, deps.profile)
+    cards = SYN.cards_from_hits(hits)
+    nv = NARR.narrative_answer(deps.root, question, text, cards)
+    asserted = [c.text for c in nv.claims if c.included]
+    return {"action": nv.action, "asserted": asserted, "rendered": nv.rendered,
+            "hits": hits,  # the synthesis context, so the grader's channel diagnostics stay honest
+            "claims": [{"text": c.text, "credence": c.credence, "included": c.included}
+                       for c in nv.claims]}
+
+
 _POST: dict[str, Handler] = {
     "/route": _route,
     "/retrieve": _retrieve,
     "/extract": _extract,
+    "/narrative": _narrative,
     "/probe/recency": _probe_recency,
     "/probe/subject": _probe_subject,
     "/probe/authority": _probe_authority,

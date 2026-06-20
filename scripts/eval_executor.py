@@ -112,9 +112,15 @@ def _decide_via_loop(question: str, k: int, *, rerank: bool = False) -> dict:
     re-decides on the larger set. Adopt the grown decision when it reports, or when the cheap pass
     found no candidates at all; else keep the cheap withhold. ON by default (see `_GROW`)."""
     route = _post(f"{BRIDGE}/route", {"question": question})
-    if route is None:  # not a typed lookup → the brain's narrative case (a coverage MISS here)
-        return {"effector": "narrative", "asserted": [], "candidates": [], "credences": [],
-                "p_none": None, "eu": None, "hits": [], "route": None}
+    if route is None:
+        # Not a typed point-fact → the NARRATIVE family (Slice A): synthesize a cited answer over the
+        # full-recall hits, audit each claim against its cited card, include only grounded + EU-positive
+        # claims. Gate-safe by construction (ungrounded/weak ⇒ abstain). `asserted` = the included
+        # claims' text, so the grader matches the gold inside a grounded claim.
+        nv = _post(f"{BRIDGE}/narrative", {"question": question})
+        return {"effector": nv["action"], "asserted": nv["asserted"], "candidates": [],
+                "credences": [], "p_none": None, "eu": None, "hits": nv.get("hits", []),
+                "route": None}
     view = _run(question, k, route, rerank=rerank, expand=rerank)
     if _GROW and not rerank:
         # Escalating recall breadth (cheapest-first, stop at the first report). Each tier only fires

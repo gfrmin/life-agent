@@ -48,6 +48,7 @@ from life_agent import owner
 from life_agent.core import decisions as DEC
 from life_agent.core import derivations as D
 from life_agent.core import expansion as EXP
+from life_agent.core import synthesis as SYN
 from life_agent.core import gather as GA
 from life_agent.core import lookup as LK
 from life_agent.core import narrative as N
@@ -121,24 +122,10 @@ RERANK_SYSTEM = (
 # identity facts (see life_agent.owner) injected by answer() — which this prompt treats as the
 # authority on whose document a SOURCE is, so a partner's/relative's name or ID is never asserted
 # as the owner's. (The OWNER block may be empty; the rules then degrade to the old behaviour.)
-ANSWER_SYSTEM = (
-    "You are the owner's personal assistant, answering questions about the owner's own life. "
-    "You are given an OWNER block (authoritative facts about who the owner is — names, IDs) and "
-    "numbered SOURCES (chunks retrieved from the owner's documents). Answer from these; put a "
-    "bracketed source number like [1] immediately after each fact a SOURCE supports. If the answer "
-    "is in neither, say so plainly and name what would be needed — do not guess.\n"
-    "Rules specific to a personal corpus:\n"
-    "1. Read every question in the first person about the owner. 'How do I make money' means "
-    "'what are my sources of income, per my records' — NOT a request for generic advice.\n"
-    "2. The OWNER block is the authority on the owner's identity: answer 'what is my name / my ID "
-    "/ my phone' from it directly. Use it to judge whose document a SOURCE is — a SOURCE whose "
-    "subject is a person or ID the OWNER block identifies as someone ELSE (a partner, a family "
-    "member) is NOT the owner's; never assert another person's name or ID as the owner's.\n"
-    "3. Otherwise attribute documents to the owner by default: a contract they signed, their tax "
-    "certificate, their CV, an offer addressed to them all describe the owner even when they don't "
-    "repeat the owner's name on every line. The exception is a document that positively identifies "
-    "a DIFFERENT person as its subject. Be concise."
-)
+# The synthesis prompt + synthesizer now live in core (`life_agent.core.synthesis`) so the answer-
+# brain bridge and this REPL share ONE synthesizer + ONE cache (the prompt is the cache key, kept
+# byte-identical). The alias keeps ask.py's surface unchanged.
+ANSWER_SYSTEM = SYN.ANSWER_SYSTEM
 
 
 # --- retrieval over the LIVE corpus --------------------------------------- #
@@ -759,36 +746,15 @@ def answer(conn: duckdb.DuckDBPyConnection, question: str,
             STAGES_LAST["lookup_answer"] = lk.answer_cache_key
             return (lk.rendered, cards, scores)
 
-    # synthesize — keyed on the retrieved CONTENT (early cutoff) and the profile hash
-    skey = D.synthesize_key(question, D.content_hash(_set_content(hits)),
-                            D.content_hash(profile.encode("utf-8")),
-                            model=C.DEFAULT_ANSWER_MODEL, prompt_template=ANSWER_SYSTEM,
-                            temperature=C.TEMPERATURE, max_tokens=600)
-    STAGES_LAST["synthesize"] = skey.cache_key
-    text: str | None = None
-    if root is not None and not no_cache:
-        cached = D.lookup(root, skey.cache_key)
-        if cached is not None:
-            _count("synthesize", hit=True)
-            text = cached.decode("utf-8")
-
-    if text is None:
-        blocks = []
-        if profile:
-            blocks.append(f'OWNER (authoritative — who "I"/"my" refers to):\n{profile}')
-        blocks.append(
-            f"SOURCES:\n{C.render_sources_block(cards) if cards else '(none retrieved)'}")
-        user = f"QUESTION: {question}\n\n" + "\n\n".join(blocks)
-        r = C.anthropic_complete(ANSWER_SYSTEM, user, max_tokens=600)
-        text = r.text.strip()
-        if root is not None:
-            _count("synthesize", hit=False)
-            lineage = ([{"cache_key": rkey.cache_key, "role": "retrieval_set"}] if rkey else [])
-            lineage += [{"cache_key": ck, "role": "source"}
-                        for ck in dict.fromkeys(h["artifact_cache_key"] for h in hits)]
-            D.record(root, skey, text.encode("utf-8"), lineage=lineage,
-                     metadata={"in_tokens": r.in_tokens, "out_tokens": r.out_tokens,
-                               "seconds": round(r.seconds, 3)})
+    # synthesize — keyed on the retrieved CONTENT (early cutoff) and the profile hash; the
+    # synthesizer lives in core.synthesis (shared with the bridge). The retrieval_set lineage is
+    # ask-side (rerank has no retrieve key), threaded through as extra lineage.
+    extra = [{"cache_key": rkey.cache_key, "role": "retrieval_set"}] if rkey else []
+    text, scache, scached = SYN.synthesize(root, question, hits, profile, no_cache=no_cache,
+                                           extra_lineage=extra)
+    if root is not None:  # caching telemetry only when a cache is in play (root resolved)
+        _count("synthesize", hit=scached)
+    STAGES_LAST["synthesize"] = scache
     if not families:  # the monolithic instrument: raw synthesize prose, unscored
         return (text, cards, scores)
     return (_narrative_scored(root, question, text, cards), cards, scores)
