@@ -278,9 +278,9 @@ def test_owner_verdicts_move_the_verified_cell(tmp_path: Path) -> None:
     # outcomes that population_posteriors folds. The q-007 lesson — a grounded-but-stale claim
     # verdicted INCORRECT LOWERS the verified cell (grounded ≠ current-correct).
     claims = (
-        N.Claim(text="ONE ZERO is your current bank", cites=(1,), cell="verified",
+        N.Claim(text="Bank Zephyr is your current bank", cites=(1,), cell="verified",
                 credence=0.71, included=False, eu_include=-0.4),
-        N.Claim(text="Hapoalim is your bank", cites=(2,), cell="verified",
+        N.Claim(text="Bank Aurum is your bank", cites=(2,), cell="verified",
                 credence=0.71, included=False, eu_include=-0.4),
     )
     result = N.NarrativeResult(
@@ -356,7 +356,7 @@ def test_undated_claim_renders_exactly_as_before(migrated_root: Path,
 def test_owner_verdict_tags_claim_as_of_but_fold_reads_only_the_cell(tmp_path: Path) -> None:
     # the outcome carries claim_as_of for a FUTURE stale-vs-false separation; the keystone fold
     # is unchanged — population_posteriors still reads only the audit cell.
-    claims = (N.Claim(text="Hapoalim is your bank", cites=(1,), cell="verified", credence=0.71,
+    claims = (N.Claim(text="Bank Aurum is your bank", cites=(1,), cell="verified", credence=0.71,
                       included=False, eu_include=-0.4, as_of="2019-04-02"),)
     result = N.NarrativeResult(
         question="which bank?", action="abstain", eu=0.0, abstain_reason="r", claims=claims,

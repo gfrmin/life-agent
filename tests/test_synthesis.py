@@ -13,7 +13,7 @@ def _hit(key: str, text: str) -> dict[str, str]:
 
 
 def test_cards_from_hits_attaches_dates_when_given() -> None:
-    hits = [_hit("a", "one zero current bank"), _hit("b", "hapoalim older")]
+    hits = [_hit("a", "bank zephyr current bank"), _hit("b", "bank aurum older")]
     dates = {"a": "2025-11-03", "b": None}     # b projected-but-undated
     cards = SYN.cards_from_hits(hits, dates)
     assert [(c.n, c.as_of) for c in cards] == [(1, "2025-11-03"), (2, None)]
