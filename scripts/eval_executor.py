@@ -115,18 +115,29 @@ def _decide_via_loop(question: str, k: int, *, rerank: bool = False) -> dict:
     if route is None:  # not a typed lookup → the brain's narrative case (a coverage MISS here)
         return {"effector": "narrative", "asserted": [], "candidates": [], "credences": [],
                 "p_none": None, "eu": None, "hits": [], "route": None}
-    view = _run(question, k, route, rerank=rerank)
-    if _GROW and not rerank and view["effector"] in _WITHHOLD:
-        grown = _run(question, k, route, rerank=True)
-        if grown["effector"] == "report" or not view["candidates"]:
-            view = grown
+    view = _run(question, k, route, rerank=rerank, expand=rerank)
+    if _GROW and not rerank:
+        # Escalating recall breadth (cheapest-first, stop at the first report). Each tier only fires
+        # if the prior still WITHHOLDS — so we pay for breadth only when narrower recall failed:
+        #   tier 1  rerank(raw)   — over-fetch 150 + listwise reorder surfaces a buried literal hit
+        #                           (recovers strong English/number golds ranked just outside top-k).
+        #   tier 2  rerank+expand — native-script (Hebrew) expansion bridges the English↔Hebrew
+        #                           lexical gap (the dominant miss). Expansion DILUTES strong literals,
+        #                           so it escalates AFTER raw rerank, never replacing it.
+        for rr, ex in ((True, False), (True, True)):
+            if view["effector"] not in _WITHHOLD:
+                break                                   # a report stands ⇒ stop escalating recall
+            grown = _run(question, k, route, rerank=rr, expand=ex)
+            if grown["effector"] == "report" or not view["candidates"]:
+                view = grown
     return view
 
 
-def _run(question: str, k: int, route: dict, *, rerank: bool) -> dict:
-    """One retrieve→probe→extract→decide pass at a given recall breadth (rerank grows K). Returns
-    the normalized view: {effector, asserted, candidates, credences, p_none, eu, hits, route}."""
-    hits = _post(f"{BRIDGE}/retrieve", {"question": question, "k": k, "rerank": rerank})["hits"]
+def _run(question: str, k: int, route: dict, *, rerank: bool, expand: bool = False) -> dict:
+    """One retrieve→probe→extract→decide pass at a given recall breadth (rerank + expand grow K).
+    Returns the normalized view: {effector, asserted, candidates, credences, p_none, eu, hits, route}."""
+    hits = _post(f"{BRIDGE}/retrieve",
+                 {"question": question, "k": k, "rerank": rerank, "expand": expand})["hits"]
     hit_keys = list(dict.fromkeys(h["artifact_cache_key"] for h in hits))
     subj = _post(f"{BRIDGE}/probe/subject", {"hit_keys": hit_keys})["subject_state"]
     recency = _post(f"{BRIDGE}/probe/recency", {"hit_keys": hit_keys})["doc_date"]

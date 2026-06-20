@@ -47,6 +47,7 @@ import life_agent.core as C
 from life_agent import owner
 from life_agent.core import decisions as DEC
 from life_agent.core import derivations as D
+from life_agent.core import expansion as EXP
 from life_agent.core import gather as GA
 from life_agent.core import lookup as LK
 from life_agent.core import narrative as N
@@ -84,24 +85,11 @@ ABSTENTION = (
 # contractor?" finds, because only the last shares surface words with the document.
 # Expansion bridges the question's words to the documents' words. Light reasoning, so a
 # cheap model (Haiku); synthesis stays on the pinned ANSWER_MODEL.
-EXPAND_MODEL = "claude-haiku-4-5-20251001"
-EXPAND_SYSTEM = (
-    "You expand a personal-assistant question into keywords for a bag-of-words (BM25) "
-    "search over the owner's personal documents, which are in English AND Hebrew. The "
-    "owner asks in natural language but the documents use concrete domain vocabulary "
-    "(an income question is answered by a doc that says 'invoice', 'salary', 'Contractor', "
-    "'עוסק מורשה' — never the phrase 'make money'). Output ONLY a space-separated list of "
-    "8-15 concrete search terms: synonyms, the specific nouns such documents contain, and "
-    "their Hebrew equivalents. If a question word is itself a transliterated Hebrew or loan "
-    "word (e.g. 'arnona'->ארנונה, 'vaad'->ועד, 'bituach'->ביטוח, 'mas'->מס), you MUST output "
-    "its exact Hebrew spelling verbatim — that spelling is usually the single most "
-    "discriminative term, and the English transliteration matches nothing in the Hebrew "
-    "documents. No punctuation, no numbering, no explanation. "
-    "Example — 'how do i make money' -> income salary invoice contractor self-employed "
-    "freelance fee earnings employer עוסק מורשה משכורת חשבונית. "
-    "Example — 'how much was my arnona' -> arnona property-tax municipal rates bill "
-    "ארנונה עירייה חשבון תשלום."
-)
+# Query expansion now lives in core (`life_agent.core.expansion`) so the answer-brain bridge and this
+# REPL share ONE expander + ONE cache. These aliases keep ask.py's surface (and its cache key — the
+# prompt template is byte-identical) unchanged; `_expand_terms` below stays the script-side wrapper.
+EXPAND_MODEL = EXP.EXPAND_MODEL
+EXPAND_SYSTEM = EXP.EXPAND_SYSTEM
 
 # Reranking: BM25 ranks by surface-word overlap, so for ~8 of the eval's retrieval misses
 # the gold sits at lexical rank 36-132 (probe_gold_rank) — buried below literary PDFs that
@@ -217,10 +205,7 @@ def _is_lock_error(msg: str) -> bool:
     return "lock" in m or "conflict" in m or "being used" in m
 
 
-def _clean_terms(raw: str) -> str:
-    """Pure: flatten an LLM expansion reply to a clean space-separated term string.
-    Drops bullets/commas/quotes/newlines; keeps Unicode word chars (so Hebrew survives)."""
-    return " ".join(re.sub(r"[^\w]+", " ", raw, flags=re.UNICODE).split())
+_clean_terms = EXP.clean_terms  # the canonical cleaner now lives in core.expansion
 
 
 # --- temporal (D1): /recent · /since · the nothing-vanishes footer --------- #
