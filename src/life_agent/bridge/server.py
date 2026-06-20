@@ -45,13 +45,17 @@ from life_agent import owner
 from life_agent.bridge.observations import to_abstract_observations
 from life_agent.core import config
 from life_agent.core import decisions as DEC
+from life_agent.core import expansion as EXP
 from life_agent.core import joint_extract as JE
 from life_agent.core import lookup as LK
+from life_agent.core import matching as MATCH
+from life_agent.core import narrative as NARR
 from life_agent.core import outcomes as O
 from life_agent.core import probes as P
 from life_agent.core import reactions as RX
 from life_agent.core import rerank as RR
 from life_agent.core import retrieval as RET
+from life_agent.core import synthesis as SYN
 from life_agent.core import volatility as VOL
 
 HOST = os.environ.get("LIFE_AGENT_BRIDGE_HOST", "127.0.0.1")
@@ -147,12 +151,26 @@ def _route(deps: BridgeDeps, p: Payload) -> Payload | None:
     r = LK.route_question(deps.root, _req_str(p, "question"), client=deps.client)
     if r is None:
         return None                          # not a typed lookup → the brain's narrative case
-    return {"construct": r.construct, "time_indexed": r.time_indexed}
+    # Currency has ONE source of truth: the volatility table (the curated world-knowledge prior), not
+    # the route model's `time_indexed` guess. The model called "mobile phone number" permanent
+    # (time_indexed=False) ⇒ a stale HK number never decayed and was reported as current (the q-014
+    # confident-wrong). A construct IS time-indexed iff its half-life is not PERMANENT — derive it, so
+    # mobile/address/employer decay while DOB/national-id/tax-id do not. The model only classifies the
+    # CONSTRUCT; volatility decides whether it decays.
+    time_indexed = VOL.half_life(r.construct) < VOL.PERMANENT
+    return {"construct": r.construct, "time_indexed": time_indexed}
 
 
 def _retrieve(deps: BridgeDeps, p: Payload) -> Payload:
     question = _req_str(p, "question")
-    query = RET.build_query(question, str(p.get("terms", "")))
+    # Query expansion (a :grow recall mode): the owner asks in English, the docs are English AND
+    # Hebrew, so a raw query can't reach a Hebrew doc — the dominant retrieval-miss (10/18). `expand`
+    # appends native-script keywords (build_query always keeps the raw words, so recall only grows).
+    # It DILUTES strong literals, so the body uses it only on the grow pass, never the cheap first.
+    terms = str(p.get("terms", ""))
+    if p.get("expand"):
+        terms = (terms + " " + EXP.expand_terms(question, root=deps.root)).strip()
+    query = RET.build_query(question, terms)
     k = int(p.get("k", _DEFAULT_K))
     # the body's recall action (Slice 4): over-fetch a wide lexical pool and listwise-rerank to
     # top-k, surfacing a buried gold into extraction. A reorder, not a VOI gather — it grows the
@@ -200,6 +218,27 @@ def _probe_authority(_deps: BridgeDeps, p: Payload) -> Payload:
     return {"authority": {k: [klass, value] for k, (klass, value) in auth.items()}}
 
 
+def _corroborate_time_factor(jr: JE.JointResult, hits: list[Payload], p: Payload) -> float:
+    """The recency covariate for the corroborate re-read's observation — the construct's
+    volatility decay, the same projection `/extract` applies (`LK.time_factor`). Recency is a
+    document property, independent of WHOSE value it is, so the re-read value is as current as its
+    freshest SOURCE attestation: take the max doc_date among the hits whose text actually contains
+    the value (the shared date-aware matcher), falling back to the model's self-reported `as_of`,
+    then to None (undated time-indexed ⇒ the stated `_A_TIME_UNKNOWN` attenuation). A non
+    time-indexed construct passes through at 1.0 (no decay)."""
+    if not bool(p.get("time_indexed", False)):
+        return 1.0
+    hl = VOL.half_life(p.get("construct"))
+    doc_date = dict((p.get("covariates") or {}).get("doc_date") or {})
+    value = jr.value or ""
+    src_dates = [doc_date.get(h["artifact_cache_key"]) for h in hits
+                 if MATCH.answer_matches(value, [], str(h.get("chunk_text", "")))]
+    dated = sorted(d for d in src_dates if d)
+    date_iso = dated[-1] if dated else jr.as_of
+    return LK.time_factor(date_iso, time_indexed=True, today=_opt_date(p.get("today")),
+                          half_life_years=hl)
+
+
 def _probe_corroborate(deps: BridgeDeps, p: Payload) -> Payload:
     question = _req_str(p, "question")
     if p.get("reextract"):
@@ -215,15 +254,24 @@ def _probe_corroborate(deps: BridgeDeps, p: Payload) -> Payload:
         hits = _req_list(p, "hits")
         candidates = [str(c) for c in (p.get("candidates") or [])]
         model = str(p.get("model") or _JOINT_MODEL)
+        # the scheduled tier's reliability (Slice 2): the re-decide conditions the re-read obs at the
+        # tier's ρ, so a weaker model's read is trusted less. Defaults to the opus-tier _JOINT_RHO.
+        tier_rho = float(p.get("rho") or _JOINT_RHO)
         jr = JE.extract_joint(deps.root, question, hits, model=model, k=len(hits))
         obs: list[Payload] = []
         if jr.value is not None:
             vn = LK._norm_value(jr.value)
             idx = next((i for i, c in enumerate(candidates) if LK._norm_value(c) == vn), None)
             if idx is not None:
+                # The keystone: the re-read obs flows through the SAME volatility projector
+                # /extract uses — no transform may hand-set time_factor=1.0 and report a stale
+                # value as current (the q-006 confident-stale bug that gated §2-A off). Recency is
+                # attribution-independent (a document property), so the re-read value is as current
+                # as its freshest SOURCE attestation.
+                tf = _corroborate_time_factor(jr, hits, p)
                 obs = [{"reports": idx, "group": 0, "authority": 1.0,
-                        "subject_factor": 1.0, "time_factor": 1.0}]
-        return {"observations": obs, "gather_rho": _JOINT_RHO, "value": jr.value,
+                        "subject_factor": 1.0, "time_factor": tf}]
+        return {"observations": obs, "gather_rho": tier_rho, "value": jr.value,
                 "served_model": jr.served_model, "tokens": jr.in_tokens + jr.out_tokens}
     hits = P.probe_corroborate(
         deps.conn, question, _req_str(p, "leader_value"),
@@ -333,10 +381,36 @@ def _log_reaction(deps: BridgeDeps, p: Payload) -> Payload:
 
 Handler = Callable[[BridgeDeps, Payload], "Payload | None"]
 
+def _narrative(deps: BridgeDeps, p: Payload) -> Payload:
+    """The narrative family (foundations §7) — the answer-brain's SECOND family, run when the typed
+    router declines (a list / aggregate / compound question). Retrieve with the full recall
+    (expansion + rerank), synthesize a CITED answer, then `narrative_answer` audits each claim against
+    its cited card and includes it only if grounded AND EU-positive. Gate-safe by construction: an
+    ungrounded or weak claim is dropped → abstain; it never confidently asserts a wrong value. The
+    PII profile stays bridge-side (synthesis resolves "my"/"I" via it). `asserted` = the included
+    claims' text, so the grader matches the gold inside a grounded claim."""
+    question = _req_str(p, "question")
+    k = int(p.get("k", _DEFAULT_K))
+    terms = EXP.expand_terms(question, root=deps.root)
+    pool = RET.retrieve_set(deps.conn, RET.build_query(question, terms), RR.RERANK_POOL)
+    hits = RR.rerank_hits(question, pool, k)
+    text, _key, _cached = SYN.synthesize(deps.root, question, hits, deps.profile)
+    dates = P.probe_recency(deps.conn, deps.root,
+                            list(dict.fromkeys(h["artifact_cache_key"] for h in hits)))
+    cards = SYN.cards_from_hits(hits, dates)
+    nv = NARR.narrative_answer(deps.root, question, text, cards)
+    asserted = [c.text for c in nv.claims if c.included]
+    return {"action": nv.action, "asserted": asserted, "rendered": nv.rendered,
+            "hits": hits,  # the synthesis context, so the grader's channel diagnostics stay honest
+            "claims": [{"text": c.text, "credence": c.credence, "included": c.included}
+                       for c in nv.claims]}
+
+
 _POST: dict[str, Handler] = {
     "/route": _route,
     "/retrieve": _retrieve,
     "/extract": _extract,
+    "/narrative": _narrative,
     "/probe/recency": _probe_recency,
     "/probe/subject": _probe_subject,
     "/probe/authority": _probe_authority,

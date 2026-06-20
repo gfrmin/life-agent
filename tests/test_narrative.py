@@ -23,6 +23,7 @@ from life_agent.core.narrative import (
     audit_cell,
     coverage_posterior,
     decide_claims,
+    freshest_as_of,
     include_eu,
     narrative_answer,
     parse_claims,
@@ -47,6 +48,7 @@ def migrated_root(tmp_path: Path) -> Path:
 class Card:
     n: int
     text: str
+    as_of: str | None = None
 
 
 def _claim_event(*, cell: str, grade: str = "CORRECT",
@@ -151,7 +153,7 @@ def test_include_eu_reliance_linear_model() -> None:
 
 
 def test_decide_claims_inclusion_and_posterior_order() -> None:
-    scored = [("low", (), "unverifiable", 0.5), ("high", (1,), "verified", 0.9)]
+    scored = [("low", (), "unverifiable", 0.5, None), ("high", (1,), "verified", 0.9, None)]
     claims, action, eu, reason = decide_claims(scored, U)
     assert action == "report" and reason == ""
     assert [c.text for c in claims] == ["high", "low"]  # posterior order
@@ -160,7 +162,7 @@ def test_decide_claims_inclusion_and_posterior_order() -> None:
 
 
 def test_decide_claims_all_withheld_abstains_named() -> None:
-    _claims, action, eu, reason = decide_claims([("c", (), "unverifiable", 0.5)], U)
+    _claims, action, eu, reason = decide_claims([("c", (), "unverifiable", 0.5, None)], U)
     assert action == "abstain" and eu == 0.0
     assert reason == N.REASON_ALL_WITHHELD
 
@@ -174,8 +176,8 @@ def test_decide_claims_empty_abstains_named() -> None:
 
 def test_render_report_labels_claims_and_counts_withheld() -> None:
     claims, action, eu, reason = decide_claims(
-        [("The number is 999999991.", (1,), "verified", 0.9),
-         ("It was renewed.", (), "unverifiable", 0.5)], U)
+        [("The number is 999999991.", (1,), "verified", 0.9, None),
+         ("It was renewed.", (), "unverifiable", 0.5, None)], U)
     r = N.NarrativeResult(
         question="q", action=action, eu=eu, abstain_reason=reason, claims=claims,
         coverage=(2.0, 2.0), coverage_n=0, cell_posteriors=dict(N._CELL_PRIORS),
@@ -189,7 +191,7 @@ def test_render_report_labels_claims_and_counts_withheld() -> None:
 
 def test_render_abstain_names_reason_and_footer() -> None:
     claims, action, eu, reason = decide_claims(
-        [("c 1234567.", (1,), "unsupported", 0.25)], U)
+        [("c 1234567.", (1,), "unsupported", 0.25, None)], U)
     r = N.NarrativeResult(
         question="q", action=action, eu=eu, abstain_reason=reason, claims=claims,
         coverage=(2.0, 3.0), coverage_n=1, cell_posteriors=dict(N._CELL_PRIORS),
@@ -201,7 +203,7 @@ def test_render_abstain_names_reason_and_footer() -> None:
 
 def test_grammar_is_closed() -> None:
     # drift gate: every rendered string comes from this table (interaction contract)
-    assert set(N.GRAMMAR) == {"claim", "withheld", "abstain", "footer", "fallthrough"}
+    assert set(N.GRAMMAR) == {"claim", "as_of", "withheld", "abstain", "footer", "fallthrough"}
 
 
 # --- the family, end to end ----------------------------------------------------------------
@@ -269,3 +271,100 @@ def test_narrative_answer_key_moves_with_the_folds(migrated_root: Path,
                            utility_fold_version="fold-1",
                            outcomes_path=opath, decisions_path=dpath)
     assert nv3.answer_cache_key != nv1.answer_cache_key
+
+
+def test_owner_verdicts_move_the_verified_cell(tmp_path: Path) -> None:
+    # The verdict → cell learning loop (the owner IS the gold): per-claim verdicts write eval_claim
+    # outcomes that population_posteriors folds. The q-007 lesson — a grounded-but-stale claim
+    # verdicted INCORRECT LOWERS the verified cell (grounded ≠ current-correct).
+    claims = (
+        N.Claim(text="Bank Zephyr is your current bank", cites=(1,), cell="verified",
+                credence=0.71, included=False, eu_include=-0.4),
+        N.Claim(text="Bank Aurum is your bank", cites=(2,), cell="verified",
+                credence=0.71, included=False, eu_include=-0.4),
+    )
+    result = N.NarrativeResult(
+        question="which banks hold my accounts?", action="abstain", eu=0.0,
+        abstain_reason="all claims below threshold", claims=claims, coverage=(7.0, 6.0),
+        coverage_n=13, cell_posteriors={}, utility_fold_version="v0", answer_cache_key="ak",
+        rendered="")
+    out = tmp_path / "outcomes.jsonl"
+    n = N.record_owner_verdicts(result, "q-007", {0: True, 1: False}, outcomes_path=out)
+    assert n == 2
+    post = N.population_posteriors(out)
+    assert post["verified"] == (4.0, 3.0)              # prior (3,2) +1 correct +1 incorrect
+    assert post["unsupported"] == N._CELL_PRIORS["unsupported"]   # an unjudged cell is untouched
+
+
+def test_owner_verdicts_only_emit_for_judged_claims(tmp_path: Path) -> None:
+    # DISCLOSED selection — an unjudged claim casts no silent vote.
+    claims = (N.Claim(text="x", cites=(1,), cell="verified", credence=0.6, included=False,
+                      eu_include=-0.1),
+              N.Claim(text="y", cites=(2,), cell="unverifiable", credence=0.5, included=False,
+                      eu_include=-0.2))
+    result = N.NarrativeResult(question="q", action="abstain", eu=0.0, abstain_reason="r",
+                               claims=claims, coverage=(1.0, 1.0), coverage_n=0,
+                               cell_posteriors={}, utility_fold_version="v0",
+                               answer_cache_key="ak", rendered="")
+    events = N.owner_claim_outcomes(result, "q-x", {0: True})   # only claim 0 judged
+    assert len(events) == 1 and events[0].grade == "CORRECT"
+    assert events[0].signals["audit_cell"] == "verified"
+
+
+# --- temporal-scope keystone: the claim carries its freshest cited doc_date -----------------
+
+def test_freshest_as_of_takes_the_max_cited_date() -> None:
+    # ISO strings order chronologically; the freshest CITED date wins, undated cites are ignored
+    as_of_by_n = {1: "2019-04-02", 2: "2025-11-03", 3: None}
+    assert freshest_as_of((1, 2), as_of_by_n) == "2025-11-03"
+    assert freshest_as_of((1, 3), as_of_by_n) == "2019-04-02"   # the dated one of the pair
+    assert freshest_as_of((3,), as_of_by_n) is None             # all cited cards undated
+    assert freshest_as_of((), as_of_by_n) is None               # no citations
+
+
+def test_narrative_answer_threads_freshest_cited_date(migrated_root: Path,
+                                                      tmp_path: Path) -> None:
+    # a dated cited card surfaces its date on the claim and in the render ("as of <date>").
+    # Deepen the verified cell so the claim is INCLUDED (the render only shows included claims).
+    text = "Your registration number is 999999991. [1] It is renewed annually."
+    cards = [Card(n=1, text="certificate: registration number 999999991",
+                  as_of="2025-11-03")]
+    opath, dpath = tmp_path / "outcomes.jsonl", tmp_path / "decisions.jsonl"
+    for _ in range(8):
+        O.append(opath, _claim_event(cell="verified", grade="CORRECT"))
+    nv = narrative_answer(migrated_root, "what is my registration number?",
+                          text, cards, u_bar=U, utility_fold_version="fold-1",
+                          outcomes_path=opath, decisions_path=dpath)
+    included = [c for c in nv.claims if c.included]
+    assert included[0].as_of == "2025-11-03"
+    assert "— credence 0.846, as of 2025-11-03" in nv.rendered
+
+
+def test_undated_claim_renders_exactly_as_before(migrated_root: Path,
+                                                 tmp_path: Path) -> None:
+    # back-compat / drift: an undated claim is byte-identical to the pre-keystone render
+    text, cards, opath, dpath = _answer_fixture(tmp_path)   # Card has no as_of → None
+    for _ in range(8):
+        O.append(opath, _claim_event(cell="verified", grade="CORRECT"))
+    nv = narrative_answer(migrated_root, "what is my registration number?",
+                          text, cards, u_bar=U, utility_fold_version="fold-1",
+                          outcomes_path=opath, decisions_path=dpath)
+    assert "— credence 0.846" in nv.rendered
+    assert ", as of" not in nv.rendered
+
+
+def test_owner_verdict_tags_claim_as_of_but_fold_reads_only_the_cell(tmp_path: Path) -> None:
+    # the outcome carries claim_as_of for a FUTURE stale-vs-false separation; the keystone fold
+    # is unchanged — population_posteriors still reads only the audit cell.
+    claims = (N.Claim(text="Bank Aurum is your bank", cites=(1,), cell="verified", credence=0.71,
+                      included=False, eu_include=-0.4, as_of="2019-04-02"),)
+    result = N.NarrativeResult(
+        question="which bank?", action="abstain", eu=0.0, abstain_reason="r", claims=claims,
+        coverage=(7.0, 6.0), coverage_n=13, cell_posteriors={}, utility_fold_version="v0",
+        answer_cache_key="ak", rendered="")
+    out = tmp_path / "outcomes.jsonl"
+    events = N.owner_claim_outcomes(result, "q-007", {0: False})
+    assert events[0].signals["claim_as_of"] == "2019-04-02"
+    N.record_owner_verdicts(result, "q-007", {0: False}, outcomes_path=out)
+    post = N.population_posteriors(out)
+    assert post["verified"] == (3.0, 3.0)   # prior (3,2) + 1 incorrect — folded on the cell alone
