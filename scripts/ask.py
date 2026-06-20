@@ -47,10 +47,13 @@ import life_agent.core as C
 from life_agent import owner
 from life_agent.core import decisions as DEC
 from life_agent.core import derivations as D
+from life_agent.core import expansion as EXP
+from life_agent.core import synthesis as SYN
 from life_agent.core import gather as GA
 from life_agent.core import lookup as LK
 from life_agent.core import narrative as N
 from life_agent.core import outcomes as O
+from life_agent.core import probes as P
 from life_agent.core import reactions as R
 from life_agent.core import subject as S
 from life_agent.core import temporal as T
@@ -84,24 +87,11 @@ ABSTENTION = (
 # contractor?" finds, because only the last shares surface words with the document.
 # Expansion bridges the question's words to the documents' words. Light reasoning, so a
 # cheap model (Haiku); synthesis stays on the pinned ANSWER_MODEL.
-EXPAND_MODEL = "claude-haiku-4-5-20251001"
-EXPAND_SYSTEM = (
-    "You expand a personal-assistant question into keywords for a bag-of-words (BM25) "
-    "search over the owner's personal documents, which are in English AND Hebrew. The "
-    "owner asks in natural language but the documents use concrete domain vocabulary "
-    "(an income question is answered by a doc that says 'invoice', 'salary', 'Contractor', "
-    "'עוסק מורשה' — never the phrase 'make money'). Output ONLY a space-separated list of "
-    "8-15 concrete search terms: synonyms, the specific nouns such documents contain, and "
-    "their Hebrew equivalents. If a question word is itself a transliterated Hebrew or loan "
-    "word (e.g. 'arnona'->ארנונה, 'vaad'->ועד, 'bituach'->ביטוח, 'mas'->מס), you MUST output "
-    "its exact Hebrew spelling verbatim — that spelling is usually the single most "
-    "discriminative term, and the English transliteration matches nothing in the Hebrew "
-    "documents. No punctuation, no numbering, no explanation. "
-    "Example — 'how do i make money' -> income salary invoice contractor self-employed "
-    "freelance fee earnings employer עוסק מורשה משכורת חשבונית. "
-    "Example — 'how much was my arnona' -> arnona property-tax municipal rates bill "
-    "ארנונה עירייה חשבון תשלום."
-)
+# Query expansion now lives in core (`life_agent.core.expansion`) so the answer-brain bridge and this
+# REPL share ONE expander + ONE cache. These aliases keep ask.py's surface (and its cache key — the
+# prompt template is byte-identical) unchanged; `_expand_terms` below stays the script-side wrapper.
+EXPAND_MODEL = EXP.EXPAND_MODEL
+EXPAND_SYSTEM = EXP.EXPAND_SYSTEM
 
 # Reranking: BM25 ranks by surface-word overlap, so for ~8 of the eval's retrieval misses
 # the gold sits at lexical rank 36-132 (probe_gold_rank) — buried below literary PDFs that
@@ -133,24 +123,10 @@ RERANK_SYSTEM = (
 # identity facts (see life_agent.owner) injected by answer() — which this prompt treats as the
 # authority on whose document a SOURCE is, so a partner's/relative's name or ID is never asserted
 # as the owner's. (The OWNER block may be empty; the rules then degrade to the old behaviour.)
-ANSWER_SYSTEM = (
-    "You are the owner's personal assistant, answering questions about the owner's own life. "
-    "You are given an OWNER block (authoritative facts about who the owner is — names, IDs) and "
-    "numbered SOURCES (chunks retrieved from the owner's documents). Answer from these; put a "
-    "bracketed source number like [1] immediately after each fact a SOURCE supports. If the answer "
-    "is in neither, say so plainly and name what would be needed — do not guess.\n"
-    "Rules specific to a personal corpus:\n"
-    "1. Read every question in the first person about the owner. 'How do I make money' means "
-    "'what are my sources of income, per my records' — NOT a request for generic advice.\n"
-    "2. The OWNER block is the authority on the owner's identity: answer 'what is my name / my ID "
-    "/ my phone' from it directly. Use it to judge whose document a SOURCE is — a SOURCE whose "
-    "subject is a person or ID the OWNER block identifies as someone ELSE (a partner, a family "
-    "member) is NOT the owner's; never assert another person's name or ID as the owner's.\n"
-    "3. Otherwise attribute documents to the owner by default: a contract they signed, their tax "
-    "certificate, their CV, an offer addressed to them all describe the owner even when they don't "
-    "repeat the owner's name on every line. The exception is a document that positively identifies "
-    "a DIFFERENT person as its subject. Be concise."
-)
+# The synthesis prompt + synthesizer now live in core (`life_agent.core.synthesis`) so the answer-
+# brain bridge and this REPL share ONE synthesizer + ONE cache (the prompt is the cache key, kept
+# byte-identical). The alias keeps ask.py's surface unchanged.
+ANSWER_SYSTEM = SYN.ANSWER_SYSTEM
 
 
 # --- retrieval over the LIVE corpus --------------------------------------- #
@@ -217,10 +193,7 @@ def _is_lock_error(msg: str) -> bool:
     return "lock" in m or "conflict" in m or "being used" in m
 
 
-def _clean_terms(raw: str) -> str:
-    """Pure: flatten an LLM expansion reply to a clean space-separated term string.
-    Drops bullets/commas/quotes/newlines; keeps Unicode word chars (so Hebrew survives)."""
-    return " ".join(re.sub(r"[^\w]+", " ", raw, flags=re.UNICODE).split())
+_clean_terms = EXP.clean_terms  # the canonical cleaner now lives in core.expansion
 
 
 # --- temporal (D1): /recent · /since · the nothing-vanishes footer --------- #
@@ -594,9 +567,14 @@ def _rerank_hits(question: str, pool: list[dict[str, Any]], k: int, *,
     return ordered[:k]
 
 
-def _cards_from_set(hits: list[dict[str, Any]]) -> list[tuple[C.SourceCard, float]]:
-    """Pure: render a retrieval set (live or replayed from cache) as numbered cards."""
-    return [(C.SourceCard(n=i + 1, text=h["chunk_text"].strip(), origin=h["origin"]),
+def _cards_from_set(hits: list[dict[str, Any]],
+                    dates: dict[str, str | None] | None = None
+                    ) -> list[tuple[C.SourceCard, float]]:
+    """Pure: render a retrieval set (live or replayed from cache) as numbered cards. ``dates``
+    (artifact_cache_key → ISO doc_date) attaches each card's ``as_of`` for the temporal-scope
+    render; omitted ⇒ undated (back-compat — the retrieve() convenience seam stays date-blind)."""
+    return [(C.SourceCard(n=i + 1, text=h["chunk_text"].strip(), origin=h["origin"],
+                          as_of=(dates.get(h["artifact_cache_key"]) if dates else None)),
              h["score"]) for i, h in enumerate(hits)]
 
 
@@ -729,7 +707,13 @@ def answer(conn: duckdb.DuckDBPyConnection, question: str,
             conn, root, hits, profile=profile)
         SUBJECT_LAST = sreport
 
-    pairs = _cards_from_set(hits)
+    # attach each card's freshest doc_date (probe_recency adds the email-Date-header fallback for the
+    # un-projected sliver) so the narrative render surfaces "as of <date>" — the temporal-scope
+    # keystone. Read-only; display only (the synthesize key hashes hits, not cards).
+    card_dates = (P.probe_recency(conn, root, list(dict.fromkeys(
+        h["artifact_cache_key"] for h in hits)))
+        if conn is not None and root is not None and hits else None)
+    pairs = _cards_from_set(hits, card_dates)
     cards = [c for c, _ in pairs]
     scores = {c.n: s for c, s in pairs}
     # Abstain on weak retrieval (subsumes the zero-hit case) unless the owner profile can answer
@@ -774,36 +758,15 @@ def answer(conn: duckdb.DuckDBPyConnection, question: str,
             STAGES_LAST["lookup_answer"] = lk.answer_cache_key
             return (lk.rendered, cards, scores)
 
-    # synthesize — keyed on the retrieved CONTENT (early cutoff) and the profile hash
-    skey = D.synthesize_key(question, D.content_hash(_set_content(hits)),
-                            D.content_hash(profile.encode("utf-8")),
-                            model=C.DEFAULT_ANSWER_MODEL, prompt_template=ANSWER_SYSTEM,
-                            temperature=C.TEMPERATURE, max_tokens=600)
-    STAGES_LAST["synthesize"] = skey.cache_key
-    text: str | None = None
-    if root is not None and not no_cache:
-        cached = D.lookup(root, skey.cache_key)
-        if cached is not None:
-            _count("synthesize", hit=True)
-            text = cached.decode("utf-8")
-
-    if text is None:
-        blocks = []
-        if profile:
-            blocks.append(f'OWNER (authoritative — who "I"/"my" refers to):\n{profile}')
-        blocks.append(
-            f"SOURCES:\n{C.render_sources_block(cards) if cards else '(none retrieved)'}")
-        user = f"QUESTION: {question}\n\n" + "\n\n".join(blocks)
-        r = C.anthropic_complete(ANSWER_SYSTEM, user, max_tokens=600)
-        text = r.text.strip()
-        if root is not None:
-            _count("synthesize", hit=False)
-            lineage = ([{"cache_key": rkey.cache_key, "role": "retrieval_set"}] if rkey else [])
-            lineage += [{"cache_key": ck, "role": "source"}
-                        for ck in dict.fromkeys(h["artifact_cache_key"] for h in hits)]
-            D.record(root, skey, text.encode("utf-8"), lineage=lineage,
-                     metadata={"in_tokens": r.in_tokens, "out_tokens": r.out_tokens,
-                               "seconds": round(r.seconds, 3)})
+    # synthesize — keyed on the retrieved CONTENT (early cutoff) and the profile hash; the
+    # synthesizer lives in core.synthesis (shared with the bridge). The retrieval_set lineage is
+    # ask-side (rerank has no retrieve key), threaded through as extra lineage.
+    extra = [{"cache_key": rkey.cache_key, "role": "retrieval_set"}] if rkey else []
+    text, scache, scached = SYN.synthesize(root, question, hits, profile, no_cache=no_cache,
+                                           extra_lineage=extra)
+    if root is not None:  # caching telemetry only when a cache is in play (root resolved)
+        _count("synthesize", hit=scached)
+    STAGES_LAST["synthesize"] = scache
     if not families:  # the monolithic instrument: raw synthesize prose, unscored
         return (text, cards, scores)
     return (_narrative_scored(root, question, text, cards), cards, scores)

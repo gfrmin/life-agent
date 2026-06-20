@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import re
 
+from life_agent.core.dates import parse_date
+
 # `[^\W_]+` = runs of Unicode letters/digits (excluding underscore), which
 # mirrors the FTS tokeniser's `ignore='[^\p{L}\p{N}]+'`. casefold() lowercases
 # (no-op for Hebrew). This is the shared tokenization contract.
@@ -33,11 +35,19 @@ def _is_contiguous_sublist(needle: list[str], haystack: list[str]) -> bool:
 
 def answer_matches(answer: str, variants: list[str], chunk_text: str) -> bool:
     """True if ``answer`` (or any of ``variants``) appears in ``chunk_text`` as a
-    contiguous token run. Token-boundary, not substring."""
+    contiguous token run. Token-boundary, not substring.
+
+    Date-aware: when ``chunk_text`` IS itself a calendar date, a candidate naming the SAME date in
+    another format matches (``25 December 1999`` ≡ ``25/12/1999`` — the grader was undercounting
+    correct date answers on format alone). ``parse_date`` returns None for a document chunk, so the
+    value-in-document case is unchanged — this only loosens value-vs-value comparison."""
     chunk_tokens = tokenize(chunk_text)
+    chunk_date = parse_date(chunk_text)
     for candidate in [answer, *variants]:
         cand_tokens = tokenize(candidate)
         if cand_tokens and _is_contiguous_sublist(cand_tokens, chunk_tokens):
+            return True
+        if chunk_date is not None and parse_date(candidate) == chunk_date:
             return True
     return False
 

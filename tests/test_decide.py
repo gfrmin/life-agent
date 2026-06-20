@@ -114,7 +114,7 @@ def _exhaustive_best_subset(ps: list[float]) -> set[int]:
 def test_decide_claims_threshold_equals_powerset_argmax() -> None:
     for ps in ([0.9, 0.6, 0.3], [0.99, 0.01], [0.5, 0.5, 0.5, 0.5],
                [0.95, 0.8, 0.55, 0.2, 0.05]):
-        scored = [(f"c{i}", (), "verified", p) for i, p in enumerate(ps)]
+        scored = [(f"c{i}", (), "verified", p, None) for i, p in enumerate(ps)]
         claims, _action, _eu, _reason = N.decide_claims(scored, UB)
         included = {int(c.text[1:]) for c in claims if c.included}
         assert included == _exhaustive_best_subset(ps)
