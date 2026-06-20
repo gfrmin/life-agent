@@ -148,7 +148,14 @@ def _route(deps: BridgeDeps, p: Payload) -> Payload | None:
     r = LK.route_question(deps.root, _req_str(p, "question"), client=deps.client)
     if r is None:
         return None                          # not a typed lookup → the brain's narrative case
-    return {"construct": r.construct, "time_indexed": r.time_indexed}
+    # Currency has ONE source of truth: the volatility table (the curated world-knowledge prior), not
+    # the route model's `time_indexed` guess. The model called "mobile phone number" permanent
+    # (time_indexed=False) ⇒ a stale HK number never decayed and was reported as current (the q-014
+    # confident-wrong). A construct IS time-indexed iff its half-life is not PERMANENT — derive it, so
+    # mobile/address/employer decay while DOB/national-id/tax-id do not. The model only classifies the
+    # CONSTRUCT; volatility decides whether it decays.
+    time_indexed = VOL.half_life(r.construct) < VOL.PERMANENT
+    return {"construct": r.construct, "time_indexed": time_indexed}
 
 
 def _retrieve(deps: BridgeDeps, p: Payload) -> Payload:
