@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# verdict-live — the keystroke loop for verdicting proposed narrative answers (the flywheel's
+# frictionless capture). The BIT (g/b) folds into the narrative cells; a CUSTOM answer (c) is
+# recorded as a correction, never force-folded. The Anthropic key is read from gnome-keyring by
+# life_agent.core.llm.secret() — no export needed; .env supplies LIFE_AGENT_KB / PKM_CONFIG.
+#   verdict-live                 # the curated high-VOI battery
+#   verdict-live "my question?"  # verdict one ad-hoc question's claims
+set -euo pipefail
+root="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+set -a; [ -f "$root/.env" ] && source "$root/.env"; set +a
+exec uv run --project "$root" python "$root/scripts/verdict.py" "$@"
