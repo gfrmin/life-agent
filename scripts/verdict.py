@@ -18,8 +18,11 @@ $LIFE_AGENT_KB; nothing is committed.
 """
 from __future__ import annotations
 
+import contextlib
+import io
 import json
 import os
+import re
 import sys
 import textwrap
 from typing import Any
@@ -55,24 +58,36 @@ def _worth_verdicting(claim: Any) -> bool:
 
 
 def _getkey(prompt: str) -> str:
-    """One lowercased keystroke (no Enter) when stdin is a tty; a line's first char otherwise."""
-    sys.stdout.write(prompt)
-    sys.stdout.flush()
-    if not sys.stdin.isatty():
-        ch = (sys.stdin.readline().strip()[:1] or "").lower()
-        print(ch)
-        return ch
-    import termios
-    import tty
-    fd = sys.stdin.fileno()
-    old = termios.tcgetattr(fd)
+    """One lowercased command letter via plain line input (type the letter + Enter). Robust — no
+    raw-mode terminal juggling (which broke Ctrl-C and ate buffered input); EOF/Ctrl-C ⇒ quit."""
     try:
-        tty.setraw(fd)
-        ch = sys.stdin.read(1)
-    finally:
-        termios.tcsetattr(fd, termios.TCSADRAIN, old)
-    print(ch)
-    return ch.lower()
+        return (input(prompt).strip()[:1] or "").lower()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return "q"
+
+
+_PREAMBLES = (
+    "based on the sources, ", "based on your documents, ", "based on the sources available, ",
+    "from the retrieved sources, ", "looking at the sources provided, i can see ",
+    "looking at the sources provided, ", "here is what i can identify: ",
+    "i can identify the following: ",
+)
+
+
+def _clean(text: str) -> str:
+    """Make a parsed claim readable for verdicting: normalise whitespace, drop markdown (** ` #),
+    strip a leading list marker and a known LLM preamble. The UNDERLYING claim (what folds) is
+    unchanged — this only cleans the DISPLAY so the owner verdicts the substance, not the markup."""
+    t = " ".join(text.split())
+    t = t.replace("**", "").replace("`", "").replace("#", "")
+    t = re.sub(r"^[\d.)\-*•\s]+", "", t)              # leading numbering / bullets
+    low = t.lower()
+    for pre in _PREAMBLES:
+        if low.startswith(pre):
+            t = t[len(pre):]
+            break
+    return t.strip()
 
 
 def _show(pos: int, n: int, question: str, scope: str, claim: Any) -> None:
@@ -81,8 +96,8 @@ def _show(pos: int, n: int, question: str, scope: str, claim: Any) -> None:
     print(f"verdict {pos}/{n}   \033[1mQ:\033[0m {question}   \033[2m(scope: {scope})\033[0m")
     asof = claim.as_of or "—"
     print(f"\033[2mcell {claim.cell} · as of {asof} · credence {claim.credence:.2f}\033[0m\n")
-    for line in textwrap.wrap(" ".join(claim.text.split()), width=72):
-        print(f"  {line}")
+    for line in textwrap.wrap(_clean(claim.text), width=72) or ["(empty claim)"]:
+        print(f"  \033[1m{line}\033[0m")
     print()
 
 
@@ -91,24 +106,27 @@ def run(questions: tuple[str, ...]) -> int:
     opath = config.OUTCOMES_LOG
     before = N.population_posteriors(opath)
 
-    # build the queue: every worth-verdicting claim across the battery, verified cell first
+    # build the queue: every worth-verdicting claim across the battery, verified cell first. The
+    # pipeline's chatter (expansion lines, the kappa_att warning) is captured, not shown — a clean
+    # progress line stands in, so the owner isn't staring at a flood before the first prompt.
     queue: list[tuple[str, Any, int, str]] = []
-    for q in questions:
+    print(f"\033[2mbuilding queue over {len(questions)} questions…\033[0m")
+    for n, q in enumerate(questions, 1):
         try:
-            ask.answer(conn, q, 8)
+            with contextlib.redirect_stdout(io.StringIO()):
+                ask.answer(conn, q, 8)
         except Exception as e:  # noqa: BLE001 — a failed question is skipped, named
-            print(f"  (skipped '{q}': {e})")
+            print(f"  \033[2m[{n}/{len(questions)}] skipped — {e}\033[0m")
             continue
         nv = ask.NARRATIVE_LAST
         scope = ask.INTENT_LAST or "unscoped"
-        if nv is None:
-            continue
-        claims = nv.claims
+        claims = nv.claims if nv is not None else ()
         order = sorted(range(len(claims)),
                        key=lambda i: (claims[i].cell != "verified", -claims[i].credence))
-        for i in order:
-            if _worth_verdicting(claims[i]):
-                queue.append((q, nv, i, scope))
+        picked = [i for i in order if _worth_verdicting(claims[i])]
+        for i in picked:
+            queue.append((q, nv, i, scope))
+        print(f"  \033[2m[{n}/{len(questions)}] {q[:48]:<48} → {len(picked)} claims\033[0m")
 
     if not queue:
         print("no claims to verdict (the battery produced no grounded narrative claims).")
@@ -132,7 +150,11 @@ def run(questions: tuple[str, ...]) -> int:
             continue
         bit = key == "g"
         if key == "c":
-            corr = input("    your answer › ").strip()
+            try:
+                corr = input("    your answer › ").strip()
+            except (EOFError, KeyboardInterrupt):
+                print("\n  (correction cancelled — skipped)")
+                continue
             if corr:
                 corrections.append({
                     "tx_time": O.now_iso(), "question": q,
