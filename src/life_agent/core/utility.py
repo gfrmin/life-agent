@@ -430,21 +430,22 @@ def _fold_joint(brain: Brain, model: UtilityModel, comp: frozenset[str],
         "space": {"type": "finite", "values": idx_vals},
         "log_weights": log_prior,
     })
+    out: dict[str, LatentPosterior] = {}
     try:
         for event in events:
             kernel, observation = _joint_kernel(event, points, names, idx_vals, model)
             brain.condition(state_id, kernel=kernel, observation=observation)
-        joint = brain.weights(state_id)
+        # Marginalise back to each latent ENGINE-SIDE: the pushforward of the joint through the
+        # coordinate projection π_axis (the grid is row-major — last axis fastest, matching the
+        # itertools.product enumeration above). The body ships only {shape, axis} and never folds
+        # the joint weights itself (Invariant 1 — the marginalisation is belief arithmetic that
+        # stays off-host; was the `marg[ix[j]] += joint[k]` loop, now the `marginalise` verb).
+        shape = [len(g) for g in grids]
+        for j, name in enumerate(names):
+            marg = brain.marginalise(state_id, shape=shape, axis=j)
+            out[name] = LatentPosterior(name=name, values=grids[j], weights=tuple(marg))
     finally:
         brain.destroy_state(state_id)
-
-    out: dict[str, LatentPosterior] = {}
-    for j, name in enumerate(names):
-        gvals = grids[j]
-        marg = [0.0] * len(gvals)
-        for k, ix in enumerate(index_tuples):
-            marg[ix[j]] += joint[k]
-        out[name] = LatentPosterior(name=name, values=gvals, weights=tuple(marg))
     return out
 
 
