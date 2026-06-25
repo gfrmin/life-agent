@@ -69,10 +69,12 @@ def _era_split(observations: list[LK.Observation],
 
 
 def _top_candidates(brain: Brain, observations: list[LK.Observation],
-                    rho: float, n: int) -> list[str]:
-    """The n highest-posterior candidate values over the baseline observations — the
-    gather targets. Uses the real posterior weight (matching the de-risk), not raw
-    corroboration count, so a high-authority single document can still be a target."""
+                    rho: tuple[float, float], n: int) -> list[str]:
+    """The n highest-posterior candidate values over the baseline observations — the gather
+    targets, ranked by the ρ-marginalised V weights (wire-derived). Uses the real posterior
+    weight (matching the de-risk), not raw corroboration count, so a high-authority single
+    document can still be a target. (Target selection by weight is a means-ends heuristic — a
+    VOI-driven gather is a separate change, like the master-plan residual risks.)"""
     candidates = LK.candidates_from(observations)
     weights, state_id = LK.lookup_posterior(brain, observations, candidates, rho)
     brain.destroy_state(state_id)
@@ -128,7 +130,7 @@ def gather_answer(conn: duckdb.DuckDBPyConnection, root: Path, question: str,
                                 route_client=route_client, extract_client=extract_client,
                                 decisions_path=decisions_path, run_id=run_id)
 
-    rho = LK.extractor_reliability()
+    rho = LK.extractor_reliability(b)  # the ρ Beta (α, β), wire-conditioned
 
     # baseline observations over the question's own hits → the candidates to gather on
     base_obs, _ = LK.observe_hits(root, question, hits, client=extract_client,

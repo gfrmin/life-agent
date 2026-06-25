@@ -130,7 +130,7 @@ def test_extract_is_exactly_to_abstract_observations(
                     _obs("Bravo", "d1", subject_factor=0.05),
                     _obs("Alpha", "d0")]
     monkeypatch.setattr(LK, "observe_hits", lambda *a, **k: (observations, 2))
-    monkeypatch.setattr(LK, "extractor_reliability", lambda: 0.7)
+    monkeypatch.setattr(LK, "extractor_reliability_mean", lambda *a, **k: 0.7)
 
     status, payload = _call(deps, "POST", "/extract",
                             {"question": "q", "hits": [{"chunk_text": "x"}]})
@@ -154,7 +154,7 @@ def test_extract_threads_covariates_and_time_indexed_into_observe(
         return [], 0
 
     monkeypatch.setattr(LK, "observe_hits", fake_observe)
-    monkeypatch.setattr(LK, "extractor_reliability", lambda: 0.5)
+    monkeypatch.setattr(LK, "extractor_reliability_mean", lambda *a, **k: 0.5)
     _call(deps, "POST", "/extract", {
         "question": "q", "hits": [],
         "covariates": {"doc_date": {"d0": "2015-06-02"}, "subject_state": {"d0": "owner"}},
@@ -172,7 +172,7 @@ def test_extract_projects_era_split_from_doc_date(
     # bridge projects it from the RAW obs + doc_date. Two values >5y apart ⇒ True.
     observations = [_obs("Vcur", "d_new"), _obs("Vstale", "d_old")]
     monkeypatch.setattr(LK, "observe_hits", lambda *a, **k: (observations, 0))
-    monkeypatch.setattr(LK, "extractor_reliability", lambda: 0.7)
+    monkeypatch.setattr(LK, "extractor_reliability_mean", lambda *a, **k: 0.7)
     status, payload = _call(deps, "POST", "/extract", {
         "question": "q", "hits": [{"chunk_text": "x"}],
         "covariates": {"doc_date": {"d_new": "2026-01-01", "d_old": "2015-01-01"}},
@@ -186,7 +186,7 @@ def test_extract_era_split_false_without_doc_date(
     # No doc_date covariate ⇒ recency cannot discriminate ⇒ False (a permanent fact is not decayed).
     observations = [_obs("Vcur", "d_new"), _obs("Vstale", "d_old")]
     monkeypatch.setattr(LK, "observe_hits", lambda *a, **k: (observations, 0))
-    monkeypatch.setattr(LK, "extractor_reliability", lambda: 0.7)
+    monkeypatch.setattr(LK, "extractor_reliability_mean", lambda *a, **k: 0.7)
     status, payload = _call(deps, "POST", "/extract",
                             {"question": "q", "hits": [{"chunk_text": "x"}]})
     assert status == 200
@@ -475,7 +475,7 @@ def live_bridge(deps: BridgeDeps,
                 monkeypatch: pytest.MonkeyPatch) -> Iterator[tuple[str, dict[str, Any]]]:
     """A real BridgeServer on an ephemeral loopback port. ``observe_hits`` is patched to be a
     pure function of the question, so an interleaved request cannot perturb a repeat."""
-    monkeypatch.setattr(LK, "extractor_reliability", lambda: 0.5)
+    monkeypatch.setattr(LK, "extractor_reliability_mean", lambda *a, **k: 0.5)
 
     def observe_for(root: Any, q: str, hits: list[dict[str, Any]], **k: Any
                     ) -> tuple[list[Observation], int]:
