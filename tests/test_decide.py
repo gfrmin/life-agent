@@ -97,24 +97,37 @@ def test_gate_partition_is_the_same_single_vocabulary() -> None:
 
 # --- separability: narrative's per-claim threshold IS the powerset argmax --------------------
 
-def _exhaustive_best_subset(ps: list[float]) -> set[int]:
-    """argmax over all 2ⁿ inclusion subsets of total EU = Σ_{i∈A} include_eu(p_i)
-    (withhold = u_abstain = 0) — the brute-force oracle the per-claim threshold must match."""
+def _integrated_include_eu(a: float, b: float) -> float:
+    """The narrative include action's EU over a cell Beta(a, b), the integrated model the wire
+    `optimise{include, withhold}` runs: E_θ[θ·u_assert(θ)] − κ = (u_c−u_w)·E[θ²] + u_w·E[θ] − κ
+    (the proper integral — NOT include_eu evaluated at the point E[θ])."""
+    e1 = a / (a + b)
+    e2 = a * (a + 1.0) / ((a + b) * (a + b + 1.0))
+    return (UB["u_correct"] - UB["u_wrong"]) * e2 + UB["u_wrong"] * e1 - UB["kappa_att"]
+
+
+def _exhaustive_best_subset(eus: list[float]) -> set[int]:
+    """argmax over all 2ⁿ inclusion subsets of total EU = Σ_{i∈A} EU_i (withhold = u_abstain = 0)
+    — the brute-force oracle the per-claim threshold (`optimise` on each cell Beta) must match."""
     best_eu = float("-inf")
     best: set[int] = set()
-    n = len(ps)
+    n = len(eus)
     for r in range(n + 1):
         for combo in combinations(range(n), r):
-            eu = sum(N.include_eu(ps[i], UB) for i in combo)
+            eu = sum(eus[i] for i in combo)
             if eu > best_eu:
                 best_eu, best = eu, set(combo)
     return best
 
 
-def test_decide_claims_threshold_equals_powerset_argmax() -> None:
-    for ps in ([0.9, 0.6, 0.3], [0.99, 0.01], [0.5, 0.5, 0.5, 0.5],
-               [0.95, 0.8, 0.55, 0.2, 0.05]):
-        scored = [(f"c{i}", (), "verified", p, None) for i, p in enumerate(ps)]
-        claims, _action, _eu, _reason = N.decide_claims(scored, UB)
-        included = {int(c.text[1:]) for c in claims if c.included}
-        assert included == _exhaustive_best_subset(ps)
+def test_per_claim_threshold_equals_powerset_argmax() -> None:
+    # narrative decides each claim independently (per-claim `optimise{include,withhold}` on its
+    # cell Beta); claims are independent and answer-utility additive, so the powerset optimum
+    # factorises to the per-claim threshold {i : EU_i > 0}. This pins that separability on the
+    # INTEGRATED EU (decide_claims' end-to-end inclusion is exercised in test_narrative).
+    for cells in ([(9., 1.), (3., 2.), (1., 3.)],         # means 0.9 / 0.6 / 0.25
+                  [(99., 1.), (1., 99.)],
+                  [(5., 5.), (5., 5.), (5., 5.), (5., 5.)],
+                  [(20., 1.), (8., 4.), (3., 4.), (1., 6.), (1., 30.)]):
+        eus = [_integrated_include_eu(a, b) for a, b in cells]
+        assert {i for i, e in enumerate(eus) if e > 0.0} == _exhaustive_best_subset(eus)
