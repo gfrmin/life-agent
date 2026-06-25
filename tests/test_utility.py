@@ -156,6 +156,10 @@ class SeqTransport:
             n = 0  # length must match the grid of whichever state — scripted uniform
             n = len(self._grid_for(req["params"]["state_id"]))
             result = {"weights": [1.0 / n] * n}
+        elif method == "marginalise":
+            # the joint-grid fold's per-latent readout: a uniform marginal of the axis length
+            n = req["params"]["shape"][req["params"]["axis"]]
+            result = {"weights": [1.0 / n] * n}
         else:
             result = "ok"
         return json.dumps({"jsonrpc": "2.0", "id": req["id"], "result": result})
@@ -242,9 +246,8 @@ def test_endpoint_warnings(model: U.UtilityModel) -> None:
 @pytest.mark.system
 def test_live_fold_matches_reference_and_moves_u_wrong_correctly(
         model: U.UtilityModel) -> None:
-    repo = Path(B.CREDENCE_REPO)
-    if not (repo / "apps/skin/server.jl").exists():
-        pytest.skip(f"credence repo not found at {repo}")
+    if not (B._DEV_REPO or B._DEV_SERVER):
+        pytest.skip("set $CREDENCE_REPO or $CREDENCE_SKIN_SERVER to spawn a dev engine")
     events: list[U.Evidence] = [
         U.Elicitation(tx_time="t1", latent="u_wrong", stated_value=-8.0, noise_sigma=2.0),
         U.Reaction(tx_time="t2", latent="u_wrong", reacted=True, sign=-1.0, threshold=0.0),
@@ -279,9 +282,8 @@ def test_live_reaction_loop_good_on_abstain_lowers_u_wrong(
     """The §4.4 loop end to end through the real skin: a good-on-abstain verdict, joined
     to its decision by decision_id, produces a Reaction that lowers Ū(u_wrong) — the
     owner's behaviour, not a fabricated number, moving the belief."""
-    repo = Path(B.CREDENCE_REPO)
-    if not (repo / "apps/skin/server.jl").exists():
-        pytest.skip(f"credence repo not found at {repo}")
+    if not (B._DEV_REPO or B._DEV_SERVER):
+        pytest.skip("set $CREDENCE_REPO or $CREDENCE_SKIN_SERVER to spawn a dev engine")
     from life_agent.core import decisions as DEC
     from life_agent.core import reactions as R
 
@@ -360,9 +362,8 @@ def test_live_narrative_good_on_abstain_moves_both_latents(model: U.UtilityModel
     """The §7.1 joint fold end to end through the real skin: a good-on-abstain verdict
     ("right to withhold") is a low-margin observation, pushing u(wrong) DOWN and κ_att UP
     jointly; the untouched latents stay at their prior."""
-    repo = Path(B.CREDENCE_REPO)
-    if not (repo / "apps/skin/server.jl").exists():
-        pytest.skip(f"credence repo not found at {repo}")
+    if not (B._DEV_REPO or B._DEV_SERVER):
+        pytest.skip("set $CREDENCE_REPO or $CREDENCE_SKIN_SERVER to spawn a dev engine")
     with B.Brain.spawn() as b:
         b.initialize()
         post = U.posterior(b, model, [_margin_good(0.6)])
@@ -387,9 +388,8 @@ def test_lookup_u_wrong_marginal_is_invariant_when_pulled_into_a_joint(
     (coeff 0) structurally pulls it into the {u_wrong, κ_att} joint, but — independent prior
     product, lookup likelihood flat in κ_att — the joint factorises, so the marginalised
     u(wrong) must equal the standalone 1-D fold to machine precision."""
-    repo = Path(B.CREDENCE_REPO)
-    if not (repo / "apps/skin/server.jl").exists():
-        pytest.skip(f"credence repo not found at {repo}")
+    if not (B._DEV_REPO or B._DEV_SERVER):
+        pytest.skip("set $CREDENCE_REPO or $CREDENCE_SKIN_SERVER to spawn a dev engine")
     lookup = U.Reaction(tx_time="t", latent="u_wrong", reacted=True, sign=-1.0, threshold=0.5)
     flat = U.MarginReaction(tx_time="t", coeffs=(("kappa_att", -1.0), ("u_wrong", 0.0)),
                             offset=0.0, reacted=True, sign=-1.0, tau_group="narrative")
