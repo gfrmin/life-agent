@@ -40,7 +40,7 @@ CREDENCE_SKIN_IMAGE = os.environ.get("CREDENCE_SKIN_IMAGE", "ghcr.io/gfrmin/cred
 
 # Wire protocol MAJOR this body is built against — sent in `initialize` so a breaking-change
 # server is rejected (-32010), and re-checked against the server's returned `protocol`. The
-# body uses protocol-1.x verbs (incl. the 1.7 `centered_power`/`marginalise` surface).
+# body uses protocol-1.x verbs (incl. the 1.11 `centered_power`/`marginal` continuous surface).
 PROTOCOL_MAJOR = "1"
 
 # Dev-only escape hatch: set $CREDENCE_REPO (or $CREDENCE_SKIN_SERVER) to spawn a local
@@ -266,18 +266,20 @@ class Brain:
 
     def read_params(self, state_id: str) -> dict[str, Any]:
         """The belief's declarative ``{type, params...}`` spec (the `params` protocol).
-        Routes a wire-CONDITIONED conjugate posterior back into another spec (e.g. a ρ Beta
+        Routes a wire-CONDITIONED conjugate posterior back into another spec (e.g. a rho Beta
         → a `labelled_mixture` `label_prior`) with no host conjugacy — the body conditions
         over the wire, then reads the exact posterior params here, never folding ``a += 1``."""
-        return self._call("read_params", {"state_id": state_id})
+        result: dict[str, Any] = self._call("read_params", {"state_id": state_id})
+        return result
 
-    def marginalise(self, state_id: str, *, shape: list[int], axis: int) -> list[float]:
-        """Marginal of a flat product-grid categorical along ``axis`` (0-based). The engine
-        sums out the other axes (row-major, last axis fastest) — a terminal readout that keeps
-        the joint-grid fold's marginalisation engine-side; the body ships only ``{shape, axis}``."""
-        result = self._call("marginalise",
-                            {"state_id": state_id, "shape": shape, "axis": axis})
-        return [float(w) for w in result["weights"]]
+    def marginal(self, state_id: str, *, axis: int) -> str:
+        """The ``axis``-th marginal of a product-grid posterior (a `truncated_mv_gaussian`
+        conditioned by coupling kernels), registered as a NEW scalar state whose id is returned —
+        read it with ``mean``/``expect`` like a 1-D fold. The engine sums out the other coordinates
+        over its OWN grid; the body ships only ``{state_id, axis}`` (no shape) and does no belief
+        arithmetic. The joint stays registered; destroy the returned marginal state when done."""
+        result = self._call("marginal", {"state_id": state_id, "axis": axis})
+        return str(result["state_id"])
 
     def optimise(self, state_id: str, *, actions: dict[str, Any],
                  preference: dict[str, Any]) -> tuple[Any, float]:

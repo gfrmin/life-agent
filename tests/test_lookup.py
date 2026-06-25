@@ -9,9 +9,7 @@ Run: uv run --project . python -m pytest tests/test_lookup.py
 """
 from __future__ import annotations
 
-import dataclasses
 import json
-import math
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -155,7 +153,7 @@ def test_observation_cache_is_per_chunk(migrated_root: Path) -> None:
 
 class _BetaBrain:
     """A Beta-Bernoulli test-oracle brain (create_state/condition/read_params/mean) modelling the
-    conjugacy the body now drives OVER THE WIRE for the ρ Beta — no host `prior + correct` fold."""
+    conjugacy the body drives OVER THE WIRE for the rho Beta — no host `prior + correct` fold."""
 
     def __init__(self) -> None:
         self._s: dict[str, tuple[float, float]] = {}
@@ -190,7 +188,7 @@ def test_extractor_reliability_learns_from_eval_outcomes(tmp_path: Path) -> None
     from life_agent.core import outcomes as O
 
     log = tmp_path / "outcomes.jsonl"
-    # the ρ Beta is wire-conditioned and read back as (α, β); no evidence ⇒ the wide Beta(4,4) prior
+    # the rho Beta is wire-conditioned, read back as (alpha, beta); no evidence => wide Beta(4,4)
     assert LK.extractor_reliability(_BetaBrain(), log) == (4.0, 4.0)
     identity = {"producer_name": "life_agent.ask.lookup_answer",
                 "extract_prompt_hash": LK.extract_instrument_hash()}
@@ -351,7 +349,7 @@ def test_parse_date_unambiguous_and_ambiguous() -> None:
 
 # temper_scales + observation_densities are RETIRED (the §4.2 host tempering / per-obs likelihood
 # rows): the exact correlated-evidence model is now the engine's group_noisy_channel kernel over a
-# carried ρ-latent labelled_mixture (lookup_posterior). The likelihood math is tested engine-side
+# carried rho-latent labelled_mixture (lookup_posterior). The likelihood math is tested engine-side
 # (test/test_group_noisy_channel.jl); the body ships the per-document covariate + reports as data.
 
 
@@ -453,7 +451,7 @@ def test_grammar_templates_all_render() -> None:
 
 class ScriptedTransport:
     """create/condition/weights/marginalise/expect/read_params/optimise over scripted replies.
-    The lookup ρ-latent path: create_state(labelled_mixture) + condition(group_noisy_channel) +
+    The lookup rho-latent path: create_state(labelled_mixture) + condition(group_noisy_channel) +
     `expect` (the V-marginal onehots, uniform-scripted) + `optimise` (a string `report_j`/action
     name → decide maps `report_j`→report)."""
 
@@ -477,10 +475,10 @@ class ScriptedTransport:
             idx = int(req["params"]["state_id"].split("_")[1]) - 1
             n = len(creates[idx]["params"]["space"]["values"])
             result = {"weights": [1.0 / n] * n}
-        elif method == "marginalise":
-            # the utility joint-grid fold's per-latent readout (via current_u_bar): uniform
-            n = req["params"]["shape"][req["params"]["axis"]]
-            result = {"weights": [1.0 / n] * n}
+        elif method == "marginal":
+            # the utility joint fold's per-coordinate readout → a NEW scalar state (mean/expect)
+            n = sum(1 for r in self.sent if r["method"] == "marginal")
+            result = {"state_id": f"m_{n}"}
         elif method == "mean":
             # the utility continuous-latent fold's causal mean readout (scripted neutral)
             result = {"mean": 0.0}
