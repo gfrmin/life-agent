@@ -241,9 +241,11 @@ class Brain:
     # --- inference (the §11 mapping: condition / expect / optimise) ---
 
     def condition(self, state_id: str, *, kernel: dict[str, Any],
-                  observation: float | int | str) -> float:
+                  observation: float | int | str | list[int]) -> float:
         """Bayesian inversion in place — the only learning mechanism. Returns the
-        log marginal likelihood of the observation."""
+        log marginal likelihood of the observation. ``observation`` is a scalar (e.g. a
+        Bernoulli 0/1, a categorical index) or a list (e.g. a `group_noisy_channel`'s
+        corroborating reports)."""
         result = self._call("condition", {
             "state_id": state_id, "kernel": kernel, "observation": observation})
         return float(result["log_marginal"])
@@ -261,6 +263,21 @@ class Brain:
         measure."""
         result = self._call("expect", {"state_id": state_id, "function": function})
         return float(result["value"])
+
+    def read_params(self, state_id: str) -> dict[str, Any]:
+        """The belief's declarative ``{type, params...}`` spec (the `params` protocol).
+        Routes a wire-CONDITIONED conjugate posterior back into another spec (e.g. a ρ Beta
+        → a `labelled_mixture` `label_prior`) with no host conjugacy — the body conditions
+        over the wire, then reads the exact posterior params here, never folding ``a += 1``."""
+        return self._call("read_params", {"state_id": state_id})
+
+    def marginalise(self, state_id: str, *, shape: list[int], axis: int) -> list[float]:
+        """Marginal of a flat product-grid categorical along ``axis`` (0-based). The engine
+        sums out the other axes (row-major, last axis fastest) — a terminal readout that keeps
+        the joint-grid fold's marginalisation engine-side; the body ships only ``{shape, axis}``."""
+        result = self._call("marginalise",
+                            {"state_id": state_id, "shape": shape, "axis": axis})
+        return [float(w) for w in result["weights"]]
 
     def optimise(self, state_id: str, *, actions: dict[str, Any],
                  preference: dict[str, Any]) -> tuple[Any, float]:
