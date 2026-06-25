@@ -42,7 +42,8 @@ DAEMON = os.environ.get("ANSWER_BRAIN_URL", "http://127.0.0.1:8799")
 # reliability (= the bridge's _JOINT_RHO) + its cost (utility units). The daemon rescues a below-bar
 # leader with a corroborate only when its VOI clears this cost. RE-ENABLED now that the keystone fix
 # lands: `/probe/corroborate` routes its re-read observation through the SAME volatility projector
-# `/extract` uses (`_corroborate_time_factor`), so a stale value can no longer be reported as current
+# `/extract` uses (`_corroborate_time_factor`), so a stale value can no longer be reported
+# as current
 # (the q-006 confident-stale bug that gated this off). The net_voi mechanism is validated
 # (test_answer_brain §2-A + test_server wire).
 _GATHER_RHO = 0.95
@@ -52,7 +53,8 @@ _GATHER_COST = 0.02
 # owns the menu; the daemon prices + schedules it). Each :voi tier carries a stated reliability + a
 # stated cost-in-utility (frozen-blind world-knowledge priors, monotone in model strength; to be
 # calibrated from verdicts). The recency guard + the owner-scoped attribution guard ride the same
-# menu; the owner guard re-reads with the strongest model (probe → corroborate_opus). schedule_decide
+# menu; the owner guard re-reads with the strongest model (probe → corroborate_opus).
+# schedule_decide
 # gathers the net_voi-argmax tier (the cost-efficient one); the body enacts it by probe name.
 _TIER_MODEL = {"corroborate_haiku": "claude-haiku-4-5",
                "corroborate_sonnet": "claude-sonnet-4-6",
@@ -94,9 +96,12 @@ _WITHHOLD = frozenset({"miss", "abstain", "hedge", "ask_clarify"})
 # enlarges the candidate set once (rerank) and re-decides. Grow first reopened the cardinal sin —
 # q-014 ("my mobile") reported the owner's STALE HK number as CONFIDENT_WRONG — but the trace found
 # the true cause: the route model mis-classified "mobile phone number" as time_indexed=False, so
-# volatility NEVER decayed it (every candidate tf=1.0 over 2011–2021 docs). The guard is the currency
-# fix in the bridge (`/route` derives time_indexed from the volatility table, not the model's guess):
-# mobile/address/employer decay, DOB/national-id/tax-id do not. With it, grow is SAFE — measured live
+# volatility NEVER decayed it (every candidate tf=1.0 over 2011-2021 docs). The guard is
+# the currency
+# fix in the bridge (`/route` derives time_indexed from the volatility table, not the model's
+# guess):
+# mobile/address/employer decay, DOB/national-id/tax-id do not. With it, grow is SAFE —
+# measured live
 # (2026-06-20): CORRECT 3→4/18 (q-019 recovered, q-014 now ABSTAINS) at real-CONFIDENT_WRONG 0.
 # `ANSWER_BRAIN_GROW=0` disables it.
 _GROW = os.environ.get("ANSWER_BRAIN_GROW", "1") != "0"
@@ -113,8 +118,10 @@ def _decide_via_loop(question: str, k: int, *, rerank: bool = False) -> dict:
     found no candidates at all; else keep the cheap withhold. ON by default (see `_GROW`)."""
     route = _post(f"{BRIDGE}/route", {"question": question})
     if route is None:
-        # Not a typed point-fact → the NARRATIVE family (Slice A): synthesize a cited answer over the
-        # full-recall hits, audit each claim against its cited card, include only grounded + EU-positive
+        # Not a typed point-fact → the NARRATIVE family (Slice A): synthesize a cited answer
+        # over the
+        # full-recall hits, audit each claim against its cited card, include only grounded
+        # + EU-positive
         # claims. Gate-safe by construction (ungrounded/weak ⇒ abstain). `asserted` = the included
         # claims' text, so the grader matches the gold inside a grounded claim.
         nv = _post(f"{BRIDGE}/narrative", {"question": question})
@@ -126,9 +133,11 @@ def _decide_via_loop(question: str, k: int, *, rerank: bool = False) -> dict:
         # Escalating recall breadth (cheapest-first, stop at the first report). Each tier only fires
         # if the prior still WITHHOLDS — so we pay for breadth only when narrower recall failed:
         #   tier 1  rerank(raw)   — over-fetch 150 + listwise reorder surfaces a buried literal hit
-        #                           (recovers strong English/number golds ranked just outside top-k).
+        #                           (recovers strong English/number golds ranked just outside
+        #                           top-k).
         #   tier 2  rerank+expand — native-script (Hebrew) expansion bridges the English↔Hebrew
-        #                           lexical gap (the dominant miss). Expansion DILUTES strong literals,
+        #                           lexical gap (the dominant miss). Expansion DILUTES
+        #                           strong literals,
         #                           so it escalates AFTER raw rerank, never replacing it.
         for rr, ex in ((True, False), (True, True)):
             if view["effector"] not in _WITHHOLD:
@@ -141,7 +150,8 @@ def _decide_via_loop(question: str, k: int, *, rerank: bool = False) -> dict:
 
 def _run(question: str, k: int, route: dict, *, rerank: bool, expand: bool = False) -> dict:
     """One retrieve→probe→extract→decide pass at a given recall breadth (rerank + expand grow K).
-    Returns the normalized view: {effector, asserted, candidates, credences, p_none, eu, hits, route}."""
+    Returns the normalized view:
+    {effector, asserted, candidates, credences, p_none, eu, hits, route}."""
     hits = _post(f"{BRIDGE}/retrieve",
                  {"question": question, "k": k, "rerank": rerank, "expand": expand})["hits"]
     hit_keys = list(dict.fromkeys(h["artifact_cache_key"] for h in hits))
@@ -163,11 +173,13 @@ def _run(question: str, k: int, route: dict, *, rerank: bool, expand: bool = Fal
         return _post(f"{DAEMON}/decide", {
             "candidates": candidates, "observations": observations, "rho": r, "u_bar": u_bar,
             "era_split": era_split, "owner_scoped": owner, "applied_probes": applied,
-            "transforms": _TRANSFORMS})  # the data-driven menu (Slice 2); supersedes gather_rho/cost
+            # the data-driven menu (Slice 2); supersedes gather_rho/cost
+            "transforms": _TRANSFORMS})
 
     applied: list[str] = []
     dec = _decide(obs, rho, era, applied)
-    for _ in range(2 + sum(t["kind"] == "voi" for t in _TRANSFORMS)):  # bounded: each probe fires once
+    # bounded: each probe fires once
+    for _ in range(2 + sum(t["kind"] == "voi" for t in _TRANSFORMS)):
         if dec["effector"] != "gather":
             break
         probe = dec.get("probe") or ""
@@ -180,7 +192,8 @@ def _run(question: str, k: int, route: dict, *, rerank: bool, expand: bool = Fal
             # a subject-aware whole-doc re-read at the scheduled TIER's model REPLACES the local
             # channel. The joint's value → one observation (or NONE ⇒ empty ⇒ abstain). The tier is
             # named by the probe (corroborate_{haiku,sonnet,opus}); the owner guard uses opus. Each
-            # tier fires at most once (dedup on the probe name) ⇒ escalation across tiers terminates.
+            # tier fires at most once (dedup on the probe name) ⇒ escalation across
+            # tiers terminates.
             model = _TIER_MODEL.get(probe, "claude-opus-4-8")
             tier_rho = _TIER_RHO.get(probe, _GATHER_RHO)
             cr = _post(f"{BRIDGE}/probe/corroborate",

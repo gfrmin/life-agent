@@ -228,7 +228,7 @@ def coverage_posterior(outcomes_path: Path = config.OUTCOMES_LOG
 
 # --- the verdict → cell learning loop (the owner IS the gold) ----------------------------
 
-def owner_claim_outcomes(result: "NarrativeResult", question_id: str,
+def owner_claim_outcomes(result: NarrativeResult, question_id: str,
                          verdicts: Mapping[int, bool], *, run_id: str = "dogfood",
                          ) -> list[O.OutcomeEvent]:
     """Turn the owner's per-claim verdicts into ``eval_claim`` outcomes — the live twin of
@@ -258,7 +258,7 @@ def owner_claim_outcomes(result: "NarrativeResult", question_id: str,
     return events
 
 
-def record_owner_verdicts(result: "NarrativeResult", question_id: str,
+def record_owner_verdicts(result: NarrativeResult, question_id: str,
                           verdicts: Mapping[int, bool], *, run_id: str = "dogfood",
                           outcomes_path: Path = config.OUTCOMES_LOG) -> int:
     """Append the owner's per-claim verdicts as ``eval_claim`` outcomes (the cell-learning fold).
@@ -286,7 +286,8 @@ def freshest_as_of(cites: tuple[int, ...],
                    as_of_by_n: Mapping[int, str | None]) -> str | None:
     """The freshest (max ISO) doc_date among a claim's CITED cards, or None when none is dated.
     ISO date strings order chronologically under lexicographic max — a present-intent reader can
-    see at a glance whether the cited evidence is current or stale (the keystone of temporal scope)."""
+    see at a glance whether the cited evidence is current or stale (the keystone of
+    temporal scope)."""
     dated = [d for n in cites if (d := as_of_by_n.get(n)) is not None]
     return max(dated) if dated else None
 
