@@ -151,11 +151,14 @@ def _route(deps: BridgeDeps, p: Payload) -> Payload | None:
     r = LK.route_question(deps.root, _req_str(p, "question"), client=deps.client)
     if r is None:
         return None                          # not a typed lookup → the brain's narrative case
-    # Currency has ONE source of truth: the volatility table (the curated world-knowledge prior), not
+    # Currency has ONE source of truth: the volatility table (the curated world-knowledge prior),
+    # not
     # the route model's `time_indexed` guess. The model called "mobile phone number" permanent
     # (time_indexed=False) ⇒ a stale HK number never decayed and was reported as current (the q-014
-    # confident-wrong). A construct IS time-indexed iff its half-life is not PERMANENT — derive it, so
-    # mobile/address/employer decay while DOB/national-id/tax-id do not. The model only classifies the
+    # confident-wrong). A construct IS time-indexed iff its half-life is not PERMANENT —
+    # derive it, so
+    # mobile/address/employer decay while DOB/national-id/tax-id do not. The model only
+    # classifies the
     # CONSTRUCT; volatility decides whether it decays.
     time_indexed = VOL.half_life(r.construct) < VOL.PERMANENT
     return {"construct": r.construct, "time_indexed": time_indexed}
@@ -164,7 +167,8 @@ def _route(deps: BridgeDeps, p: Payload) -> Payload | None:
 def _retrieve(deps: BridgeDeps, p: Payload) -> Payload:
     question = _req_str(p, "question")
     # Query expansion (a :grow recall mode): the owner asks in English, the docs are English AND
-    # Hebrew, so a raw query can't reach a Hebrew doc — the dominant retrieval-miss (10/18). `expand`
+    # Hebrew, so a raw query can't reach a Hebrew doc — the dominant retrieval-miss (10/18).
+    # `expand`
     # appends native-script keywords (build_query always keeps the raw words, so recall only grows).
     # It DILUTES strong literals, so the body uses it only on the grow pass, never the cheap first.
     terms = str(p.get("terms", ""))
@@ -254,8 +258,9 @@ def _probe_corroborate(deps: BridgeDeps, p: Payload) -> Payload:
         hits = _req_list(p, "hits")
         candidates = [str(c) for c in (p.get("candidates") or [])]
         model = str(p.get("model") or _JOINT_MODEL)
-        # the scheduled tier's reliability (Slice 2): the re-decide conditions the re-read obs at the
-        # tier's ρ, so a weaker model's read is trusted less. Defaults to the opus-tier _JOINT_RHO.
+        # the scheduled tier's reliability (Slice 2): the re-decide conditions the re-read
+        # obs at the tier's rho, so a weaker model's read is trusted less. Defaults to the
+        # opus-tier _JOINT_RHO.
         tier_rho = float(p.get("rho") or _JOINT_RHO)
         jr = JE.extract_joint(deps.root, question, hits, model=model, k=len(hits))
         obs: list[Payload] = []
@@ -384,7 +389,8 @@ Handler = Callable[[BridgeDeps, Payload], "Payload | None"]
 def _narrative(deps: BridgeDeps, p: Payload) -> Payload:
     """The narrative family (foundations §7) — the answer-brain's SECOND family, run when the typed
     router declines (a list / aggregate / compound question). Retrieve with the full recall
-    (expansion + rerank), synthesize a CITED answer, then `narrative_answer` audits each claim against
+    (expansion + rerank), synthesize a CITED answer, then `narrative_answer` audits each claim
+    against
     its cited card and includes it only if grounded AND EU-positive. Gate-safe by construction: an
     ungrounded or weak claim is dropped → abstain; it never confidently asserts a wrong value. The
     PII profile stays bridge-side (synthesis resolves "my"/"I" via it). `asserted` = the included

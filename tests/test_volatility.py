@@ -46,9 +46,11 @@ def test_the_half_life_drives_the_recency_decay() -> None:
 
 def test_time_indexed_is_derived_from_the_volatility_prior() -> None:
     # the q-014 currency fix: the bridge /route derives time_indexed from the volatility table, not
-    # the route model's (unreliable) guess. A construct is time-indexed iff its half-life is finite —
+    # the route model's (unreliable) guess. A construct is time-indexed iff its half-life is
+    # finite —
     # volatile constructs (mobile/address/employer) decay; permanent identities (DOB/national-id) do
-    # not. This pins the contract the bridge override (`VOL.half_life(c) < VOL.PERMANENT`) relies on.
+    # not. This pins the contract the bridge override (`VOL.half_life(c) < VOL.PERMANENT`)
+    # relies on.
     for volatile in ("mobile phone number", "home address", "current employer", "salary"):
         assert V.half_life(volatile) < V.PERMANENT, volatile
     for permanent in ("Israeli ID number", "date of birth", "tax id"):

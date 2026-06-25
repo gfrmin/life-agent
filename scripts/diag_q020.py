@@ -35,11 +35,13 @@ def main() -> int:
     pool = ask._retrieve_set(conn, query, 200)
     rank = next((i + 1 for i, h in enumerate(pool)
                  if chunk_matches_any(gold, variants, [h["chunk_text"]])), None)
-    print(f"\n  gold lexical rank in pool(200): {rank}   (in top-20 Opus read: {rank and rank <= 20})")
+    print(f"\n  gold lexical rank in pool(200): {rank}   "
+          f"(in top-20 Opus read: {rank and rank <= 20})")
 
-    obj, res = _ask_opus(q["question"], pool, model="claude-opus-4-8", k=20)
+    obj, _ = _ask_opus(q["question"], pool, model="claude-opus-4-8", k=20)
     val = obj.get("value")
-    print(f"\n  OPUS said: value={val!r}  confidence={obj.get('confidence')}  as_of={obj.get('as_of')}")
+    print(f"\n  OPUS said: value={val!r}  confidence={obj.get('confidence')}  "
+          f"as_of={obj.get('as_of')}")
     print(f"  matches gold: {bool(val) and answer_matches(gold, variants, str(val))}")
     # is opus's value a chunk it read, and is the gold anywhere in the top-20?
     top20 = [h["chunk_text"] for h in pool[:20]]
