@@ -126,6 +126,9 @@ class _ScriptedTransport:
         elif method == "marginalise":
             n = req["params"]["shape"][req["params"]["axis"]]
             result = {"weights": [1.0 / n] * n}
+        elif method == "mean":
+            # the utility continuous-latent fold's causal mean readout (scripted neutral)
+            result = {"mean": 0.0}
         elif method == "expect":
             vals = req["params"]["function"].get("values", [1.0])
             result = {"value": sum(vals) / len(vals)}

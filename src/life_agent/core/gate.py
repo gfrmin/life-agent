@@ -52,6 +52,7 @@ where a priced quantity belongs.
 """
 from __future__ import annotations
 
+import math
 import random
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -139,25 +140,15 @@ def realised_utility(resp: RealisedResponse, u: dict[str, float], *,
 
 # --- the Monte-Carlo Δ posterior ---------------------------------------------------------
 
-def _categorical(values: tuple[float, ...], weights: tuple[float, ...],
-                 rng: random.Random) -> float:
-    """One draw from a discrete grid marginal."""
-    r = rng.random()
-    cum = 0.0
-    for v, w in zip(values, weights, strict=True):
-        cum += w
-        if r <= cum:
-            return v
-    return values[-1]
-
-
 def _sample_u(posterior: UtilityPosterior, rng: random.Random) -> dict[str, float]:
-    """Sample one utility vector: the gauge pins fixed, each latent drawn from its grid
-    marginal (the v0 posterior is independent across latents — stated; a joint posterior
-    would sample the joint)."""
+    """Sample one utility vector for the offline gate's MC: the gauge pins fixed, each latent
+    drawn from a Gaussian(mean, variance) summary clamped to its support [lo,hi]. This is an
+    OFFLINE-EVAL approximation of the continuous posterior (the agent never sees it); the latent
+    posteriors are near-Gaussian (truncated-Gaussian), so the moment summary is a faithful sampler."""
     u = dict(posterior.gauge)
     for name, lp in posterior.latents.items():
-        u[name] = _categorical(lp.values, lp.weights, rng)
+        x = rng.gauss(lp.mean, math.sqrt(max(lp.variance, 0.0)))
+        u[name] = min(max(x, lp.lo), lp.hi)
     return u
 
 

@@ -481,6 +481,9 @@ class ScriptedTransport:
             # the utility joint-grid fold's per-latent readout (via current_u_bar): uniform
             n = req["params"]["shape"][req["params"]["axis"]]
             result = {"weights": [1.0 / n] * n}
+        elif method == "mean":
+            # the utility continuous-latent fold's causal mean readout (scripted neutral)
+            result = {"mean": 0.0}
         elif method == "expect":
             # the V-marginal onehots / scoped tabular: Σ vᵢ over a UNIFORM belief (scripted)
             vals = req["params"]["function"].get("values", [1.0])
