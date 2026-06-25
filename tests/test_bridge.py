@@ -89,7 +89,8 @@ def test_empty_observations_yield_empty_mapping() -> None:
     assert abstract == []
 
 
-# ── The keystone: the corroborate re-read carries recency (no transform reports stale as current) ──
+# ── The keystone: the corroborate re-read carries recency (no transform reports stale as
+# current) ──
 from life_agent.bridge import server as SRV  # noqa: E402
 from life_agent.core.joint_extract import JointResult  # noqa: E402
 
@@ -112,14 +113,16 @@ def test_corroborate_time_factor_attenuates_a_stale_source() -> None:
     # address half-life 7y, source dated 14y back ⇒ 0.5^(14/7) = 0.25, NOT 1.0.
     jr = _jr("old st")
     hits = [_hit("d0", "i live at old st now")]
-    tf = SRV._corroborate_time_factor(jr, hits, _p(True, "address", {"d0": "2010-01-01"}, "2024-01-01"))
+    tf = SRV._corroborate_time_factor(
+        jr, hits, _p(True, "address", {"d0": "2010-01-01"}, "2024-01-01"))
     assert tf < 0.3
 
 
 def test_corroborate_time_factor_keeps_a_fresh_source_current() -> None:
     jr = _jr("new ave")
     hits = [_hit("d0", "moved to new ave")]
-    tf = SRV._corroborate_time_factor(jr, hits, _p(True, "address", {"d0": "2023-09-01"}, "2024-01-01"))
+    tf = SRV._corroborate_time_factor(
+        jr, hits, _p(True, "address", {"d0": "2023-09-01"}, "2024-01-01"))
     assert tf > 0.9
 
 
@@ -144,5 +147,6 @@ def test_corroborate_time_factor_passes_through_a_permanent_construct() -> None:
     # a non-time-indexed construct (a DOB/id) never decays — 1.0 regardless of source age.
     jr = _jr("12345")
     hits = [_hit("d0", "id 12345")]
-    tf = SRV._corroborate_time_factor(jr, hits, _p(False, "date_of_birth", {"d0": "2008-01-01"}, "2024-01-01"))
+    tf = SRV._corroborate_time_factor(
+        jr, hits, _p(False, "date_of_birth", {"d0": "2008-01-01"}, "2024-01-01"))
     assert tf == 1.0

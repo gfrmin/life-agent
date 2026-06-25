@@ -48,7 +48,6 @@ from life_agent import owner
 from life_agent.core import decisions as DEC
 from life_agent.core import derivations as D
 from life_agent.core import expansion as EXP
-from life_agent.core import synthesis as SYN
 from life_agent.core import gather as GA
 from life_agent.core import lookup as LK
 from life_agent.core import narrative as N
@@ -56,6 +55,7 @@ from life_agent.core import outcomes as O
 from life_agent.core import probes as P
 from life_agent.core import reactions as R
 from life_agent.core import subject as S
+from life_agent.core import synthesis as SYN
 from life_agent.core import temporal as T
 from life_agent.core.retrieval import build_query, retrieve_set
 from life_agent.tasks import events as ev
@@ -87,7 +87,8 @@ ABSTENTION = (
 # contractor?" finds, because only the last shares surface words with the document.
 # Expansion bridges the question's words to the documents' words. Light reasoning, so a
 # cheap model (Haiku); synthesis stays on the pinned ANSWER_MODEL.
-# Query expansion now lives in core (`life_agent.core.expansion`) so the answer-brain bridge and this
+# Query expansion now lives in core (`life_agent.core.expansion`) so the answer-brain bridge
+# and this
 # REPL share ONE expander + ONE cache. These aliases keep ask.py's surface (and its cache key — the
 # prompt template is byte-identical) unchanged; `_expand_terms` below stays the script-side wrapper.
 EXPAND_MODEL = EXP.EXPAND_MODEL
@@ -707,7 +708,8 @@ def answer(conn: duckdb.DuckDBPyConnection, question: str,
             conn, root, hits, profile=profile)
         SUBJECT_LAST = sreport
 
-    # attach each card's freshest doc_date (probe_recency adds the email-Date-header fallback for the
+    # attach each card's freshest doc_date (probe_recency adds the email-Date-header fallback
+    # for the
     # un-projected sliver) so the narrative render surfaces "as of <date>" — the temporal-scope
     # keystone. Read-only; display only (the synthesize key hashes hits, not cards).
     card_dates = (P.probe_recency(conn, root, list(dict.fromkeys(

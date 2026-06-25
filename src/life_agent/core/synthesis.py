@@ -6,7 +6,8 @@ concise CITED answer over the retrieved sources, then `core.narrative.narrative_
 claim against its cited card and includes it only if grounded AND EU-positive (so an ungrounded or
 weak claim is dropped — gate-safe by construction). This module is the proposal stage, lifted from
 `scripts/ask.py::answer` so the answer-brain bridge and the ask REPL share ONE synthesizer + ONE
-cache (the cache key hashes the retrieval-set content + the owner-profile hash + the prompt, all kept
+cache (the cache key hashes the retrieval-set content + the owner-profile hash + the prompt,
+all kept
 byte-identical here — a divergence would orphan recorded syntheses).
 """
 from __future__ import annotations
@@ -15,10 +16,9 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-from pkm.hashing import canonical_json
-
 import life_agent.core as C
 from life_agent.core import derivations as D
+from pkm.hashing import canonical_json
 
 ANSWER_SYSTEM = (
     "You are the owner's personal assistant, answering questions about the owner's own life. "
@@ -61,7 +61,8 @@ def synthesize(root: Path | None, question: str, hits: Sequence[dict[str, Any]],
                no_cache: bool = False,
                extra_lineage: Sequence[dict[str, str]] = ()) -> tuple[str, str, bool]:
     """Synthesize a cited answer over the retrieved sources. Returns ``(text, cache_key, cached)``
-    (``cached`` = served from the derivation cache). Content-addressed (key = retrieval-set content +
+    (``cached`` = served from the derivation cache). Content-addressed (key = retrieval-set
+    content +
     profile hash + prompt + model). Fail-open: the caller decides what to do with the prose; the
     narrative scorer audits it downstream."""
     cards = cards_from_hits(hits)

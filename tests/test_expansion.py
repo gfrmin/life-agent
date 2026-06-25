@@ -13,7 +13,7 @@ from life_agent.core import expansion as EXP
 def test_clean_terms_preserves_hebrew_and_drops_punctuation() -> None:
     # a model reply with bullets/commas/quotes/newlines → a clean space-separated term string;
     # Hebrew word chars survive (the native-script terms are the lexical-gap bridge).
-    raw = "income, salary;\n- 'invoice'  עוסק מורשה\nמשכורת."
+    raw = "income, salary;\n- 'invoice'  עוסק מורשה\nמשכורת."  # noqa: RUF001
     assert EXP.clean_terms(raw) == "income salary invoice עוסק מורשה משכורת"
 
 
@@ -23,7 +23,8 @@ def test_clean_terms_is_idempotent_on_clean_input() -> None:
 
 
 def test_expander_is_single_source_shared_with_ask() -> None:
-    # ask.py aliases the core constants, so the cache key (= the prompt template) is identical and the
+    # ask.py aliases the core constants, so the cache key (= the prompt template) is identical
+    # and the
     # two read paths reuse one cache. A copy-paste divergence would break this.
     import sys
     from pathlib import Path
