@@ -60,7 +60,7 @@ _TIER_MODEL = {"corroborate_haiku": "claude-haiku-4-5",
                "corroborate_sonnet": "claude-sonnet-4-6",
                "corroborate_opus": "claude-opus-4-8"}
 _TIER_RHO = {"corroborate_haiku": 0.80, "corroborate_sonnet": 0.90, "corroborate_opus": 0.95}
-_TRANSFORMS = [
+_TRANSFORMS: list[dict[str, object]] = [
     {"name": "recency", "probe": "recency", "kind": "guard", "trigger": "era_split"},
     {"name": "corroborate_owner", "probe": "corroborate_opus", "kind": "guard",
      "trigger": "owner_report"},
@@ -78,6 +78,14 @@ def _post(url: str, payload: dict) -> dict | None:
                                  headers={"Content-Type": "application/json"}, method="POST")
     with urllib.request.urlopen(req, timeout=300) as r:
         return json.loads(r.read())
+
+
+def _post_obj(url: str, payload: dict) -> dict:
+    """`_post` for endpoints that always answer a JSON object — every one but `/route`,
+    which can return JSON null for a non-typed question (guarded at its one call site)."""
+    out = _post(url, payload)
+    assert out is not None, f"{url} returned null"
+    return out
 
 
 def _get(url: str) -> dict:
@@ -124,7 +132,7 @@ def _decide_via_loop(question: str, k: int, *, rerank: bool = False) -> dict:
         # + EU-positive
         # claims. Gate-safe by construction (ungrounded/weak ⇒ abstain). `asserted` = the included
         # claims' text, so the grader matches the gold inside a grounded claim.
-        nv = _post(f"{BRIDGE}/narrative", {"question": question})
+        nv = _post_obj(f"{BRIDGE}/narrative", {"question": question})
         return {"effector": nv["action"], "asserted": nv["asserted"], "candidates": [],
                 "credences": [], "p_none": None, "eu": None, "hits": nv.get("hits", []),
                 "route": None}
@@ -152,12 +160,13 @@ def _run(question: str, k: int, route: dict, *, rerank: bool, expand: bool = Fal
     """One retrieve→probe→extract→decide pass at a given recall breadth (rerank + expand grow K).
     Returns the normalized view:
     {effector, asserted, candidates, credences, p_none, eu, hits, route}."""
-    hits = _post(f"{BRIDGE}/retrieve",
+    hits = _post_obj(f"{BRIDGE}/retrieve",
                  {"question": question, "k": k, "rerank": rerank, "expand": expand})["hits"]
     hit_keys = list(dict.fromkeys(h["artifact_cache_key"] for h in hits))
-    subj = _post(f"{BRIDGE}/probe/subject", {"hit_keys": hit_keys})["subject_state"]
-    recency = _post(f"{BRIDGE}/probe/recency", {"hit_keys": hit_keys})["doc_date"]
-    ext = _post(f"{BRIDGE}/extract", {  # construct ⇒ bridge decays time_factor at its volatility
+    subj = _post_obj(f"{BRIDGE}/probe/subject", {"hit_keys": hit_keys})["subject_state"]
+    recency = _post_obj(f"{BRIDGE}/probe/recency", {"hit_keys": hit_keys})["doc_date"]
+    # construct ⇒ bridge decays time_factor at its volatility
+    ext = _post_obj(f"{BRIDGE}/extract", {
         "question": question, "hits": hits, "time_indexed": route["time_indexed"],
         "construct": route["construct"],
         "covariates": {"subject_state": subj, "doc_date": recency}})
@@ -170,7 +179,7 @@ def _run(question: str, k: int, route: dict, *, rerank: bool, expand: bool = Fal
     obs, rho, era = ext["observations"], ext["rho"], ext["era_split"]
 
     def _decide(observations: list, r: float, era_split: bool, applied: list[str]) -> dict:
-        return _post(f"{DAEMON}/decide", {
+        return _post_obj(f"{DAEMON}/decide", {
             "candidates": candidates, "observations": observations, "rho": r, "u_bar": u_bar,
             "era_split": era_split, "owner_scoped": owner, "applied_probes": applied,
             # the data-driven menu (Slice 2); supersedes gather_rho/cost
@@ -196,7 +205,7 @@ def _run(question: str, k: int, route: dict, *, rerank: bool, expand: bool = Fal
             # tiers terminates.
             model = _TIER_MODEL.get(probe, "claude-opus-4-8")
             tier_rho = _TIER_RHO.get(probe, _GATHER_RHO)
-            cr = _post(f"{BRIDGE}/probe/corroborate",
+            cr = _post_obj(f"{BRIDGE}/probe/corroborate",
                        {"reextract": True, "question": question, "hits": hits,
                         "candidates": candidates, "model": model, "rho": tier_rho,
                         # the re-read obs flows through the construct's volatility (the keystone):
