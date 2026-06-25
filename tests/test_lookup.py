@@ -28,11 +28,9 @@ from life_agent.core.lookup import (
     authority_for,
     candidates_from,
     lookup_answer,
-    observation_densities,
     observe_hits,
     render,
     route_question,
-    temper_scales,
 )
 from pkm.transform import ModelResponse
 
@@ -155,11 +153,45 @@ def test_observation_cache_is_per_chunk(migrated_root: Path) -> None:
     assert client.calls == 2  # both replayed
 
 
+class _BetaBrain:
+    """A Beta-Bernoulli test-oracle brain (create_state/condition/read_params/mean) modelling the
+    conjugacy the body now drives OVER THE WIRE for the ρ Beta — no host `prior + correct` fold."""
+
+    def __init__(self) -> None:
+        self._s: dict[str, tuple[float, float]] = {}
+        self._n = 0
+
+    def create_state(self, spec: dict) -> str:
+        assert spec["type"] == "beta", spec
+        self._n += 1
+        sid = f"s_{self._n}"
+        self._s[sid] = (float(spec["alpha"]), float(spec["beta"]))
+        return sid
+
+    def destroy_state(self, sid: str) -> None:
+        self._s.pop(sid, None)
+
+    def condition(self, sid: str, *, kernel: dict, observation: float) -> float:
+        assert kernel == {"type": "bernoulli"}, kernel
+        a, b = self._s[sid]
+        self._s[sid] = (a + observation, b + (1.0 - observation))
+        return 0.0
+
+    def read_params(self, sid: str) -> dict:
+        a, b = self._s[sid]
+        return {"type": "beta", "alpha": a, "beta": b}
+
+    def mean(self, sid: str) -> float:
+        a, b = self._s[sid]
+        return a / (a + b)
+
+
 def test_extractor_reliability_learns_from_eval_outcomes(tmp_path: Path) -> None:
     from life_agent.core import outcomes as O
 
     log = tmp_path / "outcomes.jsonl"
-    assert LK.extractor_reliability(log) == pytest.approx(0.5)  # the wide prior
+    # the ρ Beta is wire-conditioned and read back as (α, β); no evidence ⇒ the wide Beta(4,4) prior
+    assert LK.extractor_reliability(_BetaBrain(), log) == (4.0, 4.0)
     identity = {"producer_name": "life_agent.ask.lookup_answer",
                 "extract_prompt_hash": LK.extract_instrument_hash()}
     for grade in ("INCORRECT", "INCORRECT", "CORRECT"):
@@ -179,7 +211,8 @@ def test_extractor_reliability_learns_from_eval_outcomes(tmp_path: Path) -> None
         grade="INCORRECT", grader="eval_lookup",
         instrument_identity={"producer_name": "life_agent.ask.lookup_answer"},
         probability=0.9))
-    assert LK.extractor_reliability(log) == pytest.approx((4 + 1) / (8 + 3))
+    # 1 correct + 2 incorrect on the current instrument → Beta(4+1, 4+2) (mean 5/11)
+    assert LK.extractor_reliability(_BetaBrain(), log) == (5.0, 6.0)
 
 
 def test_authority_classes() -> None:
@@ -316,61 +349,32 @@ def test_parse_date_unambiguous_and_ambiguous() -> None:
     assert LK._parse_date("13/13/1990") is None              # invalid
 
 
-def test_temper_scales_single_observation_is_unit() -> None:
-    assert temper_scales([_obs("a" * 64, "v")]) == [1.0]
-
-
-def test_temper_scales_same_ancestor_discounts_more_than_distinct() -> None:
-    same = temper_scales([_obs("a" * 64, "v"), _obs("a" * 64, "v")])
-    distinct = temper_scales([_obs("a" * 64, "v"), _obs("b" * 64, "v")])
-    # same document: s_anc = (1+0.3)/2, one group so s_mod = 1
-    assert same[0] == pytest.approx((1 + LK._BETA_ANCESTRY) / 2)
-    # two documents: s_anc = 1, s_mod = (1+0.7)/2 — milder discount
-    assert distinct[0] == pytest.approx((1 + LK._BETA_MODEL) / 2)
-    assert distinct[0] > same[0]
-
-
-def test_observation_densities_shape_and_orientation() -> None:
-    o = _obs("a" * 64, "v1", authority=1.0)
-    rows = observation_densities(o, ["v1", "v2"], rho=0.8, scale=1.0)
-    assert len(rows) == 3 and all(len(r) == 2 for r in rows)  # K+1 rows, K targets
-    r = 0.8
-    log_match = math.log(r + (1 - r) / LK._A_ALTERNATIVES)
-    log_miss = math.log((1 - r) / LK._A_ALTERNATIVES)
-    assert rows[0] == pytest.approx([log_match, log_miss])  # V=v1 matches obs v1
-    assert rows[1] == pytest.approx([log_miss, log_match])
-    assert rows[2] == pytest.approx([log_miss, log_miss])   # NONE never matches
-    half = observation_densities(o, ["v1", "v2"], rho=0.8, scale=0.5)
-    assert half[0][0] == pytest.approx(0.5 * log_match)     # the temper scales logs
-
-
-def test_observation_densities_compose_covariates() -> None:
-    o = dataclasses.replace(_obs("a" * 64, "v1", authority=1.0),
-                            subject_factor=0.5, time_factor=0.5)
-    rows = observation_densities(o, ["v1"], rho=0.8, scale=1.0)
-    r = 0.8 * 0.5 * 0.5  # rho * a_i with both covariates composed in
-    assert rows[0][0] == pytest.approx(math.log(r + (1 - r) / LK._A_ALTERNATIVES))
-    assert rows[1][0] == pytest.approx(math.log((1 - r) / LK._A_ALTERNATIVES))
+# temper_scales + observation_densities are RETIRED (the §4.2 host tempering / per-obs likelihood
+# rows): the exact correlated-evidence model is now the engine's group_noisy_channel kernel over a
+# carried ρ-latent labelled_mixture (lookup_posterior). The likelihood math is tested engine-side
+# (test/test_group_noisy_channel.jl); the body ships the per-document covariate + reports as data.
 
 
 def test_action_utilities_under_u_bar() -> None:
     ub = {"u_correct": 1.0, "u_abstain": 0.0, "u_wrong": -5.0, "u_wrong_scoped": -2.0,
           "u_hedged": 0.4, "lambda_int": 1.0, "kappa_att": 0.05}
-    u = action_utilities([0.7, 0.2, 0.1], ub, 0.9)   # two candidates + NONE; p_attested=0.9
-    assert u["report"] == [1.0, -5.0, -5.0]     # MAP asserted; truth elsewhere → wrong
-    assert u["hedge"] == [0.4, 0.4, -5.0]       # misleads only when truth is NONE
+    # report is now per-candidate report_j (the engine's optimise picks the MAP — no host argmax);
+    # report_scoped is the caller's engine-computed scoped_eu (here 0.16 = the attested-record EU).
+    u = action_utilities([0.7, 0.2, 0.1], ub, 0.16)   # two candidates + NONE
+    assert u["report_0"] == [1.0, -5.0, -5.0]    # asserts candidate 0; truth elsewhere → wrong
+    assert u["report_1"] == [-5.0, 1.0, -5.0]    # asserts candidate 1
+    assert u["hedge"] == [0.4, 0.4, -5.0]        # misleads only when truth is NONE
     assert u["ask_clarify"] == [pytest.approx(0.9 * 1.0 - 1.0)] * 3
     assert u["abstain"] == [0.0, 0.0, 0.0]
-    # report_scoped: flat row = p·u_hedged + (1-p)·u_wrong_scoped = 0.9*0.4 + 0.1*(-2) = 0.16
     assert u["report_scoped"] == [pytest.approx(0.16)] * 3
 
 
 def test_action_utilities_scoped_below_abstain_when_no_record() -> None:
-    # p_attested = 0 (no datable record): the flat scoped row sits at u_wrong_scoped, strictly
-    # below abstain (the gauge zero) — scoped can never win without a dated record to scope to.
+    # no datable record ⇒ the caller passes scoped_eu = u_wrong_scoped (the floor); the flat scoped
+    # row sits strictly below abstain (the gauge zero) — scoped never wins without a dated record.
     ub = {"u_correct": 1.0, "u_abstain": 0.0, "u_wrong": -5.0, "u_wrong_scoped": -2.0,
           "u_hedged": 0.4, "lambda_int": 1.0, "kappa_att": 0.05}
-    u = action_utilities([0.6, 0.4], ub, 0.0)
+    u = action_utilities([0.6, 0.4], ub, -2.0)
     assert u["report_scoped"] == [-2.0, -2.0]
     assert all(s < ab for s, ab in zip(u["report_scoped"], u["abstain"], strict=True))
 
@@ -448,9 +452,12 @@ def test_grammar_templates_all_render() -> None:
 # --- the family end to end (scripted brain) -----------------------------------------------
 
 class ScriptedTransport:
-    """create/condition/weights/destroy/optimise over scripted replies."""
+    """create/condition/weights/marginalise/expect/read_params/optimise over scripted replies.
+    The lookup ρ-latent path: create_state(labelled_mixture) + condition(group_noisy_channel) +
+    `expect` (the V-marginal onehots, uniform-scripted) + `optimise` (a string `report_j`/action
+    name → decide maps `report_j`→report)."""
 
-    def __init__(self, optimise_action: float = 0.0) -> None:
+    def __init__(self, optimise_action: str = "report_0") -> None:
         self.sent: list[dict] = []
         self._optimise_action = optimise_action
 
@@ -474,6 +481,10 @@ class ScriptedTransport:
             # the utility joint-grid fold's per-latent readout (via current_u_bar): uniform
             n = req["params"]["shape"][req["params"]["axis"]]
             result = {"weights": [1.0 / n] * n}
+        elif method == "expect":
+            # the V-marginal onehots / scoped tabular: Σ vᵢ over a UNIFORM belief (scripted)
+            vals = req["params"]["function"].get("values", [1.0])
+            result = {"value": sum(vals) / len(vals)}
         elif method == "read_params":
             result = {"type": "beta", "alpha": 1.0, "beta": 1.0}
         elif method == "optimise":
@@ -511,7 +522,7 @@ def test_lookup_answer_end_to_end(migrated_root: Path, tmp_path: Path,
 
     route = FakeClient({"lookup": True, "construct": "the ID"})
     extract = FakeClient({"found": True, "value": "12345", "quote": "ID 12345"})
-    brain = Brain(ScriptedTransport(optimise_action=0.0))  # report
+    brain = Brain(ScriptedTransport(optimise_action="report_0"))  # report_j → report
     hits = [_hit("a" * 64, "your ID 12345 is recorded")]
 
     result = lookup_answer(migrated_root, "what is my ID?", hits,

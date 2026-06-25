@@ -22,9 +22,9 @@ stage on the ledger (system-design §3) and every modelling choice stated:
     decide     the decision logged (§8 — no EU decision is ever made unlogged)
 
 Stated channel parameters (each a prior choice calibration will move — §2, §14):
-``_A_ALTERNATIVES`` (effective wrong-value alternatives), ``_BETA_ANCESTRY`` /
-``_BETA_MODEL`` (the §4.2 tempering exponents), ``_RHO_PRIOR_*`` (the
-grounded-extraction reliability prior, moved by audit outcomes), ``_ORACLE_P``
+``_A_ALTERNATIVES`` (effective wrong-value alternatives), ``_RHO_GRID`` (the carried
+ρ-latent discretisation), ``_RHO_PRIOR_*`` (the grounded-extraction reliability Beta
+prior, moved by audit outcomes — the labelled_mixture ``label_prior``), ``_ORACLE_P``
 (the owner-as-oracle prior for pricing ask_clarify), the declared source-authority
 classes (§4.1's v0 lattice), and the §4.1 covariate factors (``_A_SUBJECT_*`` /
 ``_TIME_HALF_LIFE_YEARS`` / ``_A_TIME_UNKNOWN`` — doc_subject and doc_date enter
@@ -123,8 +123,8 @@ EXTRACT_SCHEMA: dict[str, Any] = {
 
 # --- stated channel parameters (priors; calibration moves them — §2/§14) ---------------
 _A_ALTERNATIVES = 10.0   # effective number of wrong values a misreport spreads over
-_BETA_ANCESTRY = 0.3     # within one source document, m observations count as 1+beta*(m-1)
-_BETA_MODEL = 0.7        # across documents (one shared extractor), G groups likewise
+# (the §4.2 ancestry/model tempering exponents are RETIRED — the exact group-noisy-channel
+#  + carried ρ-latent model the labelled_mixture conditions replaces the host temper.)
 # The reliability prior for "this grounded observation's value IS the true V" —
 # end-to-end, construct validity included (a grounded form label or another person's
 # number is a wrong observation, not a misread). The first eval run refuted the original
@@ -387,32 +387,63 @@ def extract_instrument_hash() -> str:
     return _sha(EXTRACT_PROMPT)
 
 
-def extractor_reliability(outcomes_path: Path = config.OUTCOMES_LOG) -> float:
-    """rho for "this observation's value is the true V": the wide Beta(4,4) prior
-    conditioned on the graded evidence — audit outcomes on the extract instrument, and
-    the lookup eval's per-candidate claim outcomes (each candidate claim grades one
-    observed value against ground truth; the none-claim grades the posterior, not the
-    instrument, and is excluded). Only outcomes carrying the CURRENT extract instrument
-    hash condition (§2 — reliability is per exact identity; a prompt change starts the
-    new instrument at the prior, and events predating the hash field stay with their
-    old instrument). The system learns whether to trust its own extractor from its own
-    outcomes log — the §8 loop, closed."""
+def _extractor_outcomes(outcomes_path: Path) -> list[float]:
+    """Tally the extractor's graded outcomes (1 = correct, 0 = wrong) for the CURRENT extract
+    instrument (§2): audit outcomes on the extract instrument + the lookup eval's per-candidate
+    claim outcomes (the none-claim grades the posterior, not the instrument — excluded). Pure
+    data-reading: the Bernoulli stream the wire folds, no host belief arithmetic."""
     current = extract_instrument_hash()
-    correct = 0
-    n = 0
+    obs: list[float] = []
     for event in O.read(outcomes_path):
         if event.instrument_identity.get("extract_prompt_hash") != current:
             continue
         producer = event.instrument_identity.get("producer_name")
         if event.grader == "audit" and producer == "life_agent.ask.lookup_extract":
-            n += 1
-            correct += event.grade in O.CORRECT_GRADES["audit"]
+            obs.append(1.0 if event.grade in O.CORRECT_GRADES["audit"] else 0.0)
         elif (event.grader == "eval_lookup"
                 and producer == "life_agent.ask.lookup_answer"
                 and event.claim != _NONE_CLAIM):
-            n += 1
-            correct += event.grade in O.CORRECT_GRADES["eval_lookup"]
-    return (_RHO_PRIOR_A + correct) / (_RHO_PRIOR_A + _RHO_PRIOR_B + n)
+            obs.append(1.0 if event.grade in O.CORRECT_GRADES["eval_lookup"] else 0.0)
+    return obs
+
+
+def _extractor_rho_state(brain: Brain, outcomes_path: Path) -> str:
+    """The ρ Beta(4,4) prior CONDITIONED OVER THE WIRE on the extractor's graded outcomes
+    (audit + eval_lookup). The live state id; the caller reads + destroys it. Never a host
+    `prior + correct` fold (Invariant 1: condition is the one learning mechanism, even though
+    Beta-Bernoulli conjugacy is exact)."""
+    sid = brain.create_state({"type": "beta", "alpha": _RHO_PRIOR_A, "beta": _RHO_PRIOR_B})
+    for o in _extractor_outcomes(outcomes_path):
+        brain.condition(sid, kernel={"type": "bernoulli"}, observation=o)
+    return sid
+
+
+def extractor_reliability(brain: Brain, outcomes_path: Path = config.OUTCOMES_LOG
+                          ) -> tuple[float, float]:
+    """rho for "this observation's value is the true V" as a Beta (α, β) — the wide Beta(4,4)
+    prior conditioned over the wire on the graded evidence, read back via `read_params`. The
+    full posterior (not just its mean) so the lookup ρ-latent carries the extractor's reliability
+    uncertainty exactly (a `labelled_mixture` `label_prior`). The system learns whether to trust
+    its own extractor from its own outcomes log — the §8 loop, closed, on the wire."""
+    sid = _extractor_rho_state(brain, outcomes_path)
+    try:
+        spec = brain.read_params(sid)
+        return float(spec["alpha"]), float(spec["beta"])
+    finally:
+        brain.destroy_state(sid)
+
+
+def extractor_reliability_mean(brain: Brain | None = None,
+                               outcomes_path: Path = config.OUTCOMES_LOG) -> float:
+    """The ρ posterior MEAN (a wire readout via `mean`, not a host α/(α+β)) — the scalar the
+    string-blind bridge relays to the answer-brain. Same wire-conditioned Beta as
+    :func:`extractor_reliability`; `brain` defaults to the shared skin (bridge convenience)."""
+    b = brain if brain is not None else shared_brain()
+    sid = _extractor_rho_state(b, outcomes_path)
+    try:
+        return b.mean(sid)
+    finally:
+        b.destroy_state(sid)
 
 
 # --- route + observe (cached local-model instruments, the subject.py pattern) ----------
@@ -541,118 +572,105 @@ def candidates_from(observations: list[Observation]) -> list[str]:
     return list(seen.values())
 
 
-def temper_scales(observations: list[Observation]) -> list[float]:
-    """§4.2's lineage temper, per observation: within an ancestry group of size m the
-    group counts as 1 + beta_anc*(m-1) effective observations; across the G groups (every
-    observation shares the one extractor's model identity) the groups count as
-    1 + beta_mod*(G-1). Single observation ⇒ scale 1 — no phantom discount."""
-    groups: dict[str, int] = {}
-    for o in observations:
-        groups[o.artifact_cache_key] = groups.get(o.artifact_cache_key, 0) + 1
-    n_groups = len(groups)
-    s_mod = ((1.0 + _BETA_MODEL * (n_groups - 1)) / n_groups) if n_groups else 1.0
-    scales: list[float] = []
-    for o in observations:
-        m = groups[o.artifact_cache_key]
-        s_anc = (1.0 + _BETA_ANCESTRY * (m - 1)) / m
-        scales.append(s_anc * s_mod)
-    return scales
+# ρ discretisation grid for the carried extractor-reliability latent: interior points of (0, 1)
+# (the labelled_mixture `label_prior` β-kernel diverges at the endpoints). A computation-layer
+# choice — the latent is integrated by the engine; finer is more exact, invisible to the model.
+_RHO_GRID: list[float] = [0.1, 0.3, 0.5, 0.7, 0.9]
 
 
-def observation_densities(observation: Observation, candidates: list[str],
-                          rho: float, scale: float) -> list[list[float]]:
-    """The tempered tabular_log_density rows for one observation: source atoms are the
-    K candidates + NONE (last), target atoms the K candidate indices. With reliability
-    r = rho * a_i (authority composed with the §4.1 subject/time covariates), a match
-    carries r + (1-r)/A and any miss (1-r)/A — NONE misses everything (§4.2's noisy
-    channel)."""
-    r = (rho * observation.authority
-         * observation.subject_factor * observation.time_factor)
-    log_match = scale * math.log(max(r + (1.0 - r) / _A_ALTERNATIVES, _PROB_EPS))
-    log_miss = scale * math.log(max((1.0 - r) / _A_ALTERNATIVES, _PROB_EPS))
-    k = len(candidates)
-    # row j (hypothesis V = candidate j): the observation reports j with the match
-    # probability and anything else with the miss probability; the NONE row (last)
-    # never matches — under "the truth is not among the retrieved", every observation
-    # is a misreport.
-    rows = [[log_match if t == j else log_miss for t in range(k)] for j in range(k)]
-    rows.append([log_miss] * k)
-    return rows
+def _onehot(j: int, n: int) -> dict[str, Any]:
+    """The indicator of atom position `j` over an `n`-atom categorical (a `tabular` functional)."""
+    return {"type": "tabular", "values": [1.0 if i == j else 0.0 for i in range(n)]}
+
+
+def _v_marginal(brain: Brain, state_id: str, n_atoms: int) -> list[float]:
+    """The V posterior MARGINALISED over the ρ-latent: `expect` each atom's indicator over the
+    `labelled_mixture` (the engine integrates ρ). A readout (render order / p_none / p_attested /
+    gather ranking) — the body never folds the mixture itself (Invariant 1). Layout matches the
+    old `weights`: candidates 0..k-1 then NONE last."""
+    return [brain.expect(state_id, function=_onehot(j, n_atoms)) for j in range(n_atoms)]
 
 
 def lookup_posterior(brain: Brain, observations: list[Observation],
-                     candidates: list[str], rho: float) -> tuple[list[float], str]:
-    """Condition the candidate+NONE categorical on every observation (in hit order —
-    the canonical order), tempered per §4.2. Returns (weights with NONE last, the live
-    state id — still open for `optimise`; the caller destroys it)."""
+                     candidates: list[str], rho_ab: tuple[float, float]
+                     ) -> tuple[list[float], str]:
+    """The candidate+NONE posterior under the EXACT correlated-evidence model (replacing the §4.2
+    host tempering): a `labelled_mixture` over the ρ-grid — the carried extractor-reliability
+    latent, prior = the Beta `rho_ab` discretised by `label_prior` — each component a categorical
+    over the K candidates + NONE. Observations group BY DOCUMENT (artifact); each group conditions
+    via a `group_noisy_channel` (covariate = authority·subject·time of the doc, A alternatives) on
+    the group's reported candidate-positions (1-based atom values; same-doc reports are correlated,
+    sharing r_d = ρ·covariate, and ρ couples the groups). Returns (the ρ-marginalised V weights
+    with NONE last, the live mixture state id — open for `optimise`; the caller destroys it)."""
     k = len(candidates)
-    atoms = [float(j) for j in range(k + 1)]
-    # stated prior: _P_NONE_PRIOR on none-of-the-retrieved, the rest uniform over
-    # candidates (the complement of an unproven extraction channel)
-    prior = [(1.0 - _P_NONE_PRIOR) / k] * k + [_P_NONE_PRIOR]
+    # stated V prior: _P_NONE_PRIOR on none-of-the-retrieved, the rest uniform over candidates.
+    v_prior = [(1.0 - _P_NONE_PRIOR) / k] * k + [_P_NONE_PRIOR]
+    alpha, beta = rho_ab
     state_id = brain.create_state({
-        "type": "categorical",
-        "space": {"type": "finite", "values": atoms},
-        "log_weights": [math.log(w) for w in prior],
+        "type": "labelled_mixture",
+        "labels": _RHO_GRID,
+        "label_prior": {"type": "beta", "alpha": alpha, "beta": beta},
+        "component_log_weights": [math.log(w) for w in v_prior],
     })
-    scales = temper_scales(observations)
     keys = [_candidate_key(c) for c in candidates]
-    for o, scale in zip(observations, scales, strict=True):
-        kernel = {"type": "tabular_log_density",
-                  "source_vals": atoms,
-                  "target_vals": [float(t) for t in range(k)],
-                  "densities": observation_densities(o, candidates, rho, scale)}
-        brain.condition(state_id, kernel=kernel,
-                        observation=float(keys.index(_candidate_key(o.value_raw))))
-    weights = brain.weights(state_id)
-    return weights, state_id
+    groups: dict[str, list[Observation]] = {}
+    for o in observations:
+        groups.setdefault(o.artifact_cache_key, []).append(o)
+    for group in groups.values():
+        o0 = group[0]  # one document's covariates are shared by all its chunks
+        covariate = o0.authority * o0.subject_factor * o0.time_factor
+        reports = [keys.index(_candidate_key(o.value_raw)) + 1 for o in group]  # 1-based atom value
+        kernel = {"type": "group_noisy_channel", "covariate": covariate,
+                  "n_alternatives": _A_ALTERNATIVES}
+        brain.condition(state_id, kernel=kernel, observation=reports)
+    return _v_marginal(brain, state_id, k + 1), state_id
 
 
 def action_utilities(weights: list[float], u_bar: dict[str, float],
-                     p_attested: float) -> dict[str, list[float]]:
-    """Per-action utility vectors over the hypothesis atoms (K candidates + NONE),
-    under the §4.4 posterior mean (the collapse theorem). The correctness slots derive
-    from :func:`life_agent.core.decide.u_assert` (the one written atom): report asserts
-    the MAP candidate (``u_assert(1)``); every other atom and NONE is a wrong report
-    (``u_assert(0)`` = u_wrong); hedge asserts the candidate set (``u_hedged``), misleading
-    only when the truth is NONE; ask_clarify is the oracle price (NOT a u_assert outcome —
-    the oracle is infallible when it knows); abstain is the gauge zero.
+                     scoped_eu: float) -> dict[str, list[float]]:
+    """Per-action utility vectors over the hypothesis atoms (K candidates + NONE), derived from
+    :func:`life_agent.core.decide.u_assert` (the one written atom). `report_j` (one per candidate)
+    asserts candidate j — ``u_assert(1)`` at j, ``u_assert(0)`` = u_wrong elsewhere incl NONE — so
+    `optimise` picks the best report and the MAP candidate emerges from the ENGINE, never a host
+    argmax. hedge asserts the candidate set (misleading only when the truth is NONE); ask_clarify
+    is the oracle price (NOT a u_assert outcome); abstain is the gauge zero.
 
-    ``report_scoped`` (scoped-claims design) asserts a TRUE time-scoped claim ("as of
-    <date>, X"). Its truth is about the *record*, not which current-value hypothesis holds,
-    so its row is **flat** — the optimise values it at exactly
-    ``p_attested*u_hedged + (1-p_attested)*u_wrong_scoped`` whatever the V_now posterior. A
-    miss is a citable misread (``u_wrong_scoped``), never the catastrophic current-value
-    ``u_wrong``. ``p_attested`` = P(the record attests the scoped value), the caller's
-    recency-off leader weight (0.0 ⇒ no datable record ⇒ the row stays below abstain)."""
+    ``report_scoped`` asserts a TRUE time-scoped claim ("as of <date>, X"). Its truth is about the
+    *record*, not which V_now holds, so its row is **flat** at ``scoped_eu`` — the attested-record
+    EU computed SERVER-SIDE off the recency-off posterior (``expect`` in :func:`_scoped_option`),
+    never a host ``p_attested*u_hedged + …``. (0.0 ⇒ no datable record ⇒ stays below abstain.)"""
     k = len(weights) - 1
-    j_star = max(range(k), key=lambda j: weights[j]) if k else None
-    u_correct_report = u_assert(1.0, u_bar)
-    u_wrong_report = u_assert(0.0, u_bar)
-    report = [(u_correct_report if j == j_star else u_wrong_report) for j in range(k)]
-    report.append(u_wrong_report)  # NONE: the report misleads
-    hedge = [u_bar["u_hedged"]] * k + [u_wrong_report]
-    ask = [_ORACLE_P * u_bar["u_correct"] - u_bar["lambda_int"]] * (k + 1)
-    abstain = [u_bar["u_abstain"]] * (k + 1)
-    scoped_eu = p_attested * u_bar["u_hedged"] + (1.0 - p_attested) * u_bar["u_wrong_scoped"]
-    report_scoped = [scoped_eu] * (k + 1)
-    return {"report": report, "report_scoped": report_scoped,
-            "hedge": hedge, "ask_clarify": ask, "abstain": abstain}
+    u_correct = u_assert(1.0, u_bar)
+    u_wrong = u_assert(0.0, u_bar)
+    out: dict[str, list[float]] = {}
+    for j in range(k):
+        out[f"report_{j}"] = [(u_correct if i == j else u_wrong) for i in range(k)] + [u_wrong]
+    out["hedge"] = [u_bar["u_hedged"]] * k + [u_wrong]
+    out["ask_clarify"] = [_ORACLE_P * u_bar["u_correct"] - u_bar["lambda_int"]] * (k + 1)
+    out["abstain"] = [u_bar["u_abstain"]] * (k + 1)
+    out["report_scoped"] = [scoped_eu] * (k + 1)
+    return out
+
+
+# functional_per_action ignores the action space; a placeholder keeps the protocol shape.
+_LOOKUP_ACTIONS: dict[str, Any] = {"type": "finite", "values": [0.0]}
 
 
 def decide(brain: Brain, state_id: str, weights: list[float],
-           u_bar: dict[str, float], p_attested: float = 0.0) -> tuple[str, float]:
-    """`optimise` over the response actions (M4) on the live posterior state. ``p_attested``
-    prices the report_scoped action (0.0 ⇒ no datable record ⇒ scoped never wins)."""
-    utilities = action_utilities(weights, u_bar, p_attested)
+           u_bar: dict[str, float], scoped_eu: float = 0.0) -> tuple[str, float]:
+    """`optimise` over the response actions on the live ρ-latent mixture. `report` is expanded into
+    a per-candidate `report_j` so the engine picks the asserted candidate (no host argmax); a
+    `report_j` winner maps to action ``report`` (its candidate is the weight-MAP = the weight-sorted
+    ``candidates[0]`` the caller renders). ``scoped_eu`` prices report_scoped (0.0 ⇒ never wins)."""
+    utilities = action_utilities(weights, u_bar, scoped_eu)
     preference = {
         "type": "functional_per_action",
-        "actions": {str(i): {"type": "tabular", "values": utilities[name]}
-                    for i, name in enumerate(_ACTION_ORDER)},
+        "actions": {name: {"type": "tabular", "values": vec} for name, vec in utilities.items()},
     }
-    actions = {"type": "finite", "values": [float(i) for i in range(len(_ACTION_ORDER))]}
-    action_value, eu = brain.optimise(state_id, actions=actions, preference=preference)
-    return _ACTION_ORDER[int(action_value)], eu
+    action, eu = brain.optimise(state_id, actions=_LOOKUP_ACTIONS, preference=preference)
+    if isinstance(action, str) and action.startswith("report_") and action != "report_scoped":
+        action = "report"  # report_j → report; the asserted value is the weight-MAP candidate
+    return action, eu
 
 
 # --- render (deterministic — the render IS the claim set) -------------------------------
@@ -741,29 +759,41 @@ def current_u_bar(brain: Brain) -> tuple[dict[str, float], str]:
 # --- the family, end to end --------------------------------------------------------------
 
 def _scoped_option(brain: Brain, observations: list[Observation],
-                   candidates: list[str], rho: float, *,
+                   candidates: list[str], rho_ab: tuple[float, float], *,
+                   u_bar: dict[str, float], state_current: str,
                    weights_current: list[float], time_indexed: bool,
-                   ) -> tuple[float, str | None, str | None]:
-    """The report_scoped inputs (scoped-claims design): the freshest DATED observation gives
-    the scoped value V_s ("most recent record on file") and its as-of date; ``p_attested`` =
-    V_s's RECENCY-OFF posterior weight — what the record attests, ignoring currency. Returns
-    ``(p_attested, V_s, as_of)``; ``p_attested`` is 0.0 (scoped disabled — the flat row sits
-    below abstain) when no observation carries a date. The attested posterior is the current
-    one when recency was already off (a permanent fact), else a second pass with the time
-    decay removed — pure credence math, no new model calls."""
+                   ) -> tuple[float, float, str | None, str | None]:
+    """The report_scoped inputs (scoped-claims design): the freshest DATED observation gives the
+    scoped value V_s ("most recent record on file") and its as-of date. Returns ``(scoped_eu,
+    p_attested, V_s, as_of)``. ``scoped_eu`` is the attested-record EU computed SERVER-SIDE —
+    ``expect(recency-off posterior, tabular[u_hedged @ V_s, u_wrong_scoped elsewhere])`` =
+    P_attested(V_s)·u_hedged + (1−P_attested(V_s))·u_wrong_scoped — never a host product on a
+    belief value. ``p_attested`` = V_s's recency-off V-marginal (recorded). Both 0.0 / None when
+    no observation carries a date (scoped disabled — the flat row sits below abstain). The attested
+    posterior is the current one when recency was already off (a permanent fact), else a second
+    pass with the time decay removed."""
     dated = [o for o in observations if o.doc_date]
     if not dated:
-        return 0.0, None, None
+        return 0.0, 0.0, None, None
     freshest = max(dated, key=lambda o: o.doc_date or "")  # ISO dates sort lexicographically
+    keys = [_candidate_key(c) for c in candidates]
+    idx_vs = keys.index(_candidate_key(freshest.value_raw))
+    k = len(candidates)
+    # tabular over K candidates + NONE: u_hedged at the attested value, u_wrong_scoped elsewhere.
+    scoped_tab = {"type": "tabular",
+                  "values": [(u_bar["u_hedged"] if i == idx_vs else u_bar["u_wrong_scoped"])
+                             for i in range(k)] + [u_bar["u_wrong_scoped"]]}
     if time_indexed:
         attested_obs = [dataclasses.replace(o, time_factor=1.0) for o in observations]
-        weights_attested, sid = lookup_posterior(brain, attested_obs, candidates, rho)
-        brain.destroy_state(sid)
+        weights_attested, sid = lookup_posterior(brain, attested_obs, candidates, rho_ab)
+        try:
+            scoped_eu = brain.expect(sid, function=scoped_tab)
+        finally:
+            brain.destroy_state(sid)
     else:
         weights_attested = weights_current
-    keys = [_candidate_key(c) for c in candidates]
-    p_attested = weights_attested[keys.index(_candidate_key(freshest.value_raw))]
-    return p_attested, freshest.value_raw, freshest.doc_date
+        scoped_eu = brain.expect(state_current, function=scoped_tab)
+    return scoped_eu, weights_attested[idx_vs], freshest.value_raw, freshest.doc_date
 
 
 def decide_and_record(root: Path, question: str, construct: str,
@@ -772,28 +802,29 @@ def decide_and_record(root: Path, question: str, construct: str,
                       brain: Brain | None = None,
                       decisions_path: Path | None = None,
                       run_id: str = "ask",
-                      rho_override: float | None = None) -> LookupResult:
-    """The lookup family's tail: a grounded observation set → tempered posterior → EU
-    decision under Ū → recorded answer artifact (§18.9) + logged decision (§8). Shared by
+                      rho_override: tuple[float, float] | None = None) -> LookupResult:
+    """The lookup family's tail: a grounded observation set → the ρ-latent correlated-evidence
+    posterior → EU decision under Ū → recorded answer artifact (§18.9) + logged decision (§8). Shared by
     the single-pass :func:`lookup_answer` and the gather-augmented loop
     (:mod:`life_agent.core.gather`): both produce observations, then value and record them
     identically. ``time_indexed`` enters the answer key + content (an auditable decision
     input — the gather loop may set it differently from the route). Assumes
     ``observations`` is non-empty (its caller routes the empty case to narrative).
 
-    ``rho_override`` replaces the local-extractor reliability for an observation set produced
-    by a DIFFERENT instrument (the ``extract@<model>`` joint edge folds its calibrated
+    ``rho_override`` replaces the local-extractor reliability Beta (α, β) for an observation set
+    produced by a DIFFERENT instrument (the ``extract@<model>`` joint edge folds its calibrated
     confidence here, not the local ``extractor_reliability``)."""
     b = brain if brain is not None else shared_brain()
     u_bar, fold_ver = current_u_bar(b)
-    rho = rho_override if rho_override is not None else extractor_reliability()
+    rho = rho_override if rho_override is not None else extractor_reliability(b)
     candidates = candidates_from(observations)
     weights, state_id = lookup_posterior(b, observations, candidates, rho)
-    p_attested, scoped_value, as_of = _scoped_option(
-        b, observations, candidates, rho,
-        weights_current=weights, time_indexed=time_indexed)
     try:
-        action, eu = decide(b, state_id, weights, u_bar, p_attested)
+        scoped_eu, p_attested, scoped_value, as_of = _scoped_option(
+            b, observations, candidates, rho,
+            u_bar=u_bar, state_current=state_id,
+            weights_current=weights, time_indexed=time_indexed)
+        action, eu = decide(b, state_id, weights, u_bar, scoped_eu)
     finally:
         b.destroy_state(state_id)
 
@@ -811,9 +842,8 @@ def decide_and_record(root: Path, question: str, construct: str,
         {"obs": o.obs_cache_key, "subject_factor": o.subject_factor,
          "time_factor": o.time_factor}
         for o in observations]
-    params = {"A": _A_ALTERNATIVES, "beta_ancestry": _BETA_ANCESTRY,
-              "beta_model": _BETA_MODEL, "oracle_p": _ORACLE_P,
-              "p_none_prior": _P_NONE_PRIOR, "rho": rho,
+    params = {"A": _A_ALTERNATIVES, "rho_grid": _RHO_GRID, "oracle_p": _ORACLE_P,
+              "p_none_prior": _P_NONE_PRIOR, "rho": list(rho),
               "a_subject_other": _A_SUBJECT_OTHER,
               "p_owner_indet": _P_OWNER_GIVEN_INDET,
               "time_half_life_years": _TIME_HALF_LIFE_YEARS,
