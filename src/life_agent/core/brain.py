@@ -266,9 +266,9 @@ class Brain:
 
     def read_params(self, state_id: str) -> dict[str, Any]:
         """The belief's declarative ``{type, params...}`` spec (the `params` protocol).
-        Routes a wire-CONDITIONED conjugate posterior back into another spec (e.g. a rho Beta
-        → a `labelled_mixture` `label_prior`) with no host conjugacy — the body conditions
-        over the wire, then reads the exact posterior params here, never folding ``a += 1``."""
+        Routes a wire-CONDITIONED conjugate posterior back into another spec (e.g. a rho Beta read
+        back to seed a `reliability_categorical` rho prior) with no host conjugacy — the body
+        conditions over the wire, reads the exact posterior here, never folding ``a += 1``."""
         result: dict[str, Any] = self._call("read_params", {"state_id": state_id})
         return result
 
