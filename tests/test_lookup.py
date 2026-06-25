@@ -470,6 +470,12 @@ class ScriptedTransport:
             idx = int(req["params"]["state_id"].split("_")[1]) - 1
             n = len(creates[idx]["params"]["space"]["values"])
             result = {"weights": [1.0 / n] * n}
+        elif method == "marginalise":
+            # the utility joint-grid fold's per-latent readout (via current_u_bar): uniform
+            n = req["params"]["shape"][req["params"]["axis"]]
+            result = {"weights": [1.0 / n] * n}
+        elif method == "read_params":
+            result = {"type": "beta", "alpha": 1.0, "beta": 1.0}
         elif method == "optimise":
             result = {"action": self._optimise_action, "eu": 0.42}
         else:
