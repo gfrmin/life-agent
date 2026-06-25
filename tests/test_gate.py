@@ -16,8 +16,9 @@ from life_agent.core import utility as UT
 # --- synthetic utility posteriors --------------------------------------------------------
 
 def _point(name: str, value: float) -> UT.LatentPosterior:
-    """A degenerate latent — all mass on one grid value (sampling is then exact)."""
-    return UT.LatentPosterior(name=name, values=(value,), weights=(1.0,))
+    """A degenerate latent — zero variance pinned at one value (sampling is then exact:
+    gauss(value, 0) clamped to [value, value] = value)."""
+    return UT.LatentPosterior(name=name, mean=value, variance=0.0, lo=value, hi=value)
 
 
 def _posterior(*, u_wrong: float, u_hedged: float = 0.3, lambda_int: float = 0.5,
@@ -116,10 +117,10 @@ def test_seed_makes_the_fold_deterministic() -> None:
 
 
 def test_utility_uncertainty_propagates_into_p_gt() -> None:
-    # a u_wrong spread straddling the materiality boundary ⇒ p_gt strictly interior,
-    # NOT a point 0/1 — utility uncertainty is inside the gate.
-    spread = UT.LatentPosterior(name="u_wrong", values=(-3.0, -0.0),
-                                weights=(0.5, 0.5))
+    # a u_wrong spread straddling the materiality boundary ⇒ p_gt strictly interior, NOT a point
+    # 0/1 — utility uncertainty is inside the gate. d = -u_wrong for this pair, so the boundary
+    # d > δ=0.05 is u_wrong < -0.05; a Gaussian centred at the boundary puts ~half the mass clear.
+    spread = UT.LatentPosterior(name="u_wrong", mean=-0.05, variance=1.0, lo=-3.0, hi=0.0)
     post = UT.UtilityPosterior(
         gauge={"u_correct": 1.0, "u_abstain": 0.0},
         latents={"u_wrong": spread, "u_hedged": _point("u_hedged", 0.3),
