@@ -103,7 +103,7 @@ class _RouteClient:
 
 # the scripted brain (create/condition/weights/optimise) — the test_lookup pattern
 class _ScriptedTransport:
-    def __init__(self, optimise_action: float = 0.0) -> None:
+    def __init__(self, optimise_action: str = "report_0") -> None:
         self.sent: list[dict] = []
         self._optimise_action = optimise_action
 
@@ -123,6 +123,14 @@ class _ScriptedTransport:
             idx = int(req["params"]["state_id"].split("_")[1]) - 1
             n = len(creates[idx]["params"]["space"]["values"])
             result = {"weights": [1.0 / n] * n}
+        elif method == "marginalise":
+            n = req["params"]["shape"][req["params"]["axis"]]
+            result = {"weights": [1.0 / n] * n}
+        elif method == "expect":
+            vals = req["params"]["function"].get("values", [1.0])
+            result = {"value": sum(vals) / len(vals)}
+        elif method == "read_params":
+            result = {"type": "beta", "alpha": 1.0, "beta": 1.0}
         elif method == "optimise":
             result = {"action": self._optimise_action, "eu": 0.42}
         else:
@@ -184,7 +192,7 @@ def test_gather_answer_decouples_recency_from_the_router(
 
     route = _RouteClient({"lookup": True, "construct": "mobile number",
                           "time_indexed": False})  # the mis-flag
-    brain = Brain(_ScriptedTransport(optimise_action=0.0))  # report
+    brain = Brain(_ScriptedTransport(optimise_action="report_0"))  # report
     baseline = [_hit(a, "STALE"), _hit(b, "FRESH")]
 
     result = gather_answer(None, migrated_root, "what is my mobile number?", baseline,  # type: ignore[arg-type]
@@ -226,7 +234,7 @@ def test_gather_answer_skips_gather_when_not_owner_scoped(
 
     route = _RouteClient({"lookup": True, "construct": "partner ID",
                           "time_indexed": False})
-    brain = Brain(_ScriptedTransport(optimise_action=0.0))
+    brain = Brain(_ScriptedTransport(optimise_action="report_0"))
     baseline = [_hit("aa" * 32, "OWNER"), _hit("bb" * 32, "PARTNER")]
     result = gather_answer(None, migrated_root, "what is my partner's ID?", baseline,  # type: ignore[arg-type]
                            profile="", owner_scoped=False, brain=brain,

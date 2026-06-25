@@ -41,26 +41,25 @@ def test_u_assert_is_linear_in_reliance() -> None:
 # --- behaviour preservation: both families derive byte-identically from u_assert ------------
 
 def _legacy_action_utilities(weights: list[float], u_bar: dict[str, float],
-                             p_attested: float) -> dict[str, list[float]]:
-    """The hand-written formula (u_correct/u_wrong + the flat scoped row) — the oracle."""
+                             scoped_eu: float) -> dict[str, list[float]]:
+    """The hand-written formula (per-candidate report_j + the flat scoped row) — the oracle. The
+    MAP no longer enters here: `optimise` picks among report_j (the engine, not a host argmax)."""
     k = len(weights) - 1
-    j_star = max(range(k), key=lambda j: weights[j]) if k else None
     u_wrong = u_bar["u_wrong"]
-    report = [(u_bar["u_correct"] if j == j_star else u_wrong) for j in range(k)]
-    report.append(u_wrong)
-    hedge = [u_bar["u_hedged"]] * k + [u_wrong]
-    ask = [LK._ORACLE_P * u_bar["u_correct"] - u_bar["lambda_int"]] * (k + 1)
-    abstain = [u_bar["u_abstain"]] * (k + 1)
-    scoped_eu = p_attested * u_bar["u_hedged"] + (1.0 - p_attested) * u_bar["u_wrong_scoped"]
-    return {"report": report, "report_scoped": [scoped_eu] * (k + 1),
-            "hedge": hedge, "ask_clarify": ask, "abstain": abstain}
+    out = {f"report_{j}": [(u_bar["u_correct"] if i == j else u_wrong) for i in range(k)] + [u_wrong]
+           for j in range(k)}
+    out["hedge"] = [u_bar["u_hedged"]] * k + [u_wrong]
+    out["ask_clarify"] = [LK._ORACLE_P * u_bar["u_correct"] - u_bar["lambda_int"]] * (k + 1)
+    out["abstain"] = [u_bar["u_abstain"]] * (k + 1)
+    out["report_scoped"] = [scoped_eu] * (k + 1)
+    return out
 
 
 def test_lookup_action_utilities_unchanged_by_derivation() -> None:
     for weights in ([0.7, 0.2, 0.1], [0.4, 0.6], [0.34, 0.33, 0.33], [1.0]):
-        for p_att in (0.0, 0.5, 0.9):
-            assert (LK.action_utilities(weights, UB, p_att)
-                    == _legacy_action_utilities(weights, UB, p_att))
+        for scoped_eu in (-2.0, 0.0, 0.16):
+            assert (LK.action_utilities(weights, UB, scoped_eu)
+                    == _legacy_action_utilities(weights, UB, scoped_eu))
 
 
 def test_narrative_include_eu_unchanged_by_derivation() -> None:
