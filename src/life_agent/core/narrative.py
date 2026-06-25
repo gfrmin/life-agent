@@ -65,6 +65,7 @@ from life_agent.core import decisions as DEC
 from life_agent.core import derivations as D
 from life_agent.core import llm as LLM
 from life_agent.core import outcomes as O
+from life_agent.core.brain import Brain
 from life_agent.core.citation import SourceLike, extract_citations, value_spans
 from life_agent.core.decide import u_assert
 from life_agent.core.matching import answer_matches
@@ -82,6 +83,16 @@ _CELL_PRIORS: dict[str, tuple[float, float]] = {
 # P(a true relevant claim is proposed at all) — the open-world tail's prior. Wide:
 # "this may be incomplete" until eval_coverage evidence narrows it.
 _COVERAGE_PRIOR: tuple[float, float] = (2.0, 2.0)
+
+# The audit-outcome likelihood: a Bernoulli on the cell-correctness θ (1 = correct, 0 = wrong).
+# Every cell/coverage Beta is conditioned on these OVER THE WIRE — never a host `a += 1` fold
+# (Invariant 1: the one learning mechanism is `condition`, even though conjugacy is exact).
+_BERNOULLI: dict[str, str] = {"type": "bernoulli"}
+
+
+def _beta_ab(spec: Mapping[str, Any]) -> tuple[float, float]:
+    """(α, β) from a `read_params` Beta spec — relayed as a parameterisation, never folded."""
+    return float(spec["alpha"]), float(spec["beta"])
 
 # Closed abstention reasons (the credence grammar — interaction contract).
 REASON_NO_CLAIMS = "no claims proposed"
@@ -181,50 +192,58 @@ def audit_cell(claim_text: str, cites: tuple[int, ...],
 
 # --- move 2 + 3: the population and coverage folds (closed-form Beta) --------------------
 
-def population_posteriors(outcomes_path: Path = config.OUTCOMES_LOG
-                          ) -> dict[str, tuple[float, float]]:
-    """P(claim correct | audit cell): per-cell Beta — stated prior + the claim-level
-    evidence carrying the CURRENT instrument identity. An event with an audit cell
-    outside the partition raises: within one narrative version cells are closed by
-    construction, so junk is a code bug surfacing, never silent weight."""
+def _cell_observations(outcomes_path: Path) -> dict[str, list[float]]:
+    """Tally the claim-level audit outcomes per cell (1 = correct, 0 = wrong), filtered on the
+    CURRENT instrument identity (§2). Pure data-reading — the Bernoulli stream the wire folds;
+    no belief arithmetic. An event with a cell outside the partition raises (cells are closed)."""
     current = instrument_identity()
-    post = dict(_CELL_PRIORS)
+    by_cell: dict[str, list[float]] = {cell: [] for cell in _CELL_PRIORS}
     for event in O.read(outcomes_path):
-        if event.grader != "eval_claim":
-            continue
-        if event.instrument_identity != current:
+        if event.grader != "eval_claim" or event.instrument_identity != current:
             continue
         cell = (event.signals or {}).get("audit_cell")
-        if cell not in post:
+        if cell not in by_cell:
             raise ValueError(f"audit cell outside the partition: {cell!r}")
-        a, b = post[cell]
-        if event.grade in O.CORRECT_GRADES["eval_claim"]:
-            a += 1.0
-        else:
-            b += 1.0
-        post[cell] = (a, b)
+        by_cell[cell].append(1.0 if event.grade in O.CORRECT_GRADES["eval_claim"] else 0.0)
+    return by_cell
+
+
+def population_posteriors(brain: Brain, outcomes_path: Path = config.OUTCOMES_LOG
+                          ) -> dict[str, tuple[float, float]]:
+    """P(claim correct | audit cell): per-cell Beta (α, β), the stated prior CONDITIONED OVER
+    THE WIRE on the cell's audit outcomes — never a host `a += 1` fold (Invariant 1). The body
+    tallies the Bernoulli stream (data), conditions each cell's Beta through `condition`, and
+    reads the exact posterior params back via `read_params`. Returns {cell: (α, β)} — the same
+    shape as the priors, so cells with no evidence stay at their stated wide priors."""
+    by_cell = _cell_observations(outcomes_path)
+    post: dict[str, tuple[float, float]] = {}
+    for cell, (a, b) in _CELL_PRIORS.items():
+        sid = brain.create_state({"type": "beta", "alpha": a, "beta": b})
+        try:
+            for obs in by_cell[cell]:
+                brain.condition(sid, kernel=_BERNOULLI, observation=obs)
+            post[cell] = _beta_ab(brain.read_params(sid))
+        finally:
+            brain.destroy_state(sid)
     return post
 
 
-def coverage_posterior(outcomes_path: Path = config.OUTCOMES_LOG
+def coverage_posterior(brain: Brain, outcomes_path: Path = config.OUTCOMES_LOG
                        ) -> tuple[tuple[float, float], int]:
-    """The open-world tail: Beta posterior on P(a true relevant claim is proposed),
-    conditioned on the eval_coverage events for the current instrument. Returns
-    ((a, b), n observed events)."""
+    """The open-world tail: Beta posterior on P(a true relevant claim is proposed), the prior
+    CONDITIONED OVER THE WIRE on the eval_coverage events for the current instrument (no host
+    `a += 1`). Returns ((α, β), n observed events)."""
     current = instrument_identity()
-    a, b = _COVERAGE_PRIOR
-    n = 0
-    for event in O.read(outcomes_path):
-        if event.grader != "eval_coverage":
-            continue
-        if event.instrument_identity != current:
-            continue
-        n += 1
-        if event.grade in O.CORRECT_GRADES["eval_coverage"]:
-            a += 1.0
-        else:
-            b += 1.0
-    return (a, b), n
+    obs = [1.0 if e.grade in O.CORRECT_GRADES["eval_coverage"] else 0.0
+           for e in O.read(outcomes_path)
+           if e.grader == "eval_coverage" and e.instrument_identity == current]
+    sid = brain.create_state({"type": "beta", "alpha": _COVERAGE_PRIOR[0], "beta": _COVERAGE_PRIOR[1]})
+    try:
+        for o in obs:
+            brain.condition(sid, kernel=_BERNOULLI, observation=o)
+        return _beta_ab(brain.read_params(sid)), len(obs)
+    finally:
+        brain.destroy_state(sid)
 
 
 # --- the verdict → cell learning loop (the owner IS the gold) ----------------------------
@@ -274,13 +293,42 @@ def record_owner_verdicts(result: NarrativeResult, question_id: str,
 # --- M4: the per-claim inclusion decision under Ū ----------------------------------------
 
 def include_eu(p: float, u_bar: Mapping[str, float]) -> float:
-    """The reliance-linear labeled-claim EU (stated model — module docstring):
+    """The reliance-linear labeled-claim EU, the STATED MODEL (module docstring):
     ``EU(include | p) = p·u_assert(p) - κ_att`` — the reliance ``p`` scales the assertion
     atom :func:`life_agent.core.decide.u_assert`, minus the per-claim attention cost.
-    Withholding is the per-claim abstention at the gauge zero; the inclusion threshold
-    ``include_eu(p) > u_abstain`` is the exact powerset argmax under claim independence
-    (the separability proof in :mod:`life_agent.core.decide`)."""
+
+    Reference formula + test oracle: the DECISION runs this exact model OVER THE WIRE via
+    :func:`_claim_pref` — ``optimise{include, withhold}`` on the cell Beta, whose include
+    functional :func:`_include_fn` is the *integrated* form ``E_θ[include_eu(θ·tf)]`` over the
+    posterior (the proper model — not this point estimate at ``p = E[θ]``; the integral keeps
+    the ``Var(θ)·(u_c−u_w)`` term). This pure function is not on the decision path."""
     return p * u_assert(p, u_bar) - u_bar["kappa_att"]
+
+
+def _include_fn(u_bar: Mapping[str, float], tf: float) -> dict[str, Any]:
+    """The include action's functional: the EXACT integrated claim-EU over the cell Beta,
+    ``E_θ[(θ·tf)·u_assert(θ·tf)] - κ = (u_c−u_w)·tf²·E[θ²] + u_w·tf·E[θ] - κ`` — a
+    `centered_power` (E[θ²]) + `identity` (E[θ]) LinearCombination. ``tf`` is the staleness
+    factor (1.0 unscoped); it scales the utility coefficients (preference data), NOT a credence
+    (so the staleness decay is the proper integral, never a host multiply on a belief value)."""
+    u_c, u_w, kappa = u_bar["u_correct"], u_bar["u_wrong"], u_bar["kappa_att"]
+    return {"type": "linear_combination",
+            "terms": [[(u_c - u_w) * tf * tf, {"type": "centered_power", "n": 2}],
+                      [u_w * tf, {"type": "identity"}]],
+            "offset": -kappa}
+
+
+def _claim_pref(u_bar: Mapping[str, float], tf: float) -> dict[str, Any]:
+    """The per-claim ``optimise`` preference: include (the integrated EU) vs withhold (the gauge
+    zero ``u_abstain``). The engine picks — the body never compares EUs."""
+    return {"type": "functional_per_action", "actions": {
+        "include": _include_fn(u_bar, tf),
+        "withhold": {"type": "linear_combination", "terms": [], "offset": u_bar["u_abstain"]},
+    }}
+
+
+# functional_per_action ignores the action space; a placeholder keeps the protocol shape.
+_CLAIM_ACTIONS: dict[str, Any] = {"type": "finite", "values": [0.0, 1.0]}
 
 
 def freshest_as_of(cites: tuple[int, ...],
@@ -293,21 +341,37 @@ def freshest_as_of(cites: tuple[int, ...],
     return max(dated) if dated else None
 
 
-def decide_claims(scored: list[tuple[str, tuple[int, ...], str, float, str | None]],
+def decide_claims(brain: Brain,
+                  scored: list[tuple[str, tuple[int, ...], str, str | None, float]],
+                  cells_ab: Mapping[str, tuple[float, float]],
                   u_bar: Mapping[str, float]
                   ) -> tuple[tuple[Claim, ...], str, float, str]:
-    """Per-claim inclusion under Ū; the answer action is ``report`` iff any claim
-    clears (EU(report) = Σ included EU — the empty sum IS the abstain gauge). The per-claim
-    threshold is the exact argmax over the 2ⁿ inclusion subsets — claims are independent and
-    answer utility additive, so the powerset optimum factorises (the separability proof in
-    :mod:`life_agent.core.decide`). Each scored tuple carries the claim's freshest cited ``as_of``
-    (display + outcome tag; it does NOT enter the inclusion EU — keystone is decision-neutral).
-    Returns (claims in posterior order, action, eu, abstain_reason)."""
-    claims = []
-    for text, cites, cell, p, as_of in scored:
-        eu_i = include_eu(p, u_bar)
-        claims.append(Claim(text=text, cites=cites, cell=cell, credence=p,
-                            included=eu_i > u_bar["u_abstain"], eu_include=eu_i, as_of=as_of))
+    """Per-claim inclusion under Ū, decided OVER THE WIRE: each claim's include/withhold is the
+    engine's ``optimise{include, withhold}`` on its cell Beta (the integrated include-EU via
+    `centered_power`, the staleness factor ``tf`` scaling the utility coefficients) — never a
+    host EU compare. The answer action is ``report`` iff any claim clears (the per-claim
+    threshold is the exact powerset argmax under claim independence — the separability proof in
+    :mod:`life_agent.core.decide`). Each scored tuple is (text, cites, cell, as_of, tf); ``as_of``
+    is display + outcome tag (it does NOT enter the EU — keystone decision-neutral; staleness
+    enters only through ``tf``). Returns (claims in posterior order, action, eu, abstain_reason)."""
+    cell_states: dict[str, str] = {}
+    claims: list[Claim] = []
+    try:
+        for text, cites, cell, as_of, tf in scored:
+            sid = cell_states.get(cell)
+            if sid is None:
+                a, b = cells_ab[cell]
+                sid = brain.create_state({"type": "beta", "alpha": a, "beta": b})
+                cell_states[cell] = sid
+            action, _eu = brain.optimise(sid, actions=_CLAIM_ACTIONS,
+                                         preference=_claim_pref(u_bar, tf))
+            eu_i = brain.expect(sid, function=_include_fn(u_bar, tf))  # recorded include-EU
+            credence = brain.mean(sid) * tf  # display (staleness-decayed); decision was `action`
+            claims.append(Claim(text=text, cites=cites, cell=cell, credence=credence,
+                                included=(action == "include"), eu_include=eu_i, as_of=as_of))
+    finally:
+        for sid in cell_states.values():
+            brain.destroy_state(sid)
     claims.sort(key=lambda c: c.credence, reverse=True)
     included = [c for c in claims if c.included]
     if not claims:
@@ -366,6 +430,16 @@ def scope_decay(credence: float, as_of: str | None, claim_text: str, scope: str,
                                      half_life_years=VOL.half_life(claim_text))
 
 
+def scope_decay_factor(as_of: str | None, claim_text: str, scope: str,
+                       *, today: "date | None" = None) -> float:
+    """The staleness factor ``tf ∈ (0, 1]`` (= ``scope_decay(1.0, …)``): the present-scope DATED
+    claim's volatility time_factor, else 1.0. It scales the include-EU functional coefficients
+    (``tf²`` on E[θ²], ``tf`` on E[θ]) — the EXACT integral of ``include_eu(θ·tf)`` over the cell
+    Beta — so the staleness decay is the proper integral, never a host multiply on a belief
+    value. Gate-safe: ``tf ≤ 1`` only ever LOWERS the effective credence."""
+    return scope_decay(1.0, as_of, claim_text, scope, today=today)
+
+
 def narrative_answer(root: Path, question: str, text: str,
                      cards: Iterable[SourceLike], *,
                      scope: str = "unscoped",
@@ -379,9 +453,9 @@ def narrative_answer(root: Path, question: str, text: str,
     credences → per-claim EU decision → answer artifact (§18.9) → decision logged
     (no EU decision is ever made unlogged) → labeled render. Pure given its inputs
     except the folds (outcomes log) and the two appends."""
+    from life_agent.core import lookup as LK
+    b = LK.shared_brain()  # the wire holds every cell/coverage Beta; the body conditions + decides through it
     if u_bar is None or utility_fold_version is None:
-        from life_agent.core import lookup as LK
-        b = LK.shared_brain()
         u_bar, utility_fold_version = LK.current_u_bar(b)
 
     opath = outcomes_path if outcomes_path is not None else config.OUTCOMES_LOG
@@ -391,18 +465,18 @@ def narrative_answer(root: Path, question: str, text: str,
     # satisfy SourceLike, which carries no date, so read it optionally and degrade to undated)
     as_of_by_n = {c.n: getattr(c, "as_of", None) for c in cards}
     parsed = parse_claims(text)
-    cells = population_posteriors(opath)
+    cells = population_posteriors(b, opath)  # {cell: (α, β)} — wire-conditioned, no host fold
     scored = []
     for claim_text, cites in parsed:
         cell = audit_cell(claim_text, cites, cards_by_n)
-        a, b_ = cells[cell]
         as_of = freshest_as_of(cites, as_of_by_n)
-        # scope-aware inclusion: a present-intent question decays a DATED stale claim below the
-        # bar (gate-safe — only lowers p); the cell credence is recoverable from cell_posteriors.
-        credence = scope_decay(a / (a + b_), as_of, claim_text, scope)
-        scored.append((claim_text, cites, cell, credence, as_of))
-    claims, action, eu, reason = decide_claims(scored, u_bar)
-    coverage, coverage_n = coverage_posterior(opath)
+        # scope-aware inclusion: a present-intent question decays a DATED stale claim toward the
+        # bar via tf (gate-safe — tf ≤ 1 only lowers it); tf scales the EU functional engine-side,
+        # never a host multiply. tf = 1.0 unscoped/undated; the raw cell (α, β) stays recoverable.
+        tf = scope_decay_factor(as_of, claim_text, scope)
+        scored.append((claim_text, cites, cell, as_of, tf))
+    claims, action, eu, reason = decide_claims(b, scored, cells, u_bar)
+    coverage, coverage_n = coverage_posterior(b, opath)
 
     # the answer artifact (§18.9): the scored claim set + decision inputs, lineage to
     # the proposal. The folds are decision inputs, so the exact (a, b) state enters

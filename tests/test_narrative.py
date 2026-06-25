@@ -46,6 +46,15 @@ def migrated_root(tmp_path: Path) -> Path:
     return tmp_path
 
 
+@pytest.fixture(autouse=True)
+def _oracle_brain(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``narrative_answer`` pulls ``LK.shared_brain()`` for the wire (cell/coverage Betas + the
+    per-claim optimise); give it the in-process :class:`ConjugateBrain` oracle so the family
+    stays hermetic (no engine spawn). Tests that drive a brain directly ignore it."""
+    from life_agent.core import lookup as LK
+    monkeypatch.setattr(LK, "shared_brain", ConjugateBrain)
+
+
 @dataclass(frozen=True)
 class Card:
     n: int
@@ -68,6 +77,69 @@ def _coverage_event(*, grade: str) -> O.OutcomeEvent:
         tx_time="2026-06-13T10:00:00+00:00", run_id="eval-test", question_id="q-x",
         claim="gold", construct="proposal-coverage", grade=grade,
         grader="eval_coverage", instrument_identity=N.instrument_identity())
+
+
+class ConjugateBrain:
+    """A test-oracle brain double: an INDEPENDENT implementation of the engine math the
+    narrative body now drives over the wire — Beta-Bernoulli conjugacy + the `centered_power`
+    integrated claim-EU. It verifies the body's wire CHOREOGRAPHY (create→condition→read_params,
+    optimise/expect/mean) hermetically, without the real engine. Not the production path; the
+    real integration is covered by the engine's test_skin / test_centered_moment."""
+
+    def __init__(self) -> None:
+        self._states: dict[str, tuple[float, float]] = {}
+        self._n = 0
+
+    def create_state(self, spec: dict) -> str:
+        assert spec["type"] == "beta", spec
+        self._n += 1
+        sid = f"s_{self._n}"
+        self._states[sid] = (float(spec["alpha"]), float(spec["beta"]))
+        return sid
+
+    def destroy_state(self, sid: str) -> None:
+        self._states.pop(sid, None)
+
+    def condition(self, sid: str, *, kernel: dict, observation: float) -> float:
+        assert kernel == {"type": "bernoulli"}, kernel
+        a, b = self._states[sid]
+        self._states[sid] = (a + observation, b + (1.0 - observation))  # Beta-Bernoulli
+        return 0.0
+
+    def read_params(self, sid: str) -> dict:
+        a, b = self._states[sid]
+        return {"type": "beta", "alpha": a, "beta": b}
+
+    def mean(self, sid: str) -> float:
+        a, b = self._states[sid]
+        return a / (a + b)
+
+    def _eval_fn(self, sid: str, fn: dict) -> float:
+        a, b = self._states[sid]
+        e1 = a / (a + b)
+        e2 = a * (a + 1.0) / ((a + b) * (a + b + 1.0))   # raw second moment E[θ²]
+        total = float(fn.get("offset", 0.0))
+        for coeff, sub in fn.get("terms", []):
+            if sub["type"] == "centered_power":
+                assert sub.get("n") == 2 and sub.get("mu", 0.0) == 0.0, sub
+                total += coeff * e2
+            elif sub["type"] == "identity":
+                total += coeff * e1
+            else:
+                raise AssertionError(f"oracle does not model {sub['type']!r}")
+        return total
+
+    def expect(self, sid: str, *, function: dict) -> float:
+        return self._eval_fn(sid, function)
+
+    def optimise(self, sid: str, *, actions: dict, preference: dict):
+        assert preference["type"] == "functional_per_action", preference
+        best_a, best_eu = None, float("-inf")
+        for name, fn in preference["actions"].items():
+            eu = self._eval_fn(sid, fn)
+            if eu > best_eu:
+                best_eu, best_a = eu, name
+        return best_a, best_eu
 
 
 # --- move 1: the deterministic parse + audit cells ----------------------------------------
@@ -104,7 +176,8 @@ def test_audit_cell_partition() -> None:
 # --- move 2: the population fold ----------------------------------------------------------
 
 def test_population_posteriors_start_at_stated_priors(tmp_path: Path) -> None:
-    assert population_posteriors(tmp_path / "absent.jsonl") == N._CELL_PRIORS
+    # no evidence → the wire-conditioned posterior IS the stated prior (read back via read_params)
+    assert population_posteriors(ConjugateBrain(), tmp_path / "absent.jsonl") == N._CELL_PRIORS
 
 
 def test_population_posteriors_condition_per_cell(tmp_path: Path) -> None:
@@ -113,7 +186,9 @@ def test_population_posteriors_condition_per_cell(tmp_path: Path) -> None:
         O.append(log, _claim_event(cell="verified", grade="CORRECT"))
     O.append(log, _claim_event(cell="verified", grade="INCORRECT"))
     O.append(log, _claim_event(cell="unsupported", grade="INCORRECT"))
-    post = population_posteriors(log)
+    # the body conditions each cell's Beta over the wire (3 successes + 1 fail on verified);
+    # the exact Beta-Bernoulli posterior comes back via read_params — never a host `a += 1`.
+    post = population_posteriors(ConjugateBrain(), log)
     a0, b0 = N._CELL_PRIORS["verified"]
     assert post["verified"] == (a0 + 3.0, b0 + 1.0)
     a1, b1 = N._CELL_PRIORS["unsupported"]
@@ -127,14 +202,14 @@ def test_population_fold_filters_on_exact_instrument_identity(tmp_path: Path) ->
     stale = dict(N.instrument_identity(), narrative_version="0-superseded")
     for _ in range(5):
         O.append(log, _claim_event(cell="verified", identity=stale))
-    assert population_posteriors(log)["verified"] == N._CELL_PRIORS["verified"]
+    assert population_posteriors(ConjugateBrain(), log)["verified"] == N._CELL_PRIORS["verified"]
 
 
 def test_population_fold_raises_on_junk_cell(tmp_path: Path) -> None:
     log = tmp_path / "outcomes.jsonl"
     O.append(log, _claim_event(cell="vibes"))
     with pytest.raises(ValueError, match="partition"):
-        population_posteriors(log)
+        population_posteriors(ConjugateBrain(), log)
 
 
 def test_coverage_posterior_conditions_on_misses(tmp_path: Path) -> None:
@@ -142,7 +217,7 @@ def test_coverage_posterior_conditions_on_misses(tmp_path: Path) -> None:
     O.append(log, _coverage_event(grade="PROPOSED"))
     O.append(log, _coverage_event(grade="MISSED"))
     a0, b0 = N._COVERAGE_PRIOR
-    assert coverage_posterior(log) == ((a0 + 1.0, b0 + 1.0), 2)
+    assert coverage_posterior(ConjugateBrain(), log) == ((a0 + 1.0, b0 + 1.0), 2)
 
 
 # --- M4: the inclusion decision -----------------------------------------------------------
@@ -154,32 +229,44 @@ def test_include_eu_reliance_linear_model() -> None:
     assert include_eu(0.5, U) == pytest.approx(0.5 * (0.5 - 2.5) - 0.05)
 
 
+# cells with means 0.9 (high) / 0.5 (coin) / 0.25 (low) — the decision integrates the cell Beta.
+_CELLS = {"verified": (9.0, 1.0), "unverifiable": (1.0, 1.0), "unsupported": (1.0, 3.0)}
+
+
 def test_decide_claims_inclusion_and_posterior_order() -> None:
-    scored = [("low", (), "unverifiable", 0.5, None), ("high", (1,), "verified", 0.9, None)]
-    claims, action, eu, reason = decide_claims(scored, U)
+    # scored is now (text, cites, cell, as_of, tf); the credence is READ from the cell Beta and
+    # the include/withhold decision is the engine's integrated-EU optimise (tf=1.0 unscoped).
+    scored = [("low", (), "unverifiable", None, 1.0), ("high", (1,), "verified", None, 1.0)]
+    claims, action, eu, reason = decide_claims(ConjugateBrain(), scored, _CELLS, U)
     assert action == "report" and reason == ""
-    assert [c.text for c in claims] == ["high", "low"]  # posterior order
+    assert [c.text for c in claims] == ["high", "low"]  # posterior order by credence
     assert claims[0].included and not claims[1].included
-    assert eu == pytest.approx(include_eu(0.9, U))
+    assert claims[0].credence == pytest.approx(0.9)  # displayed credence = cell mean × tf
+    # answer EU = the included claim's integrated include-EU (E[θ²] over the cell Beta, not p̄²)
+    a, b = _CELLS["verified"]
+    e2 = a * (a + 1) / ((a + b) * (a + b + 1))
+    assert eu == pytest.approx((U["u_correct"] - U["u_wrong"]) * e2
+                               + U["u_wrong"] * (a / (a + b)) - U["kappa_att"])
 
 
 def test_decide_claims_all_withheld_abstains_named() -> None:
-    _claims, action, eu, reason = decide_claims([("c", (), "unverifiable", 0.5, None)], U)
+    scored = [("c", (), "unverifiable", None, 1.0)]  # cell mean 0.5 → integrated EU < 0
+    _claims, action, eu, reason = decide_claims(ConjugateBrain(), scored, _CELLS, U)
     assert action == "abstain" and eu == 0.0
     assert reason == N.REASON_ALL_WITHHELD
 
 
 def test_decide_claims_empty_abstains_named() -> None:
-    _, action, _, reason = decide_claims([], U)
+    _, action, _, reason = decide_claims(ConjugateBrain(), [], {}, U)
     assert action == "abstain" and reason == N.REASON_NO_CLAIMS
 
 
 # --- render (the credence grammar) --------------------------------------------------------
 
 def test_render_report_labels_claims_and_counts_withheld() -> None:
-    claims, action, eu, reason = decide_claims(
-        [("The number is 999999991.", (1,), "verified", 0.9, None),
-         ("It was renewed.", (), "unverifiable", 0.5, None)], U)
+    scored = [("The number is 999999991.", (1,), "verified", None, 1.0),
+              ("It was renewed.", (), "unverifiable", None, 1.0)]
+    claims, action, eu, reason = decide_claims(ConjugateBrain(), scored, _CELLS, U)
     r = N.NarrativeResult(
         question="q", action=action, eu=eu, abstain_reason=reason, claims=claims,
         coverage=(2.0, 2.0), coverage_n=0, cell_posteriors=dict(N._CELL_PRIORS),
@@ -192,8 +279,8 @@ def test_render_report_labels_claims_and_counts_withheld() -> None:
 
 
 def test_render_abstain_names_reason_and_footer() -> None:
-    claims, action, eu, reason = decide_claims(
-        [("c 1234567.", (1,), "unsupported", 0.25, None)], U)
+    scored = [("c 1234567.", (1,), "unsupported", None, 1.0)]  # cell mean 0.25 → withheld
+    claims, action, eu, reason = decide_claims(ConjugateBrain(), scored, _CELLS, U)
     r = N.NarrativeResult(
         question="q", action=action, eu=eu, abstain_reason=reason, claims=claims,
         coverage=(2.0, 3.0), coverage_n=1, cell_posteriors=dict(N._CELL_PRIORS),
@@ -293,7 +380,7 @@ def test_owner_verdicts_move_the_verified_cell(tmp_path: Path) -> None:
     out = tmp_path / "outcomes.jsonl"
     n = N.record_owner_verdicts(result, "q-007", {0: True, 1: False}, outcomes_path=out)
     assert n == 2
-    post = N.population_posteriors(out)
+    post = N.population_posteriors(ConjugateBrain(), out)
     assert post["verified"] == (4.0, 3.0)              # prior (3,2) +1 correct +1 incorrect
     assert post["unsupported"] == N._CELL_PRIORS["unsupported"]   # an unjudged cell is untouched
 
@@ -368,7 +455,7 @@ def test_owner_verdict_tags_claim_as_of_but_fold_reads_only_the_cell(tmp_path: P
     events = N.owner_claim_outcomes(result, "q-007", {0: False})
     assert events[0].signals["claim_as_of"] == "2019-04-02"
     N.record_owner_verdicts(result, "q-007", {0: False}, outcomes_path=out)
-    post = N.population_posteriors(out)
+    post = N.population_posteriors(ConjugateBrain(), out)
     assert post["verified"] == (3.0, 3.0)   # prior (3,2) + 1 incorrect — folded on the cell alone
 
 
