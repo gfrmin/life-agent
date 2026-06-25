@@ -22,9 +22,9 @@ stage on the ledger (system-design §3) and every modelling choice stated:
     decide     the decision logged (§8 — no EU decision is ever made unlogged)
 
 Stated channel parameters (each a prior choice calibration will move — §2, §14):
-``_A_ALTERNATIVES`` (effective wrong-value alternatives), ``_RHO_GRID`` (the carried
-ρ-latent discretisation), ``_RHO_PRIOR_*`` (the grounded-extraction reliability Beta
-prior, moved by audit outcomes — the labelled_mixture ``label_prior``), ``_ORACLE_P``
+``_A_ALTERNATIVES`` (effective wrong-value alternatives), ``_RHO_PRIOR_*`` (the
+grounded-extraction reliability Beta prior, moved by audit outcomes — the
+``reliability_categorical`` rho prior the engine integrates exactly), ``_ORACLE_P``
 (the owner-as-oracle prior for pricing ask_clarify), the declared source-authority
 classes (§4.1's v0 lattice), and the §4.1 covariate factors (``_A_SUBJECT_*`` /
 ``_TIME_HALF_LIFE_YEARS`` / ``_A_TIME_UNKNOWN`` — doc_subject and doc_date enter
@@ -124,7 +124,7 @@ EXTRACT_SCHEMA: dict[str, Any] = {
 # --- stated channel parameters (priors; calibration moves them — §2/§14) ---------------
 _A_ALTERNATIVES = 10.0   # effective number of wrong values a misreport spreads over
 # (the §4.2 ancestry/model tempering exponents are RETIRED — the exact group-noisy-channel
-#  + carried ρ-latent model the labelled_mixture conditions replaces the host temper.)
+#  + continuous rho-latent the `reliability_categorical` integrates replaces the host temper.)
 # The reliability prior for "this grounded observation's value IS the true V" —
 # end-to-end, construct validity included (a grounded form label or another person's
 # number is a wrong observation, not a misread). The first eval run refuted the original
@@ -186,7 +186,7 @@ GRAMMAR: dict[str, str] = {
     "abstain": "No answer asserted ({reason}).",
     # abstain still shows the candidate(s) it withheld below the assert threshold — the
     # held-back "thinking" that makes the decision verdictable (is that value right?) rather
-    # than a blind "should you have answered?". Used when the posterior held ≥1 candidate.
+    # than a blind "should you have answered?". Used when the posterior held >=1 candidate.
     "abstain_withheld": "No answer asserted ({reason}). Held back: {alts}",
     "footer": ("lookup: {n_hits} hits → {n_obs} grounded observations"
                " · {n_ind} indeterminate · none-of-retrieved {p_none:.3f}"
@@ -408,7 +408,7 @@ def _extractor_outcomes(outcomes_path: Path) -> list[float]:
 
 
 def _extractor_rho_state(brain: Brain, outcomes_path: Path) -> str:
-    """The ρ Beta(4,4) prior CONDITIONED OVER THE WIRE on the extractor's graded outcomes
+    """The rho Beta(4,4) prior CONDITIONED OVER THE WIRE on the extractor's graded outcomes
     (audit + eval_lookup). The live state id; the caller reads + destroys it. Never a host
     `prior + correct` fold (Invariant 1: condition is the one learning mechanism, even though
     Beta-Bernoulli conjugacy is exact)."""
@@ -420,11 +420,12 @@ def _extractor_rho_state(brain: Brain, outcomes_path: Path) -> str:
 
 def extractor_reliability(brain: Brain, outcomes_path: Path = config.OUTCOMES_LOG
                           ) -> tuple[float, float]:
-    """rho for "this observation's value is the true V" as a Beta (α, β) — the wide Beta(4,4)
+    """rho for "this observation's value is the true V" as a Beta (alpha, beta) — the wide Beta(4,4)
     prior conditioned over the wire on the graded evidence, read back via `read_params`. The
-    full posterior (not just its mean) so the lookup ρ-latent carries the extractor's reliability
-    uncertainty exactly (a `labelled_mixture` `label_prior`). The system learns whether to trust
-    its own extractor from its own outcomes log — the §8 loop, closed, on the wire."""
+    full posterior (not just its mean) so the lookup rho-latent carries the extractor's reliability
+    uncertainty exactly (the `reliability_categorical` rho prior, integrated analytically by the
+    engine). The system learns whether to trust its own extractor from its own outcomes log — the
+    §8 loop, closed, on the wire."""
     sid = _extractor_rho_state(brain, outcomes_path)
     try:
         spec = brain.read_params(sid)
@@ -435,7 +436,7 @@ def extractor_reliability(brain: Brain, outcomes_path: Path = config.OUTCOMES_LO
 
 def extractor_reliability_mean(brain: Brain | None = None,
                                outcomes_path: Path = config.OUTCOMES_LOG) -> float:
-    """The ρ posterior MEAN (a wire readout via `mean`, not a host α/(α+β)) — the scalar the
+    """The rho posterior MEAN (a wire readout via `mean`, not a host a/(a+b)) — the scalar the
     string-blind bridge relays to the answer-brain. Same wire-conditioned Beta as
     :func:`extractor_reliability`; `brain` defaults to the shared skin (bridge convenience)."""
     b = brain if brain is not None else shared_brain()
@@ -572,45 +573,35 @@ def candidates_from(observations: list[Observation]) -> list[str]:
     return list(seen.values())
 
 
-# ρ discretisation grid for the carried extractor-reliability latent: interior points of (0, 1)
-# (the labelled_mixture `label_prior` β-kernel diverges at the endpoints). A computation-layer
-# choice — the latent is integrated by the engine; finer is more exact, invisible to the model.
-_RHO_GRID: list[float] = [0.1, 0.3, 0.5, 0.7, 0.9]
-
-
-def _onehot(j: int, n: int) -> dict[str, Any]:
-    """The indicator of atom position `j` over an `n`-atom categorical (a `tabular` functional)."""
-    return {"type": "tabular", "values": [1.0 if i == j else 0.0 for i in range(n)]}
-
-
-def _v_marginal(brain: Brain, state_id: str, n_atoms: int) -> list[float]:
-    """The V posterior MARGINALISED over the ρ-latent: `expect` each atom's indicator over the
-    `labelled_mixture` (the engine integrates ρ). A readout (render order / p_none / p_attested /
-    gather ranking) — the body never folds the mixture itself (Invariant 1). Layout matches the
-    old `weights`: candidates 0..k-1 then NONE last."""
-    return [brain.expect(state_id, function=_onehot(j, n_atoms)) for j in range(n_atoms)]
+def _v_marginal(brain: Brain, state_id: str) -> list[float]:
+    """The V posterior MARGINALISED over the continuous rho-latent: the `reliability_categorical`'s
+    `weights` — the engine integrates rho analytically (an exact Beta-moment sum). A readout
+    (render order / p_none / p_attested / gather ranking) — the body never folds rho itself
+    (Invariant 1). Layout: candidates 0..k-1 then NONE last."""
+    return brain.weights(state_id)
 
 
 def lookup_posterior(brain: Brain, observations: list[Observation],
                      candidates: list[str], rho_ab: tuple[float, float]
                      ) -> tuple[list[float], str]:
     """The candidate+NONE posterior under the EXACT correlated-evidence model (replacing the §4.2
-    host tempering): a `labelled_mixture` over the ρ-grid — the carried extractor-reliability
-    latent, prior = the Beta `rho_ab` discretised by `label_prior` — each component a categorical
-    over the K candidates + NONE. Observations group BY DOCUMENT (artifact); each group conditions
-    via a `group_noisy_channel` (covariate = authority·subject·time of the doc, A alternatives) on
-    the group's reported candidate-positions (1-based atom values; same-doc reports are correlated,
-    sharing r_d = ρ·covariate, and ρ couples the groups). Returns (the ρ-marginalised V weights
-    with NONE last, the live mixture state id — open for `optimise`; the caller destroys it)."""
+    host tempering): a `reliability_categorical` — a categorical over the K candidates + NONE with a
+    CONTINUOUS Beta reliability latent rho (the carried extractor reliability, prior = the Beta
+    `rho_ab`). Observations group BY DOCUMENT (artifact); each group conditions via a
+    `group_noisy_channel` (covariate = authority·subject·time of the doc, A alternatives) on the
+    group's reported candidate-positions (1-based atom values; same-doc reports are correlated,
+    sharing r_d = rho·covariate, rho coupling the groups). The engine integrates rho ANALYTICALLY —
+    the group-channel is linear in rho, so a Beta prior stays a polynomial-in-rho x Beta and the
+    V-marginal is an exact Beta-moment sum, NO grid. Returns (the rho-marginalised V weights with
+    NONE last, the live state id — open for `optimise`; the caller destroys it)."""
     k = len(candidates)
     # stated V prior: _P_NONE_PRIOR on none-of-the-retrieved, the rest uniform over candidates.
     v_prior = [(1.0 - _P_NONE_PRIOR) / k] * k + [_P_NONE_PRIOR]
     alpha, beta = rho_ab
     state_id = brain.create_state({
-        "type": "labelled_mixture",
-        "labels": _RHO_GRID,
-        "label_prior": {"type": "beta", "alpha": alpha, "beta": beta},
-        "component_log_weights": [math.log(w) for w in v_prior],
+        "type": "reliability_categorical",
+        "v_log_weights": [math.log(w) for w in v_prior],
+        "alpha": alpha, "beta": beta,
     })
     keys = [_candidate_key(c) for c in candidates]
     groups: dict[str, list[Observation]] = {}
@@ -623,7 +614,7 @@ def lookup_posterior(brain: Brain, observations: list[Observation],
         kernel = {"type": "group_noisy_channel", "covariate": covariate,
                   "n_alternatives": _A_ALTERNATIVES}
         brain.condition(state_id, kernel=kernel, observation=reports)
-    return _v_marginal(brain, state_id, k + 1), state_id
+    return _v_marginal(brain, state_id), state_id
 
 
 def action_utilities(weights: list[float], u_bar: dict[str, float],
@@ -658,7 +649,7 @@ _LOOKUP_ACTIONS: dict[str, Any] = {"type": "finite", "values": [0.0]}
 
 def decide(brain: Brain, state_id: str, weights: list[float],
            u_bar: dict[str, float], scoped_eu: float = 0.0) -> tuple[str, float]:
-    """`optimise` over the response actions on the live ρ-latent mixture. `report` is expanded into
+    """`optimise` over the response actions on the live rho-latent state. `report` expands into
     a per-candidate `report_j` so the engine picks the asserted candidate (no host argmax); a
     `report_j` winner maps to action ``report`` (its candidate is the weight-MAP = the weight-sorted
     ``candidates[0]`` the caller renders). ``scoped_eu`` prices report_scoped (0.0 ⇒ never wins)."""
@@ -767,7 +758,7 @@ def _scoped_option(brain: Brain, observations: list[Observation],
     scoped value V_s ("most recent record on file") and its as-of date. Returns ``(scoped_eu,
     p_attested, V_s, as_of)``. ``scoped_eu`` is the attested-record EU computed SERVER-SIDE —
     ``expect(recency-off posterior, tabular[u_hedged @ V_s, u_wrong_scoped elsewhere])`` =
-    P_attested(V_s)·u_hedged + (1−P_attested(V_s))·u_wrong_scoped — never a host product on a
+    P_attested(V_s)·u_hedged + (1-P_attested(V_s))·u_wrong_scoped — never a host product on a
     belief value. ``p_attested`` = V_s's recency-off V-marginal (recorded). Both 0.0 / None when
     no observation carries a date (scoped disabled — the flat row sits below abstain). The attested
     posterior is the current one when recency was already off (a permanent fact), else a second
@@ -803,15 +794,15 @@ def decide_and_record(root: Path, question: str, construct: str,
                       decisions_path: Path | None = None,
                       run_id: str = "ask",
                       rho_override: tuple[float, float] | None = None) -> LookupResult:
-    """The lookup family's tail: a grounded observation set → the ρ-latent correlated-evidence
-    posterior → EU decision under Ū → recorded answer artifact (§18.9) + logged decision (§8). Shared by
+    """The lookup family's tail: a grounded observation set → the rho-latent correlated-evidence
+    posterior → EU decision under Ū → recorded answer (§18.9) + logged decision (§8). Shared by
     the single-pass :func:`lookup_answer` and the gather-augmented loop
     (:mod:`life_agent.core.gather`): both produce observations, then value and record them
     identically. ``time_indexed`` enters the answer key + content (an auditable decision
     input — the gather loop may set it differently from the route). Assumes
     ``observations`` is non-empty (its caller routes the empty case to narrative).
 
-    ``rho_override`` replaces the local-extractor reliability Beta (α, β) for an observation set
+    ``rho_override`` replaces the local-extractor reliability Beta for an observation set
     produced by a DIFFERENT instrument (the ``extract@<model>`` joint edge folds its calibrated
     confidence here, not the local ``extractor_reliability``)."""
     b = brain if brain is not None else shared_brain()
@@ -842,7 +833,7 @@ def decide_and_record(root: Path, question: str, construct: str,
         {"obs": o.obs_cache_key, "subject_factor": o.subject_factor,
          "time_factor": o.time_factor}
         for o in observations]
-    params = {"A": _A_ALTERNATIVES, "rho_grid": _RHO_GRID, "oracle_p": _ORACLE_P,
+    params = {"A": _A_ALTERNATIVES, "oracle_p": _ORACLE_P,
               "p_none_prior": _P_NONE_PRIOR, "rho": list(rho),
               "a_subject_other": _A_SUBJECT_OTHER,
               "p_owner_indet": _P_OWNER_GIVEN_INDET,

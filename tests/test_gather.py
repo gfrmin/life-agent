@@ -121,7 +121,9 @@ class _ScriptedTransport:
         elif method == "weights":
             creates = [r for r in self.sent if r["method"] == "create_state"]
             idx = int(req["params"]["state_id"].split("_")[1]) - 1
-            n = len(creates[idx]["params"]["space"]["values"])
+            params = creates[idx]["params"]
+            n = (len(params["v_log_weights"]) if params["type"] == "reliability_categorical"
+                 else len(params["space"]["values"]))
             result = {"weights": [1.0 / n] * n}
         elif method == "marginal":
             # the utility joint fold's per-coordinate readout → a NEW scalar state (mean/expect)

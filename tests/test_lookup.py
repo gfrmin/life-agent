@@ -473,7 +473,11 @@ class ScriptedTransport:
         elif method == "weights":
             creates = [r for r in self.sent if r["method"] == "create_state"]
             idx = int(req["params"]["state_id"].split("_")[1]) - 1
-            n = len(creates[idx]["params"]["space"]["values"])
+            params = creates[idx]["params"]
+            # the lookup V-marginal is a `reliability_categorical` (v_log_weights); other
+            # categorical states carry a `space`. Scripted uniform of the right atom count.
+            n = (len(params["v_log_weights"]) if params["type"] == "reliability_categorical"
+                 else len(params["space"]["values"]))
             result = {"weights": [1.0 / n] * n}
         elif method == "marginal":
             # the utility joint fold's per-coordinate readout → a NEW scalar state (mean/expect)
@@ -483,7 +487,7 @@ class ScriptedTransport:
             # the utility continuous-latent fold's causal mean readout (scripted neutral)
             result = {"mean": 0.0}
         elif method == "expect":
-            # the V-marginal onehots / scoped tabular: Σ vᵢ over a UNIFORM belief (scripted)
+            # the V-marginal onehots / scoped tabular: Σ v_i over a UNIFORM belief (scripted)
             vals = req["params"]["function"].get("values", [1.0])
             result = {"value": sum(vals) / len(vals)}
         elif method == "read_params":
