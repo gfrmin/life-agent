@@ -17,14 +17,17 @@ posteriors learned from evidence. Design commitments, all from the amended found
 - **Learning is passive** (a stated action-set coarsening): evidence arrives from the
   owner's behaviour and owner-initiated elicitation; the agent never probes preferences
   until the governor can price the sequential value.
-- **The grid is a truncation, stated**: no hard zero *within* bounds chosen wide enough
-  that endpoint mass stays negligible; endpoint mass is monitored and the remedy is
-  widening, never renormalising. The finite grid also discharges §0's bounded-utility
-  dependence by construction.
-- Conditioning runs through the credence skin (:mod:`life_agent.core.brain`):
-  categorical states + ``tabular_log_density`` kernels — one inference engine (L2),
-  so later structured inference inherits the seam. Likelihood *vectors* are computed
-  here (pure, unit-tested); the multiply-and-normalise is credence's.
+- **Bounds are stated support, not a grid**: each latent is a CONTINUOUS truncated Gaussian on a
+  stated support ``[lo, hi]`` (a sign/range constraint, e.g. ``u_wrong ≤ 0``); the engine integrates
+  over the support internally. Endpoint proximity is monitored and the remedy is widening the
+  support, never renormalising. The bounded support discharges §0's bounded-utility dependence by
+  construction.
+- Conditioning runs through the credence skin (:mod:`life_agent.core.brain`): continuous
+  ``truncated_gaussian`` (1-D) / ``truncated_mv_gaussian`` (coupled) states + declared kernels
+  (``gaussian_known_var``, ``logistic_reaction``, ``linear_gaussian``, ``margin_reaction``) — one
+  inference engine (L2), which owns all quadrature. The body declares data and reads moments
+  (``mean``/``expect``/``marginal``); it builds no grid and no density vector (the discretisation
+  antipattern, retired).
 
 The model file (gauge + grids + priors) lives at ``$LIFE_AGENT_KB/utility/model.yaml``
 (schema example: ``config/utility-model.example.yaml``); elicitations at
@@ -33,9 +36,7 @@ The model file (gauge + grids + priors) lives at ``$LIFE_AGENT_KB/utility/model.
 from __future__ import annotations
 
 import hashlib
-import itertools
 import json
-import math
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -54,11 +55,6 @@ GAUGE: dict[str, float] = {"u_correct": 1.0, "u_abstain": 0.0}
 # never a silent addition.
 REQUIRED_LATENTS: tuple[str, ...] = ("u_wrong", "u_wrong_scoped", "u_hedged",
                                      "lambda_int", "kappa_att")
-
-# Probability floor inside log() — the stated finite-arithmetic convention (the
-# likelihood twin of outcomes.SCORE_EPS).
-_PROB_EPS = 1e-12
-
 
 @dataclass(frozen=True)
 class Grid:
@@ -134,36 +130,12 @@ def load_model(path: Path) -> UtilityModel:
     )
 
 
-# --- priors and likelihood vectors (pure) ------------------------------------------------
-
-def gaussian_weights(values: tuple[float, ...], mu: float,
-                     sigma: float) -> tuple[float, ...]:
-    """A gaussian discretised onto the grid, normalised — the stated prior shape."""
-    raw = [math.exp(-0.5 * ((x - mu) / sigma) ** 2) for x in values]
-    z = sum(raw)
-    return tuple(r / z for r in raw)
-
-
-def elicitation_log_density(values: tuple[float, ...], stated_value: float,
-                            sigma: float) -> tuple[float, ...]:
-    """log P(stated | latent = x) per grid point — a stated, generous noise model:
-    elicitation is evidence, never definition (§4.4 stream 1)."""
-    const = -math.log(sigma * math.sqrt(2 * math.pi))
-    return tuple(-0.5 * ((stated_value - x) / sigma) ** 2 + const for x in values)
-
-
-def reaction_probability(values: tuple[float, ...], tau_values: tuple[float, ...],
-                         tau_weights: tuple[float, ...], *, sign: float,
-                         threshold: float) -> tuple[float, ...]:
-    """P(react = 1 | latent = x), the logistic choice model marginalised over the
-    τ-prior: sum_t w_t * sigmoid((sign*x - threshold) / t). Covers the binary reaction shapes
-    of §4.4 streams 2-5 (verdicts, corrections, re-asks)."""
-    out: list[float] = []
-    for x in values:
-        p = sum(w / (1.0 + math.exp(-(sign * x - threshold) / t))
-                for t, w in zip(tau_values, tau_weights, strict=True))
-        out.append(p)
-    return tuple(out)
+# Priors and likelihoods are declared CONTINUOUS and conditioned engine-side: a latent is a
+# `truncated_gaussian` (1-D) or a `truncated_mv_gaussian` (coupled); an event ships a kernel spec
+# (`gaussian_known_var`/`logistic_reaction`/`linear_gaussian`/`margin_reaction`). The host builds no
+# grid and no density table — the engine owns the quadrature. (The retired host helpers
+# `gaussian_weights`/`elicitation_log_density`/`reaction_probability` were the discretisation
+# antipattern; see _kernel_for / _joint_kernel.)
 
 
 # --- evidence (closed types; order is the canonical replay order) ------------------------
@@ -257,7 +229,7 @@ class LatentPosterior:
 
     @property
     def near_bound(self) -> bool:
-        """The support-clipping monitor: the posterior mean sits within 1σ of a support edge, so
+        """The support-clipping monitor: the posterior mean sits within 1sigma of a support edge, so
         the stated bound [lo,hi] may be clipping the posterior — widen it (the continuous successor
         of the old grid-endpoint-mass warning, now that the engine owns the quadrature)."""
         import math as _m
@@ -278,11 +250,11 @@ class UtilityPosterior:
         return {**self.gauge, **{name: lp.mean for name, lp in self.latents.items()}}
 
     def endpoint_warnings(self, threshold: float) -> list[str]:
-        """Support-clipping warnings: a latent whose posterior mean sits within 1σ of a support
+        """Support-clipping warnings: a latent whose posterior mean sits within 1sigma of a support
         edge may need a wider stated bound [lo,hi]. (``threshold`` is retained for the call
-        signature; the continuous monitor uses the 1σ proximity in ``near_bound``.)"""
+        signature; the continuous monitor uses the 1sigma proximity in ``near_bound``.)"""
         return [
-            f"utility latent {name!r}: posterior mean {lp.mean:.3f} is within 1σ of its support "
+            f"utility latent {name!r}: mean {lp.mean:.3f} is within 1sigma of its support "
             f"[{lp.lo}, {lp.hi}] — the stated bound may be clipping the posterior; widen it"
             for name, lp in self.latents.items() if lp.near_bound
         ]
@@ -303,10 +275,11 @@ def fold_version(model: UtilityModel, events: list[Evidence]) -> str:
 def _kernel_for(event: Evidence, model: UtilityModel) -> tuple[dict[str, Any], float]:
     """The (likelihood kernel, observation) pair for one single-latent event — a CONTINUOUS-domain
     kernel the engine evaluates/quadratures over the latent's support; no grid, no host densities.
-    An Elicitation is a Gaussian observation (`gaussian_known_var` → NormalNormal); a Reaction is the
-    τ-marginalised logistic choice (`logistic_reaction`, continuous τ from the model's `tau` prior)."""
+    An Elicitation is a Gaussian obs (`gaussian_known_var` → NormalNormal); a Reaction is the
+    τ-marginalised logistic (`logistic_reaction`, continuous τ from the model's `tau` prior)."""
     if isinstance(event, Elicitation):
-        return {"type": "gaussian_known_var", "variance": event.noise_sigma ** 2}, event.stated_value
+        var = event.noise_sigma ** 2
+        return {"type": "gaussian_known_var", "variance": var}, event.stated_value
     assert isinstance(event, Reaction)  # _fold_1d never routes a MarginReaction here
     tau = model.tau
     kernel = {"type": "logistic_reaction", "sign": event.sign, "threshold": event.threshold,
@@ -368,91 +341,79 @@ def _fold_1d(brain: Brain, model: UtilityModel, name: str,
             kernel, observation = _kernel_for(event, model)
             brain.condition(state_id, kernel=kernel, observation=observation)
         m = brain.mean(state_id)
-        # variance = E[(x−mean)²] via the centered_power functional (a wire expect, no host fold)
+        # variance = E[(x-mean)^2] via the centered_power functional (a wire expect, no host fold)
         var = brain.expect(state_id, function={"type": "centered_power", "n": 2, "mu": m})
     finally:
         brain.destroy_state(state_id)
     return LatentPosterior(name=name, mean=m, variance=var, lo=spec.grid.lo, hi=spec.grid.hi)
 
 
-def _joint_kernel(event: Evidence, points: list[tuple[float, ...]], names: list[str],
-                  idx_vals: list[float], model: UtilityModel) -> tuple[dict[str, Any], float]:
-    """The (kernel, observation) for one event over the flattened joint grid — the event's
-    likelihood evaluated at each product point. A single-latent event is flat in the other
-    latents; a MarginReaction's margin couples them (raw, τ from its event-shape group)."""
+def _joint_kernel(event: Evidence, names: list[str],
+                  model: UtilityModel) -> tuple[dict[str, Any], float]:
+    """The (kernel spec, observation) for one event over the COUPLED `names` (the component's
+    sorted order = the mv latent's coordinate order). A single-latent event is a coefficient
+    vector e_j; a MarginReaction's `Σ coeff·x - offset` couples them. Elicitation → a coordinate
+    Gaussian (`linear_gaussian`, coeffs=e_j); reaction/margin → a `margin_reaction` over the linear
+    functional. The engine integrates the box and τ — no host density table, no grid."""
     if isinstance(event, Elicitation):
-        j = names.index(event.latent)
-        const = -math.log(event.noise_sigma * math.sqrt(2 * math.pi))
-        ld = [-0.5 * ((event.stated_value - pt[j]) / event.noise_sigma) ** 2 + const
-              for pt in points]
-        return ({"type": "tabular_log_density", "source_vals": idx_vals,
-                 "target_vals": [event.stated_value], "densities": [[d] for d in ld]},
-                event.stated_value)
+        coeffs = [1.0 if n == event.latent else 0.0 for n in names]
+        return ({"type": "linear_gaussian", "coeffs": coeffs,
+                 "variance": event.noise_sigma ** 2}, event.stated_value)
     if isinstance(event, Reaction):
-        j = names.index(event.latent)
-        tv = model.tau.grid.values()
-        tw = gaussian_weights(tv, model.tau.prior_mu, model.tau.prior_sigma)
-        p1 = reaction_probability(tuple(pt[j] for pt in points), tv, tw,
-                                  sign=event.sign, threshold=event.threshold)
-    else:  # MarginReaction — the raw margin, event-shape τ
-        tspec = model.tau_narrative if event.tau_group == "narrative" else model.tau
-        tv = tspec.grid.values()
-        tw = gaussian_weights(tv, tspec.prior_mu, tspec.prior_sigma)
-        coeffs = dict(event.coeffs)
-        margins = tuple(sum(coeffs[n] * pt[names.index(n)] for n in coeffs) - event.offset
-                        for pt in points)
-        p1 = reaction_probability(margins, tv, tw, sign=event.sign, threshold=0.0)
-    densities = [[math.log(max(1.0 - p, _PROB_EPS)), math.log(max(p, _PROB_EPS))] for p in p1]
-    return ({"type": "tabular_log_density", "source_vals": idx_vals,
-             "target_vals": [0.0, 1.0], "densities": densities},
+        coeffs = [1.0 if n == event.latent else 0.0 for n in names]
+        tau = model.tau
+        return ({"type": "margin_reaction", "coeffs": coeffs, "offset": 0.0,
+                 "sign": event.sign, "threshold": event.threshold,
+                 "tau_mu": tau.prior_mu, "tau_sigma": tau.prior_sigma,
+                 "tau_lo": tau.grid.lo, "tau_hi": tau.grid.hi},
+                1.0 if event.reacted else 0.0)
+    # MarginReaction — the raw margin, event-shape τ
+    tspec = model.tau_narrative if event.tau_group == "narrative" else model.tau
+    coeff_map = dict(event.coeffs)
+    coeffs = [coeff_map.get(n, 0.0) for n in names]
+    return ({"type": "margin_reaction", "coeffs": coeffs, "offset": event.offset,
+             "sign": event.sign, "threshold": 0.0,
+             "tau_mu": tspec.prior_mu, "tau_sigma": tspec.prior_sigma,
+             "tau_lo": tspec.grid.lo, "tau_hi": tspec.grid.hi},
             1.0 if event.reacted else 0.0)
 
 
 def _fold_joint(brain: Brain, model: UtilityModel, comp: frozenset[str],
                 events: list[Evidence]) -> dict[str, LatentPosterior]:
-    """The multi-latent fold (§7.1): one categorical over the flattened product grid of
-    the component's latents (prior = product of the per-latent gaussians — independent, no
-    invented correlation), conditioned by every event touching the component in order, then
-    **marginalised back** to each latent. The marginals are a readout, never persisted —
-    the next event must sharpen through the joint correlation, not a collapsed copy."""
+    """The multi-latent fold (§7.1): the coupled latents' joint posterior, computed ENGINE-SIDE as a
+    `truncated_mv_gaussian` on the box ∏[lo,hi] (prior = independent truncated Gaussians —
+    no invented correlation), conditioned by every event touching the component in order, then read
+    back per-latent with `marginal`. The engine owns the joint grid and integrates the other
+    coordinates over it — the body builds no grid, no density, and does no marginal arithmetic
+    (Invariant 1). Coupling enters only through the margin-reaction likelihood."""
     names = sorted(comp)
-    grids = [model.latents[n].grid.values() for n in names]
-    priors = [gaussian_weights(g, model.latents[n].prior_mu, model.latents[n].prior_sigma)
-              for n, g in zip(names, grids, strict=True)]
-    index_tuples = list(itertools.product(*(range(len(g)) for g in grids)))
-    points = [tuple(grids[j][ix[j]] for j in range(len(names))) for ix in index_tuples]
-    idx_vals = [float(i) for i in range(len(points))]
-    log_prior = [sum(math.log(max(priors[j][ix[j]], _PROB_EPS)) for j in range(len(names)))
-                 for ix in index_tuples]
-    state_id = brain.create_state({
-        "type": "categorical",
-        "space": {"type": "finite", "values": idx_vals},
-        "log_weights": log_prior,
+    specs = [model.latents[n] for n in names]
+    joint = brain.create_state({
+        "type": "truncated_mv_gaussian",
+        "mu": [s.prior_mu for s in specs],
+        "sigma": [s.prior_sigma for s in specs],
+        "lo": [s.grid.lo for s in specs],
+        "hi": [s.grid.hi for s in specs],
     })
     out: dict[str, LatentPosterior] = {}
     try:
         for event in events:
-            kernel, observation = _joint_kernel(event, points, names, idx_vals, model)
-            brain.condition(state_id, kernel=kernel, observation=observation)
-        # Marginalise back to each latent ENGINE-SIDE: the pushforward of the joint through the
-        # coordinate projection π_axis (the grid is row-major — last axis fastest, matching the
-        # itertools.product enumeration above). The body ships only {shape, axis} and never folds
-        # the joint weights itself (Invariant 1 — the marginalisation is belief arithmetic that
-        # stays off-host; was the `marg[ix[j]] += joint[k]` loop, now the `marginalise` verb).
-        shape = [len(g) for g in grids]
+            kernel, observation = _joint_kernel(event, names, model)
+            brain.condition(joint, kernel=kernel, observation=observation)
+        # Read each latent's marginal off the engine's OWN joint grid: `marginal(axis)` registers a
+        # NEW scalar state (the engine sums out the other coords), which we read like a 1-D fold
+        # — mean + centered_power variance — then destroy. No host marginal arithmetic.
         for j, name in enumerate(names):
-            marg = brain.marginalise(state_id, shape=shape, axis=j)
-            gv = grids[j]
-            # NOTE(Phase B): the COUPLED component still folds on a host product grid; its marginal
-            # mean/variance are summed host-side here (the residual antipattern). Phase B replaces
-            # the product grid with an `mv_gaussian` the engine quadratures, reading per-coordinate
-            # moments off the wire. The uncoupled latents are already continuous (_fold_1d).
-            m = sum(w * x for w, x in zip(marg, gv, strict=True))
-            v = sum(w * (x - m) ** 2 for w, x in zip(marg, gv, strict=True))
+            marg = brain.marginal(joint, axis=j)
+            try:
+                m = brain.mean(marg)
+                v = brain.expect(marg, function={"type": "centered_power", "n": 2, "mu": m})
+            finally:
+                brain.destroy_state(marg)
             gspec = model.latents[name].grid
             out[name] = LatentPosterior(name=name, mean=m, variance=v, lo=gspec.lo, hi=gspec.hi)
     finally:
-        brain.destroy_state(state_id)
+        brain.destroy_state(joint)
     return out
 
 

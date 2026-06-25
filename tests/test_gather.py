@@ -123,9 +123,10 @@ class _ScriptedTransport:
             idx = int(req["params"]["state_id"].split("_")[1]) - 1
             n = len(creates[idx]["params"]["space"]["values"])
             result = {"weights": [1.0 / n] * n}
-        elif method == "marginalise":
-            n = req["params"]["shape"][req["params"]["axis"]]
-            result = {"weights": [1.0 / n] * n}
+        elif method == "marginal":
+            # the utility joint fold's per-coordinate readout → a NEW scalar state (mean/expect)
+            n = sum(1 for r in self.sent if r["method"] == "marginal")
+            result = {"state_id": f"m_{n}"}
         elif method == "mean":
             # the utility continuous-latent fold's causal mean readout (scripted neutral)
             result = {"mean": 0.0}
