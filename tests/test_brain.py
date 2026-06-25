@@ -108,11 +108,20 @@ def test_skin_error_maps_to_brain_error_with_code() -> None:
 
 
 def test_context_manager_shuts_down_and_closes() -> None:
-    t = FakeTransport()
+    t = FakeTransport(results={"initialize": {"protocol": "1.7", "version": "0", "methods": []}})
     with B.Brain(t) as b:
         b.initialize()
+    # initialize sends the protocol-major handshake.
+    assert t.sent[0]["method"] == "initialize" and t.sent[0]["params"]["protocol"] == "1"
     assert t.sent[-1]["method"] == "shutdown"
     assert t.closed
+
+
+def test_initialize_rejects_major_mismatch() -> None:
+    t = FakeTransport(results={"initialize": {"protocol": "2.0"}})
+    with pytest.raises(B.BrainError) as exc:
+        B.Brain(t).initialize()
+    assert exc.value.code == -32010
 
 
 def test_destroy_state() -> None:
@@ -166,9 +175,8 @@ def test_subprocess_transport_death_mid_session_is_loud() -> None:
 
 @pytest.mark.system
 def test_live_skin_beta_bernoulli_conjugate_update() -> None:
-    repo = Path(B.CREDENCE_REPO)
-    if not (repo / "apps/skin/server.jl").exists():
-        pytest.skip(f"credence repo not found at {repo}")
+    if not (B._DEV_REPO or B._DEV_SERVER):
+        pytest.skip("set $CREDENCE_REPO or $CREDENCE_SKIN_SERVER to spawn a dev engine")
     with B.Brain.spawn() as b:
         b.initialize()
         s = b.create_state({"type": "beta", "alpha": 1.0, "beta": 1.0})
