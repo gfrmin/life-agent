@@ -1,14 +1,15 @@
 """The utility posterior (bayesian-foundations §4.4/§10 as amended) — utility.py.
 
 Hermetic strata:
-1. Pure parts numerically: model loading, gaussian grid priors, likelihood vectors
-   (elicitation gaussian; reaction logistic with τ marginalised against its prior),
-   endpoint-mass monitoring, Ū extraction, fold_version determinism.
-2. The fold's RPC choreography over a scripted transport: one categorical state per
-   latent (never the gauge pins), conditioning in tx order with the exact densities the
-   pure functions produce, weights read, states destroyed.
-3. ``@pytest.mark.system``: the live Julia fold against an independent Python reference
-   (prior x likelihood, normalised) — the real numerical check.
+1. Pure parts: model loading, grid/gauge validation, endpoint-mass monitoring (`near_bound`),
+   Ū extraction, fold_version determinism.
+2. The fold's RPC choreography over a scripted transport: one CONTINUOUS `truncated_gaussian`
+   per uncoupled latent (and a single `truncated_mv_gaussian` for a coupled component),
+   conditioning in tx order through declared kernels (gaussian_known_var / logistic_reaction /
+   linear_gaussian / margin_reaction), reading moments via mean/expect/marginal — no host grid.
+3. ``@pytest.mark.system``: the live Julia fold against an independent Python quadrature of the
+   continuous model (truncated-normal prior x elicitation x continuous-τ reaction) — the real
+   numerical check.
 
 Run: uv run --project . python -m pytest tests/test_utility.py
 """
@@ -76,35 +77,9 @@ def test_grid_values_are_inclusive_and_evenly_spaced() -> None:
     assert g.values() == (-1.0, -0.5, 0.0, 0.5, 1.0)
 
 
-# --- priors and likelihoods (pure) -------------------------------------------------------
-
-def test_gaussian_weights_normalised_and_peaked_at_mu() -> None:
-    vals = U.Grid(lo=-4.0, hi=4.0, n=9).values()
-    w = U.gaussian_weights(vals, mu=0.0, sigma=1.0)
-    assert sum(w) == pytest.approx(1.0)
-    assert max(w) == w[vals.index(0.0)]
-    assert w[0] == pytest.approx(w[-1])  # symmetric
-
-
-def test_elicitation_log_density_peaks_at_stated_value() -> None:
-    vals = (-10.0, -8.0, -6.0, -4.0)
-    ld = U.elicitation_log_density(vals, stated_value=-8.0, sigma=2.0)
-    assert max(ld) == ld[1]
-    # exact gaussian log-density shape
-    expected = -0.5 * ((-4.0 - -8.0) / 2.0) ** 2 - math.log(2.0 * math.sqrt(2 * math.pi))
-    assert ld[3] == pytest.approx(expected)
-
-
-def test_reaction_probability_is_tau_mixture_and_monotone() -> None:
-    vals = (-6.0, -2.0, 0.0)
-    taus = (0.5, 2.0)
-    tau_w = (0.25, 0.75)
-    p = U.reaction_probability(vals, taus, tau_w, sign=-1.0, threshold=0.0)
-    # hand-computed mixture at x=-2: 0.25*sigmoid(2/0.5) + 0.75*sigmoid(2/2)
-    expected = 0.25 / (1 + math.exp(-4.0)) + 0.75 / (1 + math.exp(-1.0))
-    assert p[1] == pytest.approx(expected)
-    # sign=-1: more-negative utility ⇒ higher reaction probability
-    assert p[0] > p[1] > p[2]
+# (The host helpers gaussian_weights/elicitation_log_density/reaction_probability were the
+# discretisation antipattern and were retired in Phase B — priors/likelihoods are now declared
+# continuous and conditioned engine-side; see test_fold_choreography and the live folds below.)
 
 
 # --- evidence loading --------------------------------------------------------------------
@@ -140,6 +115,7 @@ class SeqTransport:
     def __init__(self) -> None:
         self.sent: list[dict] = []
         self._n_states = 0
+        self._n_marg = 0
 
     def send(self, line: str) -> None:
         self.sent.append(json.loads(line))
@@ -152,31 +128,21 @@ class SeqTransport:
             result: object = {"state_id": f"s_{self._n_states}"}
         elif method == "condition":
             result = {"state_id": req["params"]["state_id"], "log_marginal": -0.1}
-        elif method == "weights":
-            n = 0  # length must match the grid of whichever state — scripted uniform
-            n = len(self._grid_for(req["params"]["state_id"]))
-            result = {"weights": [1.0 / n] * n}
-        elif method == "marginalise":
-            # the joint-grid fold's per-latent readout: a uniform marginal of the axis length
-            n = req["params"]["shape"][req["params"]["axis"]]
-            result = {"weights": [1.0 / n] * n}
+        elif method == "marginal":
+            # a coordinate marginal of the joint → a NEW scalar state the fold reads with
+            # mean/expect (its own id namespace so create-order `s_n` mapping stays clean).
+            self._n_marg += 1
+            result = {"state_id": f"m_{self._n_marg}"}
         elif method == "mean":
-            result = {"mean": -1.0}   # scripted (the choreography asserts the RPC seq, not the value)
+            result = {"mean": -1.0}   # scripted (choreography asserts the RPC seq, not the value)
         elif method == "expect":
-            result = {"value": 2.0}   # scripted variance (centered_power E[(x−mean)²])
+            result = {"value": 2.0}   # scripted variance (centered_power E[(x-mean)^2])
         else:
             result = "ok"
         return json.dumps({"jsonrpc": "2.0", "id": req["id"], "result": result})
 
     def close(self) -> None:
         pass
-
-    def _grid_for(self, state_id: str) -> list[float]:
-        # the nth create_state call produced state id "s_n"
-        creates = [r for r in self.sent if r["method"] == "create_state"]
-        idx = int(state_id.split("_")[1]) - 1
-        vals: list[float] = creates[idx]["params"]["space"]["values"]
-        return vals
 
 
 def test_fold_choreography_partitions_by_latent_and_orders_events(
@@ -230,13 +196,13 @@ def test_fold_version_changes_with_events(model: U.UtilityModel) -> None:
 
 
 def test_endpoint_warnings(model: U.UtilityModel) -> None:
-    # a latent whose posterior mean sits within 1σ of a support bound warns (the support may clip)
+    # a latent whose posterior mean sits within 1sigma of a support bound warns
     near = U.LatentPosterior(name="u_wrong", mean=-0.3, variance=1.0, lo=-10.0, hi=0.0)
     post = U.UtilityPosterior(gauge=model.gauge, latents={"u_wrong": near},
                               n_events=0, fold_version="0" * 64)
     warned = post.endpoint_warnings(threshold=0.01)
     assert warned and "u_wrong" in warned[0] and "widen" in warned[0]
-    assert near.near_bound                      # mean -0.3 is within 1σ (=1.0) of hi=0
+    assert near.near_bound                      # mean -0.3 is within 1sigma (=1.0) of hi=0
     # a latent well within its support (tight variance, centred) does NOT warn
     inner = U.LatentPosterior(name="u_hedged", mean=0.0, variance=0.01, lo=-1.0, hi=1.0)
     assert not inner.near_bound
@@ -250,7 +216,7 @@ def test_endpoint_warnings(model: U.UtilityModel) -> None:
 def _ref_uwrong_moments(spec: U.LatentSpec, tau: U.LatentSpec, *, stated: float,
                         noise_sigma: float, sign: float, threshold: float) -> tuple[float, float]:
     """A STRICT independent host oracle for the continuous u_wrong fold: a dense quadrature of the
-    declared model — TruncatedNormal(spec) prior × gaussian_known_var elicitation × continuous-τ
+    declared model — TruncatedNormal(spec) prior x gaussian_known_var elicitation x continuous-τ
     logistic reaction — over the support [lo,hi]. Mirrors the engine model EXACTLY (the same
     32-pt τ marginalisation; a 40k-pt x grid the engine's 64-pt grid must converge to). This is a
     test oracle, not host belief arithmetic: it never feeds a decision."""
@@ -273,8 +239,8 @@ def _ref_uwrong_moments(spec: U.LatentSpec, tau: U.LatentSpec, *, stated: float,
     m = max(lw)
     ws = [math.exp(v - m) for v in lw]
     z = sum(ws)
-    mean = sum(x * w for x, w in zip(xs, ws)) / z
-    var = sum((x - mean) ** 2 * w for x, w in zip(xs, ws)) / z
+    mean = sum(x * w for x, w in zip(xs, ws, strict=True)) / z
+    var = sum((x - mean) ** 2 * w for x, w in zip(xs, ws, strict=True)) / z
     return mean, var
 
 
@@ -344,23 +310,24 @@ def test_margin_reaction_folds_on_one_joint_grid(model: U.UtilityModel) -> None:
     t = SeqTransport()
     post = U.posterior(B.Brain(t), model, [_margin_good(0.6)])
     creates = [r for r in t.sent if r["method"] == "create_state"]
-    nuw = model.latents["u_wrong"].grid.n
-    nka = model.latents["kappa_att"].grid.n
-    # only the coupled component is a (host-grid) categorical; the uncoupled latents are
-    # CONTINUOUS truncated_gaussians (no `space`). [NOTE(Phase B): the joint host grid is
-    # the last residual leak — replaced by an engine MvGaussian quadrature in Phase B.]
-    joint_sizes = [len(c["params"]["space"]["values"]) for c in creates
-                   if c["params"]["type"] == "categorical"]
+    conditions = [r for r in t.sent if r["method"] == "condition"]
+    marginals = [r for r in t.sent if r["method"] == "marginal"]
+    # one JOINT `truncated_mv_gaussian` over the two coupled latents {u_wrong, κ_att} — the engine
+    # owns the joint grid, the body declares only continuous data; the three untouched latents
+    # (u_wrong_scoped, u_hedged, lambda_int) are 1-D `truncated_gaussian`s. NO host grid anywhere.
+    mv = [c for c in creates if c["params"]["type"] == "truncated_mv_gaussian"]
     trunc = [c for c in creates if c["params"]["type"] == "truncated_gaussian"]
-    # one JOINT categorical of size |u_wrong|*|κ_att|, plus continuous states for the three
-    # untouched latents (u_wrong_scoped, u_hedged, lambda_int) — NO standalone u_wrong / κ_att
-    assert joint_sizes == [nuw * nka]
-    assert len(creates) == 4 and len(trunc) == 3
-    # both coupled latents get a marginal readout: a mean within support and finite variance
+    assert len(creates) == 4 and len(mv) == 1 and len(trunc) == 3
+    assert len(mv[0]["params"]["mu"]) == 2  # exactly the two coupled latents, no others
+    # the margin couples them via a `margin_reaction` kernel carrying a length-2 coefficient vector
+    jk = conditions[0]["params"]["kernel"]
+    assert jk["type"] == "margin_reaction" and len(jk["coeffs"]) == 2
+    # each coupled latent is read back with a `marginal` (one per coordinate) — no host arithmetic
+    assert len(marginals) == 2 and {m["params"]["axis"] for m in marginals} == {0, 1}
+    # the readout flows through to the posterior (scripted mean/variance from the wire)
     uw, ka = post.latents["u_wrong"], post.latents["kappa_att"]
-    assert model.latents["u_wrong"].grid.lo <= uw.mean <= model.latents["u_wrong"].grid.hi
-    assert model.latents["kappa_att"].grid.lo <= ka.mean <= model.latents["kappa_att"].grid.hi
-    assert uw.variance >= 0.0 and ka.variance >= 0.0
+    assert uw.mean == -1.0 and uw.variance == 2.0 and uw.lo == model.latents["u_wrong"].grid.lo
+    assert ka.mean == -1.0 and ka.lo == model.latents["kappa_att"].grid.lo
 
 
 def test_lookup_and_narrative_u_wrong_share_one_joint(model: U.UtilityModel) -> None:
@@ -374,16 +341,16 @@ def test_lookup_and_narrative_u_wrong_share_one_joint(model: U.UtilityModel) -> 
     U.posterior(B.Brain(t), model, events)
     creates = [r for r in t.sent if r["method"] == "create_state"]
     conditions = [r for r in t.sent if r["method"] == "condition"]
-    nuw = model.latents["u_wrong"].grid.n
-    nka = model.latents["kappa_att"].grid.n
-    sizes = [len(c["params"]["space"]["values"]) for c in creates
-             if c["params"]["type"] == "categorical"]
-    assert nuw * nka in sizes and nuw not in sizes  # u_wrong absorbed into the joint
+    # u_wrong is absorbed into ONE joint `truncated_mv_gaussian` with κ_att — never a standalone
+    # u_wrong 1-D state then a separate narrative joint (the interleave error). Exactly one mv joint
+    # (the 2 coupled latents) + 3 one-dimensional truncated_gaussians (the uncoupled latents).
+    mv = [c for c in creates if c["params"]["type"] == "truncated_mv_gaussian"]
+    trunc = [c for c in creates if c["params"]["type"] == "truncated_gaussian"]
+    assert len(mv) == 1 and len(mv[0]["params"]["mu"]) == 2 and len(trunc) == 3
     joint_idx = next(i for i, c in enumerate(creates)
-                     if c["params"]["type"] == "categorical"
-                     and len(c["params"]["space"]["values"]) == nuw * nka)
-    joint_id = f"s_{joint_idx + 1}"  # SeqTransport assigns ids in create order
-    # both events condition the SAME joint state
+                     if c["params"]["type"] == "truncated_mv_gaussian")
+    joint_id = f"s_{joint_idx + 1}"  # SeqTransport assigns create-state ids in create order
+    # both events (lookup Reaction + narrative MarginReaction) condition the SAME joint state
     assert sum(1 for c in conditions if c["params"]["state_id"] == joint_id) == 2
 
 
@@ -399,34 +366,26 @@ def test_live_narrative_good_on_abstain_moves_both_latents(model: U.UtilityModel
         prior = U.posterior(b, model, [])          # the engine's continuous prior fold
         post = U.posterior(b, model, [_margin_good(0.6)])
 
-    # u_wrong & κ_att are COUPLED by the margin → folded on the host joint grid (Phase A's residual
-    # leak); baseline them against that SAME host-grid prior marginal, not the engine's continuous
-    # prior fold — the two discretisations differ by ~grid resolution, which swamps κ_att's small
-    # move. Phase B makes the joint an engine quadrature and this baseline split disappears.
-    def host_grid_prior_mean(name: str) -> float:
-        s = model.latents[name]
-        g = s.grid.values()
-        return sum(wi * x for wi, x in zip(
-            U.gaussian_weights(g, s.prior_mu, s.prior_sigma), g, strict=True))
-
-    assert post.latents["u_wrong"].mean < host_grid_prior_mean("u_wrong")
-    assert post.latents["kappa_att"].mean > host_grid_prior_mean("kappa_att")
-    # u_hedged is UNCOUPLED → engine continuous fold; it stays at its (continuous) prior
+    # Both prior and posterior are now CONTINUOUS engine folds: the coupled latents' joint is a
+    # `truncated_mv_gaussian` whose per-coordinate marginal (n_per=64 at d=2) equals the 1-D
+    # truncated prior (n=64). So baseline directly against the engine prior fold — no host grid,
+    # no representation split (Phase B retired `_fold_joint`'s host grid).
+    assert post.latents["u_wrong"].mean < prior.latents["u_wrong"].mean
+    assert post.latents["kappa_att"].mean > prior.latents["kappa_att"].mean
+    # u_hedged is UNCOUPLED → its own 1-D fold; it stays at its prior
     assert post.latents["u_hedged"].mean == pytest.approx(prior.latents["u_hedged"].mean)
 
 
 @pytest.mark.system
-@pytest.mark.xfail(reason="Phase B: the joint path is still a host categorical grid (the residual "
-                          "leak); exact marginal-invariance with the 1-D continuous fold holds "
-                          "only once the joint is an engine MvGaussian quadrature too.",
-                   strict=False)
 def test_lookup_u_wrong_marginal_is_invariant_when_pulled_into_a_joint(
         model: U.UtilityModel) -> None:
     """A margin reaction flat in u(wrong) (coeff 0) structurally pulls it into the {u_wrong, κ_att}
     joint, but — independent prior product, lookup likelihood flat in κ_att — the joint factorises,
-    so the marginalised u(wrong) must equal the standalone 1-D fold. Exact equivalence needs BOTH
-    paths on the engine's continuous quadrature; in Phase A the joint is still a host grid, so this
-    is xfail until Phase B retires `_fold_joint`."""
+    so the marginalised u(wrong) equals the 1-D fold. Now that BOTH paths are the engine's
+    continuous quadrature on the SAME u_wrong grid (the 1-D `truncated_gaussian` and the mv joint's
+    u_wrong axis are both the 64-pt midpoint grid over [lo,hi]), and the flat margin depends only on
+    κ_att (so it factors out of the u_wrong marginal, up to a constant that cancels),
+    the marginalised u(wrong) equals the 1-D fold to machine precision."""
     if not (B._DEV_REPO or B._DEV_SERVER):
         pytest.skip("set $CREDENCE_REPO or $CREDENCE_SKIN_SERVER to spawn a dev engine")
     lookup = U.Reaction(tx_time="t", latent="u_wrong", reacted=True, sign=-1.0, threshold=0.5)
@@ -437,5 +396,6 @@ def test_lookup_u_wrong_marginal_is_invariant_when_pulled_into_a_joint(
         one_d = U.posterior(b, model, [lookup])
         joint = U.posterior(b, model, [lookup, flat])
     uw_1d, uw_joint = one_d.latents["u_wrong"], joint.latents["u_wrong"]
-    assert uw_joint.mean == pytest.approx(uw_1d.mean, abs=1e-6)
+    assert uw_joint.mean == pytest.approx(uw_1d.mean, abs=1e-9)
+    assert uw_joint.variance == pytest.approx(uw_1d.variance, abs=1e-9)
     assert uw_joint.variance == pytest.approx(uw_1d.variance, abs=1e-6)
