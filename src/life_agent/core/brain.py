@@ -1,11 +1,13 @@
 """The credence seam — a thin JSON-RPC 2.0 client over stdio (bayesian-foundations §11).
 
 This is the L2 transport: posteriors, conditioning, expectations, and EU decisions run
-through credence's **skin** (``$CREDENCE_REPO/apps/skin/server.jl``; wire protocol in
-``apps/skin/protocol.md`` — newline-delimited JSON-RPC 2.0, opaque state handles).
-Language-neutral, so it passes the PRINCIPLES §5 seam diagnostic; zero new Python
-dependencies; promotion to an always-on daemon (Tailscale-only, PRINCIPLES §13) is the
-named successor behind this same API.
+through credence's **skin** — the ``credence-skin`` engine spawned as a PINNED, VERSIONED
+IMAGE (``docker run -i``), never a source tree (the decouple consumption boundary: the
+body ships data + a thin wire client, never a brain; state stays server-side as opaque
+IDs). Wire protocol in the credence repo's ``apps/skin/protocol.md`` — newline-delimited
+JSON-RPC 2.0 with a protocol-major handshake. Language-neutral, so it passes the PRINCIPLES
+§5 seam diagnostic; zero new Python dependencies; promotion to an always-on daemon
+(Tailscale-only, PRINCIPLES §13) is the named successor behind this same API.
 
 The method surface is exactly the §11 mapping — conjugate states, ``condition``,
 ``expect``, ``optimise`` — not the skin's full surface (program_space, DSL environments
@@ -30,12 +32,25 @@ from typing import Any, Protocol, Self
 
 log = logging.getLogger(__name__)
 
-# The sibling credence checkout (the brain is credence — PRINCIPLES §14). Out-of-tree,
-# machine-specific, hence env-derived like the KB paths in config.py.
-CREDENCE_REPO = Path(os.environ.get("CREDENCE_REPO", str(Path.home() / "git/credence")))
+# The brain is credence, consumed as a PINNED, VERSIONED ARTIFACT over the wire — never by
+# reaching into a source tree (the decouple consumption boundary: life-agent ships data + a
+# thin body, never a brain). Production spawns the `credence-skin` engine image via
+# `docker run -i`; pin a digest at release. Overridable via $CREDENCE_SKIN_IMAGE.
+CREDENCE_SKIN_IMAGE = os.environ.get("CREDENCE_SKIN_IMAGE", "ghcr.io/gfrmin/credence-skin:latest")
 
-# Julia cold-compile on first spawn is slow (minutes on first run after an update);
-# the generous ceiling is the skin client's proven default.
+# Wire protocol MAJOR this body is built against — sent in `initialize` so a breaking-change
+# server is rejected (-32010), and re-checked against the server's returned `protocol`. The
+# body uses protocol-1.x verbs (incl. the 1.7 `centered_power`/`marginalise` surface).
+PROTOCOL_MAJOR = "1"
+
+# Dev-only escape hatch: set $CREDENCE_REPO (or $CREDENCE_SKIN_SERVER) to spawn a local
+# `julia server.jl` against an UNPUBLISHED engine while iterating. Unset in production — the
+# default is the pinned image, so the body cannot silently bind a source tree.
+_DEV_REPO = os.environ.get("CREDENCE_REPO")
+_DEV_SERVER = os.environ.get("CREDENCE_SKIN_SERVER")
+
+# Julia cold-compile (or `docker pull`) on first spawn is slow (minutes on a cold run); the
+# generous ceiling is the skin client's proven default.
 STARTUP_TIMEOUT = 120.0
 
 
@@ -144,10 +159,25 @@ class Brain:
         self._request_id = 0
 
     @classmethod
-    def spawn(cls, *, julia: str = "julia", repo: Path = CREDENCE_REPO,
+    def spawn(cls, *, image: str = CREDENCE_SKIN_IMAGE, julia: str = "julia",
               startup_timeout: float = STARTUP_TIMEOUT) -> Brain:
-        """Spawn the real Julia skin: ``julia --project=REPO REPO/apps/skin/server.jl``."""
-        argv = [julia, f"--project={repo}", str(repo / "apps" / "skin" / "server.jl")]
+        """Spawn the credence-skin engine over stdio.
+
+        Production: ``docker run --rm -i <image>`` — the pinned, versioned artifact, the
+        only sanctioned consumption surface (state stays server-side as opaque IDs, so the
+        body cannot do probability arithmetic). Dev: if $CREDENCE_REPO or
+        $CREDENCE_SKIN_SERVER is set, spawn a local ``julia server.jl`` against an
+        unpublished engine instead."""
+        if _DEV_SERVER:
+            argv = [julia]
+            if _DEV_REPO:
+                argv.append(f"--project={_DEV_REPO}")
+            argv.append(_DEV_SERVER)
+        elif _DEV_REPO:
+            argv = [julia, f"--project={_DEV_REPO}",
+                    str(Path(_DEV_REPO) / "apps" / "skin" / "server.jl")]
+        else:
+            argv = ["docker", "run", "--rm", "-i", image]
         return cls(SubprocessTransport(argv, startup_timeout=startup_timeout))
 
     def __enter__(self) -> Self:
@@ -170,16 +200,24 @@ class Brain:
 
     # --- lifecycle ---
 
-    def initialize(self, *, dsl_files: dict[str, Path] | None = None,
-                   plugins: list[Path] | None = None) -> dict[str, Any]:
-        """Load the Credence module (and optionally DSL programs / plugins). Once,
-        after spawn, before anything else."""
-        params: dict[str, Any] = {}
-        if dsl_files:
-            params["dsl_files"] = {k: str(Path(v).resolve()) for k, v in dsl_files.items()}
-        if plugins:
-            params["plugins"] = [str(Path(p).resolve()) for p in plugins]
+    def initialize(self, *, dsl_sources: dict[str, str] | None = None) -> dict[str, Any]:
+        """Protocol handshake + optional inline-BDSL load. Once, after spawn, before
+        anything else. Sends the pinned protocol major so a breaking-change server is
+        rejected (-32010), and re-checks the server's returned major (a legacy server that
+        ignored the field). ``dsl_sources`` is the external wire surface for declaring a
+        domain — inline BDSL **source strings**, never host paths (the engine never reaches
+        into the body's filesystem)."""
+        params: dict[str, Any] = {"protocol": PROTOCOL_MAJOR}
+        if dsl_sources:
+            params["dsl_sources"] = dict(dsl_sources)
         result: dict[str, Any] = self._call("initialize", params)
+        server_major = str(result.get("protocol", "")).split(".", 1)[0]
+        if server_major and server_major != PROTOCOL_MAJOR:
+            raise BrainError(
+                -32010,
+                f"engine protocol major {server_major!r} != body's {PROTOCOL_MAJOR!r}; "
+                "pin a compatible credence-skin image",
+            )
         return result
 
     def shutdown(self) -> None:
