@@ -44,23 +44,23 @@ import yaml
 # Shared infra (metered LLM call, secret lookup, source rendering, the resolved KB /
 # PKM_CONFIG paths) lives in the installed life_agent package (see life-agent's pyproject).
 import life_agent.core as C
-from life_agent import owner
-from life_agent.core import decisions as DEC
-from life_agent.core import derivations as D
-from life_agent.core import expansion as EXP
-from life_agent.core import gather as GA
-from life_agent.core import lookup as LK
-from life_agent.core import narrative as N
-from life_agent.core import outcomes as O
-from life_agent.core import probes as P
-from life_agent.core import reactions as R
-from life_agent.core import subject as S
-from life_agent.core import synthesis as SYN
-from life_agent.core import temporal as T
-from life_agent.core import temporal_intent as TI
+import life_agent.core.decisions as DEC
+import life_agent.core.derivations as D
+import life_agent.core.expansion as EXP
+import life_agent.core.gather as GA
+import life_agent.core.lookup as LK
+import life_agent.core.narrative as N
+import life_agent.core.outcomes as O
+import life_agent.core.probes as P
+import life_agent.core.reactions as R
+import life_agent.core.subject as S
+import life_agent.core.synthesis as SYN
+import life_agent.core.temporal as T
+import life_agent.core.temporal_intent as TI
+import life_agent.owner as owner
+import life_agent.tasks.events as ev
+import life_agent.tasks.knowledge as knowledge
 from life_agent.core.retrieval import build_query, retrieve_set
-from life_agent.tasks import events as ev
-from life_agent.tasks import knowledge
 from pkm.hashing import canonical_json
 
 # The corpus-retrieval seam now lives in the package (life_agent.core.retrieval, imported above)
@@ -667,7 +667,7 @@ def answer(conn: duckdb.DuckDBPyConnection, question: str,
     if conn is not None and root is not None:
         try:
             INTENT_LAST = TI.intent_verdict(root, question)
-        except Exception as e:  # noqa: BLE001 — fail-open by contract, reason printed
+        except Exception as e:
             print(f"  (temporal scope: unclassified — {e})")
     terms = _expand_terms(question, root=root, no_cache=no_cache) if expand else ""
     if terms:

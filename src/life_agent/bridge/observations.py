@@ -5,9 +5,8 @@ index an observation reports, which ancestry group it belongs to, and its alread
 covariates. Candidate identity (string canon) and group keying are *normalisation, not
 inference*, so they stay here, on the body side. The brain never sees a candidate string.
 
-This is the single source of that mapping: the bridge's ``extract`` (Move 3) and the parity-fixture
-oracle (``scripts/dump_parity_fixtures.py``) both call it, so the abstract form the brain
-consumes is provably the one the Stage-1 parity fixtures pin.
+This is the single source of that mapping: the bridge's ``extract`` (Move 3) calls it, so the
+abstract form the brain consumes is provably the one the Stage-1 parity fixtures pin.
 """
 from __future__ import annotations
 

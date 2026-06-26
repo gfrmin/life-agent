@@ -91,7 +91,7 @@ _BERNOULLI: dict[str, str] = {"type": "bernoulli"}
 
 
 def _beta_ab(spec: Mapping[str, Any]) -> tuple[float, float]:
-    """(α, β) from a `read_params` Beta spec — relayed as a parameterisation, never folded."""
+    """(alpha, β) from a `read_params` Beta spec — relayed as a parameterisation, never folded."""
     return float(spec["alpha"]), float(spec["beta"])
 
 # Closed abstention reasons (the credence grammar — interaction contract).
@@ -210,10 +210,10 @@ def _cell_observations(outcomes_path: Path) -> dict[str, list[float]]:
 
 def population_posteriors(brain: Brain, outcomes_path: Path = config.OUTCOMES_LOG
                           ) -> dict[str, tuple[float, float]]:
-    """P(claim correct | audit cell): per-cell Beta (α, β), the stated prior CONDITIONED OVER
+    """P(claim correct | audit cell): per-cell Beta (alpha, β), the stated prior CONDITIONED OVER
     THE WIRE on the cell's audit outcomes — never a host `a += 1` fold (Invariant 1). The body
     tallies the Bernoulli stream (data), conditions each cell's Beta through `condition`, and
-    reads the exact posterior params back via `read_params`. Returns {cell: (α, β)} — the same
+    reads the exact posterior params back via `read_params`. Returns {cell: (alpha, β)} — the same
     shape as the priors, so cells with no evidence stay at their stated wide priors."""
     by_cell = _cell_observations(outcomes_path)
     post: dict[str, tuple[float, float]] = {}
@@ -232,12 +232,13 @@ def coverage_posterior(brain: Brain, outcomes_path: Path = config.OUTCOMES_LOG
                        ) -> tuple[tuple[float, float], int]:
     """The open-world tail: Beta posterior on P(a true relevant claim is proposed), the prior
     CONDITIONED OVER THE WIRE on the eval_coverage events for the current instrument (no host
-    `a += 1`). Returns ((α, β), n observed events)."""
+    `a += 1`). Returns ((alpha, β), n observed events)."""
     current = instrument_identity()
     obs = [1.0 if e.grade in O.CORRECT_GRADES["eval_coverage"] else 0.0
            for e in O.read(outcomes_path)
            if e.grader == "eval_coverage" and e.instrument_identity == current]
-    sid = brain.create_state({"type": "beta", "alpha": _COVERAGE_PRIOR[0], "beta": _COVERAGE_PRIOR[1]})
+    sid = brain.create_state(
+        {"type": "beta", "alpha": _COVERAGE_PRIOR[0], "beta": _COVERAGE_PRIOR[1]})
     try:
         for o in obs:
             brain.condition(sid, kernel=_BERNOULLI, observation=o)
@@ -301,13 +302,13 @@ def include_eu(p: float, u_bar: Mapping[str, float]) -> float:
     :func:`_claim_pref` — ``optimise{include, withhold}`` on the cell Beta, whose include
     functional :func:`_include_fn` is the *integrated* form ``E_θ[include_eu(θ·tf)]`` over the
     posterior (the proper model — not this point estimate at ``p = E[θ]``; the integral keeps
-    the ``Var(θ)·(u_c−u_w)`` term). This pure function is not on the decision path."""
+    the ``Var(θ)·(u_c-u_w)`` term). This pure function is not on the decision path."""
     return p * u_assert(p, u_bar) - u_bar["kappa_att"]
 
 
 def _include_fn(u_bar: Mapping[str, float], tf: float) -> dict[str, Any]:
     """The include action's functional: the EXACT integrated claim-EU over the cell Beta,
-    ``E_θ[(θ·tf)·u_assert(θ·tf)] - κ = (u_c−u_w)·tf²·E[θ²] + u_w·tf·E[θ] - κ`` — a
+    ``E_θ[(θ·tf)·u_assert(θ·tf)] - κ = (u_c-u_w)·tf²·E[θ²] + u_w·tf·E[θ] - κ`` — a
     `centered_power` (E[θ²]) + `identity` (E[θ]) LinearCombination. ``tf`` is the staleness
     factor (1.0 unscoped); it scales the utility coefficients (preference data), NOT a credence
     (so the staleness decay is the proper integral, never a host multiply on a belief value)."""
@@ -414,7 +415,7 @@ def render(result: NarrativeResult) -> str:
 # --- the family, end to end ---------------------------------------------------------------
 
 def scope_decay(credence: float, as_of: str | None, claim_text: str, scope: str,
-                *, today: "date | None" = None) -> float:
+                *, today: date | None = None) -> float:
     """The present-intent staleness decay (temporal-scope slice 3) — GATE-SAFE: it only ever
     LOWERS a credence, so it can add abstention but never a new confident-wrong. Applies ONLY to
     a present-scope question and ONLY to a DATED claim (an undated claim is a derivation gap, not
@@ -431,7 +432,7 @@ def scope_decay(credence: float, as_of: str | None, claim_text: str, scope: str,
 
 
 def scope_decay_factor(as_of: str | None, claim_text: str, scope: str,
-                       *, today: "date | None" = None) -> float:
+                       *, today: date | None = None) -> float:
     """The staleness factor ``tf ∈ (0, 1]`` (= ``scope_decay(1.0, …)``): the present-scope DATED
     claim's volatility time_factor, else 1.0. It scales the include-EU functional coefficients
     (``tf²`` on E[θ²], ``tf`` on E[θ]) — the EXACT integral of ``include_eu(θ·tf)`` over the cell
@@ -454,7 +455,8 @@ def narrative_answer(root: Path, question: str, text: str,
     (no EU decision is ever made unlogged) → labeled render. Pure given its inputs
     except the folds (outcomes log) and the two appends."""
     from life_agent.core import lookup as LK
-    b = LK.shared_brain()  # the wire holds every cell/coverage Beta; the body conditions + decides through it
+    # the wire holds every cell/coverage Beta; the body conditions + decides through it
+    b = LK.shared_brain()
     if u_bar is None or utility_fold_version is None:
         u_bar, utility_fold_version = LK.current_u_bar(b)
 
@@ -465,14 +467,15 @@ def narrative_answer(root: Path, question: str, text: str,
     # satisfy SourceLike, which carries no date, so read it optionally and degrade to undated)
     as_of_by_n = {c.n: getattr(c, "as_of", None) for c in cards}
     parsed = parse_claims(text)
-    cells = population_posteriors(b, opath)  # {cell: (α, β)} — wire-conditioned, no host fold
+    cells = population_posteriors(b, opath)  # {cell: (alpha, β)} — wire-conditioned, no host fold
     scored = []
     for claim_text, cites in parsed:
         cell = audit_cell(claim_text, cites, cards_by_n)
         as_of = freshest_as_of(cites, as_of_by_n)
         # scope-aware inclusion: a present-intent question decays a DATED stale claim toward the
         # bar via tf (gate-safe — tf ≤ 1 only lowers it); tf scales the EU functional engine-side,
-        # never a host multiply. tf = 1.0 unscoped/undated; the raw cell (α, β) stays recoverable.
+        # never a host multiply. tf = 1.0 unscoped/undated; the raw cell (alpha, β) stays
+        # recoverable.
         tf = scope_decay_factor(as_of, claim_text, scope)
         scored.append((claim_text, cites, cell, as_of, tf))
     claims, action, eu, reason = decide_claims(b, scored, cells, u_bar)
@@ -484,7 +487,8 @@ def narrative_answer(root: Path, question: str, text: str,
     params = {"cells": {k: list(v) for k, v in sorted(cells.items())},
               "coverage": list(coverage),
               "kappa_att": u_bar["kappa_att"], "u_wrong": u_bar["u_wrong"],
-              "scope": scope,  # a decision input (the present-intent decay) — new scope ⇒ new artifact
+              # a decision input (the present-intent decay) — new scope ⇒ new artifact
+              "scope": scope,
               "instrument": instrument_identity()}
     claims_hash = _sha(json.dumps([{"text": t, "cites": list(c)} for t, c in parsed],
                                   sort_keys=True, ensure_ascii=False))
