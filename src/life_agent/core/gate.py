@@ -144,7 +144,8 @@ def _sample_u(posterior: UtilityPosterior, rng: random.Random) -> dict[str, floa
     """Sample one utility vector for the offline gate's MC: the gauge pins fixed, each latent
     drawn from a Gaussian(mean, variance) summary clamped to its support [lo,hi]. This is an
     OFFLINE-EVAL approximation of the continuous posterior (the agent never sees it); the latent
-    posteriors are near-Gaussian (truncated-Gaussian), so the moment summary is a faithful sampler."""
+    posteriors are near-Gaussian (truncated-Gaussian), so the moment summary is a faithful
+    sampler."""
     u = dict(posterior.gauge)
     for name, lp in posterior.latents.items():
         x = rng.gauss(lp.mean, math.sqrt(max(lp.variance, 0.0)))

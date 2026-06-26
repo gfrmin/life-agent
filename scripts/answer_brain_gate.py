@@ -43,12 +43,12 @@ import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # ask / run_eval live in scripts/
 
-from life_agent import owner
+import life_agent.core.gate as GATE
+import life_agent.core.gather as GA
+import life_agent.core.lookup as LK
+import life_agent.core.probes as P
+import life_agent.owner as owner
 from life_agent.bridge.observations import to_abstract_observations
-from life_agent.core import gate as GATE
-from life_agent.core import gather as GA
-from life_agent.core import lookup as LK
-from life_agent.core import probes as P
 
 DECIDE_URL = os.environ.get("ANSWER_BRAIN_DECIDE_URL", "http://127.0.0.1:8799")
 
@@ -63,7 +63,7 @@ class Outcome:
 
 # --- the daemon wire (stdlib urllib; no new dependency) --------------------------------
 
-def _decide(candidates: list[str], observations: list[dict[str, Any]], rho: float,
+def _decide(candidates: list[str], observations: list[dict[str, Any]], rho: tuple[float, float],
             u_bar: dict[str, float], era_split: bool, applied: list[str]) -> dict[str, Any]:
     body = json.dumps({
         "candidates": candidates, "observations": observations, "rho": rho,
@@ -118,7 +118,7 @@ def daemon_answer(conn: duckdb.DuckDBPyConnection, root: Path, question: str,
     route = LK.route_question(root, question, client=route_client)
     if route is None:
         return Outcome("narrative", None)
-    rho = LK.extractor_reliability()
+    rho = LK.extractor_reliability(brain)
 
     if not owner_scoped:  # gather.py takes the conservative single-pass path here
         obs, _ = LK.observe_hits(root, question, hits, client=extract_client,

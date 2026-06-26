@@ -186,7 +186,7 @@ def retrieval_outcome(r: dict, q: dict, *, k: int, run_id: str):
     """One outcome event from a retrieval-grader row: the selection channel (M2)
     graded — was the true value in the admitted evidence? ABSENT_* grades record
     coverage facts, not instrument errors; the fold differentiates by grade."""
-    from life_agent.core import outcomes as O
+    import life_agent.core.outcomes as O
 
     return O.OutcomeEvent(
         tx_time=O.now_iso(), run_id=run_id, question_id=str(r["id"]),
@@ -204,8 +204,8 @@ def synthesis_outcome(row: dict, *, run_id: str):
     ask.STAGES_LAST by synthesis_grade); the synthesize key pins the exact instrument
     identity — the dict here is the grouping identity, not a duplicate of every key
     component."""
-    from life_agent.core import derivations as D
-    from life_agent.core import outcomes as O
+    import life_agent.core.derivations as D
+    import life_agent.core.outcomes as O
     from life_agent.core.llm import DEFAULT_ANSWER_MODEL
 
     return O.OutcomeEvent(
@@ -227,8 +227,8 @@ def synthesis_outcome(row: dict, *, run_id: str):
 def _append_outcomes(events: list, log_path: Path | None = None) -> Path:
     """Append events to the calibration log (durable, append-only) and report scoring
     when any event asserted a probability (none do until Ask v0 slice 2)."""
+    import life_agent.core.outcomes as O
     from life_agent.core import OUTCOMES_LOG
-    from life_agent.core import outcomes as O
 
     log = log_path or OUTCOMES_LOG
     for e in events:
@@ -264,8 +264,8 @@ def lookup_claim_rows(q: dict, lk) -> list[dict]:
 def lookup_outcome(q: dict, lk, row: dict, *, run_id: str):
     """One credence-bearing outcome event for one lookup claim — the first events
     proper scoring can consume (probability is set)."""
-    from life_agent.core import lookup as LK
-    from life_agent.core import outcomes as O
+    import life_agent.core.lookup as LK
+    import life_agent.core.outcomes as O
 
     return O.OutcomeEvent(
         tx_time=O.now_iso(), run_id=run_id, question_id=str(q["id"]),
@@ -305,8 +305,8 @@ def narrative_claim_rows(q: dict, nv) -> list[dict]:
 def narrative_claim_outcome(q: dict, nv, row: dict, *, run_id: str):
     """One credence-bearing outcome event for one narrative claim — the population
     stream the per-cell Beta fold conditions on (grader ``eval_claim``)."""
-    from life_agent.core import narrative as N
-    from life_agent.core import outcomes as O
+    import life_agent.core.narrative as N
+    import life_agent.core.outcomes as O
 
     return O.OutcomeEvent(
         tx_time=O.now_iso(), run_id=run_id, question_id=str(q["id"]),
@@ -323,8 +323,8 @@ def coverage_outcome(q: dict, nv, *, run_id: str):
     """One proposal-coverage event (§7 move 3): did the proposal set contain the gold
     claim at all? A MISSED event is an observed proposer miss — the open-world tail's
     evidence. Answerable questions only (None otherwise: nothing to propose)."""
-    from life_agent.core import narrative as N
-    from life_agent.core import outcomes as O
+    import life_agent.core.narrative as N
+    import life_agent.core.outcomes as O
 
     if not q.get("answer"):
         return None
@@ -348,7 +348,7 @@ def coverage_outcome(q: dict, nv, *, run_id: str):
 def _typed_response(lk, nv, typed_text: str, q: dict, abstention: str):
     """The typed policy's realised answer on one question, from the family decisions the
     production path just took (LOOKUP_LAST / NARRATIVE_LAST)."""
-    from life_agent.core import gate as GATE
+    import life_agent.core.gate as GATE
 
     gold, variants = q.get("answer", ""), q.get("answer_variants", [])
     if lk is not None:
@@ -375,7 +375,7 @@ def _monolithic_response(mono_text: str, q: dict, abstention: str):
     """The monolithic instrument's realised answer: the raw synthesize prose, graded by
     the same gold-containment. It abstains only where retrieval is too weak to synthesize
     (the guard it shares with the typed path)."""
-    from life_agent.core import gate as GATE
+    import life_agent.core.gate as GATE
 
     if mono_text == abstention:
         return GATE.RealisedResponse(action="abstain", correct=None)
@@ -390,7 +390,7 @@ def gate_paired_outcomes(conn, questions: list[dict], k: int, ask) -> list:
     (gather=True → re-retrieve corroboration on the top candidates, then re-weight by
     recency + whose-document before deciding); the monolithic pass is the same path with
     the typed families switched off (families=False → raw synthesize prose)."""
-    from life_agent.core import gate as GATE
+    import life_agent.core.gate as GATE
 
     paired = []
     for q in questions:
@@ -737,10 +737,10 @@ def main() -> int:
     if args.gate:
         import json
 
-        from life_agent.core import config as LCFG
-        from life_agent.core import gate as GATE
-        from life_agent.core import lookup as LK
-        from life_agent.core import utility as UT
+        import life_agent.core.config as LCFG
+        import life_agent.core.gate as GATE
+        import life_agent.core.lookup as LK
+        import life_agent.core.utility as UT
 
         print(f"Running the adoption gate (k={args.k}) over {len(questions)} questions "
               f"(both policies; the typed pass is the production path, the monolithic "

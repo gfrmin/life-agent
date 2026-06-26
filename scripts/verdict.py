@@ -28,11 +28,12 @@ import textwrap
 from typing import Any
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # import the sibling ask.py
-import ask  # noqa: E402
+import ask
 
-from life_agent.core import config  # noqa: E402
-from life_agent.core import narrative as N  # noqa: E402
-from life_agent.core import outcomes as O  # noqa: E402
+import life_agent.core.config as config
+import life_agent.core.lookup as LK
+import life_agent.core.narrative as N
+import life_agent.core.outcomes as O
 
 # The curated high-VOI battery (narrative-family questions whose grounded claims calibrate the
 # verified cell). Edit to steer what the next session verdicts; argv overrides it.
@@ -104,7 +105,9 @@ def _show(pos: int, n: int, question: str, scope: str, claim: Any) -> None:
 def run(questions: tuple[str, ...]) -> int:
     conn = ask.connect()
     opath = config.OUTCOMES_LOG
-    before = N.population_posteriors(opath)
+    # the wire holds every cell Beta; population_posteriors conditions through it
+    brain = LK.shared_brain()
+    before = N.population_posteriors(brain, opath)
 
     # build the queue: every worth-verdicting claim across the battery, verified cell first. The
     # pipeline's chatter (expansion lines, the kappa_att warning) is captured, not shown — a clean
@@ -115,11 +118,11 @@ def run(questions: tuple[str, ...]) -> int:
         try:
             with contextlib.redirect_stdout(io.StringIO()):
                 ask.answer(conn, q, 8)
-        except Exception as e:  # noqa: BLE001 — a failed question is skipped, named
+        except Exception as e:
             print(f"  \033[2m[{n}/{len(questions)}] skipped — {e}\033[0m")
             continue
         nv = ask.NARRATIVE_LAST
-        scope = ask.INTENT_LAST or "unscoped"
+        scope: str = ask.INTENT_LAST or "unscoped"
         claims = nv.claims if nv is not None else ()
         order = sorted(range(len(claims)),
                        key=lambda i: (claims[i].cell != "verified", -claims[i].credence))
@@ -142,7 +145,7 @@ def run(questions: tuple[str, ...]) -> int:
     for pos, (q, nv, i, scope) in enumerate(queue, 1):
         claim = nv.claims[i]
         _show(pos, n, q, scope, claim)
-        key = _getkey("  [g/b/c/s/q] › ")
+        key = _getkey("  [g/b/c/s/q] › ")  # noqa: RUF001
         if key == "q":
             print("  (stopping — folding what you've verdicted so far)")
             break
@@ -151,7 +154,7 @@ def run(questions: tuple[str, ...]) -> int:
         bit = key == "g"
         if key == "c":
             try:
-                corr = input("    your answer › ").strip()
+                corr = input("    your answer › ").strip()  # noqa: RUF001
             except (EOFError, KeyboardInterrupt):
                 print("\n  (correction cancelled — skipped)")
                 continue
@@ -167,12 +170,13 @@ def run(questions: tuple[str, ...]) -> int:
 
     folded = 0
     for qid, vd in verdicts.items():
-        folded += N.record_owner_verdicts(results[qid], qid, vd, run_id="verdict", outcomes_path=opath)
+        folded += N.record_owner_verdicts(
+            results[qid], qid, vd, run_id="verdict", outcomes_path=opath)
     for cr in corrections:
         with _CORRECTIONS.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(cr, ensure_ascii=False) + "\n")
 
-    after = N.population_posteriors(opath)
+    after = N.population_posteriors(brain, opath)
     _summary(before, after, folded, corrections)
     return 0
 

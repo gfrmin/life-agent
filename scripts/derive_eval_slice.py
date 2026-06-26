@@ -23,9 +23,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import ask
 from run_eval import load_questions
 
-from life_agent.core import config as C
-from life_agent.core import subject as S
-from life_agent.core import temporal as T
+import life_agent.core.config as C
+import life_agent.core.subject as S
+import life_agent.core.temporal as T
 
 
 def slice_keys(conn, root, questions: list[dict], k: int) -> list[str]:

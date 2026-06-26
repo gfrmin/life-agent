@@ -29,8 +29,8 @@ from pathlib import Path
 from typing import Any
 
 import life_agent.core as C
-from life_agent.tasks import events as ev
-from life_agent.tasks import store
+import life_agent.tasks.events as ev
+import life_agent.tasks.store as store
 
 # The attributes that define a task's identity-for-verification (id is reassigned by the
 # projection, so we compare by content, not by the old autoincrement id).

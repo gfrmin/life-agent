@@ -46,8 +46,9 @@ def _legacy_action_utilities(weights: list[float], u_bar: dict[str, float],
     MAP no longer enters here: `optimise` picks among report_j (the engine, not a host argmax)."""
     k = len(weights) - 1
     u_wrong = u_bar["u_wrong"]
-    out = {f"report_{j}": [(u_bar["u_correct"] if i == j else u_wrong) for i in range(k)] + [u_wrong]
-           for j in range(k)}
+    out = {
+        f"report_{j}": [(u_bar["u_correct"] if i == j else u_wrong) for i in range(k)] + [u_wrong]
+        for j in range(k)}
     out["hedge"] = [u_bar["u_hedged"]] * k + [u_wrong]
     out["ask_clarify"] = [LK._ORACLE_P * u_bar["u_correct"] - u_bar["lambda_int"]] * (k + 1)
     out["abstain"] = [u_bar["u_abstain"]] * (k + 1)
@@ -98,7 +99,7 @@ def test_gate_partition_is_the_same_single_vocabulary() -> None:
 
 def _integrated_include_eu(a: float, b: float) -> float:
     """The narrative include action's EU over a cell Beta(a, b), the integrated model the wire
-    `optimise{include, withhold}` runs: E_θ[θ·u_assert(θ)] − κ = (u_c−u_w)·E[θ²] + u_w·E[θ] − κ
+    `optimise{include, withhold}` runs: E_θ[θ·u_assert(θ)] - κ = (u_c-u_w)·E[θ²] + u_w·E[θ] - κ
     (the proper integral — NOT include_eu evaluated at the point E[θ])."""
     e1 = a / (a + b)
     e2 = a * (a + 1.0) / ((a + b) * (a + b + 1.0))
