@@ -24,7 +24,7 @@ from pathlib import Path
 import duckdb
 import yaml
 
-from life_agent.core import config as C
+import life_agent.core.config as C
 from pkm.cache import content_file
 from pkm.chunking import extract_text
 from pkm.transforms._shared import OllamaClient, quote_is_grounded

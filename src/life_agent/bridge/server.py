@@ -203,8 +203,9 @@ def _extract(deps: BridgeDeps, p: Payload) -> Payload:
     # doc_date ⇒ False.
     es = LK.era_split(obs, dict(cov.doc_date), years=hl) if cov.doc_date else False
     return {"candidates": candidates, "observations": abstract,
-            # the scalar ρ the answer-brain consumes — the wire-read posterior mean (no host
-            # α/(α+β); the full Beta drives the in-process lookup ρ-latent, see extractor_reliability).
+            # the scalar rho the answer-brain consumes — the wire-read posterior mean (no host
+            # alpha/(alpha+β); the full Beta drives the in-process lookup rho-latent, see
+            # extractor_reliability).
             "rho": LK.extractor_reliability_mean(),
             "indeterminate": indeterminate, "era_split": es, "half_life_years": hl}
 

@@ -241,7 +241,7 @@ def test_decide_claims_inclusion_and_posterior_order() -> None:
     assert action == "report" and reason == ""
     assert [c.text for c in claims] == ["high", "low"]  # posterior order by credence
     assert claims[0].included and not claims[1].included
-    assert claims[0].credence == pytest.approx(0.9)  # displayed credence = cell mean × tf
+    assert claims[0].credence == pytest.approx(0.9)  # displayed credence = cell mean x tf
     # answer EU = the included claim's integrated include-EU (E[θ²] over the cell Beta, not p̄²)
     a, b = _CELLS["verified"]
     e2 = a * (a + 1) / ((a + b) * (a + b + 1))

@@ -3,7 +3,7 @@
 A *probe* gathers evidence over the candidate posterior. The brain prices each by
 ``net_voi - cost`` and applies the arg-max (the govern+steer loop); none is a
 hand-set covariate or a rank heuristic. Every re-weighting probe lands on ONE seam —
-the group-noisy-channel reliability ``r_d = ρ · authority · subject_factor ·
+the group-noisy-channel reliability ``r_d = rho · authority · subject_factor ·
 time_factor`` (the covariate :func:`life_agent.core.lookup.lookup_posterior` ships per
 document). Two kinds:
 
