@@ -35,12 +35,17 @@ log = logging.getLogger(__name__)
 # The brain is credence, consumed as a PINNED, VERSIONED ARTIFACT over the wire — never by
 # reaching into a source tree (the decouple consumption boundary: life-agent ships data + a
 # thin body, never a brain). Production spawns the `credence-skin` engine image via
-# `docker run -i`; pin a digest at release. Overridable via $CREDENCE_SKIN_IMAGE.
-CREDENCE_SKIN_IMAGE = os.environ.get("CREDENCE_SKIN_IMAGE", "ghcr.io/gfrmin/credence-skin:latest")
+# `docker run -i`, pinned by digest to the published protocol-1.12 engine (re-pin at the next
+# engine release). Overridable via $CREDENCE_SKIN_IMAGE.
+_SKIN_PINNED = (
+    "ghcr.io/gfrmin/credence-skin@"
+    "sha256:90143895001d20b4abee7f5354ba87950545f5b1990eea0269293091a7c57f72"
+)
+CREDENCE_SKIN_IMAGE = os.environ.get("CREDENCE_SKIN_IMAGE", _SKIN_PINNED)
 
 # Wire protocol MAJOR this body is built against — sent in `initialize` so a breaking-change
 # server is rejected (-32010), and re-checked against the server's returned `protocol`. The
-# body uses protocol-1.x verbs (incl. the 1.11 `centered_power`/`marginal` continuous surface).
+# body uses protocol-1.x verbs (the 1.12 reliability_categorical + centered_power surface).
 PROTOCOL_MAJOR = "1"
 
 # Dev-only escape hatch: set $CREDENCE_REPO (or $CREDENCE_SKIN_SERVER) to spawn a local
