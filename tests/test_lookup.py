@@ -271,10 +271,77 @@ def test_observe_hits_absent_covariates_are_unit(migrated_root: Path) -> None:
 
 # --- the posterior's pure parts -----------------------------------------------------------
 
-def _obs(key: str, value: str, n: int = 1, authority: float = 0.95) -> Observation:
+def _obs(key: str, value: str, n: int = 1, authority: float = 0.95,
+         quote: str | None = None, time_factor: float = 1.0,
+         subject_factor: float = 1.0) -> Observation:
     return Observation(card_n=n, artifact_cache_key=key, obs_cache_key="o" * 64,
                        value_raw=value, value_norm=" ".join(value.split()).casefold(),
-                       quote=value, authority_class="document", authority=authority)
+                       quote=quote if quote is not None else value,
+                       authority_class="document", authority=authority,
+                       time_factor=time_factor, subject_factor=subject_factor)
+
+
+# --- §5 dedup-as-inference: correlated duplicates count as ONE witness ---------------------
+# The decouple (862ed66) retired the §4.2 ancestry temper; the reliability_categorical group
+# model then counted correlated DUPLICATE documents (forwarded/replied chains carrying an
+# identical quote) as independent witnesses, saturating credence on duplicated wrong/stale
+# values (the confident-wrong regression: q-002 6 emails→0.99, q-014 9 stale→0.80). dedup
+# collapses each correlated cluster to one witness — restoring the temper PRINCIPLEDLY (only
+# true duplicates collapse; genuine independent corroboration still accumulates).
+
+
+def test_dedup_correlated_collapses_identical_quotes_across_documents() -> None:
+    q = "your 2019 passport number is WRONGVAL per our records"
+    dup = [_obs(chr(97 + i) * 64, "WRONGVAL", quote=q) for i in range(6)]
+    gold_q = "passport no GOLDVAL appears on the official application form"
+    gold = [_obs("y" * 64, "GOLDVAL", quote=gold_q),
+            _obs("z" * 64, "GOLDVAL", quote=gold_q)]
+    kept = LK.dedup_correlated(dup + gold)
+    # six identical-quote copies → one witness; two identical-quote gold copies → one witness
+    assert sum(o.value_raw == "WRONGVAL" for o in kept) == 1
+    assert sum(o.value_raw == "GOLDVAL" for o in kept) == 1
+
+
+def test_dedup_correlated_keeps_independent_corroboration() -> None:
+    # DIFFERENT quotes for the same value are independent witnesses, not duplicates — real
+    # corroboration must still accumulate; only correlated copies collapse.
+    obs = [_obs("a" * 64, "V", quote="the value V appears on my tax return"),
+           _obs("b" * 64, "V", quote="my accountant recorded V in the summary"),
+           _obs("c" * 64, "V", quote="V is printed on the official certificate")]
+    assert len(LK.dedup_correlated(obs)) == 3
+
+
+def test_dedup_correlated_preserves_within_document_observations() -> None:
+    # two chunks of ONE document sharing a quote are not cross-document duplicates; the
+    # per-document group already counts them as one witness — leave them intact.
+    obs = [_obs("a" * 64, "V", quote="a sufficiently long shared sentence of text"),
+           _obs("a" * 64, "V", quote="a sufficiently long shared sentence of text")]
+    assert len(LK.dedup_correlated(obs)) == 2
+
+
+def test_dedup_correlated_keeps_max_covariate_representative() -> None:
+    # the surviving witness is the strongest/freshest copy (max authority·subject·time), so a
+    # recent re-attestation keeps its recency rather than inheriting a stale duplicate's age.
+    q = "a sufficiently long shared sentence of text"
+    weak = _obs("a" * 64, "V", quote=q, authority=0.5, time_factor=0.2)
+    strong = _obs("b" * 64, "V", quote=q, authority=0.95, time_factor=1.0)
+    kept = LK.dedup_correlated([weak, strong])
+    assert len(kept) == 1 and kept[0].authority == 0.95
+
+
+def test_dedup_correlated_keeps_value_only_quotes() -> None:
+    # a quote that is ONLY the value carries no shared CONTEXT, so identical copies may be
+    # genuine independent corroboration rather than duplicates — keep them (don't erase evidence).
+    obs = [_obs("a" * 64, "A5", quote="A5"), _obs("b" * 64, "A5", quote="A5")]
+    assert len(LK.dedup_correlated(obs)) == 2
+
+
+def test_dedup_correlated_collapses_short_quotes_with_context() -> None:
+    # the q-002/q-014 regression: a SHORT but contextful quote ("Israeli <id>") identical across
+    # many documents (a forwarded/batch maildir chain) is a duplicate cluster — context beyond the
+    # value is the signal, not quote length. Collapse to one witness.
+    obs = [_obs(chr(97 + i) * 64, "WRONGID", quote="Israeli WRONGID") for i in range(6)]
+    assert len(LK.dedup_correlated(obs)) == 1
 
 
 def test_candidates_dedupe_by_normalised_value() -> None:
