@@ -275,3 +275,29 @@ def test_narrative_scored_disabled_seam_returns_prose() -> None:
     # the conftest autouse stub (narrative_answer -> None) IS the disabled seam
     out = ask._narrative_scored(Path("/fake/root"), "q?", "raw prose [1]", _cards())
     assert out == "raw prose [1]"
+
+
+# --- the executor read-path (--executor) ----------------------------------- #
+
+def test_answer_via_executor_renders_and_builds_cards(monkeypatch) -> None:
+    # The executor read-path drives the loop (stubbed), renders in the shared credence grammar,
+    # and builds ask's cards/scores from the view's hits — no live daemon.
+    monkeypatch.setattr(ask, "_executor_ready", lambda: True)
+    view = {"effector": "report", "asserted": ["P123"], "candidates": ["P123"],
+            "credences": [0.9], "p_none": 0.05, "eu": 0.8, "n_obs": 1,
+            "hits": [{"artifact_cache_key": "d0", "chunk_text": "Passport P123",
+                      "origin": "/data/id.pdf", "score": 9.0}],
+            "route": {"construct": "passport number"}}
+    monkeypatch.setattr(ask.EX, "decide_via_loop", lambda *a, **k: view)
+    text, cards, scores = ask.answer_via_executor("my passport?", 20)
+    assert "P123" in text and "credence 0.900" in text
+    assert len(cards) == 1 and cards[0].origin == "/data/id.pdf"
+    assert scores == {1: 9.0}
+
+
+def test_answer_via_executor_abstains_named_when_daemon_down(monkeypatch) -> None:
+    # Never a silent fallback to another path's answer: a down stack is the NAMED abstention.
+    monkeypatch.setattr(ask, "_executor_ready", lambda: False)
+    text, cards, scores = ask.answer_via_executor("my passport?", 20)
+    assert text == ask.EXECUTOR_DOWN
+    assert cards == [] and scores == {}

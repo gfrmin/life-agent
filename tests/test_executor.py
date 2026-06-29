@@ -85,11 +85,13 @@ def test_route_none_takes_narrative_path() -> None:
     # touches retrieve/extract/decide.
     fake = FakeServices(route=None, narrative={
         "action": "report", "asserted": ["you travelled in May"],
+        "rendered": "you travelled in May [1]\n\nnarrative footer",
         "hits": [{"artifact_cache_key": "d0", "chunk_text": "x"}]})
     view = _loop(fake, "tell me about my week")
     assert view["effector"] == "report"
     assert view["asserted"] == ["you travelled in May"]
     assert view["route"] is None
+    assert view["rendered"] == "you travelled in May [1]\n\nnarrative footer"  # preserved
     assert fake.posted("/extract") == []  # the narrative path skips the typed pipeline
 
 
@@ -101,6 +103,7 @@ def test_typed_report_is_terminal() -> None:
     assert view["effector"] == "report"
     assert view["asserted"] == ["P123"]
     assert view["candidates"] == ["P123"]
+    assert view["n_obs"] == 1  # the footer's grounded-observation count is faithful
 
 
 def test_extract_miss_short_circuits() -> None:
@@ -166,3 +169,33 @@ def test_grow_escalates_withhold_to_report() -> None:
     assert view["asserted"] == ["P123"]
     retrieves = fake.posted("/retrieve")
     assert any(r["rerank"] for r in retrieves)  # grow ran a rerank recall pass
+
+
+# --- render_view: the executor's decision in the shared credence grammar ----------------
+
+def test_render_view_report_uses_grammar_with_citations() -> None:
+    view = {"effector": "report", "asserted": ["P123"], "candidates": ["P123", "Q9"],
+            "credences": [0.92, 0.08], "p_none": 0.05, "eu": 0.8, "n_obs": 3,
+            "hits": [{"artifact_cache_key": "d0", "chunk_text": "Passport No: P123"},
+                     {"artifact_cache_key": "d1", "chunk_text": "unrelated chunk"}],
+            "route": {"construct": "passport number"}}
+    out = EX.render_view(view)
+    assert "P123" in out
+    assert "credence 0.920" in out
+    assert "[1]" in out and "[2]" not in out  # only the hit carrying the value is cited
+    assert "decision report" in out            # the footer names the posterior
+
+
+def test_render_view_abstain_with_no_candidates() -> None:
+    view = {"effector": "abstain", "asserted": [], "candidates": [], "credences": [],
+            "p_none": 0.9, "eu": 0.0, "n_obs": 0, "hits": [], "route": {}}
+    out = EX.render_view(view)
+    assert "No answer asserted" in out
+
+
+def test_render_view_narrative_passes_through_verbatim() -> None:
+    # A narrative view is rendered bridge-side; render_view returns it unchanged.
+    view = {"effector": "report", "asserted": ["x"], "candidates": [], "credences": [],
+            "p_none": None, "eu": None, "n_obs": 0, "hits": [], "route": None,
+            "rendered": "you travelled in May [1]\n\nnarrative footer"}
+    assert EX.render_view(view) == "you travelled in May [1]\n\nnarrative footer"

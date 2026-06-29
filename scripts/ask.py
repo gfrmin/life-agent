@@ -30,6 +30,7 @@ import os
 import re
 import readline  # noqa: F401  -- enables line editing / history at the input() prompts
 import sys
+import urllib.request
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date as _date
@@ -46,6 +47,7 @@ import yaml
 import life_agent.core as C
 import life_agent.core.decisions as DEC
 import life_agent.core.derivations as D
+import life_agent.core.executor as EX
 import life_agent.core.expansion as EXP
 import life_agent.core.gather as GA
 import life_agent.core.lookup as LK
@@ -820,6 +822,60 @@ def _narrative_scored(root: Path | None, question: str, text: str,
     return nv.rendered
 
 
+# --- the executor read-path (--executor): the daemon decides, the body enacts --------- #
+# PRINCIPLES §16/§4: drive the question through the credence answer-brain daemon's VOI schedule
+# (core.executor) over the capability bridge, and render the decision in the SAME credence grammar
+# the in-process lookup family uses. Flag-gated and RENDER-ONLY in this slice: it posts NO decision
+# to the live calibration log (the verdict-fold wiring is the next slice).
+EXECUTOR_BRIDGE = os.environ.get("LIFE_AGENT_BRIDGE_URL", "http://127.0.0.1:8798")
+EXECUTOR_DAEMON = os.environ.get("ANSWER_BRAIN_URL", "http://127.0.0.1:8799")
+EXECUTOR_DOWN = ("No answer asserted — the executor is unavailable (the answer-brain "
+                 "daemon/bridge is not up; start it: bin/answer-brain).")
+
+
+def _http_post(url: str, payload: dict[str, Any]) -> dict[str, Any] | None:
+    req = urllib.request.Request(url, data=json.dumps(payload).encode(),
+                                 headers={"Content-Type": "application/json"}, method="POST")
+    with urllib.request.urlopen(req, timeout=300) as r:
+        return cast("dict[str, Any] | None", json.loads(r.read()))
+
+
+def _http_get(url: str) -> dict[str, Any]:
+    with urllib.request.urlopen(url, timeout=300) as r:
+        return cast("dict[str, Any]", json.loads(r.read()))
+
+
+def _executor_ready() -> bool:
+    """Both services must answer /ready. The body never falls back SILENTLY — a down stack is
+    NAMED (interaction contract), never substituted with a different path's answer."""
+    for base in (EXECUTOR_BRIDGE, EXECUTOR_DAEMON):
+        try:
+            urllib.request.urlopen(f"{base}/ready", timeout=3)
+        except Exception:
+            return False
+    return True
+
+
+def answer_via_executor(question: str, k: int
+                        ) -> tuple[str, list[C.SourceCard], dict[int, float]]:
+    """Answer through the ONE executor (:mod:`life_agent.core.executor`) instead of the in-process
+    lookup/narrative families: route → retrieve → probe → extract → /decide, enacting each
+    net_voi-scheduled transform the daemon returns, then render in the shared credence grammar.
+    Returns ask's 3-tuple unchanged, so render/capture are identical. The daemon + bridge must be
+    up; if not, it abstains with a NAMED reason rather than guessing (interaction contract)."""
+    global TEMPORAL_LAST, SUBJECT_LAST, INTENT_LAST, LOOKUP_LAST, NARRATIVE_LAST, STAGES_LAST
+    TEMPORAL_LAST = SUBJECT_LAST = INTENT_LAST = LOOKUP_LAST = NARRATIVE_LAST = None
+    STAGES_LAST = {}
+    if not _executor_ready():
+        return (EXECUTOR_DOWN, [], {})
+    view = EX.decide_via_loop(question, k, bridge=EXECUTOR_BRIDGE, daemon=EXECUTOR_DAEMON,
+                              post=_http_post, get=_http_get)
+    pairs = _cards_from_set(view["hits"])
+    cards = [c for c, _ in pairs]
+    scores = {c.n: s for c, s in pairs}
+    return (EX.render_view(view), cards, scores)
+
+
 # --- presentation --------------------------------------------------------- #
 def _sources_inline(cards: list[C.SourceCard], scores: dict[int, float]) -> str:
     return ", ".join(f"{Path(c.origin).name}({scores.get(c.n, 0.0):.2f})" for c in cards)
@@ -967,13 +1023,20 @@ def react(did_prefix: str, valence: str,
 def ask_once(conn: duckdb.DuckDBPyConnection, question: str, k: int,
              *, expand: bool = True, no_cache: bool = False,
              since: _date | None = None, until: _date | None = None,
-             recent: bool = False) -> list[tuple[str, str]]:
+             recent: bool = False, executor: bool = False) -> list[tuple[str, str]]:
     """Answer + render + capture. Returns the derive targets the answer's
     reports named as underived (doc_date and doc_subject alike — empty when
-    neither filter ran) so the REPL can offer `/derive`."""
-    text, cards, scores = answer(conn, question, k, expand=expand,
-                                 no_cache=no_cache, since=since, until=until,
-                                 recent=recent)
+    neither filter ran) so the REPL can offer `/derive`. ``executor=True`` routes through the
+    credence answer-brain executor (the daemon decides) instead of the in-process families;
+    temporal scoping is not yet wired there, so a scoped question is NAMED and answered unscoped."""
+    if executor:
+        if since is not None or until is not None or recent:
+            print("  (executor path: temporal scoping not yet wired — answering unscoped)")
+        text, cards, scores = answer_via_executor(question, k)
+    else:
+        text, cards, scores = answer(conn, question, k, expand=expand,
+                                     no_cache=no_cache, since=since, until=until,
+                                     recent=recent)
     audit = guard.audit(text, cards)  # pure and cheap — recomputed, never cached
     reports = [r for r in (TEMPORAL_LAST, SUBJECT_LAST) if r is not None]
     footer_lines = [r.footer for r in reports if r.footer]
@@ -1123,7 +1186,7 @@ def remember(fact: str) -> None:
 
 # --- REPL ----------------------------------------------------------------- #
 def repl(conn: duckdb.DuckDBPyConnection, k: int, *, expand: bool = True,
-         no_cache: bool = False) -> None:
+         no_cache: bool = False, executor: bool = False) -> None:
     print(f"ask anything about your life — the grammar:\n{grammar_text()}\n")
     derive_targets: list[tuple[str, str]] = []
     while True:
@@ -1185,7 +1248,7 @@ def repl(conn: duckdb.DuckDBPyConnection, k: int, *, expand: bool = True,
                     return
         derive_targets = ask_once(conn, p.question, k, expand=expand,
                                   no_cache=no_cache, since=p.since,
-                                  until=p.until, recent=p.recent)
+                                  until=p.until, recent=p.recent, executor=executor)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -1202,6 +1265,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--no-cache", action="store_true",
                     help="recompute every stage instead of replaying cached derivations "
                          "(recording stays write-once — existing derivations stand)")
+    ap.add_argument("--executor", action="store_true",
+                    help="answer via the credence answer-brain executor (the daemon decides) "
+                         "instead of the in-process lookup/narrative path; needs bin/answer-brain "
+                         "up. Render-only — no decision is logged to the calibration log yet")
     args = ap.parse_args(argv)
     expand = not args.no_expand
 
@@ -1252,9 +1319,9 @@ def main(argv: list[str] | None = None) -> int:
     if p is not None:
         ask_once(conn, p.question, args.k, expand=expand,
                  no_cache=args.no_cache, since=p.since, until=p.until,
-                 recent=p.recent)
+                 recent=p.recent, executor=args.executor)
     else:
-        repl(conn, args.k, expand=expand, no_cache=args.no_cache)
+        repl(conn, args.k, expand=expand, no_cache=args.no_cache, executor=args.executor)
     return 0
 
 
