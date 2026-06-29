@@ -824,13 +824,19 @@ def _narrative_scored(root: Path | None, question: str, text: str,
 
 # --- the executor read-path (--executor): the daemon decides, the body enacts --------- #
 # PRINCIPLES §16/§4: drive the question through the credence answer-brain daemon's VOI schedule
-# (core.executor) over the capability bridge, and render the decision in the SAME credence grammar
-# the in-process lookup family uses. Flag-gated and RENDER-ONLY in this slice: it posts NO decision
-# to the live calibration log (the verdict-fold wiring is the next slice).
+# (core.executor) over the capability bridge, render the decision in the SAME credence grammar the
+# in-process lookup family uses, and log the terminal lookup decision to the calibration log so the
+# owner's g/b verdict folds into u(wrong) through the EXISTING reaction loop (the bridge's
+# /log_decision owns the write, shaping it as the lookup family's own; the in-session verdict binds
+# to its content-addressed id). Flag-gated; the default path is untouched.
 EXECUTOR_BRIDGE = os.environ.get("LIFE_AGENT_BRIDGE_URL", "http://127.0.0.1:8798")
 EXECUTOR_DAEMON = os.environ.get("ANSWER_BRAIN_URL", "http://127.0.0.1:8799")
 EXECUTOR_DOWN = ("No answer asserted — the executor is unavailable (the answer-brain "
                  "daemon/bridge is not up; start it: bin/answer-brain).")
+# the last executor decision's id (the bridge's content-addressed "ab-…") — the in-session g/b
+# verdict binds to it (the executor analogue of LOOKUP_LAST.answer_cache_key); None when the last
+# answer was a miss / narrative / daemon-down (nothing foldable to bind).
+EXECUTOR_LAST: str | None = None
 
 
 def _http_post(url: str, payload: dict[str, Any]) -> dict[str, Any] | None:
@@ -856,20 +862,50 @@ def _executor_ready() -> bool:
     return True
 
 
+def _log_executor_decision(question: str, view: dict[str, Any]) -> None:
+    """Post a terminal LOOKUP decision to the calibration log so the owner's g/b verdict folds
+    into u(wrong) through the EXISTING reaction loop. The bridge's /log_decision owns the write,
+    shaping it exactly as the in-process lookup family's decision (`decide_and_record`), and
+    returns the content-addressed id; we stash it in ``EXECUTOR_LAST`` so the in-session verdict
+    binds to it. Only a typed-lookup terminal WITH candidates is a logged decision — a
+    miss / narrative is not (the bridge would reject it, and there is no candidate to verdict).
+    Fail-open and named: a calibration-log write never breaks the answer."""
+    global EXECUTOR_LAST
+    if (view["route"] is None or view["effector"] not in DEC.LOOKUP_ACTION_ORDER
+            or not view["credences"]):
+        return
+    try:
+        resp = _http_post(f"{EXECUTOR_BRIDGE}/log_decision", {
+            "question": question,
+            "retrieval_keys": [h["artifact_cache_key"] for h in view["hits"]],
+            "decision": {"effector": view["effector"], "credences": view["credences"],
+                         "candidates": view["candidates"],
+                         "p_none": view["p_none"] if view["p_none"] is not None else 0.0,
+                         "eu": view["eu"] if view["eu"] is not None else 0.0,
+                         "n_obs": view.get("n_obs", 0)}})
+        EXECUTOR_LAST = (resp or {}).get("decision_id")
+    except Exception as e:  # fail-open by contract, reason printed — never breaks the answer
+        print(f"  (decision not logged: {e})")
+
+
 def answer_via_executor(question: str, k: int
                         ) -> tuple[str, list[C.SourceCard], dict[int, float]]:
     """Answer through the ONE executor (:mod:`life_agent.core.executor`) instead of the in-process
     lookup/narrative families: route → retrieve → probe → extract → /decide, enacting each
-    net_voi-scheduled transform the daemon returns, then render in the shared credence grammar.
-    Returns ask's 3-tuple unchanged, so render/capture are identical. The daemon + bridge must be
-    up; if not, it abstains with a NAMED reason rather than guessing (interaction contract)."""
+    net_voi-scheduled transform the daemon returns, then render in the shared credence grammar and
+    log the terminal lookup decision (so a g/b verdict folds, like the in-process path). Returns
+    ask's 3-tuple unchanged, so render/capture are identical. The daemon + bridge must be up; if
+    not, it abstains with a NAMED reason rather than guessing (interaction contract)."""
     global TEMPORAL_LAST, SUBJECT_LAST, INTENT_LAST, LOOKUP_LAST, NARRATIVE_LAST, STAGES_LAST
+    global EXECUTOR_LAST
     TEMPORAL_LAST = SUBJECT_LAST = INTENT_LAST = LOOKUP_LAST = NARRATIVE_LAST = None
     STAGES_LAST = {}
+    EXECUTOR_LAST = None
     if not _executor_ready():
         return (EXECUTOR_DOWN, [], {})
     view = EX.decide_via_loop(question, k, bridge=EXECUTOR_BRIDGE, daemon=EXECUTOR_DAEMON,
                               post=_http_post, get=_http_get)
+    _log_executor_decision(question, view)
     pairs = _cards_from_set(view["hits"])
     cards = [c for c, _ in pairs]
     scores = {c.n: s for c, s in pairs}
@@ -961,7 +997,8 @@ def _record_reaction(question: str, verdict: str) -> None:
     (`reactions.load_reactions`) decides what folds — v0 conditions u(wrong) only on clean
     lookup abstain-verdicts; everything else is recorded, not folded. Fail-open and named:
     a calibration-log write must never break the dogfood loop."""
-    decision_id = (LOOKUP_LAST.answer_cache_key if LOOKUP_LAST is not None
+    decision_id = (EXECUTOR_LAST if EXECUTOR_LAST
+                   else LOOKUP_LAST.answer_cache_key if LOOKUP_LAST is not None
                    else NARRATIVE_LAST.answer_cache_key if NARRATIVE_LAST is not None
                    else "")
     try:
@@ -1268,7 +1305,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--executor", action="store_true",
                     help="answer via the credence answer-brain executor (the daemon decides) "
                          "instead of the in-process lookup/narrative path; needs bin/answer-brain "
-                         "up. Render-only — no decision is logged to the calibration log yet")
+                         "up. Logs the decision so your g/b verdict folds into the utility model")
     args = ap.parse_args(argv)
     expand = not args.no_expand
 

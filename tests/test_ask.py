@@ -10,6 +10,7 @@ paths are exercised by the manual end-to-end verification in the plan, not in CI
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -279,9 +280,10 @@ def test_narrative_scored_disabled_seam_returns_prose() -> None:
 
 # --- the executor read-path (--executor) ----------------------------------- #
 
-def test_answer_via_executor_renders_and_builds_cards(monkeypatch) -> None:
+def test_answer_via_executor_renders_logs_and_binds(monkeypatch) -> None:
     # The executor read-path drives the loop (stubbed), renders in the shared credence grammar,
-    # and builds ask's cards/scores from the view's hits — no live daemon.
+    # builds ask's cards/scores from the view's hits, AND logs the terminal lookup decision so a
+    # verdict can fold — EXECUTOR_LAST holds the bridge's id. No live daemon.
     monkeypatch.setattr(ask, "_executor_ready", lambda: True)
     view = {"effector": "report", "asserted": ["P123"], "candidates": ["P123"],
             "credences": [0.9], "p_none": 0.05, "eu": 0.8, "n_obs": 1,
@@ -289,10 +291,36 @@ def test_answer_via_executor_renders_and_builds_cards(monkeypatch) -> None:
                       "origin": "/data/id.pdf", "score": 9.0}],
             "route": {"construct": "passport number"}}
     monkeypatch.setattr(ask.EX, "decide_via_loop", lambda *a, **k: view)
+    posted: dict[str, object] = {}
+
+    def fake_post(url: str, payload: dict) -> dict | None:
+        posted[url] = payload
+        return {"decision_id": "ab-cafef00d"} if url.endswith("/log_decision") else None
+
+    monkeypatch.setattr(ask, "_http_post", fake_post)
     text, cards, scores = ask.answer_via_executor("my passport?", 20)
     assert "P123" in text and "credence 0.900" in text
     assert len(cards) == 1 and cards[0].origin == "/data/id.pdf"
     assert scores == {1: 9.0}
+    log_url = next(u for u in posted if u.endswith("/log_decision"))
+    assert posted[log_url]["decision"]["effector"] == "report"
+    assert posted[log_url]["retrieval_keys"] == ["d0"]
+    assert ask.EXECUTOR_LAST == "ab-cafef00d"
+
+
+def test_answer_via_executor_skips_log_for_miss(monkeypatch) -> None:
+    # A miss (zero grounded observations) is not a lookup decision — nothing to log or verdict.
+    monkeypatch.setattr(ask, "_executor_ready", lambda: True)
+    view = {"effector": "miss", "asserted": [], "candidates": [], "credences": [],
+            "p_none": None, "eu": None, "n_obs": 0,
+            "hits": [{"artifact_cache_key": "d0", "chunk_text": "x", "origin": "/d.pdf",
+                      "score": 1.0}], "route": {"construct": "passport number"}}
+    monkeypatch.setattr(ask.EX, "decide_via_loop", lambda *a, **k: view)
+    calls: list[str] = []
+    monkeypatch.setattr(ask, "_http_post", lambda url, payload: calls.append(url) or None)
+    ask.answer_via_executor("my passport?", 20)
+    assert not any(u.endswith("/log_decision") for u in calls)
+    assert ask.EXECUTOR_LAST is None
 
 
 def test_answer_via_executor_abstains_named_when_daemon_down(monkeypatch) -> None:
@@ -301,3 +329,17 @@ def test_answer_via_executor_abstains_named_when_daemon_down(monkeypatch) -> Non
     text, cards, scores = ask.answer_via_executor("my passport?", 20)
     assert text == ask.EXECUTOR_DOWN
     assert cards == [] and scores == {}
+
+
+def test_record_reaction_binds_verdict_to_executor_decision(monkeypatch, tmp_path) -> None:
+    # The in-session g/b verdict must bind to the EXECUTOR's logged decision id — else the fold
+    # never joins it. Mirrors the legacy path's bind via LOOKUP_LAST.answer_cache_key.
+    monkeypatch.setattr(ask, "EXECUTOR_LAST", "ab-deadbeef")
+    monkeypatch.setattr(ask, "LOOKUP_LAST", None)
+    monkeypatch.setattr(ask, "NARRATIVE_LAST", None)
+    log = tmp_path / "reactions.jsonl"
+    monkeypatch.setattr(ask.C, "REACTIONS_LOG", log)
+    ask._record_reaction("my passport?", "GOOD")
+    rec = json.loads(log.read_text(encoding="utf-8").splitlines()[-1])
+    assert rec["decision_id"] == "ab-deadbeef"
+    assert rec["valence"] == "good"
