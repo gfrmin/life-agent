@@ -42,3 +42,17 @@ def _hermetic_narrative(monkeypatch: pytest.MonkeyPatch) -> None:
     from life_agent.core import narrative as N
 
     monkeypatch.setattr(N, "narrative_answer", lambda *a, **k: None)
+
+
+@pytest.fixture(autouse=True)
+def _hermetic_executor(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The executor (credence answer-brain daemon) is ask's DEFAULT read-path, but it needs the
+    live daemon/bridge; no hermetic test may reach for it. Stub readiness to False so ask
+    deterministically takes the in-process fallback (the prior default) without a localhost
+    probe. Tests of the executor path override this by name (tests/test_ask.py)."""
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+    import ask
+
+    monkeypatch.setattr(ask, "_executor_ready", lambda: False)

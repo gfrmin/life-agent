@@ -11,7 +11,12 @@ effect of a feature.
 **§1. The kernel.** A **knowledge base created from DAGs of trustworthy transformations**, and
 a **personal assistant — the "life agent" — making rational, utility-maximising decisions based
 on it**. Two layers: the KB *derives* (pkm); the agent *decides* (life_agent). Every component
-belongs to exactly one.
+belongs to exactly one. The agent is, exactly, a **belief**, a **utility**, and a **decision
+space**, acting by **argmax expected utility** — under the Bayesian paradigm every autonomous
+agent is this one machine, and ours differs only in *which* utility it serves (the owner's) and
+*which* decisions it ranges over. **credence** holds the belief and runs the optimisation; the
+body supplies the utility and the decisions. credence + (our utility, our decisions) *is* the
+agent — not a library it calls (§16).
 
 **§2. The KB layer — trustworthy transformations.** Trust is structural, not aspirational.
 Every derived artifact is **cited** (traceable to source bytes), **content-addressed**
@@ -22,9 +27,14 @@ recording layer makes no truth claims; reliability is assessed downstream (SPEC-
 
 **§3. The agent layer — decisions over the KB.** The agent answers, prioritises, and —
 eventually — acts, to maximise the owner's expected utility. It reads the KB; it never silently
-mutates it. The destination is decision-theoretic autonomy: value-of-information-driven
-ask / proceed / block. That is why **credence** is the brain and not optional, and why a
-**goals/utility model is owed before any autonomous write-action**.
+mutates it. Its decision space is not only how to *answer* (report / scope / hedge / ask /
+abstain) but **which transformation to run next** — retrieve deeper, rerank, gather, extract
+with a stronger model, derive a new artifact, route to another model — each an action with a
+cost and a *modelled, uncertain* outcome, ranked by value of information (§16). Believing,
+computing, and answering are one EU ranking over one space; only outward **write-actions** wait
+on the goals/utility model. The destination is decision-theoretic autonomy:
+value-of-information-driven ask / proceed / block. That is why **credence** is the brain and not
+optional, and why a **goals/utility model is owed before any autonomous write-action**.
 
 **§4. Prime directive — compose, don't rebuild.** ~90% of the building blocks exist in the
 owner's own projects. New work is integration plus thin layers. Before writing anything, check
@@ -108,30 +118,55 @@ publicly; never use `tailscale serve`/funnel.
   D3–D4 are re-scoped as Ask's aggregate and thread families. Adopted with a binding
   rider: the document's §14 open questions are a live ledger of what we don't know, each
   entry naming the evidence that will decide it.
+- **The executor unification is adopted (2026-06-28):** an autonomous agent *is* (belief,
+  utility, decision space) ranked by expected utility (§1) — there is no separate "governor" to
+  build later. The **VOI executor** — one argmax-EU over the terminal responses **and** the
+  transformations, every belief and optimisation carried by credence — is the spine, built now
+  and conservative-first, and it *is* its own data loop (it calibrates by running, §16).
+  "Confident-wrong" is not a category: confidence is P(truth), calibrated against truth. This
+  re-grounds the staged plan ([`docs/bayesian-foundations.md`](./docs/bayesian-foundations.md)
+  §12) — its "stage 6 governor" is the spine itself, not a deferred stage.
 
 **§15. Open decisions.** Decided when their phase arrives, not before:
 - **The spine** (Phase 2): pi-mono (TS) vs a Python loop vs Claude Code as interim. Criteria:
   openness/extensibility vs lock-in; whether it consumes the §5 seams unchanged; the cost of
   always-on operation. The owner is neutral; nothing in the tree may presuppose the answer.
+  **Under §16 the spine is transport** — it feeds events in and executes the chosen action's
+  *how*; the agent itself lives in the belief-core (credence + U + A), so this is a reversible
+  engineering choice, not an architectural fork.
 - **The goals/utility representation** (Phase 2): the form the expected-utility model takes.
 - **The CRM rebuild**: of the seven decisions in
   [`docs/crm-architecture-decisions.md`](./docs/crm-architecture-decisions.md), #1, #2, #5
   and #6 were resolved by the adopted framework (noted there); #3 (mutable notes/reminders)
   and #4 (alias dedup) remain open.
 
-**§16. The asymptote.** *Believing, computing, and acting are the same move, scheduled by
-value of information, over an immutable log whose only invariant is that truth is the
-fold.* The geodesic runs **derivation → query-with-confidence → bounded action, in that
-order**; the VOI governor is deliberately last (it needs the demand logs and the confidence
-layer to calibrate against). The middle leg was re-scoped on 2026-06-12:
-**query-with-confidence is not a successor annotation but the Bayesian re-derivation of
-Ask** ([`docs/bayesian-foundations.md`](./docs/bayesian-foundations.md)), executing now —
-answers are claim sets with posteriors, responses are EU decisions, and calibration is
-measured against an append-only outcomes log. Corollary, binding now: **every derivation, aggregation, and
-model call is a content-addressed node with lineage edges on one DAG** — no computation in
-the answer path is off-ledger ([`docs/system-design.md`](./docs/system-design.md) §3).
-Knowledge grows from answers and actions: act ledgers project back into the KB, and answers
-are themselves artifacts.
+**§16. The asymptote — one optimiser, learning by running.** *Believing, computing, and acting
+are the same move: a single argmax of expected utility over one decision space — the terminal
+responses **and** the transformations — under one belief, with the owner's utility, every
+probability and every optimisation carried by credence, over an immutable log whose only
+invariant is that truth is the fold.* This is **the executor**; §1 makes plain it is not a
+deferred final stage — an autonomous agent simply *is* (belief, utility, decisions) ranked by
+EU, so there is no separate "governor" to build afterwards. There is only this optimiser: built
+now, thin first, grown.
+
+There is no "confident-wrong" category. **Confidence is P(truth)**, scored against the realised
+truth by proper scoring rules — calibration. A confident assertion that proves wrong is a
+*calibration miss*, repaired in the **belief** (model the structure that should have lowered p —
+correlated duplicates, the wrong subject, a stale source) or in the **utility** (the loss),
+never by a bolted-on rule. With calibrated p and a faithful `u_wrong`, EU-maximisation declines
+a low-p assertion of its own accord: safe behaviour is *derived*, not patched.
+
+**The executor is its own data loop.** It cold-starts on conservative priors — scoping or
+abstaining until evidence earns confidence, *safe before it is calibrated* — and every decision
+it takes and outcome it observes (did the transformation yield the truth? was the answer right?)
+conditions the very beliefs it ranks over: the transformations' yields, and the owner's utility.
+Building it and calibrating it are one act; there is nothing to sequence between them. Two lines
+hold: the binding corollary — **every derivation, model call, and decision is a content-addressed
+node with lineage on one DAG**, no off-ledger computation in the answer path
+([`docs/system-design.md`](./docs/system-design.md) §3) — and the one safety floor (§3):
+**outward write-actions** (email, calendar) wait on the goals/utility model; the
+read/compute/answer loop does not. Knowledge grows from the loop — act ledgers project back into
+the KB, and answers are themselves artifacts.
 
 ## Diagnostics (one-question tests)
 

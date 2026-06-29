@@ -151,6 +151,50 @@ def test_observation_cache_is_per_chunk(migrated_root: Path) -> None:
     assert client.calls == 2  # both replayed
 
 
+def test_observe_hits_collapses_correlated_duplicate_documents(migrated_root: Path) -> None:
+    # Two DIFFERENT documents carrying the same quoted value (a forwarded / re-filed copy) are
+    # correlated witnesses, not independent — observe_hits, the shared evidence SHAPER, collapses
+    # them to one. The §5 dedup must live here, not only in the host lookup_posterior: the
+    # decouple split shaping from deciding, so a dedup in the host decider never reached the
+    # daemon path (bridge /extract → to_abstract_observations) and the q-002/q-014 confident-wrong
+    # regression stayed latent in the executor.
+    quote = "Passport No: P1234567"
+    client = FakeClient({"found": True, "value": "P1234567", "quote": quote})
+    hits = [_hit("a" * 64, f"{quote} issued 2019"),
+            _hit("b" * 64, f"FWD: {quote} issued 2019")]
+    obs, ind = observe_hits(migrated_root, "passport number?", hits, client=client)
+    assert ind == 0
+    assert len(obs) == 1  # the correlated duplicate collapses to a single witness
+
+
+def test_observe_hits_keeps_independent_value_only_corroboration(migrated_root: Path) -> None:
+    # Same value, but each document quotes ONLY the bare value (no shared surrounding context):
+    # genuine independent corroboration, not a copy — both witnesses are kept. Over-dedup would
+    # discard real evidence and understate confidence.
+    client = FakeClient({"found": True, "value": "P1234567", "quote": "P1234567"})
+    hits = [_hit("a" * 64, "the passport is P1234567"),
+            _hit("b" * 64, "P1234567 on file")]
+    obs, ind = observe_hits(migrated_root, "passport number?", hits, client=client)
+    assert ind == 0
+    assert len(obs) == 2  # value-only quotes don't collapse — independent corroboration stands
+
+
+def test_daemon_abstract_observations_collapse_correlated_duplicates(
+        migrated_root: Path) -> None:
+    # The executor's evidence shaping end-to-end: observe_hits → to_abstract_observations is
+    # exactly what the daemon (Move 2) consumes. A correlated duplicate must not reach it as two
+    # witnesses (which saturated the §4.2-less posterior — the regression). This is the daemon-seam
+    # lock: it would also fail if to_abstract_observations ever re-expanded a collapsed cluster.
+    from life_agent.bridge.observations import to_abstract_observations
+    quote = "Passport No: P1234567"
+    client = FakeClient({"found": True, "value": "P1234567", "quote": quote})
+    hits = [_hit("a" * 64, f"{quote} issued 2019"),
+            _hit("b" * 64, f"FWD: {quote} issued 2019")]
+    obs, _ = observe_hits(migrated_root, "passport number?", hits, client=client)
+    _candidates, abstract = to_abstract_observations(obs)
+    assert len(abstract) == 1  # the daemon sees one witness, not a saturating duplicate
+
+
 class _BetaBrain:
     """A Beta-Bernoulli test-oracle brain (create_state/condition/read_params/mean) modelling the
     conjugacy the body drives OVER THE WIRE for the rho Beta — no host `prior + correct` fold."""
@@ -271,10 +315,77 @@ def test_observe_hits_absent_covariates_are_unit(migrated_root: Path) -> None:
 
 # --- the posterior's pure parts -----------------------------------------------------------
 
-def _obs(key: str, value: str, n: int = 1, authority: float = 0.95) -> Observation:
+def _obs(key: str, value: str, n: int = 1, authority: float = 0.95,
+         quote: str | None = None, time_factor: float = 1.0,
+         subject_factor: float = 1.0) -> Observation:
     return Observation(card_n=n, artifact_cache_key=key, obs_cache_key="o" * 64,
                        value_raw=value, value_norm=" ".join(value.split()).casefold(),
-                       quote=value, authority_class="document", authority=authority)
+                       quote=quote if quote is not None else value,
+                       authority_class="document", authority=authority,
+                       time_factor=time_factor, subject_factor=subject_factor)
+
+
+# --- §5 dedup-as-inference: correlated duplicates count as ONE witness ---------------------
+# The decouple (862ed66) retired the §4.2 ancestry temper; the reliability_categorical group
+# model then counted correlated DUPLICATE documents (forwarded/replied chains carrying an
+# identical quote) as independent witnesses, saturating credence on duplicated wrong/stale
+# values (the confident-wrong regression: q-002 6 emails→0.99, q-014 9 stale→0.80). dedup
+# collapses each correlated cluster to one witness — restoring the temper PRINCIPLEDLY (only
+# true duplicates collapse; genuine independent corroboration still accumulates).
+
+
+def test_dedup_correlated_collapses_identical_quotes_across_documents() -> None:
+    q = "your 2019 passport number is WRONGVAL per our records"
+    dup = [_obs(chr(97 + i) * 64, "WRONGVAL", quote=q) for i in range(6)]
+    gold_q = "passport no GOLDVAL appears on the official application form"
+    gold = [_obs("y" * 64, "GOLDVAL", quote=gold_q),
+            _obs("z" * 64, "GOLDVAL", quote=gold_q)]
+    kept = LK.dedup_correlated(dup + gold)
+    # six identical-quote copies → one witness; two identical-quote gold copies → one witness
+    assert sum(o.value_raw == "WRONGVAL" for o in kept) == 1
+    assert sum(o.value_raw == "GOLDVAL" for o in kept) == 1
+
+
+def test_dedup_correlated_keeps_independent_corroboration() -> None:
+    # DIFFERENT quotes for the same value are independent witnesses, not duplicates — real
+    # corroboration must still accumulate; only correlated copies collapse.
+    obs = [_obs("a" * 64, "V", quote="the value V appears on my tax return"),
+           _obs("b" * 64, "V", quote="my accountant recorded V in the summary"),
+           _obs("c" * 64, "V", quote="V is printed on the official certificate")]
+    assert len(LK.dedup_correlated(obs)) == 3
+
+
+def test_dedup_correlated_preserves_within_document_observations() -> None:
+    # two chunks of ONE document sharing a quote are not cross-document duplicates; the
+    # per-document group already counts them as one witness — leave them intact.
+    obs = [_obs("a" * 64, "V", quote="a sufficiently long shared sentence of text"),
+           _obs("a" * 64, "V", quote="a sufficiently long shared sentence of text")]
+    assert len(LK.dedup_correlated(obs)) == 2
+
+
+def test_dedup_correlated_keeps_max_covariate_representative() -> None:
+    # the surviving witness is the strongest/freshest copy (max authority·subject·time), so a
+    # recent re-attestation keeps its recency rather than inheriting a stale duplicate's age.
+    q = "a sufficiently long shared sentence of text"
+    weak = _obs("a" * 64, "V", quote=q, authority=0.5, time_factor=0.2)
+    strong = _obs("b" * 64, "V", quote=q, authority=0.95, time_factor=1.0)
+    kept = LK.dedup_correlated([weak, strong])
+    assert len(kept) == 1 and kept[0].authority == 0.95
+
+
+def test_dedup_correlated_keeps_value_only_quotes() -> None:
+    # a quote that is ONLY the value carries no shared CONTEXT, so identical copies may be
+    # genuine independent corroboration rather than duplicates — keep them (don't erase evidence).
+    obs = [_obs("a" * 64, "A5", quote="A5"), _obs("b" * 64, "A5", quote="A5")]
+    assert len(LK.dedup_correlated(obs)) == 2
+
+
+def test_dedup_correlated_collapses_short_quotes_with_context() -> None:
+    # the q-002/q-014 regression: a SHORT but contextful quote ("Israeli <id>") identical across
+    # many documents (a forwarded/batch maildir chain) is a duplicate cluster — context beyond the
+    # value is the signal, not quote length. Collapse to one witness.
+    obs = [_obs(chr(97 + i) * 64, "WRONGID", quote="Israeli WRONGID") for i in range(6)]
+    assert len(LK.dedup_correlated(obs)) == 1
 
 
 def test_candidates_dedupe_by_normalised_value() -> None:

@@ -10,6 +10,7 @@ paths are exercised by the manual end-to-end verification in the plan, not in CI
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -275,3 +276,120 @@ def test_narrative_scored_disabled_seam_returns_prose() -> None:
     # the conftest autouse stub (narrative_answer -> None) IS the disabled seam
     out = ask._narrative_scored(Path("/fake/root"), "q?", "raw prose [1]", _cards())
     assert out == "raw prose [1]"
+
+
+# --- the executor read-path (--executor) ----------------------------------- #
+
+def test_answer_via_executor_renders_logs_and_binds(monkeypatch) -> None:
+    # The executor read-path drives the loop (stubbed), renders in the shared credence grammar,
+    # builds ask's cards/scores from the view's hits, AND logs the terminal lookup decision so a
+    # verdict can fold — EXECUTOR_LAST holds the bridge's id. No live daemon.
+    monkeypatch.setattr(ask, "_executor_ready", lambda: True)
+    view = {"effector": "report", "asserted": ["P123"], "candidates": ["P123"],
+            "credences": [0.9], "p_none": 0.05, "eu": 0.8, "n_obs": 1,
+            "hits": [{"artifact_cache_key": "d0", "chunk_text": "Passport P123",
+                      "origin": "/data/id.pdf", "score": 9.0}],
+            "route": {"construct": "passport number"}}
+    monkeypatch.setattr(ask.EX, "decide_via_loop", lambda *a, **k: view)
+    posted: dict[str, object] = {}
+
+    def fake_post(url: str, payload: dict) -> dict | None:
+        posted[url] = payload
+        return {"decision_id": "ab-cafef00d"} if url.endswith("/log_decision") else None
+
+    monkeypatch.setattr(ask, "_http_post", fake_post)
+    text, cards, scores = ask.answer_via_executor("my passport?", 20)
+    assert "P123" in text and "credence 0.900" in text
+    assert len(cards) == 1 and cards[0].origin == "/data/id.pdf"
+    assert scores == {1: 9.0}
+    log_url = next(u for u in posted if u.endswith("/log_decision"))
+    assert posted[log_url]["decision"]["effector"] == "report"
+    assert posted[log_url]["retrieval_keys"] == ["d0"]
+    assert ask.EXECUTOR_LAST == "ab-cafef00d"
+
+
+def test_answer_via_executor_skips_log_for_miss(monkeypatch) -> None:
+    # A miss (zero grounded observations) is not a lookup decision — nothing to log or verdict.
+    monkeypatch.setattr(ask, "_executor_ready", lambda: True)
+    view = {"effector": "miss", "asserted": [], "candidates": [], "credences": [],
+            "p_none": None, "eu": None, "n_obs": 0,
+            "hits": [{"artifact_cache_key": "d0", "chunk_text": "x", "origin": "/d.pdf",
+                      "score": 1.0}], "route": {"construct": "passport number"}}
+    monkeypatch.setattr(ask.EX, "decide_via_loop", lambda *a, **k: view)
+    calls: list[str] = []
+    monkeypatch.setattr(ask, "_http_post", lambda url, payload: calls.append(url) or None)
+    ask.answer_via_executor("my passport?", 20)
+    assert not any(u.endswith("/log_decision") for u in calls)
+    assert ask.EXECUTOR_LAST is None
+
+
+def test_answer_via_executor_abstains_named_when_daemon_down(monkeypatch) -> None:
+    # Never a silent fallback to another path's answer: a down stack is the NAMED abstention.
+    monkeypatch.setattr(ask, "_executor_ready", lambda: False)
+    text, cards, scores = ask.answer_via_executor("my passport?", 20)
+    assert text == ask.EXECUTOR_DOWN
+    assert cards == [] and scores == {}
+
+
+def test_record_reaction_binds_verdict_to_executor_decision(monkeypatch, tmp_path) -> None:
+    # The in-session g/b verdict must bind to the EXECUTOR's logged decision id — else the fold
+    # never joins it. Mirrors the legacy path's bind via LOOKUP_LAST.answer_cache_key.
+    monkeypatch.setattr(ask, "EXECUTOR_LAST", "ab-deadbeef")
+    monkeypatch.setattr(ask, "LOOKUP_LAST", None)
+    monkeypatch.setattr(ask, "NARRATIVE_LAST", None)
+    log = tmp_path / "reactions.jsonl"
+    monkeypatch.setattr(ask.C, "REACTIONS_LOG", log)
+    ask._record_reaction("my passport?", "GOOD")
+    rec = json.loads(log.read_text(encoding="utf-8").splitlines()[-1])
+    assert rec["decision_id"] == "ab-deadbeef"
+    assert rec["valence"] == "good"
+
+
+def test_ask_once_defaults_to_executor_when_ready(monkeypatch) -> None:
+    # 2c: the executor is the DEFAULT read-path — a ready daemon answers through it.
+    monkeypatch.setattr(ask, "_executor_ready", lambda: True)
+    monkeypatch.setattr(ask, "answer_via_executor", lambda q, k: ("EXEC", [], {}))
+    monkeypatch.setattr(ask, "answer", lambda *a, **k: ("LEGACY", [], {}))
+    monkeypatch.setattr(ask, "capture", lambda *a, **k: None)
+    seen: dict[str, str] = {}
+    monkeypatch.setattr(ask, "render", lambda text, *a, **k: seen.update(text=text))
+    ask.ask_once(None, "my passport?", 20)
+    assert seen["text"] == "EXEC"
+
+
+def test_ask_once_falls_back_to_legacy_when_daemon_down(monkeypatch, capsys) -> None:
+    # The flip is robust: a down daemon falls back to the in-process path, NAMED (never silent).
+    monkeypatch.setattr(ask, "_executor_ready", lambda: False)
+    monkeypatch.setattr(ask, "answer_via_executor", lambda q, k: ("EXEC", [], {}))
+    monkeypatch.setattr(ask, "answer", lambda *a, **k: ("LEGACY", [], {}))
+    monkeypatch.setattr(ask, "capture", lambda *a, **k: None)
+    seen: dict[str, str] = {}
+    monkeypatch.setattr(ask, "render", lambda text, *a, **k: seen.update(text=text))
+    ask.ask_once(None, "my passport?", 20)
+    assert seen["text"] == "LEGACY"
+    assert "in-process" in capsys.readouterr().out  # the named fallback notice
+
+
+def test_ask_once_clears_stale_executor_decision_on_legacy(monkeypatch) -> None:
+    # Bug guard: a prior executor answer's id must NOT bind a later legacy answer's verdict.
+    # ask_once resets EXECUTOR_LAST before dispatch, so the in-process fallback leaves no stale id
+    # for _record_reaction (which checks EXECUTOR_LAST first) to mis-join.
+    monkeypatch.setattr(ask, "EXECUTOR_LAST", "ab-stale")
+    monkeypatch.setattr(ask, "_executor_ready", lambda: False)  # daemon down → legacy fallback
+    monkeypatch.setattr(ask, "answer", lambda *a, **k: ("LEGACY", [], {}))
+    monkeypatch.setattr(ask, "capture", lambda *a, **k: None)
+    monkeypatch.setattr(ask, "render", lambda *a, **k: None)
+    ask.ask_once(None, "q?", 20)
+    assert ask.EXECUTOR_LAST is None
+
+
+def test_ask_once_legacy_flag_forces_in_process(monkeypatch) -> None:
+    # --legacy (executor=False) forces the in-process path even when the daemon is up.
+    monkeypatch.setattr(ask, "_executor_ready", lambda: True)
+    monkeypatch.setattr(ask, "answer_via_executor", lambda q, k: ("EXEC", [], {}))
+    monkeypatch.setattr(ask, "answer", lambda *a, **k: ("LEGACY", [], {}))
+    monkeypatch.setattr(ask, "capture", lambda *a, **k: None)
+    seen: dict[str, str] = {}
+    monkeypatch.setattr(ask, "render", lambda text, *a, **k: seen.update(text=text))
+    ask.ask_once(None, "my passport?", 20, executor=False)
+    assert seen["text"] == "LEGACY"

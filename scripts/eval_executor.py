@@ -1,18 +1,17 @@
 #!/usr/bin/env python3
-"""Executor eval — over the credence answer-brain LOOP, not a Python brain (Slice 0).
+"""Executor eval — over the credence answer-brain LOOP, not a Python brain.
 
-The decision no longer lives in life-agent: this harness is a measurement *body* that drives the
-live loop — `/route → /retrieve → /probe/subject → /extract` (the life-agent bridge, :8798) →
-`GET /utility` → `POST /decide` (the credence answer-brain daemon, :8799) — and grades the daemon's
-effector labels-first. It retires `core/executor.py`: the credence daemon (`gather_decide` /
-`terminal_decide`) is the single reasoner; nothing here computes a posterior or picks an action.
+The decision lives in the credence daemon (`gather_decide` / `terminal_decide`), the single
+reasoner; the loop that ENACTS its VOI schedule over the life-agent bridge — `/route →
+/retrieve → /probe → /extract → /decide`, then each scheduled transform — is
+:mod:`life_agent.core.executor` (shared with the production read-path so both drive ONE
+executor, PRINCIPLES §16/§4). This harness is a measurement BODY: it injects the urllib
+transport, runs each eval question through that loop, and grades the daemon's effector
+labels-first.
 
-Slice 0 is the **no-gather baseline**: `era_split=False` (no recency gather yet — that arrives with
-per-construct volatility, Slice 1), the subject covariate down-weights a relative's documents (the
-gate-safety the daemon's `owner_scoped` slot will formalize in Slice 2). The honest headline is
-unchanged — **CORRECT at ZERO owner-graded confident-wrong** — counted only on owner-graded rows,
-with the daemon's effector histogram. No `/log_decision` is posted, so the live calibration log is
-untouched (isolation by not-writing).
+The honest headline — **CORRECT at ZERO owner-graded confident-wrong** — is counted only on
+owner-graded rows, with the daemon's effector histogram. No `/log_decision` is posted, so the
+live calibration log is untouched (isolation by not-writing).
 
     bin/answer-brain must be up (daemon :8799 + bridge :8798), or start them separately. Then:
     uv run --project . python scripts/eval_executor.py [--k N] [--limit N] [--only q-002,q-011]
@@ -30,6 +29,8 @@ from collections import Counter
 from datetime import datetime
 from pathlib import Path
 
+from life_agent.core import executor as EX
+
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from answer_labels import Label, load_labels, verdict
 from eval_grading import answer_matches, chunk_matches_any
@@ -38,39 +39,10 @@ from triage_grading import triage
 
 BRIDGE = os.environ.get("LIFE_AGENT_BRIDGE_URL", "http://127.0.0.1:8798")
 DAEMON = os.environ.get("ANSWER_BRAIN_URL", "http://127.0.0.1:8799")
-# the §2-A net_voi-gated corroborate budget the body offers the daemon: the cloud re-read's
-# reliability (= the bridge's _JOINT_RHO) + its cost (utility units). The daemon rescues a below-bar
-# leader with a corroborate only when its VOI clears this cost. RE-ENABLED now that the keystone fix
-# lands: `/probe/corroborate` routes its re-read observation through the SAME volatility projector
-# `/extract` uses (`_corroborate_time_factor`), so a stale value can no longer be reported
-# as current
-# (the q-006 confident-stale bug that gated this off). The net_voi mechanism is validated
-# (test_answer_brain §2-A + test_server wire).
-_GATHER_RHO = 0.95
-_GATHER_COST = 0.02
 
-# Slice 2 — the corroborate model-tier ladder declared as the per-question transform MENU (the body
-# owns the menu; the daemon prices + schedules it). Each :voi tier carries a stated reliability + a
-# stated cost-in-utility (frozen-blind world-knowledge priors, monotone in model strength; to be
-# calibrated from verdicts). The recency guard + the owner-scoped attribution guard ride the same
-# menu; the owner guard re-reads with the strongest model (probe → corroborate_opus).
-# schedule_decide
-# gathers the net_voi-argmax tier (the cost-efficient one); the body enacts it by probe name.
-_TIER_MODEL = {"corroborate_haiku": "claude-haiku-4-5",
-               "corroborate_sonnet": "claude-sonnet-4-6",
-               "corroborate_opus": "claude-opus-4-8"}
-_TIER_RHO = {"corroborate_haiku": 0.80, "corroborate_sonnet": 0.90, "corroborate_opus": 0.95}
-_TRANSFORMS: list[dict[str, object]] = [
-    {"name": "recency", "probe": "recency", "kind": "guard", "trigger": "era_split"},
-    {"name": "corroborate_owner", "probe": "corroborate_opus", "kind": "guard",
-     "trigger": "owner_report"},
-    {"name": "corroborate_haiku", "probe": "corroborate_haiku", "kind": "voi",
-     "trigger": "below_bar", "rho": 0.80, "cost": 0.004},
-    {"name": "corroborate_sonnet", "probe": "corroborate_sonnet", "kind": "voi",
-     "trigger": "below_bar", "rho": 0.90, "cost": 0.012},
-    {"name": "corroborate_opus", "probe": "corroborate_opus", "kind": "voi",
-     "trigger": "below_bar", "rho": 0.95, "cost": 0.020},
-]
+# Grow (escalating recall on a withholding terminal) is ON by default; the loop's grow logic and
+# the transform menu now live in core/executor.py. `ANSWER_BRAIN_GROW=0` is the no-grow baseline.
+_GROW = os.environ.get("ANSWER_BRAIN_GROW", "1") != "0"
 
 
 def _post(url: str, payload: dict) -> dict | None:
@@ -80,148 +52,9 @@ def _post(url: str, payload: dict) -> dict | None:
         return json.loads(r.read())
 
 
-def _post_obj(url: str, payload: dict) -> dict:
-    """`_post` for endpoints that always answer a JSON object — every one but `/route`,
-    which can return JSON null for a non-typed question (guarded at its one call site)."""
-    out = _post(url, payload)
-    assert out is not None, f"{url} returned null"
-    return out
-
-
 def _get(url: str) -> dict:
     with urllib.request.urlopen(url, timeout=300) as r:
         return json.loads(r.read())
-
-
-def _owner_scoped(question: str) -> bool:
-    import re
-    return bool(re.search(r"\b(?:my|mine|the owner's)\b", question, re.IGNORECASE))
-
-
-_WITHHOLD = frozenset({"miss", "abstain", "hedge", "ask_clarify"})
-
-# Slice 3 — the :grow trigger, now ON by default (its guard landed). A withholding/miss terminal
-# enlarges the candidate set once (rerank) and re-decides. Grow first reopened the cardinal sin —
-# q-014 ("my mobile") reported the owner's STALE HK number as CONFIDENT_WRONG — but the trace found
-# the true cause: the route model mis-classified "mobile phone number" as time_indexed=False, so
-# volatility NEVER decayed it (every candidate tf=1.0 over 2011-2021 docs). The guard is
-# the currency
-# fix in the bridge (`/route` derives time_indexed from the volatility table, not the model's
-# guess):
-# mobile/address/employer decay, DOB/national-id/tax-id do not. With it, grow is SAFE —
-# measured live
-# (2026-06-20): CORRECT 3→4/18 (q-019 recovered, q-014 now ABSTAINS) at real-CONFIDENT_WRONG 0.
-# `ANSWER_BRAIN_GROW=0` disables it.
-_GROW = os.environ.get("ANSWER_BRAIN_GROW", "1") != "0"
-
-
-def _decide_via_loop(question: str, k: int, *, rerank: bool = False) -> dict:
-    """Drive one question through the live loop, cheap recall first then a single :grow (gated).
-
-    Slice 3 — the :grow trigger (a non-VOI recall action; discovery over a closed candidate set is
-    outside net_voi, Plan §1). The cheap lexical pass runs first; when `_GROW` is enabled, a
-    WITHHOLDING or MISS terminal (∧ not-yet-grown) enlarges the candidate set ONCE — rerank over-
-    fetches a wide pool and listwise-reorders it, surfacing a buried gold into extraction — and
-    re-decides on the larger set. Adopt the grown decision when it reports, or when the cheap pass
-    found no candidates at all; else keep the cheap withhold. ON by default (see `_GROW`)."""
-    route = _post(f"{BRIDGE}/route", {"question": question})
-    if route is None:
-        # Not a typed point-fact → the NARRATIVE family (Slice A): synthesize a cited answer
-        # over the
-        # full-recall hits, audit each claim against its cited card, include only grounded
-        # + EU-positive
-        # claims. Gate-safe by construction (ungrounded/weak ⇒ abstain). `asserted` = the included
-        # claims' text, so the grader matches the gold inside a grounded claim.
-        nv = _post_obj(f"{BRIDGE}/narrative", {"question": question})
-        return {"effector": nv["action"], "asserted": nv["asserted"], "candidates": [],
-                "credences": [], "p_none": None, "eu": None, "hits": nv.get("hits", []),
-                "route": None}
-    view = _run(question, k, route, rerank=rerank, expand=rerank)
-    if _GROW and not rerank:
-        # Escalating recall breadth (cheapest-first, stop at the first report). Each tier only fires
-        # if the prior still WITHHOLDS — so we pay for breadth only when narrower recall failed:
-        #   tier 1  rerank(raw)   — over-fetch 150 + listwise reorder surfaces a buried literal hit
-        #                           (recovers strong English/number golds ranked just outside
-        #                           top-k).
-        #   tier 2  rerank+expand — native-script (Hebrew) expansion bridges the English↔Hebrew
-        #                           lexical gap (the dominant miss). Expansion DILUTES
-        #                           strong literals,
-        #                           so it escalates AFTER raw rerank, never replacing it.
-        for rr, ex in ((True, False), (True, True)):
-            if view["effector"] not in _WITHHOLD:
-                break                                   # a report stands ⇒ stop escalating recall
-            grown = _run(question, k, route, rerank=rr, expand=ex)
-            if grown["effector"] == "report" or not view["candidates"]:
-                view = grown
-    return view
-
-
-def _run(question: str, k: int, route: dict, *, rerank: bool, expand: bool = False) -> dict:
-    """One retrieve→probe→extract→decide pass at a given recall breadth (rerank + expand grow K).
-    Returns the normalized view:
-    {effector, asserted, candidates, credences, p_none, eu, hits, route}."""
-    hits = _post_obj(f"{BRIDGE}/retrieve",
-                 {"question": question, "k": k, "rerank": rerank, "expand": expand})["hits"]
-    hit_keys = list(dict.fromkeys(h["artifact_cache_key"] for h in hits))
-    subj = _post_obj(f"{BRIDGE}/probe/subject", {"hit_keys": hit_keys})["subject_state"]
-    recency = _post_obj(f"{BRIDGE}/probe/recency", {"hit_keys": hit_keys})["doc_date"]
-    # construct ⇒ bridge decays time_factor at its volatility
-    ext = _post_obj(f"{BRIDGE}/extract", {
-        "question": question, "hits": hits, "time_indexed": route["time_indexed"],
-        "construct": route["construct"],
-        "covariates": {"subject_state": subj, "doc_date": recency}})
-    if not ext["candidates"]:  # zero grounded observations → the local edge declined
-        return {"effector": "miss", "asserted": [], "candidates": [], "credences": [],
-                "p_none": None, "eu": None, "hits": hits, "route": route}
-    u_bar = _get(f"{BRIDGE}/utility")["u_bar"]
-    candidates = ext["candidates"]
-    owner = _owner_scoped(question)
-    obs, rho, era = ext["observations"], ext["rho"], ext["era_split"]
-
-    def _decide(observations: list, r: float, era_split: bool, applied: list[str]) -> dict:
-        return _post_obj(f"{DAEMON}/decide", {
-            "candidates": candidates, "observations": observations, "rho": r, "u_bar": u_bar,
-            "era_split": era_split, "owner_scoped": owner, "applied_probes": applied,
-            # the data-driven menu (Slice 2); supersedes gather_rho/cost
-            "transforms": _TRANSFORMS})
-
-    applied: list[str] = []
-    dec = _decide(obs, rho, era, applied)
-    # bounded: each probe fires once
-    for _ in range(2 + sum(t["kind"] == "voi" for t in _TRANSFORMS)):
-        if dec["effector"] != "gather":
-            break
-        probe = dec.get("probe") or ""
-        if probe == "recency":
-            # recency is PRE-APPLIED in /extract (obs already decayed at the construct's
-            # volatility) → acknowledge (mark applied, re-decide on the same posterior).
-            applied = list(dict.fromkeys([*applied, "recency"]))
-            dec = _decide(obs, rho, era, applied)
-        elif probe.startswith("corroborate"):
-            # a subject-aware whole-doc re-read at the scheduled TIER's model REPLACES the local
-            # channel. The joint's value → one observation (or NONE ⇒ empty ⇒ abstain). The tier is
-            # named by the probe (corroborate_{haiku,sonnet,opus}); the owner guard uses opus. Each
-            # tier fires at most once (dedup on the probe name) ⇒ escalation across
-            # tiers terminates.
-            model = _TIER_MODEL.get(probe, "claude-opus-4-8")
-            tier_rho = _TIER_RHO.get(probe, _GATHER_RHO)
-            cr = _post_obj(f"{BRIDGE}/probe/corroborate",
-                       {"reextract": True, "question": question, "hits": hits,
-                        "candidates": candidates, "model": model, "rho": tier_rho,
-                        # the re-read obs flows through the construct's volatility (the keystone):
-                        # pass time_indexed + construct + the doc_date covariate so the bridge can
-                        # decay a stale re-read instead of hand-setting time_factor=1.0.
-                        "time_indexed": route["time_indexed"], "construct": route["construct"],
-                        "covariates": {"doc_date": recency}})
-            obs, rho, era = cr["observations"], cr["gather_rho"], False
-            applied = list(dict.fromkeys([*applied, probe]))
-            dec = _decide(obs, rho, era, applied)
-        else:
-            break
-    asserted = [dec["value"]] if dec["effector"] == "report" and dec["value"] else []
-    return {"effector": dec["effector"], "asserted": asserted, "candidates": ext["candidates"],
-            "credences": dec["credences"], "p_none": dec["p_none"], "eu": dec["eu"],
-            "hits": hits, "route": route}
 
 
 def _grade(conn, q: dict, view: dict, labels: list[Label]) -> dict:
@@ -335,7 +168,8 @@ def main() -> int:
     t0 = time.monotonic()
     packets: list[dict] = []
     for q in questions:
-        view = _decide_via_loop(q["question"], args.k, rerank=args.rerank)
+        view = EX.decide_via_loop(q["question"], args.k, bridge=BRIDGE, daemon=DAEMON,
+                                  post=_post, get=_get, grow=_GROW, rerank=args.rerank)
         p = _grade(conn, q, view, labels)
         packets.append(p)
         print(f"  {p['id']}: {p['effector']} → {p['bucket']}"
