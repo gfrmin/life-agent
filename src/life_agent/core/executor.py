@@ -25,6 +25,9 @@ import re
 from collections.abc import Callable
 from typing import Any
 
+from life_agent.core import lookup as LK
+from life_agent.core import matching as MATCH
+
 # The transport seams, injected by the caller (PRINCIPLES §5): ``post(url, payload)`` returns the
 # decoded JSON object, or ``None`` for ``/route`` on a non-typed question; ``get(url)`` returns the
 # decoded JSON object. The loop builds the URLs from the ``bridge`` / ``daemon`` base strings, so a
@@ -32,7 +35,8 @@ from typing import Any
 Post = Callable[[str, dict[str, Any]], "dict[str, Any] | None"]
 Get = Callable[[str], dict[str, Any]]
 
-View = dict[str, Any]  # {effector, asserted, candidates, credences, p_none, eu, hits, route}
+View = dict[str, Any]  # {effector, asserted, candidates, credences, p_none, eu, n_obs, hits,
+#                        route}; a narrative view also carries "rendered" (rendered bridge-side).
 
 # The corroborate model-tier ladder: the body names the tier (the daemon schedules it by name);
 # each tier carries the model it re-reads with and the reliability that re-read is conditioned at.
@@ -93,8 +97,8 @@ def decide_via_loop(question: str, k: int, *, bridge: str, daemon: str, post: Po
     if route is None:
         nv = _obj(post, f"{bridge}/narrative", {"question": question})
         return {"effector": nv["action"], "asserted": nv["asserted"], "candidates": [],
-                "credences": [], "p_none": None, "eu": None, "hits": nv.get("hits", []),
-                "route": None}
+                "credences": [], "p_none": None, "eu": None, "n_obs": 0,
+                "hits": nv.get("hits", []), "route": None, "rendered": nv.get("rendered")}
     view = run_pass(question, k, route, bridge=bridge, daemon=daemon, post=post, get=get,
                     rerank=rerank, expand=rerank, transforms=transforms)
     if grow and not rerank:
@@ -133,7 +137,7 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
         "covariates": {"subject_state": subj, "doc_date": recency}})
     if not ext["candidates"]:  # zero grounded observations → the local edge declined
         return {"effector": "miss", "asserted": [], "candidates": [], "credences": [],
-                "p_none": None, "eu": None, "hits": hits, "route": route}
+                "p_none": None, "eu": None, "n_obs": 0, "hits": hits, "route": route}
     u_bar = get(f"{bridge}/utility")["u_bar"]
     candidates = ext["candidates"]
     owner = owner_scoped(question)
@@ -176,4 +180,48 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
     asserted = [dec["value"]] if dec["effector"] == "report" and dec["value"] else []
     return {"effector": dec["effector"], "asserted": asserted, "candidates": ext["candidates"],
             "credences": dec["credences"], "p_none": dec["p_none"], "eu": dec["eu"],
-            "hits": hits, "route": route}
+            "n_obs": len(obs), "hits": hits, "route": route}
+
+
+# --- render (the executor's decision in the shared credence grammar) --------------------
+
+def _cites(value: str, hits: list[dict[str, Any]]) -> str:
+    """Cite the hit cards whose text carries the value — 1-based, in hit order (the same
+    numbering the card render uses), via the shared date/number-aware matcher."""
+    ns = [i + 1 for i, h in enumerate(hits)
+          if MATCH.answer_matches(value, [], str(h.get("chunk_text", "")))]
+    return "".join(f"[{n}]" for n in ns)
+
+
+def render_view(view: View) -> str:
+    """Render an executor view in the SHARED credence grammar (``lookup.GRAMMAR``) — the same
+    interaction-contract strings the in-process lookup family renders, so the owner sees one
+    consistent reply whichever path answered, and the posterior is named in the footer (nothing
+    silent). A narrative view is already rendered bridge-side and passes through verbatim; otherwise
+    the asserted value is cited to the hit cards that carry it."""
+    rendered = view.get("rendered")
+    if rendered:
+        return str(rendered)
+    eff = view["effector"]
+    cands, creds, hits = view["candidates"], view["credences"], view["hits"]
+    asserted = view["asserted"]
+    alts = " · ".join(f"{v} ({p:.3f}) {_cites(v, hits)}".rstrip()
+                      for v, p in zip(cands, creds, strict=False))
+    if eff == "report" and asserted:
+        v = asserted[0]
+        body = LK.GRAMMAR["report"].format(value=v, p=(creds[0] if creds else 0.0),
+                                           cites=_cites(v, hits))
+    elif eff == "hedge":
+        body = LK.GRAMMAR["hedge"].format(alts=alts)
+    elif eff == "ask_clarify":
+        body = LK.GRAMMAR["ask_clarify"].format(alts=alts)
+    elif eff == "abstain" and cands:
+        body = LK.GRAMMAR["abstain_withheld"].format(reason=LK.REASON_DISPERSED, alts=alts)
+    else:  # abstain with no candidates, or miss (zero grounded observations)
+        body = LK.GRAMMAR["abstain"].format(reason=LK.REASON_DISPERSED)
+    p_none, eu = view["p_none"], view["eu"]
+    footer = LK.GRAMMAR["footer"].format(
+        n_hits=len(hits), n_obs=view.get("n_obs", 0), n_ind=0,
+        p_none=p_none if p_none is not None else 0.0,
+        action=eff, eu=eu if eu is not None else 0.0)
+    return f"{body}\n\n{footer}"
