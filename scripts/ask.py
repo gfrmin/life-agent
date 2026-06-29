@@ -1060,13 +1060,19 @@ def react(did_prefix: str, valence: str,
 def ask_once(conn: duckdb.DuckDBPyConnection, question: str, k: int,
              *, expand: bool = True, no_cache: bool = False,
              since: _date | None = None, until: _date | None = None,
-             recent: bool = False, executor: bool = False) -> list[tuple[str, str]]:
+             recent: bool = False, executor: bool = True) -> list[tuple[str, str]]:
     """Answer + render + capture. Returns the derive targets the answer's
     reports named as underived (doc_date and doc_subject alike — empty when
-    neither filter ran) so the REPL can offer `/derive`. ``executor=True`` routes through the
-    credence answer-brain executor (the daemon decides) instead of the in-process families;
-    temporal scoping is not yet wired there, so a scoped question is NAMED and answered unscoped."""
-    if executor:
+    neither filter ran) so the REPL can offer `/derive`. The credence answer-brain executor
+    (the daemon decides) is the DEFAULT read-path; when its daemon/bridge is down it falls back
+    to the in-process families, NAMED (never silent), and ``executor=False`` (``--legacy``) forces
+    that in-process path. Temporal scoping (/since …) is not yet wired into the executor, so a
+    scoped question there is NAMED and answered unscoped."""
+    use_executor = executor and _executor_ready()
+    if executor and not use_executor:
+        print("  (executor unavailable — the answer-brain daemon/bridge is down; "
+              "using the in-process path)")
+    if use_executor:
         if since is not None or until is not None or recent:
             print("  (executor path: temporal scoping not yet wired — answering unscoped)")
         text, cards, scores = answer_via_executor(question, k)
@@ -1223,7 +1229,7 @@ def remember(fact: str) -> None:
 
 # --- REPL ----------------------------------------------------------------- #
 def repl(conn: duckdb.DuckDBPyConnection, k: int, *, expand: bool = True,
-         no_cache: bool = False, executor: bool = False) -> None:
+         no_cache: bool = False, executor: bool = True) -> None:
     print(f"ask anything about your life — the grammar:\n{grammar_text()}\n")
     derive_targets: list[tuple[str, str]] = []
     while True:
@@ -1302,10 +1308,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--no-cache", action="store_true",
                     help="recompute every stage instead of replaying cached derivations "
                          "(recording stays write-once — existing derivations stand)")
-    ap.add_argument("--executor", action="store_true",
-                    help="answer via the credence answer-brain executor (the daemon decides) "
-                         "instead of the in-process lookup/narrative path; needs bin/answer-brain "
-                         "up. Logs the decision so your g/b verdict folds into the utility model")
+    ap.add_argument("--legacy", action="store_true",
+                    help="force the in-process lookup/narrative path instead of the default "
+                         "credence answer-brain executor (for A/B, or an offline session). The "
+                         "executor otherwise decides + logs so a g/b verdict folds, and falls "
+                         "back here automatically — named — when the daemon is down")
     args = ap.parse_args(argv)
     expand = not args.no_expand
 
@@ -1356,9 +1363,9 @@ def main(argv: list[str] | None = None) -> int:
     if p is not None:
         ask_once(conn, p.question, args.k, expand=expand,
                  no_cache=args.no_cache, since=p.since, until=p.until,
-                 recent=p.recent, executor=args.executor)
+                 recent=p.recent, executor=not args.legacy)
     else:
-        repl(conn, args.k, expand=expand, no_cache=args.no_cache, executor=args.executor)
+        repl(conn, args.k, expand=expand, no_cache=args.no_cache, executor=not args.legacy)
     return 0
 
 

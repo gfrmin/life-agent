@@ -343,3 +343,40 @@ def test_record_reaction_binds_verdict_to_executor_decision(monkeypatch, tmp_pat
     rec = json.loads(log.read_text(encoding="utf-8").splitlines()[-1])
     assert rec["decision_id"] == "ab-deadbeef"
     assert rec["valence"] == "good"
+
+
+def test_ask_once_defaults_to_executor_when_ready(monkeypatch) -> None:
+    # 2c: the executor is the DEFAULT read-path — a ready daemon answers through it.
+    monkeypatch.setattr(ask, "_executor_ready", lambda: True)
+    monkeypatch.setattr(ask, "answer_via_executor", lambda q, k: ("EXEC", [], {}))
+    monkeypatch.setattr(ask, "answer", lambda *a, **k: ("LEGACY", [], {}))
+    monkeypatch.setattr(ask, "capture", lambda *a, **k: None)
+    seen: dict[str, str] = {}
+    monkeypatch.setattr(ask, "render", lambda text, *a, **k: seen.update(text=text))
+    ask.ask_once(None, "my passport?", 20)
+    assert seen["text"] == "EXEC"
+
+
+def test_ask_once_falls_back_to_legacy_when_daemon_down(monkeypatch, capsys) -> None:
+    # The flip is robust: a down daemon falls back to the in-process path, NAMED (never silent).
+    monkeypatch.setattr(ask, "_executor_ready", lambda: False)
+    monkeypatch.setattr(ask, "answer_via_executor", lambda q, k: ("EXEC", [], {}))
+    monkeypatch.setattr(ask, "answer", lambda *a, **k: ("LEGACY", [], {}))
+    monkeypatch.setattr(ask, "capture", lambda *a, **k: None)
+    seen: dict[str, str] = {}
+    monkeypatch.setattr(ask, "render", lambda text, *a, **k: seen.update(text=text))
+    ask.ask_once(None, "my passport?", 20)
+    assert seen["text"] == "LEGACY"
+    assert "in-process" in capsys.readouterr().out  # the named fallback notice
+
+
+def test_ask_once_legacy_flag_forces_in_process(monkeypatch) -> None:
+    # --legacy (executor=False) forces the in-process path even when the daemon is up.
+    monkeypatch.setattr(ask, "_executor_ready", lambda: True)
+    monkeypatch.setattr(ask, "answer_via_executor", lambda q, k: ("EXEC", [], {}))
+    monkeypatch.setattr(ask, "answer", lambda *a, **k: ("LEGACY", [], {}))
+    monkeypatch.setattr(ask, "capture", lambda *a, **k: None)
+    seen: dict[str, str] = {}
+    monkeypatch.setattr(ask, "render", lambda text, *a, **k: seen.update(text=text))
+    ask.ask_once(None, "my passport?", 20, executor=False)
+    assert seen["text"] == "LEGACY"
