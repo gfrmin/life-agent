@@ -370,6 +370,19 @@ def test_ask_once_falls_back_to_legacy_when_daemon_down(monkeypatch, capsys) -> 
     assert "in-process" in capsys.readouterr().out  # the named fallback notice
 
 
+def test_ask_once_clears_stale_executor_decision_on_legacy(monkeypatch) -> None:
+    # Bug guard: a prior executor answer's id must NOT bind a later legacy answer's verdict.
+    # ask_once resets EXECUTOR_LAST before dispatch, so the in-process fallback leaves no stale id
+    # for _record_reaction (which checks EXECUTOR_LAST first) to mis-join.
+    monkeypatch.setattr(ask, "EXECUTOR_LAST", "ab-stale")
+    monkeypatch.setattr(ask, "_executor_ready", lambda: False)  # daemon down → legacy fallback
+    monkeypatch.setattr(ask, "answer", lambda *a, **k: ("LEGACY", [], {}))
+    monkeypatch.setattr(ask, "capture", lambda *a, **k: None)
+    monkeypatch.setattr(ask, "render", lambda *a, **k: None)
+    ask.ask_once(None, "q?", 20)
+    assert ask.EXECUTOR_LAST is None
+
+
 def test_ask_once_legacy_flag_forces_in_process(monkeypatch) -> None:
     # --legacy (executor=False) forces the in-process path even when the daemon is up.
     monkeypatch.setattr(ask, "_executor_ready", lambda: True)
