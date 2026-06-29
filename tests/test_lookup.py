@@ -151,6 +151,50 @@ def test_observation_cache_is_per_chunk(migrated_root: Path) -> None:
     assert client.calls == 2  # both replayed
 
 
+def test_observe_hits_collapses_correlated_duplicate_documents(migrated_root: Path) -> None:
+    # Two DIFFERENT documents carrying the same quoted value (a forwarded / re-filed copy) are
+    # correlated witnesses, not independent — observe_hits, the shared evidence SHAPER, collapses
+    # them to one. The §5 dedup must live here, not only in the host lookup_posterior: the
+    # decouple split shaping from deciding, so a dedup in the host decider never reached the
+    # daemon path (bridge /extract → to_abstract_observations) and the q-002/q-014 confident-wrong
+    # regression stayed latent in the executor.
+    quote = "Passport No: P1234567"
+    client = FakeClient({"found": True, "value": "P1234567", "quote": quote})
+    hits = [_hit("a" * 64, f"{quote} issued 2019"),
+            _hit("b" * 64, f"FWD: {quote} issued 2019")]
+    obs, ind = observe_hits(migrated_root, "passport number?", hits, client=client)
+    assert ind == 0
+    assert len(obs) == 1  # the correlated duplicate collapses to a single witness
+
+
+def test_observe_hits_keeps_independent_value_only_corroboration(migrated_root: Path) -> None:
+    # Same value, but each document quotes ONLY the bare value (no shared surrounding context):
+    # genuine independent corroboration, not a copy — both witnesses are kept. Over-dedup would
+    # discard real evidence and understate confidence.
+    client = FakeClient({"found": True, "value": "P1234567", "quote": "P1234567"})
+    hits = [_hit("a" * 64, "the passport is P1234567"),
+            _hit("b" * 64, "P1234567 on file")]
+    obs, ind = observe_hits(migrated_root, "passport number?", hits, client=client)
+    assert ind == 0
+    assert len(obs) == 2  # value-only quotes don't collapse — independent corroboration stands
+
+
+def test_daemon_abstract_observations_collapse_correlated_duplicates(
+        migrated_root: Path) -> None:
+    # The executor's evidence shaping end-to-end: observe_hits → to_abstract_observations is
+    # exactly what the daemon (Move 2) consumes. A correlated duplicate must not reach it as two
+    # witnesses (which saturated the §4.2-less posterior — the regression). This is the daemon-seam
+    # lock: it would also fail if to_abstract_observations ever re-expanded a collapsed cluster.
+    from life_agent.bridge.observations import to_abstract_observations
+    quote = "Passport No: P1234567"
+    client = FakeClient({"found": True, "value": "P1234567", "quote": quote})
+    hits = [_hit("a" * 64, f"{quote} issued 2019"),
+            _hit("b" * 64, f"FWD: {quote} issued 2019")]
+    obs, _ = observe_hits(migrated_root, "passport number?", hits, client=client)
+    _candidates, abstract = to_abstract_observations(obs)
+    assert len(abstract) == 1  # the daemon sees one witness, not a saturating duplicate
+
+
 class _BetaBrain:
     """A Beta-Bernoulli test-oracle brain (create_state/condition/read_params/mean) modelling the
     conjugacy the body drives OVER THE WIRE for the rho Beta — no host `prior + correct` fold."""

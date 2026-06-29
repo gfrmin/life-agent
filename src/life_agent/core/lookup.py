@@ -559,7 +559,13 @@ def observe_hits(root: Path, question: str, hits: list[dict[str, Any]], *,
             time_factor=t_factor,
             doc_date=cov.doc_date.get(artifact_key),
         ))
-    return observations, indeterminate
+    # §5 dedup-as-inference at the SHARED shaper: collapse correlated duplicate documents
+    # (identical-quote forward/reply chains, re-filed copies) to one witness here, BEFORE the
+    # shaping→deciding split, so a duplicate cannot saturate the posterior on EITHER decider — the
+    # host lookup_posterior OR the daemon's reliability_categorical (which consumes this verbatim
+    # through to_abstract_observations). Placed in the decider alone (commit 01a384e), the §4.2
+    # temper never reached the executor path; observe_hits is the single seam both consume.
+    return dedup_correlated(observations), indeterminate
 
 
 # --- the posterior (pure builders; conditioning through the credence skin) -------------
@@ -649,10 +655,10 @@ def lookup_posterior(brain: Brain, observations: list[Observation],
         "alpha": alpha, "beta": beta,
     })
     keys = [_candidate_key(c) for c in candidates]
-    # §5 dedup-as-inference: collapse correlated duplicate documents (identical-quote
-    # forward/reply chains) to one witness BEFORE conditioning, so duplicated evidence cannot
-    # saturate the posterior (restoring the ancestry temper 862ed66 dropped).
-    observations = dedup_correlated(observations)
+    # NB: correlated-duplicate collapse (§5 dedup-as-inference) happens UPSTREAM in observe_hits,
+    # the shared shaper both deciders consume — so this builder and the daemon's
+    # reliability_categorical see identical, already-deduped evidence. Do not re-dedup here: that
+    # asymmetry (host deciding-time temper the daemon lacked) was the regression 01a384e half-fixed.
     groups: dict[str, list[Observation]] = {}
     for o in observations:
         groups.setdefault(o.artifact_cache_key, []).append(o)
