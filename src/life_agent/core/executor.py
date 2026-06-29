@@ -205,6 +205,14 @@ def render_view(view: View) -> str:
     eff = view["effector"]
     cands, creds, hits = view["candidates"], view["credences"], view["hits"]
     asserted = view["asserted"]
+    # The daemon returns credences in CANDIDATE order (server.jl w[1:k]), NOT weight-sorted, and
+    # the reported value is the MAP/leader — usually not index 0. Reorder leader-first so creds[0]
+    # is the leader's credence and `alts` is weight-ordered (as lookup.render + the bridge's
+    # /log_decision guard do); else a report shows the first-extracted candidate's probability.
+    if creds and len(creds) == len(cands):
+        order = sorted(range(len(cands)), key=lambda j: creds[j], reverse=True)
+        cands = [cands[j] for j in order]
+        creds = [creds[j] for j in order]
     alts = " · ".join(f"{v} ({p:.3f}) {_cites(v, hits)}".rstrip()
                       for v, p in zip(cands, creds, strict=False))
     if eff == "report" and asserted:

@@ -1068,6 +1068,8 @@ def ask_once(conn: duckdb.DuckDBPyConnection, question: str, k: int,
     to the in-process families, NAMED (never silent), and ``executor=False`` (``--legacy``) forces
     that in-process path. Temporal scoping (/since …) is not yet wired into the executor, so a
     scoped question there is NAMED and answered unscoped."""
+    global EXECUTOR_LAST
+    EXECUTOR_LAST = None  # clean per-question state; the dispatched path sets its own id
     use_executor = executor and _executor_ready()
     if executor and not use_executor:
         print("  (executor unavailable — the answer-brain daemon/bridge is down; "

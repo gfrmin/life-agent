@@ -193,6 +193,20 @@ def test_render_view_abstain_with_no_candidates() -> None:
     assert "No answer asserted" in out
 
 
+def test_render_view_report_shows_the_leaders_credence_not_index0() -> None:
+    # The daemon returns credences in CANDIDATE order (server.jl w[1:k]), not weight-sorted; the
+    # reported value is the MAP/leader, generally NOT index 0. render_view must show the LEADER's
+    # credence — else a report states the first-extracted candidate's probability (the bridge's
+    # /log_decision already sorts leader-first; render_view must match).
+    view = {"effector": "report", "asserted": ["P123"], "candidates": ["Q9", "P123"],
+            "credences": [0.08, 0.92], "p_none": 0.0, "eu": 0.8, "n_obs": 2,
+            "hits": [{"artifact_cache_key": "d0", "chunk_text": "Passport No: P123"}],
+            "route": {"construct": "passport number"}}
+    out = EX.render_view(view)
+    assert "credence 0.920" in out      # the leader P123's credence
+    assert "credence 0.080" not in out  # not the first-extracted candidate's
+
+
 def test_render_view_narrative_passes_through_verbatim() -> None:
     # A narrative view is rendered bridge-side; render_view returns it unchanged.
     view = {"effector": "report", "asserted": ["x"], "candidates": [], "credences": [],
