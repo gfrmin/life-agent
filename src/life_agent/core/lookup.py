@@ -559,7 +559,13 @@ def observe_hits(root: Path, question: str, hits: list[dict[str, Any]], *,
             time_factor=t_factor,
             doc_date=cov.doc_date.get(artifact_key),
         ))
-    return observations, indeterminate
+    # §5 dedup-as-inference at the SHARED shaper: collapse correlated duplicate documents
+    # (identical-quote forward/reply chains, re-filed copies) to one witness here, BEFORE the
+    # shaping→deciding split, so a duplicate cannot saturate the posterior on EITHER decider — the
+    # host lookup_posterior OR the daemon's reliability_categorical (which consumes this verbatim
+    # through to_abstract_observations). Placed in the decider alone (commit 01a384e), the §4.2
+    # temper never reached the executor path; observe_hits is the single seam both consume.
+    return dedup_correlated(observations), indeterminate
 
 
 # --- the posterior (pure builders; conditioning through the credence skin) -------------
@@ -571,6 +577,51 @@ def candidates_from(observations: list[Observation]) -> list[str]:
     for o in observations:
         seen.setdefault(_candidate_key(o.value_raw), o.value_raw)
     return list(seen.values())
+
+
+def _covariate(o: Observation) -> float:
+    """The §4.1 evidence covariate folded into the group channel: authority·subject·time."""
+    return o.authority * o.subject_factor * o.time_factor
+
+
+def _quote_key(quote: str) -> str:
+    """Normalised quote for correlation dedup (whitespace-collapsed, casefolded)."""
+    return " ".join((quote or "").split()).casefold()
+
+
+def dedup_correlated(observations: list[Observation]) -> list[Observation]:
+    """Collapse correlated DUPLICATE observations to one witness each (§5 dedup-as-inference).
+
+    Observations carrying a near-identical quote across DIFFERENT documents are the same
+    underlying text duplicated (a forwarded/replied email chain, a re-filed copy), not
+    independent witnesses — counting them independently saturates the posterior (the regression
+    862ed66 introduced when it retired the §4.2 ancestry temper: q-002's 6 emails → 0.99 on a
+    wrong value, q-014's 9 stale copies → 0.80). Each substantial-quote cluster spanning
+    multiple documents is reduced to the MAX-covariate document's observations — the
+    strongest/freshest copy, so a recent re-attestation keeps its recency. Within a single
+    document, and for value-ONLY quotes (no shared context), nothing collapses: genuine
+    independent corroboration must still accumulate; only duplicates collapse. Order-preserving
+    and pure."""
+    by_quote: dict[str, list[Observation]] = {}
+    for o in observations:
+        by_quote.setdefault(_quote_key(o.quote), []).append(o)
+    drop: set[int] = set()
+    for qkey, group in by_quote.items():
+        docs = {o.artifact_cache_key for o in group}
+        if len(docs) <= 1:
+            continue  # within one document — the per-document group already counts it once
+        # Dedupe only when the shared quote carries CONTEXT beyond the bare value: identical
+        # SURROUNDING text across documents is the duplicate signal (a forwarded/quoted chain or
+        # a re-filed copy). A value-only quote is kept — the same value with no shared context
+        # may be genuine independent corroboration, not a copy. (q-002's wrong cluster shares the
+        # 2-token quote "Israeli <id>"; the gold its own scan-OCR quote — both carry context.)
+        value_tokens = set((group[0].value_norm or "").split())
+        if not any(t not in value_tokens for t in qkey.split()):
+            continue
+        best = max(docs, key=lambda d: max(
+            _covariate(o) for o in group if o.artifact_cache_key == d))
+        drop.update(id(o) for o in group if o.artifact_cache_key != best)
+    return [o for o in observations if id(o) not in drop]
 
 
 def _v_marginal(brain: Brain, state_id: str) -> list[float]:
@@ -604,12 +655,16 @@ def lookup_posterior(brain: Brain, observations: list[Observation],
         "alpha": alpha, "beta": beta,
     })
     keys = [_candidate_key(c) for c in candidates]
+    # NB: correlated-duplicate collapse (§5 dedup-as-inference) happens UPSTREAM in observe_hits,
+    # the shared shaper both deciders consume — so this builder and the daemon's
+    # reliability_categorical see identical, already-deduped evidence. Do not re-dedup here: that
+    # asymmetry (host deciding-time temper the daemon lacked) was the regression 01a384e half-fixed.
     groups: dict[str, list[Observation]] = {}
     for o in observations:
         groups.setdefault(o.artifact_cache_key, []).append(o)
     for group in groups.values():
         o0 = group[0]  # one document's covariates are shared by all its chunks
-        covariate = o0.authority * o0.subject_factor * o0.time_factor
+        covariate = _covariate(o0)
         reports = [keys.index(_candidate_key(o.value_raw)) + 1 for o in group]  # 1-based atom value
         kernel = {"type": "group_noisy_channel", "covariate": covariate,
                   "n_alternatives": _A_ALTERNATIVES}

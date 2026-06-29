@@ -955,6 +955,17 @@ Stages 2–7 are dependency-ordered, not timed; each is independently valuable; 
 eval-gated per the amended PRINCIPLES §9. Re-prioritisation within the order is itself
 the §7 EU calculation once stage 1's calibration data exists.
 
+**Re-grounded 2026-06-28 (PRINCIPLES §16, the executor unification).** Stage 6 is not a deferred
+governor. The executor — one argmax-EU over the terminal responses **and** the transformations,
+on credence — *is* the agent (PRINCIPLES §1), built now and conservative-first as its own data
+loop (it calibrates by running, so there is no build-vs-calibrate ordering to wait out). The
+stages above are then the **faculties and decisions the executor ranges over** — lookup /
+aggregate / thread are families in its decision space; filing and audits are further actions;
+the transforms (retrieve / rerank / gather / extract / derive / route) are the rest — not a
+sequence that culminates in a separately-built governor. What stays true: outward write-actions
+(stage 7) wait on the utility model (§3), and *which* faculty to deepen next is itself the
+executor's EU call.
+
 **The write-action line, drawn now because stage 6 will lean on it.** Stage 4's filing
 governor writes the GTD ledger under the v0 utility posterior, which sits next to "no
 autonomous write-action before the utility model" (PRINCIPLES §3, stage 7's gate). The
