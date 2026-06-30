@@ -91,6 +91,35 @@ def test_route_none_is_json_null_the_narrative_path(deps: BridgeDeps,
     assert payload is None
 
 
+# --- /decompose ------------------------------------------------------------------------
+
+def test_decompose_returns_labeled_fields(deps: BridgeDeps,
+                                          monkeypatch: pytest.MonkeyPatch) -> None:
+    from life_agent.core import decompose as DECOMP
+
+    monkeypatch.setattr(DECOMP, "decompose_question",
+                        lambda root, q, **k: [
+                            DECOMP.Field(label="lender", question="my mortgage lender?"),
+                            DECOMP.Field(label="amount", question="my mortgage amount?")])
+    status, payload = _call(deps, "POST", "/decompose",
+                            {"question": "my mortgage — lender and amount?"})
+    assert status == 200
+    assert payload == {"fields": [
+        {"label": "lender", "question": "my mortgage lender?"},
+        {"label": "amount", "question": "my mortgage amount?"}]}
+
+
+def test_decompose_single_value_is_one_field(deps: BridgeDeps,
+                                             monkeypatch: pytest.MonkeyPatch) -> None:
+    from life_agent.core import decompose as DECOMP
+
+    monkeypatch.setattr(DECOMP, "decompose_question",
+                        lambda root, q, **k: [DECOMP.Field(label="x", question=q)])
+    status, payload = _call(deps, "POST", "/decompose", {"question": "what is x?"})
+    assert status == 200
+    assert payload == {"fields": [{"label": "x", "question": "what is x?"}]}
+
+
 # --- /retrieve -------------------------------------------------------------------------
 
 def test_retrieve_builds_query_from_terms_and_returns_hits(

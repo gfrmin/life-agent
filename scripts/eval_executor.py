@@ -35,7 +35,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from answer_labels import Label, load_labels, verdict
 from eval_grading import answer_matches, chunk_matches_any
 from run_eval import _answer_in_corpus, _kb_root, load_questions
-from triage_grading import triage
+from triage_grading import gate_assertions, triage
 
 BRIDGE = os.environ.get("LIFE_AGENT_BRIDGE_URL", "http://127.0.0.1:8798")
 DAEMON = os.environ.get("ANSWER_BRAIN_URL", "http://127.0.0.1:8799")
@@ -69,12 +69,21 @@ def _grade(conn, q: dict, view: dict, labels: list[Label]) -> dict:
     gold_in_corpus = gold_in_topk or (answerable and _answer_in_corpus(conn, gold, variants))
     gold_in_candidates = answerable and any(
         answer_matches(gold, variants, c) for c in view["candidates"])
+    # The confident-wrong gate is measured per-field: for a compound answer only the field that
+    # extracted the gold is gradable against it (a sibling answers a sub-question we hold no gold
+    # for). Correctness + distractor stay over the union (the gold surfacing anywhere is right; a
+    # distractor anywhere is the sin), but the gate's "asserted" bool counts only gate-relevant
+    # assertions (plus any distractor) — so a withheld gold field with reporting siblings is
+    # WRONGLY_WITHHELD, not a false confident-wrong. A single-value answer is the union unchanged.
+    gate_asserted = gate_assertions(view.get("fields"), asserted, gold, variants,
+                                    matches=answer_matches)
     asserted_correct = answerable and any(answer_matches(gold, variants, a) for a in asserted)
     asserted_distractor = any(answer_matches(d, [], a) for d in distractors for a in asserted)
     asserted_verdict = next(
-        (v for a in asserted if (v := verdict(labels, q["id"], a)) is not None), None)
+        (v for a in gate_asserted if (v := verdict(labels, q["id"], a)) is not None), None)
+    asserted_bool = bool(gate_asserted) or asserted_distractor
 
-    t = triage(answerable=answerable, asserted=bool(asserted),
+    t = triage(answerable=answerable, asserted=asserted_bool,
                asserted_correct=asserted_correct, asserted_distractor=asserted_distractor,
                gold_in_candidates=gold_in_candidates, gold_in_topk=gold_in_topk,
                gold_in_corpus=gold_in_corpus, scoped=False, asserted_verdict=asserted_verdict)
@@ -88,6 +97,28 @@ def _grade(conn, q: dict, view: dict, labels: list[Label]) -> dict:
         "channel": {"gold_in_topk": bool(gold_in_topk), "gold_in_corpus": bool(gold_in_corpus),
                     "gold_in_candidates": bool(gold_in_candidates),
                     "asserted_correct": bool(asserted_correct)},
+        # the per-field detail of a compound answer, so a confident-wrong flag is adjudicable
+        # per-field (which field asserted what). Empty for a single-value answer.
+        "fields": [{"label": fv.get("label", ""), "effector": fv["effector"],
+                    "asserted": fv["asserted"], "candidates": fv["candidates"][:3]}
+                   for fv in (view.get("fields") or [])],
+    }
+
+
+def _error_packet(q: dict, exc: Exception) -> dict:
+    """A full-shaped packet for a question whose loop raised — a non-CORRECT, non-CW row
+    (its own ERROR bucket) so a single seam failure is RECORDED, not silently dropped, and
+    never miscounts the gate."""
+    gold = q.get("answer", "")
+    return {
+        "id": q["id"], "question": q["question"], "subject": q.get("subject", "n/a"),
+        "answerable": bool(gold), "gold": gold, "effector": "error",
+        "asserted": [], "candidates": [], "credences": [], "p_none": None,
+        "bucket": "ERROR", "cause": f"{type(exc).__name__}: {exc}", "needs_judgment": False,
+        "owner_graded": False, "asserted_verdict": None,
+        "channel": {"gold_in_topk": False, "gold_in_corpus": False,
+                    "gold_in_candidates": False, "asserted_correct": False},
+        "fields": [],
     }
 
 
@@ -165,22 +196,29 @@ def main() -> int:
 
     print(f"Answer-brain loop eval: {len(questions)} questions · k={args.k} · "
           f"decision = credence daemon · {len(labels)} owner label(s)")
+    out_dir = _kb_root() / "eval" / "exec"
+    out_dir.mkdir(parents=True, exist_ok=True)
     t0 = time.monotonic()
     packets: list[dict] = []
     for q in questions:
-        view = EX.decide_via_loop(q["question"], args.k, bridge=BRIDGE, daemon=DAEMON,
-                                  post=_post, get=_get, grow=_GROW, rerank=args.rerank)
-        p = _grade(conn, q, view, labels)
+        try:
+            view = EX.decide_via_loop(q["question"], args.k, bridge=BRIDGE, daemon=DAEMON,
+                                      post=_post, get=_get, grow=_GROW, rerank=args.rerank)
+            p = _grade(conn, q, view, labels)
+        except Exception as e:
+            # A seam failure (e.g. the bridge dropping the connection on a cloud-quota error)
+            # must not abort the run and lose every prior packet — record it and continue.
+            print(f"  {q['id']}: ERROR {type(e).__name__}: {e}")
+            p = _error_packet(q, e)
         packets.append(p)
         print(f"  {p['id']}: {p['effector']} → {p['bucket']}"
               + (f"/{p['cause']}" if p["cause"] else ""))
+        # Persist incrementally: a hard crash (or the bridge dying) keeps the progress so far.
+        (out_dir / "loop_packets.jsonl").write_text(
+            "".join(json.dumps(x, ensure_ascii=False, sort_keys=True) + "\n" for x in packets),
+            encoding="utf-8")
     elapsed = time.monotonic() - t0
 
-    out_dir = _kb_root() / "eval" / "exec"
-    out_dir.mkdir(parents=True, exist_ok=True)
-    (out_dir / "loop_packets.jsonl").write_text(
-        "".join(json.dumps(p, ensure_ascii=False, sort_keys=True) + "\n" for p in packets),
-        encoding="utf-8")
     (out_dir / "loop_report.md").write_text(
         render_report(packets, k=args.k, elapsed=elapsed), encoding="utf-8")
 

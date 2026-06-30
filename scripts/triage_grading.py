@@ -38,7 +38,37 @@ recoverable answer the decision layer wrongly withheld?).
 
 from __future__ import annotations
 
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from typing import Any
+
+
+def gate_assertions(
+    fields: Sequence[dict[str, Any]] | None,
+    asserted: Sequence[str],
+    gold: str,
+    variants: Sequence[str],
+    *,
+    matches: Callable[[str, Sequence[str], str], bool],
+) -> list[str]:
+    """The asserted values that are GRADABLE against this (single-field) gold for the
+    confident-wrong gate.
+
+    A compound answer (foundations §5: one labeled field per thing the question asks) carries
+    several assertions, but the eval gold names ONE field's truth. An assertion is gradable only
+    if it comes from the field that extracted the gold (the gold is among that field's
+    candidates) — a sibling field answers a DIFFERENT sub-question for which we hold no gold, so
+    it can be neither correct nor confident-wrong, and must not count as a false sin. When no
+    field extracted the gold we cannot attribute, so we grade the whole union conservatively
+    (attribution failure never HIDES a possible wrong). A single-value answer (``fields`` falsy)
+    is the union unchanged."""
+    if not fields:
+        return list(asserted)
+    gold_fields = [f for f in fields
+                   if any(matches(gold, variants, str(c)) for c in f.get("candidates", []))]
+    if gold_fields:
+        return [a for f in gold_fields for a in f.get("asserted", [])]
+    return list(asserted)
 
 
 @dataclass(frozen=True)

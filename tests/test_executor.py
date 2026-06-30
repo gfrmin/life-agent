@@ -31,6 +31,8 @@ class FakeServices:
     def __init__(self, *, route: dict[str, Any] | None,
                  hits: list[dict[str, Any]] | None = None,
                  extract: dict[str, Any] | None = None,
+                 extracts: list[dict[str, Any]] | None = None,
+                 decompose: list[dict[str, str]] | None = None,
                  decides: list[dict[str, Any]] | None = None,
                  narrative: dict[str, Any] | None = None,
                  corroborate: dict[str, Any] | None = None,
@@ -38,6 +40,10 @@ class FakeServices:
         self.route = route
         self.hits = hits if hits is not None else _HIT
         self.extract = extract if extract is not None else _EXTRACT
+        self._extracts = list(extracts) if extracts is not None else None
+        # /decompose: a scripted field list, or (default) the single-field degenerate that
+        # preserves the single-value read-path — so every legacy fixture works unchanged.
+        self.decompose = decompose
         self._decides = list(decides or [])
         self.narrative = narrative
         self.corroborate = corroborate
@@ -48,6 +54,10 @@ class FakeServices:
         self.calls.append((url, payload))
         if url.endswith("/route"):
             return self.route
+        if url.endswith("/decompose"):
+            if self.decompose is not None:
+                return {"fields": self.decompose}
+            return {"fields": [{"label": "", "question": payload["question"]}]}
         if url.endswith("/narrative"):
             return self.narrative
         if url.endswith("/retrieve"):
@@ -57,6 +67,8 @@ class FakeServices:
         if url.endswith("/probe/recency"):
             return {"doc_date": {}}
         if url.endswith("/extract"):
+            if self._extracts is not None:
+                return self._extracts.pop(0)
             return self.extract
         if url.endswith("/probe/corroborate"):
             return self.corroborate
@@ -206,6 +218,93 @@ def test_truth_likely_missing_false_when_present_leader_wins() -> None:
         {"candidates": ["a", "b"], "credences": [0.6, 0.1], "p_none": 0.3}) is False
 
 
+# --- per-field (decompose → decide each → assemble): the owner's ruling B ----------------
+
+def _ext(candidates: list[str]) -> dict[str, Any]:
+    """A per-field /extract fixture: one grounded observation per candidate."""
+    return {"candidates": candidates,
+            "observations": [{"reports": i, "group": 0, "authority": 0.9,
+                              "subject_factor": 1.0, "time_factor": 1.0}
+                             for i in range(len(candidates))],
+            "rho": 0.7, "era_split": False, "indeterminate": 0, "half_life_years": 5.0}
+
+
+def _report(value: str) -> dict[str, Any]:
+    return {"effector": "report", "value": value, "credences": [0.9],
+            "p_none": 0.05, "eu": 0.8}
+
+
+def test_multi_field_assembles_per_field_reports() -> None:
+    # A compound question decomposes into two labeled fields; each is extracted + decided on its
+    # OWN candidate set, and the assembled answer carries both reported values.
+    fake = FakeServices(
+        route={"construct": "x", "time_indexed": False},
+        decompose=[{"label": "lender", "question": "my mortgage lender?"},
+                   {"label": "amount", "question": "my mortgage amount?"}],
+        extracts=[_ext(["BankCo"]), _ext(["250000"])],
+        decides=[_report("BankCo"), _report("250000")])
+    view = _loop(fake, "my mortgage — lender and amount?", grow=False)
+    assert view["effector"] == "report"
+    assert view["asserted"] == ["BankCo", "250000"]
+    assert set(view["candidates"]) == {"BankCo", "250000"}
+
+
+def test_multi_field_decides_once_per_field_no_pooling() -> None:
+    # The autonomy property: each field is a SEPARATE /decide (its own posterior + optimise),
+    # never one pooled decision over mixed-type candidates.
+    fake = FakeServices(
+        route={"construct": "x", "time_indexed": False},
+        decompose=[{"label": "hmo", "question": "my HMO?"},
+                   {"label": "member no", "question": "my HMO member number?"}],
+        extracts=[_ext(["HealthCoX"]), _ext(["9988776"])],
+        decides=[_report("HealthCoX"), _report("9988776")])
+    _loop(fake, "my HMO and member number?", grow=False)
+    assert len(fake.posted("/decide")) == 2          # one decision per field
+    assert len(fake.posted("/extract")) == 2          # one extraction per field
+    assert len(fake.posted("/decompose")) == 1        # decomposed once, up front
+
+
+def test_multi_field_partial_report_names_withheld() -> None:
+    # One field reports, the other abstains (dispersed). The assembled answer is a PARTIAL report:
+    # the answered field is asserted, the withheld field drags nothing down and is NOT asserted —
+    # the per-field gate keeps an un-graded field from ever being confidently wrong.
+    fake = FakeServices(
+        route={"construct": "x", "time_indexed": False},
+        decompose=[{"label": "date", "question": "when did my father die?"},
+                   {"label": "place", "question": "where did my father die?"}],
+        extracts=[_ext(["1990-01-02"]), _ext(["CityA", "CityB"])],
+        decides=[_report("1990-01-02"),
+                 {"effector": "abstain", "credences": [0.4, 0.4], "p_none": 0.2, "eu": -0.05}])
+    view = _loop(fake, "when did my father die and where?", grow=False)
+    assert view["effector"] == "report"          # we asserted something
+    assert view["asserted"] == ["1990-01-02"]     # only the resolved field
+    assert "CityA" not in view["asserted"] and "CityB" not in view["asserted"]
+
+
+def test_multi_field_all_withheld_is_abstain() -> None:
+    fake = FakeServices(
+        route={"construct": "x", "time_indexed": False},
+        decompose=[{"label": "a", "question": "field a?"},
+                   {"label": "b", "question": "field b?"}],
+        extracts=[_ext(["x", "y"]), _ext(["p", "q"])],
+        decides=[{"effector": "abstain", "credences": [0.4, 0.4], "p_none": 0.2, "eu": -0.05},
+                 {"effector": "abstain", "credences": [0.4, 0.4], "p_none": 0.2, "eu": -0.05}])
+    view = _loop(fake, "a and b?", grow=False)
+    assert view["effector"] == "abstain"
+    assert view["asserted"] == []
+
+
+def test_single_field_view_is_unchanged_no_fields_key() -> None:
+    # The degenerate case (decompose → one field) returns the raw single-field view, with NO
+    # multi-field detail — byte-for-byte the legacy typed-report path (preservation guarantee).
+    fake = FakeServices(route={"construct": "passport number", "time_indexed": False},
+                        decides=[_report("P123")])
+    view = _loop(fake, grow=False)
+    assert view["effector"] == "report"
+    assert view["asserted"] == ["P123"]
+    assert "fields" not in view
+
+
 # --- render_view: the executor's decision in the shared credence grammar ----------------
 
 def test_render_view_report_uses_grammar_with_citations() -> None:
@@ -240,6 +339,31 @@ def test_render_view_report_shows_the_leaders_credence_not_index0() -> None:
     out = EX.render_view(view)
     assert "credence 0.920" in out      # the leader P123's credence
     assert "credence 0.080" not in out  # not the first-extracted candidate's
+
+
+def test_render_view_multi_field_labels_each_field() -> None:
+    # A compound answer renders one labeled line per field — the resolved field reports its value
+    # + credence + cites, the withheld field NAMES what it held back (interaction contract: never
+    # silent). The footer names the aggregate posterior.
+    view = {
+        "effector": "report", "asserted": ["BankCo"],
+        "candidates": ["BankCo", "CityA", "CityB"], "credences": [0.9, 0.4, 0.4],
+        "p_none": 0.2, "eu": 0.75, "n_obs": 3,
+        "hits": [{"artifact_cache_key": "d0", "chunk_text": "Lender: BankCo"}],
+        "route": None,
+        "fields": [
+            {"label": "lender", "effector": "report", "asserted": ["BankCo"],
+             "candidates": ["BankCo"], "credences": [0.9], "p_none": 0.05, "eu": 0.8, "n_obs": 1,
+             "hits": [{"artifact_cache_key": "d0", "chunk_text": "Lender: BankCo"}]},
+            {"label": "amount", "effector": "abstain", "asserted": [],
+             "candidates": ["CityA", "CityB"], "credences": [0.4, 0.4], "p_none": 0.2, "eu": -0.05,
+             "n_obs": 2, "hits": []},
+        ],
+    }
+    out = EX.render_view(view)
+    assert "lender: BankCo — credence 0.900 [1]" in out  # resolved field, cited
+    assert "amount:" in out and "No answer asserted" in out  # withheld field named
+    assert "decision report" in out  # footer names the aggregate posterior
 
 
 def test_render_view_narrative_passes_through_verbatim() -> None:

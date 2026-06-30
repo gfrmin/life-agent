@@ -103,8 +103,31 @@ def _obj(post: Post, url: str, payload: dict[str, Any]) -> dict[str, Any]:
 def decide_via_loop(question: str, k: int, *, bridge: str, daemon: str, post: Post, get: Get,
                     grow: bool = True, rerank: bool = False,
                     transforms: list[dict[str, Any]] | None = None) -> View:
-    """Drive one question through the live loop: route, then a cheap pass, then a single ``grow``
-    escalation (gated) when the cheap pass withholds.
+    """Decompose the question into its labeled single-value fields, decide EACH on its own
+    (route → cheap pass → grow), and assemble.
+
+    The owner's ruling (foundations §5): transformations flow from the question. A compound
+    question ("my mortgage — lender, amount, and end date") asks for several point facts; the
+    single-value extractor can return only one, so it drops or confuses fields. ``/decompose``
+    splits the question into the single-value sub-questions it asks; each becomes its OWN
+    candidate set + posterior, decided per-field by the daemon (no pooling, no ``slots>1``
+    route-fork — the slots come from the question, never a declared vocabulary). A single-value
+    question decomposes to one field whose sub-question IS the question, so :func:`decide_field`
+    runs the exact legacy path and :func:`assemble` returns it unchanged — the single-value
+    read-path is preserved byte-for-byte."""
+    transforms = DEFAULT_TRANSFORMS if transforms is None else transforms
+    fields = _obj(post, f"{bridge}/decompose", {"question": question})["fields"]
+    views = [decide_field(f["question"], k, bridge=bridge, daemon=daemon, post=post, get=get,
+                          grow=grow, rerank=rerank, transforms=transforms)
+             for f in fields]
+    return assemble(question, fields, views)
+
+
+def decide_field(question: str, k: int, *, bridge: str, daemon: str, post: Post, get: Get,
+                 grow: bool = True, rerank: bool = False,
+                 transforms: list[dict[str, Any]] | None = None) -> View:
+    """One labeled field's full single-value decision: route, then a cheap pass, then a single
+    ``grow`` escalation (gated) when the cheap pass withholds.
 
     A declined route (``/route`` → null) is the NARRATIVE family — synthesize a cited answer,
     audit each claim, include only grounded + EU-positive claims; gate-safe by construction. A
@@ -143,6 +166,56 @@ def decide_via_loop(question: str, k: int, *, bridge: str, daemon: str, post: Po
             if grown["effector"] == "report" or not view["candidates"]:
                 view = grown
     return view
+
+
+def _dedup_hits(views: list[View]) -> list[dict[str, Any]]:
+    """The union of every field's retrieval hits, deduped on (artifact, chunk) in first-seen
+    order — the assembled answer's evidence set (the grader's cards + the cite numbering)."""
+    seen: set[tuple[Any, Any]] = set()
+    out: list[dict[str, Any]] = []
+    for v in views:
+        for h in v["hits"]:
+            kk = (h.get("artifact_cache_key"), h.get("chunk_text"))
+            if kk in seen:
+                continue
+            seen.add(kk)
+            out.append(h)
+    return out
+
+
+def assemble(question: str, fields: list[dict[str, Any]], views: list[View]) -> View:
+    """Combine the per-field decisions into one assembled view. A single field returns its view
+    UNCHANGED — the single-value read-path is preserved byte-for-byte (no ``fields`` detail, same
+    keys, same values). For a compound question the assembled answer is a PARTIAL report: it
+    asserts every field that resolved (``effector`` = report when any field did) and names the
+    rest as withheld via the per-field ``fields`` detail. Because each field was decided on its
+    OWN posterior, a dispersed field abstains and is never confidently asserted — so an un-graded
+    field can't breach the 0-confident-wrong gate. The footer scalars are the honest aggregate:
+    the union evidence, the summed observations, and the LEAST-resolved field's missing-mass."""
+    if len(views) == 1:
+        return views[0]
+    asserted = [a for v in views for a in v["asserted"]]
+    if any(v["effector"] == "report" for v in views):
+        effector = "report"  # we asserted at least one field — a partial answer
+    elif any(v["effector"] in ("hedge", "ask_clarify") for v in views):
+        effector = next(v["effector"] for v in views
+                        if v["effector"] in ("hedge", "ask_clarify"))
+    elif any(v["candidates"] for v in views):
+        effector = "abstain"  # held candidates below the bar
+    else:
+        effector = "miss"  # no field found anything
+    p_nones = [v["p_none"] for v in views if v["p_none"] is not None]
+    eus = [v["eu"] for v in views if v["eu"] is not None]
+    return {
+        "effector": effector, "asserted": asserted,
+        "candidates": [c for v in views for c in v["candidates"]],
+        "credences": [c for v in views for c in v["credences"]],
+        "p_none": max(p_nones) if p_nones else None,
+        "eu": sum(eus) if eus else None,
+        "n_obs": sum(v["n_obs"] for v in views),
+        "hits": _dedup_hits(views), "route": None,
+        "fields": [{"label": f.get("label", ""), **v} for f, v in zip(fields, views, strict=False)],
+    }
 
 
 def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemon: str,
@@ -220,22 +293,14 @@ def _cites(value: str, hits: list[dict[str, Any]]) -> str:
     return "".join(f"[{n}]" for n in ns)
 
 
-def render_view(view: View) -> str:
-    """Render an executor view in the SHARED credence grammar (``lookup.GRAMMAR``) — the same
-    interaction-contract strings the in-process lookup family renders, so the owner sees one
-    consistent reply whichever path answered, and the posterior is named in the footer (nothing
-    silent). A narrative view is already rendered bridge-side and passes through verbatim; otherwise
-    the asserted value is cited to the hit cards that carry it."""
-    rendered = view.get("rendered")
-    if rendered:
-        return str(rendered)
-    eff = view["effector"]
-    cands, creds, hits = view["candidates"], view["credences"], view["hits"]
-    asserted = view["asserted"]
-    # The daemon returns credences in CANDIDATE order (server.jl w[1:k]), NOT weight-sorted, and
-    # the reported value is the MAP/leader — usually not index 0. Reorder leader-first so creds[0]
-    # is the leader's credence and `alts` is weight-ordered (as lookup.render + the bridge's
-    # /log_decision guard do); else a report shows the first-extracted candidate's probability.
+def _answer_body(eff: str, cands: list[str], creds: list[float], asserted: list[str],
+                 hits: list[dict[str, Any]]) -> str:
+    """One field's answer body in the shared credence grammar (no footer): a report cites its
+    leader value, a withhold names the held-back alternatives. The daemon returns credences in
+    CANDIDATE order (server.jl w[1:k]), NOT weight-sorted, and the reported value is the
+    MAP/leader — usually not index 0; reorder leader-first so ``creds[0]`` is the leader's
+    credence and ``alts`` is weight-ordered (as lookup.render + /log_decision do), else a report
+    shows the first-extracted candidate's probability."""
     if creds and len(creds) == len(cands):
         order = sorted(range(len(cands)), key=lambda j: creds[j], reverse=True)
         cands = [cands[j] for j in order]
@@ -244,19 +309,42 @@ def render_view(view: View) -> str:
                       for v, p in zip(cands, creds, strict=False))
     if eff == "report" and asserted:
         v = asserted[0]
-        body = LK.GRAMMAR["report"].format(value=v, p=(creds[0] if creds else 0.0),
+        return LK.GRAMMAR["report"].format(value=v, p=(creds[0] if creds else 0.0),
                                            cites=_cites(v, hits))
-    elif eff == "hedge":
-        body = LK.GRAMMAR["hedge"].format(alts=alts)
-    elif eff == "ask_clarify":
-        body = LK.GRAMMAR["ask_clarify"].format(alts=alts)
-    elif eff == "abstain" and cands:
-        body = LK.GRAMMAR["abstain_withheld"].format(reason=LK.REASON_DISPERSED, alts=alts)
-    else:  # abstain with no candidates, or miss (zero grounded observations)
-        body = LK.GRAMMAR["abstain"].format(reason=LK.REASON_DISPERSED)
+    if eff == "hedge":
+        return LK.GRAMMAR["hedge"].format(alts=alts)
+    if eff == "ask_clarify":
+        return LK.GRAMMAR["ask_clarify"].format(alts=alts)
+    if eff == "abstain" and cands:
+        return LK.GRAMMAR["abstain_withheld"].format(reason=LK.REASON_DISPERSED, alts=alts)
+    return LK.GRAMMAR["abstain"].format(reason=LK.REASON_DISPERSED)  # abstain no-cands, or miss
+
+
+def render_view(view: View) -> str:
+    """Render an executor view in the SHARED credence grammar (``lookup.GRAMMAR``) — the same
+    interaction-contract strings the in-process lookup family renders, so the owner sees one
+    consistent reply whichever path answered, and the posterior is named in the footer (nothing
+    silent). A narrative view is already rendered bridge-side and passes through verbatim. A
+    compound (multi-field) view renders one LABELED body per field — the resolved fields report,
+    the withheld fields name what they held back — over one aggregate footer; a single-value view
+    renders its one body, exactly as before."""
+    rendered = view.get("rendered")
+    if rendered:
+        return str(rendered)
+    fields = view.get("fields")
+    if fields:  # a compound answer: one labeled body per field
+        def _line(fv: dict[str, Any]) -> str:
+            label = fv.get("label") or "value"
+            inner = _answer_body(fv["effector"], fv["candidates"], fv["credences"],
+                                 fv["asserted"], fv["hits"])
+            return f"{label}: {inner}"
+        body = "\n".join(_line(fv) for fv in fields)
+    else:
+        body = _answer_body(view["effector"], view["candidates"], view["credences"],
+                            view["asserted"], view["hits"])
     p_none, eu = view["p_none"], view["eu"]
     footer = LK.GRAMMAR["footer"].format(
-        n_hits=len(hits), n_obs=view.get("n_obs", 0), n_ind=0,
+        n_hits=len(view["hits"]), n_obs=view.get("n_obs", 0), n_ind=0,
         p_none=p_none if p_none is not None else 0.0,
-        action=eff, eu=eu if eu is not None else 0.0)
+        action=view["effector"], eu=eu if eu is not None else 0.0)
     return f"{body}\n\n{footer}"

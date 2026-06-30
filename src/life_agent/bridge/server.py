@@ -45,6 +45,7 @@ from life_agent import owner
 from life_agent.bridge.observations import to_abstract_observations
 from life_agent.core import config
 from life_agent.core import decisions as DEC
+from life_agent.core import decompose as DECOMP
 from life_agent.core import expansion as EXP
 from life_agent.core import joint_extract as JE
 from life_agent.core import lookup as LK
@@ -162,6 +163,15 @@ def _route(deps: BridgeDeps, p: Payload) -> Payload | None:
     # CONSTRUCT; volatility decides whether it decays.
     time_indexed = VOL.half_life(r.construct) < VOL.PERMANENT
     return {"construct": r.construct, "time_indexed": time_indexed}
+
+
+def _decompose(deps: BridgeDeps, p: Payload) -> Payload:
+    """The labeled single-value fields a question asks for (foundations §5): the body
+    decomposes a compound question into single-value sub-questions, each of which it then
+    routes/retrieves/extracts/decides on its own. One field for a single-value question (the
+    read-path-preserving degenerate case). The model + cache stay server-side."""
+    fields = DECOMP.decompose_question(deps.root, _req_str(p, "question"), client=deps.client)
+    return {"fields": [{"label": f.label, "question": f.question} for f in fields]}
 
 
 def _retrieve(deps: BridgeDeps, p: Payload) -> Payload:
@@ -417,6 +427,7 @@ def _narrative(deps: BridgeDeps, p: Payload) -> Payload:
 
 _POST: dict[str, Handler] = {
     "/route": _route,
+    "/decompose": _decompose,
     "/retrieve": _retrieve,
     "/extract": _extract,
     "/narrative": _narrative,
@@ -528,7 +539,8 @@ def build_deps() -> BridgeDeps:
 def main() -> None:
     server = BridgeServer(build_deps())
     print(f"life-agent capability bridge → http://{HOST}:{PORT}")
-    print("  POST /route /retrieve /extract /probe/{recency,subject,authority,corroborate}")
+    print("  POST /route /decompose /retrieve /extract "
+          "/probe/{recency,subject,authority,corroborate}")
     print("  POST /log_decision /log_reaction   (answer-brain verdict-emission seam)")
     print("  GET  /utility /ready")
     try:

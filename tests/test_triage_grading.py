@@ -14,7 +14,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
-from triage_grading import triage
+from triage_grading import gate_assertions, triage
+
+
+def _sub(gold: str, variants: list[str], text: str) -> bool:
+    """A tiny substring matcher standing in for answer_matches (keeps these tests pure)."""
+    return any(g in text for g in [gold, *variants])
 
 
 def _t(**kw):
@@ -30,6 +35,49 @@ def _t(**kw):
     )
     base.update(kw)
     return triage(**base)
+
+
+# --- gate_assertions: per-field attribution of the gold for a compound answer ----------
+
+
+def test_gate_assertions_single_value_returns_the_union() -> None:
+    # No per-field detail (a single-value answer) → grade the asserted values as-is.
+    assert gate_assertions(None, ["P123"], "P123", [], matches=_sub) == ["P123"]
+
+
+def test_gate_assertions_attributes_to_the_gold_field() -> None:
+    # The gold field reported the gold → it is the gate-relevant assertion (→ CORRECT downstream).
+    fields = [{"asserted": ["BankCo"], "candidates": ["BankCo"]},
+              {"asserted": ["250000"], "candidates": ["250000"]}]
+    assert gate_assertions(fields, ["BankCo", "250000"], "250000", [],
+                           matches=_sub) == ["250000"]
+
+
+def test_gate_assertions_excludes_sibling_when_gold_field_withheld() -> None:
+    # The gold field (its candidates hold the gold) ABSTAINED; a sibling reported. The sibling
+    # answers a different sub-question we hold no gold for → it is NOT gate-relevant, so the gate
+    # sees no assertion (→ WRONGLY_WITHHELD, never a false confident-wrong).
+    fields = [{"asserted": ["BankCo"], "candidates": ["BankCo"]},           # sibling, reported
+              {"asserted": [], "candidates": ["250000", "260000"]}]          # gold field, withheld
+    assert gate_assertions(fields, ["BankCo"], "250000", [], matches=_sub) == []
+
+
+def test_gate_assertions_keeps_gold_field_wrong_value() -> None:
+    # The gold field had the gold in candidates but reported a DIFFERENT value → a genuine
+    # confident-wrong; the wrong assertion stays gate-relevant.
+    fields = [{"asserted": ["BankCo"], "candidates": ["BankCo"]},
+              {"asserted": ["260000"], "candidates": ["250000", "260000"]}]  # had gold, said other
+    assert gate_assertions(fields, ["BankCo", "260000"], "250000", [],
+                           matches=_sub) == ["260000"]
+
+
+def test_gate_assertions_falls_back_to_union_when_gold_unextracted() -> None:
+    # No field extracted the gold (it is in nobody's candidates) → we cannot attribute, so grade
+    # the union conservatively (never hide a possible wrong by attribution failure).
+    fields = [{"asserted": ["BankCo"], "candidates": ["BankCo"]},
+              {"asserted": ["999"], "candidates": ["999"]}]
+    assert gate_assertions(fields, ["BankCo", "999"], "250000", [],
+                           matches=_sub) == ["BankCo", "999"]
 
 
 # --- asserted answers: CORRECT vs the cardinal sin --------------------------

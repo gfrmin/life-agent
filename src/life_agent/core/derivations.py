@@ -53,6 +53,7 @@ RETRIEVE_VERSION = "1"
 SYNTHESIZE_VERSION = "1"
 OWNER_MATCH_VERSION = "1"
 LOOKUP_ROUTE_VERSION = "1"
+LOOKUP_DECOMPOSE_VERSION = "1"
 LOOKUP_EXTRACT_VERSION = "1"
 LOOKUP_ANSWER_VERSION = "1"
 NARRATIVE_ANSWER_VERSION = "1"
@@ -75,6 +76,7 @@ CONTENT_TYPE_RETRIEVAL_SET = "application/x-ask-retrieval-set+json"
 CONTENT_TYPE_ANSWER = "application/x-ask-answer"
 CONTENT_TYPE_OWNER_MATCH = "application/x-ask-owner-match+json"
 CONTENT_TYPE_LOOKUP_ROUTE = "application/x-ask-lookup-route+json"
+CONTENT_TYPE_LOOKUP_DECOMPOSE = "application/x-ask-lookup-decompose+json"
 CONTENT_TYPE_LOOKUP_OBSERVATION = "application/x-ask-lookup-observation+json"
 CONTENT_TYPE_LOOKUP_ANSWER = "application/x-ask-lookup-answer+json"
 CONTENT_TYPE_NARRATIVE_ANSWER = "application/x-ask-narrative-answer+json"
@@ -225,6 +227,31 @@ def lookup_route_key(question: str, *, model: str, prompt_template: str,
                     producer_version=LOOKUP_ROUTE_VERSION, producer_config={},
                     schema_version=3, inputs=inputs,
                     content_type=CONTENT_TYPE_LOOKUP_ROUTE)
+
+
+def lookup_decompose_key(question: str, *, model: str, prompt_template: str,
+                         engine_version: str, output_schema: dict[str, Any]) -> StageKey:
+    """Key for one decompose verdict (foundations §5): the labeled single-value fields a
+    question asks for. Local model, cached per question — the slots flow from the QUESTION
+    (the owner's ruling), so the key is the question alone, exactly as :func:`lookup_route_key`.
+    A misdecomposition degrades to the whole-question field (§9 no-hard-zeros), so a bad
+    verdict never drops the question."""
+    inputs = {"question": question}
+    input_hash = _sha256(canonical_json(inputs))
+    cache_key = compute_cache_key(
+        input_hash, "life_agent.ask.lookup_decompose", LOOKUP_DECOMPOSE_VERSION, {},
+        schema_version=3,
+        model_identity={"provider": "ollama", "model": model,
+                        "inference_params": {"temperature": 0.0}},
+        engine_version=engine_version,
+        prompt_template_hash=_sha256(prompt_template),
+        output_schema=output_schema,
+    )
+    return StageKey(cache_key=cache_key, input_hash=input_hash,
+                    producer_name="life_agent.ask.lookup_decompose",
+                    producer_version=LOOKUP_DECOMPOSE_VERSION, producer_config={},
+                    schema_version=3, inputs=inputs,
+                    content_type=CONTENT_TYPE_LOOKUP_DECOMPOSE)
 
 
 def temporal_intent_key(question: str, *, model: str, prompt_template: str,
