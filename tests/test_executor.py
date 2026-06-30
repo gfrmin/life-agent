@@ -156,12 +156,13 @@ def test_corroborate_tier_is_enacted_then_report() -> None:
     assert corr[0]["model"] == "claude-haiku-4-5"  # the scheduled tier's model
 
 
-def test_grow_escalates_withhold_to_report() -> None:
-    # The cheap pass abstains; grow enlarges the candidate set once (rerank) and re-decides,
-    # adopting the grown report.
+def test_grow_fires_when_none_is_the_map_hypothesis() -> None:
+    # The cheap pass abstains AND the agent's belief says the answer is OUTSIDE the set — NONE
+    # ("not among the retrieved candidates") outweighs the best present candidate (p_none ≥ leader).
+    # That is the discovery case grow exists for: enlarge recall, re-decide, take the grown report.
     fake = FakeServices(
         route={"construct": "passport number", "time_indexed": False},
-        decides=[{"effector": "abstain", "credences": [0.4, 0.6], "p_none": 0.5, "eu": -0.1},
+        decides=[{"effector": "abstain", "credences": [0.2, 0.1], "p_none": 0.7, "eu": -0.1},
                  {"effector": "report", "value": "P123", "credences": [0.9, 0.1],
                   "p_none": 0.05, "eu": 0.8}])
     view = _loop(fake, grow=True)
@@ -169,6 +170,40 @@ def test_grow_escalates_withhold_to_report() -> None:
     assert view["asserted"] == ["P123"]
     retrieves = fake.posted("/retrieve")
     assert any(r["rerank"] for r in retrieves)  # grow ran a rerank recall pass
+
+
+def test_grow_skipped_when_present_leader_beats_none() -> None:
+    # A withhold whose present leader OUTWEIGHS NONE (p_none < leader) is the CORROBORATE case, not
+    # grow: the agent believes the answer IS among the retrieved candidates (just under the EU bar),
+    # so widening recall would only add distractors. The body consults the agent's P(NONE), not the
+    # bare withholding effector (the de-patch — belief-driven recall, answer_brain.jl's NONE seam).
+    fake = FakeServices(
+        route={"construct": "passport number", "time_indexed": False},
+        decides=[{"effector": "abstain", "credences": [0.55, 0.1], "p_none": 0.35, "eu": -0.05},
+                 {"effector": "report", "value": "WRONG", "credences": [0.9, 0.1],
+                  "p_none": 0.05, "eu": 0.8}])  # a grown report the gate must NOT reach
+    view = _loop(fake, grow=True)
+    assert view["effector"] == "abstain"        # stayed withheld — no grow rescue attempted
+    assert view["asserted"] == []               # did NOT adopt the unreached grown report
+    assert len(fake.posted("/retrieve")) == 1   # exactly one (cheap) recall pass; grow skipped
+
+
+def test_truth_likely_missing_true_when_no_candidates() -> None:
+    # Nothing extracted ⇒ the truth is definitionally not in the set ⇒ grow (discover).
+    assert EX._truth_likely_missing(
+        {"candidates": [], "credences": [], "p_none": None}) is True
+
+
+def test_truth_likely_missing_true_when_none_is_map() -> None:
+    # P(NONE) ≥ the best present candidate ⇒ the answer is likely outside the set ⇒ grow.
+    assert EX._truth_likely_missing(
+        {"candidates": ["a", "b"], "credences": [0.3, 0.2], "p_none": 0.5}) is True
+
+
+def test_truth_likely_missing_false_when_present_leader_wins() -> None:
+    # A present candidate outweighs NONE ⇒ the answer is likely in the set ⇒ corroborate, not grow.
+    assert EX._truth_likely_missing(
+        {"candidates": ["a", "b"], "credences": [0.6, 0.1], "p_none": 0.3}) is False
 
 
 # --- render_view: the executor's decision in the shared credence grammar ----------------
