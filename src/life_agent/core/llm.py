@@ -24,6 +24,14 @@ DEFAULT_ANSWER_MODEL = "claude-sonnet-4-6"
 TEMPERATURE = 0.0
 
 
+class LLMError(RuntimeError):
+    """A cloud-completion failure (HTTP error from the provider). A normal, CATCHABLE
+    exception — never ``SystemExit`` — so a long-lived service (the capability bridge) returns
+    500 and stays up on a transient provider error (rate limit / over-quota) instead of the
+    ``BaseException`` escaping ``except Exception`` and killing the process. Still fails loudly:
+    uncaught, it prints a full traceback with the provider's message."""
+
+
 def secret(name: str) -> str:
     key = os.environ.get(name)
     if key:
@@ -68,7 +76,7 @@ def anthropic_complete(system: str, user: str, *, model: str = DEFAULT_ANSWER_MO
         with urllib.request.urlopen(req) as resp:
             data = json.load(resp)
     except urllib.error.HTTPError as e:
-        raise SystemExit(f"Anthropic API {e.code}: {e.read().decode(errors='replace')}") from e
+        raise LLMError(f"Anthropic API {e.code}: {e.read().decode(errors='replace')}") from e
     dt = time.monotonic() - t0
     text = "".join(b["text"] for b in data.get("content", []) if b.get("type") == "text")
     u = data.get("usage", {})
@@ -95,7 +103,7 @@ def openai_complete(system: str, user: str, *, model: str,
         with urllib.request.urlopen(req) as resp:
             data = json.load(resp)
     except urllib.error.HTTPError as e:
-        raise SystemExit(f"OpenAI API {e.code}: {e.read().decode(errors='replace')}") from e
+        raise LLMError(f"OpenAI API {e.code}: {e.read().decode(errors='replace')}") from e
     dt = time.monotonic() - t0
     msg = (data.get("choices") or [{}])[0].get("message", {})
     text = msg.get("content", "") or ""

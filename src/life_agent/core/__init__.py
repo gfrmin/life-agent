@@ -22,6 +22,7 @@ from life_agent.core.config import (
 from life_agent.core.llm import (
     DEFAULT_ANSWER_MODEL,
     TEMPERATURE,
+    LLMError,
     LLMResult,
     anthropic_complete,
     openai_complete,
@@ -43,6 +44,7 @@ __all__ = [
     "TEMPERATURE",
     "UTILITY_ELICITATIONS",
     "UTILITY_MODEL",
+    "LLMError",
     "LLMResult",
     "SourceCard",
     "anthropic_complete",
