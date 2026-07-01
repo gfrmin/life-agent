@@ -7,6 +7,13 @@
 > hand-priced `:grow` menu — now an engine-scheduled actuator) and subsumes `aggregate-family-design.md`
 > §1a–§3 (per-slot extraction — now sensor emission).
 
+**Phase-0 baseline (confirmed 2026-07-01, clean run, quota restored):** CORRECT **6/18**,
+**0 confident-wrong** (gate held). Residual is **extraction-dominant**: 6 extraction-misses
+(q-005, q-007, q-010, q-012, q-013, q-015 — the `aggregate-family §1a` six exactly), 5
+retrieval-misses (q-004, q-006, q-009, q-014, q-020), 1 pooling (q-011); RIGHTLY_WITHHELD:
+q-016/017/018. This is the parity+conversion target (§5). (Master baseline; the `voi-scheduler`
+branch's retrieval wins are unmerged/owner-only and are subsumed here as sensors + `retrieve-wider`.)
+
 ## 1. The contract, and where it already lives
 
 Credence SPEC §6 is the brain/body boundary: *the brain receives sensor signals (feature vectors) and
@@ -106,7 +113,7 @@ categorical is unsure). Settle at confer with the governor integration as the re
 
 **Build alongside the adapter behind a flag.** The general Connection path and the narrow adapter both
 run; cut over only on **parity** (the Connection path reproduces the adapter on today's CORRECT set)
-**+ conversion** (the six extraction-misses via sensor emission, the four retrieval-misses via the
+**+ conversion** (the six extraction-misses via sensor emission, the five retrieval-misses via the
 `retrieve-wider` actuator) **at 0 confident-wrong**. Then delete the adapter (Phase 3).
 
 **Deferred — coincides with the engine's own roadmap.** Sensor *invention/adoption beyond emitted* and
