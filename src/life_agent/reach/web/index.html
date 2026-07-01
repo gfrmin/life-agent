@@ -129,15 +129,18 @@ function toast(msg, isErr) {
   toastTimer = setTimeout(() => { el.className = ""; }, isErr ? 4000 : 2200);
 }
 
-// One mutation helper: POST, re-render from the returned board, toast the reply.
+// One mutation helper: POST, re-render from the returned board, toast the reply. Returns true on
+// success / false on failure so callers (e.g. the add form) can keep the user's input on error.
 async function mutate(path, body) {
   try {
     const data = await api("POST", path, body);
     if (data && data.board) render(data.board);
     if (data && data.reply) toast(data.reply);
+    return true;
   } catch (e) {
     toast(e.message, true);
     load();  // resync in case the page was stale
+    return false;
   }
 }
 
@@ -211,11 +214,14 @@ function render(board) {
   const main = document.getElementById("board");
   main.innerHTML = "";
   main.appendChild(column("★ Today", board.today || [], "today"));
-  for (const l of LISTS) main.appendChild(column(l, (board.lists && board.lists[l]) || []));
-  const c = board.counts || {};
-  const total = LISTS.reduce((s, l) => s + (c[l] || 0), 0);
-  document.getElementById("summary").textContent =
-    `· ${total} open · ${c.today || 0} today`;
+  const lists = board.lists || {};
+  // The four known lists in order, then any extra bucket the server returned (a legacy/migrated
+  // list value) — so a task with an unexpected list is still visible and actionable, never lost.
+  const keys = LISTS.concat(Object.keys(lists).filter((k) => !LISTS.includes(k)));
+  for (const l of keys) main.appendChild(column(l, lists[l] || []));
+  const total = Object.keys(lists).reduce((s, l) => s + (lists[l] ? lists[l].length : 0), 0);
+  const today = (board.counts && board.counts.today) || 0;
+  document.getElementById("summary").textContent = `· ${total} open · ${today} today`;
 }
 
 async function load() {
@@ -223,16 +229,25 @@ async function load() {
   catch (e) { toast(e.message, true); }
 }
 
+// Background poll variant: skip a cycle if the user is mid-interaction inside the board (an open
+// move dropdown, a focused date picker) so a refresh never nukes it and loses the selection.
+function pollLoad() {
+  const main = document.getElementById("board");
+  if (document.activeElement && main.contains(document.activeElement)) return;
+  load();
+}
+
 document.getElementById("addForm").addEventListener("submit", async (ev) => {
   ev.preventDefault();
   const text = document.getElementById("addText").value.trim();
   if (!text) return;
-  await mutate("/api/tasks", {
+  const ok = await mutate("/api/tasks", {
     text,
     list: document.getElementById("addList").value,
     due_date: document.getElementById("addDue").value || null,
     is_today: document.getElementById("addToday").checked,
   });
+  if (!ok) return;  // keep the typed text on failure so it isn't silently lost
   document.getElementById("addText").value = "";
   document.getElementById("addDue").value = "";
   document.getElementById("addToday").checked = false;
@@ -240,7 +255,7 @@ document.getElementById("addForm").addEventListener("submit", async (ev) => {
 });
 
 load();
-setInterval(load, 10000);  // pick up concurrent writes from the Telegram bot / mail timer
+setInterval(pollLoad, 10000);  // pick up concurrent writes from the Telegram bot / mail timer
 </script>
 </body>
 </html>

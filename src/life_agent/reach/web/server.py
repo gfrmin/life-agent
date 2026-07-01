@@ -30,6 +30,7 @@ jarvis.
 from __future__ import annotations
 
 import os
+import traceback
 from functools import lru_cache
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from json import JSONDecodeError, dumps, loads
@@ -97,6 +98,9 @@ def _index_html() -> str:
 # ``commands.*`` return a human string. Map its shape to a status: a missing task is 404, a
 # validation failure (bad list / bad date) is 400, anything else is a successful mutation whose
 # response carries the freshly re-read board so the page re-renders from one source of truth.
+# This prefix match is coupled to the command replies, but the webapp only ever calls commands by
+# task_id (never by text), so the only reachable error replies are exactly "Task not found." and
+# "Invalid …" — the text-ambiguity / "Specify a task_id" branches cannot occur here.
 def _apply(user_id: int, reply: str) -> tuple[int, Payload]:
     if reply.startswith("Task not found"):
         return 404, {"error": reply}
@@ -176,15 +180,21 @@ class _Handler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def _handle(self, method: str) -> None:
-        length = int(self.headers.get("Content-Length") or 0)
-        body = self.rfile.read(length) if length else b""
-        user_id = cast("WebServer", self.server).user_id
         try:
+            # A malformed Content-Length must not escape as a traceback (the "a bad request never
+            # crashes the loop" contract): a non-numeric header reads as a 0-length body, which
+            # dispatch then rejects as a normal 4xx.
+            raw_len = self.headers.get("Content-Length") or "0"
+            length = int(raw_len) if raw_len.isdigit() else 0
+            body = self.rfile.read(length) if length else b""
+            user_id = cast("WebServer", self.server).user_id
             status, payload = dispatch(user_id, method, self.path, body)
-        except Exception as e:
-            # A seam failure is RETURNED as 500 with its message — never swallowed, never crashes
-            # the long-lived loop.
-            status, payload = 500, {"error": f"{type(e).__name__}: {e}"}
+        except Exception:
+            # A seam failure (locked/corrupt DB, disk full, …) is logged to the journal for
+            # diagnosis and returned as a GENERIC 500 — the raw exception (which may embed the KB
+            # path or SQL) is never leaked to the client, which is unauthenticated on the tailnet.
+            traceback.print_exc()
+            status, payload = 500, {"error": "internal error"}
         self._respond(status, payload)
 
     def do_GET(self) -> None:
