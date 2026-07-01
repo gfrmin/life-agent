@@ -51,6 +51,7 @@ def deps(tmp_path: Path) -> BridgeDeps:
         decisions_path=tmp_path / "decisions.jsonl",
         reactions_path=tmp_path / "reactions.jsonl",
         fold_version=lambda: "fold-test-v1",
+        gather_outcomes_path=tmp_path / "gather_outcomes.jsonl",
     )
 
 
@@ -247,6 +248,66 @@ def test_probe_corroborate_passes_leader_and_excludes(
     assert payload["hits"][0]["artifact_cache_key"] == "a_new"
     assert seen == {"question": "mobile?", "leader": "<current>", "k": 6,
                     "exclude": ["a0", "a1"]}
+
+
+# --- the grow lane (slice 6): /grow_menu + /log_gather + the K-enlarging re-extract ------
+# The bridge owns the gather-outcome store (it owns the other writes): /grow_menu serves the
+# declared sensor vocabulary + menu actuators with body-persisted warm counts (the /decide grow
+# block, verbatim); /log_gather appends one structure-observe row per enacted grow.
+
+def test_grow_menu_serves_the_decide_grow_block(deps: BridgeDeps) -> None:
+    status, payload = _call(deps, "GET", "/grow_menu")
+    assert status == 200
+    block = payload["grow"]
+    assert block["features"]["names"] == ["extracted", "p_none", "indeterminate"]
+    probes = [a["probe"] for a in block["actuators"]]
+    assert probes == ["retrieve_rerank", "retrieve_expand", "re_extract_strong"]
+    assert all(a["warm_counts"] is None for a in block["actuators"])  # cold store
+
+
+def test_log_gather_appends_and_warms_the_menu(deps: BridgeDeps) -> None:
+    sensors = {"extracted": "some", "p_none": "hi", "indeterminate": "none"}
+    status, payload = _call(deps, "POST", "/log_gather", {
+        "probe": "re_extract_strong", "sensors": sensors, "recovered": True})
+    assert status == 200 and payload["logged"] is True
+    _call(deps, "POST", "/log_gather", {
+        "probe": "re_extract_strong", "sensors": sensors, "recovered": False})
+    _status, menu = _call(deps, "GET", "/grow_menu")
+    by_probe = {a["probe"]: a for a in menu["grow"]["actuators"]}
+    wc = by_probe["re_extract_strong"]["warm_counts"]
+    assert wc == {"contexts": [{"ctx": ["some", "hi", "none"], "n1": 1, "n0": 1}]}
+    assert by_probe["retrieve_rerank"]["warm_counts"] is None
+
+
+def test_log_gather_rejects_unknown_probe(deps: BridgeDeps) -> None:
+    status, payload = _call(deps, "POST", "/log_gather", {
+        "probe": "not_a_menu_row", "recovered": True,
+        "sensors": {"extracted": "some", "p_none": "hi", "indeterminate": "none"}})
+    assert status == 400
+    assert "probe" in payload["error"]
+
+
+def test_reextract_allow_new_enlarges_the_candidate_set(
+        deps: BridgeDeps, monkeypatch: pytest.MonkeyPatch) -> None:
+    # The re-extract grow actuator: the strong whole-doc re-read names a value OUTSIDE the
+    # current candidate set ⇒ with allow_new it comes back as a NEW candidate + one observation
+    # indexed at len(candidates) (K enlarges — the whole point of grow); without allow_new the
+    # corroborate contract is unchanged (outside-set ⇒ no observation).
+    import life_agent.core.joint_extract as JE
+
+    monkeypatch.setattr(JE, "extract_joint",
+                        lambda root, q, hits, *, model, k: JE.JointResult(
+                            value="NEW-7", confidence=0.9, as_of=None))
+    body = {"reextract": True, "question": "id?", "hits": [
+        {"artifact_cache_key": "d0", "chunk_text": "…"}],
+        "candidates": ["A", "B"], "model": "claude-opus-4-8", "rho": 0.95}
+    status, payload = _call(deps, "POST", "/probe/corroborate", {**body, "allow_new": True})
+    assert status == 200
+    assert payload["new_candidate"] == "NEW-7"
+    assert payload["observations"][0]["reports"] == 2  # the appended candidate's index
+    status2, payload2 = _call(deps, "POST", "/probe/corroborate", body)
+    assert status2 == 200
+    assert payload2["observations"] == [] and "new_candidate" not in payload2
 
 
 # --- /utility (GET): the utility posterior's u_bar, computed server-side ----------------

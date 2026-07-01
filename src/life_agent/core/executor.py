@@ -25,6 +25,7 @@ import re
 from collections.abc import Callable
 from typing import Any
 
+from life_agent.core import gather_outcomes as GO
 from life_agent.core import lookup as LK
 from life_agent.core import matching as MATCH
 
@@ -67,6 +68,13 @@ DEFAULT_TRANSFORMS: list[dict[str, Any]] = [
 # but only when the agent's belief says the answer is MISSING (see _truth_likely_missing).
 _WITHHOLD = frozenset({"miss", "abstain", "hedge", "ask_clarify"})
 
+# The grow lane's retrieval actuators: probe name → the /retrieve recall flags its enactment
+# re-runs the evidence build at. `re_extract_strong` is the third menu row (a whole-doc opus
+# re-read with allow_new — the K-enlarging strong extractor); the menu itself is data
+# (core/gather_outcomes.GROW_ACTUATORS, served by the bridge's /grow_menu).
+_GROW_RETRIEVE = {"retrieve_rerank": (True, False), "retrieve_expand": (True, True)}
+_RE_EXTRACT_MODEL = "claude-opus-4-8"
+
 
 def _truth_likely_missing(view: View) -> bool:
     """The agent's belief that the answer is OUTSIDE the retrieved set — the principled trigger to
@@ -102,18 +110,26 @@ def _obj(post: Post, url: str, payload: dict[str, Any]) -> dict[str, Any]:
 
 def decide_via_loop(question: str, k: int, *, bridge: str, daemon: str, post: Post, get: Get,
                     grow: bool = True, rerank: bool = False,
-                    transforms: list[dict[str, Any]] | None = None) -> View:
-    """Drive one question through the live loop: route, then a cheap pass, then a single ``grow``
-    escalation (gated) when the cheap pass withholds.
+                    transforms: list[dict[str, Any]] | None = None,
+                    grow_lane: bool = False) -> View:
+    """Drive one question through the live loop: route, then a cheap pass, then recall growth.
 
     A declined route (``/route`` → null) is the NARRATIVE family — synthesize a cited answer,
-    audit each claim, include only grounded + EU-positive claims; gate-safe by construction. A
-    typed route runs :func:`run_pass`; if ``grow`` and the cheap pass withholds AND the agent's
-    belief says the answer is outside the set (:func:`_truth_likely_missing` — NONE is the MAP
-    hypothesis, or nothing was extracted), escalate recall breadth (rerank, then native-script
-    expansion) and adopt a grown report (or any grown decision when the cheap pass found no
-    candidates at all). A withhold with a plausible present leader is left to the daemon's
-    net_voi-priced corroborate, not grown — the body grows on belief, not on the bare effector."""
+    audit each claim, include only grounded + EU-positive claims; gate-safe by construction.
+
+    ``grow_lane=True`` (slice 6 — the conferred gather offload, flag-gated for the parity-safe
+    cutover): recall is DECIDED BY THE DAEMON — the loop ships the sensor buckets + the grow
+    menu (bridge ``/grow_menu``: actuators with body-persisted warm counts) into ``/decide``,
+    the daemon prices the grow argmax by the engine gather VOI (``grow_value`` over the
+    structure-BMA ``g``), and the body enacts the named probe and logs the outcome
+    (``/log_gather`` — the structure-observe stream). No body-side cascade, no
+    ``_truth_likely_missing`` gate: P(NONE) enters only as a bucketed *sensor*.
+
+    ``grow_lane=False`` (the legacy adapter, deleted at cutover): a typed route runs
+    :func:`run_pass`; if ``grow`` and the cheap pass withholds AND the agent's belief says the
+    answer is outside the set (:func:`_truth_likely_missing`), escalate recall breadth (rerank,
+    then native-script expansion) and adopt a grown report (or any grown decision when the
+    cheap pass found no candidates at all)."""
     transforms = DEFAULT_TRANSFORMS if transforms is None else transforms
     route = post(f"{bridge}/route", {"question": question})
     if route is None:
@@ -121,6 +137,9 @@ def decide_via_loop(question: str, k: int, *, bridge: str, daemon: str, post: Po
         return {"effector": nv["action"], "asserted": nv["asserted"], "candidates": [],
                 "credences": [], "p_none": None, "eu": None, "n_obs": 0,
                 "hits": nv.get("hits", []), "route": None, "rendered": nv.get("rendered")}
+    if grow_lane:
+        return run_pass(question, k, route, bridge=bridge, daemon=daemon, post=post, get=get,
+                        rerank=False, expand=False, transforms=transforms, grow_lane=True)
     view = run_pass(question, k, route, bridge=bridge, daemon=daemon, post=post, get=get,
                     rerank=rerank, expand=rerank, transforms=transforms)
     if grow and not rerank:
@@ -147,22 +166,60 @@ def decide_via_loop(question: str, k: int, *, bridge: str, daemon: str, post: Po
 
 def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemon: str,
              post: Post, get: Get, rerank: bool, expand: bool = False,
-             transforms: list[dict[str, Any]] | None = None) -> View:
+             transforms: list[dict[str, Any]] | None = None,
+             grow_lane: bool = False) -> View:
     """One retrieve→probe→extract→decide pass at a given recall breadth, enacting each
-    net_voi-scheduled transform the daemon returns. Returns the normalized view
-    ``{effector, asserted, candidates, credences, p_none, eu, hits, route}``."""
+    scheduled transform the daemon returns. With ``grow_lane`` the daemon also prices the
+    grow menu (recall actuators), and each enactment is logged to ``/log_gather``. Returns
+    the normalized view ``{effector, asserted, candidates, credences, p_none, eu, hits, route}``."""
     transforms = DEFAULT_TRANSFORMS if transforms is None else transforms
-    hits = _obj(post, f"{bridge}/retrieve",
-                {"question": question, "k": k, "rerank": rerank, "expand": expand})["hits"]
-    hit_keys = list(dict.fromkeys(h["artifact_cache_key"] for h in hits))
-    subj = _obj(post, f"{bridge}/probe/subject", {"hit_keys": hit_keys})["subject_state"]
-    recency = _obj(post, f"{bridge}/probe/recency", {"hit_keys": hit_keys})["doc_date"]
-    # construct ⇒ the bridge decays time_factor at its volatility half-life
-    ext = _obj(post, f"{bridge}/extract", {
-        "question": question, "hits": hits, "time_indexed": route["time_indexed"],
-        "construct": route["construct"],
-        "covariates": {"subject_state": subj, "doc_date": recency}})
+
+    def _evidence(rr: bool, ex: bool) -> tuple[list[dict[str, Any]], dict[str, Any],
+                                               dict[str, Any]]:
+        hits = _obj(post, f"{bridge}/retrieve",
+                    {"question": question, "k": k, "rerank": rr, "expand": ex})["hits"]
+        hit_keys = list(dict.fromkeys(h["artifact_cache_key"] for h in hits))
+        subj = _obj(post, f"{bridge}/probe/subject", {"hit_keys": hit_keys})["subject_state"]
+        recency = _obj(post, f"{bridge}/probe/recency", {"hit_keys": hit_keys})["doc_date"]
+        # construct ⇒ the bridge decays time_factor at its volatility half-life
+        ext = _obj(post, f"{bridge}/extract", {
+            "question": question, "hits": hits, "time_indexed": route["time_indexed"],
+            "construct": route["construct"],
+            "covariates": {"subject_state": subj, "doc_date": recency}})
+        return hits, recency, ext
+
+    hits, recency, ext = _evidence(rerank, expand)
+    menu = get(f"{bridge}/grow_menu")["grow"] if grow_lane else None
+    # (probe, sensors-at-scheduling, evidence-changed) per enacted grow — logged at the terminal.
+    enacted: list[tuple[str, dict[str, str], bool]] = []
+
+    def _log_outcomes(final_effector: str) -> None:
+        # recovered = this enactment grounded evidence AND the question ended in a report through
+        # the exact 0-CW terminal threshold — the honest v0 proxy (gather_outcomes docstring); a g
+        # learned from it can at worst over-try gathers, never mis-report.
+        for probe, sensors, changed in enacted:
+            post(f"{bridge}/log_gather", {"probe": probe, "sensors": sensors,
+                                          "recovered": bool(changed
+                                                            and final_effector == "report")})
+
+    if grow_lane and not ext["candidates"] and menu is not None:
+        # The k=0 degenerate case: nothing extracted ⇒ there is no candidate posterior to price
+        # against (the daemon requires k ≥ 1), so the body walks the RETRIEVAL actuators
+        # cheapest-first (menu order) until candidates ground — the one place enactment order is
+        # body-held; every enactment is still logged, so the counts teach g here too.
+        sensors0 = GO.sensors_from(candidates=[], credences=[], p_none=None,
+                                   indeterminate=int(ext.get("indeterminate") or 0))
+        for actuator in menu["actuators"]:
+            g_probe = str(actuator["probe"])
+            if g_probe not in _GROW_RETRIEVE:
+                continue   # the strong re-extract needs candidates to corroborate against
+            rr, ex = _GROW_RETRIEVE[g_probe]
+            hits, recency, ext = _evidence(rr, ex)
+            enacted.append((g_probe, sensors0, bool(ext["candidates"])))
+            if ext["candidates"]:
+                break
     if not ext["candidates"]:  # zero grounded observations → the local edge declined
+        _log_outcomes("miss")
         return {"effector": "miss", "asserted": [], "candidates": [], "credences": [],
                 "p_none": None, "eu": None, "n_obs": 0, "hits": hits, "route": route}
     u_bar = get(f"{bridge}/utility")["u_bar"]
@@ -170,23 +227,31 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
     owner = owner_scoped(question)
     obs, rho, era = ext["observations"], ext["rho"], ext["era_split"]
 
-    def _decide(observations: list[Any], r: float, era_split: bool, applied: list[str]) -> View:
-        return _obj(post, f"{daemon}/decide", {
+    def _decide(observations: list[Any], r: float, era_split: bool, applied: list[str],
+                sensors: dict[str, str] | None = None) -> View:
+        payload: dict[str, Any] = {
             "candidates": candidates, "observations": observations, "rho": r, "u_bar": u_bar,
             "era_split": era_split, "owner_scoped": owner, "applied_probes": applied,
-            "transforms": transforms})
+            "transforms": transforms}
+        if sensors is not None and menu is not None:
+            payload["sensors"] = sensors
+            payload["grow"] = menu
+        return _obj(post, f"{daemon}/decide", payload)
 
     applied: list[str] = []
     dec = _decide(obs, rho, era, applied)
-    for _ in range(2 + sum(t["kind"] == "voi" for t in transforms)):  # bounded: each probe once
-        if dec["effector"] != "gather":
-            break
-        probe = dec.get("probe") or ""
-        if probe == "recency":
+    grow_probes = ({str(a["probe"]) for a in menu["actuators"]} if menu is not None else set())
+    grow_asked = False
+    last_sensors: dict[str, str] = {}
+    # bounded: each registry probe and each grow actuator fires at most once (dedup on the
+    # probe name); a grow costs two decides (the priced re-ask + the post-enactment decide).
+    for _ in range(2 + sum(t["kind"] == "voi" for t in transforms) + 2 * len(grow_probes)):
+        eff, probe = dec["effector"], str(dec.get("probe") or "")
+        if eff == "gather" and probe == "recency":
             # recency is PRE-APPLIED in /extract (obs already decayed) → acknowledge and re-decide.
             applied = list(dict.fromkeys([*applied, "recency"]))
             dec = _decide(obs, rho, era, applied)
-        elif probe.startswith("corroborate"):
+        elif eff == "gather" and probe.startswith("corroborate"):
             # a subject-aware whole-doc re-read at the scheduled TIER's model REPLACES the local
             # channel. The joint's value → one observation (or NONE ⇒ empty ⇒ abstain). Each tier
             # fires at most once (dedup on the probe name) ⇒ escalation across tiers terminates.
@@ -202,10 +267,57 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
             obs, rho, era = cr["observations"], cr["gather_rho"], False
             applied = list(dict.fromkeys([*applied, probe]))
             dec = _decide(obs, rho, era, applied)
+        elif eff == "gather" and probe in _GROW_RETRIEVE:
+            # a DAEMON-SCHEDULED retrieval grow: rebuild the evidence at the named breadth and
+            # adopt it iff it grounded candidates (else the prior evidence stands and the probe
+            # is simply retired — a fruitless recall must not erase a posterior).
+            rr, ex = _GROW_RETRIEVE[probe]
+            n_hits, n_recency, n_ext = _evidence(rr, ex)
+            changed = bool(n_ext["candidates"])
+            if changed:
+                hits, recency, ext = n_hits, n_recency, n_ext
+                candidates = ext["candidates"]
+                obs, rho, era = ext["observations"], ext["rho"], ext["era_split"]
+            enacted.append((probe, last_sensors, changed))
+            applied = list(dict.fromkeys([*applied, probe]))
+            grow_asked = False
+            dec = _decide(obs, rho, era, applied)
+        elif eff == "gather" and probe == "re_extract_strong":
+            # the K-ENLARGING strong re-extract: a whole-doc opus re-read with allow_new — a
+            # value outside the local candidate set comes back as a NEW candidate (the bridge
+            # indexes its observation at len(candidates)); the re-read REPLACES the channel
+            # (same docs — nested dependence), exactly as corroborate does.
+            cr = _obj(post, f"{bridge}/probe/corroborate",
+                      {"reextract": True, "allow_new": True, "question": question,
+                       "hits": hits, "candidates": candidates, "model": _RE_EXTRACT_MODEL,
+                       "rho": _GATHER_RHO,
+                       "time_indexed": route["time_indexed"], "construct": route["construct"],
+                       "covariates": {"doc_date": recency}})
+            changed = bool(cr.get("new_candidate")) or bool(cr["observations"])
+            if cr.get("new_candidate"):
+                candidates = [*candidates, str(cr["new_candidate"])]
+            if cr["observations"]:
+                obs, rho, era = cr["observations"], cr["gather_rho"], False
+            enacted.append((probe, last_sensors, changed))
+            applied = list(dict.fromkeys([*applied, probe]))
+            grow_asked = False
+            dec = _decide(obs, rho, era, applied)
+        elif (eff in _WITHHOLD and grow_lane and not grow_asked
+              and (grow_probes - set(applied))):
+            # a withholding terminal with unapplied grow actuators: re-ask WITH the grow block
+            # so the daemon prices recall (grow_value self-gates on the terminal EU — skipping
+            # the re-ask after a report is transport economy, not a decision: a confident
+            # report prices at about minus-cost by construction).
+            last_sensors = GO.sensors_from(
+                candidates=candidates, credences=list(dec["credences"] or []),
+                p_none=dec["p_none"], indeterminate=int(ext.get("indeterminate") or 0))
+            grow_asked = True
+            dec = _decide(obs, rho, era, applied, sensors=last_sensors)
         else:
             break
+    _log_outcomes(dec["effector"])
     asserted = [dec["value"]] if dec["effector"] == "report" and dec["value"] else []
-    return {"effector": dec["effector"], "asserted": asserted, "candidates": ext["candidates"],
+    return {"effector": dec["effector"], "asserted": asserted, "candidates": candidates,
             "credences": dec["credences"], "p_none": dec["p_none"], "eu": dec["eu"],
             "n_obs": len(obs), "hits": hits, "route": route}
 
