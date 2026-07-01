@@ -186,3 +186,47 @@ stay in their named slots.
 constant; `autonomous-recall-design.md`'s open math is now the prior, not the answer), and (b)
 **gather-outcome instrumentation** as a structure-observe stream (did the gather populate the queried
 slot → correct answer?) — the price of making `g` learned rather than guessed.
+
+## 7. Phase-2 realization, engine-grounded (verified 2026-07-01)
+
+Reading the shipping engine (`src/Credence.jl:62`, `src/structure_bma.jl`, `answer_brain.jl`,
+`daemon/server.jl`) fixes the build concretely — and better than a wire-mediated design:
+
+- **`g_mechanism` IS the engine's structure-BMA, called in-process.** `structure_observe`,
+  `belief_at_context`, `context_from_features`, `build_structure_model`,
+  `reconstruct_structure_prior_from_data` are all exported (`Credence.jl:62`) and the answer-brain
+  daemon already does `using Main.Credence`. No skin wire, no governor Python client, no new
+  dependency — the daemon calls the Julia primitives directly. (The governor goes over the wire only
+  because it is Python.)
+- **Which-gather is a real argmax, not the wire's `proceed/block/ask`.** `belief_at_context` is
+  deliberately *not* a wire verb, but it is exported "so a consumer's decision path can reach it"
+  (`structure_bma.jl:207`). In-process the daemon reads `g_c = mean(belief_at_context(model, warm, X))`
+  per actuator `c` and prices `grow_value_c = g_c·(u_correct − eu) − cost_c`, gathering the argmax if
+  it clears 0 (and the best `:voi`). That is B discriminating re-extract vs retrieve-wider.
+- **The pricing self-gates on uncertainty — no `p_none ≥ leader` branch.** `eu` is the *terminal* EU
+  from `decide_full` (untouched). A confident report has `eu ≈ u_correct` ⇒ gain ≈ 0 ⇒ prices −cost
+  ⇒ no grow; a withhold has low `eu` ⇒ large gain ⇒ grow iff `g` clears cost. `p_none`/entropy are
+  *features* of the sensor context `X` that shape the learned `g` (miss-type discrimination), never a
+  control-flow gate. This drops autonomous-recall's redundant `P(NONE)·` factor — the missing-mass
+  gate is already carried by `u_correct − eu`.
+- **`:grow` becomes priceable exactly where the engine said it couldn't.** `answer_brain.jl:253` is
+  right that `net_voi` cannot price grow over the *candidate* categorical (grow enlarges K). The
+  structure-BMA is a *separate* Bernoulli belief (recover | sensors); grow is priced by *that* belief.
+  It enters `schedule_decide` (`:353`) as a third stanza after guards/`:voi`, returning
+  `("gather", nothing, grow.probe, nothing, eu)`. `terminal_decide`/`decide_full` are untouched; an
+  empty grow registry reproduces today's tuple (parity).
+- **The daemon stays stateless; the g-belief persists as body-shipped `warm_counts`.** Exactly the
+  routing pattern (`routing.jl:146-164`): the bridge persists per-context `(n1, n0)` gather-outcome
+  counts under `$LIFE_AGENT_KB`, ships them, the daemon reconstructs the warm belief per call
+  (`reconstruct_structure_prior_from_data`). That count store *is* the gather-outcome instrumentation;
+  the `g`-prior (§4 caveat 1) is the cold `Beta(alpha0,beta0)` before counts accrue.
+
+**Rejected (from the reconnaissance agent's summary):** a `structure_decide` wire call, a `{grow,stop}`
+whether-only action set, and gating on `p_none ≥ leader`. All three are superseded by the in-process
+`belief_at_context` argmax + `grow_value` self-gating above.
+
+**TDD slices (daemon-first, Julia):** (1) `grow_value` pricing [pure]; (2) `best_grow` argmax /
+which-gather [pure]; (3) `g` from `belief_at_context` + `context_from_features` + warm counts;
+(4) `schedule_decide` third stanza (parity-safe); (5) `/decide` accepts `sensors` + grow descriptors;
+(6) Python bridge emits sensors + executor registers/enacts grow actuators, persists counts, deletes
+the cascade. Flag-gated; cut over on parity + conversion at 0-CW.
