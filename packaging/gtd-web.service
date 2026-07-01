@@ -1,0 +1,21 @@
+# life-agent GTD webapp — a systemd --user unit (a reach channel, like jarvis.service).
+# Install:
+#   mkdir -p ~/.config/systemd/user
+#   ln -s "$PWD/packaging/gtd-web.service" ~/.config/systemd/user/gtd-web.service   # run from the repo root
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now gtd-web.service
+# The owner id + any secrets resolve from gnome-keyring at runtime (JARVIS_USER_ID); nothing
+# sensitive lives in this file. ExecStart below assumes the repo is at %h/git/life-agent — edit
+# it if the repo lives elsewhere.
+[Unit]
+Description=life-agent GTD webapp
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=%h/git/life-agent/bin/gtd-web
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
