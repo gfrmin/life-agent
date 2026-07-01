@@ -19,7 +19,7 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-from life_agent.core import secret
+from life_agent.core import ask_client, secret
 from life_agent.reach import telegram
 from life_agent.tasks import commands, store
 
@@ -66,6 +66,10 @@ INTENTS: tuple[tuple[str, str, str], ...] = (
     ("completed",
      '{"action": "completed"}',
      'Done this week: "completed"'),
+    ("question",
+     '{"action": "question", "question": "the user\'s question, verbatim"}',
+     'Ask: "what is my Israeli tax ID?" — answered from your documents with citations; '
+     "reply g/b to grade it"),
     ("help",
      '{"action": "help"}',
      'Help: "help" or "?"'),
@@ -73,6 +77,22 @@ INTENTS: tuple[tuple[str, str, str], ...] = (
      '{"action": "chat", "response": "your conversational reply"}',
      "Anything else: I'll just chat"),
 )
+
+# The last know-mode decision the owner can grade — one binding, most recent answer only
+# (session state on the transport, not truth: the decision + verdict live behind the bridge;
+# ask-live's /react covers deferred grading of anything older).
+LAST_DECISION_ID: str | None = None
+
+# The one-bit verdict vocabulary (reaction-loop economics: g/b, never prose).
+_VERDICTS = {"g": "good", "good": "good", "👍": "good",
+             "b": "bad", "bad": "bad", "👎": "bad"}
+
+
+def verdict_valence(text: str) -> str | None:
+    """Map a bare one-bit verdict message to its valence, or None if the message is
+    anything else (then the normal NLU parses it). Deterministic — a verdict never
+    round-trips through the model."""
+    return _VERDICTS.get(text.strip().lower())
 
 _ACTIONS_BLOCK = "\n".join(f"- {schema}" for _, schema, _ in INTENTS)
 
@@ -99,7 +119,8 @@ Rules:
 - If the user says "untoday 3" or "unmark 3", use "mark_today" with is_today false.
 - If the user says "schedule X for next tuesday", convert to a date and use "add" with list "scheduled".
 - If the user says "move 5 to next", use "move" with the task_id and list.
-- For greetings, small talk, or questions not about tasks, use "chat" with a brief friendly response.
+- If the user asks a question about their life, documents, dates, people, or facts — e.g. "what is my passport number?", "when does my lease end?" — use "question" with the question verbatim. Task commands always take precedence over "question".
+- For greetings and small talk, use "chat" with a brief friendly response.
 - Parse relative dates: "tomorrow" = next day, "next monday" = the coming Monday, etc.
 - If ambiguous, prefer "add" to inbox — better to capture than to lose."""
 
@@ -203,6 +224,20 @@ def handle_action(parsed: dict[str, Any], user_id: int) -> str:
         examples = "\n".join(f"• {help_line}" for _, _, help_line in INTENTS)
         return f"I'm Jarvis, your GTD assistant. You can:\n{examples}"
 
+    if action == "question":
+        # The know mode, from the act surface (interaction contract: asking about your
+        # life is *know*, whatever transport carried it): the executor read-path answers
+        # with citations; the returned decision_id is what the next bare g/b binds to.
+        global LAST_DECISION_ID
+        q = str(parsed.get("question") or "").strip()
+        if not q:
+            return "What would you like to know?"
+        reply, decision_id = ask_client.answer(q)
+        LAST_DECISION_ID = decision_id
+        if decision_id:
+            reply += "\n\nReply g (good) or b (bad) to grade this answer."
+        return reply
+
     if action == "chat":
         return str(parsed.get("response", "I'm here to help with your tasks."))
 
@@ -210,6 +245,7 @@ def handle_action(parsed: dict[str, Any], user_id: int) -> str:
 
 
 def poll_loop() -> None:
+    global LAST_DECISION_ID
     store.init_db()
     user_id = _user_id()
     offset = 0
@@ -229,6 +265,15 @@ def poll_loop() -> None:
 
                 log.info("Message from %s: %s", from_id, text[:80])
                 try:
+                    # A bare one-bit verdict binds to the last know-mode answer without a
+                    # model round-trip (deterministic, reaction-loop economics). With no
+                    # pending answer it falls through to the ordinary NLU.
+                    valence = verdict_valence(text)
+                    if valence and LAST_DECISION_ID:
+                        reply = ask_client.react(LAST_DECISION_ID, valence)
+                        LAST_DECISION_ID = None
+                        telegram.send_message(chat_id, reply)
+                        continue
                     telegram.send_chat_action(chat_id, "typing")
                     parsed = parse_with_ollama(text)
                     log.info("Parsed: %s", parsed.get("action", "unknown"))

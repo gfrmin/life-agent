@@ -86,6 +86,50 @@ def test_handle_list_with_tag_routes_to_tag_view() -> None:
     assert "Water plants" not in reply
 
 
+# --- the question intent (interaction-contract: asking about your life is *know*) --------
+# Jarvis routes a life/document question to the executor read-path (core/ask_client), replies
+# with the cited credence-grammar answer, and binds the owner's ONE-BIT verdict to the logged
+# decision (reaction-loop economics: g/b, never prose). The transport stays dumb — it carries
+# the question and the bit; the decision and the fold live behind the bridge.
+
+
+def test_handle_question_routes_to_the_know_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    from life_agent.core import ask_client
+
+    monkeypatch.setattr(ask_client, "answer",
+                        lambda q, **k: (f"ANSWER to {q}", "ab-cafe"))
+    jarvis.LAST_DECISION_ID = None
+    reply = jarvis.handle_action(
+        {"action": "question", "question": "what is my Israeli tax ID?"}, USER)
+    assert "ANSWER to what is my Israeli tax ID?" in reply
+    assert "g" in reply and "b" in reply            # the one-bit verdict is invited
+    assert jarvis.LAST_DECISION_ID == "ab-cafe"     # the id the next g/b binds to
+
+
+def test_handle_question_without_decision_invites_no_verdict(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    from life_agent.core import ask_client
+
+    monkeypatch.setattr(ask_client, "answer", lambda q, **k: ("No answer asserted — …", None))
+    jarvis.LAST_DECISION_ID = "stale"
+    reply = jarvis.handle_action({"action": "question", "question": "q?"}, USER)
+    assert "grade" not in reply.lower()
+    assert jarvis.LAST_DECISION_ID is None          # a stale binding never survives
+
+
+def test_handle_question_empty_asks_back() -> None:
+    assert "know" in jarvis.handle_action({"action": "question", "question": "  "}, USER)
+
+
+def test_verdict_valence_maps_the_one_bit() -> None:
+    assert jarvis.verdict_valence("g") == "good"
+    assert jarvis.verdict_valence("GOOD") == "good"
+    assert jarvis.verdict_valence("b") == "bad"
+    assert jarvis.verdict_valence("bad") == "bad"
+    assert jarvis.verdict_valence("done 3") is None
+    assert jarvis.verdict_valence("great job") is None
+
+
 # --- INTENTS: one table feeds prompt and help; drift gates enforce it ----------
 # (docs/interaction-contract.md invariant 4: a vocabulary nothing enforces will
 # quietly diverge — these tests are what make the table the single source.)
