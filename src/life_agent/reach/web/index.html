@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<title>GTD</title>
+<style>
+  :root {
+    --bg: #14171c; --panel: #1c2027; --panel2: #22272f; --line: #2c333d;
+    --fg: #e6e9ee; --muted: #8b95a3; --accent: #6ea8fe; --today: #ffd166;
+    --danger: #e5646e; --ok: #5bcf8a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 15px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  header {
+    position: sticky; top: 0; z-index: 5; background: var(--bg);
+    border-bottom: 1px solid var(--line); padding: 12px 16px;
+  }
+  h1 { font-size: 17px; margin: 0 0 10px; font-weight: 600; }
+  h1 .dot { color: var(--muted); font-weight: 400; }
+  form.add { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  input, select, button, textarea { font: inherit; }
+  input[type=text] {
+    flex: 1 1 240px; min-width: 0; padding: 9px 11px; border-radius: 8px;
+    border: 1px solid var(--line); background: var(--panel2); color: var(--fg);
+  }
+  select, input[type=date] {
+    padding: 8px 9px; border-radius: 8px; border: 1px solid var(--line);
+    background: var(--panel2); color: var(--fg);
+  }
+  button {
+    cursor: pointer; border: 1px solid var(--line); background: var(--panel2);
+    color: var(--fg); border-radius: 8px; padding: 8px 12px;
+  }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #0a0e14; font-weight: 600; }
+  label.chk { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); }
+
+  main {
+    display: grid; gap: 12px; padding: 16px;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    align-items: start;
+  }
+  .col {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+    padding: 10px; min-height: 60px;
+  }
+  .col.today { border-color: #4a422a; background: #1e1c14; }
+  .col h2 {
+    font-size: 12px; text-transform: uppercase; letter-spacing: .06em;
+    color: var(--muted); margin: 2px 4px 10px; display: flex; justify-content: space-between;
+  }
+  .col.today h2 { color: var(--today); }
+  .count { color: var(--muted); font-weight: 600; }
+  .col.today .count { color: var(--today); }
+  .empty { color: var(--muted); font-size: 13px; padding: 4px; opacity: .6; }
+
+  .task {
+    background: var(--panel2); border: 1px solid var(--line); border-radius: 10px;
+    padding: 9px 10px; margin-bottom: 8px;
+  }
+  .task .txt { word-break: break-word; }
+  .task.starred { border-left: 3px solid var(--today); }
+  .task .meta { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .badge {
+    font-size: 11px; color: var(--muted); border: 1px solid var(--line);
+    border-radius: 999px; padding: 1px 8px;
+  }
+  .badge.due { color: var(--accent); border-color: #2f3f5c; }
+  .task .actions { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .task .actions button { padding: 4px 9px; font-size: 13px; line-height: 1; }
+  .task .actions select, .task .actions input[type=date] { padding: 4px 6px; font-size: 12px; }
+  .star.on { color: var(--today); border-color: var(--today); }
+  .done { color: var(--ok); }
+  .del { color: var(--danger); }
+
+  #toast {
+    position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%);
+    background: var(--panel2); border: 1px solid var(--line); color: var(--fg);
+    padding: 9px 14px; border-radius: 10px; box-shadow: 0 6px 24px #0008;
+    opacity: 0; transition: opacity .18s; pointer-events: none; max-width: 90vw;
+  }
+  #toast.show { opacity: 1; }
+  #toast.err { border-color: var(--danger); color: #ffd7da; }
+</style>
+</head>
+<body>
+<header>
+  <h1>GTD <span class="dot" id="summary"></span></h1>
+  <form class="add" id="addForm" autocomplete="off">
+    <input type="text" id="addText" placeholder="Add a task…" required>
+    <select id="addList" title="list">
+      <option value="inbox">inbox</option>
+      <option value="next">next</option>
+      <option value="scheduled">scheduled</option>
+      <option value="someday">someday</option>
+    </select>
+    <input type="date" id="addDue" title="due date">
+    <label class="chk"><input type="checkbox" id="addToday"> today</label>
+    <button class="primary" type="submit">Add</button>
+  </form>
+</header>
+<main id="board"></main>
+<div id="toast"></div>
+
+<script>
+"use strict";
+const LISTS = ["inbox", "next", "scheduled", "someday"];
+
+async function api(method, path, body) {
+  const opts = { method, headers: {} };
+  if (body !== undefined) { opts.headers["Content-Type"] = "application/json"; opts.body = JSON.stringify(body); }
+  const res = await fetch(path, opts);
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new Error((data && data.error) || (res.status + " " + res.statusText));
+  return data;
+}
+
+let toastTimer = null;
+function toast(msg, isErr) {
+  const el = document.getElementById("toast");
+  el.textContent = msg;
+  el.className = "show" + (isErr ? " err" : "");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.className = ""; }, isErr ? 4000 : 2200);
+}
+
+// One mutation helper: POST, re-render from the returned board, toast the reply.
+async function mutate(path, body) {
+  try {
+    const data = await api("POST", path, body);
+    if (data && data.board) render(data.board);
+    if (data && data.reply) toast(data.reply);
+  } catch (e) {
+    toast(e.message, true);
+    load();  // resync in case the page was stale
+  }
+}
+
+function el(tag, cls, text) {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text !== undefined) n.textContent = text;  // textContent = XSS-safe (task text is untrusted)
+  return n;
+}
+
+function taskNode(task) {
+  const node = el("div", "task" + (task.is_today ? " starred" : ""));
+  node.appendChild(el("div", "txt", task.text));
+
+  const meta = el("div", "meta");
+  meta.appendChild(el("span", "badge", "#" + task.list));
+  if (task.due_date) meta.appendChild(el("span", "badge due", "due " + task.due_date));
+  node.appendChild(meta);
+
+  const actions = el("div", "actions");
+
+  const done = el("button", "done", "✓");
+  done.title = "complete";
+  done.onclick = () => mutate(`/api/tasks/${task.id}/complete`);
+  actions.appendChild(done);
+
+  const star = el("button", "star" + (task.is_today ? " on" : ""), "★");
+  star.title = task.is_today ? "unmark today" : "mark today";
+  star.onclick = () => mutate(`/api/tasks/${task.id}/today`, { is_today: !task.is_today });
+  actions.appendChild(star);
+
+  const move = el("select");
+  move.title = "move to list";
+  for (const l of LISTS) {
+    const opt = el("option", null, l);
+    opt.value = l;
+    if (l === task.list) opt.selected = true;
+    move.appendChild(opt);
+  }
+  move.onchange = () => mutate(`/api/tasks/${task.id}/move`, { list: move.value, due_date: task.due_date });
+  actions.appendChild(move);
+
+  const due = el("input");
+  due.type = "date";
+  due.title = "due date";
+  due.value = task.due_date || "";
+  due.onchange = () => mutate(`/api/tasks/${task.id}/due`, { list: task.list, due_date: due.value || null });
+  actions.appendChild(due);
+
+  const del = el("button", "del", "✕");
+  del.title = "delete";
+  del.onclick = () => { if (confirm("Delete: " + task.text + "?")) mutate(`/api/tasks/${task.id}/delete`); };
+  actions.appendChild(del);
+
+  node.appendChild(actions);
+  return node;
+}
+
+function column(title, tasks, extraClass) {
+  const col = el("div", "col" + (extraClass ? " " + extraClass : ""));
+  const h = el("h2");
+  h.appendChild(el("span", null, title));
+  h.appendChild(el("span", "count", String(tasks.length)));
+  col.appendChild(h);
+  if (tasks.length === 0) col.appendChild(el("div", "empty", "—"));
+  else for (const t of tasks) col.appendChild(taskNode(t));
+  return col;
+}
+
+function render(board) {
+  const main = document.getElementById("board");
+  main.innerHTML = "";
+  main.appendChild(column("★ Today", board.today || [], "today"));
+  for (const l of LISTS) main.appendChild(column(l, (board.lists && board.lists[l]) || []));
+  const c = board.counts || {};
+  const total = LISTS.reduce((s, l) => s + (c[l] || 0), 0);
+  document.getElementById("summary").textContent =
+    `· ${total} open · ${c.today || 0} today`;
+}
+
+async function load() {
+  try { render(await api("GET", "/api/board")); }
+  catch (e) { toast(e.message, true); }
+}
+
+document.getElementById("addForm").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const text = document.getElementById("addText").value.trim();
+  if (!text) return;
+  await mutate("/api/tasks", {
+    text,
+    list: document.getElementById("addList").value,
+    due_date: document.getElementById("addDue").value || null,
+    is_today: document.getElementById("addToday").checked,
+  });
+  document.getElementById("addText").value = "";
+  document.getElementById("addDue").value = "";
+  document.getElementById("addToday").checked = false;
+  document.getElementById("addText").focus();
+});
+
+load();
+setInterval(load, 10000);  // pick up concurrent writes from the Telegram bot / mail timer
+</script>
+</body>
+</html>
