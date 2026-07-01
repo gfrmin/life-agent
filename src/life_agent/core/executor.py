@@ -196,17 +196,24 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
     def _log_outcomes(final_effector: str) -> None:
         # recovered = this enactment grounded evidence AND the question ended in a report through
         # the exact 0-CW terminal threshold — the honest v0 proxy (gather_outcomes docstring); a g
-        # learned from it can at worst over-try gathers, never mis-report.
+        # learned from it can at worst over-try gathers, never mis-report. Fail-open by contract
+        # (as /log_decision is): an instrumentation write never breaks an already-decided answer.
         for probe, sensors, changed in enacted:
-            post(f"{bridge}/log_gather", {"probe": probe, "sensors": sensors,
-                                          "recovered": bool(changed
-                                                            and final_effector == "report")})
+            try:
+                post(f"{bridge}/log_gather", {"probe": probe, "sensors": sensors,
+                                              "recovered": bool(changed
+                                                                and final_effector == "report")})
+            except Exception as e:
+                print(f"  (gather outcome not logged: {e})")
 
+    applied: list[str] = []
     if grow_lane and not ext["candidates"] and menu is not None:
         # The k=0 degenerate case: nothing extracted ⇒ there is no candidate posterior to price
         # against (the daemon requires k ≥ 1), so the body walks the RETRIEVAL actuators
         # cheapest-first (menu order) until candidates ground — the one place enactment order is
-        # body-held; every enactment is still logged, so the counts teach g here too.
+        # body-held; every enactment is still logged, so the counts teach g here too. Each walked
+        # probe is APPLIED (the daemon must not re-offer it later in this pass — one outcome row
+        # per enacted grow, never a double count).
         sensors0 = GO.sensors_from(candidates=[], credences=[], p_none=None,
                                    indeterminate=int(ext.get("indeterminate") or 0))
         for actuator in menu["actuators"]:
@@ -216,6 +223,7 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
             rr, ex = _GROW_RETRIEVE[g_probe]
             hits, recency, ext = _evidence(rr, ex)
             enacted.append((g_probe, sensors0, bool(ext["candidates"])))
+            applied.append(g_probe)
             if ext["candidates"]:
                 break
     if not ext["candidates"]:  # zero grounded observations → the local edge declined
@@ -238,7 +246,6 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
             payload["grow"] = menu
         return _obj(post, f"{daemon}/decide", payload)
 
-    applied: list[str] = []
     dec = _decide(obs, rho, era, applied)
     grow_probes = ({str(a["probe"]) for a in menu["actuators"]} if menu is not None else set())
     grow_asked = False
@@ -296,8 +303,10 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
             changed = bool(cr.get("new_candidate")) or bool(cr["observations"])
             if cr.get("new_candidate"):
                 candidates = [*candidates, str(cr["new_candidate"])]
-            if cr["observations"]:
-                obs, rho, era = cr["observations"], cr["gather_rho"], False
+            # unconditional — an EMPTY strong re-read also replaces (the strong model failed to
+            # confirm any local candidate; the weak evidence must not survive it — disagree ⇒
+            # NONE-dominant ⇒ abstain, the corroborate contract verbatim).
+            obs, rho, era = cr["observations"], cr["gather_rho"], False
             enacted.append((probe, last_sensors, changed))
             applied = list(dict.fromkeys([*applied, probe]))
             grow_asked = False

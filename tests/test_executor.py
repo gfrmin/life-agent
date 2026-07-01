@@ -318,6 +318,74 @@ def test_grow_lane_zero_candidates_walks_the_menu_cheapest_first() -> None:
     assert logged == {"retrieve_rerank": False, "retrieve_expand": True}
 
 
+def test_grow_lane_log_gather_failure_never_breaks_the_answer() -> None:
+    # The gather-outcome write is fail-open by contract (as /log_decision is): a bridge blip
+    # on /log_gather must never destroy an already-decided answer (review finding #1 on PR 20).
+    empty = {"candidates": [], "observations": [], "rho": 0.7, "era_split": False,
+             "indeterminate": 0, "half_life_years": 5.0}
+    fake = FakeServices(
+        route={"construct": "passport number", "time_indexed": False},
+        extracts=[empty, _EXTRACT],
+        decides=[{"effector": "report", "value": "P123", "credences": [0.95],
+                  "p_none": 0.05, "eu": 0.9}])
+    real_post = fake.post
+
+    def flaky_post(url: str, payload: dict[str, Any]) -> dict[str, Any] | None:
+        if url.endswith("/log_gather"):
+            raise OSError("bridge blip")
+        return real_post(url, payload)
+
+    fake.post = flaky_post  # type: ignore[method-assign]
+    view = _loop(fake, grow_lane=True)
+    assert view["effector"] == "report"
+    assert view["asserted"] == ["P123"]
+
+
+def test_re_extract_strong_empty_reread_collapses_the_channel() -> None:
+    # The strong re-read REPLACES the channel exactly as corroborate does — including when it
+    # comes back EMPTY (the strong model failed to confirm any local candidate): the weaker
+    # local evidence must not survive it (review finding #2). The re-decide then runs on the
+    # empty channel (disagree ⇒ NONE-dominant ⇒ abstain), never on the stale weak obs.
+    fake = FakeServices(
+        route={"construct": "tax id", "time_indexed": False},
+        corroborate={"observations": [], "gather_rho": 0.95, "value": None},
+        decides=[
+            {"effector": "abstain", "credences": [0.2], "p_none": 0.7, "eu": 0.0},
+            {"effector": "gather", "probe": "re_extract_strong", "credences": [0.2],
+             "p_none": 0.7, "eu": 0.0},
+            {"effector": "abstain", "credences": [0.1], "p_none": 0.9, "eu": 0.0},
+            {"effector": "abstain", "credences": [0.1], "p_none": 0.9, "eu": 0.0},
+        ])
+    view = _loop(fake, grow_lane=True)
+    assert view["effector"] == "abstain"
+    decides = fake.posted("/decide")
+    assert decides[2]["observations"] == []      # the channel was replaced, not kept
+    assert decides[2]["rho"] == 0.95             # at the strong re-read's reliability
+
+
+def test_zero_candidate_walk_retires_its_probes() -> None:
+    # A retrieval actuator enacted in the k=0 walk is APPLIED: the daemon must not be offered
+    # it again later in the same pass (review finding #3 — a re-offer would re-enact and
+    # double-count one event into the warm-count fold).
+    empty = {"candidates": [], "observations": [], "rho": 0.7, "era_split": False,
+             "indeterminate": 0, "half_life_years": 5.0}
+    fake = FakeServices(
+        route={"construct": "passport number", "time_indexed": False},
+        extracts=[empty, _EXTRACT],   # cheap empty; the rerank walk grounds
+        decides=[
+            {"effector": "abstain", "credences": [0.2], "p_none": 0.7, "eu": 0.0},
+            {"effector": "abstain", "credences": [0.2], "p_none": 0.7, "eu": 0.0},
+        ])
+    view = _loop(fake, grow_lane=True)
+    assert view["effector"] == "abstain"
+    decides = fake.posted("/decide")
+    # the grow-priced re-ask (2nd decide) already carries the walked probe as applied
+    assert "retrieve_rerank" in decides[1]["applied_probes"]
+    # and only ONE outcome row was logged for it (no double count)
+    logged = [p for p in fake.posted("/log_gather") if p["probe"] == "retrieve_rerank"]
+    assert len(logged) == 1
+
+
 def test_grow_lane_off_keeps_the_legacy_cascade() -> None:
     # The flag gate (parity-safe cutover): grow_lane absent ⇒ the old cascade behaviour,
     # untouched — /grow_menu and /log_gather are never consulted.
