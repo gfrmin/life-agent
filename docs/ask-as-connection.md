@@ -1,8 +1,10 @@
 # Ask as a general Credence `Connection` — offloading the decision, deleting the adapter
 
-> **Status: deliberation (frozen-layer). Not built.** This rewrites the answer-brain daemon's
-> decision core against the engine's general three-channel contract. Confer before building
-> (taildrop → pixel6). Realises the owner directive (2026-07-01): *offload as much of the Bayesian
+> **Status: conferred (frozen-layer) — ruling recorded 2026-07-01; ready to build.** This rewrites the
+> answer-brain daemon's decision core against the engine's general three-channel contract. The confer
+> returned (§4): the A-vs-B fork was a **false binary** — the meta-decision **factors by derivability**
+> (report/abstain stays an exact app-side threshold; only the gather VOI is offloaded), making 0-CW
+> *structural*. Realises the owner directive (2026-07-01): *offload as much of the Bayesian
 > machinery to the Credence engine as possible.* Supersedes `docs/autonomous-recall-design.md` (the
 > hand-priced `:grow` menu — now an engine-scheduled actuator) and subsumes `aggregate-family-design.md`
 > §1a–§3 (per-slot extraction — now sensor emission).
@@ -71,8 +73,10 @@ slots in the chunk, not just the queried one) plus every retrieval feature (`:ra
 **The crux:** with all slots emitted, the queried slot's emptiness is an *honest sensor reading* — the
 confident wrong slot can no longer *mask* it (the escalation-suppression bug, `aggregate-family §2`).
 And the sensors let the engine **distinguish the miss**: other slots populated + queried slot empty ⇒
-price `re-extract`; retrieval features low ⇒ price `retrieve-wider`. The `grow[mechanism]` choice
-falls out of `net_voi` over two actuators *informed by the sensors* — not hand-code.
+price `re-extract`; retrieval features low ⇒ price `retrieve-wider`. Which one fires is the **gather
+VOI**, priced by the engine over the miss-type sensors (§4's B half) — not hand-coded. The per-slot
+sensors thus serve **two consumers**: the queried slot's own candidate posterior (the terminal half,
+whose honest `p_none` is what the wrong slot used to mask) and the miss-type sensors (the gather half).
 
 **Actuators — register the gather moves.** Add `retrieve-wider[s]`, `re-extract[c]` (keep
 `corroborate[ρ]`) to the `action_space`; the engine schedules them by the *same* `optimise`/`net_voi`
@@ -88,26 +92,61 @@ e-process firewalls (abstain-rows clean-fold; report-rows recorded-not-folded).
 **The brain supplies the rest** — the belief over the queried slot's candidates + NONE, the
 VOI-schedule of gather-vs-answer, the utility — from primitives it already runs.
 
-## 4. The open design fork (the confer's core question)
+## 4. The resolved factoring (confer ruling, 2026-07-01)
 
-Two factorings of the decision; the confer picks one (or a hybrid):
+The A-vs-B fork below was a **false binary**. The meta-decision is not monolithic; it **factors by
+derivability**, and drawing that cut correctly dissolves both the 0-CW risk and the `g`-calibration
+problem at once.
 
-- **(A) Generalised categorical.** Keep the answer-brain's `candidate_posterior`/`terminal_decide`;
-  widen only the observation kernel to consume arbitrary named features and widen `schedule_decide` to
-  price gather actuators. Smallest change; the candidate belief and the meta-decision stay in one
-  categorical EU. Risk: the observation kernel generalisation (noisy-channel → feature-conditioned) is
-  real daemon work and could regress parity.
-- **(B) Split belief / meta-decision.** Candidate identity stays an app-side categorical; the
-  *report / abstain / gather / which-gather* meta-decision is re-expressed as a **structure-BMA over
-  the sensors** (`structure_bma`/`structure_decide`, the governor's shipping path), so the engine
-  learns *which sensors predict a good decision* and VOI-gates the gather. Maximal offload (the
-  meta-decision is the governor's proven verb); the candidate categorical is the only app-specific
-  piece left. Risk: the two-belief coupling (candidate confidence must feed the meta-decision) needs a
-  clean seam.
+**Report/abstain stays exact and app-side (the "A half" — non-negotiable).** It is a closed-form
+EU-max on the candidate posterior: `report_j` iff `p_j > −u_wrong / (u_correct − u_wrong)` (the
+`−p/(1−p)` threshold). Routing *this* through a structure-BMA over sensors would ask the engine to
+re-discover, from `:rank`/`:fts_score`/`:slot_present` correlations, a boundary already held in closed
+form — a learned surrogate for an exact computation (unsound by the R2 *derive-don't-learn* standard),
+and the precise origin of the 0-CW hazard. So `terminal_decide` — the threshold rule — stays
+**untouched**; the only terminal-side change is that the candidate posterior is built **per queried
+slot**, so its `p_none` is honest rather than masked by a confident wrong slot (the extraction fix, §3).
 
-Lean **B** — it is the larger offload and reuses a shipping, battle-tested decision verb — but it must
-be shown to preserve **0 confident-wrong** (the meta-decision must never report when the candidate
-categorical is unsure). Settle at confer with the governor integration as the reference client.
+**The gather VOI is the learnable half (the "B half").** `g_mechanism(sensors) = P(this actuator
+recovers the answer | sensors)` is a posterior over the miss-type sensors — exactly the `g`-term
+`autonomous-recall-design.md` was stuck hand-calibrating. *That* belongs in the governor's
+`structure_bma`/`structure_decide`. B decides **gather-or-not and which-gather; it never decides
+report.**
+
+**0-CW is therefore structural, not something to demonstrate empirically.** The learned belief does
+not own reporting, so no path through it can emit a confident-wrong. A gather either produces more
+evidence (whereupon the exact threshold re-decides) or returns `false` honestly (whereupon the exact
+threshold decides on what it has). The only way to reintroduce the hazard is to let B swallow the
+terminal decision — which is what the draft's "B" did, and exactly what is refused.
+
+**The trade-off dissolves.** The terminal half reuses the answer-brain's existing `terminal_decide`
+untouched (A's "smallest change"); the gather half reuses the governor's shipping `structure_decide`
+client (B's "largest offload"). New code is only the **seam**.
+
+**The seam (this answers q3).** One-directional: emit the candidate posterior's uncertainty summary
+(`p_none`, max-credence, entropy) as **sensors** into the gather structure-BMA; nothing crosses back
+into the threshold. The queried construct is **both** a categorical (it owns reporting) **and** a
+source of sensors (it feeds gather) — two roles, no tension; the two beliefs meet only in the gather
+VOI.
+
+**Two honest caveats (the live work items — §6).**
+1. **The `g`-prior is demoted, not dissolved.** At cold start `g_mechanism` sits at its prior (= A's
+   hand-set constant) and sharpens only as gather outcomes fold in. `autonomous-recall-design.md`'s
+   open math survives as the *prior*, not the answer — budget it; the data now corrects it. It still
+   strictly dominates A (a permanent constant).
+2. **Gather-outcome instrumentation is the one genuinely new work item** (beyond the seam and the
+   actuators' `execute!`): after `re-extract`/`retrieve-wider` fires, did the queried slot become
+   populated with a candidate that led to a correct answer? Fold that as a **structure-observe**
+   stream — the price of making `g` learned rather than guessed. B earns its keep specifically on the
+   *which-gather* discrimination (re-extract vs retrieve-wider); the miss-type sensors (§3) already
+   carry that signal — *other slots populated + queried empty* = extraction, *retrieval features low*
+   = retrieval. The *whether* is mostly settled by candidate uncertainty, so optimise the sensor list
+   (q2) for discriminating miss **type**, not for re-deriving how unsure the belief already is.
+
+> Superseded fork, kept for the record: **(A)** widen the categorical's observation kernel to consume
+> features and price gather in one EU; **(B)** re-express the *whole* report/abstain/gather
+> meta-decision as a structure-BMA over sensors. The ruling takes **A's terminal half and B's gather
+> half** — not one or the other.
 
 ## 5. Parity-safe cutover, and what stays deferred
 
@@ -124,16 +163,26 @@ when wanted, wires in as a §6.5 prosthetic connection — the seam `sem_map`/`r
 are. The aggregate family (Σ/recall/missing-mass, `aggregate-family §5-§8`) and Arc A (temporal belief)
 stay in their named slots.
 
-## 6. Questions for the confer
+## 6. Confer outcome (resolved 2026-07-01) and the residual work items
 
-1. **The factoring** (§4): (A) generalised categorical vs (B) split with `structure_decide` over
-   sensors. Does B preserve 0-CW, and is the candidate↔meta coupling clean?
-2. **The sensor list** (§3): lean toward *more*. Which retrieval/extraction features are cheap to emit
-   and plausibly predictive? Any that leak (citation-shape, gold-adjacency)?
-3. **Belief shape:** does the queried construct stay a categorical, or become a *sensor* that selects
-   among per-slot posteriors?
-4. **Template reuse:** how much of the credence-governor's `structure_bma`/`structure_decide` client
-   and any credence-pi `Connection` wiring is liftable (compose-don't-rebuild)?
-5. **`re-extract` as actuator:** the reverted stronger-extractor was a *fallback gated on withhold*
-   that the wrong-slot candidate suppressed (`aggregate-family §2`). As an engine-priced actuator over
-   an *honest empty-slot sensor*, does that failure mode close?
+1. **The factoring** — **RESOLVED.** Not A-vs-B; factor by derivability (§4). A owns the exact
+   terminal threshold; B owns the gather VOI. 0-CW is structural.
+2. **The sensor list** — refined: optimise for discriminating miss **type** (extraction vs retrieval),
+   *not* for re-deriving candidate uncertainty (the closed-form threshold already holds that). Still
+   lean toward *more*; still audit for leakage (citation-shape, gold-adjacency).
+3. **Belief shape** — **RESOLVED.** Both: the queried construct stays a categorical (owns reporting)
+   *and* emits an uncertainty summary (`p_none`, max-credence, entropy) as sensors (feeds gather). The
+   two beliefs meet only in the gather VOI; the seam is one-directional.
+4. **Template reuse** — the governor's `structure_bma`/`structure_decide` client is the reference for
+   the **gather half only**; the terminal half reuses the answer-brain's own `terminal_decide`.
+5. **`re-extract` as actuator** — **RESOLVED (yes).** The reverted stronger-extractor was a fallback
+   gated on withhold that the wrong-slot candidate suppressed (`aggregate-family §2`). As an
+   engine-priced actuator over an *honest empty-slot sensor*, the suppression cannot recur — but its
+   `execute!` must invoke the **stronger** extraction capability, not re-run the same extractor
+   (per-field alone did not convert the six — [[per-field-extraction-disconfirmed]]; the gather is
+   what converts).
+
+**The two live work items** (from §4's caveats): (a) the `g_mechanism` **prior** (cold-start = A's
+constant; `autonomous-recall-design.md`'s open math is now the prior, not the answer), and (b)
+**gather-outcome instrumentation** as a structure-observe stream (did the gather populate the queried
+slot → correct answer?) — the price of making `g` learned rather than guessed.
