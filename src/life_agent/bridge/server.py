@@ -46,6 +46,7 @@ from life_agent.bridge.observations import to_abstract_observations
 from life_agent.core import config
 from life_agent.core import decisions as DEC
 from life_agent.core import expansion as EXP
+from life_agent.core import gather_outcomes as GO
 from life_agent.core import joint_extract as JE
 from life_agent.core import lookup as LK
 from life_agent.core import matching as MATCH
@@ -84,6 +85,7 @@ class BridgeDeps:
     decisions_path: Path                 # calibration decision log — /log_decision appends here
     reactions_path: Path                 # calibration reaction log — /log_reaction appends here
     fold_version: Callable[[], str]      # current utility fold version (pins the logged decision)
+    gather_outcomes_path: Path           # gather-outcome log — /log_gather writes, /grow_menu reads
 
 
 class BridgeError(Exception):
@@ -267,9 +269,19 @@ def _probe_corroborate(deps: BridgeDeps, p: Payload) -> Payload:
         tier_rho = float(p.get("rho") or _JOINT_RHO)
         jr = JE.extract_joint(deps.root, question, hits, model=model, k=len(hits))
         obs: list[Payload] = []
+        new_candidate: str | None = None
         if jr.value is not None:
             vn = LK._norm_value(jr.value)
             idx = next((i for i, c in enumerate(candidates) if LK._norm_value(c) == vn), None)
+            if idx is None and p.get("allow_new"):
+                # The re-extract GROW actuator (slice 6): the strong re-read named a value
+                # OUTSIDE the current candidate set — with allow_new it ENLARGES K (that is what
+                # grow is for): the value comes back as a new candidate whose observation is
+                # indexed at len(candidates); the body appends it and re-decides. Without
+                # allow_new the corroborate contract is unchanged (outside-set ⇒ no observation
+                # ⇒ disagree-abstain).
+                new_candidate = jr.value
+                idx = len(candidates)
             if idx is not None:
                 # The keystone: the re-read obs flows through the SAME volatility projector
                 # /extract uses — no transform may hand-set time_factor=1.0 and report a stale
@@ -279,8 +291,11 @@ def _probe_corroborate(deps: BridgeDeps, p: Payload) -> Payload:
                 tf = _corroborate_time_factor(jr, hits, p)
                 obs = [{"reports": idx, "group": 0, "authority": 1.0,
                         "subject_factor": 1.0, "time_factor": tf}]
-        return {"observations": obs, "gather_rho": tier_rho, "value": jr.value,
-                "served_model": jr.served_model, "tokens": jr.in_tokens + jr.out_tokens}
+        out: Payload = {"observations": obs, "gather_rho": tier_rho, "value": jr.value,
+                        "served_model": jr.served_model, "tokens": jr.in_tokens + jr.out_tokens}
+        if new_candidate is not None:
+            out["new_candidate"] = new_candidate
+        return out
     hits = P.probe_corroborate(
         deps.conn, question, _req_str(p, "leader_value"),
         k=int(p.get("k", _DEFAULT_K)), exclude_keys=list(p.get("exclude_keys") or ()))
@@ -289,6 +304,37 @@ def _probe_corroborate(deps: BridgeDeps, p: Payload) -> Payload:
 
 def _utility(deps: BridgeDeps, _p: Payload) -> Payload:
     return {"u_bar": deps.u_bar()}
+
+
+def _grow_menu(deps: BridgeDeps, _p: Payload) -> Payload:
+    """The `/decide` grow block, verbatim (slice 6): the declared sensor vocabulary + the menu
+    actuators, each with its body-persisted warm counts (``None`` ⇒ the daemon's cold Beta
+    prior). The bridge owns the store; the executor forwards the block to the daemon, which
+    reads the learned ``g`` per actuator and prices the grow lane."""
+    return {"grow": GO.grow_block(deps.gather_outcomes_path)}
+
+
+def _log_gather(deps: BridgeDeps, p: Payload) -> Payload:
+    """Append one gather outcome (the structure-observe stream — ask-as-connection §4 caveat 2).
+    ``recovered`` is the honest v0 proxy: the grown question ended in a report through the exact
+    0-CW terminal threshold. The bridge owns the write (as with the other logs); a probe outside
+    the menu or a sensor outside its declared bucket fails loud — vocabulary drift must never be
+    silently folded."""
+    probe = _req_str(p, "probe")
+    if probe not in {str(a["probe"]) for a in GO.GROW_ACTUATORS}:
+        raise BridgeError(400, f"unknown grow probe {probe!r}")
+    sensors = p.get("sensors")
+    if not isinstance(sensors, dict):
+        raise BridgeError(400, "field 'sensors' must be a JSON object")
+    vocab = dict(GO.SENSOR_FEATURES)
+    for name, values in vocab.items():
+        if sensors.get(name) not in values:
+            raise BridgeError(400, f"sensor {name!r} must be one of {values}, "
+                                   f"got {sensors.get(name)!r}")
+    GO.append_outcome(deps.gather_outcomes_path, probe,
+                      {k: str(v) for k, v in sensors.items()},
+                      recovered=bool(p.get("recovered")))
+    return {"logged": True}
 
 
 # Terminal brain actions (DEC.LOOKUP_ACTION_ORDER) each map to one logged lookup decision; the
@@ -426,8 +472,9 @@ _POST: dict[str, Handler] = {
     "/probe/corroborate": _probe_corroborate,
     "/log_decision": _log_decision,
     "/log_reaction": _log_reaction,
+    "/log_gather": _log_gather,
 }
-_GET: dict[str, Handler] = {"/utility": _utility}
+_GET: dict[str, Handler] = {"/utility": _utility, "/grow_menu": _grow_menu}
 
 
 def dispatch(deps: BridgeDeps, method: str, path: str,
@@ -522,7 +569,8 @@ def build_deps() -> BridgeDeps:
     return BridgeDeps(root=root, conn=conn, client=LK._client(),
                       profile=owner.load_profile(), u_bar=_u_bar,
                       decisions_path=config.DECISIONS_LOG,
-                      reactions_path=config.REACTIONS_LOG, fold_version=_fold_version)
+                      reactions_path=config.REACTIONS_LOG, fold_version=_fold_version,
+                      gather_outcomes_path=config.GATHER_OUTCOMES_LOG)
 
 
 def main() -> None:

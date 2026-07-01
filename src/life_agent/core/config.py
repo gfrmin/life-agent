@@ -46,6 +46,10 @@ DECISIONS_LOG = KB / "calibration" / "decisions.jsonl"
 # decisions, joined to DECISIONS_LOG by decision_id. The calibration leg's third
 # append-only log; the utility posterior folds the clean abstain-verdicts from it.
 REACTIONS_LOG = KB / "calibration" / "reactions.jsonl"
+# The gather-outcome log (ask-as-connection §4 caveat 2): one row per enacted grow
+# actuator — the structure-observe stream the daemon's gather structure-BMA warm-seeds
+# from (core/gather_outcomes.py). The calibration leg's fourth append-only log.
+GATHER_OUTCOMES_LOG = KB / "calibration" / "gather_outcomes.jsonl"
 
 # --- The utility posterior (foundations §4.4 — utility as inference) ---
 # Gauge pins + grid priors (owner-editable; schema example in

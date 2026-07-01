@@ -24,13 +24,29 @@ _EXTRACT = {"candidates": ["P123"],
             "rho": 0.7, "era_split": False, "indeterminate": 0, "half_life_years": 5.0}
 
 
+_GROW_MENU = {
+    "features": {"names": ["extracted", "p_none", "indeterminate"],
+                 "values": [["none", "some"], ["hi", "mid", "lo"], ["none", "some"]]},
+    "actuators": [
+        {"probe": "retrieve_rerank", "cost": 0.004, "alpha0": 3.0, "beta0": 7.0,
+         "warm_counts": None},
+        {"probe": "retrieve_expand", "cost": 0.006, "alpha0": 3.5, "beta0": 6.5,
+         "warm_counts": None},
+        {"probe": "re_extract_strong", "cost": 0.020, "alpha0": 4.0, "beta0": 6.0,
+         "warm_counts": None},
+    ],
+}
+
+
 class FakeServices:
     """A scripted bridge + daemon. ``decides`` is consumed in order (the daemon's effector
-    stream); every other endpoint returns its fixed fixture. Records calls for assertions."""
+    stream); ``extracts``, when given, is consumed per /extract call (a grow pass re-extracts);
+    every other endpoint returns its fixed fixture. Records calls for assertions."""
 
     def __init__(self, *, route: dict[str, Any] | None,
                  hits: list[dict[str, Any]] | None = None,
                  extract: dict[str, Any] | None = None,
+                 extracts: list[dict[str, Any]] | None = None,
                  decides: list[dict[str, Any]] | None = None,
                  narrative: dict[str, Any] | None = None,
                  corroborate: dict[str, Any] | None = None,
@@ -38,6 +54,7 @@ class FakeServices:
         self.route = route
         self.hits = hits if hits is not None else _HIT
         self.extract = extract if extract is not None else _EXTRACT
+        self._extracts = list(extracts) if extracts is not None else None
         self._decides = list(decides or [])
         self.narrative = narrative
         self.corroborate = corroborate
@@ -57,9 +74,13 @@ class FakeServices:
         if url.endswith("/probe/recency"):
             return {"doc_date": {}}
         if url.endswith("/extract"):
+            if self._extracts is not None:
+                return self._extracts.pop(0)
             return self.extract
         if url.endswith("/probe/corroborate"):
             return self.corroborate
+        if url.endswith("/log_gather"):
+            return {"logged": True}
         if url.endswith("/decide"):
             return self._decides.pop(0)
         raise AssertionError(f"unexpected POST {url}")
@@ -68,6 +89,8 @@ class FakeServices:
         self.calls.append((url, None))
         if url.endswith("/utility"):
             return {"u_bar": self.utility}
+        if url.endswith("/grow_menu"):
+            return {"grow": _GROW_MENU}
         raise AssertionError(f"unexpected GET {url}")
 
     def posted(self, suffix: str) -> list[dict[str, Any]]:
@@ -204,6 +227,177 @@ def test_truth_likely_missing_false_when_present_leader_wins() -> None:
     # A present candidate outweighs NONE ⇒ the answer is likely in the set ⇒ corroborate, not grow.
     assert EX._truth_likely_missing(
         {"candidates": ["a", "b"], "credences": [0.6, 0.1], "p_none": 0.3}) is False
+
+
+# --- the grow lane (slice 6): the DAEMON schedules recall; the body enacts + logs --------
+# grow_lane=True replaces the hardcoded cascade: after a withholding terminal, the body
+# re-decides WITH the grow block (sensors + menu actuators + warm counts); the daemon prices
+# the grow argmax (engine grow_value over the structure-BMA g) and names the probe; the body
+# enacts it, re-decides on the new evidence, and logs one gather outcome per enactment.
+
+def test_grow_lane_daemon_schedules_retrieve_expand() -> None:
+    fake = FakeServices(
+        route={"construct": "passport number", "time_indexed": False},
+        decides=[
+            {"effector": "abstain", "credences": [0.2, 0.1], "p_none": 0.7, "eu": 0.0},
+            {"effector": "gather", "probe": "retrieve_expand", "credences": [0.2, 0.1],
+             "p_none": 0.7, "eu": 0.0},
+            {"effector": "report", "value": "P123", "credences": [0.9, 0.1],
+             "p_none": 0.05, "eu": 0.8},
+        ])
+    view = _loop(fake, grow_lane=True)
+    assert view["effector"] == "report"
+    decides = fake.posted("/decide")
+    assert len(decides) == 3
+    assert "grow" not in decides[0] and "sensors" not in decides[0]   # first pass is plain
+    assert decides[1]["grow"]["actuators"][0]["probe"] == "retrieve_rerank"  # menu forwarded
+    assert decides[1]["sensors"]["extracted"] == "some"
+    assert decides[1]["sensors"]["p_none"] == "hi"                    # NONE is MAP ⇒ hi bucket
+    retrieves = fake.posted("/retrieve")
+    assert (retrieves[-1]["rerank"], retrieves[-1]["expand"]) == (True, True)  # enacted
+    logged = fake.posted("/log_gather")
+    assert len(logged) == 1
+    assert logged[0]["probe"] == "retrieve_expand" and logged[0]["recovered"] is True
+
+
+def test_grow_lane_respects_a_daemon_decline() -> None:
+    # The daemon prices the grow lane and still withholds terminally ⇒ the body enacts NOTHING —
+    # no cascade, no retry. The agent decides; the body carries it out (the de-patch).
+    fake = FakeServices(
+        route={"construct": "passport number", "time_indexed": False},
+        decides=[
+            {"effector": "abstain", "credences": [0.5, 0.2], "p_none": 0.3, "eu": 0.0},
+            {"effector": "abstain", "credences": [0.5, 0.2], "p_none": 0.3, "eu": 0.0},
+        ])
+    view = _loop(fake, grow_lane=True)
+    assert view["effector"] == "abstain"
+    assert len(fake.posted("/retrieve")) == 1     # no recall enacted
+    assert fake.posted("/log_gather") == []       # nothing enacted ⇒ nothing logged
+
+
+def test_grow_lane_re_extract_strong_enlarges_k() -> None:
+    # The daemon schedules the strong re-extract; the whole-doc re-read names a value OUTSIDE
+    # the local candidate set ⇒ allow_new enlarges K and the re-decide reports the new value.
+    fake = FakeServices(
+        route={"construct": "tax id", "time_indexed": False},
+        corroborate={"observations": [{"reports": 1, "group": 0, "authority": 1.0,
+                                       "subject_factor": 1.0, "time_factor": 1.0}],
+                     "gather_rho": 0.95, "value": "NEW-7", "new_candidate": "NEW-7"},
+        decides=[
+            {"effector": "abstain", "credences": [0.2], "p_none": 0.7, "eu": 0.0},
+            {"effector": "gather", "probe": "re_extract_strong", "credences": [0.2],
+             "p_none": 0.7, "eu": 0.0},
+            {"effector": "report", "value": "NEW-7", "credences": [0.1, 0.9],
+             "p_none": 0.0, "eu": 0.8},
+        ])
+    view = _loop(fake, grow_lane=True)
+    assert view["effector"] == "report"
+    assert view["asserted"] == ["NEW-7"]
+    corr = fake.posted("/probe/corroborate")
+    assert len(corr) == 1 and corr[0]["allow_new"] is True
+    assert fake.posted("/decide")[2]["candidates"] == ["P123", "NEW-7"]  # K enlarged
+    logged = fake.posted("/log_gather")
+    assert logged[0]["probe"] == "re_extract_strong" and logged[0]["recovered"] is True
+
+
+def test_grow_lane_zero_candidates_walks_the_menu_cheapest_first() -> None:
+    # Nothing extracted ⇒ no posterior to price against (the k=0 degenerate case): the body
+    # walks the menu cheapest-first until candidates appear, then the daemon decides. An
+    # enactment that produced nothing logs recovered=False; the one that surfaced the
+    # candidates logs the final report.
+    empty = {"candidates": [], "observations": [], "rho": 0.7, "era_split": False,
+             "indeterminate": 0, "half_life_years": 5.0}
+    fake = FakeServices(
+        route={"construct": "passport number", "time_indexed": False},
+        extracts=[empty, empty, _EXTRACT],   # cheap, rerank (still empty), expand (grounds)
+        decides=[{"effector": "report", "value": "P123", "credences": [0.95],
+                  "p_none": 0.05, "eu": 0.9}])
+    view = _loop(fake, grow_lane=True)
+    assert view["effector"] == "report"
+    logged = {p["probe"]: p["recovered"] for p in fake.posted("/log_gather")}
+    assert logged == {"retrieve_rerank": False, "retrieve_expand": True}
+
+
+def test_grow_lane_log_gather_failure_never_breaks_the_answer() -> None:
+    # The gather-outcome write is fail-open by contract (as /log_decision is): a bridge blip
+    # on /log_gather must never destroy an already-decided answer (review finding #1 on PR 20).
+    empty = {"candidates": [], "observations": [], "rho": 0.7, "era_split": False,
+             "indeterminate": 0, "half_life_years": 5.0}
+    fake = FakeServices(
+        route={"construct": "passport number", "time_indexed": False},
+        extracts=[empty, _EXTRACT],
+        decides=[{"effector": "report", "value": "P123", "credences": [0.95],
+                  "p_none": 0.05, "eu": 0.9}])
+    real_post = fake.post
+
+    def flaky_post(url: str, payload: dict[str, Any]) -> dict[str, Any] | None:
+        if url.endswith("/log_gather"):
+            raise OSError("bridge blip")
+        return real_post(url, payload)
+
+    fake.post = flaky_post  # type: ignore[method-assign]
+    view = _loop(fake, grow_lane=True)
+    assert view["effector"] == "report"
+    assert view["asserted"] == ["P123"]
+
+
+def test_re_extract_strong_empty_reread_collapses_the_channel() -> None:
+    # The strong re-read REPLACES the channel exactly as corroborate does — including when it
+    # comes back EMPTY (the strong model failed to confirm any local candidate): the weaker
+    # local evidence must not survive it (review finding #2). The re-decide then runs on the
+    # empty channel (disagree ⇒ NONE-dominant ⇒ abstain), never on the stale weak obs.
+    fake = FakeServices(
+        route={"construct": "tax id", "time_indexed": False},
+        corroborate={"observations": [], "gather_rho": 0.95, "value": None},
+        decides=[
+            {"effector": "abstain", "credences": [0.2], "p_none": 0.7, "eu": 0.0},
+            {"effector": "gather", "probe": "re_extract_strong", "credences": [0.2],
+             "p_none": 0.7, "eu": 0.0},
+            {"effector": "abstain", "credences": [0.1], "p_none": 0.9, "eu": 0.0},
+            {"effector": "abstain", "credences": [0.1], "p_none": 0.9, "eu": 0.0},
+        ])
+    view = _loop(fake, grow_lane=True)
+    assert view["effector"] == "abstain"
+    decides = fake.posted("/decide")
+    assert decides[2]["observations"] == []      # the channel was replaced, not kept
+    assert decides[2]["rho"] == 0.95             # at the strong re-read's reliability
+
+
+def test_zero_candidate_walk_retires_its_probes() -> None:
+    # A retrieval actuator enacted in the k=0 walk is APPLIED: the daemon must not be offered
+    # it again later in the same pass (review finding #3 — a re-offer would re-enact and
+    # double-count one event into the warm-count fold).
+    empty = {"candidates": [], "observations": [], "rho": 0.7, "era_split": False,
+             "indeterminate": 0, "half_life_years": 5.0}
+    fake = FakeServices(
+        route={"construct": "passport number", "time_indexed": False},
+        extracts=[empty, _EXTRACT],   # cheap empty; the rerank walk grounds
+        decides=[
+            {"effector": "abstain", "credences": [0.2], "p_none": 0.7, "eu": 0.0},
+            {"effector": "abstain", "credences": [0.2], "p_none": 0.7, "eu": 0.0},
+        ])
+    view = _loop(fake, grow_lane=True)
+    assert view["effector"] == "abstain"
+    decides = fake.posted("/decide")
+    # the grow-priced re-ask (2nd decide) already carries the walked probe as applied
+    assert "retrieve_rerank" in decides[1]["applied_probes"]
+    # and only ONE outcome row was logged for it (no double count)
+    logged = [p for p in fake.posted("/log_gather") if p["probe"] == "retrieve_rerank"]
+    assert len(logged) == 1
+
+
+def test_grow_lane_off_keeps_the_legacy_cascade() -> None:
+    # The flag gate (parity-safe cutover): grow_lane absent ⇒ the old cascade behaviour,
+    # untouched — /grow_menu and /log_gather are never consulted.
+    fake = FakeServices(
+        route={"construct": "passport number", "time_indexed": False},
+        decides=[{"effector": "abstain", "credences": [0.2, 0.1], "p_none": 0.7, "eu": -0.1},
+                 {"effector": "report", "value": "P123", "credences": [0.9, 0.1],
+                  "p_none": 0.05, "eu": 0.8}])
+    view = _loop(fake, grow=True)
+    assert view["effector"] == "report"
+    assert fake.posted("/log_gather") == []
+    assert all(not u.endswith("/grow_menu") for (u, _) in fake.calls)
 
 
 # --- render_view: the executor's decision in the shared credence grammar ----------------
