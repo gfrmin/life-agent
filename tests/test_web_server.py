@@ -71,6 +71,19 @@ def test_get_board_is_today_is_bool_and_populates_today() -> None:
     assert board["counts"]["today"] == 1
 
 
+def test_get_board_preserves_unknown_list_bucket() -> None:
+    # A row whose list is outside VALID_LISTS (a legacy/migrated value) must not be dropped —
+    # get_board keeps it under its own key so the UI can still surface it.
+    from life_agent.tasks import events as ev
+    with store.get_db() as conn:
+        store.apply(conn, ev.asserted(ev.new_identity(), payload={
+            "user_id": UID, "text": "legacy", "list": "archive", "due_date": None,
+            "is_today": 0, "origin": "human"}))
+    board = store.get_board(UID)
+    assert [t["text"] for t in board["lists"]["archive"]] == ["legacy"]
+    assert board["counts"]["archive"] == 1
+
+
 def test_get_board_excludes_completed() -> None:
     tid = _add("gone")
     _call("POST", f"/api/tasks/{tid}/complete")
@@ -273,3 +286,18 @@ def test_http_malformed_body_is_400(live: str) -> None:
         raise AssertionError("expected HTTP 400")
     except urllib.error.HTTPError as e:
         assert e.code == 400
+
+
+def test_http_bad_content_length_does_not_crash(live: str) -> None:
+    # A non-numeric Content-Length must not escape as a traceback (the "never crashes the loop"
+    # contract): it reads as a 0-length body, dispatch returns a normal 4xx, the server stays up.
+    import socket
+    from urllib.parse import urlsplit
+
+    u = urlsplit(live)
+    sock = socket.create_connection((u.hostname, u.port), timeout=5)
+    sock.sendall(b"POST /api/tasks HTTP/1.0\r\nHost: x\r\nContent-Length: abc\r\n\r\n")
+    resp = sock.recv(4096).decode(errors="replace")
+    sock.close()
+    assert resp.startswith("HTTP/")  # a real HTTP response, not a dropped connection
+    assert _http(live, "GET", "/ready")[0] == 200  # loop survived
