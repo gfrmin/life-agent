@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import sqlite3
 from pathlib import Path
+from typing import Any
 
 from life_agent.core.config import GTD_DB_PATH
 from life_agent.tasks import events as ev
@@ -260,6 +261,41 @@ def get_task_counts(user_id: int) -> str:
         lines.append(f"  #{lst}: {counts[lst]}")
     lines.append(f"  ★ today: {counts['today']}")
     return "\n".join(lines)
+
+
+def get_board(user_id: int) -> dict[str, Any]:
+    """The whole active board as raw JSON-able data — the direct-manipulation surface for the
+    webapp (``reach.web``). Unlike the ``get_*`` helpers above (which render Telegram strings),
+    this returns structured rows so a UI can render buttons and re-fetch after each mutation.
+
+    One query, bucketed in Python: ``{lists: {inbox,next,scheduled,someday: [task,...]}, today:
+    [task,...], counts: {list->n, today: n}}`` where ``task`` is
+    ``{id, text, list, due_date, is_today: bool, created_at}``. All four ``VALID_LISTS`` keys are
+    always present (empty lists render as empty columns); ``is_today`` (stored INT) is coerced to
+    a JSON bool."""
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT id, text, list, due_date, is_today, created_at FROM tasks "
+            "WHERE user_id = ? AND completed_at IS NULL ORDER BY list, id",
+            (user_id,),
+        ).fetchall()
+    lists: dict[str, list[dict[str, Any]]] = {lst: [] for lst in VALID_LISTS}
+    today: list[dict[str, Any]] = []
+    for row in rows:
+        task: dict[str, Any] = {
+            "id": row["id"],
+            "text": row["text"],
+            "list": row["list"],
+            "due_date": row["due_date"],
+            "is_today": bool(row["is_today"]),
+            "created_at": row["created_at"],
+        }
+        lists.setdefault(task["list"], []).append(task)
+        if task["is_today"]:
+            today.append(task)
+    counts: dict[str, int] = {lst: len(items) for lst, items in lists.items()}
+    counts["today"] = len(today)
+    return {"lists": lists, "today": today, "counts": counts}
 
 
 def get_completed_this_week(user_id: int) -> str:
