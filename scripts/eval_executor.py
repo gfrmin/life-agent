@@ -43,6 +43,9 @@ DAEMON = os.environ.get("ANSWER_BRAIN_URL", "http://127.0.0.1:8799")
 # Grow (escalating recall on a withholding terminal) is ON by default; the loop's grow logic and
 # the transform menu now live in core/executor.py. `ANSWER_BRAIN_GROW=0` is the no-grow baseline.
 _GROW = os.environ.get("ANSWER_BRAIN_GROW", "1") != "0"
+# The grow-lane flag (slice 6): recall decided by the daemon over the priced grow menu; the
+# same env var scripts/ask.py reads, so the eval measures the production path verbatim.
+_GROW_LANE = os.environ.get("LIFE_AGENT_GROW_LANE", "") == "1"
 
 
 def _post(url: str, payload: dict) -> dict | None:
@@ -169,7 +172,8 @@ def main() -> int:
     packets: list[dict] = []
     for q in questions:
         view = EX.decide_via_loop(q["question"], args.k, bridge=BRIDGE, daemon=DAEMON,
-                                  post=_post, get=_get, grow=_GROW, rerank=args.rerank)
+                                  post=_post, get=_get, grow=_GROW, rerank=args.rerank,
+                                  grow_lane=_GROW_LANE)
         p = _grade(conn, q, view, labels)
         packets.append(p)
         print(f"  {p['id']}: {p['effector']} → {p['bucket']}"

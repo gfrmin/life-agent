@@ -171,7 +171,18 @@ Free-text Telegram messages, parsed by a local model into one of these intents
 | `counts` | "counts", "stats" | per-list counts |
 | `completed` | "completed" | tasks completed this week |
 | `help` | "help", "?" | the vocabulary above, rendered from `INTENTS` |
-| `chat` | anything not about tasks | a brief reply; never mutates |
+| `question` | "what is my Israeli tax ID?", "when does my lease end?" | the *know* mode's credence-grammar answer (below), plus a one-line verdict invitation when a decision was logged |
+| `chat` | greetings/small talk | a brief reply; never mutates |
+
+**Questions route to *know*, not act.** A life/document/fact question from the act surface is
+answered by the SAME executor read-path the terminal uses (`core/ask_client` →
+`executor.decide_via_loop` → the shared credence grammar) and its terminal decision is logged
+through the bridge (`/log_decision`), so the surface changes nothing about the answer or the
+fold. **The in-chat verdict is one bit:** a bare `g`/`good`/`b`/`bad` (deterministic pre-parse,
+no model round-trip) binds to the LAST know answer's `decision_id` and posts `/log_reaction`;
+the reply names the fold fate in ask-live's `/react` vocabulary (a report verdict is
+recorded-not-folded, said so). With no pending answer, a bare `g`/`b` falls through to the
+ordinary NLU. Older answers are graded from the terminal (`/react ID g|b`).
 
 **Ambiguity rule** (invariant 3): completing by text when several active tasks match lists
 the matches — `N tasks match 'call' — which one? Say 'done <id>'` — and completes nothing.
@@ -212,4 +223,7 @@ parses, dispatches, or renders and appears in every rendering; `tests/test_gtd.p
 pins the owner-filter trigger (possessive vs relational), the subject footer's totality,
 and the temporal+subject report composition; `tests/test_ask_react.py` pins the deferred
 verdict (prefix resolution, the recorded `ReactionEvent`, and the report-vs-abstain fate it
-names). Removing redundancy is cheap; keeping it removed is these tests.
+names); `tests/test_ask_client.py` + the question tests in `tests/test_reach.py` pin the
+act-surface know route (one read-path whatever the transport, the one-bit verdict binding,
+and the same fold-fate vocabulary). Removing redundancy is cheap; keeping it removed is
+these tests.

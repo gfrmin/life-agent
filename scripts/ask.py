@@ -831,6 +831,10 @@ def _narrative_scored(root: Path | None, question: str, text: str,
 # to its content-addressed id). Flag-gated; the default path is untouched.
 EXECUTOR_BRIDGE = os.environ.get("LIFE_AGENT_BRIDGE_URL", "http://127.0.0.1:8798")
 EXECUTOR_DAEMON = os.environ.get("ANSWER_BRAIN_URL", "http://127.0.0.1:8799")
+# The grow-lane flag (ask-as-connection slice 6, parity-safe cutover): 1 ⇒ recall is DECIDED BY
+# THE DAEMON (the priced grow menu over the gather structure-BMA; outcomes logged to
+# /log_gather); 0/absent ⇒ the legacy body-side cascade. Deleted at cutover (Phase 3).
+EXECUTOR_GROW_LANE = os.environ.get("LIFE_AGENT_GROW_LANE", "") == "1"
 EXECUTOR_DOWN = ("No answer asserted — the executor is unavailable (the answer-brain "
                  "daemon/bridge is not up; start it: bin/answer-brain).")
 # the last executor decision's id (the bridge's content-addressed "ab-…") — the in-session g/b
@@ -904,7 +908,8 @@ def answer_via_executor(question: str, k: int
     if not _executor_ready():
         return (EXECUTOR_DOWN, [], {})
     view = EX.decide_via_loop(question, k, bridge=EXECUTOR_BRIDGE, daemon=EXECUTOR_DAEMON,
-                              post=_http_post, get=_http_get)
+                              post=_http_post, get=_http_get,
+                              grow_lane=EXECUTOR_GROW_LANE)
     _log_executor_decision(question, view)
     pairs = _cards_from_set(view["hits"])
     cards = [c for c, _ in pairs]
