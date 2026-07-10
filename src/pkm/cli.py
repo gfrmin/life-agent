@@ -299,7 +299,7 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
 
-    subparsers.add_parser(
+    p_serve = subparsers.add_parser(
         "serve",
         help="Start the read-only MCP server over stdio (SPEC §17).",
         description=(
@@ -307,6 +307,17 @@ def _build_parser() -> argparse.ArgumentParser:
             "JSON-RPC protocol stream; all logging goes to stderr and "
             "the JSONL log file. Register this command in your MCP "
             "client (e.g. Claude Code settings.json mcpServers)."
+        ),
+    )
+    p_serve.add_argument(
+        "--tool-log",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help=(
+            "Append one JSONL audit line per tool call (search and extract "
+            "alike) to PATH, in addition to the usual JSONL diagnostic log "
+            "(SPEC §17.8). Not set by default: no tool-call log is written."
         ),
     )
 
@@ -615,6 +626,7 @@ def _cmd_serve(args: argparse.Namespace, config: Config) -> int:
     from pkm import mcp_server  # lazy import — mcp dep only needed for serve
 
     mcp_server.set_root(config.root_dir)
+    mcp_server.set_tool_log(args.tool_log)
     mcp_server.mcp.run(transport="stdio")
     return 0
 
