@@ -66,6 +66,11 @@ class SearchResult:
     source_path: str
     source_origin: str | None
     artifact_cache_key: str
+    # SPEC v0.17.0 §17.2: the artifact_chunks surrogate key (§15.1), surfaced
+    # so a caller can address this result via the `extract` MCP tool (§17.7).
+    # Defaulted (not a new positional-required field) to keep existing
+    # keyword-arg construction sites valid.
+    chunk_id: int | None = None
 
 
 def build_fts_index(conn: duckdb.DuckDBPyConnection) -> None:
@@ -157,7 +162,8 @@ def search(
                 scored.score,
                 s.current_path,
                 scored.source_origin,
-                scored.artifact_cache_key
+                scored.artifact_cache_key,
+                scored.{_FTS_INPUT_ID}
             FROM (
                 SELECT
                     {_FTS_INPUT_ID},
@@ -195,6 +201,7 @@ def search(
             source_path=row[2],
             source_origin=row[3],
             artifact_cache_key=row[4],
+            chunk_id=int(row[5]),
         )
         for row in rows
     ]
