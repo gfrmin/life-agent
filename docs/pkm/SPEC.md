@@ -1299,7 +1299,9 @@ The rule: **among sources sharing a `current_path`, exactly one is path-current 
 recent by (`last_seen`, `first_seen`, `source_id`) descending.** The tiebreaks are
 deterministic, mirroring §18.10's most-recent-first ordering; they are not meaningful.
 Retrieval (§15.2, and any retrieval surface built on it, incl. §17) returns chunks only
-from path-current sources.
+from path-current sources; §17.7's `extract` is the one documented exception — a
+`chunk_id` is a concrete pointer the caller already holds, a stronger signal than
+currency (see §17.7).
 
 - **Nothing is deleted.** Superseded path-versions keep their `sources` rows (ghosts,
   §13.2), artifacts, and chunks; the append-only contract (§6.2) is untouched. The filter
@@ -1536,10 +1538,13 @@ pkm does not rotate or truncate the file; that is the operator's responsibility.
   they are the BM25 score and the KWIC snippet actually returned; for an `extract` call, which
   has no ranking score and always shows full text, both are `null`.
   - For a `search` call, `results` has one entry per returned hit, in the same order.
-  - For an `extract` call, `results` has exactly one entry — the target chunk (`chunk_index`
-    and `neighbors` are not separately logged here; they remain fully recoverable from `args`
-    plus the target's own `artifact_cache_key`/`chunk_index`, and the harness use named above
-    concerns single-chunk text parity, not neighbour context).
+  - For an `extract` call, `results` has one entry per chunk **actually shown** to the
+    caller — the target first, then each returned neighbour in the reply's `neighbors`
+    order (`chunk_index` ascending). Each entry carries its own `chunk_id` (the server
+    knows every neighbour's `chunk_id` from its own query even though the §17.7 tool
+    reply omits it), `artifact_cache_key`, `source_path`, and `chunk_text_full`; the log
+    line records what the agent saw, in full, with no DB round-trip needed to
+    reconstruct it.
   - For a call that returned `{"error": ...}` (§17.2, §17.7), `results` is `[]`, `n_results`
     is `0`, and the line carries a top-level `"error"` key with that message — the audit trail
     still records that the call happened and failed.
@@ -1868,8 +1873,8 @@ exactly when `subject_kind` is `person` or `organisation` (fail loudly, not cach
 
 ## 16. Change log
 
-- 0.17.0 (draft): §17.2 amended, §17.7/§17.8 (new) — the MCP query surface becomes
-  addressable and auditable. `search` results (§17.2) gain a `chunk_id` field (the
+- 0.17.0 (draft): §17.2, §15.1, §15.4 amended, §17.7/§17.8 (new) — the MCP query surface
+  becomes addressable and auditable. `search` results (§17.2) gain a `chunk_id` field (the
   `artifact_chunks` surrogate key, §15.1/migration 0005), which §15.1 is amended to
   sanction as the one external system permitted to depend on that value. The new
   read-only `extract(chunk_id, neighbors=1)` tool (§17.7) returns a chunk's full,
@@ -1877,13 +1882,15 @@ exactly when `subject_kind` is `person` or `organisation` (fail loudly, not cach
   within the same artifact, with the same provenance shape as `search`
   (`artifact_cache_key`, `chunk_index`, `source_path`, `source_origin`); it does not
   apply the §15.4 path-currency filter (a `chunk_id` is a concrete pointer, a stronger
-  signal than currency) and reuses `search`'s locked-catalogue `{"error": ...}`
-  convention plus a new unknown-chunk case. `pkm serve --tool-log PATH` (§17.8) appends
-  one JSON line per tool call (timestamp, tool, args, result count, full chunk text) to
-  a caller-chosen file for an external evaluation harness; writing it is fail-open — a
-  log-write failure is caught and warned via §10, never raised into a tool result — and
-  each call appends a new line even when repeated (an audit trail, not a cached
-  derivation subject to §6.1). Motivated by the life-agent Ask read path needing
+  signal than currency — §15.4 amended to name this documented exception) and reuses
+  `search`'s locked-catalogue `{"error": ...}` convention plus a new unknown-chunk case.
+  `pkm serve --tool-log PATH` (§17.8) appends one JSON line per tool call (timestamp,
+  tool, args, result count, full chunk text — for `extract`, one results entry per chunk
+  actually shown, target and neighbours alike) to a caller-chosen file for an external
+  evaluation harness; writing it is fail-open — a log-write failure is caught and warned
+  via §10, never raised into a tool result — and each call appends a new line even when
+  repeated (an audit trail, not a cached derivation subject to §6.1). Motivated by the
+  life-agent Ask read path needing
   addressable, full-text follow-up on a `search` hit and a ground-truth log for scoring
   retrieval quality against exactly what a live tool call returned. No schema change,
   no migration, no new dependency — `chunk_id` and `chunk_index` already exist in
