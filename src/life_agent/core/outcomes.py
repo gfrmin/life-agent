@@ -221,6 +221,26 @@ def reliability_bins(pairs: list[tuple[float, bool]], *,
     return bins
 
 
+def ece(pairs: list[tuple[float, bool]], *, n_bins: int = 10) -> float | None:
+    """Expected Calibration Error: Σ (n_i/N)·|mean_p_i - frac_correct_i| over bins.
+
+    Measures the average absolute difference between asserted probabilities and observed
+    frequencies within equal-width reliability bins (foundations §8). Returns None on
+    empty pairs (honest convention, matching summarize_scores).
+    """
+    if not pairs:
+        return None
+    bins = reliability_bins(pairs, n_bins=n_bins)
+    n_total = len(pairs)
+    ece_sum = 0.0
+    for bin_data in bins:
+        if bin_data.n > 0 and bin_data.mean_p is not None and bin_data.frac_correct is not None:
+            weight = bin_data.n / n_total
+            calibration_error = abs(bin_data.mean_p - bin_data.frac_correct)
+            ece_sum += weight * calibration_error
+    return ece_sum
+
+
 def scored_pairs(events: list[OutcomeEvent]) -> list[tuple[float, bool]]:
     """(probability, correct) pairs for the events that asserted a credence, in log
     order. Correctness comes from the grader's declared CORRECT_GRADES; events with no

@@ -185,3 +185,25 @@ def test_scored_pairs_uses_grader_correctness_and_skips_unscored() -> None:
         _event(probability=None),                                 # unscored: skipped
     ]
     assert O.scored_pairs(events) == [(0.9, True), (0.7, False)]
+
+
+# --- Expected Calibration Error (ECE) -----------------------------------------------
+
+def test_ece_hand_computed() -> None:
+    # Hand-computed ECE over a small pair set with n_bins=2.
+    # pairs = [(0.2, False), (0.8, True), (0.8, False)]
+    # Bin 0 [0.0, 0.5): (0.2, False) -> n=1, mean_p=0.2, frac_correct=0.0
+    # Bin 1 [0.5, 1.0]: (0.8, True), (0.8, False) -> n=2, mean_p=0.8, frac_correct=0.5
+    # N = 3
+    # ECE = (1/3) * |0.2 - 0.0| + (2/3) * |0.8 - 0.5|
+    #     = (1/3) * 0.2 + (2/3) * 0.3
+    #     = 0.2/3 + 0.6/3
+    #     ≈ 0.2667
+    pairs = [(0.2, False), (0.8, True), (0.8, False)]
+    ece = O.ece(pairs, n_bins=2)
+    assert ece == pytest.approx(0.2667, abs=1e-3)
+
+
+def test_ece_empty_returns_none() -> None:
+    # Honest None on empty pairs, matching summarize_scores convention
+    assert O.ece([]) is None
