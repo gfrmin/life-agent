@@ -24,9 +24,12 @@ from life_agent.core.llm import (
     TEMPERATURE,
     LLMResult,
     anthropic_complete,
+    meter_read,
     openai_complete,
+    reset_meter,
     secret,
 )
+from life_agent.core.pricing import PRICE_TABLE, PRICING_VERSION, ModelPrice, cost_usd, price_of
 from life_agent.core.sources import SourceCard, render_sources_block
 
 __all__ = [
@@ -37,6 +40,8 @@ __all__ = [
     "KB",
     "OUTCOMES_LOG",
     "PKM_CONFIG",
+    "PRICE_TABLE",
+    "PRICING_VERSION",
     "REACTIONS_LOG",
     "TASKS_LEDGER",
     "TASKS_STATE",
@@ -44,9 +49,14 @@ __all__ = [
     "UTILITY_ELICITATIONS",
     "UTILITY_MODEL",
     "LLMResult",
+    "ModelPrice",
     "SourceCard",
     "anthropic_complete",
+    "cost_usd",
+    "meter_read",
     "openai_complete",
+    "price_of",
     "render_sources_block",
+    "reset_meter",
     "secret",
 ]
