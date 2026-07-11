@@ -14,6 +14,7 @@ from life_agent.fairfight.records import (
     STATUSES,
     OutcomeVector,
     from_json,
+    scored,
     to_json,
 )
 
@@ -25,5 +26,6 @@ __all__ = [
     "STATUSES",
     "OutcomeVector",
     "from_json",
+    "scored",
     "to_json",
 ]

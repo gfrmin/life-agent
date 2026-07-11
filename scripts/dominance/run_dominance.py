@@ -87,6 +87,7 @@ def build_summary_md(
     arms: dict[str, list[dict[str, Any]]],
     points: dict[str, PA.Point],
     n_missing_cost: dict[str, int],
+    cost_unpriced: dict[str, bool],
     frontier_set: set[str],
     pair_tallies: dict[tuple[str, str], dict[str, Any]],
     region_tallies: dict[tuple[str, str], dict[str, Any]],
@@ -94,6 +95,7 @@ def build_summary_md(
     zero_losses: bool,
     n_excluded_infra: dict[str, int],
     n_total: dict[str, int],
+    pair_asymmetry: dict[tuple[str, str], list[str]],
 ) -> str:
     lines = [f"# dominance summary — {run_dir.name}", ""]
 
@@ -113,6 +115,19 @@ def build_summary_md(
             f"({n_total[arm] - n_excluded_infra[arm]} scored)")
     lines.append("")
 
+    # PR-21 IMPORTANT-1: name any ordered arm pair whose comparison was restricted to the
+    # common scored question set (an asymmetric infra failure) — the analysis proceeded
+    # over the intersection instead of hard-aborting, but the asymmetry must stay loud.
+    lines += ["## Asymmetric arm pairs (compared over the common scored question set)", ""]
+    if pair_asymmetry:
+        for (arm_a, arm_b), qids in sorted(pair_asymmetry.items()):
+            lines.append(
+                f"- `{arm_a}` vs `{arm_b}`: {len(qids)} question(s) excluded from the "
+                f"comparison (not scored by both arms): {qids}")
+    else:
+        lines.append("- none — every arm pair shared one scored question set.")
+    lines.append("")
+
     lines += ["## Pareto frontier (profile-independent)", "",
               "Axes (all oriented \"more is better\"): "
               "(correct_rate, -total_cost, -mean_latency, -attention).", "",
@@ -128,7 +143,21 @@ def build_summary_md(
               ""]
     for arm in sorted(points):
         tag = " **[frontier]**" if arm in frontier_set else ""
-        lines.append(f"- `{arm}`{tag}: {_fmt_point(points[arm], n_missing_cost[arm])}")
+        unpriced = " _(cost wholly unpriced — treated as $0: unmeasured, not free)_" if (
+            cost_unpriced.get(arm)) else ""
+        lines.append(
+            f"- `{arm}`{tag}: {_fmt_point(points[arm], n_missing_cost[arm])}{unpriced}")
+    # PR-21 IMPORTANT-2: a frontier member whose cost axis is wholly unpriced sits at $0
+    # by absence, not by measurement — name it inline so its frontier slot isn't read as
+    # "free". (Frontier membership itself is the declared cost-as-0 modelling choice.)
+    unpriced_frontier = sorted(a for a in frontier_set if cost_unpriced.get(a))
+    if unpriced_frontier:
+        lines.append("")
+        lines.append(
+            "_Cost caveat: frontier member(s) "
+            f"{', '.join('`' + a + '`' for a in unpriced_frontier)} have a WHOLLY UNPRICED "
+            "cost axis (every row cost_usd=None) — their total_cost is 0 because it was "
+            "never measured, not because it is free._")
     lines.append("")
 
     lines += ["## Profile win map — per ordered arm pair", ""]
@@ -181,7 +210,7 @@ def run(run_dir: Path) -> dict[str, Any]:
     arms = {arm: REC.scored(rows) for arm, rows in arms_raw.items()}
     n_excluded_infra = {arm: n_total[arm] - len(arms[arm]) for arm in arms_raw}
 
-    points, n_missing_cost = PA.build_points(arms)
+    points, n_missing_cost, cost_unpriced = PA.build_points(arms)
     frontier_set = PA.frontier(points)
 
     profiles = W.all_profiles()
@@ -189,21 +218,36 @@ def run(run_dir: Path) -> dict[str, Any]:
     pair_tallies = W.pair_tally(cells)
     region_names = {name for name, p in profiles.items() if P.in_realistic_region(p)}
     region_tallies = W.region_dominance(cells, region_names)
+    # PR-21 IMPORTANT-1: any ordered pair whose two arms' scored question sets differed was
+    # intersected (never hard-aborted); name the excluded questions run-wide, not silently.
+    pair_asym = W.pair_asymmetry(cells)
 
     loss_sections, zero_losses = LT.build_loss_report(cells, arms)
 
     out_dir = run_dir / "dominance"
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    cells_payload = {"n_excluded_infra": n_excluded_infra, "n_total": n_total, "cells": cells}
+    cells_payload = {
+        "n_excluded_infra": n_excluded_infra, "n_total": n_total,
+        # top-level asymmetry report (keyed "arm_a->arm_b"): empty in the normal symmetric
+        # case, populated when build_cells had to intersect a pair to its common set.
+        "pair_asymmetry": {f"{a}->{b}": qids for (a, b), qids in sorted(pair_asym.items())},
+        "cells": cells,
+    }
     (out_dir / "cells.json").write_text(
         json.dumps(cells_payload, indent=2) + "\n", encoding="utf-8")
 
+    # PR-21 IMPORTANT-2: the cost-unpriced caveat is INLINE in frontier.json (not only in
+    # summary.md) — a frontier member whose cost axis is wholly unpriced sits at $0 by
+    # absence, not by measurement.
+    frontier_cost_unpriced = sorted(a for a in frontier_set if cost_unpriced.get(a))
     frontier_payload = {
         "frontier": sorted(frontier_set),
         "point_axes": ["correct_rate", "neg_total_cost", "neg_mean_latency", "neg_attention"],
         "points": {arm: list(pt) for arm, pt in points.items()},
         "n_missing_cost": n_missing_cost,
+        "cost_unpriced": cost_unpriced,
+        "frontier_cost_unpriced_caveat": frontier_cost_unpriced,
     }
     (out_dir / "frontier.json").write_text(
         json.dumps(frontier_payload, indent=2) + "\n", encoding="utf-8")
@@ -213,9 +257,9 @@ def run(run_dir: Path) -> dict[str, Any]:
 
     summary_md = build_summary_md(
         run_dir=run_dir, arms=arms, points=points, n_missing_cost=n_missing_cost,
-        frontier_set=frontier_set, pair_tallies=pair_tallies, region_tallies=region_tallies,
-        region_names=region_names, zero_losses=zero_losses,
-        n_excluded_infra=n_excluded_infra, n_total=n_total,
+        cost_unpriced=cost_unpriced, frontier_set=frontier_set, pair_tallies=pair_tallies,
+        region_tallies=region_tallies, region_names=region_names, zero_losses=zero_losses,
+        n_excluded_infra=n_excluded_infra, n_total=n_total, pair_asymmetry=pair_asym,
     )
     (out_dir / "summary.md").write_text(summary_md, encoding="utf-8")
 
@@ -223,7 +267,7 @@ def run(run_dir: Path) -> dict[str, Any]:
         "run_dir": run_dir, "out_dir": out_dir, "arms": sorted(arms),
         "frontier": sorted(frontier_set), "n_cells": len(cells),
         "n_loss_cells": len(loss_sections), "zero_losses": zero_losses,
-        "n_excluded_infra": n_excluded_infra,
+        "n_excluded_infra": n_excluded_infra, "pair_asymmetry": pair_asym,
     }
 
 

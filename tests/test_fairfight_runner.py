@@ -82,7 +82,7 @@ def _args(tmp_path: Path, **overrides: Any) -> argparse.Namespace:
         config=str(_write_pkm_config(tmp_path)), k=8, arms="inprocess",
         competitor_model="claude-sonnet-4-6", competitor_provider="anthropic",
         competitor_base_url=None, hermes_bin="/fake/hermes", timeout_s=300, limit=None,
-        no_judge=False, run_id="ff-test",
+        no_judge=False, fresh=False, run_id="ff-test",
     )
     base.update(overrides)
     return argparse.Namespace(**base)
@@ -185,7 +185,7 @@ def test_run_meta_written_first_and_pinned(tmp_path: Path, monkeypatch: pytest.M
     assert meta["pricing_version"] == 1
     assert meta["arms"] == ["inprocess"]
     assert meta["arm_configs"]["inprocess"] == {
-        "entrypoint": "ask.answer", "path": "inprocess", "gather": True}
+        "entrypoint": "ask.answer", "path": "inprocess", "gather": True, "fresh": False}
     assert meta["pkm_config_path"] == args.config
     assert len(meta["questions_sha256"]) == 64  # a real sha256 hex digest
     # the real in-tree rubric — sha256 present, no note
@@ -474,6 +474,98 @@ def test_cost_status_competitor_unavailable_when_usage_none() -> None:
     assert econ["cost_status"] == "unavailable"
     assert econ["cost_usd"] is None
     assert econ["model_tier_mix"] == {}
+
+
+def test_cost_status_competitor_honors_reported_status_in_vocab() -> None:
+    # PR-21 MINOR: the hermes usage file reports its own cost_status — honor it when it
+    # maps into the closed vocab, rather than hardcoding "estimated".
+    raw = _raw(llm_calls=[])
+    econ = RF._economics(
+        "competitor", raw, {"estimated_cost_usd": 0.05, "cost_status": "measured"})
+    assert econ["cost_status"] == "measured"
+    assert econ["cost_usd"] == 0.05
+
+
+def test_cost_status_competitor_unknown_reported_status_falls_back_never_leaks() -> None:
+    # an out-of-vocab reported status must NEVER pass through (records.py would reject it,
+    # crashing the run) — fall back to the harness's derived status ("estimated" here).
+    raw = _raw(llm_calls=[])
+    econ = RF._economics(
+        "competitor", raw, {"estimated_cost_usd": 0.05, "cost_status": "cheap-ish"})
+    assert econ["cost_status"] == "estimated"
+    assert econ["cost_status"] in REC.COST_STATUSES
+
+
+def test_cost_status_competitor_no_reported_status_keeps_estimated_fallback() -> None:
+    # the existing behavior: usage present with a price but no cost_status key -> estimated.
+    raw = _raw(llm_calls=[])
+    econ = RF._economics("competitor", raw, {"estimated_cost_usd": 0.05})
+    assert econ["cost_status"] == "estimated"
+
+
+# --- --fresh: threads no_cache into the in-process arms, recorded in run_meta -----------
+
+
+def test_fresh_flag_recorded_in_arm_configs_and_threaded_to_impls(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    kb = _kb(tmp_path, monkeypatch)
+    _write_questions(kb, [_q()])
+    args = _args(tmp_path, arms="baseline,inprocess,synthesis", fresh=True)
+
+    # default_arm_impls closes over args.fresh — capture what each in-process arm passes.
+    impls = RF.default_arm_impls(args)
+    captured: dict[str, Any] = {}
+
+    def _cap_synth(q: dict, k: int, *, fresh: bool = False) -> AB.RawAnswer:
+        captured["synthesis_fresh"] = fresh
+        return _raw(question_id=q["id"])
+
+    def _cap_baseline(q: dict, k: int, *, path: str, fresh: bool = False) -> AB.RawAnswer:
+        captured[f"{path}_fresh"] = fresh
+        return _raw(question_id=q["id"])
+
+    monkeypatch.setattr(RF.AS, "answer_synthesis", _cap_synth)
+    monkeypatch.setattr(RF.AB, "answer_baseline", _cap_baseline)
+    impls["synthesis"]({"id": "q-001", "question": "x?"})
+    impls["inprocess"]({"id": "q-001", "question": "x?"})
+    impls["baseline"]({"id": "q-001", "question": "x?"})
+    assert captured["synthesis_fresh"] is True
+    assert captured["inprocess_fresh"] is True
+    # the executor path has no cache knob — answer_baseline(path="executor") is called
+    # WITHOUT fresh (default False); --fresh is a no-op there by design.
+    assert captured["executor_fresh"] is False
+
+    # run_meta records the flag per in-process arm; baseline records false (no knob).
+    meta = RF._build_run_meta(
+        run_id="ff-fresh", args=args, arms=["baseline", "inprocess", "synthesis"],
+        questions_path=kb / "eval" / "questions.yaml", conn=_FakeConn(), hermes_bin=None)
+    assert meta["arm_configs"]["inprocess"]["fresh"] is True
+    assert meta["arm_configs"]["synthesis"]["fresh"] is True
+    assert meta["arm_configs"]["baseline"]["fresh"] is False
+
+
+def test_fresh_default_false_leaves_warm_cache_allowed() -> None:
+    # _arm_configs reads only args.fresh (via getattr) — a bare Namespace suffices.
+    args = argparse.Namespace(fresh=False)
+    cfgs = RF._arm_configs(args, ["inprocess", "synthesis", "baseline"], None)
+    assert cfgs["inprocess"]["fresh"] is False
+    assert cfgs["synthesis"]["fresh"] is False
+    assert cfgs["baseline"]["fresh"] is False
+
+
+# --- recall@k legend (PR-21 MINOR): the denominator differs per arm class ----------------
+
+
+def test_summary_md_names_recall_at_k_denominator_difference() -> None:
+    vec = _vector_for_summary()
+    judged = [{"faithfulness": 3, "completeness": 3, "citation_fidelity": 3,
+               "hallucinated": False, "synthesis_pass": True, "abstained_correctly": None,
+               "judged": True, "reason": None}]
+    summaries = {"competitor": RF._summarize_arm("competitor", [vec], judged)}
+    md = RF._summary_md("ff-legend", summaries)
+    assert "recall@k legend" in md
+    assert "k-card" in md and "tool-call results" in md
 
 
 # --- effort: gather_rounds mapping, per arm class (final-review IMPORTANT-5) -------------

@@ -14,7 +14,13 @@ Usage::
     uv run --project . python scripts/fairfight/run_fairfight.py --config PATH \\
         [--k 20] [--arms baseline,inprocess,synthesis,competitor] \\
         [--competitor-model M] [--competitor-provider P] [--competitor-base-url URL] \\
-        [--hermes-bin PATH] [--timeout-s 300] [--limit N] [--no-judge] [--run-id ID]
+        [--hermes-bin PATH] [--timeout-s 300] [--limit N] [--no-judge] [--fresh] \\
+        [--run-id ID]
+
+``--fresh`` busts the derivation cache for the in-process arms (``ask.answer(...,
+no_cache=True)``) so a warm cache can't mute the $ headline (zero model calls ->
+``cost_status=unavailable``); it is a no-op for the out-of-process ``baseline`` arm
+(``ask.answer_via_executor`` has no cache knob — its cache is server-side).
 
 **Seam resolutions (landed-code realities this task adapted to, not the plan's guesses):**
 
@@ -219,12 +225,18 @@ def _corpus_fingerprint(conn: Any) -> dict[str, Any]:
 def _arm_configs(args: argparse.Namespace, arms: list[str], hermes_bin: str | None
                   ) -> dict[str, dict[str, Any]]:
     cfgs: dict[str, dict[str, Any]] = {}
+    fresh = bool(getattr(args, "fresh", False))
     if "baseline" in arms:
-        cfgs["baseline"] = {"entrypoint": "ask.answer_via_executor", "path": "executor"}
+        # the executor path has no cache knob (ask.answer_via_executor is a pure HTTP
+        # driver — its cache is server-side), so --fresh does not apply; recorded false.
+        cfgs["baseline"] = {"entrypoint": "ask.answer_via_executor", "path": "executor",
+                            "fresh": False}
     if "inprocess" in arms:
-        cfgs["inprocess"] = {"entrypoint": "ask.answer", "path": "inprocess", "gather": True}
+        cfgs["inprocess"] = {"entrypoint": "ask.answer", "path": "inprocess", "gather": True,
+                             "fresh": fresh}
     if "synthesis" in arms:
-        cfgs["synthesis"] = {"entrypoint": "ask.answer", "path": "inprocess", "gather": False}
+        cfgs["synthesis"] = {"entrypoint": "ask.answer", "path": "inprocess", "gather": False,
+                             "fresh": fresh}
     if "competitor" in arms:
         cfgs["competitor"] = {
             "model": args.competitor_model, "provider": args.competitor_provider,
@@ -449,9 +461,17 @@ def _economics(arm: str, raw: AB.RawAnswer, usage: dict[str, Any] | None) -> dic
         model_tier_mix = (
             {str(usage["model"]): int(usage.get("api_calls") or 0)} if usage.get("model") else {}
         )
+        # PR-21 MINOR: honor the hermes usage file's OWN cost_status when it reports one
+        # AND it maps into the closed vocab {measured, estimated, partial, unavailable} —
+        # never let an unknown value through (records.py's __post_init__ would reject it,
+        # crashing the run). Fall back to the harness's derived status otherwise.
+        reported_status = usage.get("cost_status")
+        fallback_status = "estimated" if estimated_cost is not None else "unavailable"
+        cost_status = (
+            reported_status if reported_status in REC.COST_STATUSES else fallback_status)
         return {
             "cost_usd": float(estimated_cost) if estimated_cost is not None else None,
-            "cost_status": "estimated" if estimated_cost is not None else "unavailable",
+            "cost_status": cost_status,
             "in_tokens": int(usage.get("input_tokens") or 0),
             "out_tokens": int(usage.get("output_tokens") or 0),
             "cache_read_tokens": int(usage.get("cache_read_tokens") or 0),
@@ -812,6 +832,15 @@ def _summary_md(run_id: str, summaries: dict[str, dict[str, Any]]) -> str:
             f"{_fmt_num(s['calibration']['ece'])} | "
             f"{_fmt_pct(s['calibration']['p_none_accuracy'])} |"
         )
+    # PR-21 MINOR: recall@k is NOT one metric across arm classes — name the denominator
+    # difference so the column isn't read as apples-to-apples.
+    lines += [
+        "",
+        "_recall@k legend: for the in-process arms (baseline/inprocess/synthesis) recall@k "
+        "= gold present in the k-card retrieval set; for the competitor it = gold present "
+        "in the UNION of its own tool-call results (a different, self-chosen retrieval "
+        "surface, not the same k cards) — the two are not directly comparable._",
+    ]
     return "\n".join(lines) + "\n"
 
 
@@ -839,10 +868,11 @@ def default_conn_factory(db_path: Path) -> Any:
 def default_arm_impls(args: argparse.Namespace) -> dict[str, Callable[[dict[str, Any]], Any]]:
     """The real per-arm callables, closed over ``--k``/``path`` — every one takes just
     ``(q)``, the uniform shape :func:`_run_arm` (and a test's injected replacements) use."""
+    fresh = bool(getattr(args, "fresh", False))
     return {
         "baseline": lambda q: AB.answer_baseline(q, args.k, path="executor"),
-        "inprocess": lambda q: AB.answer_baseline(q, args.k, path="inprocess"),
-        "synthesis": lambda q: AS.answer_synthesis(q, args.k),
+        "inprocess": lambda q: AB.answer_baseline(q, args.k, path="inprocess", fresh=fresh),
+        "synthesis": lambda q: AS.answer_synthesis(q, args.k, fresh=fresh),
     }
 
 
@@ -948,6 +978,13 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--timeout-s", type=int, default=300)
     parser.add_argument("--limit", type=int, default=None, help="cap the question count")
     parser.add_argument("--no-judge", action="store_true", help="skip the LLM judge entirely")
+    parser.add_argument(
+        "--fresh", action="store_true",
+        help="bust the derivation cache for the in-process arms (inprocess/synthesis) via "
+             "ask.answer(..., no_cache=True), so a warm cache can't mute the $ headline "
+             "(zero model calls -> cost_status=unavailable). No effect on the baseline "
+             "(executor) arm: ask.answer_via_executor has no cache knob (its cache is "
+             "server-side).")
     parser.add_argument("--run-id", default=None, help="default: ff-<UTC timestamp>")
     return parser.parse_args(argv)
 

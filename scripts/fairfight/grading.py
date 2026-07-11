@@ -89,11 +89,13 @@ _DECLINE_PHRASE_PATTERNS: tuple[re.Pattern[str], ...] = (
 # strings that could drift from it — for any free-text arm/branch that renders through
 # it (the executor's narrative fallback, or a structured-view-less path). Each
 # withholding template's literal prefix (everything before its first ``{placeholder}``)
-# is a stable, non-parameterised substring every render of it starts with; "report" /
-# "report_scoped" are deliberately excluded (an ASSERTION must never trip a decline
-# check). A drift-gate test renders a real withholding through the production renderer
-# (``core.executor.render_view``) and asserts this catches it.
-_GRAMMAR_WITHHOLD_KEYS: tuple[str, ...] = ("abstain", "abstain_withheld", "hedge", "ask_clarify")
+# is a stable, non-parameterised substring every render of it starts with. "report" /
+# "report_scoped" AND "hedge" are deliberately excluded (an ASSERTION must never trip a
+# decline check — PR-21 MINOR: hedge is assertion-class everywhere else in this harness,
+# so including its prefix here was a latent mis-detection). A drift-gate test renders a
+# real withholding through the production renderer (``core.executor.render_view``) and
+# asserts this catches it, and asserts hedge is NOT in this set.
+_GRAMMAR_WITHHOLD_KEYS: tuple[str, ...] = ("abstain", "abstain_withheld", "ask_clarify")
 _GRAMMAR_WITHHOLD_PREFIXES: tuple[str, ...] = tuple(
     dict.fromkeys(LK.GRAMMAR[key].split("{", 1)[0] for key in _GRAMMAR_WITHHOLD_KEYS))
 
