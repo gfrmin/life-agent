@@ -11,6 +11,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from life_agent.core import config
+from life_agent.membrane import client as MC
 
 # --- membrane_dir / membrane_shadow_log: respect config.KB (itself $LIFE_AGENT_KB) -------
 
@@ -76,3 +77,17 @@ def test_membrane_warm_vectors_dir_set(monkeypatch, tmp_path: Path) -> None:
     run_dir = tmp_path / "fairfight-run-1"
     monkeypatch.setenv(config.MEMBRANE_WARM_VECTORS_ENV, str(run_dir))
     assert config.membrane_warm_vectors_dir() == run_dir
+
+
+# --- drift gate: config's env-name spellings must agree with membrane.client's own -------
+# config.py deliberately duplicates these two names rather than importing life_agent.membrane
+# (core stays independent of membrane, the same choice JARVIS_USER_ID already makes across
+# reach/ modules — see config.py's Membrane shadow section comment). A single-source drift
+# gate pins the duplication so the two spellings can never silently diverge.
+
+def test_membrane_command_env_name_matches_client() -> None:
+    assert config.MEMBRANE_COMMAND_ENV == MC.MEMBRANE_ENV
+
+
+def test_membrane_read_timeout_env_name_matches_client() -> None:
+    assert config.MEMBRANE_READ_TIMEOUT_ENV == MC.READ_TIMEOUT_ENV
