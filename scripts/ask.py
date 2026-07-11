@@ -55,6 +55,7 @@ import life_agent.core.narrative as N
 import life_agent.core.outcomes as O
 import life_agent.core.probes as P
 import life_agent.core.reactions as R
+import life_agent.core.shadow_mirror as SM
 import life_agent.core.subject as S
 import life_agent.core.synthesis as SYN
 import life_agent.core.temporal as T
@@ -887,33 +888,6 @@ def _http_get(url: str) -> dict[str, Any]:
         return cast("dict[str, Any]", json.loads(r.read()))
 
 
-def _mirror_decide(post: EX.Post, bridge: str, question_id: str, url: str,
-                   body: dict[str, Any], resp: dict[str, Any] | None) -> None:
-    """Fan one real `/decide` tick out to the membrane shadow's `/decide-support`, off the
-    answer path — fires only for the executor's `/decide` calls (never `/route`, `/retrieve`,
-    ...) and only when the daemon actually answered (``resp is None`` is the executor's own
-    down/failure shape — nothing to mirror). ALL exceptions are swallowed: the shadow is a
-    passive observer and must never affect an answer already in hand."""
-    if not url.endswith("/decide") or resp is None:
-        return
-    with contextlib.suppress(Exception):
-        post(f"{bridge}/decide-support",
-             {"question_id": question_id, "payload": body, "dec": resp})
-
-
-def _shadow_wrapped_post(post: EX.Post, bridge: str, question_id: str) -> EX.Post:
-    """Wrap an executor ``Post`` so every call still forwards unchanged — same request, same
-    response, same real-leg exceptions — while each `/decide` tick additionally fans out to
-    the shadow AFTER the real answer is already in hand, so the mirror can never alter or
-    delay it. Every production caller of ``EX.decide_via_loop`` installs this, unconditionally
-    (the bridge fast-paths a disabled shadow before any parsing)."""
-    def wrapped(url: str, body: dict[str, Any]) -> dict[str, Any] | None:
-        resp = post(url, body)
-        _mirror_decide(post, bridge, question_id, url, body, resp)
-        return resp
-    return wrapped
-
-
 def _executor_ready() -> bool:
     """Both services must answer /ready. The body never falls back SILENTLY — a down stack is
     NAMED (interaction contract), never substituted with a different path's answer."""
@@ -975,7 +949,7 @@ def answer_via_executor(question: str, k: int
     # live decide tick mirrored here and the terminal decision logged below join on one key.
     question_id = hashlib.sha256(question.encode("utf-8")).hexdigest()[:16]
     view = EX.decide_via_loop(question, k, bridge=EXECUTOR_BRIDGE, daemon=EXECUTOR_DAEMON,
-                              post=_shadow_wrapped_post(_http_post, EXECUTOR_BRIDGE, question_id),
+                              post=SM.shadow_wrapped_post(_http_post, EXECUTOR_BRIDGE, question_id),
                               get=_http_get,
                               grow_lane=EXECUTOR_GROW_LANE)
     EXECUTOR_VIEW_LAST = view

@@ -1,8 +1,9 @@
-"""Hermetic test that scripts/eval_executor.py's EX.decide_via_loop caller feeds the
-membrane shadow too — the SAME wrapper (scripts/ask.py's `_shadow_wrapped_post`)
-scripts/ask.py's production read-path installs, so an eval run mirrors the loop exactly like
-a live ask does. Only `_post_for` is exercised here — `main()` needs a live corpus + services
-and is not unit-tested (no existing tests/test_eval_executor.py; out of scope for this seam).
+"""Thin wiring pin: scripts/eval_executor.py's `_post_for` installs the SAME shared
+membrane-shadow mirror (`life_agent.core.shadow_mirror.shadow_wrapped_post`) scripts/ask.py's
+production read-path installs, so an eval run mirrors the loop exactly like a live ask does.
+The mirror's own behaviour is exercised once, directly, in tests/test_shadow_mirror.py. Only
+`_post_for` is exercised here — `main()` needs a live corpus + services and is not
+unit-tested (no existing tests/test_eval_executor.py; out of scope for this seam).
 """
 from __future__ import annotations
 
@@ -13,35 +14,26 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
-import ask
 import eval_executor as EE
 
 
-def test_post_for_wraps_the_bare_transport(monkeypatch: Any) -> None:
-    assert EE._post_for("q?") is not EE._post  # never the bare transport, unconditionally
+def test_post_for_wires_the_shared_shadow_mirror(monkeypatch: Any) -> None:
+    wrap_calls: list[tuple[Any, str, str]] = []
 
+    def sentinel_wrapped(url: str, body: dict[str, Any]) -> dict[str, Any] | None:
+        return {"sentinel": True}
 
-def test_post_for_mirrors_a_decide_tick(monkeypatch: Any) -> None:
-    calls: list[tuple[str, dict[str, Any]]] = []
+    def fake_shadow_wrapped_post(post: Any, bridge: str, question_id: str) -> Any:
+        wrap_calls.append((post, bridge, question_id))
+        return sentinel_wrapped
 
-    def fake_post(url: str, payload: dict[str, Any]) -> dict[str, Any] | None:
-        calls.append((url, payload))
-        return {"effector": "report"} if url.endswith("/decide") else {"ok": True}
+    monkeypatch.setattr(EE.SM, "shadow_wrapped_post", fake_shadow_wrapped_post)
 
-    monkeypatch.setattr(EE, "_post", fake_post)
-    wrapped = EE._post_for("what is my passport number?")
-    wrapped(f"{EE.DAEMON}/decide", {"candidates": ["P123"]})
+    result = EE._post_for("what is my passport number?")
 
-    urls = [u for u, _ in calls]
-    assert urls == [f"{EE.DAEMON}/decide", f"{EE.BRIDGE}/decide-support"]
-    mirror_body = calls[-1][1]
-    assert mirror_body["payload"] == {"candidates": ["P123"]}
-    assert mirror_body["dec"] == {"effector": "report"}
-    assert mirror_body["question_id"] == hashlib.sha256(
-        b"what is my passport number?").hexdigest()[:16]
-
-
-def test_post_for_shares_asks_own_wrapper() -> None:
-    # eval_executor imports the SAME scripts/ask.py wrapper (no re-implementation) — the
-    # brief's "route it through the same wrapper (import from ask)".
-    assert EE.ask is ask
+    assert result is sentinel_wrapped  # _post_for returns exactly what the shared wrapper built
+    assert len(wrap_calls) == 1
+    post_arg, bridge_arg, qid_arg = wrap_calls[0]
+    assert post_arg is EE._post          # the real (unwrapped) transport goes in
+    assert bridge_arg == EE.BRIDGE
+    assert qid_arg == hashlib.sha256(b"what is my passport number?").hexdigest()[:16]

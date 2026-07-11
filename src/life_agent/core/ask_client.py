@@ -15,7 +15,6 @@ never silently substituted (the contract's invariant 3).
 """
 from __future__ import annotations
 
-import contextlib
 import hashlib
 import json
 import os
@@ -24,6 +23,7 @@ from typing import Any
 
 from life_agent.core import decisions as DEC
 from life_agent.core import executor as EX
+from life_agent.core import shadow_mirror as SM
 
 BRIDGE = os.environ.get("LIFE_AGENT_BRIDGE_URL", "http://127.0.0.1:8798")
 DAEMON = os.environ.get("ANSWER_BRAIN_URL", "http://127.0.0.1:8799")
@@ -59,33 +59,6 @@ def _ready() -> bool:
     return True
 
 
-def _mirror_decide(post: EX.Post, bridge: str, question_id: str, url: str,
-                   body: dict[str, Any], resp: dict[str, Any] | None) -> None:
-    """Fan one real `/decide` tick out to the membrane shadow's `/decide-support`, off the
-    answer path — the SAME mirror contract scripts/ask.py's read-path installs for the
-    terminal, duplicated here (not imported: src must not depend on scripts) so Jarvis's own
-    live traffic feeds the shadow too. Fires only on `/decide` calls with a non-``None``
-    response (``None`` is the executor's own down/failure shape — nothing to mirror). ALL
-    exceptions are swallowed: the shadow is a passive observer, never allowed to touch an
-    answer already in hand."""
-    if not url.endswith("/decide") or resp is None:
-        return
-    with contextlib.suppress(Exception):
-        post(f"{bridge}/decide-support",
-             {"question_id": question_id, "payload": body, "dec": resp})
-
-
-def _shadow_wrapped_post(post: EX.Post, bridge: str, question_id: str) -> EX.Post:
-    """Wrap a ``Post`` so every call still forwards unchanged — same request, same response,
-    same real-leg exceptions — while each `/decide` tick additionally fans out to the shadow
-    AFTER the real answer is already in hand, so the mirror can never alter or delay it."""
-    def wrapped(url: str, body: dict[str, Any]) -> dict[str, Any] | None:
-        resp = post(url, body)
-        _mirror_decide(post, bridge, question_id, url, body, resp)
-        return resp
-    return wrapped
-
-
 def answer(question: str, k: int = 20, *, post: Any = None, get: Any = None,
            check_ready: bool = True) -> tuple[str, str | None]:
     """Answer one question through the executor read-path; return
@@ -102,7 +75,7 @@ def answer(question: str, k: int = 20, *, post: Any = None, get: Any = None,
     # sha256 of the raw question text, [:16] — one convention across every production caller.
     question_id = hashlib.sha256(question.encode("utf-8")).hexdigest()[:16]
     view = EX.decide_via_loop(question, k, bridge=BRIDGE, daemon=DAEMON,
-                              post=_shadow_wrapped_post(post, BRIDGE, question_id), get=get,
+                              post=SM.shadow_wrapped_post(post, BRIDGE, question_id), get=get,
                               grow_lane=GROW_LANE)
     decision_id: str | None = None
     if (view["route"] is not None and view["effector"] in DEC.LOOKUP_ACTION_ORDER
