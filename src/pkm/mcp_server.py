@@ -275,6 +275,23 @@ def extract(chunk_id: int, neighbors: int = 1) -> dict[str, object]:
                 chunk_index,
             ],
         ).fetchall()
+    except duckdb.Error as exc:
+        # Mid-query failure (the connect-time lock case is handled above):
+        # map to the same bare {"error": ...} convention rather than letting
+        # the exception propagate through FastMCP, and still emit the §17.8
+        # audit line — the trail records that the call happened and failed.
+        log.warning(
+            "extract query failed: %s",
+            exc,
+            extra={
+                "event": "extract_query_failed",
+                "chunk_id": chunk_id,
+                "error": str(exc),
+            },
+        )
+        error = f"extract query failed ({type(exc).__name__}): {exc}"
+        _log_tool_call(ts, "extract", args, [], error=error)
+        return {"error": error}
     finally:
         conn.close()
 
