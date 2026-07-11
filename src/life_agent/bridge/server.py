@@ -32,6 +32,8 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import os
+import signal
+import sys
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from datetime import date
@@ -669,8 +671,31 @@ def build_deps() -> BridgeDeps:
                       membrane=_build_membrane(_u_bar))
 
 
+def _shutdown(server: BridgeServer) -> None:
+    """The SIGTERM/SIGINT cleanup: close the shadow (if one is running) so its on-close
+    `stats` record — the counters the post-hoc report reads — actually flushes, then exit.
+    systemd stops services with SIGTERM, and the OS's default disposition for that signal
+    kills the process without ever unwinding into `main()`'s own code (no `finally`, no
+    `atexit`) — so without an installed handler `deps.membrane.close()` never runs in
+    production. `close()` is exception-suppressed: a shadow's own cleanup failing must
+    never block shutdown (the same fail-open posture every other membrane call site
+    takes). `sys.exit(0)` then unwinds normally back through `main()`'s own
+    `try/finally` (`server.shutdown()`/`server_close()`) — the same SIGTERM convention
+    `reach/jarvis.py` already uses."""
+    if server.deps.membrane is not None:
+        with contextlib.suppress(Exception):
+            server.deps.membrane.close()
+    sys.exit(0)
+
+
+def _install_shutdown_handlers(server: BridgeServer) -> None:
+    signal.signal(signal.SIGTERM, lambda *_: _shutdown(server))
+    signal.signal(signal.SIGINT, lambda *_: _shutdown(server))
+
+
 def main() -> None:
     server = BridgeServer(build_deps())
+    _install_shutdown_handlers(server)
     print(f"life-agent capability bridge → http://{HOST}:{PORT}")
     print("  POST /route /retrieve /extract /probe/{recency,subject,authority,corroborate}")
     print("  POST /log_decision /log_reaction   (answer-brain verdict-emission seam)")
