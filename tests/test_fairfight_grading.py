@@ -399,6 +399,36 @@ def test_decision_view_asserted_distractor_is_confident_wrong() -> None:
     assert gr.cause == "distractor"
 
 
+def test_decision_view_without_action_key_still_reads_as_declined(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # declined is DERIVED (not asserted and not scoped), never an action-name allowlist:
+    # a view missing `action` entirely must not silently read declined=False while
+    # asserted is also False — correct_abstention/over_abstention would then diverge
+    # from the bucket channel forever.
+    monkeypatch.setattr(G, "_answer_in_corpus", lambda conn, answer, variants: True)
+    q = _q(answer="123456789")
+    view = _withheld_view()
+    del view["action"]
+    gr = G.grade_channels(q, "…", ["unrelated chunk"], view, _Conn())
+    assert gr.declined is True
+    assert gr.asserted is False
+    assert gr.bucket == "WRONGLY_WITHHELD"  # gold in corpus (mocked), not in top-k
+    assert gr.cause == "retrieval_miss"
+    assert gr.over_abstention is True  # consistent with the bucket, not silently False
+
+
+def test_decision_view_future_withholding_action_name_reads_as_declined() -> None:
+    # a hypothetical future family withholding under a new action name ("defer"):
+    # asserted=False + scoped=False is what makes it a decline, not the name.
+    q = _q(answer="", answer_variants=[])
+    view = _withheld_view(action="defer")
+    gr = G.grade_channels(q, "I'll defer on that.", [], view, _Conn())
+    assert gr.declined is True
+    assert gr.correct_abstention is True  # unanswerable + declined
+    assert gr.bucket == "RIGHTLY_WITHHELD"
+
+
 def test_decision_view_n_retrieved_counts_retrieved_texts() -> None:
     q = _q(answer="123456789")
     gr = G.grade_channels(q, "x", ["a", "b", "c"], _withheld_view(), _Conn())
