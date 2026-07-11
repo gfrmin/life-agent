@@ -9,6 +9,7 @@ names the fold fate in ask-live's own vocabulary — never implying every verdic
 """
 from __future__ import annotations
 
+import hashlib
 from typing import Any
 
 from life_agent.core import ask_client as AC
@@ -46,6 +47,53 @@ def test_answer_narrative_or_miss_binds_nothing(monkeypatch: Any) -> None:
                                    get=lambda u: {}, check_ready=False)
     assert decision_id is None                   # nothing foldable to bind
     assert reply                                 # still a named reply, never empty
+
+
+def test_answer_wraps_post_for_the_shadow(monkeypatch: Any) -> None:
+    # Jarvis's real traffic is a production caller of EX.decide_via_loop too — its post must
+    # be shadow-wrapped exactly like scripts/ask.py's, unconditionally.
+    calls: list[tuple[str, dict[str, Any]]] = []
+
+    def bare_post(url: str, payload: dict[str, Any]) -> dict[str, Any] | None:
+        calls.append((url, payload))
+        return {"effector": "report"} if url.endswith("/decide") else {"ok": True}
+
+    captured: dict[str, Any] = {}
+
+    def fake_decide_via_loop(question: str, k: int, **kwargs: Any) -> dict[str, Any]:
+        captured.update(kwargs)
+        kwargs["post"](f"{AC.DAEMON}/decide", {"candidates": ["P123"]})
+        return _fake_view("miss")  # not a LOOKUP_ACTION_ORDER effector — no extra /log_decision
+
+    monkeypatch.setattr(EX, "decide_via_loop", fake_decide_via_loop)
+    AC.answer("what is my passport number?", post=bare_post, get=lambda u: {},
+             check_ready=False)
+
+    assert captured["post"] is not bare_post  # wrapped, never the bare transport
+    urls = [u for u, _ in calls]
+    assert urls == [f"{AC.DAEMON}/decide", f"{AC.BRIDGE}/decide-support"]
+    mirror_body = calls[-1][1]
+    assert mirror_body["payload"] == {"candidates": ["P123"]}
+    assert mirror_body["dec"] == {"effector": "report"}
+    assert mirror_body["question_id"] == hashlib.sha256(
+        b"what is my passport number?").hexdigest()[:16]
+
+
+def test_answer_mirror_failure_never_breaks_the_real_answer(monkeypatch: Any) -> None:
+    def post(url: str, payload: dict[str, Any]) -> dict[str, Any] | None:
+        if url.endswith("/decide-support"):
+            raise RuntimeError("shadow unreachable")
+        if url.endswith("/decide"):
+            return {"effector": "report"}
+        return {"ok": True}
+
+    def fake_decide_via_loop(question: str, k: int, **kwargs: Any) -> dict[str, Any]:
+        assert kwargs["post"](f"{AC.DAEMON}/decide", {}) == {"effector": "report"}
+        return _fake_view()
+
+    monkeypatch.setattr(EX, "decide_via_loop", fake_decide_via_loop)
+    reply, _decision_id = AC.answer("q?", post=post, get=lambda u: {}, check_ready=False)
+    assert "P123" in reply  # the answer is unaffected by the mirror's failure
 
 
 def test_answer_names_a_down_stack(monkeypatch: Any) -> None:
