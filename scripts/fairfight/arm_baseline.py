@@ -20,14 +20,28 @@ uniformly per (arm, question) regardless of which entrypoint answered:
 
 ``decision_view`` is built the SAME way ``scripts/triage_answers.py``'s ``triage_one`` does
 (``_lookup_view``/``_narrative_view``/``_withheld_view`` over ``ask.LOOKUP_LAST`` /
-``ask.NARRATIVE_LAST`` captured before the next call resets them) for the in-process arm,
-and left ``None`` for the executor arm (its render is free text in the shared credence
-grammar, with no structured candidate/asserted view surfaced to this module — see
-``ask.answer_via_executor``'s ``View`` shape, which the executor's own body does not
-expose past the rendered string). ``declined`` follows
-``scripts/fairfight/grading.py``'s ONE convention throughout this harness, never a third:
-a structured view derives it as ``not asserted and not scoped``; free text (the executor
-arm) derives it via ``grading.detect_decline`` over the rendered text.
+``ask.NARRATIVE_LAST`` captured before the next call resets them) for the in-process arm.
+
+For the executor arm (final-review CRITICAL-1 fix, superseding an earlier "always None"
+design): ``ask.EXECUTOR_VIEW_LAST`` — the structured ``View``
+(``life_agent.core.executor.decide_via_loop``'s return, held by ``ask.answer_via_executor``
+since this fix) — is mapped by :func:`_executor_decision` into the SAME decision_view
+shape the in-process arm uses, for the TYPED LOOKUP branch only (``view["route"] is not
+None``): a real candidate/credence/p_none view, so ``grading.grade_channels`` can derive
+``asserted``/``declined`` structurally instead of pattern-matching the rendered text. Before
+this fix, EVERY executor answer graded via free-text ``detect_decline`` over the RENDERED
+credence-grammar string — which does not recognise ``core.lookup.GRAMMAR``'s own
+withholding renderings (``"No answer asserted (…)."``, ``"Unresolved — candidates: …"``,
+``"Worth asking you directly …"``) — so every withholding read ``declined=False`` ->
+``asserted=True`` -> ``CONFIDENT_WRONG``: the harness manufacturing the exact failure the
+program's hard gate forbids. The executor's narrative fallback (``view["route"] is None``)
+still has no structured candidate list at all (``core/executor.py``'s own early return
+there discards the claim set, keeping only the rendered prose), so :func:`_executor_decision`
+returns ``None`` for it and grading still falls back to free text — never fabricated.
+``declined`` follows ``scripts/fairfight/grading.py``'s ONE convention throughout this
+harness, never a third: a structured view derives it as ``not asserted and not scoped``
+(:func:`_view_declined`); free text (the executor's narrative branch, or a down/errored
+executor) derives it via the hardened ``grading.detect_decline`` over the rendered text.
 
 ``lineage_keys`` for the in-process arm is EVERY key ``ask.STAGES_LAST`` recorded this call
 (``tuple(ask.STAGES_LAST.values())``, in call order) — a superset of, and deliberately NOT,
@@ -100,6 +114,48 @@ def _view_declined(view: dict) -> bool:
     return not bool(view.get("asserted", False)) and not bool(view.get("scoped", False))
 
 
+def _executor_decision(view: dict[str, Any]) -> dict[str, Any] | None:
+    """Build the harness's decision_view convention (``grading.grade_channels``'s
+    contract) from the executor's own structured ``View`` (``ask.EXECUTOR_VIEW_LAST``).
+
+    Two branches, mirroring ``triage_answers.py``'s two view builders exactly (never a
+    third convention):
+
+    - ``view["route"] is None``: the narrative fallback (``core/executor.py:
+      decide_via_loop``'s un-typed branch). Its early return discards the claim list
+      entirely — ``candidates``/``credences`` are always ``[]`` — so there is nothing
+      structured worth surfacing; returns ``None`` so the caller falls back to free-text
+      grading via ``grading.detect_decline`` (never fabricate a candidate list the
+      executor never gave us).
+    - otherwise: the typed lookup family — mirrors ``triage_answers._lookup_view``
+      EXACTLY, including that a ``hedge`` is an assertion-class act
+      (``action in ("report", "hedge")``, not just ``"report"``). The executor's own
+      ``render_view`` has no ``report_scoped`` branch (its effector vocabulary is
+      report/hedge/ask_clarify/abstain/miss — verified against ``core/executor.py``'s
+      ``_WITHHOLD`` set and ``render_view``, and against ``tests/test_executor.py``), so
+      ``scoped`` is always ``False`` here — never guessed for a family the executor
+      doesn't produce.
+    """
+    if view["route"] is None:
+        return None
+    action = str(view["effector"])
+    candidates = list(view["candidates"])
+    credences = list(view["credences"])
+    asserted = action in ("report", "hedge")
+    if action == "report":
+        asserted_values = list(view["asserted"][:1])
+    elif action == "hedge":
+        asserted_values = list(candidates)
+    else:  # ask_clarify | abstain | miss — a withholding
+        asserted_values = []
+    return {
+        "family": "lookup", "action": action, "effector": action,
+        "asserted": asserted, "scoped": False,
+        "asserted_values": asserted_values, "candidates": candidates,
+        "credences": credences, "p_none": view["p_none"],
+    }
+
+
 def _inprocess_decision(ask) -> tuple[dict, bool, tuple[str, ...]]:
     """Build (decision_view, declined, lineage_keys) from the just-completed in-process
     ``ask.answer(...)`` call, the same way ``triage_answers.triage_one`` does — captured
@@ -143,7 +199,12 @@ def answer_baseline(q: dict, k: int, *, path: Literal["executor", "inprocess"]) 
                     "no silent in-process fallback for the baseline arm — the runner decides")
             text, raw_cards, _scores = ask.answer_via_executor(q["question"], k)
             cards = [{"n": c.n, "text": c.text, "origin": c.origin} for c in raw_cards]
-            declined = detect_decline(text)
+            decision_view = (
+                _executor_decision(ask.EXECUTOR_VIEW_LAST)
+                if ask.EXECUTOR_VIEW_LAST is not None else None)
+            declined = (
+                _view_declined(decision_view) if decision_view is not None
+                else detect_decline(text))
             lineage_keys = (ask.EXECUTOR_LAST,) if ask.EXECUTOR_LAST else ()
         else:  # "inprocess"
             conn = ask.connect()

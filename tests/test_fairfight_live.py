@@ -321,7 +321,7 @@ def test_hermes_oneshot_smoke(tmp_path: Path) -> None:
         f"(status=ok, declined={result.raw.declined}, api_calls={api_calls}, "
         f"state.db_tool_call_count={db_tool_calls}, "
         f"pkm_own_log_lines {pkm_log_lines_before}->{pkm_log_lines_after}); "
-        f"see task-12-report.md for the full finding. text={text!r}"
+        f"see the arm_hermes.py module docstring's toolset-restriction notes. text={text!r}"
     )
 
     if db_tool_calls is not None:

@@ -221,6 +221,20 @@ def test_build_cells_scenario_filtering_and_cell_source() -> None:
     assert by_key[("x", "y", "all")]["verdict"] != by_key[("y", "x", "all")]["verdict"]
 
 
+def test_build_cells_hard_fails_on_mismatched_scored_question_id_sets() -> None:
+    # final-review MINOR: an asymmetric infra failure between two arms (one answered
+    # q-2, the other's q-2 row was excluded as scored — simulated here directly with
+    # disjoint question sets) makes a welfare/frontier/loss comparison meaningless; this
+    # must raise loudly, not silently compute a comparison over mismatched populations.
+    arms = {
+        "x": [_vector(question_id="q-1", bucket="CORRECT"),
+              _vector(question_id="q-2", bucket="CORRECT")],
+        "y": [_vector(question_id="q-1", bucket="CORRECT")],  # missing q-2
+    }
+    with pytest.raises(ValueError, match="DIFFERENT scored question_id sets"):
+        W.build_cells(arms, {"balanced": BALANCED})
+
+
 def test_pair_tally_splits_measured_and_modelled() -> None:
     cells = [
         {"arm_a": "x", "arm_b": "y", "verdict": "win", "cell_source": "measured"},
@@ -360,7 +374,10 @@ def test_loss_map_md_renders_sections_when_not_empty() -> None:
 # --- run_dominance.py: end-to-end over a tmp run dir -------------------------------------
 
 
-def _write_arm_vectors(run_dir: Path, arm: str, bucket: str, cost: float, latency: float) -> None:
+def _write_arm_vectors(
+    run_dir: Path, arm: str, bucket: str, cost: float, latency: float,
+    *, extra_rows: list[dict[str, Any]] | None = None,
+) -> None:
     path = run_dir / "arms" / arm / "vectors.jsonl"
     path.parent.mkdir(parents=True, exist_ok=True)
     questions = [("q-1", True), ("q-2", True), ("q-3", False), ("q-4", False)]
@@ -368,6 +385,8 @@ def _write_arm_vectors(run_dir: Path, arm: str, bucket: str, cost: float, latenc
         for qid, answerable in questions:
             row = _vector(question_id=qid, answerable=answerable, arm=arm, bucket=bucket,
                           cost_usd=cost, latency_s=latency, cost_status="measured")
+            f.write(json.dumps(row) + "\n")
+        for row in extra_rows or []:
             f.write(json.dumps(row) + "\n")
 
 
@@ -386,7 +405,11 @@ def test_run_dominance_end_to_end(tmp_path: Path) -> None:
     for name in ("cells.json", "frontier.json", "LOSS_MAP.md", "summary.md"):
         assert (out_dir / name).exists()
 
-    cells = json.loads((out_dir / "cells.json").read_text())
+    # final-review CRITICAL-2: cells.json is now a headline+cells object, not a bare list.
+    cells_payload = json.loads((out_dir / "cells.json").read_text())
+    assert cells_payload["n_excluded_infra"] == {"inprocess": 0, "competitor": 0}
+    assert cells_payload["n_total"] == {"inprocess": 4, "competitor": 4}
+    cells = cells_payload["cells"]
     assert len(cells) == 2 * len(W.all_profiles()) * len(W.SCENARIOS)  # 2 ordered pairs
     loss_cells = [c for c in cells if c["verdict"] == "loss"]
     assert loss_cells  # competitor loses to inprocess on every profile/scenario
@@ -404,10 +427,74 @@ def test_run_dominance_end_to_end(tmp_path: Path) -> None:
     assert U.FORMULA in summary
     assert "inprocess" in summary and "competitor" in summary
     assert "**[frontier]**" in summary
+    assert "Excluded rows" in summary
+    # final-review IMPORTANT-5 item 2: the attention-axis note under the frontier.
+    assert "Attention = asks_issued" in summary
+    assert "gather_tiers" in summary and "search" in summary
 
 
 def test_run_dominance_requires_at_least_two_arms(tmp_path: Path) -> None:
     run_dir = tmp_path / "ff-one-arm"
     _write_arm_vectors(run_dir, "inprocess", "CORRECT", 0.01, 0.5)
     with pytest.raises(SystemExit, match="needs >=2 arms"):
+        RD.run(run_dir)
+
+
+# --- final-review CRITICAL-2: infra-failed rows never reach a scored population --------
+
+
+def test_run_dominance_excludes_infra_failed_rows_from_frontier_cells_and_loss(
+    tmp_path: Path,
+) -> None:
+    run_dir = tmp_path / "ff-infra-test"
+    # A CONFIDENT_WRONG row with status="error" on the inprocess arm — if it leaked into
+    # the scored population, it would drag inprocess's correct_rate down and could even
+    # flip which arm wins some cells. It must be excluded entirely.
+    infra_row = _vector(
+        question_id="q-infra", answerable=True, arm="inprocess", bucket="CONFIDENT_WRONG",
+        cost_usd=99.0, latency_s=99.0, cost_status="measured", status="error")
+    _write_arm_vectors(run_dir, "inprocess", "CORRECT", 0.01, 0.5, extra_rows=[infra_row])
+    _write_arm_vectors(run_dir, "competitor", "CONFIDENT_WRONG", 0.02, 1.0)
+
+    result = RD.run(run_dir)
+    assert result["n_excluded_infra"] == {"inprocess": 1, "competitor": 0}
+
+    out_dir = run_dir / "dominance"
+    cells_payload = json.loads((out_dir / "cells.json").read_text())
+    assert cells_payload["n_excluded_infra"] == {"inprocess": 1, "competitor": 0}
+    assert cells_payload["n_total"] == {"inprocess": 5, "competitor": 4}
+    # every cell's n_questions reflects the SCORED population (4), never the 5 total —
+    # the infra row's bucket/cost/latency never reach a welfare sum.
+    assert all(c["n_questions"] == 4 for c in cells_payload["cells"] if c["scenario"] == "all")
+
+    frontier_json = json.loads((out_dir / "frontier.json").read_text())
+    # inprocess's correct_rate is still 1.0 (4/4 scored CORRECT) — the infra row's
+    # CONFIDENT_WRONG bucket and $99/99s never dragged it down.
+    assert frontier_json["points"]["inprocess"][0] == pytest.approx(1.0)
+
+    summary = (out_dir / "summary.md").read_text()
+    assert "`inprocess`: 1 excluded of 5 total (4 scored)" in summary
+
+
+def test_run_dominance_all_infra_failed_rows_for_one_arm_yields_empty_scored_population(
+    tmp_path: Path,
+) -> None:
+    # An edge case worth naming explicitly: every row for an arm is infra-failed -> its
+    # scored population is EMPTY. This must not crash the frontier/cells computation
+    # (build_point/build_cells both handle n=0 -> correct_rate=0.0, and an empty arm's
+    # question_id set trivially matches another empty arm's — but here the OTHER arm is
+    # non-empty, so build_cells' mismatch guard (MINOR fix) fires; asserting THAT is the
+    # point of this test, not a happy path.
+    run_dir = tmp_path / "ff-all-infra-test"
+    all_error_rows = [
+        _vector(question_id=f"q-{i}", answerable=True, arm="inprocess", bucket="CORRECT",
+               cost_usd=0.01, latency_s=0.5, cost_status="measured", status="error")
+        for i in range(1, 4)
+    ]
+    path = run_dir / "arms" / "inprocess" / "vectors.jsonl"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("".join(json.dumps(r) + "\n" for r in all_error_rows), encoding="utf-8")
+    _write_arm_vectors(run_dir, "competitor", "CORRECT", 0.02, 1.0)
+
+    with pytest.raises(ValueError, match="DIFFERENT scored question_id sets"):
         RD.run(run_dir)

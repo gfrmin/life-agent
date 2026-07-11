@@ -865,6 +865,14 @@ EXECUTOR_DOWN = ("No answer asserted — the executor is unavailable (the answer
 # verdict binds to it (the executor analogue of LOOKUP_LAST.answer_cache_key); None when the last
 # answer was a miss / narrative / daemon-down (nothing foldable to bind).
 EXECUTOR_LAST: str | None = None
+# the last executor decision's own structured View (life_agent.core.executor.View) — held so a
+# downstream consumer (e.g. the fair-fight harness's scripts/fairfight/arm_baseline.py) can build
+# a real decision_view instead of re-parsing the rendered free text: the rendered string alone
+# does not let a consumer recognise the credence grammar's own withholding renderings, so a
+# free-text decline detector reads every withholding as an assertion. Reset at the top of
+# answer_via_executor like every other "*_LAST" seam; None when the last call never reached a
+# decision (daemon down) — never a stale prior question's view.
+EXECUTOR_VIEW_LAST: dict[str, Any] | None = None
 
 
 def _http_post(url: str, payload: dict[str, Any]) -> dict[str, Any] | None:
@@ -925,10 +933,11 @@ def answer_via_executor(question: str, k: int
     ask's 3-tuple unchanged, so render/capture are identical. The daemon + bridge must be up; if
     not, it abstains with a NAMED reason rather than guessing (interaction contract)."""
     global TEMPORAL_LAST, SUBJECT_LAST, INTENT_LAST, LOOKUP_LAST, NARRATIVE_LAST, STAGES_LAST
-    global EXECUTOR_LAST, EFFORT_LAST
+    global EXECUTOR_LAST, EFFORT_LAST, EXECUTOR_VIEW_LAST
     TEMPORAL_LAST = SUBJECT_LAST = INTENT_LAST = LOOKUP_LAST = NARRATIVE_LAST = None
     STAGES_LAST = {}
     EXECUTOR_LAST = None
+    EXECUTOR_VIEW_LAST = None
     # The daemon's own retrieve/grow rounds are not observable in the View it returns (and
     # core/executor.py must not be edited to expose them) — absent (not a guessed 0), so a
     # consumer can tell "not tracked here" apart from "zero rounds fired".
@@ -938,6 +947,7 @@ def answer_via_executor(question: str, k: int
     view = EX.decide_via_loop(question, k, bridge=EXECUTOR_BRIDGE, daemon=EXECUTOR_DAEMON,
                               post=_http_post, get=_http_get,
                               grow_lane=EXECUTOR_GROW_LANE)
+    EXECUTOR_VIEW_LAST = view
     _log_executor_decision(question, view)
     pairs = _cards_from_set(view["hits"])
     cards = [c for c, _ in pairs]

@@ -35,6 +35,9 @@ import sys
 from pathlib import Path
 
 _COMPARISON_DIR = Path(__file__).resolve().parent.parent / "comparison"
+# Hoisted to module level (final-review MINOR): this used to run inside both
+# judge_answer/judge_modal, growing sys.path by one entry on every call.
+sys.path.insert(0, str(_COMPARISON_DIR))
 
 
 def _sources_block(sources: list[dict]) -> str:
@@ -60,7 +63,6 @@ def judge_answer(q: dict, answer_text: str, sources: list[dict], rubric_text: st
     """One judge call -> ``{"faithfulness": int, "completeness": int,
     "citation_fidelity": int, "_served": str}``, or ``None`` on malformed/unparseable
     judge output (skipped by the caller, never guessed)."""
-    sys.path.insert(0, str(_COMPARISON_DIR))
     import _common as JC
 
     src_block = _sources_block(sources)
@@ -103,7 +105,6 @@ def judge_modal(q: dict, answer_text: str, sources: list[dict], *, n: int = 3) -
     (``blind_judge.modal``: tie -> lower); loads the rubric text once. Malformed calls
     are dropped; if ALL ``n`` fail, returns ``{}`` (the runner records the dims as
     unjudged/``None``, never guessed)."""
-    sys.path.insert(0, str(_COMPARISON_DIR))
     from blind_judge import DIMS, _rubric_text, modal
 
     rubric_text = _rubric_text()

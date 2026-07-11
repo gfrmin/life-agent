@@ -30,6 +30,7 @@ from fairfight import run_fairfight as RF
 
 import life_agent.core.config as LCFG
 from life_agent.core.llm import LLMResult
+from life_agent.fairfight import records as REC
 
 # --- fixtures / small builders --------------------------------------------------------
 
@@ -95,6 +96,30 @@ def _raw(**overrides: Any) -> AB.RawAnswer:
     )
     base.update(overrides)
     return AB.RawAnswer(**base)
+
+
+def _vector_for_summary(**overrides: Any) -> REC.OutcomeVector:
+    """A full, validated ``OutcomeVector`` for ``RF._summarize_arm``-level tests
+    (final-review CRITICAL-2) — every field defaulted, override only what a test cares
+    about."""
+    base: dict[str, Any] = dict(
+        format_version=REC.FORMAT_VERSION, run_id="run-test", arm="inprocess",
+        question_id="q-001", answerable=True,
+        faithfulness=None, completeness=None, citation_fidelity=None,
+        bucket="CORRECT", cause=None, asserted=True, asserted_correct=True,
+        asserted_distractor=False, hallucinated=None, declined=False,
+        correct_abstention=False, over_abstention=False,
+        gold_in_topk=True, gold_in_corpus=True, gold_in_candidates=True,
+        distractor_in_topk=False, n_retrieved=5,
+        probability=None, p_none=None, p_none_correct=None, brier=None,
+        cost_usd=0.01, cost_status="measured", in_tokens=100, out_tokens=50,
+        cache_read_tokens=0, cache_write_tokens=0, latency_s=1.0,
+        model_tier_mix={},
+        gather_rounds=None, asks_issued=0, tool_calls=None, think_ticks=None,
+        answer_sha256="a" * 64, answer_chars=10, lineage_keys=(), status="ok", notes="",
+    )
+    base.update(overrides)
+    return REC.OutcomeVector(**base)
 
 
 def _lookup_view(**overrides: Any) -> dict[str, Any]:
@@ -451,24 +476,39 @@ def test_cost_status_competitor_unavailable_when_usage_none() -> None:
     assert econ["model_tier_mix"] == {}
 
 
-# --- effort: missing key -> None, never 0 -------------------------------------------------
+# --- effort: gather_rounds mapping, per arm class (final-review IMPORTANT-5) -------------
 
 
 def test_gather_rounds_missing_key_is_none_not_zero() -> None:
     raw = _raw(effort={})
-    assert RF._gather_rounds(raw) is None
+    assert RF._gather_rounds("inprocess", raw) is None
+    assert RF._gather_rounds("competitor", raw) is None
 
 
 def test_gather_rounds_reads_the_competitor_shaped_key_verbatim() -> None:
     raw = _raw(effort={"tool_calls": 4, "gather_rounds": 2, "asks_issued": 0})
-    assert RF._gather_rounds(raw) == 2
+    assert RF._gather_rounds("competitor", raw) == 2
 
 
-def test_gather_rounds_does_not_alias_the_inprocess_gather_tiers_key() -> None:
-    # seam resolution 4 (module docstring): "gather_tiers" (in-process arms' real effort
-    # key) is a DIFFERENT counter from "gather_rounds" — never silently aliased.
+def test_gather_rounds_inprocess_arm_reads_gather_tiers_key() -> None:
+    # final-review IMPORTANT-5 (revising seam resolution 4): "one corroboration tier
+    # fired = one gather round" — mapped verbatim from the in-process arms' own
+    # "gather_tiers" effort key.
     raw = _raw(effort={"retrieve_passes": 1, "gather_tiers": 1})
-    assert RF._gather_rounds(raw) is None
+    assert RF._gather_rounds("inprocess", raw) == 1
+
+
+def test_gather_rounds_synthesis_arm_also_reads_gather_tiers_key() -> None:
+    raw = _raw(effort={"retrieve_passes": 1, "gather_tiers": 0})
+    assert RF._gather_rounds("synthesis", raw) == 0
+
+
+def test_gather_rounds_baseline_arm_always_none_not_derivable_from_the_view() -> None:
+    # the daemon's own gather/grow round count is not observable in core.executor.py's
+    # View (never edited to expose it) — even if `effort` happens to carry unrelated
+    # keys, baseline never reads them for this axis.
+    raw = _raw(effort={"gather_tiers": 3, "gather_rounds": 3})
+    assert RF._gather_rounds("baseline", raw) is None
 
 
 def test_tool_calls_only_populated_for_competitor() -> None:
@@ -513,10 +553,24 @@ def test_calibration_none_for_synthesis_arm_even_with_a_lookup_view() -> None:
     assert calib == RF._NO_CALIBRATION
 
 
-def test_calibration_none_for_baseline_arm_since_its_decision_view_is_always_none() -> None:
+def test_calibration_none_for_baseline_arm_when_decision_view_is_none() -> None:
+    # e.g. a down/errored executor, or its narrative-fallback branch (arm_baseline.
+    # _executor_decision returns None for it — see its own docstring).
     raw = _raw(decision_view=None)
     calib = RF._calibration("baseline", raw, _grades())
     assert calib == RF._NO_CALIBRATION
+
+
+def test_calibration_populates_for_baseline_arm_with_a_real_typed_lookup_view() -> None:
+    # final-review CRITICAL-1: since arm_baseline._executor_decision now builds a REAL
+    # decision_view for the executor's typed-lookup decisions, the baseline arm's
+    # calibration axis comes alive exactly like inprocess's — it is no longer
+    # structurally always-None.
+    raw = _raw(decision_view=_lookup_view(credences=[0.9], p_none=0.05))
+    calib = RF._calibration("baseline", raw, _grades(gold_in_candidates=True))
+    assert calib["probability"] == 0.9
+    assert calib["p_none"] == 0.05
+    assert calib["brier"] == pytest.approx((0.9 - 1.0) ** 2)
 
 
 def test_calibration_none_for_narrative_family_no_real_credence() -> None:
@@ -531,6 +585,38 @@ def test_calibration_p_none_correct_none_when_gold_in_candidates_is_none() -> No
     raw = _raw(decision_view=_lookup_view())
     calib = RF._calibration("inprocess", raw, _grades(gold_in_candidates=None))
     assert calib["p_none_correct"] is None
+
+
+# --- calibration: probability/brier gated on an ASSERTING decision (IMPORTANT-4) --------
+
+
+def test_calibration_probability_and_brier_none_when_declined_but_p_none_still_populates(
+) -> None:
+    # an abstain still carries a real max(credences) number (the posterior's leader) —
+    # scoring THAT as if the arm reported it would grade a decision it never made.
+    # p_none/p_none_correct are a different claim (the withholding decision's own
+    # credence) and populate regardless.
+    view = _lookup_view(action="abstain", asserted=False, credences=[0.3, 0.2], p_none=0.6)
+    raw = _raw(decision_view=view)
+    calib = RF._calibration(
+        "inprocess", raw, _grades(asserted=False, gold_in_candidates=False))
+    assert calib["probability"] is None
+    assert calib["brier"] is None
+    assert calib["p_none"] == 0.6
+    assert calib["p_none_correct"] is True  # p_none>=0.5 and gold WAS NOT in candidates: agree
+
+
+def test_calibration_probability_and_brier_populate_for_hedge_an_asserting_decision() -> None:
+    # hedge IS an assertion-class act in this harness's convention (grades.asserted=True
+    # for it) — its probability/brier populate exactly like a report's.
+    view = _lookup_view(action="hedge", asserted=True, credences=[0.4, 0.35], p_none=0.25)
+    raw = _raw(decision_view=view)
+    calib = RF._calibration(
+        "inprocess", raw, _grades(asserted=True, asserted_correct=False,
+                                  gold_in_candidates=True))
+    assert calib["probability"] == 0.4
+    assert calib["brier"] == pytest.approx((0.4 - 0.0) ** 2)
+    assert calib["p_none"] == 0.25
     assert calib["probability"] is not None  # everything else still populates
 
 
@@ -552,6 +638,37 @@ def test_redirect_decisions_log_restores_even_on_exception(tmp_path: Path) -> No
     with pytest.raises(RuntimeError), RF._redirect_decisions_log(tmp_path / "run"):
         raise RuntimeError("boom")
     assert original == LCFG.DECISIONS_LOG
+
+
+# --- final-review IMPORTANT-3: the shadow seeds from real production content -----------
+
+
+def test_redirect_decisions_log_seeds_shadow_from_existing_production_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    prod = tmp_path / "prod_decisions.jsonl"
+    prod.write_text('{"a":1}\n{"a":2}\n', encoding="utf-8")
+    monkeypatch.setattr(LCFG, "DECISIONS_LOG", prod)
+    run_dir = tmp_path / "run"
+
+    with RF._redirect_decisions_log(run_dir) as shadow:
+        assert shadow.read_text() == prod.read_text()
+        # a write during the run lands ONLY in the shadow — never flows back to prod.
+        with shadow.open("a", encoding="utf-8") as f:
+            f.write('{"a":3}\n')
+
+    assert prod.read_text() == '{"a":1}\n{"a":2}\n'  # untouched by the run's own writes
+
+
+def test_redirect_decisions_log_no_seed_when_production_file_absent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    absent_prod = tmp_path / "no-such-decisions.jsonl"
+    monkeypatch.setattr(LCFG, "DECISIONS_LOG", absent_prod)
+    run_dir = tmp_path / "run"
+
+    with RF._redirect_decisions_log(run_dir) as shadow:
+        assert not shadow.exists()  # nothing to seed from — same as before this fix
 
 
 def test_run_writes_nothing_outside_the_run_dir(
@@ -614,3 +731,61 @@ def test_competitor_retries_once_on_a_tool_log_error_row(
 
     vectors_path = result["run_dir"] / "arms" / "competitor" / "vectors.jsonl"
     assert len(vectors_path.read_text().splitlines()) == 1  # exactly one row, not two
+
+
+def test_competitor_stale_tool_calls_and_usage_dirs_cleared_at_run_start(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # final-review IMPORTANT-6 item 2: a stale tool_calls/<qid>.jsonl or usage/<qid>.json
+    # left by a PRIOR run under the same --run-id (e.g. a run with a larger --limit) must
+    # not survive into this run's directory.
+    kb = _kb(tmp_path, monkeypatch)
+    _write_questions(kb, [_q("q-001")])
+    args = _args(tmp_path, arms="competitor", run_id="ff-stale-test")
+    run_dir = kb / "eval" / "fairfight" / "ff-stale-test"
+    stale_tool = run_dir / "arms/competitor/tool_calls/q-999-stale.jsonl"
+    stale_usage = run_dir / "arms/competitor/usage/q-999-stale.json"
+    stale_tool.parent.mkdir(parents=True, exist_ok=True)
+    stale_usage.parent.mkdir(parents=True, exist_ok=True)
+    stale_tool.write_text("stale\n", encoding="utf-8")
+    stale_usage.write_text("{}", encoding="utf-8")
+
+    def _competitor(q: dict) -> AH.CompetitorResult:
+        return AH.CompetitorResult(
+            raw=_raw(question_id=q["id"], cards=()),
+            usage={"estimated_cost_usd": 0.01, "model": "m", "api_calls": 1}, tool_log=[])
+
+    RF.run(args, arm_impls={"competitor": _competitor}, judge_impl=_fake_judge(),
+           conn_factory=lambda p: _FakeConn())
+
+    assert not stale_tool.exists()
+    assert not stale_usage.exists()
+
+
+# --- final-review CRITICAL-2: infra-failed rows excluded from every rate/summary count ---
+
+
+def test_summarize_arm_excludes_error_rows_from_rates_and_reports_excluded_count() -> None:
+    ok = _vector_for_summary(question_id="q-1", status="ok", bucket="CORRECT",
+                              answerable=True, declined=False, latency_s=1.0, cost_usd=0.01)
+    err = _vector_for_summary(question_id="q-2", status="error", bucket="CONFIDENT_WRONG",
+                              answerable=True, declined=False, latency_s=0.0, cost_usd=None)
+    judged = [
+        {"faithfulness": 3, "completeness": 3, "citation_fidelity": 3, "hallucinated": False,
+         "synthesis_pass": True, "abstained_correctly": None, "judged": True, "reason": None},
+        {"faithfulness": None, "completeness": None, "citation_fidelity": None,
+         "hallucinated": None, "synthesis_pass": None, "abstained_correctly": None,
+         "judged": False, "reason": "status=error"},
+    ]
+    summary = RF._summarize_arm("inprocess", [ok, err], judged)
+    assert summary["n_total"] == 2
+    assert summary["n"] == 1                     # the scored population
+    assert summary["n_excluded_infra"] == 1
+    assert summary["n_error"] == 1
+    # the error row's CONFIDENT_WRONG bucket must never reach a rate: 1/1 scored, not
+    # 1/2 (which "confident_wrong" would silently be if the error row were counted).
+    assert summary["confident_wrong"] == 0
+    assert summary["confident_wrong_rate"] == 0.0
+    assert summary["correct"] == 1
+    assert summary["correct_rate"] == 1.0
+    assert summary["cost"]["total_usd"] == pytest.approx(0.01)

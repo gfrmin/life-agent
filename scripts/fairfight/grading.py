@@ -65,6 +65,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from life_agent.core import lookup as LK
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from eval_grading import answer_matches, chunk_matches_any
 from run_eval import _answer_in_corpus
@@ -81,6 +83,19 @@ _DECLINE_PHRASE_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"\bcannot find\b", re.IGNORECASE),
     re.compile(r"\bdon'?t have (?:a|any|enough)\b", re.IGNORECASE),
 )
+
+# Belt-and-braces (final-review CRITICAL-1 item 4): the credence grammar's OWN
+# withholding renderings, sourced from ``core.lookup.GRAMMAR`` — never hardcoded
+# strings that could drift from it — for any free-text arm/branch that renders through
+# it (the executor's narrative fallback, or a structured-view-less path). Each
+# withholding template's literal prefix (everything before its first ``{placeholder}``)
+# is a stable, non-parameterised substring every render of it starts with; "report" /
+# "report_scoped" are deliberately excluded (an ASSERTION must never trip a decline
+# check). A drift-gate test renders a real withholding through the production renderer
+# (``core.executor.render_view``) and asserts this catches it.
+_GRAMMAR_WITHHOLD_KEYS: tuple[str, ...] = ("abstain", "abstain_withheld", "hedge", "ask_clarify")
+_GRAMMAR_WITHHOLD_PREFIXES: tuple[str, ...] = tuple(
+    dict.fromkeys(LK.GRAMMAR[key].split("{", 1)[0] for key in _GRAMMAR_WITHHOLD_KEYS))
 
 # One bracket group, e.g. "[a.txt]" or "[a.txt, b.txt]" — deliberately excludes nested
 # brackets so "[[n]]"-style numeric markers don't get mistaken for hermes file citations.
@@ -124,6 +139,8 @@ def detect_decline(text: str) -> bool:
     from ask import ABSTENTION  # sibling script; sys.path set at module load, above
 
     if text == ABSTENTION:
+        return True
+    if any(prefix in text for prefix in _GRAMMAR_WITHHOLD_PREFIXES):
         return True
     return any(p.search(text) for p in _DECLINE_PHRASE_PATTERNS)
 

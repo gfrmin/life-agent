@@ -45,7 +45,11 @@ Usage::
    even on failure. The ``baseline`` arm's out-of-process executor daemon is NOT reachable
    this way — its own decision/gather-outcome writes to the live calibration log are a
    disclosed, unfixable-from-here side effect of hitting the real daemon (matching
-   ``arm_baseline.py``'s own "daemon spend invisible" disclosure for cost).
+   ``arm_baseline.py``'s own "daemon spend invisible" disclosure for cost). (Final-review
+   IMPORTANT-3: the shadow is SEEDED from production's real ``decisions.jsonl`` at redirect
+   time — see :func:`_redirect_decisions_log`'s own docstring — so ``current_u_bar``'s fold
+   of the owner's real g/b verdicts isn't silently reset to the un-narrowed prior for the
+   run's duration; new writes still land only in the shadow.)
 3. **Vector assembly is judge-first, not append-as-you-go.** The brief's numbered
    sequence lists "assemble the OutcomeVector -> append to vectors.jsonl" (step 2) BEFORE
    "judge pass batched per arm" (step 3) — but ``OutcomeVector.hallucinated`` and the
@@ -59,22 +63,30 @@ Usage::
    OutcomeVector per (arm, question), correct arm names," just not literally interleaved
    with judging. ``answers.jsonl`` (which needs no judge output) IS written incrementally,
    one line per question, as specified.
-4. **``gather_rounds`` is read verbatim from ``RawAnswer.effort["gather_rounds"]``, never
-   aliased from the in-process arms' differently-named ``effort["gather_tiers"]``.** The
-   two counters measure different things (a boolean-ish "did one gather-augmented pass
-   fire" vs. the competitor's count of ``search`` tool calls) — aliasing them into one
-   field would silently blend two different measurements. In-process arms therefore always
-   report ``gather_rounds=None`` in the vector; their retrieve/gather activity is still on
-   record in ``answers.jsonl``'s ``effort`` dict, just not re-projected onto this
-   particular cross-arm axis.
+4. **``gather_rounds`` is arm-class-mapped by :func:`_gather_rounds` (final-review
+   IMPORTANT-5, revising this seam's original "never alias" choice).** In-process arms
+   (``inprocess``/``synthesis``) declare the semantic equivalence "one corroboration tier
+   fired = one gather round" and map verbatim from ``effort["gather_tiers"]`` — the
+   attention axis previously left them at ``None`` (contributing ~0 attention) next to the
+   competitor's full ``search``-tool-call count, an unstated and misleading asymmetry
+   ``scripts/dominance/pareto.py``'s Pareto frontier scored over. The ``competitor`` arm's
+   own ``effort["gather_rounds"]`` (``arm_hermes.py``'s ``search``-call count) is unchanged.
+   The ``baseline`` (executor) arm still reports ``gather_rounds=None``: the daemon's own
+   gather/grow round count is genuinely not observable in the ``View``
+   ``core/executor.py`` returns (confirmed against its return statements, never edited to
+   expose them — out of this task's scope) — never a guessed 0.
 5. **Calibration axis (probability/p_none/p_none_correct/brier) is scoped to the
    ``baseline``/``inprocess`` arms exactly as the dispatch specifies**, gated further on
    the decision view actually being a ``lookup`` family decision with real credences
-   (``synthesis`` and ``competitor`` always report ``None`` — never imputed). In practice
-   ``baseline`` (the executor arm) never satisfies this: its ``decision_view`` is always
-   ``None`` by construction (``arm_baseline.py``'s own documented seam gap — the
-   executor's structured ``View`` never survives past its rendered string), so its
-   calibration fields are always ``None`` too; this is expected, not a bug in this task.
+   (``synthesis`` and ``competitor`` always report ``None`` — never imputed), and (final-
+   review IMPORTANT-4) on the channel grade actually being an ASSERTING decision for
+   probability/brier specifically (``_calibration``'s own docstring). Since final-review
+   CRITICAL-1, ``baseline`` (the executor arm) DOES populate ``decision_view`` for its
+   typed-lookup decisions (``arm_baseline._executor_decision``, over
+   ``ask.EXECUTOR_VIEW_LAST``) — its calibration fields come alive whenever the executor
+   decided via the typed-lookup family; they stay ``None`` for its narrative-fallback
+   decisions (no structured credence data survives the executor's own narrative branch —
+   see ``arm_baseline._executor_decision``'s docstring) and for a down/errored executor.
 
 **Directory layout** (``$LIFE_AGENT_KB/eval/fairfight/<run_id>/``, per the plan):
 ``run_meta.json``, ``questions.sha256``, ``arms/<arm>/{answers,vectors}.jsonl``
@@ -278,9 +290,24 @@ def _redirect_decisions_log(run_dir: Path) -> Iterator[Path]:
     """Redirect ``life_agent.core.config.DECISIONS_LOG`` to a shadow file under the run
     dir for the wrapped block, restoring it after (even on failure). See the module
     docstring's seam resolution 2 for why this is necessary and why it's sufficient for
-    the in-process arms but NOT the out-of-process executor daemon."""
+    the in-process arms but NOT the out-of-process executor daemon.
+
+    Final-review IMPORTANT-3: the shadow is SEEDED from the real production
+    ``decisions.jsonl`` (a one-time copy, taken here before redirecting) when one exists.
+    ``core.lookup.current_u_bar`` reads ``config.DECISIONS_LOG`` — a module-attribute
+    lookup, at call time (``lookup.py``'s own ``current_u_bar`` -> ``R.load_reactions``) —
+    to fold the owner's REAL g/b verdicts into u(wrong), the posterior that sets the
+    in-process arms' assert/abstain threshold. An unseeded empty shadow would silently
+    reset that fold to the wide, un-narrowed PRIOR for the whole run: a different (and
+    undisclosed) threshold than production ever uses, contaminating exactly the
+    calibration axis this harness measures. Every WRITE during the run still lands ONLY
+    in the shadow (an append-only file, copied once, never read back into production) —
+    production's own file is touched here exactly once, read-only."""
     shadow = run_dir / "shadow_calibration" / "decisions.jsonl"
+    shadow.parent.mkdir(parents=True, exist_ok=True)
     original = LCFG.DECISIONS_LOG
+    if original.exists():
+        shutil.copyfile(original, shadow)
     LCFG.DECISIONS_LOG = shadow
     try:
         yield shadow
@@ -380,7 +407,18 @@ _NO_CALIBRATION: _Calibration = {
 def _calibration(arm: str, raw: AB.RawAnswer, grades: G.ChannelGrades) -> _Calibration:
     """probability/p_none/p_none_correct/brier — ``baseline``/``inprocess`` only (task
     dispatch §5), gated further on the decision view being a real lookup-family credence.
-    Never imputed: any other arm, or a lookup-less decision, is all-``None``."""
+    Never imputed: any other arm, or a lookup-less decision, is all-``None``.
+
+    Final-review IMPORTANT-4: ``probability``/``brier`` score a credence the arm actually
+    STAKED on a value — populated only when ``grades.asserted`` (records.py's own
+    contract: "None = the arm asserted no credence"). An abstain/ask_clarify decision
+    still carries a real ``max(credences)`` number (the posterior's leader, computed
+    whether or not it cleared the assert bar), but scoring THAT as if the arm reported it
+    would grade a decision the arm never made. ``p_none``/``p_none_correct`` are NOT
+    gated the same way: the none-of-the-retrieved posterior IS the withholding decision's
+    own credence, meaningful whether or not the arm also asserted a value (a ``hedge`` is
+    an assertion-class act here — see ``triage_answers._lookup_view`` — so it still gets
+    probability/brier too)."""
     if arm not in ("baseline", "inprocess"):
         return _NO_CALIBRATION
     view = raw.decision_view
@@ -390,12 +428,15 @@ def _calibration(arm: str, raw: AB.RawAnswer, grades: G.ChannelGrades) -> _Calib
     p_none = view.get("p_none")
     if not credences or p_none is None:
         return _NO_CALIBRATION
-    probability = max(credences)
     gold_in_candidates = grades.gold_in_candidates
     p_none_correct = (
         None if gold_in_candidates is None
         else (p_none >= 0.5) == (not gold_in_candidates)
     )
+    if not grades.asserted:
+        return {"probability": None, "p_none": p_none,
+                "p_none_correct": p_none_correct, "brier": None}
+    probability = max(credences)
     brier = OUT.brier_score(probability, correct=grades.asserted_correct)
     return {"probability": probability, "p_none": p_none,
             "p_none_correct": p_none_correct, "brier": brier}
@@ -451,10 +492,27 @@ def _asks_issued(decision_view: dict[str, Any] | None) -> int:
     return 1 if (decision_view or {}).get("action") == "ask_clarify" else 0
 
 
-def _gather_rounds(raw: AB.RawAnswer) -> int | None:
-    # Verbatim lookup — see the module docstring's seam resolution 4 for why this is NOT
-    # aliased from the in-process arms' differently-shaped "gather_tiers" counter.
-    return raw.effort.get("gather_rounds")
+def _gather_rounds(arm: str, raw: AB.RawAnswer) -> int | None:
+    """The attention axis's gather/tool-round count, per arm class (final-review
+    IMPORTANT-5, revising the module docstring's seam resolution 4): in-process arms
+    (``inprocess``/``synthesis``) declare the semantic equivalence "one corroboration
+    tier fired = one gather round" and map verbatim from ``effort["gather_tiers"]`` — the
+    counter ``ask.py``'s own gather loop increments (see ``ask.py``'s ``EFFORT_LAST``
+    comment); this REPLACES the prior "always None for in-process arms" choice, which
+    left them contributing ~0 attention next to the competitor's full tool-call count.
+    The ``competitor`` arm already reports its own ``"gather_rounds"`` key
+    (``arm_hermes.py``'s ``search``-tool-call count) — read verbatim, unchanged. The
+    ``baseline`` (executor) arm's daemon-side gather/grow rounds are NOT observable in
+    the ``View`` ``core/executor.py`` returns (confirmed against its return statements —
+    never edited to expose them, per this task's own constraint), so it stays ``None``
+    (never a guessed 0); its only attention contribution is ``asks_issued`` (now real,
+    since CRITICAL-1 gives it a structured decision_view an ``ask_clarify`` can be read
+    from)."""
+    if arm in ("inprocess", "synthesis"):
+        return raw.effort.get("gather_tiers")
+    if arm == "competitor":
+        return raw.effort.get("gather_rounds")
+    return None  # baseline: not derivable from the executor's View — see above
 
 
 def _tool_calls(arm: str, raw: AB.RawAnswer) -> int | None:
@@ -475,6 +533,13 @@ def _run_arm(
     answers_path = run_dir / "arms" / arm / "answers.jsonl"
     answers_path.parent.mkdir(parents=True, exist_ok=True)
     answers_path.unlink(missing_ok=True)  # fresh per run (defends a --run-id re-run)
+    if arm == "competitor":
+        # Final-review IMPORTANT-6: clean arm_hermes.py's own per-qid scratch dirs at run
+        # start too — a --run-id re-run (or a run with a smaller --limit than a prior run
+        # under the same run_id) could otherwise leave a STALE tool_calls/<qid>.jsonl or
+        # usage/<qid>.json for a question not in THIS run's set lying around.
+        for sub in ("tool_calls", "usage"):
+            shutil.rmtree(run_dir / "arms" / "competitor" / sub, ignore_errors=True)
 
     rows: list[dict[str, Any]] = []
     for q in questions:
@@ -586,7 +651,7 @@ def _assemble_vectors(
             cache_read_tokens=econ["cache_read_tokens"],
             cache_write_tokens=econ["cache_write_tokens"],
             latency_s=raw.latency_s, model_tier_mix=econ["model_tier_mix"],
-            gather_rounds=_gather_rounds(raw), asks_issued=_asks_issued(raw.decision_view),
+            gather_rounds=_gather_rounds(arm, raw), asks_issued=_asks_issued(raw.decision_view),
             tool_calls=_tool_calls(arm, raw), think_ticks=None,
             answer_sha256=hashlib.sha256(raw.text.encode("utf-8")).hexdigest(),
             answer_chars=len(raw.text), lineage_keys=raw.lineage_keys,
@@ -621,62 +686,83 @@ def _percentile(values: list[float], p: float) -> float | None:
 
 def _summarize_arm(arm: str, vectors: list[REC.OutcomeVector], judged: list[dict[str, Any]]
                     ) -> dict[str, Any]:
-    n = len(vectors)
-    n_answerable = sum(1 for v in vectors if v.answerable)
+    n_total = len(vectors)
+    n_ok = sum(1 for v in vectors if v.status == "ok")
+    n_error = sum(1 for v in vectors if v.status == "error")
+    n_timeout = sum(1 for v in vectors if v.status == "timeout")
+
+    # Final-review CRITICAL-2: every rate/mean/frontier-feeding number below is the
+    # SCORED population only (records.py's own docstring contract — "status flags infra
+    # failures (never graded, excluded from scoring)"), via `REC.scored`, the ONE
+    # canonical filter. `judged` stays index-aligned with `vectors` (built via
+    # `zip(..., strict=True)` upstream in `_judge_arm`); re-derive the same alignment
+    # over the scored subset by object identity (OutcomeVector carries a `dict` field, so
+    # it isn't hashable — identity is the correct, cheap correspondence here since
+    # `REC.scored` returns the SAME instances, never copies).
+    scored_vectors = REC.scored(vectors)
+    scored_ids = {id(v) for v in scored_vectors}
+    scored_pairs = [(v, j) for v, j in zip(vectors, judged, strict=True) if id(v) in scored_ids]
+    n = len(scored_vectors)
+    n_excluded_infra = n_total - n
+    n_answerable = sum(1 for v in scored_vectors if v.answerable)
     n_unanswerable = n - n_answerable
 
     def rate(count: int, denom: int) -> float | None:
         return (count / denom) if denom else None
 
-    costs = [v.cost_usd for v in vectors if v.cost_usd is not None]
-    latencies = [v.latency_s for v in vectors]
-    briers = [v.brier for v in vectors if v.brier is not None]
-    ece_pairs = [(v.probability, v.asserted_correct) for v in vectors if v.probability is not None]
-    p_none_flags = [v.p_none_correct for v in vectors if v.p_none_correct is not None]
+    costs = [v.cost_usd for v in scored_vectors if v.cost_usd is not None]
+    latencies = [v.latency_s for v in scored_vectors]
+    briers = [v.brier for v in scored_vectors if v.brier is not None]
+    ece_pairs = [(v.probability, v.asserted_correct) for v in scored_vectors
+                 if v.probability is not None]
+    p_none_flags = [v.p_none_correct for v in scored_vectors if v.p_none_correct is not None]
 
     tier_mix: Counter[str] = Counter()
-    for v in vectors:
+    for v in scored_vectors:
         tier_mix.update(v.model_tier_mix)
 
     rubric_means: dict[str, float | None] = {}
     for dim in ("faithfulness", "completeness", "citation_fidelity"):
-        vals = [getattr(v, dim) for v in vectors if getattr(v, dim) is not None]
+        vals = [getattr(v, dim) for v in scored_vectors if getattr(v, dim) is not None]
         rubric_means[dim] = (sum(vals) / len(vals)) if vals else None
 
     # run_eval.synthesis_rates' shape (task dispatch §7): only over JUDGED rows — its
-    # denominators are the judged population, honestly None/0 under --no-judge.
+    # denominators are the judged population, honestly None/0 under --no-judge. Infra
+    # rows are never judged (`_judge_arm` skips them via `j.get("judged")`), so this was
+    # already scored-only; kept explicit here for the same reason as everything else.
     sr_rows = [
         {"answerable": v.answerable, "declined": v.declined,
          "synthesis_pass": j["synthesis_pass"], "hallucinated": j["hallucinated"],
          "abstained_correctly": j["abstained_correctly"]}
-        for v, j in zip(vectors, judged, strict=True) if j.get("judged")
+        for v, j in scored_pairs if j.get("judged")
     ]
 
     return {
-        "arm": arm, "n": n, "n_answerable": n_answerable, "n_unanswerable": n_unanswerable,
-        "n_ok": sum(1 for v in vectors if v.status == "ok"),
-        "n_error": sum(1 for v in vectors if v.status == "error"),
-        "n_timeout": sum(1 for v in vectors if v.status == "timeout"),
+        "arm": arm, "n": n, "n_total": n_total, "n_excluded_infra": n_excluded_infra,
+        "n_answerable": n_answerable, "n_unanswerable": n_unanswerable,
+        "n_ok": n_ok, "n_error": n_error, "n_timeout": n_timeout,
         "n_judged": sum(1 for j in judged if j.get("judged")),
-        "correct": sum(1 for v in vectors if v.bucket == "CORRECT"),
-        "correct_rate": rate(sum(1 for v in vectors if v.bucket == "CORRECT"), n),
-        "confident_wrong": sum(1 for v in vectors if v.bucket == "CONFIDENT_WRONG"),
-        "confident_wrong_rate": rate(sum(1 for v in vectors if v.bucket == "CONFIDENT_WRONG"), n),
-        "scoped": sum(1 for v in vectors if v.bucket == "SCOPED"),
-        "declined": sum(1 for v in vectors if v.declined),
-        "declined_rate": rate(sum(1 for v in vectors if v.declined), n),
-        "correct_abstention": sum(1 for v in vectors if v.correct_abstention),
+        "correct": sum(1 for v in scored_vectors if v.bucket == "CORRECT"),
+        "correct_rate": rate(sum(1 for v in scored_vectors if v.bucket == "CORRECT"), n),
+        "confident_wrong": sum(1 for v in scored_vectors if v.bucket == "CONFIDENT_WRONG"),
+        "confident_wrong_rate": rate(
+            sum(1 for v in scored_vectors if v.bucket == "CONFIDENT_WRONG"), n),
+        "scoped": sum(1 for v in scored_vectors if v.bucket == "SCOPED"),
+        "declined": sum(1 for v in scored_vectors if v.declined),
+        "declined_rate": rate(sum(1 for v in scored_vectors if v.declined), n),
+        "correct_abstention": sum(1 for v in scored_vectors if v.correct_abstention),
         "correct_abstention_rate": rate(
-            sum(1 for v in vectors if v.correct_abstention), n_unanswerable),
-        "over_abstention": sum(1 for v in vectors if v.over_abstention),
-        "over_abstention_rate": rate(sum(1 for v in vectors if v.over_abstention), n_answerable),
+            sum(1 for v in scored_vectors if v.correct_abstention), n_unanswerable),
+        "over_abstention": sum(1 for v in scored_vectors if v.over_abstention),
+        "over_abstention_rate": rate(
+            sum(1 for v in scored_vectors if v.over_abstention), n_answerable),
         "recall_at_k": rate(
-            sum(1 for v in vectors if v.answerable and v.gold_in_topk), n_answerable),
+            sum(1 for v in scored_vectors if v.answerable and v.gold_in_topk), n_answerable),
         "cost": {
             "total_usd": sum(costs) if costs else None,
             "mean_usd": (sum(costs) / len(costs)) if costs else None,
             "n_priced": len(costs),
-            "status_counts": dict(Counter(v.cost_status for v in vectors)),
+            "status_counts": dict(Counter(v.cost_status for v in scored_vectors)),
         },
         "latency_s": {
             "p50": _percentile(latencies, 0.50), "p95": _percentile(latencies, 0.95),
@@ -705,14 +791,20 @@ def _fmt_num(x: float | None, nd: int = 3) -> str:
 def _summary_md(run_id: str, summaries: dict[str, dict[str, Any]]) -> str:
     lines = [
         f"# fair-fight summary — {run_id}", "",
-        "| arm | n | correct | CW | declined | recall@k | grounded | halluc. | cost($) | "
-        "cost status | p50 lat(s) | brier | ece | P(NONE) acc |",
-        "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|",
+        # CRITICAL-2: `n` is the SCORED population (status="ok" only — REC.scored);
+        # `excluded` names how many status != "ok" (infra failure) rows never reached any
+        # rate below, of `n_total` answered — so a reader can't mistake a 0% CW rate on a
+        # 2-row scored population for a clean 20-question run.
+        "| arm | n (scored) | excluded (infra) | n_total | correct | CW | declined | "
+        "recall@k | grounded | halluc. | cost($) | cost status | p50 lat(s) | brier | "
+        "ece | P(NONE) acc |",
+        "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for arm, s in summaries.items():
         sr = s["synthesis_rates"]
         lines.append(
-            f"| {arm} | {s['n']} | {_fmt_pct(s['correct_rate'])} | {s['confident_wrong']} | "
+            f"| {arm} | {s['n']} | {s['n_excluded_infra']} | {s['n_total']} | "
+            f"{_fmt_pct(s['correct_rate'])} | {s['confident_wrong']} | "
             f"{_fmt_pct(s['declined_rate'])} | {_fmt_pct(s['recall_at_k'])} | "
             f"{_fmt_pct(sr.get('grounded_rate'))} | {_fmt_pct(sr.get('hallucination_rate'))} | "
             f"{_fmt_num(s['cost']['total_usd'], 4)} | {s['cost']['status_counts']} | "
