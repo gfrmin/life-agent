@@ -21,30 +21,41 @@ def _attention(v: dict[str, Any]) -> float:
     return v["asks_issued"] + (gather if gather is not None else (v["tool_calls"] or 0))
 
 
-def build_point(vectors: list[dict[str, Any]]) -> tuple[Point, int]:
-    """One arm's ``Point`` plus the count of rows with no priced cost (``cost_usd is
-    None``) — reported alongside, per the brief ("never silently"), not folded into the
-    cost sum.
+def build_point(vectors: list[dict[str, Any]]) -> tuple[Point, int, bool]:
+    """One arm's ``Point`` plus (1) the count of rows with no priced cost (``cost_usd is
+    None``) and (2) ``cost_unpriced`` — ``True`` iff the arm has rows but NOT ONE was
+    priced (every ``cost_usd is None``), so its ``total_cost`` axis is 0.0 by absence, not
+    by measurement. Both are reported alongside, per the brief ("never silently"), not
+    folded into the cost sum.
+
+    PR-21 IMPORTANT-2: an all-unpriced arm (the executor baseline: every row
+    ``cost_status="partial"``, ``cost_usd=None``) would otherwise land at ``total_cost=0``
+    and sit on the frontier via the ``-total_cost`` axis as if it were free. Frontier
+    membership itself is left as a printed modelling choice (cost-as-0), but this flag
+    makes the "unmeasured, not free" caveat carry through ``frontier.json``/``summary.md``.
     """
     n = len(vectors)
     correct_rate = (sum(1 for v in vectors if v["bucket"] == "CORRECT") / n) if n else 0.0
     costs = [v["cost_usd"] for v in vectors if v["cost_usd"] is not None]
     n_missing_cost = sum(1 for v in vectors if v["cost_usd"] is None)
+    cost_unpriced = bool(vectors) and not costs
     total_cost = sum(costs)
     mean_latency = (sum(v["latency_s"] for v in vectors) / n) if n else 0.0
     attention = sum(_attention(v) for v in vectors)
-    return (correct_rate, -total_cost, -mean_latency, -attention), n_missing_cost
+    return (correct_rate, -total_cost, -mean_latency, -attention), n_missing_cost, cost_unpriced
 
 
 def build_points(
     arms: dict[str, list[dict[str, Any]]],
-) -> tuple[dict[str, Point], dict[str, int]]:
-    """``{arm: Point}`` plus ``{arm: n_missing_cost}`` over every arm in ``arms``."""
+) -> tuple[dict[str, Point], dict[str, int], dict[str, bool]]:
+    """``{arm: Point}`` plus ``{arm: n_missing_cost}`` and ``{arm: cost_unpriced}`` over
+    every arm in ``arms``."""
     points: dict[str, Point] = {}
     n_missing_cost: dict[str, int] = {}
+    cost_unpriced: dict[str, bool] = {}
     for arm, vectors in arms.items():
-        points[arm], n_missing_cost[arm] = build_point(vectors)
-    return points, n_missing_cost
+        points[arm], n_missing_cost[arm], cost_unpriced[arm] = build_point(vectors)
+    return points, n_missing_cost, cost_unpriced
 
 
 def frontier(points: dict[str, Point]) -> set[str]:

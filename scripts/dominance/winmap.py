@@ -86,14 +86,15 @@ def build_cells(
     question corpus (the fair-fight harness's own invariant), so this equals ``arm_b``'s
     count in practice.
 
-    Final-review MINOR: this is now a HARD requirement, not just an expectation —
-    :func:`build_cells` itself raises ``ValueError`` if an ordered pair's two arms'
-    SCORED (``records.scored`` — status="ok") ``question_id`` sets differ (e.g. one arm
-    had an infra failure the other didn't, on a question the other arm answered), before
-    computing any cell for that pair: a welfare/frontier/loss comparison over mismatched
-    populations is not a meaningful number, not merely a suspicious one. (``loss_triage``
-    still re-derives the common set per cell independently — belt-and-braces, not the
-    only guard.)
+    PR-21 IMPORTANT-1: an asymmetric infra failure (one arm's ``question_id`` set differs
+    from the other's — e.g. one arm errored on a question the other answered) no longer
+    HARD-ABORTS the whole analysis. Each ordered pair is intersected to the common scored
+    ``question_id`` set before any welfare is summed (a comparison over mismatched
+    populations is not meaningful), and the excluded ids + common count are recorded on
+    every cell (``excluded_qids``/``n_common``) so the asymmetry stays loud, never silent.
+    The one remaining HARD FAIL is an EMPTY intersection (nothing comparable at all): that
+    still raises. ``loss_triage`` re-derives the common set per cell independently
+    (belt-and-braces, not the only guard).
     """
     profiles = profiles if profiles is not None else all_profiles()
     names = sorted(arms)
@@ -101,20 +102,22 @@ def build_cells(
     for arm_a, arm_b in itertools.permutations(names, 2):
         ids_a = {v["question_id"] for v in arms[arm_a]}
         ids_b = {v["question_id"] for v in arms[arm_b]}
-        if ids_a != ids_b:
-            diff = sorted(ids_a ^ ids_b)
+        common = ids_a & ids_b
+        if not common:
             raise ValueError(
                 f"winmap.build_cells: {arm_a!r} ({len(ids_a)} scored questions) and "
-                f"{arm_b!r} ({len(ids_b)} scored questions) have DIFFERENT scored "
-                f"question_id sets — symmetric difference ({len(diff)}): {diff[:10]}"
-                f"{'...' if len(diff) > 10 else ''}. A welfare/frontier/loss comparison "
-                "over mismatched populations is not meaningful (likely an asymmetric "
-                "infra failure between arms on the same question)."
+                f"{arm_b!r} ({len(ids_b)} scored questions) have NO common scored "
+                "question_id — nothing is comparable between them (likely one arm's every "
+                "row infra-failed). A welfare/frontier/loss comparison needs at least one "
+                "shared question."
             )
+        excluded_qids = sorted(ids_a ^ ids_b)
+        rows_a_common = [v for v in arms[arm_a] if v["question_id"] in common]
+        rows_b_common = [v for v in arms[arm_b] if v["question_id"] in common]
         for profile_name, profile in profiles.items():
             for scenario in SCENARIOS:
-                rows_a = _scenario_rows(arms[arm_a], scenario)
-                rows_b = _scenario_rows(arms[arm_b], scenario)
+                rows_a = _scenario_rows(rows_a_common, scenario)
+                rows_b = _scenario_rows(rows_b_common, scenario)
                 welfare_a = welfare(profile, rows_a)
                 welfare_b = welfare(profile, rows_b)
                 regret = welfare_a - welfare_b
@@ -126,8 +129,23 @@ def build_cells(
                     "regret": round(regret, 6), "verdict": _verdict(regret, scale),
                     "cell_source": _cell_source(rows_a, rows_b),
                     "n_questions": len(rows_a),
+                    "n_common": len(common), "excluded_qids": excluded_qids,
                 })
     return cells
+
+
+def pair_asymmetry(cells: list[dict[str, Any]]) -> dict[tuple[str, str], list[str]]:
+    """Per ordered arm-pair, the scored ``question_id``s excluded from that pair's
+    comparison (the symmetric difference of the two arms' scored sets) — non-empty only
+    when an asymmetric infra failure forced :func:`build_cells` to intersect. The
+    run-level asymmetry report ``summary.md``/``cells.json`` surface (PR-21 IMPORTANT-1).
+    """
+    out: dict[tuple[str, str], list[str]] = {}
+    for c in cells:
+        excluded = c.get("excluded_qids") or []
+        if excluded:
+            out[(c["arm_a"], c["arm_b"])] = list(excluded)
+    return out
 
 
 def pair_tally(cells: list[dict[str, Any]]) -> dict[tuple[str, str], dict[str, Any]]:

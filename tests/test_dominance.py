@@ -221,18 +221,52 @@ def test_build_cells_scenario_filtering_and_cell_source() -> None:
     assert by_key[("x", "y", "all")]["verdict"] != by_key[("y", "x", "all")]["verdict"]
 
 
-def test_build_cells_hard_fails_on_mismatched_scored_question_id_sets() -> None:
-    # final-review MINOR: an asymmetric infra failure between two arms (one answered
-    # q-2, the other's q-2 row was excluded as scored — simulated here directly with
-    # disjoint question sets) makes a welfare/frontier/loss comparison meaningless; this
-    # must raise loudly, not silently compute a comparison over mismatched populations.
+def test_build_cells_intersects_mismatched_scored_sets_and_names_exclusions() -> None:
+    # PR-21 IMPORTANT-1: an asymmetric infra failure between two arms (x answered q-2, y's
+    # q-2 row was excluded as scored — simulated here with a missing q-2) must NOT
+    # hard-abort the whole analysis. build_cells intersects the pair to the common scored
+    # set (q-1) and records the excluded ids + common count on every cell, so the
+    # asymmetry stays loud without wasting a whole judge-$-spent run.
     arms = {
         "x": [_vector(question_id="q-1", bucket="CORRECT"),
               _vector(question_id="q-2", bucket="CORRECT")],
         "y": [_vector(question_id="q-1", bucket="CORRECT")],  # missing q-2
     }
-    with pytest.raises(ValueError, match="DIFFERENT scored question_id sets"):
+    cells = W.build_cells(arms, {"balanced": BALANCED})
+    by_key = {(c["arm_a"], c["arm_b"], c["scenario"]): c for c in cells}
+    # both ordered pairs exist; every cell is over the common set (q-1 only).
+    for pair in (("x", "y"), ("y", "x")):
+        cell = by_key[(*pair, "all")]
+        assert cell["n_common"] == 1
+        assert cell["excluded_qids"] == ["q-2"]  # the symmetric difference, named
+        assert cell["n_questions"] == 1
+    # the run-level asymmetry report picks both ordered pairs up.
+    asym = W.pair_asymmetry(cells)
+    assert asym == {("x", "y"): ["q-2"], ("y", "x"): ["q-2"]}
+
+
+def test_build_cells_hard_fails_only_on_empty_intersection() -> None:
+    # PR-21 IMPORTANT-1: the ONE remaining hard fail — nothing comparable at all (disjoint
+    # question sets, e.g. one arm's every row infra-failed). No common question means no
+    # welfare comparison is meaningful, so this still raises.
+    arms = {
+        "x": [_vector(question_id="q-1", bucket="CORRECT")],
+        "y": [_vector(question_id="q-2", bucket="CORRECT")],  # disjoint
+    }
+    with pytest.raises(ValueError, match="NO common scored question_id"):
         W.build_cells(arms, {"balanced": BALANCED})
+
+
+def test_build_cells_symmetric_sets_have_empty_exclusions() -> None:
+    arms = {
+        "x": [_vector(question_id="q-1", bucket="CORRECT"),
+              _vector(question_id="q-2", bucket="CORRECT")],
+        "y": [_vector(question_id="q-1", bucket="CORRECT"),
+              _vector(question_id="q-2", bucket="CORRECT")],
+    }
+    cells = W.build_cells(arms, {"balanced": BALANCED})
+    assert all(c["excluded_qids"] == [] and c["n_common"] == 2 for c in cells)
+    assert W.pair_asymmetry(cells) == {}
 
 
 def test_pair_tally_splits_measured_and_modelled() -> None:
@@ -296,14 +330,39 @@ def test_build_point_cost_missing_and_attention_fallback() -> None:
         _vector(question_id="q-2", bucket="CONFIDENT_WRONG", cost_usd=None, latency_s=3.0,
                 asks_issued=0, gather_rounds=None, tool_calls=4),
     ]
-    point, n_missing = PA.build_point(vs)
+    point, n_missing, cost_unpriced = PA.build_point(vs)
     correct_rate, neg_cost, neg_latency, neg_attention = point
     assert correct_rate == pytest.approx(0.5)
     assert neg_cost == pytest.approx(-0.1)  # only q-1's cost counted
     assert n_missing == 1  # q-2's cost_usd is None — reported, not silently zeroed
+    assert cost_unpriced is False  # q-1 WAS priced, so the axis isn't wholly unpriced
     assert neg_latency == pytest.approx(-2.0)  # mean(1.0, 3.0)
     # q-1: asks(1) + gather_rounds(2) = 3; q-2: asks(0) + tool_calls(4, gather is None) = 4
     assert neg_attention == pytest.approx(-7.0)
+
+
+def test_build_point_cost_unpriced_when_no_row_priced() -> None:
+    # PR-21 IMPORTANT-2: the executor-baseline shape — every row cost_usd=None,
+    # cost_status="partial". total_cost is 0.0 by ABSENCE, so the flag must fire.
+    vs = [
+        _vector(question_id="q-1", bucket="CORRECT", cost_usd=None, cost_status="partial"),
+        _vector(question_id="q-2", bucket="CORRECT", cost_usd=None, cost_status="partial"),
+    ]
+    point, n_missing, cost_unpriced = PA.build_point(vs)
+    assert point[1] == pytest.approx(0.0)  # -total_cost = 0 (nothing priced)
+    assert n_missing == 2
+    assert cost_unpriced is True  # named "unmeasured, not free", never silently zeroed
+
+
+def test_build_points_reports_cost_unpriced_per_arm() -> None:
+    arms = {
+        "priced": [_vector(question_id="q-1", cost_usd=0.1)],
+        "unpriced": [_vector(question_id="q-1", cost_usd=None, cost_status="partial")],
+    }
+    points, n_missing_cost, cost_unpriced = PA.build_points(arms)
+    assert cost_unpriced == {"priced": False, "unpriced": True}
+    assert set(points) == {"priced", "unpriced"}
+    assert n_missing_cost == {"priced": 0, "unpriced": 1}
 
 
 # --- loss_triage.py: top-5 ordering + hard-fail + zero-loss flag ------------------------
@@ -418,6 +477,13 @@ def test_run_dominance_end_to_end(tmp_path: Path) -> None:
     frontier_json = json.loads((out_dir / "frontier.json").read_text())
     assert frontier_json["frontier"] == ["inprocess"]
     assert frontier_json["n_missing_cost"] == {"inprocess": 0, "competitor": 0}
+    # PR-21 IMPORTANT-2: the cost-unpriced flag is inline in frontier.json — both arms are
+    # fully priced here (cost_status="measured"), so no caveat fires.
+    assert frontier_json["cost_unpriced"] == {"inprocess": False, "competitor": False}
+    assert frontier_json["frontier_cost_unpriced_caveat"] == []
+
+    # PR-21 IMPORTANT-1: symmetric arms -> the top-level asymmetry report is empty.
+    assert cells_payload["pair_asymmetry"] == {}
 
     loss_map = (out_dir / "LOSS_MAP.md").read_text()
     assert "inprocess" in loss_map and "competitor" in loss_map
@@ -431,6 +497,9 @@ def test_run_dominance_end_to_end(tmp_path: Path) -> None:
     # final-review IMPORTANT-5 item 2: the attention-axis note under the frontier.
     assert "Attention = asks_issued" in summary
     assert "gather_tiers" in summary and "search" in summary
+    # PR-21 IMPORTANT-1: the asymmetry section renders, naming "none" for symmetric arms.
+    assert "Asymmetric arm pairs" in summary
+    assert "every arm pair shared one scored question set" in summary
 
 
 def test_run_dominance_requires_at_least_two_arms(tmp_path: Path) -> None:
@@ -480,11 +549,10 @@ def test_run_dominance_all_infra_failed_rows_for_one_arm_yields_empty_scored_pop
     tmp_path: Path,
 ) -> None:
     # An edge case worth naming explicitly: every row for an arm is infra-failed -> its
-    # scored population is EMPTY. This must not crash the frontier/cells computation
-    # (build_point/build_cells both handle n=0 -> correct_rate=0.0, and an empty arm's
-    # question_id set trivially matches another empty arm's — but here the OTHER arm is
-    # non-empty, so build_cells' mismatch guard (MINOR fix) fires; asserting THAT is the
-    # point of this test, not a happy path.
+    # scored population is EMPTY. The OTHER arm is non-empty, so the intersection with the
+    # empty arm is EMPTY — nothing comparable at all — which is build_cells' ONE remaining
+    # hard fail (PR-21 IMPORTANT-1: an empty intersection still raises, unlike a merely
+    # asymmetric one, which now intersects gracefully). Asserting THAT is the point.
     run_dir = tmp_path / "ff-all-infra-test"
     all_error_rows = [
         _vector(question_id=f"q-{i}", answerable=True, arm="inprocess", bucket="CORRECT",
@@ -496,5 +564,73 @@ def test_run_dominance_all_infra_failed_rows_for_one_arm_yields_empty_scored_pop
     path.write_text("".join(json.dumps(r) + "\n" for r in all_error_rows), encoding="utf-8")
     _write_arm_vectors(run_dir, "competitor", "CORRECT", 0.02, 1.0)
 
-    with pytest.raises(ValueError, match="DIFFERENT scored question_id sets"):
+    with pytest.raises(ValueError, match="NO common scored question_id"):
         RD.run(run_dir)
+
+
+def test_run_dominance_asymmetric_arms_intersect_and_report(tmp_path: Path) -> None:
+    # PR-21 IMPORTANT-1 end-to-end: one arm infra-fails a single question the other
+    # answered. The whole analysis must PROCEED over the common set (never hard-abort a
+    # judge-$-spent run) and name the excluded question in cells.json + summary.md.
+    run_dir = tmp_path / "ff-asym-test"
+    # inprocess: q-1..q-4 all scored; competitor: q-1..q-4 scored PLUS an errored q-5.
+    _write_arm_vectors(run_dir, "inprocess", "CORRECT", 0.01, 0.5)
+    infra_row = _vector(
+        question_id="q-5", answerable=True, arm="competitor", bucket="CORRECT",
+        cost_usd=0.02, latency_s=1.0, cost_status="measured", status="error")
+    ok_row = _vector(
+        question_id="q-5", answerable=True, arm="inprocess", bucket="CORRECT",
+        cost_usd=0.01, latency_s=0.5, cost_status="measured")
+    # inprocess scores q-5 too, competitor errors on it -> asymmetric on q-5.
+    _write_arm_vectors(run_dir, "competitor", "CONFIDENT_WRONG", 0.02, 1.0,
+                       extra_rows=[infra_row])
+    # append the scored q-5 to inprocess so the sets differ by exactly {q-5}.
+    ip_path = run_dir / "arms" / "inprocess" / "vectors.jsonl"
+    with ip_path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(ok_row) + "\n")
+
+    result = RD.run(run_dir)  # must NOT raise
+    assert result["pair_asymmetry"] == {
+        ("inprocess", "competitor"): ["q-5"], ("competitor", "inprocess"): ["q-5"]}
+
+    out_dir = run_dir / "dominance"
+    cells_payload = json.loads((out_dir / "cells.json").read_text())
+    assert cells_payload["pair_asymmetry"] == {
+        "inprocess->competitor": ["q-5"], "competitor->inprocess": ["q-5"]}
+    # every cell is over the 4 common questions, never the asymmetric 5.
+    assert all(c["n_common"] == 4 for c in cells_payload["cells"])
+    assert all(c["excluded_qids"] == ["q-5"] for c in cells_payload["cells"])
+
+    summary = (out_dir / "summary.md").read_text()
+    assert "Asymmetric arm pairs" in summary
+    assert "q-5" in summary
+
+
+def test_run_dominance_unpriced_arm_frontier_caveat(tmp_path: Path) -> None:
+    # PR-21 IMPORTANT-2 end-to-end: an all-unpriced arm (executor-baseline shape) that
+    # sits on the frontier via the cost-as-0 axis must carry the "unmeasured, not free"
+    # caveat inline in frontier.json AND in summary.md — never read as free.
+    run_dir = tmp_path / "ff-unpriced-test"
+    _write_arm_vectors(run_dir, "inprocess", "CORRECT", 0.05, 1.0)  # priced, correct
+    # baseline: every row unpriced (cost_usd=None) but also all correct + fast -> frontier.
+    unpriced_rows = [
+        _vector(question_id=qid, answerable=ans, arm="baseline", bucket="CORRECT",
+                cost_usd=None, cost_status="partial", latency_s=0.1)
+        for qid, ans in (("q-1", True), ("q-2", True), ("q-3", False), ("q-4", False))
+    ]
+    path = run_dir / "arms" / "baseline" / "vectors.jsonl"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("".join(json.dumps(r) + "\n" for r in unpriced_rows), encoding="utf-8")
+
+    result = RD.run(run_dir)
+    out_dir = run_dir / "dominance"
+    frontier_json = json.loads((out_dir / "frontier.json").read_text())
+    assert frontier_json["cost_unpriced"]["baseline"] is True
+    assert frontier_json["cost_unpriced"]["inprocess"] is False
+    # baseline is on the frontier (correct + $0 + fastest) AND flagged unpriced there.
+    assert "baseline" in result["frontier"]
+    assert frontier_json["frontier_cost_unpriced_caveat"] == ["baseline"]
+
+    summary = (out_dir / "summary.md").read_text()
+    assert "wholly unpriced" in summary.lower()
+    assert "unmeasured, not free" in summary

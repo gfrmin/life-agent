@@ -43,13 +43,19 @@ from life_agent.core.llm import meter_read, reset_meter
 from .arm_baseline import RawAnswer, _inprocess_decision
 
 
-def answer_synthesis(q: dict, k: int) -> RawAnswer:
+def answer_synthesis(q: dict, k: int, *, fresh: bool = False) -> RawAnswer:
     """Answer one question exactly as ``scripts/run_eval.py --synthesis``'s
     ``synthesis_grade`` does (``ask.answer(conn, question, k)`` — the default in-process
     typed-families path, gather and rerank both off), metered. Never raises — see
     ``arm_baseline``'s module docstring for why ``SystemExit`` is caught alongside
     ``Exception`` (the same ``core/llm.py`` failure signal ``core/expansion.py`` and
-    ``core/rerank.py`` already catch explicitly)."""
+    ``core/rerank.py`` already catch explicitly).
+
+    ``fresh`` (PR-21 IMPORTANT-3) threads to ``ask.answer(..., no_cache=fresh)``: on a
+    warm derivation cache the default call makes ZERO model calls, so cost reads
+    ``unavailable`` and the $ headline silently degrades — ``--fresh`` recomputes every
+    stage so the spend is real. ``synthesis_grade`` itself exposes exactly this knob
+    (``no_cache=fresh`` under its own ``--fresh`` flag)."""
     import ask  # sibling script; sys.path set at module load, above
 
     question_id = str(q["id"])
@@ -67,7 +73,7 @@ def answer_synthesis(q: dict, k: int) -> RawAnswer:
     try:
         conn = ask.connect()
         try:
-            text, raw_cards, _scores = ask.answer(conn, q["question"], k)
+            text, raw_cards, _scores = ask.answer(conn, q["question"], k, no_cache=fresh)
             cards = [{"n": c.n, "text": c.text, "origin": c.origin} for c in raw_cards]
         finally:
             conn.close()

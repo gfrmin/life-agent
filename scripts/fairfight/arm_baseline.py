@@ -168,10 +168,19 @@ def _inprocess_decision(ask) -> tuple[dict, bool, tuple[str, ...]]:
     return view, _view_declined(view), tuple(ask.STAGES_LAST.values())
 
 
-def answer_baseline(q: dict, k: int, *, path: Literal["executor", "inprocess"]) -> RawAnswer:
+def answer_baseline(
+    q: dict, k: int, *, path: Literal["executor", "inprocess"], fresh: bool = False,
+) -> RawAnswer:
     """Answer one question via ``path``'s existing entrypoint, metered. Never raises — an
     underlying failure becomes ``status="error"`` with the exception named in ``notes``
-    (see the module docstring for why ``SystemExit`` is caught alongside ``Exception``)."""
+    (see the module docstring for why ``SystemExit`` is caught alongside ``Exception``).
+
+    ``fresh`` (PR-21 IMPORTANT-3) threads to ``ask.answer(..., no_cache=fresh)`` on the
+    in-process path only — a warm derivation cache otherwise makes zero model calls and
+    the $ headline reads ``unavailable`` (measures nothing). The ``executor`` path has NO
+    cache knob (``ask.answer_via_executor`` is a pure HTTP driver over the out-of-process
+    daemon — its cache lives server-side), so ``fresh`` is a no-op there; the daemon's own
+    spend is already disclosed as out-of-band (this module's docstring, cost_status=partial)."""
     import ask  # sibling script; sys.path set at module load, above
 
     question_id = str(q["id"])
@@ -209,7 +218,8 @@ def answer_baseline(q: dict, k: int, *, path: Literal["executor", "inprocess"]) 
         else:  # "inprocess"
             conn = ask.connect()
             try:
-                text, raw_cards, _scores = ask.answer(conn, q["question"], k, gather=True)
+                text, raw_cards, _scores = ask.answer(
+                    conn, q["question"], k, gather=True, no_cache=fresh)
                 cards = [{"n": c.n, "text": c.text, "origin": c.origin} for c in raw_cards]
             finally:
                 conn.close()

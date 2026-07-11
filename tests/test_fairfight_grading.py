@@ -139,12 +139,19 @@ def test_detect_decline_catches_real_executor_abstain_withheld_render() -> None:
     assert G.detect_decline(rendered)
 
 
-def test_detect_decline_catches_real_executor_hedge_render() -> None:
+def test_detect_decline_does_not_catch_real_executor_hedge_render() -> None:
+    # PR-21 MINOR: hedge is assertion-class EVERYWHERE else in this harness
+    # (arm_baseline._executor_decision, grade_channels via triage's report/hedge, the
+    # calibration axis) — so its grammar prefix ("Unresolved — candidates: …") must NOT
+    # be in the decline set. Including it was a latent mis-detection: a free-text-graded
+    # hedge would read declined=True while the structured path reads it asserting. Drift
+    # gate: "hedge" is deliberately absent from grading._GRAMMAR_WITHHOLD_KEYS.
+    assert "hedge" not in G._GRAMMAR_WITHHOLD_KEYS
     view = {"effector": "hedge", "asserted": [], "candidates": ["A", "B"],
             "credences": [0.4, 0.3], "p_none": 0.3, "eu": 0.0, "n_obs": 2,
             "hits": [], "route": {}}
     rendered = EX.render_view(view)
-    assert G.detect_decline(rendered)
+    assert not G.detect_decline(rendered)
 
 
 def test_detect_decline_catches_real_executor_ask_clarify_render() -> None:

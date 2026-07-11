@@ -469,7 +469,8 @@ def test_answer_synthesis_calls_ask_answer_with_no_extra_flags(monkeypatch) -> N
 
     monkeypatch.setattr(ask, "answer", fake_answer)
     out = AS.answer_synthesis(_q(), 8)
-    assert captured["kwargs"] == {}                    # NOT gather=True — this is the delta
+    # NOT gather=True (the delta vs inprocess); no_cache defaults False (warm cache allowed).
+    assert captured["kwargs"] == {"no_cache": False}
     assert out.status == "ok"
     assert out.decision_view is not None and out.decision_view["family"] == "narrative"
     assert out.declined is False
@@ -477,6 +478,44 @@ def test_answer_synthesis_calls_ask_answer_with_no_extra_flags(monkeypatch) -> N
     assert out.effort == {"retrieve_passes": 1, "gather_tiers": 0}
     assert conn.closed is True
     assert out.cards == ({"n": 1, "text": "the claim's source text", "origin": "/data/a.txt"},)
+
+
+def test_answer_synthesis_fresh_threads_no_cache_true(monkeypatch) -> None:
+    # PR-21 IMPORTANT-3: --fresh must bust the derivation cache so a warm cache can't mute
+    # the $ headline (zero model calls -> cost_status=unavailable).
+    captured: dict = {}
+    monkeypatch.setattr(ask, "connect", lambda: _FakeConn())
+
+    def fake_answer(c, question, k, **kwargs):
+        captured["kwargs"] = kwargs
+        ask.LOOKUP_LAST = None
+        ask.NARRATIVE_LAST = None
+        ask.STAGES_LAST = {}
+        ask.EFFORT_LAST = {}
+        return ("x", [], {})
+
+    monkeypatch.setattr(ask, "answer", fake_answer)
+    AS.answer_synthesis(_q(), 8, fresh=True)
+    assert captured["kwargs"] == {"no_cache": True}
+
+
+def test_answer_baseline_inprocess_fresh_threads_no_cache_true(monkeypatch) -> None:
+    # PR-21 IMPORTANT-3: the inprocess arm turns gather ON and, under --fresh, no_cache ON.
+    captured: dict = {}
+    monkeypatch.setattr(ask, "connect", lambda: _FakeConn())
+
+    def fake_answer(c, question, k, **kwargs):
+        captured["kwargs"] = kwargs
+        ask.LOOKUP_LAST = None
+        ask.NARRATIVE_LAST = None
+        ask.STAGES_LAST = {}
+        ask.EFFORT_LAST = {}
+        return ("x", [], {})
+
+    monkeypatch.setattr(ask, "answer", fake_answer)
+    AB.answer_baseline(_q(), 8, path="inprocess", fresh=True)
+    assert captured["kwargs"].get("gather") is True
+    assert captured["kwargs"].get("no_cache") is True
 
 
 def test_answer_synthesis_error_path_never_propagates(monkeypatch) -> None:
