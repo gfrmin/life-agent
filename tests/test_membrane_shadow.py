@@ -25,6 +25,8 @@ import time
 from collections.abc import Iterable, Mapping
 from pathlib import Path
 
+import pytest
+
 from life_agent.core import decisions as DEC
 from life_agent.core import reactions as RX
 from life_agent.membrane import shadow as SH
@@ -347,11 +349,263 @@ def test_a_dead_form_recovers_when_its_respawn_succeeds(tmp_path: Path) -> None:
         # "alive" alone could spuriously pass before the death/respawn cycle even ran.
         assert _wait_until(lambda: factory.calls.get("table@1", 0) == 2)
         assert _wait_until(lambda: sh.stats()["forms"]["table@1"]["alive"])  # type: ignore[index]
-        # a SUCCESSFUL respawn doesn't consume budget (respawn_count counts failed
-        # attempts only — see shadow.py's `_handle_death` docstring), so respawns stays 0.
-        assert sh.stats()["forms"]["table@1"]["respawns"] == 0  # type: ignore[index]
+        # respawn_count counts every ATTEMPT against the budget, success or failure (the
+        # Task 4 review's C2 fix — see shadow.py's `_boot_form`/`_attempt_respawn`
+        # docstring), so a SUCCESSFUL respawn still consumes exactly 1.
+        assert sh.stats()["forms"]["table@1"]["respawns"] == 1  # type: ignore[index]
         sh.submit_decide("q-002", {"candidates": []}, {"credences": [], "effector": "report"})
         assert _wait_until(lambda: len(healthy.decide_calls) == 1)
+    finally:
+        sh.close()
+
+
+# --- C1: a dying session's client is shut down, never leaked ------------------------------
+
+
+def test_a_dying_sessions_client_is_shut_down_when_its_form_dies(tmp_path: Path) -> None:
+    # the live-tick death path: `state.session` IS the dying session at the moment
+    # `_handle_death` runs, so its client must be shut down before being nulled out —
+    # otherwise a read-timeout wedge or a crashed driver leaks the subprocess forever
+    # (Popen's finalizer does not kill the child).
+    cfg = _cfg(tmp_path, max_respawns=0, respawn_backoff_s=0.0)
+    _calls, snapshot = _snapshot_calls_counter()
+    dying = _FakeSession("table@1", decide_raises=True)
+    factory = _FakeFactory({"table@1": [dying]})
+    sh = SH.MembraneShadow(
+        cfg, u_bar=_u_bar, snapshot=snapshot, session_factory=factory, clock=_FakeClock(),
+    )
+    try:
+        sh.start()
+        assert _wait_until(lambda: sh.stats()["forms"]["table@1"]["alive"])  # type: ignore[index]
+        sh.submit_decide("q-1", {"candidates": []}, {"credences": [], "effector": "report"})
+        assert _wait_until(lambda: not sh.stats()["forms"]["table@1"]["alive"])  # type: ignore[index]
+        assert dying.client.shutdown_calls == 1
+    finally:
+        sh.close()
+
+
+def test_a_session_whose_boot_fails_after_spawning_is_still_shut_down(tmp_path: Path) -> None:
+    # a DIFFERENT leak path: `session_factory()` returns a live client, but `boot()`
+    # itself raises (e.g. a handshake refusal). `state.session` is never assigned in this
+    # case, so `_handle_death`'s shutdown of `state.session` is a no-op — the leaked
+    # client is the LOCAL `session` variable in `_boot_form`, which must be shut down at
+    # the point of failure.
+    cfg = _cfg(tmp_path, max_respawns=0, respawn_backoff_s=0.0)
+    _calls, snapshot = _snapshot_calls_counter()
+    failing = _FakeSession("table@1", boot_raises=True)
+    factory = _FakeFactory({"table@1": [failing]})
+    sh = SH.MembraneShadow(
+        cfg, u_bar=_u_bar, snapshot=snapshot, session_factory=factory, clock=_FakeClock(),
+    )
+    try:
+        sh.start()
+        assert _wait_until(lambda: not sh.stats()["forms"]["table@1"]["alive"])  # type: ignore[index]
+        assert _wait_until(lambda: failing.client.shutdown_calls == 1)
+    finally:
+        sh.close()
+
+
+# --- C2: the respawn budget bounds TOTAL attempts, not just failed boots ------------------
+
+
+def test_a_form_that_boots_ok_but_dies_on_every_tick_exhausts_the_full_respawn_budget(
+    tmp_path: Path,
+) -> None:
+    # the C2 motivating bug: a govhost that handshakes fine but rejects every tick
+    # payload used to respawn FOREVER (only failed *boots* counted against the budget).
+    # Each incarnation here boots cleanly and only dies on its first `decide()`.
+    cfg = _cfg(tmp_path, max_respawns=3, respawn_backoff_s=0.0)
+    _calls, snapshot = _snapshot_calls_counter()
+    sessions = [_FakeSession("table@1", decide_raises=True) for _ in range(4)]
+    factory = _FakeFactory({"table@1": list(sessions)})
+    sh = SH.MembraneShadow(
+        cfg, u_bar=_u_bar, snapshot=snapshot, session_factory=factory, clock=_FakeClock(),
+    )
+    try:
+        sh.start()
+        assert _wait_until(lambda: sh.stats()["forms"]["table@1"]["alive"])  # type: ignore[index]
+        for i in range(4):
+            sh.submit_decide(f"q-{i}", {"candidates": []}, {"credences": [], "effector": "report"})
+            if i < 3:  # a respawn follows every death except the budget-exhausting last one
+                assert _wait_until(lambda i=i: factory.calls.get("table@1", 0) == i + 2)
+                assert _wait_until(lambda: sh.stats()["forms"]["table@1"]["alive"])  # type: ignore[index]
+        assert _wait_until(lambda: sh.stats()["forms"]["table@1"]["alive"] is False)  # type: ignore[index]
+        stats = sh.stats()
+        assert stats["forms"]["table@1"]["respawns"] == 3  # type: ignore[index]
+        assert factory.calls["table@1"] == 4  # 1 free initial boot + 3 respawn attempts
+        # the budget is truly exhausted: one more submit builds no further session.
+        sh.submit_decide("q-extra", {"candidates": []}, {"credences": [], "effector": "report"})
+        assert not _wait_until(lambda: factory.calls["table@1"] > 4, timeout_s=0.3)
+    finally:
+        sh.close()
+
+
+def test_respawn_boots_the_new_session_off_the_freshly_returned_snapshot_content(
+    tmp_path: Path,
+) -> None:
+    # closes the test gap the review flagged: the old test only counted `snapshot()`
+    # calls, so an implementation that called `snapshot()` again but still passed the
+    # STALE boot-time snapshot into `boot()` would have passed too. Here the two
+    # snapshots carry distinguishable CONTENT, and we assert the respawned session's
+    # `boot()` received the fresh one, not the stale one.
+    cfg = _cfg(tmp_path, max_respawns=1, respawn_backoff_s=0.0)
+    stale = SH.BootSnapshot(verdict_replay=[], outcome_replay=[], n_source_records=0)
+    fresh_summary = _summary(n_candidates=2, leader_credence=0.5)
+    fresh = SH.BootSnapshot(
+        verdict_replay=[(fresh_summary, 1)], outcome_replay=[], n_source_records=99,
+    )
+    remaining = iter([stale, fresh])
+
+    def snapshot() -> SH.BootSnapshot:
+        return next(remaining, fresh)
+
+    dying = _FakeSession("table@1", decide_raises=True)
+    healthy = _FakeSession("table@1")
+    factory = _FakeFactory({"table@1": [dying, healthy]})
+    sh = SH.MembraneShadow(
+        cfg, u_bar=_u_bar, snapshot=snapshot, session_factory=factory, clock=_FakeClock(),
+    )
+    try:
+        sh.start()
+        assert _wait_until(lambda: sh.stats()["forms"]["table@1"]["alive"])  # type: ignore[index]
+        assert dying.boot_calls[0] == ([], [])  # the STALE initial snapshot's content
+        sh.submit_decide("q-001", {"candidates": []}, {"credences": [], "effector": "report"})
+        assert _wait_until(lambda: healthy.boot_calls != [])
+        got_verdict_replay, got_outcome_replay = healthy.boot_calls[0]
+        assert got_verdict_replay == fresh.verdict_replay
+        assert got_outcome_replay == fresh.outcome_replay
+    finally:
+        sh.close()
+
+
+# --- I3: no exception on the worker thread can ever kill it -------------------------------
+
+
+def test_a_raising_u_bar_does_not_kill_the_worker_and_the_boot_record_failure_is_counted(
+    tmp_path: Path,
+) -> None:
+    cfg = _cfg(tmp_path)
+    _calls, snapshot = _snapshot_calls_counter()
+    factory = _FakeFactory()
+
+    def bad_u_bar() -> Mapping[str, float]:
+        raise RuntimeError("u_bar unavailable")
+
+    sh = SH.MembraneShadow(
+        cfg, u_bar=bad_u_bar, snapshot=snapshot, session_factory=factory, clock=_FakeClock(),
+    )
+    try:
+        sh.start()
+        # the worker survived `_write_boot_record`'s `u_bar()` call raising: the form is
+        # alive (the session itself booted fine — only the boot RECORD write failed).
+        assert _wait_until(lambda: sh.stats()["forms"]["table@1"]["alive"])  # type: ignore[index]
+        # ... and it kept draining afterward — a decide submitted post-boot still reaches
+        # the (unkilled) worker.
+        sh.submit_decide("q-1", {"candidates": []}, {"credences": [], "effector": "report"})
+        assert _wait_until(lambda: sh.stats()["forms"]["table@1"]["ticks"] >= 1)  # type: ignore[index]
+        assert sh.stats()["drops"] >= 1  # the failed boot-record write, visible
+        records = _read_records(cfg.log_path)
+        assert not any(r["kind"] == "boot" for r in records)  # it never got written
+    finally:
+        sh.close()
+
+
+def test_a_log_path_that_cannot_be_written_is_fail_open_and_the_worker_keeps_draining(
+    tmp_path: Path,
+) -> None:
+    # log_path points at a directory (not a file) -> every append raises. The worker
+    # must survive both the failed boot-record write AND the failed decide-record write.
+    cfg = _cfg(tmp_path, log_path=tmp_path)
+    _calls, snapshot = _snapshot_calls_counter()
+    factory = _FakeFactory()
+    sh = SH.MembraneShadow(
+        cfg, u_bar=_u_bar, snapshot=snapshot, session_factory=factory, clock=_FakeClock(),
+    )
+    try:
+        sh.start()
+        assert _wait_until(lambda: sh.stats()["forms"]["table@1"]["alive"])  # type: ignore[index]
+        sh.submit_decide("q-1", {"candidates": []}, {"credences": [], "effector": "report"})
+        assert _wait_until(lambda: sh.stats()["forms"]["table@1"]["ticks"] >= 1)  # type: ignore[index]
+        assert sh.stats()["drops"] >= 1
+    finally:
+        sh.close()
+
+
+def test_one_dead_form_does_not_stop_another_form_from_ticking(tmp_path: Path) -> None:
+    cfg = _cfg(tmp_path, forms=("table@1", "latent@1"), max_respawns=0, respawn_backoff_s=0.0)
+    _calls, snapshot = _snapshot_calls_counter()
+    dead = _FakeSession("table@1", boot_raises=True)
+    factory = _FakeFactory({"table@1": [dead]})  # latent@1 falls back to a healthy default
+    sh = SH.MembraneShadow(
+        cfg, u_bar=_u_bar, snapshot=snapshot, session_factory=factory, clock=_FakeClock(),
+    )
+    try:
+        sh.start()
+        assert _wait_until(lambda: not sh.stats()["forms"]["table@1"]["alive"])  # type: ignore[index]
+        assert _wait_until(lambda: sh.stats()["forms"]["latent@1"]["alive"])  # type: ignore[index]
+        sh.submit_decide("q-1", {"candidates": []}, {"credences": [], "effector": "report"})
+        assert _wait_until(lambda: sh.stats()["forms"]["latent@1"]["ticks"] >= 1)  # type: ignore[index]
+        assert sh.stats()["forms"]["table@1"]["ticks"] == 0  # type: ignore[index]
+    finally:
+        sh.close()
+
+
+# --- I4: a dead-form drop is counted, not silently discarded ------------------------------
+
+
+def test_dead_form_drops_are_counted(tmp_path: Path) -> None:
+    cfg = _cfg(tmp_path, max_respawns=0, respawn_backoff_s=0.0)
+    _calls, snapshot = _snapshot_calls_counter()
+    dying = _FakeSession("table@1", boot_raises=True)
+    factory = _FakeFactory({"table@1": [dying]})
+    sh = SH.MembraneShadow(
+        cfg, u_bar=_u_bar, snapshot=snapshot, session_factory=factory, clock=_FakeClock(),
+    )
+    try:
+        sh.start()
+        assert _wait_until(lambda: not sh.stats()["forms"]["table@1"]["alive"])  # type: ignore[index]
+        sh.submit_decide("q-1", {"candidates": []}, {"credences": [], "effector": "report"})
+        sh.submit_decide("q-2", {"candidates": []}, {"credences": [], "effector": "report"})
+        assert _wait_until(lambda: sh.stats()["forms"]["table@1"]["dead_drops"] >= 2)  # type: ignore[index]
+    finally:
+        sh.close()
+
+
+# --- I5: the two submit-time maps are bounded, not unbounded daemon memory ----------------
+
+
+def test_live_summaries_and_bindings_are_bounded(tmp_path: Path) -> None:
+    cfg = _cfg(tmp_path)
+    _calls, snapshot = _snapshot_calls_counter()
+    sh = SH.MembraneShadow(cfg, u_bar=_u_bar, snapshot=snapshot, session_factory=_FakeFactory())
+    cap = SH._MAX_TRACKED_ENTRIES
+    overflow = 10
+    for i in range(cap + overflow):
+        sh.submit_decide(f"q-{i}", {"candidates": []}, {"credences": [], "effector": "report"})
+        sh.submit_decision(f"d-{i}", f"q-{i}", {"chosen_action": "report"})
+    assert len(sh._live_summaries) == cap
+    assert len(sh._bindings) == cap
+    for i in range(overflow):  # the oldest `overflow` entries were evicted
+        assert f"q-{i}" not in sh._live_summaries
+        assert f"d-{i}" not in sh._bindings
+    for i in range(cap + overflow - overflow, cap + overflow):  # the newest survive
+        assert f"q-{i}" in sh._live_summaries
+        assert f"d-{i}" in sh._bindings
+
+
+# --- double start() is guarded, not a silent orphan ----------------------------------------
+
+
+def test_double_start_is_guarded(tmp_path: Path) -> None:
+    cfg = _cfg(tmp_path)
+    _calls, snapshot = _snapshot_calls_counter()
+    sh = SH.MembraneShadow(
+        cfg, u_bar=_u_bar, snapshot=snapshot, session_factory=_FakeFactory(), clock=_FakeClock(),
+    )
+    try:
+        sh.start()
+        with pytest.raises(RuntimeError):
+            sh.start()
     finally:
         sh.close()
 
@@ -486,6 +740,10 @@ def test_submit_methods_never_raise_on_malformed_input(tmp_path: Path) -> None:
     sh.submit_decide("q", None, None)  # type: ignore[arg-type]
     sh.submit_decision("d", "q", None)  # type: ignore[arg-type]
     sh.submit_reaction("d", "not-a-real-valence")
+    # `submit_decide(None, None)` blows up inside `summary_from_payload` (`None.get(...)`)
+    # — a genuine submit-path exception, now counted separately from a full-queue drop
+    # (the module docstring's own claim used to be false here — see the Task 4 review).
+    assert sh.stats()["submit_errors"] >= 1
 
 
 # --- stats() shape --------------------------------------------------------------------
@@ -496,9 +754,13 @@ def test_stats_shape(tmp_path: Path) -> None:
     _calls, snapshot = _snapshot_calls_counter()
     sh = SH.MembraneShadow(cfg, u_bar=_u_bar, snapshot=snapshot, session_factory=_FakeFactory())
     stats = sh.stats()
-    assert set(stats) == {"forms", "drops", "skips", "queue_depth", "snapshot_records"}
+    assert set(stats) == {
+        "forms", "drops", "skips", "submit_errors", "queue_depth", "snapshot_records",
+    }
     assert set(stats["forms"]) == {"table@1"}  # type: ignore[arg-type]
-    assert set(stats["forms"]["table@1"]) == {"alive", "respawns", "ticks"}  # type: ignore[index]
+    assert set(stats["forms"]["table@1"]) == {  # type: ignore[index]
+        "alive", "respawns", "ticks", "dead_drops",
+    }
 
 
 # --- boot_snapshot(): pure function over tmp JSONL fixtures -------------------------------
@@ -557,6 +819,37 @@ def test_boot_snapshot_excludes_unrouted_reactions(tmp_path: Path) -> None:
     snap = SH.boot_snapshot(dpath, rpath, None)
     assert snap.verdict_replay == []
     assert snap.n_source_records == 2
+
+
+def test_boot_snapshot_skips_a_malformed_decision_line_not_the_whole_file(
+    tmp_path: Path,
+) -> None:
+    # `DEC.read` raises on the FIRST malformed line, which would previously discard
+    # every OTHER decision in the file too (whole-file fail-open) — this pins that only
+    # the bad line is skipped.
+    dpath, rpath = tmp_path / "decisions.jsonl", tmp_path / "reactions.jsonl"
+    DEC.append(dpath, _decision("dec-1", "q-001", "report"))
+    with dpath.open("a", encoding="utf-8") as fh:
+        fh.write("not valid json at all\n")
+    DEC.append(dpath, _decision("dec-2", "q-002", "abstain"))
+    RX.append(rpath, _reaction("dec-1", "q-001", "good"))
+    RX.append(rpath, _reaction("dec-2", "q-002", "bad"))
+    snap = SH.boot_snapshot(dpath, rpath, None)
+    assert len(snap.verdict_replay) == 2  # both dec-1 and dec-2 replayed despite the bad line
+
+
+def test_boot_snapshot_skips_a_malformed_reaction_line_not_the_whole_file(
+    tmp_path: Path,
+) -> None:
+    dpath, rpath = tmp_path / "decisions.jsonl", tmp_path / "reactions.jsonl"
+    DEC.append(dpath, _decision("dec-1", "q-001", "report"))
+    DEC.append(dpath, _decision("dec-2", "q-002", "abstain"))
+    RX.append(rpath, _reaction("dec-1", "q-001", "good"))
+    with rpath.open("a", encoding="utf-8") as fh:
+        fh.write("not valid json at all\n")
+    RX.append(rpath, _reaction("dec-2", "q-002", "bad"))
+    snap = SH.boot_snapshot(dpath, rpath, None)
+    assert len(snap.verdict_replay) == 2
 
 
 def test_boot_snapshot_missing_files_is_an_empty_snapshot_not_a_raise(tmp_path: Path) -> None:

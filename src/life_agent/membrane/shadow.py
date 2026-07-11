@@ -11,15 +11,21 @@ bridge wires `submit_*` calls in beside the real executor, not instead of it).
 
 **The threading shape** (ported convention from the proven credence-governor
 supervisor): every `submit_*` is enqueue-only and NEVER raises — a full queue drops the
-item (counted, `stats()["drops"]`), any submit-path exception is swallowed the same way.
-ONE worker thread drains the queue for every form: each item is replayed against every
-currently-alive session, in `cfg.forms` order. A session that raises (a `MembraneError`
-or anything else) marks its form dead; the worker respawns it — against a FRESH
+item (counted, `stats()["drops"]`); any submit-path exception (a malformed payload
+reaching a `summary_from_*` reducer, etc.) is swallowed and separately counted at
+`stats()["submit_errors"]`. ONE worker thread drains the queue for every form: each item
+is replayed against every currently-alive session, in `cfg.forms` order. A session that
+raises (a `MembraneError` or anything else, including a `read_timeout_s` wedge or a
+crashed driver) marks its form dead — its client is shut down first
+(`contextlib.suppress`d, since a shadow's own cleanup must never itself raise) so a dead
+form never leaks its subprocess — then the worker respawns it, against a FRESH
 `snapshot()` call, never the boot-time one, since the point of a respawn is to catch up
-on whatever verdicts/outcomes landed while the form was down — up to `max_respawns`
-times, with `respawn_backoff_s` between attempts. Backoff is a "not before clock() >= X"
-check against the injected `clock`, never a `time.sleep`, so `close()` isn't blocked and
-tests can run it instantly.
+on whatever verdicts/outcomes landed while the form was down. `max_respawns` bounds the
+TOTAL number of respawn ATTEMPTS over the process lifetime (not just failed ones, and
+not reset on a success): once `respawn_count >= max_respawns`, the form is dead until
+the daemon itself restarts. Backoff is a "not before clock() >= X" check against the
+injected `clock`, never a `time.sleep`, so `close()` isn't blocked and tests can run it
+instantly.
 
 **Two bookkeeping paths never touch the queue at all** (`submit_decision`'s
 `decision_id -> (chosen_action, summary)` bind and `submit_decide`'s terminal-tick
@@ -35,11 +41,16 @@ live `submit_decide`, e.g. warm-replay or an out-of-process decider).
 **Records are append-only JSON lines at `cfg.log_path`** — one `event_type:
 "membrane-shadow"` envelope, `kind` in {`boot`, `respawn`, `decide`, `evidence`}. Every
 append is wrapped fail-open (a write error is swallowed, counted as a drop — this is a
-shadow, its own I/O failing must never touch the real decision path). Two counters
-(`drops`, `skips`) are deliberately never persisted as their own log rows: a drop or a
-skip is, by construction, something the caller must never block or pay I/O for — they
-are visible only via `stats()`. `boot`/`respawn` rows ARE persisted (they're rare,
-worker-thread-side events, not on any hot path).
+shadow, its own I/O failing must never touch the real decision path); the boot-record
+write itself (`_write_boot_record`, which calls the caller-supplied `u_bar()` and the
+handshake encoder — both of which can raise) is fail-open the same way, and so is the
+worker's own boot/respawn-scheduling loop, so no exception anywhere can ever kill the
+worker thread out from under `stats()`. Three counters (`drops`, `skips`,
+`submit_errors`) are deliberately never persisted as their own log rows: a drop, a skip,
+or a submit-path error is, by construction, something the caller must never block or pay
+I/O for — they are visible only via `stats()` (as is each form's `dead_drops`: an item
+that reached the worker but found its form already dead). `boot`/`respawn` rows ARE
+persisted (they're rare, worker-thread-side events, not on any hot path).
 
 **`boot_snapshot`** is the pure counterpart: given the decision/reaction logs (+
 optionally a fair-fight run directory's warm vectors), it replays the SAME
@@ -60,7 +71,7 @@ import queue
 import threading
 import time
 from collections.abc import Callable, Mapping
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 from typing import Any
 
@@ -118,6 +129,18 @@ _GATHER_EFFECTOR = "gather"
 _QUEUE_POLL_S = 0.05
 _CLOSE_JOIN_TIMEOUT_S = 5.0
 
+# `_live_summaries`/`_bindings` are long-lived-daemon maps fed at submit-time — bounded so
+# a shadow that runs for weeks doesn't grow them without limit. FIFO by insertion order
+# (never reordered on lookup, so a `submit_reaction` that merely reads a binding can never
+# keep it alive past its turn): the oldest entries are evicted once a map exceeds the cap.
+_MAX_TRACKED_ENTRIES = 4096
+
+
+def _bounded_put[V](store: dict[str, V], key: str, value: V, *, cap: int) -> None:
+    store[key] = value
+    while len(store) > cap:
+        store.pop(next(iter(store)))
+
 
 def _is_terminal_effector(effector: object) -> bool:
     return effector != _GATHER_EFFECTOR
@@ -154,7 +177,9 @@ def _default_session_factory(
     return factory
 
 
-# --- per-form worker-thread-only state (never touched off-thread) ------------------------
+# --- per-form state: WRITTEN only by the worker thread; `stats()`/`close()` read it from
+# --- whatever thread calls them (single attribute loads — GIL-atomic, best-effort, never
+# --- a correctness requirement for the worker's own operation, so no lock here) ----------
 
 
 @dataclass
@@ -163,6 +188,7 @@ class _FormState:
     respawn_count: int = 0
     next_attempt_at: float | None = None  # clock()-based; None = no attempt scheduled
     ticks: int = 0
+    dead_drops: int = 0  # items that reached the worker while this form was dead
 
 
 @dataclass(frozen=True)
@@ -212,6 +238,7 @@ class MembraneShadow:
         self._bindings: dict[str, tuple[str, W.DecideSummary]] = {}
         self._drops = 0
         self._skips = 0
+        self._submit_errors = 0
         self._snapshot_records = 0
         self._initial_snapshot: BootSnapshot = BootSnapshot(
             verdict_replay=[], outcome_replay=[], n_source_records=0,
@@ -224,7 +251,11 @@ class MembraneShadow:
         caller who immediately calls `stats()` sees a consistent `snapshot_records`),
         then hand off to the worker thread and return. Booting the sessions themselves
         happens on the worker (a handshake round-trip per form; must not block the
-        caller)."""
+        caller). Raises `RuntimeError` on a second `start()` while a worker is already
+        running — silently orphaning the first worker (and every client it booted) is
+        never the right call for a lifecycle bug."""
+        if self._worker is not None and self._worker.is_alive():
+            raise RuntimeError("MembraneShadow.start() called while already running")
         try:
             snap = self._snapshot()
         except Exception:
@@ -264,12 +295,14 @@ class MembraneShadow:
                 # queue may drop the log tick, but must never degrade a later
                 # submit_decision's binding to the lossier decision-event fallback.
                 with self._lock:
-                    self._live_summaries[question_id] = summary
+                    _bounded_put(
+                        self._live_summaries, question_id, summary, cap=_MAX_TRACKED_ENTRIES,
+                    )
             self._enqueue(_DecideItem(
                 question_id=question_id, summary=summary, real_effector=effector,
             ))
         except Exception:
-            pass
+            self._count_submit_error()
 
     def submit_decision(self, decision_id: str, question_id: str, event: dict[str, Any]) -> None:
         try:
@@ -279,9 +312,11 @@ class MembraneShadow:
             if summary is None:
                 summary = W.summary_from_decision_event(event or {})
             with self._lock:
-                self._bindings[decision_id] = (chosen_action, summary)
+                _bounded_put(
+                    self._bindings, decision_id, (chosen_action, summary), cap=_MAX_TRACKED_ENTRIES,
+                )
         except Exception:
-            pass
+            self._count_submit_error()
 
     def submit_reaction(self, decision_id: str, valence: str) -> None:
         try:
@@ -297,7 +332,7 @@ class MembraneShadow:
                 return
             self._enqueue(_VerdictItem(decision_id=decision_id, summary=summary, y=y))
         except Exception:
-            pass
+            self._count_submit_error()
 
     def _enqueue(self, item: _QueueItem) -> None:
         try:
@@ -310,11 +345,17 @@ class MembraneShadow:
         with self._lock:
             self._skips += 1
 
+    def _count_submit_error(self) -> None:
+        with self._lock:
+            self._submit_errors += 1
+
     # --- stats -------------------------------------------------------------------------
 
     def stats(self) -> dict[str, object]:
         with self._lock:
-            drops, skips, snapshot_records = self._drops, self._skips, self._snapshot_records
+            drops, skips, submit_errors, snapshot_records = (
+                self._drops, self._skips, self._submit_errors, self._snapshot_records,
+            )
         forms: dict[str, object] = {}
         for form in self._cfg.forms:
             state = self._forms[form]
@@ -322,11 +363,13 @@ class MembraneShadow:
                 "alive": state.session is not None,
                 "respawns": state.respawn_count,
                 "ticks": state.ticks,
+                "dead_drops": state.dead_drops,
             }
         return {
             "forms": forms,
             "drops": drops,
             "skips": skips,
+            "submit_errors": submit_errors,
             "queue_depth": self._queue.qsize(),
             "snapshot_records": snapshot_records,
         }
@@ -334,28 +377,32 @@ class MembraneShadow:
     # --- the worker thread ---------------------------------------------------------------
 
     def _run(self) -> None:
+        # No exception anywhere in this method may ever escape: a worker-thread death
+        # leaves `state.session` (and hence `stats()["alive"]`) frozen at whatever it
+        # last was, so submits would silently fill the queue and drop forever with no
+        # visible signal. Every step is independently guarded, per-form where relevant,
+        # so one form's failure can never block another's boot or respawn.
         for form in self._cfg.forms:
-            self._boot_form(
-                form, self._forms[form], self._initial_snapshot, from_respawn=False,
-            )
+            with contextlib.suppress(Exception):
+                self._boot_form(form, self._forms[form], self._initial_snapshot)
         while not self._stop_event.is_set():
-            self._maybe_respawn_dead_forms()
+            with contextlib.suppress(Exception):
+                self._maybe_respawn_dead_forms()
             try:
                 item = self._queue.get(timeout=_QUEUE_POLL_S)
             except queue.Empty:
                 continue
-            try:
-                self._process_item(item)
             except Exception:
-                pass
-            finally:
-                self._queue.task_done()
+                continue
+            with contextlib.suppress(Exception):
+                self._process_item(item)
 
     def _process_item(self, item: _QueueItem) -> None:
         now = time.time()
         for form in self._cfg.forms:
             state = self._forms[form]
             if state.session is None:
+                state.dead_drops += 1
                 continue
             if isinstance(item, _DecideItem):
                 self._tick_decide(form, state, item, now)
@@ -370,7 +417,7 @@ class MembraneShadow:
         try:
             choice: ShadowChoice = session.decide(item.summary)
         except Exception as exc:
-            self._handle_death(form, state, exc, from_respawn=False)
+            self._handle_death(form, state, exc)
             return
         latency_ms = (time.time() - start) * 1000.0
         state.ticks += 1
@@ -389,7 +436,7 @@ class MembraneShadow:
         try:
             session.observe_verdict(item.summary, item.y)
         except Exception as exc:
-            self._handle_death(form, state, exc, from_respawn=False)
+            self._handle_death(form, state, exc)
             return
         state.ticks += 1
         self._append_record({
@@ -400,38 +447,53 @@ class MembraneShadow:
 
     # --- boot / respawn ------------------------------------------------------------------
     #
-    # `respawn_count` counts FAILED respawn attempts consumed against `max_respawns` —
-    # NOT the initial boot (a form that never comes up on its first try gets the same
-    # `respawn_backoff_s`-spaced retries as one that dies later; the initial attempt is
-    # free) and not a successful respawn (recovering doesn't spend budget it didn't use).
-    # This keeps the counter race-free: it only ever changes synchronously, inside
-    # `_handle_death`, strictly AFTER the attempt that produced it (its own
-    # `self._snapshot()` call included) has already returned — so a `stats()` reader
-    # never observes `respawns == N` before the Nth respawn's `snapshot()` call has
-    # actually happened.
+    # `respawn_count` counts every respawn ATTEMPT against `max_respawns` — whether it was
+    # triggered by a tick death or a boot failure, and whether it then succeeds or fails.
+    # The initial boot is NOT a respawn (free, uncounted): a form that comes up cleanly and
+    # only later starts dying on every tick must still exhaust its budget after
+    # `max_respawns` real attempts, not respawn forever because only *failed* boots used to
+    # count. Once `respawn_count >= max_respawns` the form is dead until the daemon itself
+    # restarts — no reset, ever. The increment happens at the TOP of `_attempt_respawn`,
+    # strictly before that attempt's own `snapshot()`/boot runs, and ONLY on the worker
+    # thread — so there is no data race (a `stats()` reader on another thread may see the
+    # incremented count slightly before the attempt it counts has finished, but that's a
+    # benign visibility ordering, not a torn write or a double-count).
 
-    def _boot_form(
-        self, form: str, state: _FormState, snap: BootSnapshot, *, from_respawn: bool,
-    ) -> None:
+    def _boot_form(self, form: str, state: _FormState, snap: BootSnapshot) -> None:
         with self._lock:
             self._snapshot_records = snap.n_source_records
+        session: MembraneSession | None = None
         try:
             session = self._session_factory(form)
             session.boot(verdict_replay=snap.verdict_replay, outcome_replay=snap.outcome_replay)
         except Exception as exc:
-            self._handle_death(form, state, exc, from_respawn=from_respawn)
+            # the factory may have already spawned a real subprocess before `boot()`
+            # raised (e.g. a handshake refusal) — that client was never installed into
+            # `state.session`, so `_handle_death` can't reach it; shut it down here.
+            if session is not None:
+                with contextlib.suppress(Exception):
+                    session.client.shutdown()
+            self._handle_death(form, state, exc)
+            return
+        if self._stop_event.is_set():
+            # close() may have run the shutdown sweep over `self._forms` already, in the
+            # window between this session existing and being installed below — don't
+            # install a client close() will never see and thus never shut down.
+            with contextlib.suppress(Exception):
+                session.client.shutdown()
             return
         state.session = session
         state.next_attempt_at = None
         self._write_boot_record(form, session, state)
 
     def _attempt_respawn(self, form: str, state: _FormState) -> None:
+        state.respawn_count += 1
         try:
             snap = self._snapshot()
         except Exception as exc:
-            self._handle_death(form, state, exc, from_respawn=True)
+            self._handle_death(form, state, exc)
             return
-        self._boot_form(form, state, snap, from_respawn=True)
+        self._boot_form(form, state, snap)
 
     def _maybe_respawn_dead_forms(self) -> None:
         now = self._clock()
@@ -440,14 +502,18 @@ class MembraneShadow:
             if state.session is not None or state.next_attempt_at is None:
                 continue
             if now >= state.next_attempt_at:
-                self._attempt_respawn(form, state)
+                with contextlib.suppress(Exception):
+                    self._attempt_respawn(form, state)
 
-    def _handle_death(
-        self, form: str, state: _FormState, exc: Exception, *, from_respawn: bool,
-    ) -> None:
+    def _handle_death(self, form: str, state: _FormState, exc: Exception) -> None:
+        # a dying session's client is a live subprocess (or wedged one, in the
+        # read-timeout case) — Popen's finalizer does not kill the child, so it must be
+        # shut down here or it leaks/zombies forever. Exception-suppressed: a shadow's
+        # own cleanup failing must never propagate.
+        if state.session is not None:
+            with contextlib.suppress(Exception):
+                state.session.client.shutdown()
         state.session = None
-        if from_respawn:
-            state.respawn_count += 1
         permanent = state.respawn_count >= self._cfg.max_respawns
         if permanent:
             state.next_attempt_at = None
@@ -460,14 +526,22 @@ class MembraneShadow:
         })
 
     def _write_boot_record(self, form: str, session: MembraneSession, state: _FormState) -> None:
-        binary_sha256 = _binary_sha256(self._cfg.command[0]) if self._cfg.command else "unknown"
-        digest = world_digest(self._u_bar(), utility_form=form)
-        self._append_record({
-            "event_type": "membrane-shadow", "kind": "boot", "ts": time.time(),
-            "form": form, "engine": session.engine, "binary_sha256": binary_sha256,
-            "forms": list(self._cfg.forms), "world_digest": digest,
-            "respawn_count": state.respawn_count,
-        })
+        # fail-open: `self._u_bar()` reads a caller-supplied utility posterior that can
+        # raise (missing/corrupt calibration), and `handshake_decl` raises on an unknown
+        # form — neither may kill the worker thread just because a record couldn't be
+        # written; the boot itself already succeeded and must stand.
+        try:
+            binary_sha256 = _binary_sha256(self._cfg.command[0]) if self._cfg.command else "unknown"
+            digest = world_digest(self._u_bar(), utility_form=form)
+            self._append_record({
+                "event_type": "membrane-shadow", "kind": "boot", "ts": time.time(),
+                "form": form, "engine": session.engine, "binary_sha256": binary_sha256,
+                "forms": list(self._cfg.forms), "world_digest": digest,
+                "respawn_count": state.respawn_count,
+            })
+        except Exception:
+            with self._lock:
+                self._drops += 1
 
     # --- log I/O: fail-open, counted as a drop ------------------------------------------
 
@@ -483,27 +557,50 @@ class MembraneShadow:
 # --- boot_snapshot(): pure file-reading, never raises -------------------------------------
 
 
-def _read_decisions(path: Path) -> list[DEC.DecisionEvent]:
+# `DEC.read`/`RX.read` are documented to raise on ANY single malformed line — correct for
+# their own callers, wrong here: a snapshot reader is fail-open by construction, and a
+# whole-file catch around them would silently discard every OTHER, well-formed row too
+# (one bad line ⇒ the entire replay vanishes, with only `n_source_records` reading a
+# no-longer-honest 0). So this module reads + parses line-by-line itself, skipping only
+# the bad line, the same idiom `_read_json_rows` already used.
+_REACTION_FIELDS: frozenset[str] = frozenset(f.name for f in fields(RX.ReactionEvent))
+
+
+def _read_lines_fail_open(path: Path) -> list[str]:
     try:
-        return DEC.read(path)
+        return JL.read_lines(path)
     except Exception:
         return []
+
+
+def _read_decisions(path: Path) -> list[DEC.DecisionEvent]:
+    events: list[DEC.DecisionEvent] = []
+    for line in _read_lines_fail_open(path):
+        try:
+            obj = json.loads(line)
+            obj["action_set"] = tuple(obj.get("action_set", ()))
+            events.append(DEC.DecisionEvent(**obj))
+        except Exception:
+            continue
+    return events
 
 
 def _read_reactions(path: Path) -> list[RX.ReactionEvent]:
-    try:
-        return RX.read(path)
-    except Exception:
-        return []
+    events: list[RX.ReactionEvent] = []
+    for line in _read_lines_fail_open(path):
+        try:
+            obj = json.loads(line)
+            events.append(
+                RX.ReactionEvent(**{k: v for k, v in obj.items() if k in _REACTION_FIELDS})
+            )
+        except Exception:
+            continue
+    return events
 
 
 def _read_json_rows(path: Path) -> list[dict[str, Any]]:
-    try:
-        lines = JL.read_lines(path)
-    except Exception:
-        return []
     rows: list[dict[str, Any]] = []
-    for line in lines:
+    for line in _read_lines_fail_open(path):
         try:
             obj = json.loads(line)
         except Exception:
