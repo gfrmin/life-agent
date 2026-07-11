@@ -3,9 +3,13 @@
 Composes EXISTING judge machinery (never rebuilds it):
 
 - ``scripts/run_eval.py``'s ``_synthesis_judge_once`` — the single-answer judge
-  template this module is modeled on byte-for-byte: same system frame, strict-JSON
-  discipline, fenced-JSON stripping, and the same ``comparison._common.judge_complete``
-  call (the pinned cross-provider ``gpt-5.1`` judge).
+  template this module is modeled on: same strict-JSON discipline, identical
+  fenced-JSON stripping, and the same ``comparison._common.judge_complete`` call
+  (the pinned cross-provider ``gpt-5.1`` judge). The system frame is its wording
+  minus the "(as [n])" clause — dropped deliberately, since the competitor arm's
+  answer cites ``[source_path]`` markers rather than ``[n]``; the SOURCES block
+  still numbers every entry (with the name visible) so the judge can match either
+  citation shape against the shown text.
 - ``scripts/comparison/blind_judge.py`` — ``_rubric_text`` (loads the frozen
   ``eval/rubric_v1.yaml``), ``modal`` (modal-of-N, tie -> lower), and ``DIMS`` (the
   three rubric dimensions scored here, extending ``_synthesis_judge_once``'s two).
@@ -18,7 +22,8 @@ Composes EXISTING judge machinery (never rebuilds it):
 ``judge_answer`` differs from ``_synthesis_judge_once`` in one place: the SOURCES
 block. The fair-fight harness's arms don't share one source-card shape — baseline/
 synthesis cards carry ``n``/``text`` (``core.sources.SourceCard``-shaped dicts); the
-hermes competitor's tool-returned chunks carry ``source_path``/``snippet``, no ``n``.
+hermes competitor's tool-returned chunks carry ``source_path``/``snippet_shown``
+(the tool-log result shape ``src/pkm/mcp_server.py`` emits), no ``n``.
 :func:`_sources_block` is one tolerant renderer for both, so the judge always sees
 the cited source TEXT (required for citation_fidelity to be checkable at all) and a
 visible name when the arm has one.
@@ -36,15 +41,16 @@ def _sources_block(sources: list[dict]) -> str:
     """Render ``sources`` — a list of per-arm dicts of varying shape — as numbered
     entries the judge can check citation_fidelity against: the index from ``n`` when
     present else running position, a name from ``source_path``/``name`` when present,
-    and the text body from ``text`` else ``snippet``. One tolerant renderer, no
-    per-arm branch: every arm's source shape must render through this."""
+    and the text body from ``text`` else ``snippet_shown`` (the tool-log result key —
+    ``src/pkm/mcp_server.py``). One tolerant renderer, no per-arm branch: every arm's
+    source shape must render through this."""
     if not sources:
         return "(no sources cited)"
     lines = []
     for i, s in enumerate(sources, start=1):
         n = s.get("n", i)
         name = s.get("source_path") or s.get("name")
-        text = s.get("text") if s.get("text") is not None else s.get("snippet", "")
+        text = s.get("text") if s.get("text") is not None else s.get("snippet_shown", "")
         label = f"[{n}] ({name})" if name else f"[{n}]"
         lines.append(f"{label} {text}")
     return "\n\n".join(lines)
