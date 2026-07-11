@@ -44,6 +44,29 @@ class LLMResult:
     out_tokens: int
     seconds: float
     served_model: str = ""   # exact snapshot the provider served (reproducibility record)
+    cache_read_tokens: int = 0
+    cache_write_tokens: int = 0
+    provider: str = ""       # "anthropic" | "openai"
+
+
+# Module-global chokepoint mirroring scripts/ask.py's STAGES_LAST pattern: a caller resets
+# the meter, makes calls, reads the snapshot. None means "not collecting" — cost metering is
+# opt-in per call site, never a background cost to callers that don't ask for it.
+_METER: list[LLMResult] | None = None
+
+
+def reset_meter() -> None:
+    """Start collecting every ``*_complete`` call's :class:`LLMResult` into the meter."""
+    global _METER
+    _METER = []
+
+
+def meter_read() -> list[LLMResult]:
+    """Return the collected results and stop collecting (chokepoint reset to inactive)."""
+    global _METER
+    collected = _METER or []
+    _METER = None
+    return collected
 
 
 def anthropic_complete(system: str, user: str, *, model: str = DEFAULT_ANSWER_MODEL,
@@ -72,8 +95,16 @@ def anthropic_complete(system: str, user: str, *, model: str = DEFAULT_ANSWER_MO
     dt = time.monotonic() - t0
     text = "".join(b["text"] for b in data.get("content", []) if b.get("type") == "text")
     u = data.get("usage", {})
-    return LLMResult(text, u.get("input_tokens", 0), u.get("output_tokens", 0), dt,
-                     served_model=str(data.get("model", model)))
+    result = LLMResult(
+        text, u.get("input_tokens", 0), u.get("output_tokens", 0), dt,
+        served_model=str(data.get("model", model)),
+        cache_read_tokens=u.get("cache_read_input_tokens", 0),
+        cache_write_tokens=u.get("cache_creation_input_tokens", 0),
+        provider="anthropic",
+    )
+    if _METER is not None:
+        _METER.append(result)
+    return result
 
 
 def openai_complete(system: str, user: str, *, model: str,
@@ -100,5 +131,14 @@ def openai_complete(system: str, user: str, *, model: str,
     msg = (data.get("choices") or [{}])[0].get("message", {})
     text = msg.get("content", "") or ""
     u = data.get("usage", {})
-    return LLMResult(text, u.get("prompt_tokens", 0), u.get("completion_tokens", 0), dt,
-                     served_model=data.get("model", model))
+    cached_tokens = (u.get("prompt_tokens_details") or {}).get("cached_tokens", 0)
+    result = LLMResult(
+        text, u.get("prompt_tokens", 0), u.get("completion_tokens", 0), dt,
+        served_model=data.get("model", model),
+        cache_read_tokens=cached_tokens,
+        cache_write_tokens=0,  # OpenAI charges no cache-write premium; nothing to record
+        provider="openai",
+    )
+    if _METER is not None:
+        _METER.append(result)
+    return result

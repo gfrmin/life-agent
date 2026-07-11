@@ -1,6 +1,6 @@
 # SPEC.md — technical specification
 
-Version: 0.16.0 (draft)
+Version: 0.17.0 (draft)
 Status: Phase 1 complete (extraction layer with content-addressed
 caching, chunking, and FTS keyword retrieval); Phase 1.5 OCR-PDF
 fallback applied to the live corpus; source paths are stored as
@@ -14,8 +14,11 @@ transform behind email→GTD; v0.9.0 makes transforms **composable** —
 a transform's output may be another transform's input (§18.7); v0.11.0
 admits **external derivations** (§18.9) — components outside pkm may
 record their own derivations in the cache, file-first, under namespaced
-producer names. This spec is the contract. Changes require a separate
-commit with justification.
+producer names; v0.17.0 makes MCP search results addressable
+(`chunk_id`, §17.2), adds a read-only `extract` tool for full-chunk-
+plus-neighbours retrieval (§17.7), and adds optional tool-call audit
+logging via `pkm serve --tool-log` (§17.8). This spec is the contract.
+Changes require a separate commit with justification.
 
 This spec is intentionally strict. See §14 for the principles of
 first-principles debuggability that govern every decision below.
@@ -1083,7 +1086,15 @@ chunker twice on the same artifact leaves identical rows.
 `seq_chunk_id` (migration 0005). This is the FTS `input_id` — it must
 be unique per row, which `artifact_cache_key` alone is not (many chunks
 share the same key). The surrogate key is an internal index detail; no
-external system should depend on its value.
+external system should depend on its value — **except the MCP query
+surface (§17), which as of v0.17.0 exposes `chunk_id` by design as the
+addressing key between `search` and `extract` (§17.2, §17.7).** A
+`chunk_id` is stable as long as its row is not rewritten; `write_chunks`
+only ever rewrites a given artifact's chunks via the DELETE+INSERT above,
+and no shipped code path re-chunks an artifact that already has rows
+(`pkm chunk --backfill` only chunks previously-unchunked artifacts). If
+that ever changes, a caller holding a stale `chunk_id` gets the §17.7
+unknown-chunk error, not silently-wrong content.
 
 **Backfill:** `pkm chunk --backfill` iterates all `artifacts` rows with
 `status='success'` that have no `artifact_chunks` rows, reads cached
@@ -1288,7 +1299,9 @@ The rule: **among sources sharing a `current_path`, exactly one is path-current 
 recent by (`last_seen`, `first_seen`, `source_id`) descending.** The tiebreaks are
 deterministic, mirroring §18.10's most-recent-first ordering; they are not meaningful.
 Retrieval (§15.2, and any retrieval surface built on it, incl. §17) returns chunks only
-from path-current sources.
+from path-current sources; §17.7's `extract` is the one documented exception — a
+`chunk_id` is a concrete pointer the caller already holds, a stronger signal than
+currency (see §17.7).
 
 - **Nothing is deleted.** Superseded path-versions keep their `sources` rows (ghosts,
   §13.2), artifacts, and chunks; the append-only contract (§6.2) is untouched. The filter
@@ -1320,9 +1333,15 @@ without needing direct Python imports or DuckDB access.
 The server **retrieves only**. It does not synthesise answers, rank beyond BM25, or write to the
 catalogue. Synthesis is the responsibility of the calling agent.
 
-### 17.2 Tool contract
+As of v0.17.0 the server exposes two tools — `search` (§17.2), for ranked keyword lookup
+returning short snippets, and `extract` (§17.7), for retrieving one identified chunk's full
+text plus its neighbours — and one optional operational feature, tool-call audit logging via
+`pkm serve --tool-log PATH` (§17.8).
 
-The server exposes exactly one tool: `search`.
+### 17.2 The `search` tool
+
+The server exposes exactly one ranking tool: `search` (§17.7 adds a second, non-ranking tool,
+`extract`).
 
 **Input:**
 
@@ -1336,6 +1355,7 @@ The server exposes exactly one tool: `search`.
 ```json
 [
   {
+    "chunk_id": 8842,
     "chunk_text": "<extracted text snippet>",
     "score": 1.234,
     "source_path": "/path/to/source",
@@ -1345,11 +1365,16 @@ The server exposes exactly one tool: `search`.
 ]
 ```
 
+`chunk_id` is the `artifact_chunks` surrogate key (§15.1, migration 0005) — the same
+`chunk_id` used internally as the FTS `input_id`. Its purpose on this surface is to make a
+result **addressable**: pass it to `extract` (§17.7) to recover the chunk's full text and
+its neighbours, without re-running the search that found it.
+
 `chunk_text` is a keyword-in-context (KWIC) snippet of ≤~300 chars centred on the
 first matched query token. The full extracted text is in the catalogue but is not
 returned to avoid saturating the caller's context window. Because KWIC centres on
 the first matched token, the answer value may fall outside the window if it sits far
-from the matched label in the same chunk.
+from the matched label in the same chunk — `extract` is the recovery path for that case.
 
 The tool does not synthesise: the caller assembles a cited answer from the returned chunks.
 
@@ -1393,7 +1418,148 @@ a default.
 
 The MCP server is an *access surface*, not a producer or transform. It introduces no new cache
 keys, no new extraction contracts, and no new migrations. Adding it does not change the
-determinism or idempotency guarantees defined in §6 and §7.1.
+determinism or idempotency guarantees defined in §6 and §7.1. §17.7 and §17.8 (v0.17.0) do not
+change this classification: `extract` is read-only like `search`, and `--tool-log` writes an
+operational audit file, not a catalogue or cache artifact.
+
+### 17.7 The `extract` tool
+
+Complements `search`: where `search` ranks and returns short KWIC snippets across the whole
+corpus, `extract` returns the full text of one chunk the caller has already identified —
+typically via a prior `search` result's `chunk_id` (§17.2) — plus its immediate context.
+
+**Input:**
+
+| Parameter   | Type  | Default | Description |
+|-------------|-------|---------|-------------|
+| `chunk_id`  | `int` | —       | The `artifact_chunks` surrogate key (§15.1) identifying the target chunk. |
+| `neighbors` | `int` | 1       | Chunks to include on each side of the target, within the same artifact. Clamped to the closed interval `[0, 3]` — out-of-range values are silently reduced/raised to the nearer bound, not rejected as an error (consistent with `search`'s `k` having no upper-bound error). |
+
+**Output:**
+
+```json
+{
+  "chunk_id": 8842,
+  "artifact_cache_key": "<64-char hex>",
+  "chunk_index": 4,
+  "chunk_text": "<full chunk text, untruncated>",
+  "neighbors": [
+    {"chunk_index": 3, "chunk_text": "<full text of the preceding chunk>"},
+    {"chunk_index": 5, "chunk_text": "<full text of the following chunk>"}
+  ],
+  "source_path": "/path/to/source",
+  "source_origin": "email" | "pandoc" | null
+}
+```
+
+Unlike `search`'s `chunk_text` (a ≤~300-char KWIC snippet, §17.2), the target's `chunk_text`
+and each `neighbors[].chunk_text` here are the full, untruncated `artifact_chunks.chunk_text`
+value — recovering what `search` deliberately withholds is this tool's whole purpose.
+
+**Neighbours.** Chunking is per-artifact, 0-based, contiguous (§15.1). Neighbours are the rows
+at `chunk_index - neighbors .. chunk_index - 1` and `chunk_index + 1 .. chunk_index + neighbors`
+**within the same `artifact_cache_key`** as the target, returned in the `neighbors` array
+ordered by `chunk_index` ascending. Each neighbour entry carries only `chunk_index` and
+`chunk_text` — the provenance fields are shared with the target and not repeated per neighbour.
+A neighbour index that does not exist (the target is first or last in its artifact, or
+`neighbors` reaches past the artifact's boundary on one side) is simply absent from the array;
+this is not an error — a boundary chunk still returns successfully with a shorter, possibly
+empty, `neighbors` list.
+
+**Provenance.** `artifact_cache_key`, `chunk_index`, `source_path`, `source_origin` mirror
+`search`'s join path (`artifact_chunks` → `artifacts` → `sources`, §15.2) so a caller can cite
+the source exactly as it would from a `search` result. Unlike `search`, `extract` does **not**
+apply the §15.4 path-currency filter: a `chunk_id` is a concrete pointer the caller already
+holds (typically from a prior `search` result, or from a stored citation) — a stronger signal
+than currency — so `extract` resolves it even if its source has since been superseded by a
+newer version at the same path. Only `search`'s ranking is currency-filtered.
+
+**Errors**, both returned as a single-object `{"error": ...}` dict — the same convention
+`search` uses (§17.2), never a raised exception:
+
+- **Unknown chunk** — `chunk_id` does not exist in `artifact_chunks` (never existed, or was
+  reassigned by a hypothetical future re-chunk, §15.1). A distinct message from the
+  locked-catalogue case below, so a caller can tell "this reference is stale" from "retry
+  shortly".
+- **Locked catalogue** — the same retryable lock condition as `search` (§17.3): an active
+  `pkm extract` holds the write lock.
+
+`extract` obeys the same connection model as `search` (§17.3): one read-only DuckDB connection
+per request, opened and closed within the call, no persistent state between requests.
+
+### 17.8 Tool-call logging (`--tool-log`)
+
+`pkm serve --tool-log PATH` is an optional flag, alongside `--config`, on the `serve`
+subcommand. When set, every tool call — `search` and `extract` alike — appends one JSON line
+to the file at `PATH`, in addition to (not instead of) the §10 structured diagnostic log. This
+is a purpose-built audit trail: an external evaluation harness can compute a metric (e.g.
+"was the gold answer in the top-k") from exactly what a live tool call returned, without
+re-deriving it from `search`'s truncated snippet.
+
+The log path is resolved once at server startup (`_cmd_serve` in `cli.py`, mirroring how
+`--config` resolves `_ROOT`, §17.5) and stashed via `mcp_server.set_tool_log(path)`; the tool
+closures read the stash at call time. When `--tool-log` is not given, no log is written and
+tool calls are unaffected.
+
+**Format.** One JSON object per line (JSONL), UTF-8, opened in append mode and created if
+missing. This is a distinct schema from §10's diagnostic log (different keys, a different
+consumer — a harness, not a human debugging engineer) and a distinct file — `--tool-log` never
+writes to `<root>/logs/` or to stdout (stdout remains reserved for the JSON-RPC stream, §17.4).
+pkm does not rotate or truncate the file; that is the operator's responsibility.
+
+```json
+{
+  "ts": "2026-07-11T12:00:00+00:00",
+  "tool": "search",
+  "args": {"query": "...", "k": 10},
+  "n_results": 3,
+  "results": [
+    {
+      "chunk_id": 8842,
+      "artifact_cache_key": "<64-char hex>",
+      "source_path": "/path/to/source",
+      "score": 1.234,
+      "snippet_shown": "<the ≤~300-char KWIC text actually returned to the caller>",
+      "chunk_text_full": "<the untruncated chunk text>"
+    }
+  ]
+}
+```
+
+- `ts` — ISO 8601 timestamp with timezone, the call's completion time.
+- `tool` — `"search"` or `"extract"`.
+- `args` — the tool's input parameters exactly as received (pre-clamping for `extract`'s
+  `neighbors`, so the log shows what was actually requested).
+- `n_results` — the length of `results` below.
+- `results` — one entry per returned chunk, `{chunk_id, artifact_cache_key, source_path,
+  score, snippet_shown, chunk_text_full}`. `chunk_text_full` is always the untruncated text —
+  required so a harness computes a retrieval metric on the same basis regardless of what was
+  shown to the caller. `score` and `snippet_shown` are `search`-specific: for a `search` call
+  they are the BM25 score and the KWIC snippet actually returned; for an `extract` call, which
+  has no ranking score and always shows full text, both are `null`.
+  - For a `search` call, `results` has one entry per returned hit, in the same order.
+  - For an `extract` call, `results` has one entry per chunk **actually shown** to the
+    caller — the target first, then each returned neighbour in the reply's `neighbors`
+    order (`chunk_index` ascending). Each entry carries its own `chunk_id` (the server
+    knows every neighbour's `chunk_id` from its own query even though the §17.7 tool
+    reply omits it), `artifact_cache_key`, `source_path`, and `chunk_text_full`; the log
+    line records what the agent saw, in full, with no DB round-trip needed to
+    reconstruct it.
+  - For a call that returned `{"error": ...}` (§17.2, §17.7), `results` is `[]`, `n_results`
+    is `0`, and the line carries a top-level `"error"` key with that message — the audit trail
+    still records that the call happened and failed.
+
+**Fail-open (load-bearing).** A failure to write the log line — disk full, `PATH`'s directory
+missing, a permissions error — is caught, logged once at WARNING via §10 (so it is visible in
+the diagnostic stream, per CLAUDE.md's "fail loudly"), and otherwise ignored: the tool's normal
+return value (a result list/object, or a §17.2/§17.7 `{"error": ...}` dict) is returned to the
+caller completely unaffected. Logging must never be the reason a `search` or `extract` call
+raises an exception into the MCP transport.
+
+**Not cache idempotency.** Calling `search` or `extract` twice with identical arguments leaves
+the read-only DB query itself idempotent (identical results), but appends **two** lines to the
+tool-log, not one — each call is a distinct auditable event, deliberately additive like §10's
+own logs, not a cached derivation subject to §6.1's idempotency contract.
 
 ## 18. Transforms (Phase 2)
 
@@ -1707,6 +1873,29 @@ exactly when `subject_kind` is `person` or `organisation` (fail loudly, not cach
 
 ## 16. Change log
 
+- 0.17.0 (draft): §17.2, §15.1, §15.4 amended, §17.7/§17.8 (new) — the MCP query surface
+  becomes addressable and auditable. `search` results (§17.2) gain a `chunk_id` field (the
+  `artifact_chunks` surrogate key, §15.1/migration 0005), which §15.1 is amended to
+  sanction as the one external system permitted to depend on that value. The new
+  read-only `extract(chunk_id, neighbors=1)` tool (§17.7) returns a chunk's full,
+  untruncated text plus up to `neighbors` (clamped to `[0, 3]`) chunks either side
+  within the same artifact, with the same provenance shape as `search`
+  (`artifact_cache_key`, `chunk_index`, `source_path`, `source_origin`); it does not
+  apply the §15.4 path-currency filter (a `chunk_id` is a concrete pointer, a stronger
+  signal than currency — §15.4 amended to name this documented exception) and reuses
+  `search`'s locked-catalogue `{"error": ...}` convention plus a new unknown-chunk case.
+  `pkm serve --tool-log PATH` (§17.8) appends one JSON line per tool call (timestamp,
+  tool, args, result count, full chunk text — for `extract`, one results entry per chunk
+  actually shown, target and neighbours alike) to a caller-chosen file for an external
+  evaluation harness; writing it is fail-open — a log-write failure is caught and warned
+  via §10, never raised into a tool result — and each call appends a new line even when
+  repeated (an audit trail, not a cached derivation subject to §6.1). Motivated by the
+  life-agent Ask read path needing
+  addressable, full-text follow-up on a `search` hit and a ground-truth log for scoring
+  retrieval quality against exactly what a live tool call returned. No schema change,
+  no migration, no new dependency — `chunk_id` and `chunk_index` already exist in
+  `artifact_chunks` (§5.1); the tool-log is a new file format but not a catalogue or
+  cache artifact.
 - 0.16.0 (draft): §18.13 (new) — *doc_subject*, one primary subject per document
   (`{format_version, subject_kind, subject}`): a grammar-constrained local-model projection
   of who or what a document is about, with the closed enum `person | organisation | generic`.
