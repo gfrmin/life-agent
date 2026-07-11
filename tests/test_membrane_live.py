@@ -30,14 +30,33 @@ pytestmark = pytest.mark.system
 
 GOVHOST_BIN = Path.home() / ".local" / "bin" / "proplang-govhost"
 
-# A realistic u_bar, shape-matched to core/utility.py's UtilityPosterior.u_bar keys
-# (verified in world.py's utility_rows/latent_utility_decl docstrings) — the same literal
-# the task brief specifies, used unchanged across all three tests so the handshake declared
-# under table@1 and latent@1 is directly comparable.
+# A synthetic u_bar, shape-matched to core/utility.py's UtilityPosterior.u_bar keys (verified
+# in world.py's utility_rows/latent_utility_decl docstrings) — used unchanged in tests 1 and 2
+# so the handshake declared under table@1 and latent@1 is directly comparable. Its u_wrong is
+# the world's FALLBACK -9.0, which is NOT what the live posterior says (see LIVE_U_BAR).
 U_BAR: dict[str, float] = {
     "u_correct": 1.0, "u_abstain": 0.0, "u_wrong": -9.0, "u_wrong_scoped": -4.0,
     "u_hedged": 0.2, "lambda_int": 1.0, "kappa_att": 0.02,
 }
+
+# The REAL utility posterior (GET :8798/utility, 2026-07-11): the reaction loop has already
+# narrowed u_wrong to about -5.94. Seven scalar means — no owner data. It is here because a
+# suite that only ever declared the -9.0 fallback is exactly how a threshold that is a
+# FUNCTION of utility got shipped as the constant 0.9.
+LIVE_U_BAR: dict[str, float] = {
+    "u_correct": 1.0, "u_abstain": 0.0, "u_wrong": -5.9395, "u_wrong_scoped": -2.0827,
+    "u_hedged": 0.3964, "lambda_int": 1.0009, "kappa_att": 0.0344,
+}
+
+# A utility under which respond IS reachable at the engine's own credence ceiling (a wrong
+# assert costs barely more than silence). Not a realistic posterior — a FALSIFICATION case:
+# the reachability test must be able to come out the other way, or it pins nothing.
+REACHABLE_U_BAR: dict[str, float] = {**LIVE_U_BAR, "u_wrong": -0.1, "kappa_att": 0.02}
+
+# The frozen engine's own attainable credence ceiling (its internal thetaPoints-shaped grid
+# tops out here) — a property of the BINARY, not of any utility. This is what a
+# utility-derived respond threshold is compared against.
+ENGINE_P1_CEILING = 0.9
 
 
 @pytest.fixture
@@ -176,25 +195,43 @@ def test_latent_degenerate_prediction(govhost_sha256: str) -> None:
 # --- test 3: the quantitative Boundary-V/R demand, pinned live ----------------------------
 
 
-def test_respond_is_unreachable_at_the_frozen_grid(govhost_sha256: str) -> None:
-    """The quantitative Boundary-V/R demand claim, pinned live against the real binary: at
-    ``u_correct=1, u_wrong=-9`` (this test's ``U_BAR``), ``EU(respond) = p1*1 + (1-p1)*(-9)``
-    beats ``EU(abstain) = 0`` only when ``p1 > 0.9`` STRICTLY. The frozen engine's internal
-    credence grid (``host-governor/WireU.hs``'s ``ubarGridU``, the ``thetaPoints``-shaped
-    linear grid 0.1..0.9) ceilings at 0.9 -- so at the grid's own best case,
-    ``EU(respond) = 0.9*1 + 0.1*(-9) = 0.0`` exactly TIES ``EU(abstain) = 0.0``, and menu order
-    (``gather, ask, abstain, respond`` -- world.AFFORDANCES) makes ``abstain``, the earlier-
-    listed of the tied pair, the winner, not ``respond``.
+@pytest.mark.parametrize(
+    ("label", "u_bar"),
+    [("fallback", U_BAR), ("live", LIVE_U_BAR), ("reachable", REACHABLE_U_BAR)],
+)
+def test_respond_reachability_is_a_function_of_the_utility_posterior(
+    label: str, u_bar: dict[str, float], govhost_sha256: str,
+) -> None:
+    """Whether ``respond`` can fire at all is a FUNCTION of the utility posterior, and this
+    pins it as one — against the real binary, at three different utilities. It replaces a test
+    that hard-coded ``u_wrong: -9.0`` and asserted the constant "respond needs p1 > 0.9",
+    which is how a claim about a fallback constant got published as a claim about the live
+    system: the live posterior's u_wrong is about -5.94 (the reaction loop narrowed it), where
+    the respond-vs-abstain bar is 0.856 — BELOW the engine's own 0.892 asymptote.
 
-    Driven with ``N_TICKS`` y=1 verdict evidence on ONE fixed feature context to push p1 as
-    high as the engine will go. This is a TRIPWIRE: if a future engine build widens the grid
-    past 0.9, this test WILL FAIL -- that failure is the intended signal (the demand claim no
-    longer holds), not a bug to silently patch around.
+    Two things are asserted, both derived, neither hard-coded:
+
+    1. **The model of the chooser.** Every tick's fired action must equal
+       ``world.argmax_action(u_bar, p1)`` — the host-side argmaxEU (first-listed ties) over the
+       very table the handshake declared, evaluated at the p1 the engine itself reported. This
+       is the check that earns the right to derive anything from that table offline (the
+       report's demand ledger does exactly that).
+    2. **Reachability.** respond fires iff the engine's attained p1 clears
+       ``world.respond_threshold(u_bar)`` — the WHOLE-menu bar (respond must outbid gather/ask,
+       not merely abstain, since the engine argmaxes over every row).
+
+    ``REACHABLE_U_BAR`` is the falsification case: under it the threshold drops below what the
+    engine can attain, so respond MUST fire. Without it, "respond never fires" would be
+    unfalsifiable here. A failure of assertion 1 is a REAL finding (our reading of the frozen
+    chooser is wrong) — report it, do not patch it away.
     """
     sha = govhost_sha256
+    threshold = W.respond_threshold(u_bar)
+    assert threshold is not None, f"respond can never win under {label} u_bar — bad fixture"
+
     client = MembraneClient.spawn([str(GOVHOST_BIN)], log=lambda _m: None)
     try:
-        sess = MembraneSession(client, u_bar=U_BAR, utility_form="table@1", log=lambda _m: None)
+        sess = MembraneSession(client, u_bar=u_bar, utility_form="table@1", log=lambda _m: None)
         sess.boot()
 
         s = _summary(n_candidates=1, leader_credence=0.95, p_none=0.02, n_obs=10)
@@ -202,34 +239,49 @@ def test_respond_is_unreachable_at_the_frozen_grid(govhost_sha256: str) -> None:
         max_p1: float | None = None
         respond_fired = False
         actions: list[str] = []
+        mispredicted: list[tuple[float, str, str]] = []
 
         for _ in range(n_ticks):
             sess.observe_verdict(s, 1)
             choice = sess.decide(s)
             actions.append(choice.action)
             p1 = choice.readouts.get("p1")
-            if isinstance(p1, (int, float)):
+            if isinstance(p1, int | float):
                 max_p1 = float(p1) if max_p1 is None else max(max_p1, float(p1))
+                predicted = W.argmax_action(u_bar, float(p1))
+                if predicted != choice.action:
+                    mispredicted.append((float(p1), predicted, choice.action))
             if choice.action == "respond":
                 respond_fired = True
 
         assert max_p1 is not None, (
             f"no p1 readout observed across {n_ticks} y=1 verdict ticks (binary sha256={sha})"
         )
-        assert max_p1 <= 0.9 + 1e-9, (
-            f"p1 EXCEEDED the frozen 0.9 grid ceiling: max_p1={max_p1} after {n_ticks} y=1 "
-            f"verdicts (binary sha256={sha}) -- the thetaPoints grid may have widened; "
-            "re-derive the Boundary-V/R demand claim before trusting this bound elsewhere"
+        assert max_p1 <= ENGINE_P1_CEILING + 1e-9, (
+            f"p1 EXCEEDED the frozen {ENGINE_P1_CEILING} grid ceiling: max_p1={max_p1} after "
+            f"{n_ticks} y=1 verdicts (binary sha256={sha}) -- the thetaPoints grid may have "
+            "widened; re-derive every claim that leans on this bound"
         )
-        assert not respond_fired, (
-            f"respond FIRED at max_p1={max_p1} after {n_ticks} y=1 verdicts "
-            f"(actions tail={actions[-5:]}, binary sha256={sha}) -- EU(respond) crossed "
-            "EU(abstain) at u_wrong=-9; the Boundary-V/R demand no longer holds at this grid"
+        assert not mispredicted, (
+            f"the host-side model of the frozen chooser is WRONG under the {label} u_bar: "
+            f"(p1, predicted, actual) = {mispredicted[:5]} (binary sha256={sha}). Everything "
+            "the offline report derives from the declared table (respond thresholds, the "
+            "policy-by-credence regions) rests on this agreeing -- re-derive it, do not "
+            "loosen this assertion"
+        )
+        expect_respond = max_p1 > threshold
+        assert respond_fired == expect_respond, (
+            f"respond_fired={respond_fired} but the {label} u_bar's whole-menu threshold "
+            f"({threshold:.4f}) against the attained max_p1 ({max_p1:.4f}) says "
+            f"{expect_respond} (binary sha256={sha}, actions tail={actions[-5:]})"
         )
 
+        vs_abstain = ((u_bar["u_abstain"] - u_bar["u_wrong"])
+                      / (u_bar["u_correct"] - u_bar["u_wrong"]))
         print(
-            f"[test_respond_is_unreachable_at_the_frozen_grid] binary sha256={sha} "
-            f"max_p1={max_p1} respond_fired={respond_fired} n_ticks={n_ticks} "
+            f"[respond_reachability:{label}] binary sha256={sha} max_p1={max_p1} "
+            f"threshold_whole_menu={threshold:.4f} threshold_vs_abstain={vs_abstain:.4f} "
+            f"respond_fired={respond_fired} distinct_actions={sorted(set(actions))} "
             f"actions_tail={actions[-5:]}"
         )
     finally:
