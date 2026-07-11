@@ -29,10 +29,14 @@ the ``[n]``-citing arms, which already hand it real ``SourceLike`` cards).
 
 **decision_view contract.** ``grade_channels``'s ``decision_view`` parameter is the
 normalized dict shape ``scripts/triage_answers.py`` builds via ``_lookup_view`` /
-``_narrative_view`` / ``_withheld_view``: at minimum ``action`` (str), ``asserted``
-(bool), ``asserted_values`` (list[str]), ``candidates`` (list[str]), and optionally
-``scoped`` (bool, lookup-only — a ``report_scoped`` decision, a true time-scoped claim
-that is never the cardinal sin). Arms that reuse the production ``ask.answer`` path
+``_narrative_view`` / ``_withheld_view``: at minimum ``asserted`` (bool),
+``asserted_values`` (list[str]), ``candidates`` (list[str]), and optionally ``scoped``
+(bool, lookup-only — a ``report_scoped`` decision, a true time-scoped claim that is
+never the cardinal sin). The view's ``action`` string is deliberately NOT consumed:
+``declined`` is derived as ``not asserted and not scoped`` (a decision that neither
+asserts nor scopes IS a withholding), so a missing ``action`` key or a future family's
+new withholding name can never make ``declined`` silently diverge from the
+``asserted``-driven bucket channel. Arms that reuse the production ``ask.answer`` path
 (synthesis) build this view the same way ``triage_answers.py`` does. Arms with no
 structured decision object at all — the hermes competitor, and any other raw-text arm —
 pass ``decision_view=None`` and are graded as **free text**: ``declined`` comes from
@@ -162,10 +166,15 @@ def grade_channels(
 
     gold_in_candidates_out: bool | None
     if decision_view is not None:
-        action = decision_view.get("action")
         scoped = bool(decision_view.get("scoped", False))
         asserted = bool(decision_view.get("asserted", False))
-        declined = action in ("abstain", "ask_clarify")
+        # Derived, never an action-name allowlist: a decision that neither asserts nor
+        # scopes IS a withholding, whatever its action is called (abstain, ask_clarify,
+        # a missing key, or a future family's new name). Re-listing action names here
+        # would let a novel/absent name read declined=False while asserted is also
+        # False — bucket (which branches on asserted) would stay right, but
+        # correct_abstention/over_abstention would silently diverge from it.
+        declined = not asserted and not scoped
         asserted_values = decision_view.get("asserted_values") or []
         candidates = decision_view.get("candidates") or []
         asserted_correct = answerable and any(
