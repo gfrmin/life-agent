@@ -80,6 +80,11 @@ composition is documented at
 plan; the related external repos (`../credence/apps/credence-pi`, `../pi-mono`) are reference
 material for that candidate only.
 
+- **Membrane shadow (`src/life_agent/membrane`, `src/life_agent/bridge`):** the frozen
+  proplang-govhost engine mirrors live decide/verdict traffic off to the side, never on the
+  decision path. Env-gated (absence = disabled); report at `$LIFE_AGENT_KB/membrane/report.md`,
+  register at [`docs/membrane-shadow.md`](./docs/membrane-shadow.md).
+
 ## `src/pkm` — the KB core (Python, uv, DuckDB): key files
 
 Content-addressed extraction cache + DuckDB catalogue + format producers + transforms.

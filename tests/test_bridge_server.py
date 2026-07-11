@@ -865,3 +865,54 @@ def test_http_statelessness_interleaved_request_does_not_perturb_repeat(
     again = _http(base, "POST", "/extract", {"question": "qA", "hits": []})
     assert first == again
     assert first[1]["candidates"] == ["V_qA"]
+
+
+# --- _shutdown: the SIGTERM/SIGINT cleanup (Task 9) -------------------------------------
+#
+# `_shutdown` is called directly (never via `signal.signal`/`os.kill`) — a real OS signal
+# delivered to the test process would be indistinguishable from a real interpreter-killing
+# SIGTERM. `_install_shutdown_handlers` itself (the two `signal.signal` registrations) is
+# intentionally not exercised here: it is one line of stdlib wiring around `_shutdown`.
+
+class _FakeCloseableMembrane:
+    def __init__(self, *, raises: bool = False) -> None:
+        self.closed = False
+        self._raises = raises
+
+    def close(self) -> None:
+        self.closed = True
+        if self._raises:
+            raise RuntimeError("boom")
+
+
+class _FakeShutdownDeps:
+    def __init__(self, membrane: _FakeCloseableMembrane | None) -> None:
+        self.membrane = membrane
+
+
+class _FakeShutdownServer:
+    def __init__(self, membrane: _FakeCloseableMembrane | None) -> None:
+        self.deps = _FakeShutdownDeps(membrane)
+
+
+def test_shutdown_closes_membrane_then_exits() -> None:
+    membrane = _FakeCloseableMembrane()
+    with pytest.raises(SystemExit) as exc:
+        bridge_server._shutdown(_FakeShutdownServer(membrane))  # type: ignore[arg-type]
+    assert exc.value.code == 0
+    assert membrane.closed is True
+
+
+def test_shutdown_is_fail_open_when_close_raises() -> None:
+    """A raising close() must not prevent shutdown — the process still exits cleanly."""
+    membrane = _FakeCloseableMembrane(raises=True)
+    with pytest.raises(SystemExit) as exc:
+        bridge_server._shutdown(_FakeShutdownServer(membrane))  # type: ignore[arg-type]
+    assert exc.value.code == 0
+    assert membrane.closed is True  # close() ran (and raised) before the suppress
+
+
+def test_shutdown_with_no_membrane_still_exits() -> None:
+    with pytest.raises(SystemExit) as exc:
+        bridge_server._shutdown(_FakeShutdownServer(None))  # type: ignore[arg-type]
+    assert exc.value.code == 0
