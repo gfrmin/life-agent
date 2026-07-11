@@ -109,14 +109,15 @@ def test_judge_answer_prompt_includes_expected_components_and_source_text(monkey
          "expected_components": ["id_number_present"]}
     sources = [
         {"n": 1, "text": "ID card body SENTINEL-ALPHA"},
-        {"source_path": "letter.txt", "snippet": "letter body SENTINEL-BETA"},
+        # the real tool-log result shape (src/pkm/mcp_server.py): snippet_shown, not snippet
+        {"source_path": "letter.txt", "snippet_shown": "letter body SENTINEL-BETA"},
     ]
     J.judge_answer(q, "Your ID is 123456789.", sources, "RUBRIC-MARKER")
 
     assert "id_number_present" in captured["user"]        # expected_components present
     assert "SENTINEL-ALPHA" in captured["user"]            # numbered-card source text
     assert "letter.txt" in captured["user"]                # competitor source name visible
-    assert "SENTINEL-BETA" in captured["user"]             # competitor source text (snippet)
+    assert "SENTINEL-BETA" in captured["user"]             # competitor source text (snippet_shown)
     assert "RUBRIC-MARKER" in captured["system"]           # rubric text appended to system
 
 
