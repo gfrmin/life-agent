@@ -516,7 +516,7 @@ def narrative_answer(root: Path, question: str, text: str,
     DEC.append(decisions_path if decisions_path is not None else config.DECISIONS_LOG,
                DEC.DecisionEvent(
                    tx_time=O.now_iso(), run_id=run_id,
-                   question_id=_sha(question)[:16],
+                   question_id=DEC.question_id(question),
                    family="narrative",
                    action_set=_ACTION_ORDER,
                    posterior_summary={

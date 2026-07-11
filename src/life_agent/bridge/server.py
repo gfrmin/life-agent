@@ -443,7 +443,7 @@ def _log_decision(deps: BridgeDeps, p: Payload) -> Payload:
     decision_id = _decision_id(question, retrieval_keys, creds_sorted, p_none)
     event = DEC.DecisionEvent(
         tx_time=O.now_iso(), run_id="answer-brain",
-        question_id=hashlib.sha256(question.encode("utf-8")).hexdigest()[:16],
+        question_id=DEC.question_id(question),
         family="lookup", action_set=DEC.LOOKUP_ACTION_ORDER,
         posterior_summary={"candidates": cands_sorted, "credences": creds_sorted,
                            "p_none": p_none, "n_obs": n_obs},

@@ -15,6 +15,7 @@ duplication, the third extracts a helper.)
 """
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -47,6 +48,26 @@ ACTIONS: frozenset[str] = frozenset({"report", "report_scoped", "hedge",
 LOOKUP_ACTION_ORDER: tuple[str, ...] = ("report", "hedge", "ask_clarify", "abstain",
                                         "report_scoped")
 NARRATIVE_ACTION_ORDER: tuple[str, ...] = ("report", "abstain")
+
+QUESTION_ID_CHARS = 16
+
+
+def question_id(question: str) -> str:
+    """The ONE derivation of a decision's ``question_id`` from the question text: sha256
+    of the raw text, first :data:`QUESTION_ID_CHARS` hex chars. Every producer of a
+    ``DecisionEvent`` (``core/lookup.py``, ``core/narrative.py``, ``bridge/server.py``),
+    every reaction writer (``scripts/ask.py``), and the membrane mirror
+    (``core/shadow_mirror.py``'s callers) key on this — a second, hand-copied spelling
+    anywhere silently splits the id namespace and every join across it reads as "no
+    data" rather than as an error (exactly the bug the membrane shadow's grounded join
+    shipped with). Drift-gated in ``tests/test_decisions.py``: no other site in ``src/``
+    or ``scripts/`` may hash a question itself.
+
+    NOT the same namespace as an eval/fair-fight CORPUS id (``q-001``, an
+    ``OutcomeVector.question_id``). Bridging those two namespaces is a deliberate,
+    named join through the questions file that assigned the corpus ids — see
+    ``life_agent.membrane.shadow.warm_question_id_map``."""
+    return hashlib.sha256(question.encode("utf-8")).hexdigest()[:QUESTION_ID_CHARS]
 
 
 @dataclass(frozen=True)
