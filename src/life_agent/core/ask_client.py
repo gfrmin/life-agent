@@ -15,7 +15,6 @@ never silently substituted (the contract's invariant 3).
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import urllib.request
@@ -71,9 +70,9 @@ def answer(question: str, k: int = 20, *, post: Any = None, get: Any = None,
         return DOWN, None
     post = post if post is not None else _post
     get = get if get is not None else _get
-    # Same question_id derivation as /log_decision below (and scripts/ask.py's own caller):
-    # sha256 of the raw question text, [:16] — one convention across every production caller.
-    question_id = hashlib.sha256(question.encode("utf-8")).hexdigest()[:16]
+    # The ONE question_id derivation (core.decisions.question_id) — the same key /log_decision
+    # stamps on the decision below, so a mirrored decide tick and its decision join.
+    question_id = DEC.question_id(question)
     view = EX.decide_via_loop(question, k, bridge=BRIDGE, daemon=DAEMON,
                               post=SM.shadow_wrapped_post(post, BRIDGE, question_id), get=get,
                               grow_lane=GROW_LANE)

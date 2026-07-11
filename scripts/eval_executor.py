@@ -20,7 +20,6 @@ live calibration log is untouched (isolation by not-writing).
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import os
 import sys
@@ -30,6 +29,7 @@ from collections import Counter
 from datetime import datetime
 from pathlib import Path
 
+from life_agent.core import decisions as DEC
 from life_agent.core import executor as EX
 from life_agent.core import shadow_mirror as SM
 
@@ -63,12 +63,11 @@ def _get(url: str) -> dict:
 
 
 def _post_for(question: str) -> EX.Post:
-    """The shadow-wrapped post for one eval question — same question_id derivation
-    (sha256 of the raw question text, [:16]) and the same shared mirror
+    """The shadow-wrapped post for one eval question — the ONE question_id derivation
+    (``core.decisions.question_id``) and the same shared mirror
     (life_agent.core.shadow_mirror) as every production caller, so a live-service eval run
     feeds the membrane shadow exactly like the ask read-path does."""
-    question_id = hashlib.sha256(question.encode("utf-8")).hexdigest()[:16]
-    return SM.shadow_wrapped_post(_post, BRIDGE, question_id)
+    return SM.shadow_wrapped_post(_post, BRIDGE, DEC.question_id(question))
 
 
 def _grade(conn, q: dict, view: dict, labels: list[Label]) -> dict:
