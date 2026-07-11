@@ -22,16 +22,29 @@ processed enough items to flush one and was never cleanly closed) has genuinely 
 to recover them — every place this report would otherwise report a bare zero for one of
 those counters instead says so explicitly, rather than printing a fabricated 0.
 
-Report structure (five top-level sections, matching the brief's own enumeration):
+Report structure:
 
-    1. ``per_form_stats``   — ticks, action distribution, raw_internal, respawns, latency.
+    0. ``global_counters``  — drops/skips/submit_errors, which are PROCESS-GLOBAL totals
+                              (one queue, one submit path, every form) and so are reported
+                              exactly once, never repeated under each form's heading.
+    1. ``per_form_stats``   — ticks, action distribution, raw_internal, respawns, latency,
+                              and ``dead_drops`` (the one genuinely per-form counter).
+    1b. ``world_policy``    — what each form's DECLARED utility fires at each credence,
+                              derived from the u_bar its OWN boot record persisted.
     2. ``differential``     — the real (incumbent) action vs the shadow's would-action,
                               mapped through a NAMED legend, per form; every disagreement
                               enumerated (never only aggregated — the §8.5 discipline).
-    3. ``grounded``         — (only with ``--vectors``) contingency tables + realized loss
-                              per decision, joined to the fair-fight baseline arm.
-    4. ``demand_ledger``    — named limitations actually hit this run, each with its count
-                              and the boundary it demands.
+    3. ``grounded``         — (only with ``--vectors``) the join's own arithmetic, then
+                              contingency tables + realized loss per decision, against the
+                              fair-fight baseline arm. The two sides speak DIFFERENT id
+                              namespaces (mirror ids vs corpus ids) and are bridged
+                              explicitly (:class:`Baseline`); an empty join is reported as
+                              an empty join, never as a small sample.
+    4. ``demand_ledger``    — named limitations, each with whether it actually ``fires`` on
+                              this run, its count, and the boundary it demands. Every
+                              utility-dependent threshold is DERIVED from the boot-recorded
+                              u_bar — never a hard-coded constant (a hard-coded 0.9 is what
+                              made this ledger publish a false claim once already).
     5. ``provenance``       — binary sha256 + world digest + forms, from boot records.
 
 Pure functions over record lists; I/O only at ``load_shadow_records``/
@@ -48,6 +61,7 @@ import math
 import sys
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -90,31 +104,75 @@ def load_shadow_records(shadow_log: Path) -> list[dict[str, Any]]:
     ]
 
 
-def load_baseline_vectors(run_dir: Path) -> dict[str, dict[str, Any]]:
-    """``{question_id: OutcomeVector-JSON row}`` for one fair-fight run's ``baseline``
-    arm — the arm this shadow actually mirrors (``run_fairfight.py``'s
-    ``ask.answer_via_executor(path="executor")``, the same ``/decide`` loop
-    ``core/shadow_mirror.py`` fans out to ``/decide-support``; also the exact run-dir
-    shape ``shadow.boot_snapshot`` already reads warm outcomes from). Rows are
-    validated through ``records.from_json`` (raises loudly on a malformed row — the
-    same discipline ``scripts/dominance/run_dominance.py``'s ``_load_arm_vectors``
-    already uses, never silently skewing a downstream rate) and filtered through
-    ``records.scored`` (the one canonical infra-failure filter). A missing file yields
-    an empty join population, not an error (an optional flag pointing at a run that
-    hasn't produced a baseline arm yet is a valid, reportable state)."""
+@dataclass(frozen=True)
+class Baseline:
+    """One fair-fight run's baseline-arm outcomes, RE-KEYED into the shadow's own id
+    namespace, plus the arithmetic of that re-keying.
+
+    The two namespaces (named once, here, and bridged in exactly one place —
+    ``shadow.warm_question_id_map``): an ``OutcomeVector.question_id`` is the CORPUS id
+    (``q-001``); a shadow decide record's ``question_id`` is the MIRROR id
+    (``core.decisions.question_id`` — sha256 of the question TEXT). Joining them directly
+    yields zero rows ALWAYS, and a zero join then reads as "not enough data yet" — the
+    exact "print a number that means unknown" failure this project forbids. So the rows
+    are re-keyed by mirror id up front, and ``note`` names it loudly whenever nothing
+    could be mapped."""
+
+    by_mirror_id: dict[str, dict[str, Any]]
+    n_rows: int          # rows read off the baseline arm's vectors.jsonl
+    n_scored: int        # after records.scored (the infra-failure filter)
+    id_map_size: int     # corpus->mirror mappings the run's questions file yielded
+    n_unmapped: int      # scored rows whose corpus id had no mapping
+    note: str = ""
+
+
+def load_baseline_vectors(run_dir: Path) -> Baseline:
+    """One fair-fight run's ``baseline`` arm — the arm this shadow actually mirrors
+    (``run_fairfight.py``'s ``ask.answer_via_executor(path="executor")``, the same
+    ``/decide`` loop ``core/shadow_mirror.py`` fans out to ``/decide-support``; also the
+    exact run-dir shape ``shadow.boot_snapshot`` already reads warm outcomes from) —
+    re-keyed onto the shadow's mirror ids (see :class:`Baseline`). Rows are validated
+    through ``records.from_json`` (raises loudly on a malformed row — the same discipline
+    ``scripts/dominance/run_dominance.py``'s ``_load_arm_vectors`` already uses, never
+    silently skewing a downstream rate) and filtered through ``records.scored`` (the one
+    canonical infra-failure filter). A missing file yields an empty join population, not
+    an error (an optional flag pointing at a run that hasn't produced a baseline arm yet
+    is a valid, reportable state)."""
     path = run_dir / "arms" / "baseline" / "vectors.jsonl"
     if not path.exists():
-        return {}
+        return Baseline(by_mirror_id={}, n_rows=0, n_scored=0, id_map_size=0, n_unmapped=0,
+                        note=f"no baseline arm at {path} — nothing to join against.")
     rows: list[REC.OutcomeVector] = []
     for line in path.read_text(encoding="utf-8").splitlines():
         line = line.strip()
         if not line:
             continue
         rows.append(REC.from_json(json.loads(line)))
-    by_question: dict[str, dict[str, Any]] = {}
-    for v in REC.scored(rows):
-        by_question[v.question_id] = REC.to_json(v)  # latest row per question_id wins
-    return by_question
+    scored = list(REC.scored(rows))
+    id_map = SH.warm_question_id_map(run_dir)
+
+    by_mirror_id: dict[str, dict[str, Any]] = {}
+    unmapped = 0
+    for v in scored:
+        mirror_id = id_map.get(v.question_id)
+        if mirror_id is None:
+            unmapped += 1
+            continue
+        by_mirror_id[mirror_id] = REC.to_json(v)  # latest row per question wins
+    note = ""
+    if scored and not by_mirror_id:
+        note = (
+            f"0 of {len(scored)} scored baseline rows could be mapped into the shadow's id "
+            f"namespace — the run's run_meta.json -> questions_path yielded {len(id_map)} "
+            f"corpus->mirror mappings. Vector question_ids are CORPUS ids (q-001); shadow "
+            f"decide records key on MIRROR ids (sha256(question text)[:16]). Every grounded "
+            f"table below is therefore EMPTY BY CONSTRUCTION, not under-powered."
+        )
+    elif unmapped:
+        note = (f"{unmapped} of {len(scored)} scored baseline rows had no corpus->mirror "
+                f"mapping (questions file yielded {len(id_map)} ids) and are excluded.")
+    return Baseline(by_mirror_id=by_mirror_id, n_rows=len(rows), n_scored=len(scored),
+                    id_map_size=len(id_map), n_unmapped=unmapped, note=note)
 
 
 # --- record slicing helpers ----------------------------------------------------------------
@@ -158,6 +216,41 @@ def _latest_boot_n_source_records(records: list[dict[str, Any]], form: str) -> i
     return int(n) if isinstance(n, int) else None
 
 
+def latest_boot_u_bar(records: list[dict[str, Any]], form: str) -> dict[str, float] | None:
+    """The REAL utility posterior means ``form``'s most recent boot declared its world
+    under (``shadow._write_boot_record``'s ``u_bar`` field) — ``None`` for a form with no
+    boot record, or one written before that field existed.
+
+    Everything downstream that needs the world's numbers (the realized-loss table, the
+    respond-reachability threshold) reads them from HERE and refuses to proceed without
+    them. It used to fall back to ``world.utility_rows``' declared DEFAULTS, which are not
+    what any live shadow ever ran under — the live ``u_wrong`` is around -5.9, not -9.0 —
+    so the report scored losses under a table the shadow never used and published a
+    reachability claim that was an artifact of a fallback constant."""
+    boots = _of_kind(records, "boot", form)
+    if not boots:
+        return None
+    u_bar = boots[-1].get("u_bar")
+    if not isinstance(u_bar, dict) or not u_bar:
+        return None
+    try:
+        return {str(k): float(v) for k, v in u_bar.items()}
+    except (TypeError, ValueError):
+        return None
+
+
+def latest_boot_warm(records: list[dict[str, Any]], form: str) -> dict[str, Any] | None:
+    """``BootSnapshot.warm`` (a ``shadow.WarmJoin``) off ``form``'s most recent boot — the
+    warm fair-fight join's own read-vs-joined arithmetic, including its loud note when a
+    non-empty vector file joined ZERO rows. ``None`` when the boot ran without a warm
+    vectors dir, or predates the field."""
+    boots = _of_kind(records, "boot", form)
+    if not boots:
+        return None
+    warm = boots[-1].get("warm")
+    return warm if isinstance(warm, dict) else None
+
+
 def _p1(record: dict[str, Any]) -> float | None:
     readouts = record.get("readouts")
     if not isinstance(readouts, dict):
@@ -186,29 +279,43 @@ _UNPERSISTED_COUNTERS_NOTE = (
     "read them from the live daemon (e.g. the bridge's /ready) instead."
 )
 
+# `MembraneShadow.stats()` reports drops/skips/submit_errors as PROCESS-GLOBAL totals (one
+# queue, one submit path, shared by every form) and only `dead_drops` per form. Rendering the
+# three globals under each form's heading — as this report used to — invites a reader at the
+# default `table@1,latent@1` deployment to double-count every one of them. They are reported
+# ONCE, in their own section, labelled process-global.
+GLOBAL_COUNTER_NAMES: tuple[str, ...] = ("drops", "skips", "submit_errors")
 
-def _form_counters(
-    stats_record: dict[str, Any] | None, form: str,
-) -> dict[str, Any] | None:
-    """``{drops, skips, submit_errors, dead_drops, as_of_ts}`` off the given
-    ``kind: "stats"`` row (``stats()``'s payload, verbatim) — ``None`` if no row was
-    given, or the row carries no entry for ``form`` (never a fabricated 0 either way)."""
+
+def global_counters(stats_record: dict[str, Any] | None) -> dict[str, Any]:
+    """The process-global submit-path counters, ONCE — off the log's last ``kind: "stats"``
+    row (``stats()``'s payload, verbatim). ``observable: false`` (never a fabricated 0) when
+    the log carries no such row."""
+    if stats_record is None:
+        return {"observable": False, "note": _UNPERSISTED_COUNTERS_NOTE}
+    values = {name: stats_record.get(name) for name in GLOBAL_COUNTER_NAMES}
+    if not all(isinstance(v, int) for v in values.values()):
+        return {"observable": False, "note": _UNPERSISTED_COUNTERS_NOTE}
+    return {
+        "observable": True, **values, "as_of_ts": stats_record.get("ts"),
+        "queue_depth": stats_record.get("queue_depth"),
+        "scope": ("PROCESS-GLOBAL: one queue and one submit path serve every form, so these "
+                  "three are totals across all forms — never per-form. Only dead_drops "
+                  "(reported per form) is form-scoped."),
+    }
+
+
+def _form_dead_drops(stats_record: dict[str, Any] | None, form: str) -> int | None:
+    """``dead_drops`` for ``form`` — the one genuinely per-form counter (items that reached
+    the worker while THIS form was dead). ``None`` if unobservable."""
     if stats_record is None:
         return None
     forms = stats_record.get("forms")
-    form_entry = forms.get(form) if isinstance(forms, dict) else None
-    if not isinstance(form_entry, dict):
+    entry = forms.get(form) if isinstance(forms, dict) else None
+    if not isinstance(entry, dict):
         return None
-    drops, skips, submit_errors = (
-        stats_record.get("drops"), stats_record.get("skips"), stats_record.get("submit_errors"),
-    )
-    dead_drops = form_entry.get("dead_drops")
-    if not all(isinstance(x, int) for x in (drops, skips, submit_errors, dead_drops)):
-        return None
-    return {
-        "drops": drops, "skips": skips, "submit_errors": submit_errors,
-        "dead_drops": dead_drops, "as_of_ts": stats_record.get("ts"),
-    }
+    dead_drops = entry.get("dead_drops")
+    return dead_drops if isinstance(dead_drops, int) else None
 
 
 def form_stats(
@@ -226,12 +333,12 @@ def form_stats(
     latencies = [
         float(r["latency_ms"]) for r in decides if isinstance(r.get("latency_ms"), int | float)
     ]
-    counters = _form_counters(stats_record, form)
+    dead_drops = _form_dead_drops(stats_record, form)
     note = (
-        f"drops={counters['drops']} skips={counters['skips']} "
-        f"submit_errors={counters['submit_errors']} dead_drops={counters['dead_drops']} "
-        f"(observed at the shadow log's last kind:\"stats\" row, ts={counters['as_of_ts']})"
-    ) if counters is not None else _UNPERSISTED_COUNTERS_NOTE
+        f"dead_drops={dead_drops} (observed at the shadow log's last kind:\"stats\" row, "
+        f"ts={stats_record.get('ts') if stats_record else None}); "
+        "drops/skips/submit_errors are process-global — see the global counters section"
+    ) if dead_drops is not None else _UNPERSISTED_COUNTERS_NOTE
     return {
         "n_decide_ticks": n,
         "n_evidence_ticks": len(evidences),
@@ -244,8 +351,8 @@ def form_stats(
             "p95": _percentile(latencies, 95.0),
             "n": len(latencies),
         },
-        "counters": counters,
-        "drops_skips_dead_drops": note,
+        "dead_drops": dead_drops,
+        "dead_drops_note": note,
     }
 
 
@@ -371,7 +478,40 @@ MISS_DEFINITION_NOTE = (
 def _joined_rows(
     terminal: Mapping[str, dict[str, Any]], vectors: Mapping[str, dict[str, Any]],
 ) -> list[tuple[dict[str, Any], dict[str, Any]]]:
+    """Both sides key on the MIRROR id (``core.decisions.question_id``): the shadow's decide
+    records natively, the baseline vectors after :func:`load_baseline_vectors` re-keys them
+    out of the corpus-id namespace. Joining the raw namespaces yields zero rows always —
+    see :class:`Baseline`."""
     return [(terminal[qid], vectors[qid]) for qid in terminal if qid in vectors]
+
+
+def join_diagnostics(
+    terminal: Mapping[str, dict[str, Any]], baseline: Baseline,
+) -> dict[str, Any]:
+    """Why the grounded tables have the population they have — and, when that population is
+    EMPTY, whether that means "no overlap yet" or "the join is broken". A zero join is
+    stated as a zero join, never left to be read off a table of zeros or (worse) narrated
+    as a small sample by :func:`n_min_honesty`."""
+    n_joined = len(_joined_rows(terminal, baseline.by_mirror_id))
+    note = baseline.note
+    if not note and terminal and baseline.by_mirror_id and n_joined == 0:
+        note = (
+            f"0 of {len(baseline.by_mirror_id)} mapped baseline rows joined against "
+            f"{len(terminal)} shadow-observed questions — both sides are in the mirror-id "
+            "namespace, so this is a DISJOINT CORPUS (the shadow never saw the questions "
+            "this run graded), not a broken join and not a small sample."
+        )
+    return {
+        "n_shadow_questions": len(terminal),
+        "baseline_rows_read": baseline.n_rows,
+        "baseline_rows_scored": baseline.n_scored,
+        "corpus_to_mirror_id_map_size": baseline.id_map_size,
+        "baseline_rows_unmapped": baseline.n_unmapped,
+        "baseline_rows_mapped": len(baseline.by_mirror_id),
+        "n_joined": n_joined,
+        "note": note or (f"{n_joined} of {len(baseline.by_mirror_id)} mapped baseline rows "
+                         "joined to a shadow-observed question."),
+    }
 
 
 def contingency_tables(
@@ -414,35 +554,48 @@ DECISIVE_DEFINITION_NOTE = (
 )
 
 
-def utility_table_by_action(u_bar: Mapping[str, float] | None = None) -> dict[str, list[float]]:
-    """``{action: [u(y=0), u(y=1)]}`` off ``world.utility_rows`` — defaults to the
-    world's DECLARED default table (``u_bar={}``: u_wrong=-9.0, lambda_int=0.1,
-    kappa_att=0.02) since an offline report has no access to a live posterior. See
-    :func:`realized_loss`'s ``default_table_matches_boot`` for whether that default was
-    actually what was live for a given form's boot."""
-    rows = W.utility_rows(dict(u_bar or {}))
-    table: dict[str, list[float]] = {}
-    for r in rows:
-        fire = r.get("fire")
-        u = r.get("u")
-        if not isinstance(fire, int) or not isinstance(u, list):
-            continue  # the "internal": "think" sentinel row has no "fire" key
-        table[W.ID_TO_ACTION[fire]] = [float(x) for x in u]
-    return table
+def utility_table_by_action(u_bar: Mapping[str, float]) -> dict[str, list[float]]:
+    """``{action: [u(y=0), u(y=1)]}`` for a GIVEN utility posterior, off
+    ``world.utility_by_action`` (the world's own reading of its own table — never a second
+    copy of the numbers here).
+
+    ``u_bar`` is REQUIRED. It used to default to the world's fallback table (u_wrong=-9.0),
+    which no live shadow has ever decided under — scoring a realized loss under it
+    overstates every wrong assert by ~50% against the real posterior (u_wrong ≈ -5.9).
+    Callers pass the u_bar the boot record persisted, or do not score at all."""
+    return {a: [u0, u1] for a, (u0, u1) in W.utility_by_action(u_bar).items()}
+
+
+UNSCORABLE_NO_U_BAR = (
+    "NOT SCORED — this form's boot record carries no u_bar (a log written before the shadow "
+    "persisted it). Realized loss is only meaningful under the utility the shadow actually "
+    "decided under; scoring it under world.utility_rows' fallback defaults (u_wrong=-9.0) "
+    "would report a loss no live run ever incurred. Re-run the shadow to get a boot record "
+    "with u_bar, then re-run this report."
+)
 
 
 def realized_loss(
     terminal: Mapping[str, dict[str, Any]], vectors: Mapping[str, dict[str, Any]],
-    *, boot_world_digest: str | None = None,
+    *, u_bar: Mapping[str, float] | None, boot_world_digest: str | None = None,
 ) -> dict[str, Any]:
-    """Realized loss per decision — ``-table[action][y]`` — for BOTH the incumbent's
-    real action and the shadow's would-action, on the DECISIVE joined population (see
-    :data:`DECISIVE_DEFINITION_NOTE`). ``boot_world_digest`` (a form's boot record
-    ``world_digest``, if known) lets a reader check whether the declared default table
-    this function scores under is what was actually live for that form's run."""
+    """Realized loss per decision — ``-table[action][y]`` — for BOTH the incumbent's real
+    action and the shadow's would-action, on the DECISIVE joined population (see
+    :data:`DECISIVE_DEFINITION_NOTE`), scored under ``u_bar`` — which must be the utility
+    posterior that form's boot record actually recorded (:func:`latest_boot_u_bar`).
+
+    ``u_bar=None`` REFUSES to score (:data:`UNSCORABLE_NO_U_BAR`) rather than falling back
+    to defaults: an unscored row is a known unknown; a row scored under a table the shadow
+    never used is a fabricated number wearing a real one's clothes."""
     joined = _joined_rows(terminal, vectors)
     decisive = [(r, v) for r, v in joined if v.get("asserted") is True]
-    table = utility_table_by_action()
+    if u_bar is None:
+        return {
+            "scored": False, "reason": UNSCORABLE_NO_U_BAR,
+            "n_joined": len(joined), "n_decisive": len(decisive),
+            "boot_world_digest": boot_world_digest,
+        }
+    table = utility_table_by_action(u_bar)
 
     real_losses: list[float] = []
     would_losses: list[float] = []
@@ -476,6 +629,7 @@ def realized_loss(
         }
 
     return {
+        "scored": True,
         "n_joined": len(joined), "n_decisive": len(decisive),
         "n_real_unmapped_excluded": n_real_unmapped,
         "n_would_unrecognized_excluded": n_would_unrecognized,
@@ -483,6 +637,8 @@ def realized_loss(
         "real_policy": {"mean_loss": _mean(real_losses), "n": len(real_losses)},
         "would_policy": {"mean_loss": _mean(would_losses), "n": len(would_losses)},
         "utility_table_used": table,
+        "u_bar_used": dict(u_bar),
+        "scored_under_boot_u_bar": True,
         "decisive_definition": DECISIVE_DEFINITION_NOTE,
         "boot_world_digest": boot_world_digest,
     }
@@ -508,12 +664,17 @@ GOVERNOR_N_MIN_SOURCE = (
 
 def n_min_honesty(n: int) -> dict[str, Any]:
     clears = n >= GOVERNOR_N_MIN
-    note = (
-        f"n={n} clears the registered n_min={GOVERNOR_N_MIN}."
-        if clears else
-        f"n={n} is BELOW the registered n_min={GOVERNOR_N_MIN} — directional only, "
-        "not a registered reading."
-    )
+    if clears:
+        note = f"n={n} clears the registered n_min={GOVERNOR_N_MIN}."
+    elif n == 0:
+        note = (
+            "n=0 — NOTHING joined. This is an EMPTY population, not an under-powered one: "
+            "read the join diagnostics above before reading it as 'not enough data yet'. "
+            f"(The registered n_min={GOVERNOR_N_MIN} is not the reason there is no reading.)"
+        )
+    else:
+        note = (f"n={n} is BELOW the registered n_min={GOVERNOR_N_MIN} — directional only, "
+                "not a registered reading.")
     return {
         "n": n, "n_min": GOVERNOR_N_MIN, "window": GOVERNOR_N_MIN_WINDOW,
         "clears": clears, "source": GOVERNOR_N_MIN_SOURCE, "note": note,
@@ -522,36 +683,169 @@ def n_min_honesty(n: int) -> dict[str, Any]:
 
 # --- 4. the demand ledger ----------------------------------------------------------------
 
-P1_CEILING = 0.9
+# The FROZEN ENGINE's own attainable credence ceiling — a property of the binary, not of any
+# utility: its internal grid (host-governor/WireU.hs's `ubarGridU`, the thetaPoints-shaped
+# linear grid) tops out at 0.9, and 40 consecutive y=1 verdicts on one fixed feature context
+# asymptote p1 at 0.8918 without ever reaching it (tests/test_membrane_live.py, live against
+# the real binary). This is what a utility-derived respond threshold gets compared AGAINST.
+ENGINE_P1_CEILING = 0.9
+ENGINE_P1_OBSERVED_ASYMPTOTE = 0.8918
 _P1_CEILING_EPS = 1e-9
+
+
+def _respond_reachability(records: list[dict[str, Any]], form: str) -> dict[str, Any]:
+    """Can ``respond`` fire at all, for this form, under the utility its boot ACTUALLY
+    declared? Every number here is derived — none is a constant.
+
+    Two thresholds, because they answer two different questions and only one of them binds:
+
+    * ``threshold_vs_abstain`` = ``(u_abstain - u_wrong)/(u_correct - u_wrong)`` — the
+      classic "is asserting better than saying nothing" bar. At the world's fallback
+      u_wrong=-9.0 that is 0.9000, which is exactly the engine's ceiling — the coincidence
+      that made "respond is unreachable" look like a property of the system when it was a
+      property of a default constant. At the live posterior (u_wrong ≈ -5.9) it is ≈0.856,
+      which the engine's own asymptote (0.8918) CLEARS.
+    * ``threshold_whole_menu`` (:func:`world.respond_threshold`) — the bar that actually
+      binds, because the engine argmaxes over the WHOLE menu: respond must also outbid
+      ``gather``/``ask``, which are priced as myopic perfect information (world.utility_rows'
+      declared bake-in). ``binding_competitor`` names which row sets it.
+
+    ``fires`` is True only when the binding threshold genuinely exceeds what the engine can
+    attain — and it is corroborated, never contradicted, by the observed ticks (a form that
+    was actually SEEN to respond is reported as reachable whatever the arithmetic says)."""
+    decides = _of_kind(records, "decide", form)
+    p1s = [p1 for r in decides if (p1 := _p1(r)) is not None]
+    n_respond = sum(1 for r in decides if r.get("action") == "respond")
+    max_p1 = max(p1s) if p1s else None
+    u_bar = latest_boot_u_bar(records, form)
+    out: dict[str, Any] = {
+        "n_decide_ticks": len(decides),
+        "n_respond_chosen": n_respond,
+        "max_p1_observed": max_p1,
+        "engine_p1_ceiling": ENGINE_P1_CEILING,
+        "u_bar_source": "boot record" if u_bar is not None else None,
+    }
+    if u_bar is None:
+        out["fires"] = None
+        out["note"] = (
+            "no u_bar in this form's boot record — the respond threshold is a FUNCTION of "
+            "the utility posterior and cannot be derived without it. Not asserted either way."
+        )
+        return out
+
+    u_correct = float(u_bar.get("u_correct", 1.0))
+    u_abstain = float(u_bar.get("u_abstain", 0.0))
+    u_wrong = float(u_bar.get("u_wrong", -9.0))
+    vs_abstain = (u_abstain - u_wrong) / (u_correct - u_wrong)
+    whole_menu = W.respond_threshold(u_bar)
+    eus_at_ceiling = W.eu_by_action(u_bar, ENGINE_P1_CEILING)
+    competitor = max(
+        (a for a in eus_at_ceiling if a != "respond"), key=lambda a: eus_at_ceiling[a],
+    )
+    # ticks where the engine's credence was as high as it goes and respond STILL lost —
+    # the empirical corroboration (a tick that DID respond is excluded by construction).
+    maxed_out = sum(
+        1 for r in decides
+        if (p1 := _p1(r)) is not None and p1 >= ENGINE_P1_CEILING - _P1_CEILING_EPS
+        and r.get("action") != "respond"
+    )
+    reachable = (
+        n_respond > 0
+        or (whole_menu is not None and whole_menu < ENGINE_P1_CEILING - _P1_CEILING_EPS)
+    )
+    out.update({
+        "threshold_vs_abstain": round(vs_abstain, 6),
+        "threshold_whole_menu": round(whole_menu, 6) if whole_menu is not None else None,
+        "binding_competitor": competitor,
+        "argmax_at_engine_ceiling": W.argmax_action(u_bar, ENGINE_P1_CEILING),
+        "eu_at_engine_ceiling": {a: round(v, 6) for a, v in eus_at_ceiling.items()},
+        "n_ticks_at_ceiling_without_responding": maxed_out,
+        "fires": not reachable,
+    })
+    return out
 
 
 def demand_ledger(records: list[dict[str, Any]], forms: list[str]) -> list[dict[str, Any]]:
     entries: list[dict[str, Any]] = []
+    total_ticks = sum(len(_of_kind(records, "decide", f)) for f in forms)
 
-    # V/R: respond structurally unreachable at the frozen grid ceiling.
-    per_form_ceiling: dict[str, dict[str, int]] = {}
-    total_ceiling = 0
-    total_ticks = 0
-    for f in forms:
-        decides = _of_kind(records, "decide", f)
-        hit = sum(
-            1 for r in decides
-            if (p1 := _p1(r)) is not None and p1 >= P1_CEILING - _P1_CEILING_EPS
+    # V/R: is respond reachable at all, under the utility each form actually booted with?
+    per_form_respond = {f: _respond_reachability(records, f) for f in forms}
+    firing = [f for f, e in per_form_respond.items() if e.get("fires") is True]
+    unknown = [f for f, e in per_form_respond.items() if e.get("fires") is None]
+    reachable = [f for f, e in per_form_respond.items() if e.get("fires") is False]
+    if firing:
+        note = (
+            f"FIRES for {firing}: respond cannot win the argmax at any credence the frozen "
+            f"engine can attain (its grid ceilings at p1={ENGINE_P1_CEILING}; 40 y=1 verdicts "
+            f"asymptote at {ENGINE_P1_OBSERVED_ASYMPTOTE}, live-verified). The binding bar is "
+            "threshold_whole_menu, NOT threshold_vs_abstain — the engine argmaxes over the "
+            "whole menu, so respond must outbid gather/ask, which world.utility_rows prices "
+            "as myopic perfect information (a DECLARED overvaluation of information; see the "
+            "register, item 5). Read the two thresholds together: where threshold_vs_abstain "
+            "is cleared but threshold_whole_menu is not, the demand is on OUR OWN information "
+            "pricing as much as on the engine's refine lattice, and it is honest to say so."
         )
-        per_form_ceiling[f] = {"n": hit, "of": len(decides)}
-        total_ceiling += hit
-        total_ticks += len(decides)
+    elif reachable and not unknown:
+        note = (
+            f"DOES NOT FIRE: respond is REACHABLE for {reachable} under the utility that form "
+            f"actually booted with — its whole-menu threshold sits below the engine's "
+            f"attainable p1. The Boundary V/R demand is NOT evidenced by this run. (It fired "
+            "historically only under the world's fallback u_wrong=-9.0, which no live shadow "
+            "ever ran under.)"
+        )
+    else:
+        note = (
+            f"NOT DETERMINED for {unknown}: no boot-record u_bar, so the threshold — a "
+            "function of the utility posterior, not a constant — cannot be derived. No claim "
+            "is made either way."
+        )
     entries.append({
         "name": "respond_unreachable_p1_ceiling",
         "boundary_demanded": "proplang Boundary V/R (the refine lattice)",
-        "count": total_ceiling, "of": total_ticks, "per_form": per_form_ceiling,
+        "fires": bool(firing),
+        "count": sum(e.get("n_ticks_at_ceiling_without_responding", 0) or 0
+                     for e in per_form_respond.values()),
+        "of": total_ticks,
+        "per_form": per_form_respond,
+        "note": note,
+    })
+
+    # ask can never fire while the interrupt cost dwarfs the gather cost — a life-agent-side
+    # consequence of WHERE the two exchange rates are sourced, surfaced rather than buried.
+    ask_per_form: dict[str, Any] = {}
+    for f in forms:
+        u_bar = latest_boot_u_bar(records, f)
+        if u_bar is None:
+            ask_per_form[f] = {"dominated": None, "reason": "no boot-record u_bar"}
+            continue
+        pairs = W.utility_by_action(u_bar)
+        (g0, g1), (a0, a1) = pairs["gather"], pairs["ask"]
+        dominated = g0 >= a0 and g1 >= a1
+        ask_per_form[f] = {
+            "dominated": dominated,
+            "q_lambda_int": round(abs(float(u_bar.get("lambda_int", 0.0))), 6),
+            "g_kappa_att": round(abs(float(u_bar.get("kappa_att", 0.0))), 6),
+            "n_ask_chosen": sum(
+                1 for r in _of_kind(records, "decide", f) if r.get("action") == "ask"),
+        }
+    entries.append({
+        "name": "ask_dominated_by_gather",
+        "boundary_demanded": ("none on the engine side — a life-agent utility-SOURCING flag "
+                              "(register item 6): a dedicated interrupt/effort latent, rather "
+                              "than repurposing lambda_int/kappa_att"),
+        "fires": any(v.get("dominated") is True for v in ask_per_form.values()),
+        "count": sum(v.get("n_ask_chosen", 0) or 0 for v in ask_per_form.values()),
+        "of": total_ticks,
+        "per_form": ask_per_form,
         "note": (
-            "respond needs p1 > 0.9 strictly (EU(respond) = 10*p1 - 9 under the world's "
-            "declared default u_wrong=-9.0/u_correct=1.0); the grid's ceiling is 0.9, "
-            "where EU(respond) ties EU(abstain)=0 and abstain wins by first-listed "
-            "order (world.AFFORDANCES) — verified live against the real binary. "
-            "Counted: decide ticks where the shadow's p1 hit the ceiling."
+            "gather and ask carry the SAME payoff shape (both priced as myopic perfect "
+            "information) and differ only by their cost, so whenever q=|lambda_int| >= "
+            "g=|kappa_att| the gather row dominates the ask row POINTWISE and ask can never "
+            "win at any p1 — no credence, no evidence, no boundary changes that. At the live "
+            "posterior q~1.0 (an interrupt costs about as much as a correct answer is worth) "
+            "against g~0.03, so ask is dead by ~30x. count = ticks that nonetheless chose ask "
+            "(expected: 0)."
         ),
     })
 
@@ -565,6 +859,7 @@ def demand_ledger(records: list[dict[str, Any]], forms: list[str]) -> list[dict[
         entries.append({
             "name": "latent_action_degenerate",
             "boundary_demanded": "pSaid growth (Phase-3 demand)",
+            "fires": n_insensitive > 0,
             "count": n_insensitive, "of": len(decides),
             "distinct_actions_observed": distinct_actions,
             "note": (
@@ -578,6 +873,7 @@ def demand_ledger(records: list[dict[str, Any]], forms: list[str]) -> list[dict[
         entries.append({
             "name": "latent_action_degenerate",
             "boundary_demanded": "pSaid growth (Phase-3 demand)",
+            "fires": False,
             "count": 0, "of": 0,
             "note": 'form "latent@1" was not run in this log — nothing to measure.',
         })
@@ -594,6 +890,7 @@ def demand_ledger(records: list[dict[str, Any]], forms: list[str]) -> list[dict[
         entries.append({
             "name": "kary_candidates_inexpressible",
             "boundary_demanded": "increment A (options-as-data)",
+            "fires": n_kary > 0,
             "count": n_kary, "of": len(decides),
             "note": (
                 f'ticks with summary.n_candidates >= 2, counted on form '
@@ -607,6 +904,7 @@ def demand_ledger(records: list[dict[str, Any]], forms: list[str]) -> list[dict[
         entries.append({
             "name": "kary_candidates_inexpressible",
             "boundary_demanded": "increment A (options-as-data)",
+            "fires": False,
             "count": 0, "of": 0, "note": "no decide ticks in this log.",
         })
 
@@ -614,29 +912,70 @@ def demand_ledger(records: list[dict[str, Any]], forms: list[str]) -> list[dict[
     per_form_cold: dict[str, dict[str, int]] = {}
     total_cold = 0
     per_form_source_records: dict[str, int | None] = {}
+    per_form_warm: dict[str, dict[str, Any] | None] = {}
     for f in forms:
         decides = _of_kind(records, "decide", f)
         n_cold = sum(1 for r in decides if _p1(r) == 0.5)
         per_form_cold[f] = {"n": n_cold, "of": len(decides)}
         total_cold += n_cold
         per_form_source_records[f] = _latest_boot_n_source_records(records, f)
+        per_form_warm[f] = latest_boot_warm(records, f)
     entries.append({
         "name": "cold_start_feature_insensitivity",
         "boundary_demanded": "the warm-corpus size is the binding constraint",
+        "fires": total_cold > 0,
         "count": total_cold, "of": total_ticks, "per_form": per_form_cold,
         "boot_snapshot_n_source_records": per_form_source_records,
+        "boot_snapshot_warm_join": per_form_warm,
         "note": (
-            "boot_snapshot_n_source_records is the REAL BootSnapshot.n_source_records "
-            "each form's most recent kind:\"boot\" row persisted (the raw warm-evidence "
-            "row count that (re)boot's snapshot found, before join/exclusion filtering) "
-            "— null for a form with no boot record, or one written before this field "
-            "existed. count/per_form above remain a SECONDARY, corroborating signal: "
-            "the count of p1==0.5 (uninformative) decide ticks, a directly observable "
-            "proxy for the cold-start plateau still being in effect."
+            "boot_snapshot_n_source_records is the REAL BootSnapshot.n_source_records each "
+            "form's most recent kind:\"boot\" row persisted: the VERDICT-source rows "
+            "(decisions + reactions) that (re)boot's snapshot read, before join/exclusion "
+            "filtering — null for a form with no boot record, or one written before the "
+            "field existed. It deliberately EXCLUDES the warm fair-fight rows, which are "
+            "accounted separately in boot_snapshot_warm_join (rows read vs rows actually "
+            "joined, with a loud note when a non-empty vector file joined ZERO rows): a warm "
+            "row that cannot join teaches the shadow nothing and must never pad a published "
+            "warm-corpus size. count/per_form above remain a SECONDARY, corroborating signal: "
+            "p1==0.5 (uninformative) decide ticks, a directly observable proxy for the "
+            "cold-start plateau still being in effect."
         ),
     })
 
     return entries
+
+
+# --- the world's own policy, published (what the declared utility does at each credence) ---
+
+
+_POLICY_GRID: tuple[float, ...] = (0.0, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95, 0.99, 1.0)
+
+
+def world_policy(records: list[dict[str, Any]], forms: list[str]) -> dict[str, Any]:
+    """What each form's DECLARED utility would fire at a given credence — the policy the
+    shadow is actually running, published rather than left to be inferred from a tick
+    histogram. Derived from the boot record's own u_bar (never a default), through
+    ``world.argmax_action`` (argmaxEU, first-listed ties — the wire's own rule), so a reader
+    can see the p1 regions each affordance owns and check any observed tick against them."""
+    out: dict[str, Any] = {}
+    for f in forms:
+        u_bar = latest_boot_u_bar(records, f)
+        if u_bar is None:
+            out[f] = {"u_bar": None,
+                      "note": "no boot-record u_bar — this form's policy is not derivable."}
+            continue
+        out[f] = {
+            "u_bar": u_bar,
+            "utility_table": utility_table_by_action(u_bar),
+            "argmax_by_p1": {str(p): W.argmax_action(u_bar, p) for p in _POLICY_GRID},
+            "note": (
+                "argmax_by_p1 is this world's OWN utility arithmetic (world.argmax_action) "
+                "over the boot-recorded u_bar — the same table the frozen engine argmaxes. "
+                "Information actions are priced as myopic perfect information (utility_rows' "
+                "declared bake-in), which is why gather owns most of the interior."
+            ),
+        }
+    return out
 
 
 # --- 5. provenance -------------------------------------------------------------------------
@@ -685,10 +1024,10 @@ def _latest_boot_world_digest(records: list[dict[str, Any]], form: str) -> str |
 
 
 def build_report(
-    records: list[dict[str, Any]], baseline_vectors: dict[str, dict[str, Any]] | None = None,
+    records: list[dict[str, Any]], baseline: Baseline | None = None,
 ) -> dict[str, Any]:
     """The pure core: every section, over the given record list and (optional) baseline
-    vectors. No wall-clock field — given the same inputs this is byte-reproducible."""
+    arm. No wall-clock field — given the same inputs this is byte-reproducible."""
     forms = declared_forms(records)
     stats_record = latest_stats_record(records)
 
@@ -697,22 +1036,20 @@ def build_report(
     provenance_by_form = provenance(records, forms)
 
     grounded_by_form: dict[str, Any] | None = None
-    if baseline_vectors is not None:
+    if baseline is not None:
         grounded_by_form = {}
         for f in forms:
             terminal = terminal_decide_per_question(records, f)
-            cont = contingency_tables(terminal, baseline_vectors)
-            digest = _latest_boot_world_digest(records, f)
-            default_digest = SH.world_digest({}, utility_form=f) if f in W.UTILITY_FORMS else None
+            cont = contingency_tables(terminal, baseline.by_mirror_id)
             grounded_by_form[f] = {
+                "join": join_diagnostics(terminal, baseline),
                 "contingency": cont,
                 "realized_loss": realized_loss(
-                    terminal, baseline_vectors, boot_world_digest=digest,
+                    terminal, baseline.by_mirror_id,
+                    u_bar=latest_boot_u_bar(records, f),
+                    boot_world_digest=_latest_boot_world_digest(records, f),
                 ),
                 "n_min_honesty": n_min_honesty(cont["n_joined"]),
-                "default_table_matches_boot": (
-                    digest is not None and default_digest is not None and digest == default_digest
-                ),
             }
 
     return {
@@ -721,7 +1058,9 @@ def build_report(
             "map": dict(REAL_TO_MEMBRANE), "lines": list(LEGEND_LINES),
             "hedge_modelling_choice": HEDGE_MODELLING_CHOICE,
         },
+        "global_counters": global_counters(stats_record),
         "per_form_stats": per_form_stats,
+        "world_policy": world_policy(records, forms),
         "differential": differential_by_form,
         "grounded": grounded_by_form,
         "demand_ledger": demand_ledger(records, forms),
@@ -737,6 +1076,20 @@ def _fmt_fraction(n: int, of: int) -> str:
     return f"{n}/{of}{pct}"
 
 
+def _md_global_counters(gc: dict[str, Any]) -> list[str]:
+    lines = ["## 0. Submit-path counters (PROCESS-GLOBAL, reported once)", ""]
+    if not gc.get("observable"):
+        lines += [f"_{gc['note']}_", ""]
+        return lines
+    lines.append(
+        f"- drops={gc['drops']} · skips={gc['skips']} · submit_errors={gc['submit_errors']} "
+        f"· queue_depth={gc['queue_depth']} (as of the log's last kind:\"stats\" row, "
+        f"ts={gc['as_of_ts']})"
+    )
+    lines += [f"- {gc['scope']}", ""]
+    return lines
+
+
 def _md_per_form_stats(form: str, stats: dict[str, Any]) -> list[str]:
     lines = [f"### {form}", ""]
     lines.append(f"- decide ticks: {stats['n_decide_ticks']}")
@@ -750,7 +1103,23 @@ def _md_per_form_stats(form: str, stats: dict[str, Any]) -> list[str]:
         lines.append(f"  - {action}: {_fmt_fraction(v['n'], v['of'])}")
     lat = stats["decide_latency_ms"]
     lines.append(f"- decide latency: p50={lat['p50']} ms, p95={lat['p95']} ms (n={lat['n']})")
-    lines.append(f"- drops/skips/dead_drops: {stats['drops_skips_dead_drops']}")
+    lines.append(f"- dead_drops (this form only): {stats['dead_drops_note']}")
+    lines.append("")
+    return lines
+
+
+def _md_world_policy(form: str, p: dict[str, Any]) -> list[str]:
+    lines = [f"### {form}", ""]
+    if p.get("u_bar") is None:
+        lines += [f"_{p['note']}_", ""]
+        return lines
+    lines.append(f"- u_bar (boot-recorded, the utility the shadow actually decided under): "
+                 f"{p['u_bar']}")
+    lines.append(f"- utility table (action -> [u(y=0), u(y=1)]): {p['utility_table']}")
+    lines.append("- would-fire by credence (argmaxEU, first-listed ties):")
+    for p1, action in p["argmax_by_p1"].items():
+        lines.append(f"  - p1={p1}: {action}")
+    lines.append(f"- note: {p['note']}")
     lines.append("")
     return lines
 
@@ -797,11 +1166,18 @@ def _md_contingency_table(name: str, table: dict[str, int]) -> list[str]:
 
 def _md_grounded(form: str, g: dict[str, Any]) -> list[str]:
     lines = [f"### {form}", ""]
-    cont = g["contingency"]
+    j = g["join"]
+    lines.append(f"**Join: {j['n_joined']} rows.** {j['note']}")
+    lines.append("")
     lines.append(
-        f"- n joined (terminal decide tick <-> baseline vector, by question_id): "
-        f"{cont['n_joined']}"
+        f"- shadow-observed questions: {j['n_shadow_questions']} · baseline rows read: "
+        f"{j['baseline_rows_read']} (scored: {j['baseline_rows_scored']}, mapped into the "
+        f"mirror-id namespace: {j['baseline_rows_mapped']}, unmapped: "
+        f"{j['baseline_rows_unmapped']}, corpus->mirror map size: "
+        f"{j['corpus_to_mirror_id_map_size']})"
     )
+    lines.append("")
+    cont = g["contingency"]
     lines += _md_contingency_table(
         "would-abstain x actual-wrong", cont["would_abstain_x_actual_wrong"],
     )
@@ -811,19 +1187,24 @@ def _md_grounded(form: str, g: dict[str, Any]) -> list[str]:
     lines.append(f"- miss definition: {cont['miss_definition']}")
     lines.append("")
     rl = g["realized_loss"]
-    lines.append(f"- decisive definition: {rl['decisive_definition']}")
-    lines.append(f"- n joined={rl['n_joined']}, n decisive={rl['n_decisive']}")
-    if rl["window"]:
-        lines.append(f"- window: {rl['window']['from']} .. {rl['window']['to']}")
-    real_p, would_p = rl["real_policy"], rl["would_policy"]
-    lines.append(f"- real policy mean loss: {real_p['mean_loss']} (n={real_p['n']})")
-    lines.append(f"- would policy mean loss: {would_p['mean_loss']} (n={would_p['n']})")
-    lines.append(f"- utility table used: {rl['utility_table_used']}")
-    lines.append(
-        f"- default table matches this form's boot world_digest: "
-        f"{g['default_table_matches_boot']}"
-    )
-    lines.append("")
+    if not rl.get("scored"):
+        lines.append(f"- realized loss: **{rl['reason']}**")
+        lines.append("")
+    else:
+        lines.append(f"- decisive definition: {rl['decisive_definition']}")
+        lines.append(f"- n joined={rl['n_joined']}, n decisive={rl['n_decisive']}")
+        if rl["window"]:
+            lines.append(f"- window: {rl['window']['from']} .. {rl['window']['to']}")
+        real_p, would_p = rl["real_policy"], rl["would_policy"]
+        lines.append(f"- real policy mean loss: {real_p['mean_loss']} (n={real_p['n']})")
+        lines.append(f"- would policy mean loss: {would_p['mean_loss']} (n={would_p['n']})")
+        lines.append(f"- utility table used: {rl['utility_table_used']}")
+        lines.append(
+            "- scored under the boot-recorded u_bar (the utility this form actually decided "
+            f"under, NOT the world's fallback defaults): {rl['scored_under_boot_u_bar']} — "
+            f"u_bar={rl['u_bar_used']}, boot world_digest={rl['boot_world_digest']}"
+        )
+        lines.append("")
     nm = g["n_min_honesty"]
     lines.append(f"- n_min honesty: {nm['note']} (n_min={nm['n_min']}, window={nm['window']})")
     lines.append(f"  - source: {nm['source']}")
@@ -836,10 +1217,14 @@ def _md_demand_ledger(entries: list[dict[str, Any]]) -> list[str]:
     for e in entries:
         lines.append(f"### {e['name']}")
         lines.append("")
+        if "fires" in e:
+            lines.append(f"- **fires: {e['fires']}** (does this run actually evidence the demand?)")
         lines.append(f"- count: {_fmt_fraction(e['count'], e['of'])}")
         lines.append(f"- boundary demanded: {e['boundary_demanded']}")
         if "per_form" in e:
             lines.append(f"- per form: {e['per_form']}")
+        if "boot_snapshot_warm_join" in e:
+            lines.append(f"- boot snapshot warm join per form: {e['boot_snapshot_warm_join']}")
         if "boot_snapshot_n_source_records" in e:
             lines.append(
                 f"- boot snapshot n_source_records per form: "
@@ -871,9 +1256,15 @@ def render_md(report: dict[str, Any]) -> str:
     lines.append(f"Forms declared: {', '.join(report['forms_declared']) or '(none)'}")
     lines.append("")
 
+    lines += _md_global_counters(report["global_counters"])
+
     lines += ["## 1. Per-form stats", ""]
     for form, stats in report["per_form_stats"].items():
         lines += _md_per_form_stats(form, stats)
+
+    lines += ["## 1b. The world's declared policy (from each boot's own u_bar)", ""]
+    for form, p in report["world_policy"].items():
+        lines += _md_world_policy(form, p)
 
     lines += ["## 2. Differential vs the incumbent", ""]
     lines.append("Legend (a named modelling choice, printed verbatim):")
@@ -927,8 +1318,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
     records = load_shadow_records(Path(args.shadow_log))
-    baseline_vectors = load_baseline_vectors(Path(args.vectors)) if args.vectors else None
-    report = build_report(records, baseline_vectors)
+    baseline = load_baseline_vectors(Path(args.vectors)) if args.vectors else None
+    report = build_report(records, baseline)
 
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -941,6 +1332,12 @@ def main(argv: list[str] | None = None) -> int:
         f"(forms={report['forms_declared']}, decide_ticks={n_decide}, "
         f"grounded={'yes' if report['grounded'] is not None else 'no'})"
     )
+    # A grounded section whose join is EMPTY is the one result a reader must not have to dig
+    # for — it is the difference between "no signal yet" and "this report is measuring
+    # nothing". Said here, on stdout, as well as in the report body.
+    for form, g in (report["grounded"] or {}).items():
+        if g["join"]["n_joined"] == 0:
+            print(f"  !! {form}: grounded join is EMPTY — {g['join']['note']}")
     return 0
 
 

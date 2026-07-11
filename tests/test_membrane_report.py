@@ -18,12 +18,46 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
 from membrane import report as R
 
+from life_agent.core import decisions as DEC
 from life_agent.fairfight import records as REC
-from life_agent.membrane import shadow as SH
+
+# The REAL utility posterior means (GET :8798/utility, 2026-07-11) — seven scalars, no owner
+# data. Fixtures declare THIS by default, not world.utility_rows' fallbacks: the reaction loop
+# has already narrowed u_wrong from -9.0 to about -5.94, which moves every utility-derived
+# threshold in the report, and a suite that only ever exercised the defaults is precisely why
+# a false demand claim survived to the deliverable.
+LIVE_U_BAR: dict[str, float] = {
+    "u_correct": 1.0, "u_abstain": 0.0, "u_wrong": -5.9395, "u_wrong_scoped": -2.0827,
+    "u_hedged": 0.3964, "lambda_int": 1.0009, "kappa_att": 0.0344,
+}
+# the world's fallback table — what a shadow would run under only if its posterior were unread
+DEFAULT_U_BAR: dict[str, float] = {
+    "u_correct": 1.0, "u_abstain": 0.0, "u_wrong": -9.0, "lambda_int": 0.1, "kappa_att": 0.02,
+}
+_MISSING_U_BAR: Any = object()  # sentinel: "not passed" vs an explicit None (an old log)
+
+# The two id namespaces, kept apart on purpose (this is the join the report used to get wrong):
+#   * QUESTIONS maps a CORPUS id (what an OutcomeVector carries) to the question TEXT;
+#   * DEC.question_id(text) is the MIRROR id (what every shadow decide record carries).
+# No test below may fabricate the same id on both sides — the bridge must be exercised.
+QUESTIONS: dict[str, str] = {
+    "q-001": "What colour is the shed?",
+    "q-002": "When does the permit expire?",
+    "q-003": "Who signed the lease?",
+    "q-004": "How many keys are there?",
+}
+
+
+def mirror(corpus_id: str) -> str:
+    """The mirror id a live decide record would carry for that corpus question."""
+    return DEC.question_id(QUESTIONS[corpus_id])
+
 
 # --- fixture builders ------------------------------------------------------------------
 
@@ -39,14 +73,25 @@ def _summary(**overrides: Any) -> dict[str, Any]:
 
 def _boot(form: str, *, ts: float = 100.0, binary_sha256: str = "abc123",
           world_digest: str = "digest-1", respawn_count: int = 0,
-          forms: list[str] | None = None, n_source_records: int = 0) -> dict[str, Any]:
-    return {
+          forms: list[str] | None = None, n_source_records: int = 0,
+          u_bar: dict[str, float] | None = _MISSING_U_BAR,
+          warm: dict[str, Any] | None = None) -> dict[str, Any]:
+    """A `kind: "boot"` row. `u_bar` defaults to the LIVE posterior (below) rather than to
+    the world's fallback defaults, deliberately: every utility-derived number in the report
+    is a FUNCTION of this, and a fixture that only ever declared the defaults is how a
+    threshold got shipped as the constant 0.9. Pass `u_bar=None` for an OLD log (written
+    before the shadow persisted it) — the report must then REFUSE to derive, not fall back."""
+    row: dict[str, Any] = {
         "event_type": "membrane-shadow", "kind": "boot", "ts": ts, "form": form,
         "engine": {"ok": True, "proto": 1, "models": 40, "namespace_bits": 6},
         "binary_sha256": binary_sha256, "forms": forms or [form],
         "world_digest": world_digest, "respawn_count": respawn_count,
-        "n_source_records": n_source_records,
+        "n_source_records": n_source_records, "warm": warm,
     }
+    resolved = LIVE_U_BAR if u_bar is _MISSING_U_BAR else u_bar
+    if resolved is not None:
+        row["u_bar"] = dict(resolved)
+    return row
 
 
 def _respawn(form: str, *, ts: float = 100.0, respawn_count: int = 1) -> dict[str, Any]:
@@ -129,8 +174,26 @@ def _write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
             f.write(json.dumps(row) + "\n")
 
 
-def _write_baseline_run(run_dir: Path, vectors: list[dict[str, Any]]) -> None:
+def _write_baseline_run(run_dir: Path, vectors: list[dict[str, Any]],
+                        *, questions: dict[str, str] | None = None) -> None:
+    """A fair-fight run dir exactly as ``run_fairfight.py`` writes the parts this report
+    reads: the baseline arm's vectors (CORPUS ids) plus the ``run_meta.json`` →
+    ``questions_path`` indirection that is the ONLY thing relating those ids to the mirror
+    ids the shadow's own records carry. Omitting the questions file (``questions={}``) is a
+    real, testable state — a run whose questions file is gone — not a fixture shortcut."""
     _write_jsonl(run_dir / "arms" / "baseline" / "vectors.jsonl", vectors)
+    qs = QUESTIONS if questions is None else questions
+    questions_path = run_dir / "questions.yaml"
+    run_dir.mkdir(parents=True, exist_ok=True)
+    questions_path.write_text(
+        "questions:\n" + "".join(
+            f'  - id: {qid}\n    question: "{text}"\n' for qid, text in qs.items()
+        ),
+        encoding="utf-8",
+    )
+    (run_dir / "run_meta.json").write_text(
+        json.dumps({"questions_path": str(questions_path)}), encoding="utf-8",
+    )
 
 
 # --- load_shadow_records / load_baseline_vectors ----------------------------------------
@@ -155,7 +218,9 @@ def test_load_shadow_records_missing_file_is_empty(tmp_path: Path) -> None:
     assert R.load_shadow_records(tmp_path / "nope.jsonl") == []
 
 
-def test_load_baseline_vectors_reads_baseline_arm_and_filters_scored(tmp_path: Path) -> None:
+def test_load_baseline_vectors_reads_baseline_arm_and_rekeys_onto_mirror_ids(
+    tmp_path: Path,
+) -> None:
     run_dir = tmp_path / "run-1"
     _write_baseline_run(run_dir, [
         _vector(question_id="q-001", status="ok"),
@@ -164,12 +229,34 @@ def test_load_baseline_vectors_reads_baseline_arm_and_filters_scored(tmp_path: P
     # a non-baseline arm must never leak into the join population
     _write_jsonl(run_dir / "arms" / "competitor" / "vectors.jsonl",
                  [_vector(question_id="q-003", arm="competitor")])
-    vectors = R.load_baseline_vectors(run_dir)
-    assert set(vectors) == {"q-001"}
+    baseline = R.load_baseline_vectors(run_dir)
+    # keyed by MIRROR id — the namespace the shadow's own decide records live in
+    assert set(baseline.by_mirror_id) == {mirror("q-001")}
+    assert baseline.by_mirror_id[mirror("q-001")]["question_id"] == "q-001"  # row keeps its id
+    assert baseline.n_rows == 2
+    assert baseline.n_scored == 1
+    assert baseline.id_map_size == len(QUESTIONS)
+    assert baseline.n_unmapped == 0
+
+
+def test_load_baseline_vectors_names_an_unmappable_corpus_loudly(tmp_path: Path) -> None:
+    """A run whose questions file no longer maps its corpus ids can produce NO join at all.
+    That must be stated, not left to be read off a table of zeros."""
+    run_dir = tmp_path / "run-2"
+    _write_baseline_run(run_dir, [_vector(question_id="q-001", status="ok")], questions={})
+    baseline = R.load_baseline_vectors(run_dir)
+    assert baseline.by_mirror_id == {}
+    assert baseline.n_scored == 1
+    assert baseline.n_unmapped == 1
+    assert "0 of 1 scored baseline rows could be mapped" in baseline.note
+    assert "EMPTY BY CONSTRUCTION, not under-powered" in baseline.note
 
 
 def test_load_baseline_vectors_missing_run_dir_is_empty(tmp_path: Path) -> None:
-    assert R.load_baseline_vectors(tmp_path / "no-such-run") == {}
+    baseline = R.load_baseline_vectors(tmp_path / "no-such-run")
+    assert baseline.by_mirror_id == {}
+    assert baseline.n_rows == 0
+    assert "nothing to join against" in baseline.note
 
 
 # --- declared_forms ----------------------------------------------------------------------
@@ -234,8 +321,8 @@ def test_form_stats_counts_action_distribution_and_percentiles() -> None:
     # p95 -> idx ceil(0.95*4)-1=3 -> 40
     assert stats["decide_latency_ms"] == {"p50": 20.0, "p95": 40.0, "n": 4}
     # no stats_record given (the default) -> the honest not-observable note, never zeros.
-    assert stats["counters"] is None
-    assert "never" in stats["drops_skips_dead_drops"]
+    assert stats["dead_drops"] is None
+    assert "never" in stats["dead_drops_note"]
 
 
 def test_form_stats_empty_form_has_no_denominator_crash() -> None:
@@ -248,9 +335,12 @@ def test_form_stats_empty_form_has_no_denominator_crash() -> None:
 # --- form_stats: real counters when a kind:"stats" record is present -----------------------
 
 
-def test_form_stats_reports_real_counters_when_a_stats_record_is_given() -> None:
+def test_form_stats_reports_only_its_own_per_form_counter_dead_drops() -> None:
+    """I2: `stats()` reports drops/skips/submit_errors as PROCESS-GLOBAL totals (one queue,
+    one submit path, every form) — copying them into each form's block made a reader at the
+    default two-form deployment double-count all three. Only dead_drops is per-form."""
     records = [
-        _decide(form="table@1", question_id="q-001", action="respond",
+        _decide(form="table@1", question_id=mirror("q-001"), action="respond",
                 real_effector="report"),
     ]
     stats_row = _stats(
@@ -258,35 +348,48 @@ def test_form_stats_reports_real_counters_when_a_stats_record_is_given() -> None
         forms={"table@1": {"alive": True, "respawns": 0, "ticks": 5, "dead_drops": 7}},
     )
     stats = R.form_stats(records, "table@1", stats_record=stats_row)
-    assert stats["counters"] == {
-        "drops": 3, "skips": 1, "submit_errors": 2, "dead_drops": 7, "as_of_ts": 100.0,
-    }
-    note = stats["drops_skips_dead_drops"]
-    assert "3" in note and "1" in note and "2" in note and "7" in note
-    assert "not observable" not in note
+    assert stats["dead_drops"] == 7
+    assert "drops" not in stats and "skips" not in stats and "submit_errors" not in stats
+    assert "process-global" in stats["dead_drops_note"]
+
+
+def test_global_counters_are_reported_once_and_labelled_global() -> None:
+    stats_row = _stats(drops=3, skips=1, submit_errors=2, queue_depth=4,
+                       forms={"table@1": {"dead_drops": 7}, "latent@1": {"dead_drops": 0}})
+    gc = R.global_counters(stats_row)
+    assert gc["observable"] is True
+    assert (gc["drops"], gc["skips"], gc["submit_errors"]) == (3, 1, 2)
+    assert "PROCESS-GLOBAL" in gc["scope"]
+
+
+def test_global_counters_without_a_stats_record_are_not_observable_never_zero() -> None:
+    gc = R.global_counters(None)
+    assert gc["observable"] is False
+    assert "not observable" in gc["note"]
+    assert "drops" not in gc  # never a fabricated 0
 
 
 def test_form_stats_falls_back_to_the_honest_note_without_a_stats_record() -> None:
     records = [
-        _decide(form="table@1", question_id="q-001", action="respond",
+        _decide(form="table@1", question_id=mirror("q-001"), action="respond",
                 real_effector="report"),
     ]
     stats = R.form_stats(records, "table@1", stats_record=None)
-    assert stats["counters"] is None
-    assert "not observable" in stats["drops_skips_dead_drops"]
+    assert stats["dead_drops"] is None
+    assert "not observable" in stats["dead_drops_note"]
 
 
 def test_form_stats_falls_back_when_stats_record_has_no_entry_for_this_form() -> None:
     # a stats row exists, but this form isn't in its "forms" map (e.g. a log from a run
     # that declared a different form set) -> honest fallback, never a fabricated zero.
     records = [
-        _decide(form="table@1", question_id="q-001", action="respond",
+        _decide(form="table@1", question_id=mirror("q-001"), action="respond",
                 real_effector="report"),
     ]
     stats_row = _stats(drops=1, skips=0, submit_errors=0, forms={"latent@1": {"dead_drops": 0}})
     stats = R.form_stats(records, "table@1", stats_record=stats_row)
-    assert stats["counters"] is None
-    assert "not observable" in stats["drops_skips_dead_drops"]
+    assert stats["dead_drops"] is None
+    assert "not observable" in stats["dead_drops_note"]
 
 
 # --- latest_stats_record ---------------------------------------------------------------
@@ -366,18 +469,18 @@ def test_differential_no_ticks_rate_is_none() -> None:
 
 def test_contingency_would_abstain_x_actual_wrong() -> None:
     terminal = {
-        "q-001": _decide(form="table@1", question_id="q-001", action="abstain",
+        mirror("q-001"): _decide(form="table@1", question_id=mirror("q-001"), action="abstain",
                           real_effector="abstain"),
-        "q-002": _decide(form="table@1", question_id="q-002", action="respond",
+        mirror("q-002"): _decide(form="table@1", question_id=mirror("q-002"), action="respond",
                           real_effector="report"),
-        "q-003": _decide(form="table@1", question_id="q-003", action="abstain",
+        mirror("q-003"): _decide(form="table@1", question_id=mirror("q-003"), action="abstain",
                           real_effector="abstain"),
     }
     vectors = {
-        "q-001": _vector(question_id="q-001", bucket="CONFIDENT_WRONG", cause="wrong_value",
+        mirror("q-001"): _vector(question_id="q-001", bucket="CONFIDENT_WRONG", cause="wrong_value",
                           asserted=True, asserted_correct=False),
-        "q-002": _vector(question_id="q-002", bucket="CORRECT"),
-        "q-003": _vector(question_id="q-003", bucket="CORRECT"),
+        mirror("q-002"): _vector(question_id="q-002", bucket="CORRECT"),
+        mirror("q-003"): _vector(question_id="q-003", bucket="CORRECT"),
     }
     cont = R.contingency_tables(terminal, vectors)
     assert cont["n_joined"] == 3
@@ -392,15 +495,15 @@ def test_contingency_would_abstain_x_actual_wrong() -> None:
 
 def test_contingency_would_gather_x_actual_miss_narrow_cause() -> None:
     terminal = {
-        "q-001": _decide(form="table@1", question_id="q-001", action="gather",
+        mirror("q-001"): _decide(form="table@1", question_id=mirror("q-001"), action="gather",
                           real_effector="abstain"),
-        "q-002": _decide(form="table@1", question_id="q-002", action="respond",
+        mirror("q-002"): _decide(form="table@1", question_id=mirror("q-002"), action="respond",
                           real_effector="report"),
     }
     vectors = {
-        "q-001": _vector(question_id="q-001", bucket="WRONGLY_WITHHELD",
+        mirror("q-001"): _vector(question_id="q-001", bucket="WRONGLY_WITHHELD",
                           cause="retrieval_miss", asserted=False, asserted_correct=False),
-        "q-002": _vector(question_id="q-002", bucket="CORRECT"),
+        mirror("q-002"): _vector(question_id="q-002", bucket="CORRECT"),
     }
     cont = R.contingency_tables(terminal, vectors)
     table = cont["would_gather_x_actual_miss"]
@@ -410,14 +513,14 @@ def test_contingency_would_gather_x_actual_miss_narrow_cause() -> None:
 
 def test_contingency_miss_excludes_extraction_and_pooling_loss() -> None:
     terminal = {
-        "q-001": _decide(form="table@1", question_id="q-001", action="gather",
+        mirror("q-001"): _decide(form="table@1", question_id=mirror("q-001"), action="gather",
                           real_effector="abstain"),
     }
     # WRONGLY_WITHHELD but NOT retrieval_miss: must not count as "actual-miss" for the
     # narrow would-gather contingency (extraction/pooling losses aren't fixed by
     # widening retrieval breadth).
     vectors = {
-        "q-001": _vector(question_id="q-001", bucket="WRONGLY_WITHHELD",
+        mirror("q-001"): _vector(question_id="q-001", bucket="WRONGLY_WITHHELD",
                           cause="extraction_miss", asserted=False, asserted_correct=False),
     }
     cont = R.contingency_tables(terminal, vectors)
@@ -429,45 +532,75 @@ def test_contingency_miss_excludes_extraction_and_pooling_loss() -> None:
 # --- realized loss -------------------------------------------------------------------------
 
 
-def test_utility_table_by_action_matches_world_defaults() -> None:
-    table = R.utility_table_by_action()
-    assert table["gather"] == [-0.02, -0.02]
-    assert table["ask"] == [-0.1, -0.1]
-    assert table["abstain"] == [0.0, 0.0]
+def test_utility_table_by_action_is_the_given_posterior_not_a_default() -> None:
+    table = R.utility_table_by_action(DEFAULT_U_BAR)
     assert table["respond"] == [-9.0, 1.0]
+    assert table["abstain"] == [0.0, 0.0]
+    assert table["gather"] == [-0.02, 0.98]   # myopic perfect information, not a pure cost
+    assert table["ask"] == [-0.1, 0.9]
     assert "think" not in table  # the internal sentinel row has no "fire" key
 
+    live = R.utility_table_by_action(LIVE_U_BAR)
+    assert live["respond"] == [-5.9395, 1.0]  # the SAME action, a materially different table
+    assert live != table
 
-def test_realized_loss_arithmetic_precise() -> None:
+
+def test_realized_loss_arithmetic_precise_under_the_declared_u_bar() -> None:
     terminal = {
-        "q-001": _decide(form="table@1", question_id="q-001", action="abstain",
+        mirror("q-001"): _decide(form="table@1", question_id=mirror("q-001"), action="abstain",
                           real_effector="report"),
-        "q-002": _decide(form="table@1", question_id="q-002", action="respond",
+        mirror("q-002"): _decide(form="table@1", question_id=mirror("q-002"), action="respond",
                           real_effector="report"),
     }
     vectors = {
-        "q-001": _vector(question_id="q-001", bucket="CONFIDENT_WRONG",
+        mirror("q-001"): _vector(question_id="q-001", bucket="CONFIDENT_WRONG",
                           asserted=True, asserted_correct=False),
-        "q-002": _vector(question_id="q-002", bucket="CORRECT",
+        mirror("q-002"): _vector(question_id="q-002", bucket="CORRECT",
                           asserted=True, asserted_correct=True),
     }
-    rl = R.realized_loss(terminal, vectors)
+    rl = R.realized_loss(terminal, vectors, u_bar=DEFAULT_U_BAR)
     # real losses: q-001 loss(respond, y=0)=9.0 ; q-002 loss(respond, y=1)=-1.0 -> mean 4.0
     assert rl["real_policy"]["mean_loss"] == 4.0
     # would losses: q-001 loss(abstain, y=0)=0.0 ; q-002 loss(respond, y=1)=-1.0 -> mean -0.5
     assert rl["would_policy"]["mean_loss"] == -0.5
 
+    # I1: the SAME rows under the LIVE posterior cost materially less — a wrong assert is
+    # -5.9395, not -9.0. Scoring under the default overstated it by ~50%, against a table no
+    # live shadow ever decided under.
+    live = R.realized_loss(terminal, vectors, u_bar=LIVE_U_BAR)
+    assert live["real_policy"]["mean_loss"] == round((5.9395 + -1.0) / 2, 4)
+    assert live["real_policy"]["mean_loss"] < rl["real_policy"]["mean_loss"]
+    assert live["scored_under_boot_u_bar"] is True
+    assert live["u_bar_used"] == LIVE_U_BAR
+
+
+def test_realized_loss_refuses_to_score_without_a_boot_u_bar() -> None:
+    """I1: an older log has no u_bar in its boot record. Scoring it under the world's
+    fallback table would publish a loss the run never incurred, so the report REFUSES and
+    says why — a known unknown, never a fabricated number."""
+    terminal = {
+        mirror("q-001"): _decide(form="table@1", question_id=mirror("q-001"), action="respond",
+                          real_effector="report"),
+    }
+    vectors = {mirror("q-001"): _vector(question_id="q-001", asserted=True,
+                                        asserted_correct=False)}
+    rl = R.realized_loss(terminal, vectors, u_bar=None)
+    assert rl["scored"] is False
+    assert "NOT SCORED" in rl["reason"]
+    assert rl["n_decisive"] == 1  # the population is still named — only the scoring refuses
+    assert "real_policy" not in rl
+
 
 def test_realized_loss_excludes_non_decisive_rows() -> None:
     terminal = {
-        "q-001": _decide(form="table@1", question_id="q-001", action="abstain",
+        mirror("q-001"): _decide(form="table@1", question_id=mirror("q-001"), action="abstain",
                           real_effector="abstain"),
     }
     vectors = {
-        "q-001": _vector(question_id="q-001", bucket="RIGHTLY_WITHHELD", cause="unanswerable",
-                          asserted=False, asserted_correct=False),
+        mirror("q-001"): _vector(question_id="q-001", bucket="RIGHTLY_WITHHELD",
+                          cause="unanswerable", asserted=False, asserted_correct=False),
     }
-    rl = R.realized_loss(terminal, vectors)
+    rl = R.realized_loss(terminal, vectors, u_bar=LIVE_U_BAR)
     assert rl["n_joined"] == 1
     assert rl["n_decisive"] == 0
     assert rl["real_policy"] == {"mean_loss": None, "n": 0}
@@ -475,16 +608,16 @@ def test_realized_loss_excludes_non_decisive_rows() -> None:
 
 def test_realized_loss_window_from_timestamps() -> None:
     terminal = {
-        "q-001": _decide(form="table@1", question_id="q-001", action="respond",
+        mirror("q-001"): _decide(form="table@1", question_id=mirror("q-001"), action="respond",
                           real_effector="report", ts=1000.0),
-        "q-002": _decide(form="table@1", question_id="q-002", action="respond",
+        mirror("q-002"): _decide(form="table@1", question_id=mirror("q-002"), action="respond",
                           real_effector="report", ts=2000.0),
     }
     vectors = {
-        "q-001": _vector(question_id="q-001", asserted=True, asserted_correct=True),
-        "q-002": _vector(question_id="q-002", asserted=True, asserted_correct=True),
+        mirror("q-001"): _vector(question_id="q-001", asserted=True, asserted_correct=True),
+        mirror("q-002"): _vector(question_id="q-002", asserted=True, asserted_correct=True),
     }
-    rl = R.realized_loss(terminal, vectors)
+    rl = R.realized_loss(terminal, vectors, u_bar=LIVE_U_BAR)
     assert rl["window"]["from"] < rl["window"]["to"]
 
 
@@ -507,20 +640,96 @@ def test_n_min_honesty_clears_bar() -> None:
 # --- demand ledger -------------------------------------------------------------------------
 
 
-def test_demand_ledger_p1_ceiling_counted_at_exactly_0_9() -> None:
+def _respond_entry(records: list[dict[str, Any]], forms: list[str]) -> dict[str, Any]:
+    ledger = {e["name"]: e for e in R.demand_ledger(records, forms)}
+    return ledger["respond_unreachable_p1_ceiling"]
+
+
+def test_demand_ledger_respond_threshold_is_derived_from_the_boot_u_bar_not_hardcoded() -> None:
+    """C3, the headline: the entry used to test p1 against a hard-coded ``P1_CEILING = 0.9``
+    and narrate it as "respond needs p1 > 0.9 under the world's declared default
+    u_wrong=-9.0" — a claim about a CONSTANT, published as a claim about the system. The
+    threshold is a function of the utility posterior, so it is derived from the u_bar the
+    boot record actually persisted."""
     records = [
-        _decide(form="table@1", question_id="q-001", action="abstain",
+        _boot("table@1", u_bar=LIVE_U_BAR),
+        _decide(form="table@1", question_id=mirror("q-001"), action="gather",
+                real_effector="gather", p1=0.89),
+    ]
+    entry = _respond_entry(records, ["table@1"])
+    per_form = entry["per_form"]["table@1"]
+    assert per_form["u_bar_source"] == "boot record"
+    # vs abstain: (0 - -5.9395)/(1 - -5.9395) = 0.8559 — BELOW the engine's own asymptote
+    # (0.8918), so "respond can't beat silence" is simply FALSE under the live posterior.
+    assert per_form["threshold_vs_abstain"] == pytest.approx(0.8559, abs=1e-4)
+    assert per_form["threshold_vs_abstain"] < R.ENGINE_P1_OBSERVED_ASYMPTOTE
+    # ...but the engine argmaxes the WHOLE menu, and gather (priced as myopic perfect
+    # information) outbids respond until p1 > 0.9942 — above the engine's 0.9 grid ceiling.
+    # So the demand still fires, for a DIFFERENT and honestly-named reason.
+    assert per_form["threshold_whole_menu"] == pytest.approx(0.9942, abs=1e-4)
+    assert per_form["binding_competitor"] == "gather"
+    assert per_form["argmax_at_engine_ceiling"] == "gather"
+    assert per_form["fires"] is True
+    assert entry["fires"] is True
+
+
+def test_demand_ledger_respond_does_not_fire_when_it_is_actually_reachable() -> None:
+    """The entry must be able to NOT fire. With a mild u_wrong the whole-menu threshold drops
+    below the engine's ceiling, and the report says so instead of repeating the demand."""
+    mild = {**LIVE_U_BAR, "u_wrong": -0.05, "kappa_att": 0.001}
+    records = [
+        _boot("table@1", u_bar=mild),
+        _decide(form="table@1", question_id=mirror("q-001"), action="respond",
+                real_effector="report", p1=0.88),
+    ]
+    entry = _respond_entry(records, ["table@1"])
+    assert entry["per_form"]["table@1"]["fires"] is False
+    assert entry["fires"] is False
+    assert "DOES NOT FIRE" in entry["note"]
+    assert "REACHABLE" in entry["note"]
+
+
+def test_demand_ledger_respond_observed_respond_tick_overrides_the_arithmetic() -> None:
+    """If the shadow was actually SEEN to respond, it is reachable — whatever any threshold
+    says. Observation beats derivation; and a tick that responded is never counted into a
+    "respond couldn't fire" tally."""
+    records = [
+        _boot("table@1", u_bar=LIVE_U_BAR),
+        _decide(form="table@1", question_id=mirror("q-001"), action="respond",
+                real_effector="report", p1=0.9),
+    ]
+    per_form = _respond_entry(records, ["table@1"])["per_form"]["table@1"]
+    assert per_form["n_respond_chosen"] == 1
+    assert per_form["n_ticks_at_ceiling_without_responding"] == 0
+    assert per_form["fires"] is False
+
+
+def test_demand_ledger_respond_without_a_boot_u_bar_asserts_nothing() -> None:
+    records = [
+        _boot("table@1", u_bar=None),  # an old log
+        _decide(form="table@1", question_id=mirror("q-001"), action="abstain",
                 real_effector="abstain", p1=0.9),
-        _decide(form="table@1", question_id="q-002", action="abstain",
-                real_effector="abstain", p1=0.89),
-        _decide(form="table@1", question_id="q-003", action="abstain",
-                real_effector="abstain", p1=None),
+    ]
+    entry = _respond_entry(records, ["table@1"])
+    assert entry["per_form"]["table@1"]["fires"] is None
+    assert entry["fires"] is False  # a demand is never claimed on absent evidence
+    assert "NOT DETERMINED" in entry["note"]
+
+
+def test_demand_ledger_ask_is_dominated_by_gather_under_the_live_posterior() -> None:
+    """A finding the fixed world made visible: ask and gather have the same payoff shape and
+    differ only by cost, so q=|lambda_int| ~ 1.0 against g=|kappa_att| ~ 0.03 makes ask
+    unfirable at ANY credence — a consequence of where the exchange rates are sourced."""
+    records = [
+        _boot("table@1", u_bar=LIVE_U_BAR),
+        _decide(form="table@1", question_id=mirror("q-001"), action="gather",
+                real_effector="gather", p1=0.5),
     ]
     ledger = {e["name"]: e for e in R.demand_ledger(records, ["table@1"])}
-    entry = ledger["respond_unreachable_p1_ceiling"]
-    assert entry["count"] == 1
-    assert entry["of"] == 3
-    assert entry["per_form"]["table@1"] == {"n": 1, "of": 3}
+    entry = ledger["ask_dominated_by_gather"]
+    assert entry["fires"] is True
+    assert entry["per_form"]["table@1"]["dominated"] is True
+    assert entry["count"] == 0  # no tick chose ask, as predicted
 
 
 def test_demand_ledger_latent_degenerate_when_present() -> None:
@@ -620,9 +829,11 @@ def test_demand_ledger_no_forms_is_empty_but_safe() -> None:
     ledger = R.demand_ledger([], [])
     names = {e["name"] for e in ledger}
     assert names == {
-        "respond_unreachable_p1_ceiling", "latent_action_degenerate",
-        "kary_candidates_inexpressible", "cold_start_feature_insensitivity",
+        "respond_unreachable_p1_ceiling", "ask_dominated_by_gather",
+        "latent_action_degenerate", "kary_candidates_inexpressible",
+        "cold_start_feature_insensitivity",
     }
+    assert all(e["fires"] is False for e in ledger)  # no records => no demand is claimed
 
 
 # --- provenance ----------------------------------------------------------------------------
@@ -662,7 +873,7 @@ def test_provenance_no_boot_records() -> None:
 def test_build_report_without_vectors_has_no_grounded_section() -> None:
     records = [
         _boot("table@1"),
-        _decide(form="table@1", question_id="q-001", action="respond",
+        _decide(form="table@1", question_id=mirror("q-001"), action="respond",
                 real_effector="report"),
     ]
     report = R.build_report(records, None)
@@ -670,71 +881,111 @@ def test_build_report_without_vectors_has_no_grounded_section() -> None:
     assert report["grounded"] is None
     assert "table@1" in report["per_form_stats"]
     assert "table@1" in report["differential"]
-    assert len(report["demand_ledger"]) == 4
+    assert len(report["demand_ledger"]) == 5
     # no kind:"stats" row in this log -> the honest not-observable note, never zeros.
-    assert report["per_form_stats"]["table@1"]["counters"] is None
-    assert "not observable" in report["per_form_stats"]["table@1"]["drops_skips_dead_drops"]
+    assert report["global_counters"]["observable"] is False
+    assert report["per_form_stats"]["table@1"]["dead_drops"] is None
 
 
-def test_build_report_uses_the_latest_stats_record_for_per_form_counters() -> None:
+def test_build_report_renders_the_global_counters_once_not_per_form() -> None:
     records = [
-        _boot("table@1"),
-        _decide(form="table@1", question_id="q-001", action="respond",
+        _boot("table@1", forms=["table@1", "latent@1"]),
+        _boot("latent@1", forms=["table@1", "latent@1"]),
+        _decide(form="table@1", question_id=mirror("q-001"), action="respond",
+                real_effector="report"),
+        _decide(form="latent@1", question_id=mirror("q-001"), action="gather",
                 real_effector="report"),
         _stats(drops=4, skips=1, submit_errors=0,
-               forms={"table@1": {"alive": True, "respawns": 0, "ticks": 1, "dead_drops": 2}}),
+               forms={"table@1": {"dead_drops": 2}, "latent@1": {"dead_drops": 3}}),
     ]
     report = R.build_report(records, None)
-    counters = report["per_form_stats"]["table@1"]["counters"]
-    assert counters == {"drops": 4, "skips": 1, "submit_errors": 0, "dead_drops": 2,
-                         "as_of_ts": 100.0}
+    assert report["global_counters"]["drops"] == 4  # once, not once per form
+    assert report["per_form_stats"]["table@1"]["dead_drops"] == 2
+    assert report["per_form_stats"]["latent@1"]["dead_drops"] == 3
+    md = R.render_md(report)
+    assert md.count("drops=4") == 1
 
 
-def test_build_report_with_vectors_has_grounded_section() -> None:
+def test_build_report_grounded_join_bridges_the_two_id_namespaces(tmp_path: Path) -> None:
+    """C1 end-to-end, through the REAL derivations on both sides: the shadow's decide record
+    carries the MIRROR id (sha256 of the question text); the baseline vector carries the
+    CORPUS id (q-001); and only the run's questions file relates them. The join used to be
+    structurally impossible — always 0 rows — and the report narrated that as "n=0 is below
+    n_min=1000", i.e. as a small sample."""
+    run_dir = tmp_path / "run-1"
+    _write_baseline_run(run_dir, [
+        _vector(question_id="q-001", asserted=True, asserted_correct=True),
+    ])
     records = [
-        _boot("table@1"),
-        _decide(form="table@1", question_id="q-001", action="respond",
+        _boot("table@1", u_bar=LIVE_U_BAR),
+        _decide(form="table@1", question_id=mirror("q-001"), action="respond",
                 real_effector="report"),
     ]
-    vectors = {
-        "q-001": _vector(question_id="q-001", asserted=True, asserted_correct=True),
-    }
-    report = R.build_report(records, vectors)
-    assert report["grounded"] is not None
+    report = R.build_report(records, R.load_baseline_vectors(run_dir))
     g = report["grounded"]["table@1"]
+    assert g["join"]["n_joined"] == 1
     assert g["contingency"]["n_joined"] == 1
     assert g["realized_loss"]["n_decisive"] == 1
+    assert g["realized_loss"]["scored_under_boot_u_bar"] is True
+    assert g["realized_loss"]["u_bar_used"] == LIVE_U_BAR  # NOT the world's defaults
     assert g["n_min_honesty"]["clears"] is False
 
 
-# --- default_table_matches_boot (Task 7 review, fix 3: zero coverage before this) ---------
-
-
-def test_default_table_matches_boot_true_when_boot_digest_matches_the_real_default() -> None:
-    real_digest = SH.world_digest({}, utility_form="table@1")
+def test_build_report_grounded_empty_join_is_named_not_narrated_as_a_small_sample(
+    tmp_path: Path,
+) -> None:
+    """The exact failure mode: a shadow that saw DIFFERENT questions than the run graded
+    joins nothing. That must read as an empty join, not as an under-powered one."""
+    run_dir = tmp_path / "run-1"
+    _write_baseline_run(run_dir, [
+        _vector(question_id="q-001", asserted=True, asserted_correct=True),
+    ])
     records = [
-        _boot("table@1", world_digest=real_digest),
-        _decide(form="table@1", question_id="q-001", action="respond",
+        _boot("table@1", u_bar=LIVE_U_BAR),
+        _decide(form="table@1", question_id=mirror("q-004"),  # a question this run never graded
+                action="respond", real_effector="report"),
+    ]
+    report = R.build_report(records, R.load_baseline_vectors(run_dir))
+    g = report["grounded"]["table@1"]
+    assert g["join"]["n_joined"] == 0
+    assert "DISJOINT CORPUS" in g["join"]["note"]
+    assert "not a small sample" in g["join"]["note"]
+    assert "EMPTY population" in g["n_min_honesty"]["note"]
+    assert "NOTHING joined" in g["n_min_honesty"]["note"]
+
+
+def test_build_report_grounded_refuses_realized_loss_on_a_log_without_u_bar(
+    tmp_path: Path,
+) -> None:
+    run_dir = tmp_path / "run-1"
+    _write_baseline_run(run_dir, [
+        _vector(question_id="q-001", asserted=True, asserted_correct=False),
+    ])
+    records = [
+        _boot("table@1", u_bar=None),  # an older log
+        _decide(form="table@1", question_id=mirror("q-001"), action="respond",
                 real_effector="report"),
     ]
-    vectors = {"q-001": _vector(question_id="q-001", asserted=True, asserted_correct=True)}
-    report = R.build_report(records, vectors)
-    assert report["grounded"]["table@1"]["default_table_matches_boot"] is True
+    report = R.build_report(records, R.load_baseline_vectors(run_dir))
+    rl = report["grounded"]["table@1"]["realized_loss"]
+    assert rl["scored"] is False
+    assert "NOT SCORED" in rl["reason"]
 
 
-def test_default_table_matches_boot_false_when_boot_digest_mismatches() -> None:
-    records = [
-        _boot("table@1", world_digest="not-the-real-default-digest"),
-        _decide(form="table@1", question_id="q-001", action="respond",
-                real_effector="report"),
-    ]
-    vectors = {"q-001": _vector(question_id="q-001", asserted=True, asserted_correct=True)}
-    report = R.build_report(records, vectors)
-    assert report["grounded"]["table@1"]["default_table_matches_boot"] is False
+def test_build_report_world_policy_publishes_the_p1_regions(tmp_path: Path) -> None:
+    records = [_boot("table@1", u_bar=LIVE_U_BAR)]
+    policy = R.build_report(records, None)["world_policy"]["table@1"]
+    assert policy["u_bar"] == LIVE_U_BAR
+    # under the live posterior: abstain only at the very bottom, gather across the interior,
+    # respond only above ~0.994 (which the engine's 0.9 grid cannot reach)
+    assert policy["argmax_by_p1"]["0.0"] == "abstain"
+    assert policy["argmax_by_p1"]["0.5"] == "gather"
+    assert policy["argmax_by_p1"]["0.9"] == "gather"
+    assert policy["argmax_by_p1"]["1.0"] == "respond"
 
 
 def test_build_report_is_reproducible_no_wallclock_field() -> None:
-    records = [_boot("table@1"), _decide(form="table@1", question_id="q-001",
+    records = [_boot("table@1"), _decide(form="table@1", question_id=mirror("q-001"),
                                           action="respond", real_effector="report")]
     r1 = R.build_report(records, None)
     r2 = R.build_report(records, None)
@@ -744,7 +995,7 @@ def test_build_report_is_reproducible_no_wallclock_field() -> None:
 def test_render_md_has_section_headers() -> None:
     records = [
         _boot("table@1"),
-        _decide(form="table@1", question_id="q-001", action="respond",
+        _decide(form="table@1", question_id=mirror("q-001"), action="respond",
                 real_effector="report"),
     ]
     report = R.build_report(records, None)
@@ -759,16 +1010,19 @@ def test_render_md_has_section_headers() -> None:
     assert "Not run: pass `--vectors" in md
 
 
-def test_render_md_grounded_section_present_when_given() -> None:
+def test_render_md_grounded_section_present_when_given(tmp_path: Path) -> None:
+    run_dir = tmp_path / "run-1"
+    _write_baseline_run(run_dir, [_vector(question_id="q-001", asserted=True,
+                                          asserted_correct=True)])
     records = [
         _boot("table@1"),
-        _decide(form="table@1", question_id="q-001", action="respond",
+        _decide(form="table@1", question_id=mirror("q-001"), action="respond",
                 real_effector="report"),
     ]
-    vectors = {"q-001": _vector(question_id="q-001", asserted=True, asserted_correct=True)}
-    report = R.build_report(records, vectors)
+    report = R.build_report(records, R.load_baseline_vectors(run_dir))
     md = R.render_md(report)
     assert "n_min honesty" in md
+    assert "**Join: 1 rows.**" in md
 
 
 # --- CLI (main) ------------------------------------------------------------------------
@@ -778,7 +1032,7 @@ def test_main_writes_report_json_and_md(tmp_path: Path, capsys: Any) -> None:
     shadow_log = tmp_path / "shadow.jsonl"
     _write_jsonl(shadow_log, [
         _boot("table@1"),
-        _decide(form="table@1", question_id="q-001", action="respond",
+        _decide(form="table@1", question_id=mirror("q-001"), action="respond",
                 real_effector="report"),
     ])
     out_dir = tmp_path / "out"
@@ -797,7 +1051,7 @@ def test_main_with_vectors_enables_grounded(tmp_path: Path) -> None:
     shadow_log = tmp_path / "shadow.jsonl"
     _write_jsonl(shadow_log, [
         _boot("table@1"),
-        _decide(form="table@1", question_id="q-001", action="respond",
+        _decide(form="table@1", question_id=mirror("q-001"), action="respond",
                 real_effector="report"),
     ])
     run_dir = tmp_path / "run-1"
