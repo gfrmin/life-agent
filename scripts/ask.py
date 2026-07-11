@@ -222,6 +222,21 @@ TEMPORAL_LAST: TemporalReport | None = None
 # for outcome lineage attribution (bayesian-foundations §8 — the outcomes log).
 STAGES_LAST: dict[str, str] = {}
 
+# The last answer's cheap EFFORT counters — the fair-fight harness's raw-capture "effort"
+# axis (scripts/fairfight/arm_baseline.py, arm_synthesis.py). Same *_LAST travel pattern as
+# STAGES_LAST: reset to {} at the top of each dispatch, populated ONLY at a seam that
+# already knows the count (never a new probe, never a guess). ``answer()`` populates both
+# keys below every call it reaches retrieval (``retrieve_passes`` — always exactly 1: this
+# driver retrieves once per question, even under ``rerank=True``, which re-orders an
+# over-fetched pool rather than re-querying) and ``gather_tiers`` (1 iff the gather-
+# augmented lookup loop was invoked this call, 0 otherwise — the loop's OWN internal
+# per-candidate re-retrieval rounds are opaque from here; see gather.py). Keys are present
+# (0 or more) whenever ``answer()`` runs; ``answer_via_executor()`` resets this to {}
+# (empty — genuinely absent, not a guessed 0) because the daemon's internal retrieve/grow
+# rounds are not observable in the ``View`` it returns, and ``core/executor.py`` must not
+# be edited to expose them.
+EFFORT_LAST: dict[str, int] = {}
+
 # The last answer's lookup-family result (foundations §4), or None when the narrative
 # path answered (not routed as a lookup, zero grounded observations, or a named
 # fail-open). Travels like TEMPORAL_LAST; run_eval's --lookup grader consumes it.
@@ -653,12 +668,14 @@ def answer(conn: duckdb.DuckDBPyConnection, question: str,
     word-overlapping noise (measured: rescues ~7/8 of the eval's addressable retrieval
     misses). Default ``False``. Returns (answer_text, cards, {card_n: score})."""
     global TEMPORAL_LAST, SUBJECT_LAST, STAGES_LAST, LOOKUP_LAST, NARRATIVE_LAST, INTENT_LAST
+    global EFFORT_LAST
     TEMPORAL_LAST = None
     SUBJECT_LAST = None
     STAGES_LAST = {}
     LOOKUP_LAST = None
     NARRATIVE_LAST = None
     INTENT_LAST = None
+    EFFORT_LAST = {"retrieve_passes": 0, "gather_tiers": 0}
     root = _pkm_root()
     profile = owner.load_profile()
     # temporal-scope intent (cached, question-only): surfaced + recorded, decision-neutral.
@@ -705,6 +722,9 @@ def answer(conn: duckdb.DuckDBPyConnection, question: str,
                 lineage = [{"cache_key": ck, "role": "retrieved"}
                            for ck in dict.fromkeys(h["artifact_cache_key"] for h in hits)]
                 D.record(root, rkey, _set_content(hits), lineage=lineage)
+    # exactly one retrieval round happened above (rerank re-orders an over-fetched pool; it
+    # does not re-query) — the effort axis's cheapest, most honest count for this driver.
+    EFFORT_LAST["retrieve_passes"] = 1
 
     # temporal (D1): filter/rank the hits by projected doc_date BEFORE cards
     # and the synthesize key — the admitted set IS the evidence, so the key's
@@ -756,6 +776,10 @@ def answer(conn: duckdb.DuckDBPyConnection, question: str,
                 # the gather-augmented loop projects its OWN covariates over the
                 # gathered union (recency + whose-document) — it does not reuse the
                 # baseline covariates computed above.
+                # One gather-augmented pass is FIRED here (the attempt, matching "rounds
+                # fired" — not "rounds that grounded a decision"); gather.py's own internal
+                # per-candidate re-retrieval count is opaque from this seam.
+                EFFORT_LAST["gather_tiers"] = 1
                 lk = GA.gather_answer(conn, root, question, hits, profile=profile,
                                       owner_scoped=owner_question(question))
             else:
@@ -901,10 +925,14 @@ def answer_via_executor(question: str, k: int
     ask's 3-tuple unchanged, so render/capture are identical. The daemon + bridge must be up; if
     not, it abstains with a NAMED reason rather than guessing (interaction contract)."""
     global TEMPORAL_LAST, SUBJECT_LAST, INTENT_LAST, LOOKUP_LAST, NARRATIVE_LAST, STAGES_LAST
-    global EXECUTOR_LAST
+    global EXECUTOR_LAST, EFFORT_LAST
     TEMPORAL_LAST = SUBJECT_LAST = INTENT_LAST = LOOKUP_LAST = NARRATIVE_LAST = None
     STAGES_LAST = {}
     EXECUTOR_LAST = None
+    # The daemon's own retrieve/grow rounds are not observable in the View it returns (and
+    # core/executor.py must not be edited to expose them) — absent (not a guessed 0), so a
+    # consumer can tell "not tracked here" apart from "zero rounds fired".
+    EFFORT_LAST = {}
     if not _executor_ready():
         return (EXECUTOR_DOWN, [], {})
     view = EX.decide_via_loop(question, k, bridge=EXECUTOR_BRIDGE, daemon=EXECUTOR_DAEMON,
