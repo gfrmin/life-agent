@@ -141,6 +141,10 @@ def test_run_meta_written_first_and_pinned(tmp_path: Path, monkeypatch: pytest.M
                                             ) -> None:
     kb = _kb(tmp_path, monkeypatch)
     _write_questions(kb, [_q()])
+    # pin the recorded env provenance regardless of the host machine's live services
+    monkeypatch.delenv("LIFE_AGENT_GROW_LANE", raising=False)
+    monkeypatch.delenv("LIFE_AGENT_BRIDGE_URL", raising=False)
+    monkeypatch.setenv("ANSWER_BRAIN_URL", "http://127.0.0.1:9999")
     args = _args(tmp_path, arms="inprocess")
 
     result = RF.run(
@@ -169,7 +173,11 @@ def test_run_meta_written_first_and_pinned(tmp_path: Path, monkeypatch: pytest.M
     assert meta["hermes_git"] == {
         "sha": None, "dirty": None, "version": None, "note": "competitor arm not selected"}
     assert meta["corpus_fingerprint"] == {"n_chunks": 3, "n_sources": 3, "note": None}
-    assert meta["env_flags"] == {"LIFE_AGENT_GROW_LANE": ""}
+    # the exact env var names scripts/ask.py reads for EXECUTOR_BRIDGE/EXECUTOR_DAEMON —
+    # which daemon the baseline arm hit is run provenance (null = unset, ask.py's
+    # localhost defaults apply)
+    assert meta["env_flags"] == {"LIFE_AGENT_GROW_LANE": "", "LIFE_AGENT_BRIDGE_URL": None,
+                                 "ANSWER_BRAIN_URL": "http://127.0.0.1:9999"}
     assert (result["run_dir"] / "questions.sha256").read_text().strip() == \
         meta["questions_sha256"]
 
@@ -340,6 +348,45 @@ def test_status_not_ok_excluded_from_judging_but_present_in_vectors(
     assert judged_ids == ["q-001"]  # the errored question was never judged
 
 
+# --- a raising judge costs one question's dims, never the run ----------------------------
+
+
+def test_judge_raising_systemexit_on_one_question_does_not_crash_the_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # judge_modal -> judge_complete -> openai_complete raises SystemExit on any HTTP/API
+    # failure (core/llm.py's convention) — one transient judge error must be recorded and
+    # skipped, with every other question still judged.
+    kb = _kb(tmp_path, monkeypatch)
+    _write_questions(kb, [_q("q-001"), _q("q-002"), _q("q-003")])
+    args = _args(tmp_path, arms="inprocess", run_id="ff-judge-crash-test")
+
+    def _judge(q: dict, text: str, sources: list, *, n: int = 3) -> dict:
+        if q["id"] == "q-002":
+            raise SystemExit("OpenAI API 529: overloaded")
+        return {"faithfulness": 3, "completeness": 2, "citation_fidelity": 3, "_served": ["j"]}
+
+    result = RF.run(
+        args, arm_impls={"inprocess": lambda q: _raw(question_id=q["id"])},
+        judge_impl=_judge, conn_factory=lambda p: _FakeConn())  # completes — no SystemExit
+
+    vecs = [json.loads(line) for line in
+            (result["run_dir"] / "arms" / "inprocess" / "vectors.jsonl").read_text().splitlines()]
+    assert [v["question_id"] for v in vecs] == ["q-001", "q-002", "q-003"]
+    assert vecs[1]["faithfulness"] is None      # the crashed question: dims stay None
+    assert vecs[1]["hallucinated"] is None
+    assert vecs[0]["faithfulness"] == 3         # its neighbours were still judged
+    assert vecs[2]["faithfulness"] == 3
+
+    scores = [json.loads(line) for line in
+              (result["run_dir"] / "judge" / "inprocess_scores.jsonl").read_text().splitlines()]
+    assert scores[1]["judged"] is False
+    assert "judge error" in scores[1]["reason"]
+    assert "SystemExit" in scores[1]["reason"]
+    assert "529" in scores[1]["reason"]
+    assert scores[0]["judged"] is True and scores[2]["judged"] is True
+
+
 # --- cost_status mapping (direct unit tests against _economics) -------------------------
 
 
@@ -353,6 +400,18 @@ def test_cost_status_baseline_arm_always_partial_even_if_fully_priced() -> None:
     econ = RF._economics("baseline", raw, None)
     assert econ["cost_status"] == "partial"
     assert econ["cost_usd"] is not None  # still sums whatever WAS priced
+
+
+def test_cost_status_baseline_arm_partial_even_with_zero_metered_calls() -> None:
+    # THE real baseline case: ask.answer_via_executor is a pure HTTP driver — the daemon's
+    # spend is server-side, so llm_calls is [] on every question. That must read "partial"
+    # (spend exists but is invisible from here), never "unavailable" (no cost signal at all).
+    raw = _raw(llm_calls=[])
+    econ = RF._economics("baseline", raw, None)
+    assert econ["cost_status"] == "partial"
+    assert econ["cost_usd"] is None
+    assert econ["in_tokens"] == 0 and econ["out_tokens"] == 0
+    assert econ["model_tier_mix"] == {}
 
 
 def test_cost_status_inprocess_arm_measured_when_fully_priced() -> None:
