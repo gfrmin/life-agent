@@ -13,6 +13,18 @@ import pytest
 
 from life_agent.membrane import world as W
 
+# The REAL utility posterior, as GET :8798/utility served it on 2026-07-11 — kept here as a
+# named fixture (7 scalar utility means; no owner data, PRINCIPLES §12) because several of
+# the properties below are only interesting where the live numbers differ MATERIALLY from
+# world.utility_rows' fallback defaults: the reaction loop has already narrowed u_wrong from
+# the -9.0 default to about -5.94, which moves every utility-derived threshold. A test that
+# only ever exercised the defaults is how a threshold that is really a FUNCTION of utility
+# got published as the constant 0.9.
+LIVE_U_BAR: dict[str, float] = {
+    "u_correct": 1.0, "u_abstain": 0.0, "u_wrong": -5.9395, "u_wrong_scoped": -2.0827,
+    "u_hedged": 0.3964, "lambda_int": 1.0009, "kappa_att": 0.0344,
+}
+
 # --- AFFORDANCES / MENU_IDS / ID_TO_ACTION (drift-gate pins) -----------------------------
 
 
@@ -242,8 +254,12 @@ def test_utility_rows_uses_declared_fallbacks_on_empty_u_bar() -> None:
 
     assert by_fire[1]["u"] == [-9.0, 1.0]         # respond, u_wrong fallback -9.0
     assert by_fire[2]["u"] == [0.0, 0.0]          # abstain, status-quo
-    assert by_fire[3]["u"] == [-0.1, -0.1]        # ask, lambda_int fallback 0.1
-    assert by_fire[4]["u"] == [-0.02, -0.02]      # gather, kappa_att fallback 0.02
+    # gather/ask are priced as MYOPIC PERFECT INFORMATION (utility_rows' declared bake-in):
+    # [u_abstain - cost, u_correct - cost] — having gathered, you take the correct act. NOT
+    # [-cost, -cost]: a row constant in y is a pure cost, and a pure cost can never beat
+    # abstain at any p1, which would make the whole information menu unfirable.
+    assert by_fire[3]["u"] == [-0.1, 0.9]         # ask, lambda_int fallback 0.1
+    assert by_fire[4]["u"] == [-0.02, 0.98]       # gather, kappa_att fallback 0.02
 
 
 def test_utility_rows_honours_custom_u_bar() -> None:
@@ -251,8 +267,21 @@ def test_utility_rows_honours_custom_u_bar() -> None:
     by_fire = {r["fire"]: r for r in rows if "fire" in r}
 
     assert by_fire[1]["u"] == [-4.0, 1.0]
-    assert by_fire[3]["u"] == [-0.3, -0.3]        # abs(-0.3) == 0.3, sign flipped negative
-    assert by_fire[4]["u"] == [-0.5, -0.5]
+    assert by_fire[3]["u"] == [-0.3, 0.7]         # abs(-0.3) == 0.3, charged on both outcomes
+    assert by_fire[4]["u"] == [-0.5, 0.5]
+
+
+def test_utility_rows_information_actions_are_not_constant_in_y() -> None:
+    """The regression this world shipped with: `gather -> [-g, -g]` and `ask -> [-q, -q]`
+    are CONSTANT in y, i.e. pure costs against `abstain -> [0, 0]` — so EU(gather) = -g < 0
+    = EU(abstain) at EVERY p1 and every u_bar, abstain strictly dominates the entire
+    information menu, and a menu whose whole point is effort allocation can never fire one.
+    Pinned as a property (u(y=1) > u(y=0) for both), not as two magic numbers."""
+    for u_bar in ({}, {"u_wrong": -5.9395, "lambda_int": 1.0009, "kappa_att": 0.0344}):
+        pairs = W.utility_by_action(u_bar)
+        for action in ("gather", "ask"):
+            u0, u1 = pairs[action]
+            assert u1 > u0, f"{action} is constant in y under {u_bar} — it can never fire"
 
 
 def test_utility_rows_covers_every_menu_id() -> None:
@@ -261,14 +290,81 @@ def test_utility_rows_covers_every_menu_id() -> None:
     assert fired_ids == set(W.MENU_IDS)
 
 
-def test_utility_rows_has_exactly_one_internal_think_row_and_it_is_dominated() -> None:
-    rows = W.utility_rows({"u_wrong": -9.0, "lambda_int": 0.1, "kappa_att": 0.02})
+@pytest.mark.parametrize("u_bar", [
+    {},                                                            # the declared fallbacks
+    {"u_wrong": -9.0, "lambda_int": 0.1, "kappa_att": 0.02},       # the fallbacks, explicit
+    LIVE_U_BAR,                                                    # the real posterior
+    {"u_wrong": -0.5, "lambda_int": 3.0, "kappa_att": 2.0},        # costs above the answer
+])
+def test_utility_rows_think_sentinel_is_strictly_dominated(u_bar: dict[str, float]) -> None:
+    """Re-derived from the rows themselves (min entry - 1.0), so it stays strictly worse
+    than every real row at EVERY p1 under the NEW row shapes too — including a u_bar whose
+    effort costs exceed the value of a correct answer."""
+    rows = W.utility_rows(u_bar)
     internal = [r for r in rows if r.get("internal") == "think"]
     assert len(internal) == 1
     u0, u1 = internal[0]["u"]
     assert u0 == u1
     other_values = [v for r in rows if "fire" in r for v in r["u"]]
     assert u0 < min(other_values)
+    for p1 in (0.0, 0.25, 0.5, 0.75, 1.0):  # dominated in EU, not just entrywise
+        assert u0 < min(W.eu_by_action(u_bar, p1).values())
+
+
+# --- EU arithmetic, argmax, and the respond-reachability threshold ---------------------------
+
+
+def test_eu_by_action_is_the_declared_table_read_at_p1() -> None:
+    eus = W.eu_by_action(LIVE_U_BAR, 0.5)
+    assert eus["abstain"] == pytest.approx(0.0)
+    assert eus["respond"] == pytest.approx(0.5 * 1.0 + 0.5 * -5.9395)
+    assert eus["gather"] == pytest.approx(0.5 * 1.0 - 0.0344)
+
+
+def test_argmax_action_resolves_ties_first_listed() -> None:
+    """At p1 exactly on gather's own break-even against abstain, the two tie — and
+    AFFORDANCES order (gather first) decides, the wire's own rule."""
+    g = abs(LIVE_U_BAR["kappa_att"])
+    eus = W.eu_by_action(LIVE_U_BAR, g)  # EU(gather) == EU(abstain) == 0 here
+    assert eus["gather"] == pytest.approx(eus["abstain"])
+    assert W.argmax_action(LIVE_U_BAR, g) == "gather"
+
+
+def test_respond_threshold_is_a_function_of_utility_not_a_constant() -> None:
+    """The false claim this pins against: "respond needs p1 > 0.9" was TRUE only at the
+    world's FALLBACK u_wrong=-9.0 — and only against abstain. Both parts move with the
+    posterior, so both are derived, never hard-coded."""
+    default_vs_abstain = (0.0 - (-9.0)) / (1.0 - (-9.0))
+    live_vs_abstain = (0.0 - LIVE_U_BAR["u_wrong"]) / (1.0 - LIVE_U_BAR["u_wrong"])
+    assert default_vs_abstain == pytest.approx(0.9)
+    assert live_vs_abstain == pytest.approx(0.8559, abs=1e-4)  # the live bar is LOWER
+
+    # ...but the engine argmaxes over the WHOLE menu, so the binding bar is respond vs the
+    # best information action, not vs abstain. Under the perfect-information bake-in gather
+    # is worth far more than abstain, so the real bar is far higher than either number above.
+    whole_menu = W.respond_threshold(LIVE_U_BAR)
+    assert whole_menu is not None
+    assert whole_menu == pytest.approx(0.9942, abs=1e-4)
+    assert whole_menu > live_vs_abstain
+
+
+def test_respond_threshold_agrees_with_argmax_on_both_sides() -> None:
+    for u_bar in ({}, LIVE_U_BAR):
+        threshold = W.respond_threshold(u_bar)
+        assert threshold is not None
+        assert W.argmax_action(u_bar, threshold - 1e-6) != "respond"
+        assert W.argmax_action(u_bar, min(1.0, threshold + 1e-6)) == "respond"
+
+
+def test_ask_is_pointwise_dominated_by_gather_whenever_interrupting_costs_more() -> None:
+    """gather and ask carry the same payoff shape and differ only by cost, so q >= g makes
+    ask unfirable at ANY credence. At the live posterior q ~ 1.0 vs g ~ 0.03: ask is dead by
+    ~30x — a consequence of WHERE the exchange rates are sourced (register item 6), surfaced
+    by the demand ledger rather than buried."""
+    pairs = W.utility_by_action(LIVE_U_BAR)
+    (g0, g1), (a0, a1) = pairs["gather"], pairs["ask"]
+    assert g0 > a0 and g1 > a1
+    assert all(W.argmax_action(LIVE_U_BAR, p1) != "ask" for p1 in (0.0, 0.3, 0.5, 0.9, 1.0))
 
 
 # --- latent_utility_decl(): the latent@1 form -----------------------------------------------
