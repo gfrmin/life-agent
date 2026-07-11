@@ -97,6 +97,12 @@ class MembraneSession:
         # reads it without moving it; an evidence tick reads it, then advances by one.
         self._t = 0
 
+    @property
+    def t(self) -> int:
+        """The evidence-stream index, read-only (Task 4's shadow supervisor records the
+        `t` a tick was sent at; nothing outside this class ever advances it)."""
+        return self._t
+
     def boot(
         self,
         *,
