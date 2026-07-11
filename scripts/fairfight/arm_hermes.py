@@ -349,5 +349,6 @@ def answer_competitor(q: dict[str, Any], cfg: HermesArmConfig) -> CompetitorResu
         question_id=question_id, text=text, declined=declined, latency_s=latency_s,
         llm_calls=[], decision_view=None, lineage_keys=lineage_keys, status=status,
         notes="; ".join(notes_parts), effort=effort,
+        cards=(),  # the competitor's retrieved set lives in tool_log rows, not SourceCards
     )
     return CompetitorResult(raw=raw, usage=usage, tool_log=tool_log_rows)

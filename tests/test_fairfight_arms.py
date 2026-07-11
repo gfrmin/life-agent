@@ -70,6 +70,12 @@ def _fake_narrative(**overrides: object) -> SimpleNamespace:
     return SimpleNamespace(**base)
 
 
+def _fake_card(n: int, text: str, origin: str = "/data/a.txt") -> SimpleNamespace:
+    """A ``core.sources.SourceCard``-shaped stand-in (task 10: ``RawAnswer.cards``
+    capture) — only ``n``/``text``/``origin`` are read by the arm modules."""
+    return SimpleNamespace(n=n, text=text, origin=origin)
+
+
 # --- RawAnswer / _view_declined: the ONE declined convention, tested against grading.py ----
 
 
@@ -133,6 +139,19 @@ def test_answer_baseline_executor_declined_is_free_text_detected(monkeypatch) ->
     assert out.lineage_keys == ()                # EXECUTOR_LAST never set on this branch
 
 
+def test_answer_baseline_executor_captures_cards(monkeypatch) -> None:
+    # task 10: the runner needs the retrieved set for grade_channels/judge sources — the
+    # prior task's single return statement discarded it as `_cards`.
+    monkeypatch.setattr(ask, "_executor_ready", lambda: True)
+
+    def fake_answer_via_executor(question: str, k: int):
+        return ("P123 [1]", [_fake_card(1, "the passport text")], {})
+
+    monkeypatch.setattr(ask, "answer_via_executor", fake_answer_via_executor)
+    out = AB.answer_baseline(_q(), 8, path="executor")
+    assert out.cards == ({"n": 1, "text": "the passport text", "origin": "/data/a.txt"},)
+
+
 def test_answer_baseline_executor_down_never_falls_back_silently(monkeypatch) -> None:
     monkeypatch.setattr(ask, "_executor_ready", lambda: False)
 
@@ -146,6 +165,7 @@ def test_answer_baseline_executor_down_never_falls_back_silently(monkeypatch) ->
     assert "executor" in out.notes.lower() and "unreachable" in out.notes.lower()
     assert out.text == ""
     assert out.llm_calls == []                   # nothing billed — the call never ran
+    assert out.cards == ()
 
 
 # --- baseline (inprocess) ------------------------------------------------------------------
@@ -164,7 +184,7 @@ def test_answer_baseline_inprocess_happy_path_turns_gather_on(monkeypatch) -> No
         ask.NARRATIVE_LAST = None
         ask.STAGES_LAST = {"retrieve": "rk1", "lookup_answer": "lk1"}
         ask.EFFORT_LAST = {"retrieve_passes": 1, "gather_tiers": 1}
-        return ("P123 [1]", [], {})
+        return ("P123 [1]", [_fake_card(1, "P123 is the ID")], {})
 
     monkeypatch.setattr(ask, "answer", fake_answer)
     out = AB.answer_baseline(_q(), 8, path="inprocess")
@@ -178,6 +198,7 @@ def test_answer_baseline_inprocess_happy_path_turns_gather_on(monkeypatch) -> No
     assert out.effort == {"retrieve_passes": 1, "gather_tiers": 1}
     assert len(out.llm_calls) == 1
     assert conn.closed is True                        # the arm closes its own connection
+    assert out.cards == ({"n": 1, "text": "P123 is the ID", "origin": "/data/a.txt"},)
 
 
 def test_answer_baseline_inprocess_withheld_view_when_no_family_answered(monkeypatch) -> None:
@@ -215,6 +236,7 @@ def test_answer_baseline_inprocess_error_path_meters_and_closes_conn(monkeypatch
     assert out.text == "" and out.decision_view is None and out.lineage_keys == ()
     assert len(out.llm_calls) == 1                    # the meter is still read on failure
     assert conn.closed is True                         # the connection is still closed
+    assert out.cards == ()
 
 
 def test_answer_baseline_inprocess_systemexit_is_caught_not_propagated(monkeypatch) -> None:
@@ -356,7 +378,7 @@ def test_answer_synthesis_calls_ask_answer_with_no_extra_flags(monkeypatch) -> N
         ask.NARRATIVE_LAST = _fake_narrative()
         ask.STAGES_LAST = {"retrieve": "rk", "synthesize": "sk", "narrative_answer": "nk"}
         ask.EFFORT_LAST = {"retrieve_passes": 1, "gather_tiers": 0}
-        return ("the claim [1]", [], {})
+        return ("the claim [1]", [_fake_card(1, "the claim's source text")], {})
 
     monkeypatch.setattr(ask, "answer", fake_answer)
     out = AS.answer_synthesis(_q(), 8)
@@ -367,6 +389,7 @@ def test_answer_synthesis_calls_ask_answer_with_no_extra_flags(monkeypatch) -> N
     assert out.lineage_keys == ("rk", "sk", "nk")
     assert out.effort == {"retrieve_passes": 1, "gather_tiers": 0}
     assert conn.closed is True
+    assert out.cards == ({"n": 1, "text": "the claim's source text", "origin": "/data/a.txt"},)
 
 
 def test_answer_synthesis_error_path_never_propagates(monkeypatch) -> None:

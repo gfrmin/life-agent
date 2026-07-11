@@ -51,7 +51,7 @@ import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # scripts/: ask, triage_answers
 
@@ -69,7 +69,16 @@ from .grading import detect_decline
 @dataclass
 class RawAnswer:
     """One arm's raw capture for one question — the ``answers.jsonl`` row payload before
-    ``scripts/fairfight/grading.py`` grades it into an ``OutcomeVector``."""
+    ``scripts/fairfight/grading.py`` grades it into an ``OutcomeVector``.
+
+    ``cards`` (task 10 addition): the retrieved ``core.sources.SourceCard`` set
+    ``ask.answer``/``ask.answer_via_executor`` returned, as JSON-safe dicts
+    (``{"n", "text", "origin"}``) — the runner's ONLY source for ``grade_channels``'s
+    ``retrieved_texts_full`` and the judge's cited-source block for these arms (the
+    prior tasks' single return statement discarded this tuple element as ``_cards``;
+    captured here instead of rebuilding retrieval). Always ``()`` on ``status="error"``
+    (no call completed) and for the competitor arm, whose retrieved set lives in its
+    tool-log rows instead — a different shape entirely (see ``arm_hermes.py``)."""
 
     question_id: str
     text: str
@@ -81,6 +90,7 @@ class RawAnswer:
     status: str  # "ok" | "error" (timeout is a competitor-arm-only status)
     notes: str
     effort: dict[str, int]  # ask.EFFORT_LAST snapshot; {} when this arm's effort is unknown
+    cards: tuple[dict[str, Any], ...]
 
 
 def _view_declined(view: dict) -> bool:
@@ -122,6 +132,7 @@ def answer_baseline(q: dict, k: int, *, path: Literal["executor", "inprocess"]) 
     lineage_keys: tuple[str, ...] = ()
     status = "ok"
     notes = ""
+    cards: list[dict[str, Any]] = []
 
     try:
         if path == "executor":
@@ -130,13 +141,15 @@ def answer_baseline(q: dict, k: int, *, path: Literal["executor", "inprocess"]) 
                     "executor unreachable — the answer-brain daemon/bridge is down "
                     f"(bridge={ask.EXECUTOR_BRIDGE!r} daemon={ask.EXECUTOR_DAEMON!r}); "
                     "no silent in-process fallback for the baseline arm — the runner decides")
-            text, _cards, _scores = ask.answer_via_executor(q["question"], k)
+            text, raw_cards, _scores = ask.answer_via_executor(q["question"], k)
+            cards = [{"n": c.n, "text": c.text, "origin": c.origin} for c in raw_cards]
             declined = detect_decline(text)
             lineage_keys = (ask.EXECUTOR_LAST,) if ask.EXECUTOR_LAST else ()
         else:  # "inprocess"
             conn = ask.connect()
             try:
-                text, _cards, _scores = ask.answer(conn, q["question"], k, gather=True)
+                text, raw_cards, _scores = ask.answer(conn, q["question"], k, gather=True)
+                cards = [{"n": c.n, "text": c.text, "origin": c.origin} for c in raw_cards]
             finally:
                 conn.close()
             decision_view, declined, lineage_keys = _inprocess_decision(ask)
@@ -147,6 +160,7 @@ def answer_baseline(q: dict, k: int, *, path: Literal["executor", "inprocess"]) 
         declined = False
         decision_view = None
         lineage_keys = ()
+        cards = []
 
     effort = dict(ask.EFFORT_LAST)
     llm_calls = meter_read()
@@ -154,5 +168,5 @@ def answer_baseline(q: dict, k: int, *, path: Literal["executor", "inprocess"]) 
     return RawAnswer(
         question_id=question_id, text=text, declined=declined, latency_s=latency_s,
         llm_calls=llm_calls, decision_view=decision_view, lineage_keys=lineage_keys,
-        status=status, notes=notes, effort=effort,
+        status=status, notes=notes, effort=effort, cards=tuple(cards),
     )
