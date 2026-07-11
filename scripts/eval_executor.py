@@ -20,6 +20,7 @@ live calibration log is untouched (isolation by not-writing).
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -32,6 +33,7 @@ from pathlib import Path
 from life_agent.core import executor as EX
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import ask  # the shadow-mirror wrapper (_shadow_wrapped_post) — eval runs shadow the loop too
 from answer_labels import Label, load_labels, verdict
 from eval_grading import answer_matches, chunk_matches_any
 from run_eval import _answer_in_corpus, _kb_root, load_questions
@@ -58,6 +60,14 @@ def _post(url: str, payload: dict) -> dict | None:
 def _get(url: str) -> dict:
     with urllib.request.urlopen(url, timeout=300) as r:
         return json.loads(r.read())
+
+
+def _post_for(question: str) -> EX.Post:
+    """The shadow-wrapped post for one eval question — same question_id derivation
+    (sha256 of the raw question text, [:16]) as scripts/ask.py's production caller, so a
+    live-service eval run feeds the membrane shadow exactly like the ask read-path does."""
+    question_id = hashlib.sha256(question.encode("utf-8")).hexdigest()[:16]
+    return ask._shadow_wrapped_post(_post, BRIDGE, question_id)
 
 
 def _grade(conn, q: dict, view: dict, labels: list[Label]) -> dict:
@@ -172,8 +182,8 @@ def main() -> int:
     packets: list[dict] = []
     for q in questions:
         view = EX.decide_via_loop(q["question"], args.k, bridge=BRIDGE, daemon=DAEMON,
-                                  post=_post, get=_get, grow=_GROW, rerank=args.rerank,
-                                  grow_lane=_GROW_LANE)
+                                  post=_post_for(q["question"]), get=_get, grow=_GROW,
+                                  rerank=args.rerank, grow_lane=_GROW_LANE)
         p = _grade(conn, q, view, labels)
         packets.append(p)
         print(f"  {p['id']}: {p['effector']} → {p['bucket']}"
