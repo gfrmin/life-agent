@@ -61,6 +61,9 @@ EXIT_CODE = {exit_code!r}
 STDOUT_TEXT = {stdout_text!r}
 WRITE_USAGE = {write_usage!r}
 USAGE_PAYLOAD = {usage_payload!r}
+TOOL_LOG_PATH = {tool_log_path!r}
+TOOL_LOG_LINES = {tool_log_lines!r}
+TOOL_LOG_LINES_ON_FAIL = {tool_log_lines_on_fail!r}
 
 argv = sys.argv[1:]
 usage_file = None
@@ -76,12 +79,35 @@ if FAIL_FIRST and first_call:
     if usage_file and WRITE_USAGE:
         Path(usage_file).parent.mkdir(parents=True, exist_ok=True)
         Path(usage_file).write_text(json.dumps({{"failed": True, "session_id": "sess-fail"}}))
+    # write tool-log content as a side effect of THIS attempt, exactly as the real pkm
+    # MCP subprocess (a grandchild of the real hermes binary) would — simulating a
+    # partial session before hermes itself reported failure. `is not None` (not a
+    # truthy check): an EMPTY list must still write an (empty) file, distinguishing
+    # "the subprocess ran and made zero tool calls" from "the subprocess never ran".
+    # APPEND mode ("a"), matching src/pkm/mcp_server.py's `_log_tool_call` exactly — a
+    # real `pkm serve --tool-log` subprocess opens the file "a", so a stale file from a
+    # prior attempt/call would otherwise accumulate rather than being overwritten.
+    if TOOL_LOG_PATH is not None and TOOL_LOG_LINES_ON_FAIL is not None:
+        Path(TOOL_LOG_PATH).parent.mkdir(parents=True, exist_ok=True)
+        with Path(TOOL_LOG_PATH).open("a", encoding="utf-8") as f:
+            for line in TOOL_LOG_LINES_ON_FAIL:
+                f.write(line + "\\n")
     sys.stderr.write("simulated failure\\n")
     sys.exit(1)
 
 if usage_file and WRITE_USAGE:
     Path(usage_file).parent.mkdir(parents=True, exist_ok=True)
     Path(usage_file).write_text(json.dumps(USAGE_PAYLOAD))
+
+# write tool-log content as a side effect of THIS (successful) attempt — the real pkm
+# MCP subprocess writes this DURING the hermes invocation, not before it. `is not None`
+# (not a truthy check): an EMPTY list still writes an (empty) file. APPEND mode ("a"),
+# matching src/pkm/mcp_server.py's `_log_tool_call` — see the comment above.
+if TOOL_LOG_PATH is not None and TOOL_LOG_LINES is not None:
+    Path(TOOL_LOG_PATH).parent.mkdir(parents=True, exist_ok=True)
+    with Path(TOOL_LOG_PATH).open("a", encoding="utf-8") as f:
+        for line in TOOL_LOG_LINES:
+            f.write(line + "\\n")
 
 sys.stdout.write(STDOUT_TEXT)
 sys.exit(EXIT_CODE)
@@ -97,12 +123,17 @@ def _write_fake_hermes(
     fail_first: bool = False,
     write_usage: bool = True,
     usage_payload: dict[str, Any] | None = None,
+    tool_log_path: Path | None = None,
+    tool_log_lines: list[str] | None = None,
+    tool_log_lines_on_fail: list[str] | None = None,
 ) -> Path:
     script = dirpath / "fake-hermes.py"
     payload = usage_payload if usage_payload is not None else dict(_DEFAULT_USAGE)
     script.write_text(_FAKE_HERMES_TEMPLATE.format(
         sleep_s=sleep_s, fail_first=fail_first, exit_code=exit_code,
         stdout_text=stdout_text, write_usage=write_usage, usage_payload=payload,
+        tool_log_path=str(tool_log_path) if tool_log_path else None,
+        tool_log_lines=tool_log_lines, tool_log_lines_on_fail=tool_log_lines_on_fail,
     ))
     script.chmod(0o755)
     return script
@@ -199,18 +230,22 @@ def test_write_hermes_config_tool_log_path_is_per_qid(tmp_path: Path) -> None:
 
 
 def test_happy_path_captures_stdout_usage_and_tool_log(tmp_path: Path) -> None:
-    hermes_bin = _write_fake_hermes(tmp_path, stdout_text="the ID number is 555 [a.txt]")
-    cfg = _cfg(tmp_path, hermes_bin)
     q = _q()
-
-    # Pre-populate the tool log at the exact path this qid will get, simulating the pkm MCP
-    # subprocess (a grandchild of the fake hermes stub, never actually spawned in this test)
-    # having written it as a side effect of `pkm serve --tool-log`.
-    tool_log_path = AH.write_hermes_config(cfg, q["id"])
-    tool_log_path.write_text(
-        json.dumps({"tool": "search", "results": [{"source_path": "/data/a.txt"}]}) + "\n"
-        + json.dumps({"tool": "extract", "results": [{"source_path": "/data/a.txt"}]}) + "\n"
-    )
+    # The tool log path is deterministic per (run_dir, qid) — compute it directly so the
+    # fake stub can write to it AS A SIDE EFFECT OF THE ATTEMPT (matching how the real
+    # pkm MCP subprocess, a grandchild of the real hermes binary, actually behaves) —
+    # final-review IMPORTANT-6 clears this file before each attempt, so pre-writing it
+    # before the call (as this test used to) would be cleared before the fake stub ever
+    # ran.
+    tool_log_path = tmp_path / "run" / "arms/competitor/tool_calls" / f"{q['id']}.jsonl"
+    tool_log_lines = [
+        json.dumps({"tool": "search", "results": [{"source_path": "/data/a.txt"}]}),
+        json.dumps({"tool": "extract", "results": [{"source_path": "/data/a.txt"}]}),
+    ]
+    hermes_bin = _write_fake_hermes(
+        tmp_path, stdout_text="the ID number is 555 [a.txt]",
+        tool_log_path=tool_log_path, tool_log_lines=tool_log_lines)
+    cfg = _cfg(tmp_path, hermes_bin)
 
     result = AH.answer_competitor(q, cfg)
 
@@ -315,6 +350,64 @@ def test_retry_once_on_failure_then_success(tmp_path: Path) -> None:
     assert (tmp_path / "_called_once").exists()
 
 
+def test_retry_clears_stale_tool_log_between_hermes_own_attempts(tmp_path: Path) -> None:
+    # final-review IMPORTANT-6: hermes's OWN retry (fail_first=True here) must not let
+    # attempt 1's tool-log rows survive into the final result — only attempt 2's rows
+    # (the ones that answered the question) should be counted/parsed.
+    q = _q()
+    tool_log_path = tmp_path / "run" / "arms/competitor/tool_calls" / f"{q['id']}.jsonl"
+    attempt1_lines = [json.dumps({"tool": "search", "results": [
+        {"source_path": "/data/attempt1-only.txt"}]})]
+    attempt2_lines = [
+        json.dumps({"tool": "search", "results": [{"source_path": "/data/b.txt"}]}),
+        json.dumps({"tool": "extract", "results": [{"source_path": "/data/b.txt"}]}),
+    ]
+    hermes_bin = _write_fake_hermes(
+        tmp_path, stdout_text="answer on retry [b.txt]", fail_first=True,
+        tool_log_path=tool_log_path, tool_log_lines=attempt2_lines,
+        tool_log_lines_on_fail=attempt1_lines)
+    cfg = _cfg(tmp_path, hermes_bin)
+
+    result = AH.answer_competitor(q, cfg)
+
+    assert result.raw.status == "ok"
+    assert len(result.tool_log) == 2  # attempt-2-only, not 1 (attempt1) + 2 (attempt2) = 3
+    assert all(
+        row["results"][0]["source_path"] != "/data/attempt1-only.txt"
+        for row in result.tool_log
+    )
+    assert result.raw.effort["tool_calls"] == 2
+
+
+def test_runner_level_retry_stale_tool_log_from_prior_call_is_cleared(tmp_path: Path) -> None:
+    # final-review IMPORTANT-6: a SEPARATE `answer_competitor` call for the same qid (what
+    # run_fairfight._run_arm's own runner-level retry does — a fresh arm_fn(q) call, not a
+    # retry inside this function) must not see the PRIOR call's tool-log rows either — the
+    # per-attempt unlink fires on this call's own first iteration too.
+    q = _q()
+    tool_log_path = tmp_path / "run" / "arms/competitor/tool_calls" / f"{q['id']}.jsonl"
+    first_call_lines = [json.dumps({"tool": "search", "results": [
+        {"source_path": "/data/first-call-only.txt"}]})]
+    second_call_lines = [json.dumps({"tool": "search", "results": [
+        {"source_path": "/data/second-call.txt"}]})]
+
+    hermes_bin_1 = _write_fake_hermes(
+        tmp_path, stdout_text="first [x.txt]",
+        tool_log_path=tool_log_path, tool_log_lines=first_call_lines)
+    cfg = _cfg(tmp_path, hermes_bin_1)
+    first_result = AH.answer_competitor(q, cfg)
+    assert len(first_result.tool_log) == 1
+
+    hermes_bin_2 = _write_fake_hermes(
+        tmp_path, stdout_text="second [y.txt]",
+        tool_log_path=tool_log_path, tool_log_lines=second_call_lines)
+    cfg2 = _cfg(tmp_path, hermes_bin_2)
+    second_result = AH.answer_competitor(q, cfg2)
+
+    assert len(second_result.tool_log) == 1
+    assert second_result.tool_log[0]["results"][0]["source_path"] == "/data/second-call.txt"
+
+
 def test_retry_once_gives_up_after_second_failure(tmp_path: Path) -> None:
     script = tmp_path / "always-fails.py"
     script.write_text('''#!/usr/bin/env python3
@@ -389,6 +482,32 @@ def test_state_db_tool_call_count_is_fallback_when_tool_log_missing(tmp_path: Pa
     result = AH.answer_competitor(_q(), cfg)
 
     assert result.raw.effort["tool_calls"] == 7
+    assert result.tool_log == []
+
+
+def test_present_but_empty_tool_log_is_a_real_zero_not_a_db_fallback(tmp_path: Path) -> None:
+    # final-review IMPORTANT-6: the state.db fallback is keyed on the tool log FILE being
+    # missing, not on the parsed row list being falsy — a tool log file that EXISTS but
+    # legitimately has zero rows (the MCP subprocess ran, made no tool calls) must read
+    # tool_calls=0, never silently substituted by state.db's agent-wide count.
+    q = _q()
+    tool_log_path = tmp_path / "run" / "arms/competitor/tool_calls" / f"{q['id']}.jsonl"
+    hermes_bin = _write_fake_hermes(
+        tmp_path, stdout_text="answer [z.txt]",
+        usage_payload={**_DEFAULT_USAGE, "session_id": "sess-empty-log"},
+        tool_log_path=tool_log_path, tool_log_lines=[])  # writes an empty file, not none
+    cfg = _cfg(tmp_path, hermes_bin)
+
+    hermes_home = cfg.run_dir / "arms/competitor/hermes_home"
+    hermes_home.mkdir(parents=True, exist_ok=True)
+    _make_state_db(
+        hermes_home / "state.db", session_id="sess-empty-log", tool_call_count=9,
+        input_tokens=100, output_tokens=20)
+
+    result = AH.answer_competitor(q, cfg)
+
+    assert tool_log_path.exists()  # the file WAS written (by the fake stub) — just empty
+    assert result.raw.effort["tool_calls"] == 0  # a real 0, not state.db's 9
     assert result.tool_log == []
 
 

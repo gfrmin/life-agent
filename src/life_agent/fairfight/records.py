@@ -29,7 +29,9 @@ Six axis groups, in field order (each condensed from the design's field-by-field
   has no such stage); ``think_ticks`` is a reserved axis, always ``None`` at
   format_version 1.
 - **provenance** -- answer_sha256/answer_chars/lineage_keys identify and cite the answer;
-  status flags infra failures (never graded, excluded from scoring); notes is free text.
+  status flags infra failures (never graded, excluded from scoring -- enforced by
+  :func:`scored`, the one canonical filter every scored population must pass through);
+  notes is free text.
 
 Closed vocabularies (``arm``, ``cost_status``, ``status``, ``bucket``) fail loudly at
 construction -- the same discipline as ``core/outcomes.py``'s ``OutcomeEvent``.
@@ -168,3 +170,24 @@ def from_json(obj: dict[str, Any]) -> OutcomeVector:
     fields["lineage_keys"] = tuple(obj["lineage_keys"])
     fields["model_tier_mix"] = dict(obj["model_tier_mix"])
     return OutcomeVector(**fields)
+
+
+def _status(v: OutcomeVector | dict[str, Any]) -> str:
+    return v.status if isinstance(v, OutcomeVector) else str(v["status"])
+
+
+def scored[V: (OutcomeVector, dict[str, Any])](vectors: list[V]) -> list[V]:
+    """The ONE place ``status == "ok"`` is applied -- every scored population (rates,
+    welfare sums, Pareto points, win-map cells, loss triage) filters out infra failures
+    (``timeout``/``error``) through this, per this module's own docstring contract
+    ("status flags infra failures (never graded, excluded from scoring)").
+
+    Accepts EITHER ``OutcomeVector`` dataclass instances (``scripts/fairfight/
+    run_fairfight.py``'s own in-memory per-arm list, built fresh each run) or JSON-safe
+    dicts (``records.to_json`` shape -- ``scripts/dominance/``'s ``vectors.jsonl``-loaded
+    rows) -- the two shapes both real consumers actually hold -- and returns the SAME
+    shape it was given (a list of dicts in, a list of dicts out; dataclasses likewise),
+    so this stays the one canonical filter instead of forcing either caller to round-trip
+    through the other shape first.
+    """
+    return [v for v in vectors if _status(v) == "ok"]

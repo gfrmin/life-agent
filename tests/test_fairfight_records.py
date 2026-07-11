@@ -205,3 +205,37 @@ def test_outcome_vector_is_frozen() -> None:
     vec = _vector()
     with pytest.raises(AttributeError):
         vec.arm = "competitor"  # type: ignore[misc]
+
+
+# --- scored: the ONE canonical status="ok" filter (final-review CRITICAL-2) -----------
+
+def test_scored_filters_out_non_ok_status_dataclass_instances() -> None:
+    ok1 = _vector(question_id="q-1", status="ok")
+    err = _vector(question_id="q-2", status="error")
+    timeout = _vector(question_id="q-3", status="timeout")
+    ok2 = _vector(question_id="q-4", status="ok")
+    out = R.scored([ok1, err, timeout, ok2])
+    assert out == [ok1, ok2]
+
+
+def test_scored_filters_out_non_ok_status_dicts() -> None:
+    ok = R.to_json(_vector(question_id="q-1", status="ok"))
+    err = R.to_json(_vector(question_id="q-2", status="error"))
+    out = R.scored([ok, err])
+    assert out == [ok]
+    assert isinstance(out[0], dict)
+
+
+def test_scored_empty_list_returns_empty_list() -> None:
+    assert R.scored([]) == []
+
+
+def test_scored_all_ok_returns_everything_in_order() -> None:
+    vecs = [_vector(question_id=f"q-{i}", status="ok") for i in range(3)]
+    assert R.scored(vecs) == vecs
+
+
+def test_scored_all_excluded_returns_empty() -> None:
+    vecs = [_vector(question_id="q-1", status="error"),
+            _vector(question_id="q-2", status="timeout")]
+    assert R.scored(vecs) == []

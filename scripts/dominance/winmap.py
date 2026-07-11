@@ -84,14 +84,33 @@ def build_cells(
     "from ``arm_a``'s perspective" without a second lookup. ``n_questions`` is
     ``arm_a``'s row count for that scenario — the two arms are expected to share one
     question corpus (the fair-fight harness's own invariant), so this equals ``arm_b``'s
-    count in practice; :mod:`loss_triage` re-derives the actual common ``question_id``
-    set per cell rather than trusting this count, so a real mismatch surfaces there
-    (fewer than ``n_questions`` triaged rows), not as a silently wrong number here.
+    count in practice.
+
+    Final-review MINOR: this is now a HARD requirement, not just an expectation —
+    :func:`build_cells` itself raises ``ValueError`` if an ordered pair's two arms'
+    SCORED (``records.scored`` — status="ok") ``question_id`` sets differ (e.g. one arm
+    had an infra failure the other didn't, on a question the other arm answered), before
+    computing any cell for that pair: a welfare/frontier/loss comparison over mismatched
+    populations is not a meaningful number, not merely a suspicious one. (``loss_triage``
+    still re-derives the common set per cell independently — belt-and-braces, not the
+    only guard.)
     """
     profiles = profiles if profiles is not None else all_profiles()
     names = sorted(arms)
     cells: list[dict[str, Any]] = []
     for arm_a, arm_b in itertools.permutations(names, 2):
+        ids_a = {v["question_id"] for v in arms[arm_a]}
+        ids_b = {v["question_id"] for v in arms[arm_b]}
+        if ids_a != ids_b:
+            diff = sorted(ids_a ^ ids_b)
+            raise ValueError(
+                f"winmap.build_cells: {arm_a!r} ({len(ids_a)} scored questions) and "
+                f"{arm_b!r} ({len(ids_b)} scored questions) have DIFFERENT scored "
+                f"question_id sets — symmetric difference ({len(diff)}): {diff[:10]}"
+                f"{'...' if len(diff) > 10 else ''}. A welfare/frontier/loss comparison "
+                "over mismatched populations is not meaningful (likely an asymmetric "
+                "infra failure between arms on the same question)."
+            )
         for profile_name, profile in profiles.items():
             for scenario in SCENARIOS:
                 rows_a = _scenario_rows(arms[arm_a], scenario)

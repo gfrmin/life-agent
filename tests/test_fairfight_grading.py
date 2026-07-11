@@ -23,6 +23,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
 from fairfight import grading as G
 
+from life_agent.core import executor as EX
+from life_agent.core import lookup as LK
+
 
 class _Conn:
     """A conn sentinel: any attribute access is a bug (an unmocked DB call)."""
@@ -109,6 +112,62 @@ def test_detect_decline_phrases_case_insensitive() -> None:
 
 def test_detect_decline_plain_answer_does_not_decline() -> None:
     assert not G.detect_decline("Your ID number is 123456789.")
+
+
+# --- grammar-sourced withholding prefixes (final-review CRITICAL-1 item 4) ----------
+# Belt-and-braces for any free-text path (the executor's narrative fallback, a
+# down/errored executor): the credence grammar's OWN withholding renderings, sourced
+# from core.lookup.GRAMMAR — never hardcoded strings that could drift from it. Each
+# test renders a REAL withholding through the production renderer
+# (core.executor.render_view, the same renderer scripts/fairfight/arm_baseline.py's
+# executor path uses) and asserts detect_decline catches it — a drift gate: if
+# core.lookup.GRAMMAR's wording ever changes, this module's own derived prefixes move
+# with it (they're computed FROM GRAMMAR, never duplicated).
+
+
+def test_detect_decline_catches_real_executor_abstain_render() -> None:
+    view = {"effector": "abstain", "asserted": [], "candidates": [], "credences": [],
+            "p_none": 0.9, "eu": 0.0, "n_obs": 0, "hits": [], "route": {}}
+    rendered = EX.render_view(view)
+    assert G.detect_decline(rendered)
+
+
+def test_detect_decline_catches_real_executor_abstain_withheld_render() -> None:
+    view = {"effector": "abstain", "asserted": [], "candidates": ["A"], "credences": [0.4],
+            "p_none": 0.6, "eu": 0.0, "n_obs": 1, "hits": [], "route": {}}
+    rendered = EX.render_view(view)
+    assert G.detect_decline(rendered)
+
+
+def test_detect_decline_catches_real_executor_hedge_render() -> None:
+    view = {"effector": "hedge", "asserted": [], "candidates": ["A", "B"],
+            "credences": [0.4, 0.3], "p_none": 0.3, "eu": 0.0, "n_obs": 2,
+            "hits": [], "route": {}}
+    rendered = EX.render_view(view)
+    assert G.detect_decline(rendered)
+
+
+def test_detect_decline_catches_real_executor_ask_clarify_render() -> None:
+    view = {"effector": "ask_clarify", "asserted": [], "candidates": ["A", "B"],
+            "credences": [0.4, 0.3], "p_none": 0.3, "eu": 0.0, "n_obs": 2,
+            "hits": [], "route": {}}
+    rendered = EX.render_view(view)
+    assert G.detect_decline(rendered)
+
+
+def test_detect_decline_catches_real_lookup_family_abstain_withheld_render() -> None:
+    body = LK.GRAMMAR["abstain_withheld"].format(reason=LK.REASON_DISPERSED, alts="A (0.400)")
+    assert G.detect_decline(body)
+
+
+def test_detect_decline_does_not_catch_a_real_report_render() -> None:
+    # an ASSERTION must never trip a decline check — "report"/"report_scoped" are
+    # deliberately excluded from the grammar-sourced prefix set.
+    view = {"effector": "report", "asserted": ["P123"], "candidates": ["P123"],
+            "credences": [0.92], "p_none": 0.05, "eu": 0.8, "n_obs": 1,
+            "hits": [{"artifact_cache_key": "d0", "chunk_text": "ID: P123"}], "route": {}}
+    rendered = EX.render_view(view)
+    assert not G.detect_decline(rendered)
 
 
 # near misses: phrases that must NOT trigger the fallback regexes -------------------

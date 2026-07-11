@@ -295,6 +295,16 @@ def answer_competitor(q: dict[str, Any], cfg: HermesArmConfig) -> CompetitorResu
         ]
 
         for attempt in range(1, 3):  # retry ONCE on nonzero exit or empty stdout
+            # Final-review IMPORTANT-6: start each attempt with a CLEAN tool log — the
+            # pkm MCP subprocess (`pkm serve --tool-log <this path>`) is respawned fresh
+            # by every hermes invocation but the FILE at this deterministic per-qid path
+            # persists across invocations, so without this an attempt-2 tool log would
+            # accumulate attempt-1's rows too (this covers BOTH hermes's own retry here
+            # AND the runner-level retry — `run_fairfight._run_arm` re-invokes
+            # `answer_competitor` fresh on a tool_log error row, re-entering this same
+            # loop, so the very first iteration's unlink also clears a stale file left by
+            # a PRIOR `answer_competitor` call for this qid).
+            tool_log_path.unlink(missing_ok=True)
             stdout, stderr, rc, timed_out = _run_hermes_once(cmd, env, hermes_home, cfg.timeout_s)
             if timed_out:
                 status = "timeout"
@@ -328,7 +338,12 @@ def answer_competitor(q: dict[str, Any], cfg: HermesArmConfig) -> CompetitorResu
 
         session_id = (usage or {}).get("session_id")
         db_tool_calls = _cross_check_state_db(hermes_home, session_id, usage, notes_parts)
-        tool_calls = len(tool_log_rows) if tool_log_rows else (db_tool_calls or 0)
+        # Final-review IMPORTANT-6: the state.db fallback is keyed on the tool log FILE
+        # being missing (the pkm MCP subprocess never ran at all), not on the parsed row
+        # list being falsy — a present-but-empty tool log (the subprocess ran, made zero
+        # tool calls) is a real 0, and must not be silently overwritten by the db's
+        # agent-wide count.
+        tool_calls = len(tool_log_rows) if tool_log_path.exists() else (db_tool_calls or 0)
         gather_rounds = sum(1 for r in tool_log_rows if r.get("tool") == "search")
     except (Exception, SystemExit) as e:
         status = "error"

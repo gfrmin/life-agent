@@ -92,6 +92,8 @@ def build_summary_md(
     region_tallies: dict[tuple[str, str], dict[str, Any]],
     region_names: set[str],
     zero_losses: bool,
+    n_excluded_infra: dict[str, int],
+    n_total: dict[str, int],
 ) -> str:
     lines = [f"# dominance summary — {run_dir.name}", ""]
 
@@ -100,9 +102,30 @@ def build_summary_md(
         "    " + FORMULA, "",
     ]
 
+    # Final-review CRITICAL-2: every number below (frontier points, win-map cells, loss
+    # triage) is computed over the SCORED population only (records.scored — status="ok"
+    # rows); name what was excluded so a reader never mistakes a small scored population
+    # for a full one.
+    lines += ["## Excluded rows (status != \"ok\" — infra failures, never scored)", ""]
+    for arm in sorted(n_total):
+        lines.append(
+            f"- `{arm}`: {n_excluded_infra[arm]} excluded of {n_total[arm]} total "
+            f"({n_total[arm] - n_excluded_infra[arm]} scored)")
+    lines.append("")
+
     lines += ["## Pareto frontier (profile-independent)", "",
               "Axes (all oriented \"more is better\"): "
-              "(correct_rate, -total_cost, -mean_latency, -attention).", ""]
+              "(correct_rate, -total_cost, -mean_latency, -attention).", "",
+              # final-review IMPORTANT-5 item 2: name what attention counts per arm class,
+              # since the axis is not uniformly measured (see run_fairfight.py's
+              # `_gather_rounds` for the mapping this note summarises).
+              "_Attention = asks_issued (an ask_clarify decision, every arm) + one more "
+              "counter per arm class: in-process arms (inprocess/synthesis) add "
+              "gather_tiers (one corroboration tier fired = one gather round); the "
+              "competitor arm adds its own `search` tool-call count; the baseline "
+              "(executor) arm has no observable gather-round count from the daemon's View, "
+              "so its attention is asks_issued only — see `run_fairfight._gather_rounds`._",
+              ""]
     for arm in sorted(points):
         tag = " **[frontier]**" if arm in frontier_set else ""
         lines.append(f"- `{arm}`{tag}: {_fmt_point(points[arm], n_missing_cost[arm])}")
@@ -142,12 +165,21 @@ def build_summary_md(
 
 def run(run_dir: Path) -> dict[str, Any]:
     """The analysis's core, thin-``main``-friendly: everything ``main()`` needs is one call."""
-    arms = load_arms(run_dir)
-    if len(arms) < 2:
+    arms_raw = load_arms(run_dir)
+    if len(arms_raw) < 2:
         raise SystemExit(
             f"dominance analysis needs >=2 arms with arms/<arm>/vectors.jsonl under "
-            f"{run_dir}, found {len(arms)}: {sorted(arms)}"
+            f"{run_dir}, found {len(arms_raw)}: {sorted(arms_raw)}"
         )
+
+    # Final-review CRITICAL-2: every downstream computation (Pareto points, win-map
+    # cells, loss triage) runs over the SCORED population only — an infra-failed row's
+    # bucket must never reach a rate, a welfare sum, a frontier point, or a loss cell.
+    # Filtered ONCE here, at the package's one entry point, via records.py's canonical
+    # `scored` — never re-implemented per consumer.
+    n_total = {arm: len(rows) for arm, rows in arms_raw.items()}
+    arms = {arm: REC.scored(rows) for arm, rows in arms_raw.items()}
+    n_excluded_infra = {arm: n_total[arm] - len(arms[arm]) for arm in arms_raw}
 
     points, n_missing_cost = PA.build_points(arms)
     frontier_set = PA.frontier(points)
@@ -163,7 +195,9 @@ def run(run_dir: Path) -> dict[str, Any]:
     out_dir = run_dir / "dominance"
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    (out_dir / "cells.json").write_text(json.dumps(cells, indent=2) + "\n", encoding="utf-8")
+    cells_payload = {"n_excluded_infra": n_excluded_infra, "n_total": n_total, "cells": cells}
+    (out_dir / "cells.json").write_text(
+        json.dumps(cells_payload, indent=2) + "\n", encoding="utf-8")
 
     frontier_payload = {
         "frontier": sorted(frontier_set),
@@ -181,6 +215,7 @@ def run(run_dir: Path) -> dict[str, Any]:
         run_dir=run_dir, arms=arms, points=points, n_missing_cost=n_missing_cost,
         frontier_set=frontier_set, pair_tallies=pair_tallies, region_tallies=region_tallies,
         region_names=region_names, zero_losses=zero_losses,
+        n_excluded_infra=n_excluded_infra, n_total=n_total,
     )
     (out_dir / "summary.md").write_text(summary_md, encoding="utf-8")
 
@@ -188,6 +223,7 @@ def run(run_dir: Path) -> dict[str, Any]:
         "run_dir": run_dir, "out_dir": out_dir, "arms": sorted(arms),
         "frontier": sorted(frontier_set), "n_cells": len(cells),
         "n_loss_cells": len(loss_sections), "zero_losses": zero_losses,
+        "n_excluded_infra": n_excluded_infra,
     }
 
 
