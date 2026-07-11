@@ -211,6 +211,42 @@ def test_start_boots_every_form_and_writes_a_boot_record_each(tmp_path: Path) ->
         sh.close()
 
 
+def test_shadow_config_rejects_an_unknown_form_at_construction(tmp_path: Path) -> None:
+    """M1: `config.membrane_utility_forms`'s docstring and the register both CLAIMED an
+    unknown form fails loudly at construction, before serving. It didn't — a plain frozen
+    dataclass took anything, and the form died much later and much quieter, on the worker,
+    into a permanently dead form inside a supervisor that still looked healthy. A stated
+    safety property has to be the code's."""
+    with pytest.raises(ValueError, match="unknown membrane utility form"):
+        _cfg(tmp_path, forms=("table@1", "table@2"))
+    with pytest.raises(ValueError, match="must not be empty"):
+        _cfg(tmp_path, forms=())
+    _cfg(tmp_path, forms=W.UTILITY_FORMS)  # every declared form is accepted
+
+
+def test_boot_record_persists_the_real_u_bar_not_just_its_digest(tmp_path: Path) -> None:
+    """C3: the world_digest pins WHICH world was declared but cannot be inverted back to the
+    utility numbers, so an offline report that had only the digest fell back to
+    world.utility_rows' DEFAULTS (u_wrong=-9.0) — and published a respond-reachability claim
+    that was an artifact of that constant, while the live posterior sat near -5.9. The boot
+    record now carries the u_bar itself (seven scalar means; no PII)."""
+    cfg = _cfg(tmp_path)
+    sh = SH.MembraneShadow(
+        cfg, u_bar=_u_bar, snapshot=_snapshot_calls_counter()[1],
+        session_factory=_FakeFactory(), clock=_FakeClock(),
+    )
+    try:
+        sh.start()
+        assert _wait_until(lambda: _n_boot_records(cfg.log_path) >= 1)
+        boots = [r for r in _read_records(cfg.log_path) if r["kind"] == "boot"]
+        boot = boots[0]
+        assert boot["u_bar"] == _u_bar()
+        # and it is the SAME u_bar the declared world was digested under
+        assert boot["world_digest"] == SH.world_digest(_u_bar(), utility_form="table@1")
+    finally:
+        sh.close()
+
+
 def test_boot_record_persists_the_snapshots_n_source_records(tmp_path: Path) -> None:
     # Task 7 review, fix 1: the boot record must carry the REAL warm-evidence count the
     # boot snapshot found — an offline report has no other way to recover it (the field
@@ -1075,10 +1111,58 @@ def _write_jsonl(path: Path, rows: list[dict[str, object]]) -> None:
             fh.write(json.dumps(row) + "\n")
 
 
+# The two id namespaces, in the SAME shapes production writes them (nothing below fabricates
+# a question_id on both sides of the join — that fabrication is exactly why a structurally
+# impossible join shipped, reported as merely under-powered):
+#   * a fair-fight OutcomeVector.question_id is the CORPUS id  ("q-001"),
+#   * a DecisionEvent.question_id is the MIRROR id (DEC.question_id of the question TEXT),
+#   * and the run's own run_meta.json -> questions_path is the only thing that relates them.
+_QUESTIONS: dict[str, str] = {
+    "q-001": "What colour is the shed?",
+    "q-002": "When does the permit expire?",
+    "q-003": "Who signed the lease?",
+    "q-004": "How many keys are there?",
+    "q-005": "Where is the meter?",
+}
+
+
+def _write_warm_run(run_dir: Path, questions: dict[str, str] | None = None) -> Path:
+    """A fair-fight run dir with the real `run_meta.json` -> `questions_path` indirection
+    (`scripts/fairfight/run_fairfight.py` writes both), and the questions YAML it points at.
+    Returns the questions path."""
+    qs = _QUESTIONS if questions is None else questions
+    questions_path = run_dir / "questions.yaml"
+    run_dir.mkdir(parents=True, exist_ok=True)
+    questions_path.write_text(
+        "questions:\n" + "".join(
+            f'  - id: {qid}\n    question: "{text}"\n' for qid, text in qs.items()
+        ),
+        encoding="utf-8",
+    )
+    (run_dir / "run_meta.json").write_text(
+        json.dumps({"questions_path": str(questions_path)}), encoding="utf-8",
+    )
+    return questions_path
+
+
+def test_warm_question_id_map_bridges_corpus_ids_to_mirror_ids(tmp_path: Path) -> None:
+    run_dir = tmp_path / "run-006"
+    _write_warm_run(run_dir)
+    id_map = SH.warm_question_id_map(run_dir)
+    assert id_map == {qid: DEC.question_id(text) for qid, text in _QUESTIONS.items()}
+    # and the mirror ids really are what a live decision would carry (not a private spelling)
+    assert id_map["q-001"] == DEC.question_id("What colour is the shed?")
+
+
+def test_warm_question_id_map_missing_run_meta_is_empty_not_a_raise(tmp_path: Path) -> None:
+    assert SH.warm_question_id_map(tmp_path / "no-such-run") == {}
+
+
 def test_boot_snapshot_warm_vectors_joins_baseline_vectors_to_shadow_calibration(
     tmp_path: Path,
 ) -> None:
     run_dir = tmp_path / "run-007"
+    _write_warm_run(run_dir)
     _write_jsonl(run_dir / "arms" / "baseline" / "vectors.jsonl", [
         {"run_id": "run-007", "question_id": "q-001", "status": "ok",
          "asserted": True, "asserted_correct": True},
@@ -1092,18 +1176,50 @@ def test_boot_snapshot_warm_vectors_joins_baseline_vectors_to_shadow_calibration
          "asserted": True, "asserted_correct": True},  # no matching calib decision
     ])
     calib_path = run_dir / "shadow_calibration" / "decisions.jsonl"
-    DEC.append(calib_path, _decision("dec-1", "q-001", "report"))
-    DEC.append(calib_path, _decision("dec-2", "q-002", "report"))
+    # calibration decisions carry MIRROR ids — the real derivation, as lookup.py writes them
+    DEC.append(calib_path, _decision("dec-1", DEC.question_id(_QUESTIONS["q-001"]), "report"))
+    DEC.append(calib_path, _decision("dec-2", DEC.question_id(_QUESTIONS["q-002"]), "report"))
     dpath, rpath = tmp_path / "decisions.jsonl", tmp_path / "reactions.jsonl"
     snap = SH.boot_snapshot(dpath, rpath, run_dir)
+
     assert len(snap.outcome_replay) == 2
     event_ids = sorted(eid for eid, _s, _y in snap.outcome_replay)
-    assert event_ids == ["run-007:q-001", "run-007:q-002"]
+    assert event_ids == ["run-007:q-001", "run-007:q-002"]  # dedup key stays the corpus id
     ys = {eid: y for eid, _s, y in snap.outcome_replay}
     assert ys["run-007:q-001"] == 1
     assert ys["run-007:q-002"] == 0
-    # 0 decisions/reactions + 5 vector rows + 2 calib decisions
-    assert snap.n_source_records == 7
+    # n_source_records counts VERDICT-source rows only (0 decisions + 0 reactions); the warm
+    # rows are accounted separately, read-vs-joined, so an unjoinable row can never pad it
+    assert snap.n_source_records == 0
+    assert snap.warm == SH.WarmJoin(
+        vector_rows=5, calib_decisions=2, id_map_size=5, joined=2, note="",
+    )
+
+
+def test_boot_snapshot_warm_join_of_zero_is_named_loudly_not_reported_as_no_data(
+    tmp_path: Path,
+) -> None:
+    """The regression that motivated the whole id-namespace fix: calibration decisions keyed
+    on the CORPUS id (as no producer actually writes them, but as the join used to ASSUME)
+    join nothing at all. A zero join must read as a zero join — loudly — never as an
+    under-powered sample."""
+    run_dir = tmp_path / "run-009"
+    _write_warm_run(run_dir)
+    _write_jsonl(run_dir / "arms" / "baseline" / "vectors.jsonl", [
+        {"run_id": "run-009", "question_id": "q-001", "status": "ok",
+         "asserted": True, "asserted_correct": True},
+    ])
+    DEC.append(run_dir / "shadow_calibration" / "decisions.jsonl",
+               _decision("dec-1", "q-001", "report"))  # corpus id: joins NOTHING
+    snap = SH.boot_snapshot(
+        tmp_path / "decisions.jsonl", tmp_path / "reactions.jsonl", run_dir,
+    )
+    assert snap.outcome_replay == []
+    assert snap.warm is not None
+    assert snap.warm.joined == 0
+    assert snap.warm.vector_rows == 1
+    assert "0 of 1 vector rows joined" in snap.warm.note
+    assert "NOT 'not enough data'" in snap.warm.note
 
 
 def test_boot_snapshot_warm_vectors_dir_none_leaves_outcome_replay_empty(
@@ -1112,6 +1228,7 @@ def test_boot_snapshot_warm_vectors_dir_none_leaves_outcome_replay_empty(
     dpath, rpath = tmp_path / "decisions.jsonl", tmp_path / "reactions.jsonl"
     snap = SH.boot_snapshot(dpath, rpath, None)
     assert snap.outcome_replay == []
+    assert snap.warm is None  # no warm dir asked for => no warm arithmetic claimed
 
 
 def test_boot_snapshot_missing_warm_vector_files_fail_open(tmp_path: Path) -> None:
@@ -1120,10 +1237,14 @@ def test_boot_snapshot_missing_warm_vector_files_fail_open(tmp_path: Path) -> No
     snap = SH.boot_snapshot(dpath, rpath, run_dir)
     assert snap.outcome_replay == []
     assert snap.n_source_records == 0
+    assert snap.warm == SH.WarmJoin(
+        vector_rows=0, calib_decisions=0, id_map_size=0, joined=0, note="",
+    )
 
 
 def test_boot_snapshot_malformed_vector_line_is_skipped_not_raised(tmp_path: Path) -> None:
     run_dir = tmp_path / "run-008"
+    _write_warm_run(run_dir)
     p = run_dir / "arms" / "baseline" / "vectors.jsonl"
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(
@@ -1133,7 +1254,7 @@ def test_boot_snapshot_malformed_vector_line_is_skipped_not_raised(tmp_path: Pat
         encoding="utf-8",
     )
     DEC.append(run_dir / "shadow_calibration" / "decisions.jsonl",
-               _decision("dec-1", "q-001", "report"))
+               _decision("dec-1", DEC.question_id(_QUESTIONS["q-001"]), "report"))
     dpath, rpath = tmp_path / "decisions.jsonl", tmp_path / "reactions.jsonl"
     snap = SH.boot_snapshot(dpath, rpath, run_dir)
     assert len(snap.outcome_replay) == 1

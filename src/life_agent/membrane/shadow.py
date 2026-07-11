@@ -97,7 +97,17 @@ class ShadowConfig:
     """One shadow run's static configuration. `command` is the `proplang-govhost`
     launch argv (the same shape `MembraneClient.spawn` takes); `forms` is every
     utility form to run side by side (declared order = the per-item processing order
-    AND the boot-record write order)."""
+    AND the boot-record write order).
+
+    `forms` is validated HERE, at construction, against `world.UTILITY_FORMS` — an
+    unknown form raises `ValueError` before anything is spawned or served. It used to
+    fail much later and much quieter: `handshake_decl` would raise on the worker thread,
+    per form, leaving a permanently dead form inside a supervisor that otherwise looked
+    healthy, while `config.membrane_utility_forms()`'s docstring and the register both
+    claimed this validation already happened. A stated safety property has to be the
+    code's, not the prose's. The bridge's `_build_membrane` catches this (as it catches
+    every start-up failure) and serves with the membrane DISABLED — loudly printed, never
+    a half-running dual shadow."""
 
     command: list[str]
     forms: tuple[str, ...]
@@ -107,22 +117,53 @@ class ShadowConfig:
     max_respawns: int = 3
     respawn_backoff_s: float = 60.0
 
+    def __post_init__(self) -> None:
+        unknown = [f for f in self.forms if f not in W.UTILITY_FORMS]
+        if unknown:
+            raise ValueError(
+                f"unknown membrane utility form(s) {unknown} "
+                f"(declared: {list(W.UTILITY_FORMS)})"
+            )
+        if not self.forms:
+            raise ValueError("membrane utility forms must not be empty")
+
+
+@dataclass(frozen=True)
+class WarmJoin:
+    """The warm-outcome join's own arithmetic, reported rather than folded away: how many
+    fair-fight vector rows were read, how many calibration decisions they could join
+    against, how many corpus-id→mirror-id mappings the run's questions file yielded, and
+    how many rows actually JOINED (= `len(outcome_replay)`). `note` is non-empty exactly
+    when something is wrong — above all the structural case this feature originally
+    shipped broken: `vector_rows > 0` but `joined == 0`, which is an id-namespace
+    mismatch, NOT "not enough data". A zero join must read as a zero join."""
+
+    vector_rows: int
+    calib_decisions: int
+    id_map_size: int
+    joined: int
+    note: str = ""
+
 
 @dataclass(frozen=True)
 class BootSnapshot:
     """What a (re)boot replays into a fresh session, via `MembraneSession.boot`'s own
     `verdict_replay`/`outcome_replay` parameters — this dataclass's two list fields are
-    that method's parameter types verbatim. `n_source_records` is a diagnostic total (raw
-    rows read across every source file, BEFORE any join/exclusion filtering) surfaced at
-    `stats()["snapshot_records"]` AND persisted verbatim into that (re)boot's own `kind:
-    "boot"` log row (`_write_boot_record`'s `n_source_records` field) — the gap between
-    it and `len(verdict_replay) + len(outcome_replay)` is exactly how many source rows
-    were excluded (unrouted reactions, a `verdict_y`-undeclared pair, an unjoinable warm
-    outcome — see :func:`boot_snapshot`)."""
+    that method's parameter types verbatim.
+
+    `n_source_records` counts the VERDICT-source rows (decisions + reactions) read raw,
+    BEFORE join/exclusion filtering — the gap between it and `len(verdict_replay)` is
+    exactly how many were excluded (an unrouted reaction, a `verdict_y`-undeclared pair).
+    It is surfaced at `stats()["snapshot_records"]` and persisted into that (re)boot's
+    `kind: "boot"` row. It deliberately does NOT include the warm fair-fight rows: those
+    live in `warm` (a :class:`WarmJoin`), with their own read-vs-joined split, because a
+    warm row that cannot join contributes NOTHING to the shadow and counting it into a
+    published "warm corpus size" inflates that figure with rows the shadow never saw."""
 
     verdict_replay: list[tuple[W.DecideSummary, int]]
     outcome_replay: list[tuple[str, W.DecideSummary, int]]
     n_source_records: int
+    warm: WarmJoin | None = None
 
 
 SnapshotFn = Callable[[], BootSnapshot]
@@ -511,7 +552,7 @@ class MembraneShadow:
             return
         state.session = session
         state.next_attempt_at = None
-        self._write_boot_record(form, session, state, snap.n_source_records)
+        self._write_boot_record(form, session, state, snap)
 
     def _attempt_respawn(self, form: str, state: _FormState) -> None:
         state.respawn_count += 1
@@ -553,21 +594,32 @@ class MembraneShadow:
         })
 
     def _write_boot_record(
-        self, form: str, session: MembraneSession, state: _FormState, n_source_records: int,
+        self, form: str, session: MembraneSession, state: _FormState, snap: BootSnapshot,
     ) -> None:
         # fail-open: `self._u_bar()` reads a caller-supplied utility posterior that can
         # raise (missing/corrupt calibration), and `handshake_decl` raises on an unknown
         # form — neither may kill the worker thread just because a record couldn't be
         # written; the boot itself already succeeded and must stand.
+        #
+        # The `u_bar` DICT itself is persisted, not just its digest: the world_digest pins
+        # WHICH world was declared but cannot be inverted back to the utility numbers, so
+        # an offline reader (scripts/membrane/report.py) that only had the digest was left
+        # scoring realized loss — and deriving the respond-reachability threshold — under
+        # world.utility_rows' fallback DEFAULTS instead of the posterior the shadow
+        # actually decided under. Those differ materially (the live u_wrong is ~-5.9, not
+        # the -9.0 default), and the report published the difference as fact. It is seven
+        # scalar utility means: no PII, no corpus content (register item 7).
         try:
             binary_sha256 = _binary_sha256(self._cfg.command[0]) if self._cfg.command else "unknown"
-            digest = world_digest(self._u_bar(), utility_form=form)
+            u_bar = {k: float(v) for k, v in self._u_bar().items()}
+            digest = world_digest(u_bar, utility_form=form)
             self._append_record({
                 "event_type": "membrane-shadow", "kind": "boot", "ts": time.time(),
                 "form": form, "engine": session.engine, "binary_sha256": binary_sha256,
-                "forms": list(self._cfg.forms), "world_digest": digest,
+                "forms": list(self._cfg.forms), "world_digest": digest, "u_bar": u_bar,
                 "respawn_count": state.respawn_count,
-                "n_source_records": n_source_records,
+                "n_source_records": snap.n_source_records,
+                "warm": asdict(snap.warm) if snap.warm is not None else None,
             })
         except Exception:
             with self._lock:
@@ -651,6 +703,97 @@ def _read_json_rows(path: Path) -> list[dict[str, Any]]:
     return rows
 
 
+def warm_question_id_map(run_dir: Path) -> dict[str, str]:
+    """`{corpus id -> mirror question_id}` for one fair-fight run — the ONE bridge between
+    the two id namespaces this system speaks, and the reason it exists:
+
+    * a fair-fight `OutcomeVector.question_id` is the CORPUS id (`"q-001"` —
+      `scripts/fairfight/run_fairfight.py` stamps `str(q["id"])`), while
+    * every decision/decide record's `question_id` is the MIRROR id
+      (`core.decisions.question_id` — sha256 of the raw question TEXT, [:16]).
+
+    Nothing joins those directly, and a join that silently yields zero rows is
+    indistinguishable from "no data yet" — which is precisely how this feature originally
+    shipped with a structurally impossible grounded join reported as merely under-powered.
+    So the corpus ids are mapped through the questions file that ASSIGNED them: the run's
+    own `run_meta.json` records `questions_path` (and `questions_sha256`); each question's
+    `id` maps to `decisions.question_id(text)`.
+
+    Fail-open to `{}` (no run_meta, no questions file — it holds PII and lives in
+    `$LIFE_AGENT_KB`, so it may simply be absent on another machine; a corrupt YAML; a
+    row with no id/question). An empty map is NOT silently equivalent to an empty join:
+    every caller reports the map size beside the join count and says so out loud."""
+    try:
+        import yaml
+
+        meta = json.loads((run_dir / "run_meta.json").read_text(encoding="utf-8"))
+        questions_path = Path(str(meta["questions_path"]))
+        data = yaml.safe_load(questions_path.read_text(encoding="utf-8"))
+        rows = data.get("questions") if isinstance(data, dict) else None
+        if not isinstance(rows, list):
+            return {}
+        out: dict[str, str] = {}
+        for q in rows:
+            if isinstance(q, dict) and q.get("id") and q.get("question"):
+                out[str(q["id"])] = DEC.question_id(str(q["question"]))
+        return out
+    except Exception:
+        return {}
+
+
+def _warm_outcomes(
+    run_dir: Path,
+) -> tuple[list[tuple[str, W.DecideSummary, int]], WarmJoin]:
+    """One fair-fight run's warm outcome replay, plus the join's own arithmetic.
+
+    `arms/baseline/vectors.jsonl` rows (`status == "ok" and asserted is True`, `y =
+    asserted_correct`) are joined to that run's OWN shadow calibration log
+    (`shadow_calibration/decisions.jsonl` — see the module docstring for why this is NOT
+    `calibration/decisions.jsonl`) THROUGH :func:`warm_question_id_map`, since the two
+    files speak different id namespaces. Latest decision per mirror id wins. The outcome
+    event_id keeps the CORPUS id (`f"{run_id}:{corpus_id}"`, falling back to the bare
+    corpus id) — it is a dedup key, not a join key, and the corpus id is the stabler name
+    for the same question across runs.
+
+    A zero join over a non-empty vector file is reported LOUDLY in `WarmJoin.note`, never
+    as a bare 0."""
+    vector_rows = _read_json_rows(run_dir / "arms" / "baseline" / "vectors.jsonl")
+    calib_decisions = _read_decisions(run_dir / "shadow_calibration" / "decisions.jsonl")
+    id_map = warm_question_id_map(run_dir)
+    by_question: dict[str, DEC.DecisionEvent] = {d.question_id: d for d in calib_decisions}
+
+    replay: list[tuple[str, W.DecideSummary, int]] = []
+    for row in vector_rows:
+        if row.get("status") != "ok" or row.get("asserted") is not True:
+            continue
+        corpus_id = row.get("question_id")
+        if not isinstance(corpus_id, str):
+            continue
+        mirror_id = id_map.get(corpus_id)
+        d = by_question.get(mirror_id) if mirror_id else None
+        if d is None:
+            continue
+        run_id = row.get("run_id")
+        event_id = f"{run_id}:{corpus_id}" if run_id else corpus_id
+        replay.append((event_id, W.summary_from_decision_event(asdict(d)), 1
+                       if row.get("asserted_correct") else 0))
+
+    note = ""
+    if vector_rows and not replay:
+        note = (
+            f"0 of {len(vector_rows)} vector rows joined — id-namespace mismatch or disjoint "
+            f"corpora. Vector question_ids are CORPUS ids (q-001); decision question_ids are "
+            f"MIRROR ids (sha256(text)[:16]); the bridge between them is this run's "
+            f"run_meta.json -> questions_path (mapped {len(id_map)} ids) matched against "
+            f"{len(calib_decisions)} calibration decisions. This is NOT 'not enough data': "
+            f"no warm outcome reached the shadow."
+        )
+    return replay, WarmJoin(
+        vector_rows=len(vector_rows), calib_decisions=len(calib_decisions),
+        id_map_size=len(id_map), joined=len(replay), note=note,
+    )
+
+
 def boot_snapshot(
     decisions_path: Path, reactions_path: Path, warm_vectors_dir: Path | None,
 ) -> BootSnapshot:
@@ -662,15 +805,11 @@ def boot_snapshot(
     on `decision_id` the same way `core.reactions.load_reactions` does (latest reaction
     per decision_id wins, file order is replay order).
 
-    If `warm_vectors_dir` is given (a fair-fight run directory), also joins
-    `arms/baseline/vectors.jsonl` rows (`status == "ok" and asserted is True`, `y =
-    asserted_correct`) to that run's OWN shadow calibration log
-    (`shadow_calibration/decisions.jsonl` — see the module docstring for why this is NOT
-    `calibration/decisions.jsonl`) by `question_id`, latest decision per question_id
-    wins. An unjoinable vector row is skipped, counted the same way. The outcome
-    event_id is `f"{run_id}:{question_id}"` (falling back to the bare question_id if a
-    row carries no `run_id`) — deduped against replay-vs-live collisions the same way
-    `MembraneSession.observe_outcome`'s `seen_outcomes` set does downstream.
+    If `warm_vectors_dir` is given (a fair-fight run directory), :func:`_warm_outcomes`
+    also replays that run's baseline-arm outcomes — joined across the id namespaces, and
+    accounted separately in `BootSnapshot.warm` rather than folded into
+    `n_source_records` (see :class:`BootSnapshot`: an unjoinable warm row must never
+    inflate a published warm-corpus size).
 
     Missing/unreadable files anywhere (a fresh KB, a run directory that was never
     written, a corrupt line) never raise — the corresponding part of the snapshot is
@@ -696,27 +835,11 @@ def boot_snapshot(
         verdict_replay.append((W.summary_from_decision_event(asdict(d)), y))
 
     outcome_replay: list[tuple[str, W.DecideSummary, int]] = []
+    warm: WarmJoin | None = None
     if warm_vectors_dir is not None:
-        vector_rows = _read_json_rows(warm_vectors_dir / "arms" / "baseline" / "vectors.jsonl")
-        calib_decisions = _read_decisions(
-            warm_vectors_dir / "shadow_calibration" / "decisions.jsonl"
-        )
-        n_source += len(vector_rows) + len(calib_decisions)
-        by_question: dict[str, DEC.DecisionEvent] = {}
-        for d in calib_decisions:
-            by_question[d.question_id] = d
-        for row in vector_rows:
-            if row.get("status") != "ok" or row.get("asserted") is not True:
-                continue
-            question_id = row.get("question_id")
-            d = by_question.get(question_id) if isinstance(question_id, str) else None
-            if d is None:
-                continue
-            run_id = row.get("run_id")
-            event_id = f"{run_id}:{question_id}" if run_id else str(question_id)
-            y = 1 if row.get("asserted_correct") else 0
-            outcome_replay.append((event_id, W.summary_from_decision_event(asdict(d)), y))
+        outcome_replay, warm = _warm_outcomes(warm_vectors_dir)
 
     return BootSnapshot(
-        verdict_replay=verdict_replay, outcome_replay=outcome_replay, n_source_records=n_source,
+        verdict_replay=verdict_replay, outcome_replay=outcome_replay,
+        n_source_records=n_source, warm=warm,
     )

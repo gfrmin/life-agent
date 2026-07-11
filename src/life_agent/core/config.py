@@ -99,8 +99,11 @@ def membrane_command() -> list[str] | None:
 
 def membrane_utility_forms() -> tuple[str, ...]:
     """Every declared utility form to run side by side, comma-separated
-    (default: just ``table@1``) — life_agent.membrane.world.UTILITY_FORMS is the
-    declared vocabulary; ShadowConfig validates membership."""
+    (default: just ``table@1``) — life_agent.membrane.world.UTILITY_FORMS is the declared
+    vocabulary, and ``ShadowConfig.__post_init__`` validates membership against it, raising
+    on an unknown form before anything is spawned (the bridge then serves with the membrane
+    disabled). This function itself only splits the env var: it never validates, so a typo
+    surfaces at construction, named, rather than here."""
     raw = os.environ.get(MEMBRANE_UTILITY_ENV, MEMBRANE_DEFAULT_UTILITY_FORMS)
     return tuple(f.strip() for f in raw.split(",") if f.strip())
 
