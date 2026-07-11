@@ -526,6 +526,7 @@ class _FakeMembrane:
     raise_on_submit_decide: bool = False
     raise_on_submit_decision: bool = False
     raise_on_submit_reaction: bool = False
+    raise_on_stats: bool = False
 
     def submit_decide(self, question_id: str, payload: dict[str, Any],
                       dec: dict[str, Any]) -> None:
@@ -544,6 +545,8 @@ class _FakeMembrane:
             raise RuntimeError("boom: submit_reaction")
 
     def stats(self) -> dict[str, Any]:
+        if self.raise_on_stats:
+            raise RuntimeError("boom: stats")
         return self.stats_value
 
 
@@ -674,6 +677,24 @@ def test_ready_membrane_enabled_reports_stats(deps: BridgeDeps) -> None:
     assert status == 200
     assert payload["status"] == "ok"
     assert payload["membrane"] == {"forms": {"table@1": {"alive": True}}, "drops": 2}
+
+
+def test_ready_membrane_stats_raising_does_not_crash_ready(deps: BridgeDeps) -> None:
+    # `_membrane_ready_block`'s try/except is load-bearing, not cosmetic: `dispatch` only
+    # catches `BridgeError`, so an uncaught exception out of `stats()` would propagate past
+    # dispatch and (over real HTTP) become a 500 on `GET /ready`; `core/ask_client.py`'s
+    # `_ready()` treats any non-2xx as the bridge being down, so a misbehaving shadow would
+    # present as an apparent outage of the production answer path — exactly what this
+    # feature must never cause. Pin that the guard holds: a raising stats() still yields a
+    # 200 with the rest of the ready block intact, the membrane sub-block carrying an error
+    # marker instead of propagating.
+    fake = _FakeMembrane(raise_on_stats=True)
+    deps2 = _with_membrane(deps, fake)
+    status, payload = _call(deps2, "GET", "/ready")
+    assert status == 200
+    assert payload is not None
+    assert payload["status"] == "ok"
+    assert payload["membrane"] == {"enabled": True, "stats_error": True}
 
 
 # --- build_deps' _build_membrane: iff LIFE_AGENT_MEMBRANE_COMMAND is set, never lets a ----
