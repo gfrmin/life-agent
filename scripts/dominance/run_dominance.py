@@ -1,0 +1,215 @@
+#!/usr/bin/env python3
+"""``scripts/dominance/run_dominance.py`` — the dominance-analysis CLI.
+
+Reads a finished ``run_fairfight.py`` run directory's ``arms/<arm>/vectors.jsonl``
+(validated ``OutcomeVector`` rows — ``life_agent.fairfight.records.from_json``, so a
+malformed row fails loudly here rather than silently skewing a welfare sum downstream),
+computes the Pareto frontier (``pareto.py``) and the profile-scalarized win map + loss
+triage (``profiles.py``/``utility.py``/``winmap.py``/``loss_triage.py``), and writes:
+
+    <run-dir>/dominance/cells.json      — every (arm-pair x profile x scenario) cell
+    <run-dir>/dominance/frontier.json   — the Pareto frontier + each arm's Point
+    <run-dir>/dominance/LOSS_MAP.md     — per-loss-cell top-5 question triage
+    <run-dir>/dominance/summary.md      — the scalarization, frontier, tallies, flags
+
+Usage::
+
+    uv run --project . python scripts/dominance/run_dominance.py --run-dir PATH
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+from typing import Any
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # scripts/: self-import below
+
+from dominance import loss_triage as LT
+from dominance import pareto as PA
+from dominance import profiles as P
+from dominance import winmap as W
+from dominance.utility import FORMULA
+from life_agent.fairfight import records as REC
+
+# --- loading -------------------------------------------------------------------------------
+
+
+def _load_arm_vectors(path: Path) -> list[dict[str, Any]]:
+    """Read + validate one ``vectors.jsonl`` (``records.from_json`` raises on a
+    malformed/unknown-vocabulary row), returning JSON-safe dicts (``records.to_json``)
+    — the shape ``utility``/``pareto``/``winmap``/``loss_triage`` all consume.
+    """
+    rows: list[dict[str, Any]] = []
+    with path.open(encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            vector = REC.from_json(json.loads(line))
+            rows.append(REC.to_json(vector))
+    return rows
+
+
+def load_arms(run_dir: Path) -> dict[str, list[dict[str, Any]]]:
+    """``{arm: [row, ...]}`` for every ``arms/<arm>/vectors.jsonl`` under ``run_dir``."""
+    arms: dict[str, list[dict[str, Any]]] = {}
+    for vectors_path in sorted(run_dir.glob("arms/*/vectors.jsonl")):
+        arms[vectors_path.parent.name] = _load_arm_vectors(vectors_path)
+    return arms
+
+
+# --- summary.md ----------------------------------------------------------------------------
+
+
+def _fmt_point(point: PA.Point, n_missing_cost: int) -> str:
+    correct_rate, neg_cost, neg_latency, neg_attention = point
+    return (
+        f"correct_rate={correct_rate:.3f}, total_cost=${-neg_cost:.4f} "
+        f"(missing_cost_rows={n_missing_cost}), mean_latency={-neg_latency:.3f}s, "
+        f"attention={-neg_attention:.1f}"
+    )
+
+
+def _fmt_tally(tally: dict[str, Any]) -> str:
+    if tally["n"] == 0:
+        return "n=0"
+    return (
+        f"n={tally['n']} win={tally['win']} tie={tally['tie']} loss={tally['loss']} "
+        f"weak_dominance={tally['weak_dominance']} strict_win={tally['strict_win']}"
+    )
+
+
+def build_summary_md(
+    *,
+    run_dir: Path,
+    arms: dict[str, list[dict[str, Any]]],
+    points: dict[str, PA.Point],
+    n_missing_cost: dict[str, int],
+    frontier_set: set[str],
+    pair_tallies: dict[tuple[str, str], dict[str, Any]],
+    region_tallies: dict[tuple[str, str], dict[str, Any]],
+    region_names: set[str],
+    zero_losses: bool,
+) -> str:
+    lines = [f"# dominance summary — {run_dir.name}", ""]
+
+    lines += [
+        "## Scalarization (declared, printed verbatim — see utility.py)", "",
+        "    " + FORMULA, "",
+    ]
+
+    lines += ["## Pareto frontier (profile-independent)", "",
+              "Axes (all oriented \"more is better\"): "
+              "(correct_rate, -total_cost, -mean_latency, -attention).", ""]
+    for arm in sorted(points):
+        tag = " **[frontier]**" if arm in frontier_set else ""
+        lines.append(f"- `{arm}`{tag}: {_fmt_point(points[arm], n_missing_cost[arm])}")
+    lines.append("")
+
+    lines += ["## Profile win map — per ordered arm pair", ""]
+    for pair in sorted(pair_tallies):
+        arm_a, arm_b = pair
+        t = pair_tallies[pair]
+        lines.append(f"### {arm_a} vs {arm_b}")
+        lines.append("")
+        lines.append(f"- overall: {_fmt_tally(t['overall'])}")
+        lines.append(f"- measured: {_fmt_tally(t['measured'])}")
+        lines.append(f"- modelled: {_fmt_tally(t['modelled'])}")
+        region = region_tallies.get(pair)
+        if region is not None:
+            lines.append(
+                f"- REALISTIC_REGION weak-dominance fraction (scenario=all, uniform over "
+                f"{len(region_names)} qualifying profiles: {sorted(region_names)}): "
+                f"{region['weak_dominance']} ({_fmt_tally(region)})"
+            )
+        lines.append("")
+
+    if zero_losses:
+        lines += ["## Loss triage", "", LT.ZERO_LOSS_FLAG, ""]
+    else:
+        lines += [
+            "## Loss triage", "",
+            "See `LOSS_MAP.md` for the per-cell top-5 question triage.", "",
+        ]
+
+    return "\n".join(lines) + "\n"
+
+
+# --- the injectable core --------------------------------------------------------------------
+
+
+def run(run_dir: Path) -> dict[str, Any]:
+    """The analysis's core, thin-``main``-friendly: everything ``main()`` needs is one call."""
+    arms = load_arms(run_dir)
+    if len(arms) < 2:
+        raise SystemExit(
+            f"dominance analysis needs >=2 arms with arms/<arm>/vectors.jsonl under "
+            f"{run_dir}, found {len(arms)}: {sorted(arms)}"
+        )
+
+    points, n_missing_cost = PA.build_points(arms)
+    frontier_set = PA.frontier(points)
+
+    profiles = W.all_profiles()
+    cells = W.build_cells(arms, profiles)
+    pair_tallies = W.pair_tally(cells)
+    region_names = {name for name, p in profiles.items() if P.in_realistic_region(p)}
+    region_tallies = W.region_dominance(cells, region_names)
+
+    loss_sections, zero_losses = LT.build_loss_report(cells, arms)
+
+    out_dir = run_dir / "dominance"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    (out_dir / "cells.json").write_text(json.dumps(cells, indent=2) + "\n", encoding="utf-8")
+
+    frontier_payload = {
+        "frontier": sorted(frontier_set),
+        "point_axes": ["correct_rate", "neg_total_cost", "neg_mean_latency", "neg_attention"],
+        "points": {arm: list(pt) for arm, pt in points.items()},
+        "n_missing_cost": n_missing_cost,
+    }
+    (out_dir / "frontier.json").write_text(
+        json.dumps(frontier_payload, indent=2) + "\n", encoding="utf-8")
+
+    (out_dir / "LOSS_MAP.md").write_text(
+        LT.loss_map_md(loss_sections, zero_losses), encoding="utf-8")
+
+    summary_md = build_summary_md(
+        run_dir=run_dir, arms=arms, points=points, n_missing_cost=n_missing_cost,
+        frontier_set=frontier_set, pair_tallies=pair_tallies, region_tallies=region_tallies,
+        region_names=region_names, zero_losses=zero_losses,
+    )
+    (out_dir / "summary.md").write_text(summary_md, encoding="utf-8")
+
+    return {
+        "run_dir": run_dir, "out_dir": out_dir, "arms": sorted(arms),
+        "frontier": sorted(frontier_set), "n_cells": len(cells),
+        "n_loss_cells": len(loss_sections), "zero_losses": zero_losses,
+    }
+
+
+# --- CLI -------------------------------------------------------------------------------------
+
+
+def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--run-dir", required=True, help="a finished fair-fight run directory")
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = _parse_args(argv)
+    result = run(Path(args.run_dir))
+    print(
+        f"dominance analysis -> {result['out_dir']} "
+        f"(arms={result['arms']}, frontier={result['frontier']}, "
+        f"cells={result['n_cells']}, loss_cells={result['n_loss_cells']})"
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
