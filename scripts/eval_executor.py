@@ -31,9 +31,9 @@ from datetime import datetime
 from pathlib import Path
 
 from life_agent.core import executor as EX
+from life_agent.core import shadow_mirror as SM
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import ask  # the shadow-mirror wrapper (_shadow_wrapped_post) — eval runs shadow the loop too
 from answer_labels import Label, load_labels, verdict
 from eval_grading import answer_matches, chunk_matches_any
 from run_eval import _answer_in_corpus, _kb_root, load_questions
@@ -64,10 +64,11 @@ def _get(url: str) -> dict:
 
 def _post_for(question: str) -> EX.Post:
     """The shadow-wrapped post for one eval question — same question_id derivation
-    (sha256 of the raw question text, [:16]) as scripts/ask.py's production caller, so a
-    live-service eval run feeds the membrane shadow exactly like the ask read-path does."""
+    (sha256 of the raw question text, [:16]) and the same shared mirror
+    (life_agent.core.shadow_mirror) as every production caller, so a live-service eval run
+    feeds the membrane shadow exactly like the ask read-path does."""
     question_id = hashlib.sha256(question.encode("utf-8")).hexdigest()[:16]
-    return ask._shadow_wrapped_post(_post, BRIDGE, question_id)
+    return SM.shadow_wrapped_post(_post, BRIDGE, question_id)
 
 
 def _grade(conn, q: dict, view: dict, labels: list[Label]) -> dict:
