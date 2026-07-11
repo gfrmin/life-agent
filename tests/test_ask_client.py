@@ -9,6 +9,7 @@ names the fold fate in ask-live's own vocabulary — never implying every verdic
 """
 from __future__ import annotations
 
+import hashlib
 from typing import Any
 
 from life_agent.core import ask_client as AC
@@ -46,6 +47,43 @@ def test_answer_narrative_or_miss_binds_nothing(monkeypatch: Any) -> None:
                                    get=lambda u: {}, check_ready=False)
     assert decision_id is None                   # nothing foldable to bind
     assert reply                                 # still a named reply, never empty
+
+
+def test_answer_wires_the_shared_shadow_mirror(monkeypatch: Any) -> None:
+    # Jarvis's real traffic is a production caller of EX.decide_via_loop too — its post must
+    # be shadow-wrapped through the SAME shared mirror scripts/ask.py installs, unconditionally.
+    # The mirror's own behaviour (URL gating, fail-open, timeout, breaker, body shape) is
+    # exercised once, directly, in tests/test_shadow_mirror.py — this is a wiring pin only.
+    def bare_post(url: str, payload: dict[str, Any]) -> dict[str, Any] | None:
+        return {"ok": True}
+
+    wrap_calls: list[tuple[Any, str, str]] = []
+
+    def sentinel_wrapped(url: str, body: dict[str, Any]) -> dict[str, Any] | None:
+        return {"sentinel": True}
+
+    def fake_shadow_wrapped_post(post: Any, bridge: str, question_id: str) -> Any:
+        wrap_calls.append((post, bridge, question_id))
+        return sentinel_wrapped
+
+    monkeypatch.setattr(AC.SM, "shadow_wrapped_post", fake_shadow_wrapped_post)
+
+    captured: dict[str, Any] = {}
+
+    def fake_decide_via_loop(question: str, k: int, **kwargs: Any) -> dict[str, Any]:
+        captured.update(kwargs)
+        return _fake_view("miss")  # not a LOOKUP_ACTION_ORDER effector — no extra /log_decision
+
+    monkeypatch.setattr(EX, "decide_via_loop", fake_decide_via_loop)
+    AC.answer("what is my passport number?", post=bare_post, get=lambda u: {},
+             check_ready=False)
+
+    assert len(wrap_calls) == 1
+    post_arg, bridge_arg, qid_arg = wrap_calls[0]
+    assert post_arg is bare_post  # the real (unwrapped) transport goes in
+    assert bridge_arg == AC.BRIDGE
+    assert qid_arg == hashlib.sha256(b"what is my passport number?").hexdigest()[:16]
+    assert captured["post"] is sentinel_wrapped  # decide_via_loop gets the WRAPPED post back
 
 
 def test_answer_names_a_down_stack(monkeypatch: Any) -> None:

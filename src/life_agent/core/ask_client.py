@@ -22,6 +22,7 @@ from typing import Any
 
 from life_agent.core import decisions as DEC
 from life_agent.core import executor as EX
+from life_agent.core import shadow_mirror as SM
 
 BRIDGE = os.environ.get("LIFE_AGENT_BRIDGE_URL", "http://127.0.0.1:8798")
 DAEMON = os.environ.get("ANSWER_BRAIN_URL", "http://127.0.0.1:8799")
@@ -69,8 +70,12 @@ def answer(question: str, k: int = 20, *, post: Any = None, get: Any = None,
         return DOWN, None
     post = post if post is not None else _post
     get = get if get is not None else _get
+    # The ONE question_id derivation (core.decisions.question_id) — the same key /log_decision
+    # stamps on the decision below, so a mirrored decide tick and its decision join.
+    question_id = DEC.question_id(question)
     view = EX.decide_via_loop(question, k, bridge=BRIDGE, daemon=DAEMON,
-                              post=post, get=get, grow_lane=GROW_LANE)
+                              post=SM.shadow_wrapped_post(post, BRIDGE, question_id), get=get,
+                              grow_lane=GROW_LANE)
     decision_id: str | None = None
     if (view["route"] is not None and view["effector"] in DEC.LOOKUP_ACTION_ORDER
             and view["credences"]):

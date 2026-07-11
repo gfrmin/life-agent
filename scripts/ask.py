@@ -55,6 +55,7 @@ import life_agent.core.narrative as N
 import life_agent.core.outcomes as O
 import life_agent.core.probes as P
 import life_agent.core.reactions as R
+import life_agent.core.shadow_mirror as SM
 import life_agent.core.subject as S
 import life_agent.core.synthesis as SYN
 import life_agent.core.temporal as T
@@ -944,8 +945,13 @@ def answer_via_executor(question: str, k: int
     EFFORT_LAST = {}
     if not _executor_ready():
         return (EXECUTOR_DOWN, [], {})
+    # The ONE question_id derivation (core.decisions.question_id) — the same key the bridge's
+    # /log_decision stamps, so a live decide tick mirrored here and the terminal decision
+    # logged below join on one key.
+    question_id = DEC.question_id(question)
     view = EX.decide_via_loop(question, k, bridge=EXECUTOR_BRIDGE, daemon=EXECUTOR_DAEMON,
-                              post=_http_post, get=_http_get,
+                              post=SM.shadow_wrapped_post(_http_post, EXECUTOR_BRIDGE, question_id),
+                              get=_http_get,
                               grow_lane=EXECUTOR_GROW_LANE)
     EXECUTOR_VIEW_LAST = view
     _log_executor_decision(question, view)
@@ -1034,22 +1040,55 @@ def capture(question: str, text: str, cards: list[C.SourceCard], scores: dict[in
     _record_reaction(question, verdict)
 
 
+def submit_reaction(event: R.ReactionEvent, *, reactions_path: Path,
+                    post: Any = None) -> str:
+    """Record ONE owner verdict — through the bridge's ``/log_reaction`` when it is reachable,
+    by appending straight to the reaction log when it is not. Returns which path took it
+    (``"bridge"`` / ``"direct"``), and never writes BOTH (the bridge owns the append on its
+    own path).
+
+    Why route it at all: ``bridge/server.py``'s ``/log_reaction`` is the ONLY caller of
+    ``MembraneShadow.submit_reaction``, so a verdict appended directly here reaches the
+    membrane shadow only at the NEXT boot's snapshot replay (`shadow.boot_snapshot`) — late,
+    not lost. ask-live is the primary dogfood surface, so its verdicts go through the bridge
+    like Jarvis's already do (`core/ask_client.react`), and the shadow's live evidence stream
+    is the real one rather than a Jarvis-only sample.
+
+    Fail-open, deliberately: the reaction log is the source of truth for the utility fold —
+    a verdict must never be LOST because the bridge is down, misconfigured, or 404s on a
+    decision it cannot see. Any bridge failure falls back to the direct append this function
+    replaced. The bridge is skipped outright (no pointless round-trip) for an unbound verdict
+    (empty ``decision_id`` — nothing for it to look up) and whenever the caller named a
+    reaction log OTHER than the production one, since the bridge writes only its own."""
+    post = post if post is not None else _http_post
+    if event.decision_id and reactions_path == C.REACTIONS_LOG:
+        try:
+            post(f"{EXECUTOR_BRIDGE}/log_reaction",
+                 {"decision_id": event.decision_id, "valence": event.valence})
+            return "bridge"
+        except Exception:
+            pass  # fail-open: fall through to the direct append — never lose a verdict
+    R.append(reactions_path, event)
+    return "direct"
+
+
 def _record_reaction(question: str, verdict: str) -> None:
     """§4.4 reaction loop: record the verdict (one bit) as a structured reaction, joined to
     the decision it grades by ``decision_id`` (the answer's cache key). The producer
     (`reactions.load_reactions`) decides what folds — v0 conditions u(wrong) only on clean
-    lookup abstain-verdicts; everything else is recorded, not folded. Fail-open and named:
-    a calibration-log write must never break the dogfood loop."""
+    lookup abstain-verdicts; everything else is recorded, not folded. Written through
+    :func:`submit_reaction` (bridge-first, so the membrane shadow sees it live). Fail-open
+    and named: a calibration-log write must never break the dogfood loop."""
     decision_id = (EXECUTOR_LAST if EXECUTOR_LAST
                    else LOOKUP_LAST.answer_cache_key if LOOKUP_LAST is not None
                    else NARRATIVE_LAST.answer_cache_key if NARRATIVE_LAST is not None
                    else "")
     try:
-        R.append(C.REACTIONS_LOG, R.ReactionEvent(
-            tx_time=O.now_iso(),
-            question_id=hashlib.sha256(question.encode("utf-8")).hexdigest()[:16],
+        submit_reaction(R.ReactionEvent(
+            tx_time=O.now_iso(), question_id=DEC.question_id(question),
             decision_id=decision_id, kind="verdict",
-            valence={"GOOD": "good", "BAD": "bad"}[verdict]))
+            valence={"GOOD": "good", "BAD": "bad"}[verdict]),
+            reactions_path=C.REACTIONS_LOG)
     except Exception as e:  # fail-open by contract, reason printed
         print(f"  (reaction not recorded: {e})")
 
@@ -1086,9 +1125,9 @@ def react(did_prefix: str, valence: str,
     did = ids[0]
     d = [dd for dd in decisions if dd.decision_id == did][-1]  # latest row; context shared
     try:
-        R.append(reactions_path, R.ReactionEvent(
+        submit_reaction(R.ReactionEvent(
             tx_time=O.now_iso(), question_id=d.question_id, decision_id=did,
-            kind="verdict", valence=valence))
+            kind="verdict", valence=valence), reactions_path=reactions_path)
     except Exception as e:
         print(f"verdict not recorded: {e}", file=sys.stderr)
         return 2
