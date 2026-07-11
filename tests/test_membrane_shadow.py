@@ -163,6 +163,10 @@ def _read_records(path: Path) -> list[dict[str, object]]:
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line]
 
 
+def _n_boot_records(path: Path) -> int:
+    return sum(1 for r in _read_records(path) if r.get("kind") == "boot")
+
+
 def _wait_until(predicate: object, *, timeout_s: float = 2.0, poll_s: float = 0.01) -> bool:
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
@@ -201,9 +205,195 @@ def test_start_boots_every_form_and_writes_a_boot_record_each(tmp_path: Path) ->
             assert b["respawn_count"] == 0
             expected_digest = SH.world_digest(_u_bar(), utility_form=str(b["form"]))
             assert b["world_digest"] == expected_digest
+            assert b["n_source_records"] == 0  # the fixture snapshot's own value
         assert len(calls) == 1  # ONE synchronous snapshot shared by the initial boot
     finally:
         sh.close()
+
+
+def test_boot_record_persists_the_snapshots_n_source_records(tmp_path: Path) -> None:
+    # Task 7 review, fix 1: the boot record must carry the REAL warm-evidence count the
+    # boot snapshot found — an offline report has no other way to recover it (the field
+    # only otherwise reaches the live stats()["snapshot_records"]).
+    cfg = _cfg(tmp_path)
+    factory = _FakeFactory()
+
+    def snapshot() -> SH.BootSnapshot:
+        return SH.BootSnapshot(verdict_replay=[], outcome_replay=[], n_source_records=250)
+
+    sh = SH.MembraneShadow(
+        cfg, u_bar=_u_bar, snapshot=snapshot, session_factory=factory, clock=_FakeClock(),
+    )
+    try:
+        sh.start()
+        # Wait on the boot RECORD itself, not the `alive` flag: `state.session` (which
+        # drives `alive`) is set a moment before `_write_boot_record` runs, so polling
+        # `alive` then immediately reading the log has a race window.
+        assert _wait_until(lambda: _n_boot_records(cfg.log_path) >= 1)
+        records = _read_records(cfg.log_path)
+        boots = [r for r in records if r["kind"] == "boot"]
+        assert len(boots) == 1
+        assert boots[0]["n_source_records"] == 250
+    finally:
+        sh.close()
+
+
+def test_respawn_boot_record_reflects_the_fresh_snapshots_n_source_records(
+    tmp_path: Path,
+) -> None:
+    # Closes the same test gap as the verdict/outcome-replay respawn test: the boot
+    # record's n_source_records must come from the FRESH (respawn-time) snapshot, not
+    # the stale (initial-boot-time) one an implementation could accidentally re-use.
+    cfg = _cfg(tmp_path, max_respawns=1, respawn_backoff_s=0.0)
+    stale = SH.BootSnapshot(verdict_replay=[], outcome_replay=[], n_source_records=0)
+    fresh = SH.BootSnapshot(verdict_replay=[], outcome_replay=[], n_source_records=99)
+    remaining = iter([stale, fresh])
+
+    def snapshot() -> SH.BootSnapshot:
+        return next(remaining, fresh)
+
+    dying = _FakeSession("table@1", decide_raises=True)
+    healthy = _FakeSession("table@1")
+    factory = _FakeFactory({"table@1": [dying, healthy]})
+    sh = SH.MembraneShadow(
+        cfg, u_bar=_u_bar, snapshot=snapshot, session_factory=factory, clock=_FakeClock(),
+    )
+    try:
+        sh.start()
+        assert _wait_until(lambda: sh.stats()["forms"]["table@1"]["alive"])  # type: ignore[index]
+        sh.submit_decide("q-001", {"candidates": []}, {"credences": [], "effector": "report"})
+        assert _wait_until(lambda: healthy.boot_calls != [])
+        # Wait on the SECOND boot record's own arrival, not just `healthy.boot_calls`
+        # (which is set inside `boot()`, still slightly before `_write_boot_record` runs).
+        assert _wait_until(lambda: _n_boot_records(cfg.log_path) >= 2)
+        records = _read_records(cfg.log_path)
+        boots = [r for r in records if r["kind"] == "boot"]
+        assert len(boots) == 2
+        assert boots[0]["n_source_records"] == 0    # the initial (stale) boot
+        assert boots[1]["n_source_records"] == 99   # the respawn's fresh snapshot
+    finally:
+        sh.close()
+
+
+# --- kind:"stats" rows: periodic + on-close persistence of the live counters --------------
+
+
+def test_periodic_stats_record_written_every_stats_every_processed_items(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(SH, "_STATS_EVERY", 3)
+    cfg = _cfg(tmp_path)
+    _calls, snapshot = _snapshot_calls_counter()
+    session = _FakeSession("table@1")
+    factory = _FakeFactory({"table@1": [session]})
+    sh = SH.MembraneShadow(
+        cfg, u_bar=_u_bar, snapshot=snapshot, session_factory=factory, clock=_FakeClock(),
+    )
+    try:
+        sh.start()
+        assert _wait_until(lambda: sh.stats()["forms"]["table@1"]["alive"])  # type: ignore[index]
+        for i in range(3):
+            sh.submit_decide(f"q-{i}", {"candidates": []}, {"credences": [], "effector": "report"})
+        assert _wait_until(lambda: sh.stats()["forms"]["table@1"]["ticks"] >= 3)  # type: ignore[index]
+
+        def has_stats_row() -> bool:
+            return any(r["kind"] == "stats" for r in _read_records(cfg.log_path))
+
+        assert _wait_until(has_stats_row)
+        records = _read_records(cfg.log_path)
+        stats_rows = [r for r in records if r["kind"] == "stats"]
+        assert len(stats_rows) >= 1
+        row = stats_rows[0]
+        assert row["event_type"] == "membrane-shadow"
+        assert "ts" in row
+        # the FULL stats() payload, persisted verbatim.
+        assert set(row) >= {
+            "forms", "drops", "skips", "submit_errors", "queue_depth", "snapshot_records",
+        }
+        assert row["forms"]["table@1"]["ticks"] >= 3
+    finally:
+        sh.close()
+
+
+def test_no_stats_row_written_before_stats_every_items_processed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(SH, "_STATS_EVERY", 100)
+    cfg = _cfg(tmp_path)
+    _calls, snapshot = _snapshot_calls_counter()
+    session = _FakeSession("table@1")
+    factory = _FakeFactory({"table@1": [session]})
+    sh = SH.MembraneShadow(
+        cfg, u_bar=_u_bar, snapshot=snapshot, session_factory=factory, clock=_FakeClock(),
+    )
+    try:
+        sh.start()
+        assert _wait_until(lambda: sh.stats()["forms"]["table@1"]["alive"])  # type: ignore[index]
+        sh.submit_decide("q-1", {"candidates": []}, {"credences": [], "effector": "report"})
+        assert _wait_until(lambda: sh.stats()["forms"]["table@1"]["ticks"] >= 1)  # type: ignore[index]
+        records = _read_records(cfg.log_path)
+        assert not any(r["kind"] == "stats" for r in records)  # below threshold: none yet
+    finally:
+        sh.close()  # close() itself writes one -- checked by the dedicated test below
+
+
+def test_close_writes_a_final_stats_record(tmp_path: Path) -> None:
+    cfg = _cfg(tmp_path)
+    _calls, snapshot = _snapshot_calls_counter()
+    session = _FakeSession("table@1")
+    factory = _FakeFactory({"table@1": [session]})
+    sh = SH.MembraneShadow(
+        cfg, u_bar=_u_bar, snapshot=snapshot, session_factory=factory, clock=_FakeClock(),
+    )
+    sh.start()
+    assert _wait_until(lambda: sh.stats()["forms"]["table@1"]["alive"])  # type: ignore[index]
+    sh.submit_decide("q-1", {"candidates": []}, {"credences": [], "effector": "report"})
+    assert _wait_until(lambda: sh.stats()["forms"]["table@1"]["ticks"] >= 1)  # type: ignore[index]
+    sh.close()
+    records = _read_records(cfg.log_path)
+    stats_rows = [r for r in records if r["kind"] == "stats"]
+    assert len(stats_rows) >= 1
+    assert stats_rows[-1]["forms"]["table@1"]["ticks"] >= 1
+
+
+def test_close_before_start_writes_a_stats_record_without_raising(tmp_path: Path) -> None:
+    cfg = _cfg(tmp_path)
+    _calls, snapshot = _snapshot_calls_counter()
+    sh = SH.MembraneShadow(cfg, u_bar=_u_bar, snapshot=snapshot, session_factory=_FakeFactory())
+    sh.close()  # never started -- must not raise
+    records = _read_records(cfg.log_path)
+    assert any(r["kind"] == "stats" for r in records)
+
+
+def test_stats_record_write_failure_is_fail_open(tmp_path: Path) -> None:
+    # log_path points at a directory -> every append (including the stats row) raises;
+    # the worker must survive and keep draining, same as every other record kind.
+    cfg = _cfg(tmp_path, log_path=tmp_path)
+    monkeypatch_value = 2
+    import life_agent.membrane.shadow as shadow_mod
+    orig = shadow_mod._STATS_EVERY
+    shadow_mod._STATS_EVERY = monkeypatch_value
+    try:
+        _calls, snapshot = _snapshot_calls_counter()
+        factory = _FakeFactory()
+        sh = SH.MembraneShadow(
+            cfg, u_bar=_u_bar, snapshot=snapshot, session_factory=factory, clock=_FakeClock(),
+        )
+        try:
+            sh.start()
+            assert _wait_until(lambda: sh.stats()["forms"]["table@1"]["alive"])  # type: ignore[index]
+            for i in range(monkeypatch_value):
+                sh.submit_decide(
+                    f"q-{i}", {"candidates": []}, {"credences": [], "effector": "report"},
+                )
+            assert _wait_until(
+                lambda: sh.stats()["forms"]["table@1"]["ticks"] >= monkeypatch_value  # type: ignore[index]
+            )
+            assert sh.stats()["drops"] >= 1
+        finally:
+            sh.close()
+    finally:
+        shadow_mod._STATS_EVERY = orig
 
 
 # --- submit_decide -> worker drains -> decide record -------------------------------------

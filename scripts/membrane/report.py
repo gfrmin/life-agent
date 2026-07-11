@@ -2,20 +2,25 @@
 """``scripts/membrane/report.py`` — the membrane shadow's differential + demand report.
 
 Reads ``life_agent.membrane.shadow.MembraneShadow``'s append-only shadow log (kinds
-``boot``/``respawn``/``decide``/``evidence`` — see that module's docstring for the exact
-record shapes; this file reads them, never re-derives them) and, optionally, a
+``boot``/``respawn``/``decide``/``evidence``/``stats`` — see that module's docstring for
+the exact record shapes; this file reads them, never re-derives them) and, optionally, a
 fair-fight run directory's ``baseline`` arm outcomes (``life_agent.fairfight.records
 .OutcomeVector`` — the SAME executor ``/decide`` loop the shadow mirrors, per
 ``scripts/fairfight/run_fairfight.py``'s ``path="executor"`` baseline config and
 ``shadow.boot_snapshot``'s own precedent for this exact run-dir shape). Writes
 ``report.json`` + ``report.md`` under ``--out-dir``.
 
-**What the log does NOT carry** (named once, here, rather than at each call site): the
-three submit-path counters (``drops``/``skips``/``submit_errors``) and each form's
-``dead_drops`` are, by shadow.py's own module docstring, "deliberately never persisted
-as their own log rows" — visible only via the live ``MembraneShadow.stats()`` API. An
-offline, log-only report cannot recover them; every place this report would otherwise
-report a bare zero for one of those counters instead says so explicitly.
+**What the log carries about the submit-path counters** (named once, here, rather than
+at each call site): the three submit-path counters (``drops``/``skips``/
+``submit_errors``) and each form's ``dead_drops`` never write their OWN per-event log
+row (shadow.py's own module docstring) — but their running totals ARE periodically
+snapshotted into ``kind: "stats"`` rows (every ``shadow._STATS_EVERY`` processed queue
+items, plus one final row at ``close()``). This report reads the LAST such row
+(:func:`latest_stats_record`) and reports the real counters from it. A log with no
+``stats`` row at all (one written before this field existed, or a shadow that never
+processed enough items to flush one and was never cleanly closed) has genuinely no way
+to recover them — every place this report would otherwise report a bare zero for one of
+those counters instead says so explicitly, rather than printing a fabricated 0.
 
 Report structure (five top-level sections, matching the brief's own enumeration):
 
@@ -131,6 +136,28 @@ def declared_forms(records: list[dict[str, Any]]) -> list[str]:
     return sorted({str(r["form"]) for r in records if isinstance(r.get("form"), str)})
 
 
+def latest_stats_record(records: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """The LAST ``kind: "stats"`` row in the log (file order — arrival/write order,
+    nothing here re-sorts), or ``None`` if the log has none (an older log that predates
+    this field, or a shadow that never processed ``shadow._STATS_EVERY`` items and was
+    never cleanly closed). Each row carries ``MembraneShadow.stats()``'s full payload
+    verbatim, so the LAST one is simply the most up-to-date snapshot of those counters
+    this run ever flushed."""
+    stats_rows = [r for r in records if r.get("kind") == "stats"]
+    return stats_rows[-1] if stats_rows else None
+
+
+def _latest_boot_n_source_records(records: list[dict[str, Any]], form: str) -> int | None:
+    """``BootSnapshot.n_source_records`` off ``form``'s most recent boot record (a
+    respawn re-snapshots, so the LATEST boot — not the first — is the current reading).
+    ``None`` for a form with no boot record, or one written before this field existed."""
+    boots = _of_kind(records, "boot", form)
+    if not boots:
+        return None
+    n = boots[-1].get("n_source_records")
+    return int(n) if isinstance(n, int) else None
+
+
 def _p1(record: dict[str, Any]) -> float | None:
     readouts = record.get("readouts")
     if not isinstance(readouts, dict):
@@ -152,14 +179,41 @@ def _percentile(values: Sequence[float], pct: float) -> float | None:
 
 
 _UNPERSISTED_COUNTERS_NOTE = (
-    "not observable from the persisted shadow log — shadow.py's own module docstring: "
-    "drops/skips/submit_errors and each form's dead_drops are counted only via the live "
-    "MembraneShadow.stats() API and are deliberately never written as a log row. Read "
-    "them from the live daemon (e.g. the bridge's /ready) instead."
+    "not observable — this shadow log has no kind:\"stats\" row (it predates that "
+    "field, or the shadow never processed shadow._STATS_EVERY items and was never "
+    "cleanly closed). drops/skips/submit_errors/dead_drops are periodically snapshotted "
+    "into kind:\"stats\" rows by a running shadow (see shadow.py's module docstring); "
+    "read them from the live daemon (e.g. the bridge's /ready) instead."
 )
 
 
-def form_stats(records: list[dict[str, Any]], form: str) -> dict[str, Any]:
+def _form_counters(
+    stats_record: dict[str, Any] | None, form: str,
+) -> dict[str, Any] | None:
+    """``{drops, skips, submit_errors, dead_drops, as_of_ts}`` off the given
+    ``kind: "stats"`` row (``stats()``'s payload, verbatim) — ``None`` if no row was
+    given, or the row carries no entry for ``form`` (never a fabricated 0 either way)."""
+    if stats_record is None:
+        return None
+    forms = stats_record.get("forms")
+    form_entry = forms.get(form) if isinstance(forms, dict) else None
+    if not isinstance(form_entry, dict):
+        return None
+    drops, skips, submit_errors = (
+        stats_record.get("drops"), stats_record.get("skips"), stats_record.get("submit_errors"),
+    )
+    dead_drops = form_entry.get("dead_drops")
+    if not all(isinstance(x, int) for x in (drops, skips, submit_errors, dead_drops)):
+        return None
+    return {
+        "drops": drops, "skips": skips, "submit_errors": submit_errors,
+        "dead_drops": dead_drops, "as_of_ts": stats_record.get("ts"),
+    }
+
+
+def form_stats(
+    records: list[dict[str, Any]], form: str, *, stats_record: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     decides = _of_kind(records, "decide", form)
     evidences = _of_kind(records, "evidence", form)
     respawns = _of_kind(records, "respawn", form)
@@ -172,6 +226,12 @@ def form_stats(records: list[dict[str, Any]], form: str) -> dict[str, Any]:
     latencies = [
         float(r["latency_ms"]) for r in decides if isinstance(r.get("latency_ms"), int | float)
     ]
+    counters = _form_counters(stats_record, form)
+    note = (
+        f"drops={counters['drops']} skips={counters['skips']} "
+        f"submit_errors={counters['submit_errors']} dead_drops={counters['dead_drops']} "
+        f"(observed at the shadow log's last kind:\"stats\" row, ts={counters['as_of_ts']})"
+    ) if counters is not None else _UNPERSISTED_COUNTERS_NOTE
     return {
         "n_decide_ticks": n,
         "n_evidence_ticks": len(evidences),
@@ -184,7 +244,8 @@ def form_stats(records: list[dict[str, Any]], form: str) -> dict[str, Any]:
             "p95": _percentile(latencies, 95.0),
             "n": len(latencies),
         },
-        "drops_skips_dead_drops": _UNPERSISTED_COUNTERS_NOTE,
+        "counters": counters,
+        "drops_skips_dead_drops": note,
     }
 
 
@@ -552,25 +613,26 @@ def demand_ledger(records: list[dict[str, Any]], forms: list[str]) -> list[dict[
     # Cold-start feature-insensitivity.
     per_form_cold: dict[str, dict[str, int]] = {}
     total_cold = 0
+    per_form_source_records: dict[str, int | None] = {}
     for f in forms:
         decides = _of_kind(records, "decide", f)
         n_cold = sum(1 for r in decides if _p1(r) == 0.5)
         per_form_cold[f] = {"n": n_cold, "of": len(decides)}
         total_cold += n_cold
+        per_form_source_records[f] = _latest_boot_n_source_records(records, f)
     entries.append({
         "name": "cold_start_feature_insensitivity",
         "boundary_demanded": "the warm-corpus size is the binding constraint",
         "count": total_cold, "of": total_ticks, "per_form": per_form_cold,
+        "boot_snapshot_n_source_records": per_form_source_records,
         "note": (
-            "p1 == 0.5 (uninformative) ticks — the cold-start plateau. DEVIATION FROM "
-            "THE BRIEF, NAMED: the brief asks to report the actual number of warm "
-            "evidence rows the boot snapshot found (BootSnapshot.n_source_records); "
-            "that count is exposed only via the live "
-            "MembraneShadow.stats()['snapshot_records'] and is never written into a "
-            "boot log row (shadow.py's _write_boot_record does not persist it), so an "
-            "offline log-only report cannot recover it. Reported instead: the count of "
-            "p1==0.5 ticks, a directly observable proxy for the cold-start plateau "
-            "still being in effect."
+            "boot_snapshot_n_source_records is the REAL BootSnapshot.n_source_records "
+            "each form's most recent kind:\"boot\" row persisted (the raw warm-evidence "
+            "row count that (re)boot's snapshot found, before join/exclusion filtering) "
+            "— null for a form with no boot record, or one written before this field "
+            "existed. count/per_form above remain a SECONDARY, corroborating signal: "
+            "the count of p1==0.5 (uninformative) decide ticks, a directly observable "
+            "proxy for the cold-start plateau still being in effect."
         ),
     })
 
@@ -628,8 +690,9 @@ def build_report(
     """The pure core: every section, over the given record list and (optional) baseline
     vectors. No wall-clock field — given the same inputs this is byte-reproducible."""
     forms = declared_forms(records)
+    stats_record = latest_stats_record(records)
 
-    per_form_stats = {f: form_stats(records, f) for f in forms}
+    per_form_stats = {f: form_stats(records, f, stats_record=stats_record) for f in forms}
     differential_by_form = {f: differential(records, f) for f in forms}
     provenance_by_form = provenance(records, forms)
 
@@ -777,6 +840,11 @@ def _md_demand_ledger(entries: list[dict[str, Any]]) -> list[str]:
         lines.append(f"- boundary demanded: {e['boundary_demanded']}")
         if "per_form" in e:
             lines.append(f"- per form: {e['per_form']}")
+        if "boot_snapshot_n_source_records" in e:
+            lines.append(
+                f"- boot snapshot n_source_records per form: "
+                f"{e['boot_snapshot_n_source_records']}"
+            )
         if "distinct_actions_observed" in e:
             lines.append(f"- distinct actions observed: {e['distinct_actions_observed']}")
         lines.append(f"- note: {e['note']}")

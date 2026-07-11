@@ -23,6 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 from membrane import report as R
 
 from life_agent.fairfight import records as REC
+from life_agent.membrane import shadow as SH
 
 # --- fixture builders ------------------------------------------------------------------
 
@@ -38,12 +39,13 @@ def _summary(**overrides: Any) -> dict[str, Any]:
 
 def _boot(form: str, *, ts: float = 100.0, binary_sha256: str = "abc123",
           world_digest: str = "digest-1", respawn_count: int = 0,
-          forms: list[str] | None = None) -> dict[str, Any]:
+          forms: list[str] | None = None, n_source_records: int = 0) -> dict[str, Any]:
     return {
         "event_type": "membrane-shadow", "kind": "boot", "ts": ts, "form": form,
         "engine": {"ok": True, "proto": 1, "models": 40, "namespace_bits": 6},
         "binary_sha256": binary_sha256, "forms": forms or [form],
         "world_digest": world_digest, "respawn_count": respawn_count,
+        "n_source_records": n_source_records,
     }
 
 
@@ -52,6 +54,21 @@ def _respawn(form: str, *, ts: float = 100.0, respawn_count: int = 1) -> dict[st
         "event_type": "membrane-shadow", "kind": "respawn", "ts": ts, "form": form,
         "error": "boom", "respawn_count": respawn_count, "max_respawns": 3,
         "permanent": False,
+    }
+
+
+def _stats(
+    *, ts: float = 100.0, drops: int = 0, skips: int = 0, submit_errors: int = 0,
+    queue_depth: int = 0, snapshot_records: int = 0,
+    forms: dict[str, dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """A `kind: "stats"` row shaped exactly like `MembraneShadow._write_stats_record`'s
+    own output: `event_type`/`kind`/`ts` plus `stats()`'s full payload spread in."""
+    return {
+        "event_type": "membrane-shadow", "kind": "stats", "ts": ts,
+        "forms": forms or {}, "drops": drops, "skips": skips,
+        "submit_errors": submit_errors, "queue_depth": queue_depth,
+        "snapshot_records": snapshot_records,
     }
 
 
@@ -216,6 +233,8 @@ def test_form_stats_counts_action_distribution_and_percentiles() -> None:
     # nearest-rank percentile of [10, 20, 30, 40]: p50 -> idx ceil(0.5*4)-1=1 -> 20
     # p95 -> idx ceil(0.95*4)-1=3 -> 40
     assert stats["decide_latency_ms"] == {"p50": 20.0, "p95": 40.0, "n": 4}
+    # no stats_record given (the default) -> the honest not-observable note, never zeros.
+    assert stats["counters"] is None
     assert "never" in stats["drops_skips_dead_drops"]
 
 
@@ -224,6 +243,66 @@ def test_form_stats_empty_form_has_no_denominator_crash() -> None:
     assert stats["n_decide_ticks"] == 0
     assert stats["decide_latency_ms"] == {"p50": None, "p95": None, "n": 0}
     assert stats["raw_internal"] == {"n": 0, "of": 0}
+
+
+# --- form_stats: real counters when a kind:"stats" record is present -----------------------
+
+
+def test_form_stats_reports_real_counters_when_a_stats_record_is_given() -> None:
+    records = [
+        _decide(form="table@1", question_id="q-001", action="respond",
+                real_effector="report"),
+    ]
+    stats_row = _stats(
+        drops=3, skips=1, submit_errors=2,
+        forms={"table@1": {"alive": True, "respawns": 0, "ticks": 5, "dead_drops": 7}},
+    )
+    stats = R.form_stats(records, "table@1", stats_record=stats_row)
+    assert stats["counters"] == {
+        "drops": 3, "skips": 1, "submit_errors": 2, "dead_drops": 7, "as_of_ts": 100.0,
+    }
+    note = stats["drops_skips_dead_drops"]
+    assert "3" in note and "1" in note and "2" in note and "7" in note
+    assert "not observable" not in note
+
+
+def test_form_stats_falls_back_to_the_honest_note_without_a_stats_record() -> None:
+    records = [
+        _decide(form="table@1", question_id="q-001", action="respond",
+                real_effector="report"),
+    ]
+    stats = R.form_stats(records, "table@1", stats_record=None)
+    assert stats["counters"] is None
+    assert "not observable" in stats["drops_skips_dead_drops"]
+
+
+def test_form_stats_falls_back_when_stats_record_has_no_entry_for_this_form() -> None:
+    # a stats row exists, but this form isn't in its "forms" map (e.g. a log from a run
+    # that declared a different form set) -> honest fallback, never a fabricated zero.
+    records = [
+        _decide(form="table@1", question_id="q-001", action="respond",
+                real_effector="report"),
+    ]
+    stats_row = _stats(drops=1, skips=0, submit_errors=0, forms={"latent@1": {"dead_drops": 0}})
+    stats = R.form_stats(records, "table@1", stats_record=stats_row)
+    assert stats["counters"] is None
+    assert "not observable" in stats["drops_skips_dead_drops"]
+
+
+# --- latest_stats_record ---------------------------------------------------------------
+
+
+def test_latest_stats_record_returns_the_last_one() -> None:
+    records = [_stats(ts=1.0, drops=1), _stats(ts=2.0, drops=2), _boot("table@1")]
+    row = R.latest_stats_record(records)
+    assert row is not None
+    assert row["drops"] == 2
+
+
+def test_latest_stats_record_none_when_absent() -> None:
+    records = [_boot("table@1"), _decide(form="table@1", question_id="q-001",
+                                          action="respond", real_effector="report")]
+    assert R.latest_stats_record(records) is None
 
 
 # --- differential --------------------------------------------------------------------------
@@ -494,8 +573,47 @@ def test_demand_ledger_cold_start_p1_exactly_half() -> None:
     ]
     ledger = {e["name"]: e for e in R.demand_ledger(records, ["table@1"])}
     entry = ledger["cold_start_feature_insensitivity"]
-    assert entry["count"] == 1
-    assert "not persist" in entry["note"] or "never" in entry["note"]
+    assert entry["count"] == 1  # the p1==0.5 secondary/corroborating signal, unchanged
+
+
+def test_demand_ledger_cold_start_reports_real_n_source_records_from_the_boot_record() -> None:
+    # Task 7 review, fix 1: the brief's actual ask (BootSnapshot.n_source_records) is now
+    # persisted in the boot record, so the report reads the REAL count — no more
+    # "DEVIATION FROM THE BRIEF" substitution.
+    records = [
+        _boot("table@1", n_source_records=250),
+        _decide(form="table@1", question_id="q-001", action="abstain",
+                real_effector="abstain", p1=0.5),
+    ]
+    ledger = {e["name"]: e for e in R.demand_ledger(records, ["table@1"])}
+    entry = ledger["cold_start_feature_insensitivity"]
+    assert entry["boot_snapshot_n_source_records"] == {"table@1": 250}
+    assert "DEVIATION FROM THE BRIEF" not in entry["note"]
+
+
+def test_demand_ledger_cold_start_n_source_records_none_without_a_boot_record() -> None:
+    # An older log (predates this field) or a form that never wrote a boot record: named
+    # honestly as unknown, never fabricated as 0.
+    records = [
+        _decide(form="table@1", question_id="q-001", action="abstain",
+                real_effector="abstain", p1=0.5),
+    ]
+    ledger = {e["name"]: e for e in R.demand_ledger(records, ["table@1"])}
+    entry = ledger["cold_start_feature_insensitivity"]
+    assert entry["boot_snapshot_n_source_records"] == {"table@1": None}
+
+
+def test_demand_ledger_cold_start_n_source_records_uses_the_latest_boot_per_form() -> None:
+    # A respawned form's LATEST boot record wins, not its first (a respawn re-snapshots).
+    records = [
+        _boot("table@1", ts=100.0, n_source_records=0),
+        _boot("table@1", ts=200.0, n_source_records=99),
+        _decide(form="table@1", question_id="q-001", action="abstain",
+                real_effector="abstain", p1=0.5),
+    ]
+    ledger = {e["name"]: e for e in R.demand_ledger(records, ["table@1"])}
+    entry = ledger["cold_start_feature_insensitivity"]
+    assert entry["boot_snapshot_n_source_records"] == {"table@1": 99}
 
 
 def test_demand_ledger_no_forms_is_empty_but_safe() -> None:
@@ -553,6 +671,23 @@ def test_build_report_without_vectors_has_no_grounded_section() -> None:
     assert "table@1" in report["per_form_stats"]
     assert "table@1" in report["differential"]
     assert len(report["demand_ledger"]) == 4
+    # no kind:"stats" row in this log -> the honest not-observable note, never zeros.
+    assert report["per_form_stats"]["table@1"]["counters"] is None
+    assert "not observable" in report["per_form_stats"]["table@1"]["drops_skips_dead_drops"]
+
+
+def test_build_report_uses_the_latest_stats_record_for_per_form_counters() -> None:
+    records = [
+        _boot("table@1"),
+        _decide(form="table@1", question_id="q-001", action="respond",
+                real_effector="report"),
+        _stats(drops=4, skips=1, submit_errors=0,
+               forms={"table@1": {"alive": True, "respawns": 0, "ticks": 1, "dead_drops": 2}}),
+    ]
+    report = R.build_report(records, None)
+    counters = report["per_form_stats"]["table@1"]["counters"]
+    assert counters == {"drops": 4, "skips": 1, "submit_errors": 0, "dead_drops": 2,
+                         "as_of_ts": 100.0}
 
 
 def test_build_report_with_vectors_has_grounded_section() -> None:
@@ -570,6 +705,32 @@ def test_build_report_with_vectors_has_grounded_section() -> None:
     assert g["contingency"]["n_joined"] == 1
     assert g["realized_loss"]["n_decisive"] == 1
     assert g["n_min_honesty"]["clears"] is False
+
+
+# --- default_table_matches_boot (Task 7 review, fix 3: zero coverage before this) ---------
+
+
+def test_default_table_matches_boot_true_when_boot_digest_matches_the_real_default() -> None:
+    real_digest = SH.world_digest({}, utility_form="table@1")
+    records = [
+        _boot("table@1", world_digest=real_digest),
+        _decide(form="table@1", question_id="q-001", action="respond",
+                real_effector="report"),
+    ]
+    vectors = {"q-001": _vector(question_id="q-001", asserted=True, asserted_correct=True)}
+    report = R.build_report(records, vectors)
+    assert report["grounded"]["table@1"]["default_table_matches_boot"] is True
+
+
+def test_default_table_matches_boot_false_when_boot_digest_mismatches() -> None:
+    records = [
+        _boot("table@1", world_digest="not-the-real-default-digest"),
+        _decide(form="table@1", question_id="q-001", action="respond",
+                real_effector="report"),
+    ]
+    vectors = {"q-001": _vector(question_id="q-001", asserted=True, asserted_correct=True)}
+    report = R.build_report(records, vectors)
+    assert report["grounded"]["table@1"]["default_table_matches_boot"] is False
 
 
 def test_build_report_is_reproducible_no_wallclock_field() -> None:

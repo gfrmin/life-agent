@@ -39,18 +39,24 @@ summary_from_decision_event`, the fallback for a `submit_decision` that never sa
 live `submit_decide`, e.g. warm-replay or an out-of-process decider).
 
 **Records are append-only JSON lines at `cfg.log_path`** — one `event_type:
-"membrane-shadow"` envelope, `kind` in {`boot`, `respawn`, `decide`, `evidence`}. Every
-append is wrapped fail-open (a write error is swallowed, counted as a drop — this is a
-shadow, its own I/O failing must never touch the real decision path); the boot-record
-write itself (`_write_boot_record`, which calls the caller-supplied `u_bar()` and the
-handshake encoder — both of which can raise) is fail-open the same way, and so is the
-worker's own boot/respawn-scheduling loop, so no exception anywhere can ever kill the
-worker thread out from under `stats()`. Three counters (`drops`, `skips`,
-`submit_errors`) are deliberately never persisted as their own log rows: a drop, a skip,
-or a submit-path error is, by construction, something the caller must never block or pay
-I/O for — they are visible only via `stats()` (as is each form's `dead_drops`: an item
-that reached the worker but found its form already dead). `boot`/`respawn` rows ARE
-persisted (they're rare, worker-thread-side events, not on any hot path).
+"membrane-shadow"` envelope, `kind` in {`boot`, `respawn`, `decide`, `evidence`,
+`stats`}. Every append is wrapped fail-open (a write error is swallowed, counted as a
+drop — this is a shadow, its own I/O failing must never touch the real decision path);
+the boot-record write itself (`_write_boot_record`, which calls the caller-supplied
+`u_bar()` and the handshake encoder — both of which can raise) is fail-open the same
+way, and so is the worker's own boot/respawn-scheduling loop, so no exception anywhere
+can ever kill the worker thread out from under `stats()`. Three counters (`drops`,
+`skips`, `submit_errors`) never write their OWN per-event log row: a drop, a skip, or a
+submit-path error is, by construction, something the caller must never block or pay I/O
+for at the moment it happens. Their running totals (and each form's `dead_drops`) ARE
+periodically snapshotted, though: a `kind: "stats"` row carries `stats()`'s full payload
+verbatim, written every `_STATS_EVERY` processed queue items (worker-thread-side, keyed
+on item count, never wall-clock — see `_process_item`) and once more, unconditionally,
+at `close()` (so a clean shutdown always flushes the last counters even if the item
+count never crossed the next `_STATS_EVERY` boundary). This is how an offline, log-only
+report (`scripts/membrane/report.py`) can see what a long-lived shadow actually accrued,
+without needing to catch it live via `stats()`. `boot`/`respawn` rows ARE persisted
+(they're rare, worker-thread-side events, not on any hot path).
 
 **`boot_snapshot`** is the pure counterpart: given the decision/reaction logs (+
 optionally a fair-fight run directory's warm vectors), it replays the SAME
@@ -108,10 +114,11 @@ class BootSnapshot:
     `verdict_replay`/`outcome_replay` parameters — this dataclass's two list fields are
     that method's parameter types verbatim. `n_source_records` is a diagnostic total (raw
     rows read across every source file, BEFORE any join/exclusion filtering) surfaced at
-    `stats()["snapshot_records"]` — the gap between it and `len(verdict_replay) +
-    len(outcome_replay)` is exactly how many source rows were excluded (unrouted
-    reactions, a `verdict_y`-undeclared pair, an unjoinable warm outcome — see
-    :func:`boot_snapshot`)."""
+    `stats()["snapshot_records"]` AND persisted verbatim into that (re)boot's own `kind:
+    "boot"` log row (`_write_boot_record`'s `n_source_records` field) — the gap between
+    it and `len(verdict_replay) + len(outcome_replay)` is exactly how many source rows
+    were excluded (unrouted reactions, a `verdict_y`-undeclared pair, an unjoinable warm
+    outcome — see :func:`boot_snapshot`)."""
 
     verdict_replay: list[tuple[W.DecideSummary, int]]
     outcome_replay: list[tuple[str, W.DecideSummary, int]]
@@ -128,6 +135,13 @@ _GATHER_EFFECTOR = "gather"
 
 _QUEUE_POLL_S = 0.05
 _CLOSE_JOIN_TIMEOUT_S = 5.0
+
+# how often (in PROCESSED QUEUE ITEMS, never wall-clock — stays inside the module's
+# injected-clock discipline, keeps tests deterministic) the worker flushes a `kind:
+# "stats"` row carrying the full `stats()` payload. The daemons this runs as
+# (`systemd --user` services) are long-lived, so this periodic row — not the one written
+# once at `close()` — is what actually fires in practice.
+_STATS_EVERY = 100
 
 # `_live_summaries`/`_bindings` are long-lived-daemon maps fed at submit-time — bounded so
 # a shadow that runs for weeks doesn't grow them without limit. FIFO by insertion order
@@ -240,6 +254,10 @@ class MembraneShadow:
         self._skips = 0
         self._submit_errors = 0
         self._snapshot_records = 0
+        # worker-thread-owned, like `state.ticks` — only `_process_item` (on the worker)
+        # ever increments it, so no lock is needed for that write; `close()`'s own
+        # stats-record write only reads it after the worker has already been joined.
+        self._processed_count = 0
         self._initial_snapshot: BootSnapshot = BootSnapshot(
             verdict_replay=[], outcome_replay=[], n_source_records=0,
         )
@@ -281,6 +299,7 @@ class MembraneShadow:
         if self._worker is not None:
             self._worker.join(timeout=_CLOSE_JOIN_TIMEOUT_S)
             self._worker = None
+        self._write_stats_record()  # a clean shutdown always flushes the last counters
         for state in self._forms.values():
             session = state.session
             state.session = None
@@ -413,6 +432,9 @@ class MembraneShadow:
                 self._tick_decide(form, state, item, now)
             else:
                 self._tick_verdict(form, state, item, now)
+        self._processed_count += 1
+        if self._processed_count % _STATS_EVERY == 0:
+            self._write_stats_record()
 
     def _tick_decide(self, form: str, state: _FormState, item: _DecideItem, ts: float) -> None:
         session = state.session
@@ -489,7 +511,7 @@ class MembraneShadow:
             return
         state.session = session
         state.next_attempt_at = None
-        self._write_boot_record(form, session, state)
+        self._write_boot_record(form, session, state, snap.n_source_records)
 
     def _attempt_respawn(self, form: str, state: _FormState) -> None:
         state.respawn_count += 1
@@ -530,7 +552,9 @@ class MembraneShadow:
             "max_respawns": self._cfg.max_respawns, "permanent": permanent,
         })
 
-    def _write_boot_record(self, form: str, session: MembraneSession, state: _FormState) -> None:
+    def _write_boot_record(
+        self, form: str, session: MembraneSession, state: _FormState, n_source_records: int,
+    ) -> None:
         # fail-open: `self._u_bar()` reads a caller-supplied utility posterior that can
         # raise (missing/corrupt calibration), and `handshake_decl` raises on an unknown
         # form — neither may kill the worker thread just because a record couldn't be
@@ -543,10 +567,22 @@ class MembraneShadow:
                 "form": form, "engine": session.engine, "binary_sha256": binary_sha256,
                 "forms": list(self._cfg.forms), "world_digest": digest,
                 "respawn_count": state.respawn_count,
+                "n_source_records": n_source_records,
             })
         except Exception:
             with self._lock:
                 self._drops += 1
+
+    def _write_stats_record(self) -> None:
+        """A `kind: "stats"` row carrying `stats()`'s full payload verbatim — see the
+        module docstring for when this fires (periodically, keyed on processed-item
+        count, plus once at `close()`). Reuses `_append_record`'s existing fail-open
+        path: a stats-write failure must never raise into the worker, same as every
+        other record."""
+        self._append_record({
+            "event_type": "membrane-shadow", "kind": "stats", "ts": time.time(),
+            **self.stats(),
+        })
 
     # --- log I/O: fail-open, counted as a drop ------------------------------------------
 

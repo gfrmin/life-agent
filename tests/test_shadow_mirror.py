@@ -252,7 +252,10 @@ def test_default_mirror_poster_is_bounded_and_strictly_shorter_than_a_real_legs_
     SM._default_mirror_post(f"{B}/decide-support", {"a": 1})
 
     assert captured["timeout"] == SM.MIRROR_TIMEOUT_S
-    assert SM.MIRROR_TIMEOUT_S < 300  # strictly shorter than every real-leg poster's timeout
+    # A real ceiling, not a weak one: `< 300` would still pass at 250s and defeat the
+    # point (the mirror leg must be promptly bounded, not merely shorter than the real
+    # leg's 300s).
+    assert SM.MIRROR_TIMEOUT_S <= 5.0
 
 
 def test_shadow_wrapped_post_with_default_mirror_poster_uses_the_short_timeout(
