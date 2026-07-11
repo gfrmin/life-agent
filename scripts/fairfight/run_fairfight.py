@@ -256,7 +256,14 @@ def _build_run_meta(
         "arm_configs": _arm_configs(args, arms, hermes_bin),
         "corpus_fingerprint": _corpus_fingerprint(conn),
         "pkm_config_path": args.config,
-        "env_flags": {"LIFE_AGENT_GROW_LANE": os.environ.get("LIFE_AGENT_GROW_LANE", "")},
+        # LIFE_AGENT_BRIDGE_URL / ANSWER_BRAIN_URL are the exact names scripts/ask.py
+        # reads for EXECUTOR_BRIDGE / EXECUTOR_DAEMON — they determine WHICH daemon the
+        # baseline arm actually hit (null = unset, ask.py's localhost defaults apply).
+        "env_flags": {
+            "LIFE_AGENT_GROW_LANE": os.environ.get("LIFE_AGENT_GROW_LANE", ""),
+            "LIFE_AGENT_BRIDGE_URL": os.environ.get("LIFE_AGENT_BRIDGE_URL"),
+            "ANSWER_BRAIN_URL": os.environ.get("ANSWER_BRAIN_URL"),
+        },
         "no_judge": bool(args.no_judge),
         "limit": args.limit,
         "timeout_s": args.timeout_s,
@@ -412,7 +419,7 @@ def _economics(arm: str, raw: AB.RawAnswer, usage: dict[str, Any] | None) -> dic
         }
 
     calls = raw.llm_calls
-    if not calls:
+    if not calls and arm != "baseline":
         return {"cost_usd": None, "cost_status": "unavailable", "in_tokens": 0, "out_tokens": 0,
                 "cache_read_tokens": 0, "cache_write_tokens": 0, "model_tier_mix": {}}
     costs = [PRICING.cost_usd(r) for r in calls]
@@ -420,9 +427,10 @@ def _economics(arm: str, raw: AB.RawAnswer, usage: dict[str, Any] | None) -> dic
     if arm == "baseline":
         # The executor (credence answer-brain daemon) is a SEPARATE out-of-process
         # service — its own spend never reaches this in-process meter (arm_baseline.py's
-        # own module docstring). Hard-coded "partial" regardless of whether the few local
-        # calls this process happened to bill were themselves fully priced: the total is
-        # structurally incomplete either way.
+        # own module docstring). Hard-coded "partial" regardless of what this process's
+        # own meter shows — including the NORMAL case of zero local calls
+        # (answer_via_executor is a pure HTTP driver): the daemon's real spend exists
+        # either way, so "unavailable" (no cost signal at all) would misreport it.
         cost_status = "partial"
     elif len(priced_costs) < len(costs):
         cost_status = "partial"
@@ -518,9 +526,18 @@ def _judge_arm(
         elif raw.status != "ok":
             base["reason"] = f"status={raw.status}"
         else:
-            scores = judge_fn(q, raw.text, row["sources"], n=judge_n)
+            # Guarded like the arms' own answer calls: judge_modal → judge_complete →
+            # openai_complete raises SystemExit on any HTTP/API failure (core/llm.py's
+            # convention) — one transient judge error must cost one question's rubric
+            # dims (recorded, dims stay None), never the whole multi-arm run.
+            try:
+                scores = judge_fn(q, raw.text, row["sources"], n=judge_n)
+            except (Exception, SystemExit) as e:
+                scores = {}
+                base["reason"] = f"judge error: {type(e).__name__}: {e}"
             if not scores:
-                base["reason"] = "judge_failed"
+                if base["reason"] is None:  # all-N-malformed (judge_modal's own {} return)
+                    base["reason"] = "judge_failed"
             else:
                 cls = _classify_synthesis(
                     faithfulness=scores["faithfulness"],
