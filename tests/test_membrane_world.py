@@ -306,6 +306,15 @@ def test_latent_utility_decl_floor_equals_q() -> None:
     assert grid[0] == pytest.approx(0.3)
 
 
+def test_latent_utility_decl_clamps_zero_lambda_int_to_a_positive_floor() -> None:
+    decl = W.latent_utility_decl({"lambda_int": 0.0})
+    grid = decl["residuals"][0]["grid"]
+    assert grid[0] == pytest.approx(1e-6)
+    assert grid == sorted(grid)
+    assert len(grid) == len(set(grid))  # strictly ascending, no ties
+    assert all(g > 0 for g in grid)
+
+
 def test_latent_utility_decl_declared_tau_price_gauge() -> None:
     decl = W.latent_utility_decl({})
     assert decl["said"] == ["var", 1]
