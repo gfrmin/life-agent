@@ -182,8 +182,14 @@ def run(questions: tuple[str, ...]) -> int:
 
 
 def _slug(question: str) -> str:
-    import hashlib
-    return "dogfood-" + hashlib.sha256(question.encode("utf-8")).hexdigest()[:8]
+    """A dogfood run's own id for one question — a DIFFERENT namespace from the decision
+    log's ``question_id`` (namespaced ``dogfood-``, and shorter), but derived from the ONE
+    question-id hash (``core.decisions.question_id``) rather than a fifth hand-rolled
+    sha256 of the same text. Byte-identical to what it produced before (question_id is the
+    first 16 hex chars of that digest, so its first 8 are these 8)."""
+    from life_agent.core import decisions as DEC
+
+    return "dogfood-" + DEC.question_id(question)[:8]
 
 
 def _mean(ab: tuple[float, float]) -> float:

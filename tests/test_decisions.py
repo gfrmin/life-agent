@@ -84,3 +84,47 @@ def test_corrupt_line_is_loud(tmp_path: Path) -> None:
     log.write_text('{"oops": true}\n', encoding="utf-8")
     with pytest.raises((KeyError, TypeError, ValueError)):
         D.read(log)
+
+
+# --- question_id: ONE derivation, drift-gated --------------------------------------------
+#
+# A second, hand-copied spelling of this hash silently SPLITS the id namespace, and every
+# join across it then reads as "no data" rather than as an error. That is not hypothetical:
+# the membrane shadow's grounded join shipped structurally impossible (always 0 rows) and
+# the report narrated it as an under-powered sample, because the derivation was inline in
+# four call sites and nothing gated a fifth.
+
+
+def test_question_id_is_sha256_of_the_raw_text_truncated() -> None:
+    import hashlib
+
+    text = "What colour is the shed?"
+    expected = hashlib.sha256(text.encode("utf-8")).hexdigest()[: D.QUESTION_ID_CHARS]
+    assert D.question_id(text) == expected
+    assert len(D.question_id(text)) == 16
+    assert D.question_id("a") != D.question_id("b")
+
+
+def test_no_other_site_hashes_a_question_itself() -> None:
+    """The drift gate: nothing under src/ or scripts/ may hash question TEXT into an id
+    except ``decisions.question_id``. The pattern matches a hash call applied to the bare
+    ``question`` value — both spellings that were live before this was extracted
+    (``hashlib.sha256(question.encode(...))`` in four modules, ``_sha(question)[:16]`` in
+    two more, plus a fifth in ``scripts/verdict.py``), while leaving hashes of OTHER things
+    (a questions FILE, an answer, a ledger) alone."""
+    import re
+
+    root = Path(__file__).resolve().parent.parent
+    pattern = re.compile(r"(sha256|_sha)\(\s*question\s*[.)]")
+    offenders = [
+        f"{path.relative_to(root)}:{i}"
+        for folder in ("src", "scripts")
+        for path in (root / folder).rglob("*.py")
+        if path != root / "src" / "life_agent" / "core" / "decisions.py"
+        for i, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1)
+        if pattern.search(line)
+    ]
+    assert offenders == [], (
+        "these sites hash the question text themselves instead of deriving from "
+        f"decisions.question_id(): {offenders}"
+    )

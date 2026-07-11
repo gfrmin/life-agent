@@ -926,7 +926,7 @@ def decide_and_record(root: Path, question: str, construct: str,
     DEC.append(decisions_path if decisions_path is not None else config.DECISIONS_LOG,
                DEC.DecisionEvent(
                    tx_time=O.now_iso(), run_id=run_id,
-                   question_id=_sha(question)[:16],
+                   question_id=DEC.question_id(question),
                    family="lookup",
                    action_set=_ACTION_ORDER,
                    posterior_summary={
