@@ -302,6 +302,50 @@ def test_extract_root_not_set_returns_error() -> None:
     assert set(result.keys()) == {"error"}
 
 
+def test_extract_midquery_db_error_returns_error_dict_and_logs(
+    migrated_root: Path, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A duckdb.Error raised mid-query (after connect succeeds) must map to
+    the bare {"error": ...} dict — never propagate through FastMCP — and
+    must still emit the §17.8 audit line (results=[], n_results=0, error)."""
+    import pkm.mcp_server as ms
+
+    log_path = tmp_path / "tool.jsonl"
+
+    class _FakeConn:
+        def execute(self, *a: object, **kw: object) -> object:
+            raise duckdb.Error("mid-query boom")
+
+        def close(self) -> None:
+            pass
+
+    ms.set_root(migrated_root)
+    ms.set_tool_log(log_path)
+    try:
+        with (
+            patch("duckdb.connect", return_value=_FakeConn()),
+            caplog.at_level(logging.WARNING, logger="pkm.mcp_server"),
+        ):
+            result = ms.extract(1)
+    finally:
+        ms.set_root(None)  # type: ignore[arg-type]
+        ms.set_tool_log(None)
+
+    # Bare error dict, naming the failure and carrying the exception text.
+    assert set(result.keys()) == {"error"}
+    assert "mid-query boom" in result["error"]
+    # WARNed into the diagnostic stream (fail loudly), not swallowed.
+    assert any(r.levelno == logging.WARNING for r in caplog.records)
+    # The audit trail still records that the call happened and failed.
+    lines = _read_jsonl(log_path)
+    assert len(lines) == 1
+    entry = lines[0]
+    assert entry["tool"] == "extract"
+    assert entry["results"] == []
+    assert entry["n_results"] == 0
+    assert "mid-query boom" in entry["error"]
+
+
 def test_extract_ignores_path_currency_filter(migrated_root: Path) -> None:
     """§15.4 explicitly carves extract out: a chunk_id pointer resolves even
     if its source has since been superseded at the same declared path."""
