@@ -34,6 +34,7 @@ from __future__ import annotations
 import sys
 import time
 from pathlib import Path
+from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # scripts/: ask, triage_answers
 
@@ -61,11 +62,13 @@ def answer_synthesis(q: dict, k: int) -> RawAnswer:
     lineage_keys: tuple[str, ...] = ()
     status = "ok"
     notes = ""
+    cards: list[dict[str, Any]] = []
 
     try:
         conn = ask.connect()
         try:
-            text, _cards, _scores = ask.answer(conn, q["question"], k)
+            text, raw_cards, _scores = ask.answer(conn, q["question"], k)
+            cards = [{"n": c.n, "text": c.text, "origin": c.origin} for c in raw_cards]
         finally:
             conn.close()
         decision_view, declined, lineage_keys = _inprocess_decision(ask)
@@ -76,6 +79,7 @@ def answer_synthesis(q: dict, k: int) -> RawAnswer:
         declined = False
         decision_view = None
         lineage_keys = ()
+        cards = []
 
     effort = dict(ask.EFFORT_LAST)
     llm_calls = meter_read()
@@ -83,5 +87,5 @@ def answer_synthesis(q: dict, k: int) -> RawAnswer:
     return RawAnswer(
         question_id=question_id, text=text, declined=declined, latency_s=latency_s,
         llm_calls=llm_calls, decision_view=decision_view, lineage_keys=lineage_keys,
-        status=status, notes=notes, effort=effort,
+        status=status, notes=notes, effort=effort, cards=tuple(cards),
     )

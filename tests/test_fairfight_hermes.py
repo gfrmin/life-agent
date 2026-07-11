@@ -221,6 +221,7 @@ def test_happy_path_captures_stdout_usage_and_tool_log(tmp_path: Path) -> None:
     assert result.raw.decision_view is None
     assert result.raw.lineage_keys == ("sess-1",)
     assert result.raw.effort == {"tool_calls": 2, "gather_rounds": 1, "asks_issued": 0}
+    assert result.raw.cards == ()  # the competitor's retrieved set lives in tool_log, not here
     assert result.usage is not None
     assert result.usage["session_id"] == "sess-1"
     assert len(result.tool_log) == 2
