@@ -272,13 +272,18 @@ class MembraneShadow:
     def close(self) -> None:
         """Signal the worker to stop, join it (bounded wait), then force `shutdown()` on
         every session's client regardless of whether the worker exited cleanly — a
-        wedged worker must never leave a subprocess dangling."""
+        wedged worker must never leave a subprocess dangling. Nulls `state.session` for
+        every form (review finding: previously left `stats()["forms"][f]["alive"]`
+        misreporting True after close(), since nothing else clears it once the worker
+        has stopped touching form state) so a post-close `stats()` caller (e.g. GET
+        /ready) is told the truth."""
         self._stop_event.set()
         if self._worker is not None:
             self._worker.join(timeout=_CLOSE_JOIN_TIMEOUT_S)
             self._worker = None
         for state in self._forms.values():
             session = state.session
+            state.session = None
             if session is None:
                 continue
             with contextlib.suppress(Exception):

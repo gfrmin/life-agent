@@ -723,6 +723,25 @@ def test_close_joins_worker_and_shuts_down_every_client(tmp_path: Path) -> None:
             assert s.client.shutdown_calls == 1
 
 
+def test_close_marks_every_form_dead_in_stats(tmp_path: Path) -> None:
+    # Review finding (Task 4 -> Task 5): close() shut down every client but never nulled
+    # `state.session`, so `stats()["forms"][f]["alive"]` stayed True after close() — a
+    # caller (e.g. GET /ready) reading stats() post-close would be told a dead shadow was
+    # still alive.
+    cfg = _cfg(tmp_path, forms=("table@1", "latent@1"))
+    _calls, snapshot = _snapshot_calls_counter()
+    factory = _FakeFactory()
+    sh = SH.MembraneShadow(cfg, u_bar=_u_bar, snapshot=snapshot, session_factory=factory)
+    sh.start()
+    assert _wait_until(
+        lambda: all(sh.stats()["forms"][f]["alive"] for f in ("table@1", "latent@1"))  # type: ignore[index]
+    )
+    sh.close()
+    stats = sh.stats()
+    assert stats["forms"]["table@1"]["alive"] is False  # type: ignore[index]
+    assert stats["forms"]["latent@1"]["alive"] is False  # type: ignore[index]
+
+
 def test_close_is_safe_before_start(tmp_path: Path) -> None:
     cfg = _cfg(tmp_path)
     _calls, snapshot = _snapshot_calls_counter()

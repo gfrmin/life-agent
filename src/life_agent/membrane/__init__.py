@@ -12,6 +12,10 @@ declaration (features, menu, utility). Task 3 (:mod:`life_agent.membrane.session
 (:mod:`life_agent.membrane.shadow`) is ``MembraneShadow`` — the supervisor: one worker
 thread running every declared utility form's session off the same live traffic, a
 bounded enqueue-only submit surface, respawn-with-fresh-snapshot on a session failure,
-and the append-only shadow log. Wiring `submit_*` into the real bridge/executor is a
-later task.
+and the append-only shadow log. Task 5 (:mod:`life_agent.bridge.server`) wires
+`submit_*` into the real bridge: `POST /decide-support` feeds `submit_decide`, and
+`/log_decision`/`/log_reaction` fold into `submit_decision`/`submit_reaction` beside
+their existing appends — disabled by default (`LIFE_AGENT_MEMBRANE_COMMAND` unset), and
+every submit is fail-open, so the shadow can never break, block, or slow an enacted
+answer.
 """

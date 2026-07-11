@@ -7,6 +7,7 @@ no secrets here — secrets come from gnome-keyring via :func:`life_agent.core.l
 from __future__ import annotations
 
 import os
+import shlex
 from pathlib import Path
 
 KB = Path(os.environ.get("LIFE_AGENT_KB", str(Path.home() / ".life-agent/kb")))
@@ -57,3 +58,59 @@ GATHER_OUTCOMES_LOG = KB / "calibration" / "gather_outcomes.jsonl"
 # (statements condition the posterior — evidence, never definition). Personal data.
 UTILITY_MODEL = KB / "utility" / "model.yaml"
 UTILITY_ELICITATIONS = KB / "utility" / "elicitations.jsonl"
+
+# --- Membrane shadow (membrane-shadow feature, Task 5) ---
+# The shadow supervisor (life_agent.membrane.shadow.MembraneShadow) runs the frozen
+# proplang-govhost decider beside the production bridge, off the SAME live traffic,
+# never on the decision path itself. Its env-name constants live here (not in
+# life_agent.membrane.client, which independently defines the identical two names for
+# its own from_env() — core never imports the membrane package, so the two are
+# deliberately duplicated, the same choice JARVIS_USER_ID already makes across
+# reach/ modules). Presence of LIFE_AGENT_MEMBRANE_COMMAND is the enable/disable switch:
+# its absence is the default, so a machine with no membrane engine configured sees ZERO
+# behaviour change on the bridge.
+MEMBRANE_COMMAND_ENV = "LIFE_AGENT_MEMBRANE_COMMAND"
+MEMBRANE_UTILITY_ENV = "LIFE_AGENT_MEMBRANE_UTILITY"
+MEMBRANE_READ_TIMEOUT_ENV = "LIFE_AGENT_MEMBRANE_READ_TIMEOUT"
+MEMBRANE_WARM_VECTORS_ENV = "LIFE_AGENT_MEMBRANE_WARM_VECTORS"
+
+MEMBRANE_DEFAULT_UTILITY_FORMS = "table@1"
+MEMBRANE_DEFAULT_READ_TIMEOUT_S = 300.0
+
+
+def membrane_dir() -> Path:
+    """The shadow's own subtree — currently just its append-only log."""
+    return KB / "membrane"
+
+
+def membrane_shadow_log() -> Path:
+    """The shadow's append-only record (boot/respawn/decide/evidence rows) — see
+    life_agent.membrane.shadow's module docstring."""
+    return membrane_dir() / "shadow.jsonl"
+
+
+def membrane_command() -> list[str] | None:
+    """The proplang-govhost launch argv, shell-split — ``None`` when unset, which is
+    the shadow's enable/disable switch (the bridge constructs a MembraneShadow iff this
+    is not None)."""
+    raw = os.environ.get(MEMBRANE_COMMAND_ENV)
+    return shlex.split(raw) if raw else None
+
+
+def membrane_utility_forms() -> tuple[str, ...]:
+    """Every declared utility form to run side by side, comma-separated
+    (default: just ``table@1``) — life_agent.membrane.world.UTILITY_FORMS is the
+    declared vocabulary; ShadowConfig validates membership."""
+    raw = os.environ.get(MEMBRANE_UTILITY_ENV, MEMBRANE_DEFAULT_UTILITY_FORMS)
+    return tuple(f.strip() for f in raw.split(",") if f.strip())
+
+
+def membrane_read_timeout_s() -> float:
+    return float(os.environ.get(MEMBRANE_READ_TIMEOUT_ENV, MEMBRANE_DEFAULT_READ_TIMEOUT_S))
+
+
+def membrane_warm_vectors_dir() -> Path | None:
+    """A fair-fight run directory to seed outcome replay from (boot_snapshot's optional
+    third argument) — ``None`` when unset (no warm outcomes, verdict replay only)."""
+    raw = os.environ.get(MEMBRANE_WARM_VECTORS_ENV)
+    return Path(raw).expanduser() if raw else None

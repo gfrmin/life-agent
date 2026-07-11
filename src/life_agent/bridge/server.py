@@ -29,10 +29,11 @@ source of that mapping, so the brain stays string-blind.
 """
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import os
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import date
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from json import JSONDecodeError, dumps, loads
@@ -58,6 +59,7 @@ from life_agent.core import rerank as RR
 from life_agent.core import retrieval as RET
 from life_agent.core import synthesis as SYN
 from life_agent.core import volatility as VOL
+from life_agent.membrane import shadow as MEM
 
 HOST = os.environ.get("LIFE_AGENT_BRIDGE_HOST", "127.0.0.1")
 PORT = int(os.environ.get("LIFE_AGENT_BRIDGE_PORT", "8798"))  # adjacent to the daemon's 8799
@@ -67,6 +69,12 @@ _DEFAULT_K = 20
 _JOINT_MODEL = "claude-opus-4-8"
 _JOINT_RHO = 0.95
 
+# The shadow supervisor's sizing (Task 5) — a long-lived-daemon queue/respawn budget, not
+# tuned per-deployment (config.py governs WHICH engine/forms/paths; these three are fixed).
+_MEMBRANE_QUEUE_SIZE = 1024
+_MEMBRANE_MAX_RESPAWNS = 3
+_MEMBRANE_RESPAWN_BACKOFF_S = 60.0
+
 Payload = dict[str, Any]
 
 
@@ -75,7 +83,14 @@ class BridgeDeps:
     """The warm, server-side handles every endpoint reads through — opened once at boot
     (a read-only catalogue handle + the extraction client, as `core/lookup` does per
     ask-session). ``profile`` + ``u_bar`` are the PII the body never sends; they are read
-    here and only their summaries cross the wire."""
+    here and only their summaries cross the wire.
+
+    ``membrane`` is the shadow supervisor (Task 5 of the membrane-shadow feature) —
+    ``None`` by default (and whenever `LIFE_AGENT_MEMBRANE_COMMAND` is unset), which is
+    ZERO behaviour change on every endpoint below: `/decide-support` fast-paths to a
+    disabled reply, and the `/log_decision`/`/log_reaction` folds are no-ops. It never
+    decides anything on the real answer path — it only ever observes live traffic
+    fed to it beside the real decision, off in its own worker thread."""
 
     root: Path
     conn: duckdb.DuckDBPyConnection      # read-only catalogue (FTS loaded) — retrieval + probes
@@ -86,6 +101,7 @@ class BridgeDeps:
     reactions_path: Path                 # calibration reaction log — /log_reaction appends here
     fold_version: Callable[[], str]      # current utility fold version (pins the logged decision)
     gather_outcomes_path: Path           # gather-outcome log — /log_gather writes, /grow_menu reads
+    membrane: MEM.MembraneShadow | None = None  # the shadow supervisor; None = disabled
 
 
 class BridgeError(Exception):
@@ -337,6 +353,31 @@ def _log_gather(deps: BridgeDeps, p: Payload) -> Payload:
     return {"logged": True}
 
 
+# --- /decide-support: the shadow's per-tick feed, off live traffic (never on the ---------
+# --- decision path itself — MembraneShadow.submit_decide is enqueue-only and never raises) -
+
+def _decide_support(deps: BridgeDeps, p: Payload) -> Payload:
+    """The membrane shadow's per-tick feed: the executor posts the SAME `/decide`
+    request/reply pair it just acted on, once per decide tick (a hot-path call). Disabled
+    (the default) returns immediately, before any field parsing — no side effects, no
+    validation cost, since there is nothing to feed. Enabled: parses `question_id`/
+    `payload`/`dec` (a 400 on a malformed body, same shape every other handler uses) then
+    hands them to `submit_decide`, itself guaranteed never to raise — the `try/except`
+    below is defense-in-depth so this handler NEVER raises past itself regardless."""
+    if deps.membrane is None:
+        return {"ok": False, "disabled": True}
+    question_id = _req_str(p, "question_id")
+    payload = p.get("payload")
+    dec = p.get("dec")
+    if not isinstance(payload, dict):
+        raise BridgeError(400, "field 'payload' must be a JSON object")
+    if not isinstance(dec, dict):
+        raise BridgeError(400, "field 'dec' must be a JSON object")
+    with contextlib.suppress(Exception):
+        deps.membrane.submit_decide(question_id, payload, dec)
+    return {"ok": True}
+
+
 # Terminal brain actions (DEC.LOOKUP_ACTION_ORDER) each map to one logged lookup decision; the
 # steer `gather` is enacted by the body internally (re-extract + re-decide) and is never a
 # terminal decision, so /log_decision rejects it.
@@ -398,14 +439,18 @@ def _log_decision(deps: BridgeDeps, p: Payload) -> Payload:
                     if len(candidates) == len(credences) else candidates)
 
     decision_id = _decision_id(question, retrieval_keys, creds_sorted, p_none)
-    DEC.append(deps.decisions_path, DEC.DecisionEvent(
+    event = DEC.DecisionEvent(
         tx_time=O.now_iso(), run_id="answer-brain",
         question_id=hashlib.sha256(question.encode("utf-8")).hexdigest()[:16],
         family="lookup", action_set=DEC.LOOKUP_ACTION_ORDER,
         posterior_summary={"candidates": cands_sorted, "credences": creds_sorted,
                            "p_none": p_none, "n_obs": n_obs},
         utility_fold_version=deps.fold_version(),
-        chosen_action=action, predicted_eu=eu, decision_id=decision_id))
+        chosen_action=action, predicted_eu=eu, decision_id=decision_id)
+    DEC.append(deps.decisions_path, event)
+    if deps.membrane is not None:
+        with contextlib.suppress(Exception):
+            deps.membrane.submit_decision(decision_id, event.question_id, asdict(event))
     return {"decision_id": decision_id}
 
 
@@ -428,6 +473,9 @@ def _log_reaction(deps: BridgeDeps, p: Payload) -> Payload:
     RX.append(deps.reactions_path, RX.ReactionEvent(
         tx_time=O.now_iso(), question_id=d.question_id, decision_id=decision_id,
         kind="verdict", valence=valence))
+    if deps.membrane is not None:
+        with contextlib.suppress(Exception):
+            deps.membrane.submit_reaction(decision_id, valence)
     folds = d.chosen_action == "abstain"  # only abstain verdicts move the fold (reactions §4.4)
     return {"valence": valence, "family": d.family, "chosen_action": d.chosen_action,
             "folds": folds}
@@ -473,19 +521,33 @@ _POST: dict[str, Handler] = {
     "/log_decision": _log_decision,
     "/log_reaction": _log_reaction,
     "/log_gather": _log_gather,
+    "/decide-support": _decide_support,
 }
 _GET: dict[str, Handler] = {"/utility": _utility, "/grow_menu": _grow_menu}
+
+
+def _membrane_ready_block(deps: BridgeDeps) -> Payload:
+    """`GET /ready`'s membrane block: `stats()` when enabled, `{"enabled": false}`
+    otherwise. `stats()` is documented never to raise, but this is a liveness endpoint —
+    defense-in-depth so a membrane failure can never take `/ready` itself down."""
+    if deps.membrane is None:
+        return {"enabled": False}
+    try:
+        return deps.membrane.stats()
+    except Exception:
+        return {"enabled": True, "stats_error": True}
 
 
 def dispatch(deps: BridgeDeps, method: str, path: str,
              body: bytes) -> tuple[int, Payload | None]:
     """Route one request to its endpoint and return ``(status, payload)``. Holds no state;
     every 4xx is returned (never raised past here), so a bad request never crashes the loop.
-    ``GET /ready`` is transport liveness — no reasoning, no deps touched."""
+    ``GET /ready`` is transport liveness plus the membrane shadow's own liveness (its
+    ``stats()``, guarded fail-open) — no other reasoning, no other deps touched."""
     try:
         if method == "GET":
             if path == "/ready":
-                return 200, {"status": "ok"}
+                return 200, {"status": "ok", "membrane": _membrane_ready_block(deps)}
             handler = _GET.get(path)
             if handler is None:
                 raise BridgeError(404, f"no GET endpoint {path!r}")
@@ -546,11 +608,44 @@ class BridgeServer(HTTPServer):
         self.deps = deps
 
 
+def _build_membrane(u_bar: Callable[[], dict[str, float]]) -> MEM.MembraneShadow | None:
+    """Construct + start the shadow supervisor iff `LIFE_AGENT_MEMBRANE_COMMAND` is set —
+    its absence (the default) returns `None`, which is ZERO behaviour change on the bridge
+    (`BridgeDeps.membrane` docstring). Both construction and `start()` can raise (a Task 4
+    review finding: `start()` raises `RuntimeError` on a double-start, and the underlying
+    `Thread.start()` can also raise) — caught here so a shadow that fails to come up can
+    NEVER prevent the bridge itself from serving; it only ever falls back to disabled."""
+    command = config.membrane_command()
+    if command is None:
+        return None
+    try:
+        cfg = MEM.ShadowConfig(
+            command=command, forms=config.membrane_utility_forms(),
+            log_path=config.membrane_shadow_log(),
+            read_timeout_s=config.membrane_read_timeout_s(),
+            queue_size=_MEMBRANE_QUEUE_SIZE, max_respawns=_MEMBRANE_MAX_RESPAWNS,
+            respawn_backoff_s=_MEMBRANE_RESPAWN_BACKOFF_S,
+        )
+        warm_vectors_dir = config.membrane_warm_vectors_dir()
+        shadow = MEM.MembraneShadow(
+            cfg, u_bar=u_bar,
+            snapshot=lambda: MEM.boot_snapshot(
+                config.DECISIONS_LOG, config.REACTIONS_LOG, warm_vectors_dir),
+        )
+        shadow.start()
+        return shadow
+    except Exception as e:
+        print(f"life-agent bridge: membrane shadow failed to start, disabling "
+              f"({type(e).__name__}: {e})")
+        return None
+
+
 def build_deps() -> BridgeDeps:
     """Open the warm, server-side handles once (move-3 §1): the read-only catalogue (FTS
     loaded, so a running extraction never blocks the bridge and vice-versa), the extraction
     client, the owner profile, and a lazy u_bar (the credence skin spawns on first `/utility`
-    only)."""
+    only). The membrane shadow (Task 5) is constructed last, off this same `_u_bar` — see
+    `_build_membrane` for the disabled-by-default / never-blocks-boot contract."""
     from life_agent.tasks import read
 
     root = read.pkm_root()
@@ -570,7 +665,8 @@ def build_deps() -> BridgeDeps:
                       profile=owner.load_profile(), u_bar=_u_bar,
                       decisions_path=config.DECISIONS_LOG,
                       reactions_path=config.REACTIONS_LOG, fold_version=_fold_version,
-                      gather_outcomes_path=config.GATHER_OUTCOMES_LOG)
+                      gather_outcomes_path=config.GATHER_OUTCOMES_LOG,
+                      membrane=_build_membrane(_u_bar))
 
 
 def main() -> None:
@@ -578,6 +674,7 @@ def main() -> None:
     print(f"life-agent capability bridge → http://{HOST}:{PORT}")
     print("  POST /route /retrieve /extract /probe/{recency,subject,authority,corroborate}")
     print("  POST /log_decision /log_reaction   (answer-brain verdict-emission seam)")
+    print("  POST /decide-support   (membrane shadow per-tick feed; no-op unless enabled)")
     print("  GET  /utility /ready")
     try:
         server.serve_forever()
