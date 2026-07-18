@@ -291,6 +291,18 @@ def _probe_corroborate(deps: BridgeDeps, p: Payload) -> Payload:
         if jr.value is not None:
             vn = LK._norm_value(jr.value)
             idx = next((i for i, c in enumerate(candidates) if LK._norm_value(c) == vn), None)
+            if idx is None:
+                # The join must not read a CONFIRMING sentence as a disagreement (the q-011
+                # pooling loss: the strong read confirmed the
+                # grounded passport leader inside a full sentence; exact equality returned no observation and
+                # the replace-contract erased the grounded channel). A candidate uniquely
+                # contained in the re-read value — the graders' own token-boundary matcher —
+                # is the confirmed leader; two contained candidates settle nothing and keep
+                # the conservative outside-set ⇒ no-observation contract.
+                contained = [i for i, c in enumerate(candidates)
+                             if MATCH.answer_matches(str(c), [], jr.value)]
+                if len(contained) == 1:
+                    idx = contained[0]
             if idx is None and p.get("allow_new"):
                 # The re-extract GROW actuator (slice 6): the strong re-read named a value
                 # OUTSIDE the current candidate set — with allow_new it ENLARGES K (that is what
