@@ -42,16 +42,16 @@ def test_membrane_command_empty_string_is_none(monkeypatch) -> None:
     assert config.membrane_command() is None
 
 
-# --- membrane_utility_forms: comma list, default table@1 ----------------------------------
+# --- membrane_utility_forms: comma list, default said@1 -----------------------------------
 
 def test_membrane_utility_forms_default(monkeypatch) -> None:
     monkeypatch.delenv(config.MEMBRANE_UTILITY_ENV, raising=False)
-    assert config.membrane_utility_forms() == ("table@1",)
+    assert config.membrane_utility_forms() == ("said@1",)
 
 
 def test_membrane_utility_forms_comma_list_is_stripped(monkeypatch) -> None:
-    monkeypatch.setenv(config.MEMBRANE_UTILITY_ENV, "table@1, latent@1")
-    assert config.membrane_utility_forms() == ("table@1", "latent@1")
+    monkeypatch.setenv(config.MEMBRANE_UTILITY_ENV, "said@1, said@2")
+    assert config.membrane_utility_forms() == ("said@1", "said@2")
 
 
 # --- membrane_read_timeout_s: default 300.0 ------------------------------------------------
