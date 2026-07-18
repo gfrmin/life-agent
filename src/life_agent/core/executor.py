@@ -74,6 +74,15 @@ _WITHHOLD = frozenset({"miss", "abstain", "hedge", "ask_clarify"})
 # (core/gather_outcomes.GROW_ACTUATORS, served by the bridge's /grow_menu).
 _GROW_RETRIEVE = {"retrieve_rerank": (True, False), "retrieve_expand": (True, True)}
 _RE_EXTRACT_MODEL = "claude-opus-4-8"
+# The k=0 rescue channel's reliability CAP — a stated wide prior (mean of the local
+# extractor's own Beta(4,4), core/lookup._RHO_PRIOR_*), declared blind, NOT the tier's
+# 0.95 and NOT the model's self-stated confidence: a lone strong read with zero local
+# corroboration is an unmeasured instrument, and the first field run showed fiat trust
+# asserting a true-but-vague read at 0.866 (q-015, graded wrong). Under this cap the
+# rescue NAMES candidates (hedge — EU-positive under u_hedged vs silence) and earns
+# assert-grade trust only through conditioned verdicts, exactly as the local channel
+# did after its own 0.85-fiat prior was refuted.
+_RESCUE_RHO = 0.5
 
 
 def _truth_likely_missing(view: View) -> bool:
@@ -243,8 +252,8 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
                 applied.append(g_probe)
                 if minted:
                     conf = cr.get("confidence")
-                    rescue_rho = (min(_GATHER_RHO, max(0.0, float(conf)))
-                                  if conf is not None else _GATHER_RHO)
+                    rescue_rho = (min(_RESCUE_RHO, max(0.0, float(conf)))
+                                  if conf is not None else _RESCUE_RHO)
                     ext = {"candidates": [str(cr["new_candidate"])],
                            "observations": cr["observations"], "rho": rescue_rho,
                            "era_split": False,

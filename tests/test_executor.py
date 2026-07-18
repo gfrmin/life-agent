@@ -474,7 +474,7 @@ def test_zero_candidate_walk_reaches_the_strong_re_extract() -> None:
     assert corr[0]["allow_new"] is True and corr[0]["candidates"] == []
     decides = fake.posted("/decide")
     assert decides[0]["candidates"] == ["NEW-7"]
-    assert decides[0]["rho"] == 0.9              # min(tier 0.95, confidence 0.9)
+    assert decides[0]["rho"] == 0.5              # min(_RESCUE_RHO 0.5, confidence 0.9)
     logged = {p["probe"]: p["recovered"] for p in fake.posted("/log_gather")}
     assert logged == {"retrieve_rerank": False, "retrieve_expand": False,
                       "re_extract_strong": True}
@@ -482,23 +482,24 @@ def test_zero_candidate_walk_reaches_the_strong_re_extract() -> None:
 
 def test_zero_candidate_rescue_carries_low_confidence_into_rho() -> None:
     # The q-005 shape: the strong read answers but says 0.55 — the decide must condition
-    # there, not at the tier's 0.95 (the flat rho asserted a near-miss at credence 0.995).
+    # below the wide-prior cap, never at the tier's 0.95 (the flat rho asserted a
+    # near-miss at credence 0.995; the self-confidence rho asserted a vague read, q-015).
     fake = FakeServices(
         route={"construct": "mortgage", "time_indexed": False},
         extracts=[_EMPTY_EXTRACT, _EMPTY_EXTRACT, _EMPTY_EXTRACT],
         corroborate={"observations": [{"reports": 0, "group": 0, "authority": 1.0,
                                        "subject_factor": 1.0, "time_factor": 1.0}],
                      "gather_rho": 0.95, "value": "NEW-7", "new_candidate": "NEW-7",
-                     "confidence": 0.55},
+                     "confidence": 0.35},
         decides=[{"effector": "hedge", "credences": [0.62], "p_none": 0.38, "eu": 0.3}])
     view = _loop(fake, grow_lane=True)
     assert view["effector"] == "hedge"
     assert view["candidates"] == ["NEW-7"]       # named, not silently dropped
-    assert fake.posted("/decide")[0]["rho"] == 0.55
+    assert fake.posted("/decide")[0]["rho"] == 0.35
 
 
-def test_zero_candidate_rescue_without_confidence_uses_the_tier_rho() -> None:
-    # A legacy bridge reply without "confidence" degrades to the tier prior, never crashes.
+def test_zero_candidate_rescue_without_confidence_uses_the_prior_cap() -> None:
+    # A legacy bridge reply without "confidence" degrades to the wide prior, never crashes.
     fake = FakeServices(
         route={"construct": "mortgage", "time_indexed": False},
         extracts=[_EMPTY_EXTRACT, _EMPTY_EXTRACT, _EMPTY_EXTRACT],
@@ -508,7 +509,7 @@ def test_zero_candidate_rescue_without_confidence_uses_the_tier_rho() -> None:
         decides=[{"effector": "report", "value": "NEW-7", "credences": [0.93],
                   "p_none": 0.07, "eu": 0.8}])
     _loop(fake, grow_lane=True)
-    assert fake.posted("/decide")[0]["rho"] == 0.95
+    assert fake.posted("/decide")[0]["rho"] == 0.5
 
 
 def test_zero_candidate_rescue_empty_read_stays_miss() -> None:
