@@ -147,7 +147,7 @@ def _summary(**kw: object) -> W.DecideSummary:
 def _cfg(tmp_path: Path, **kw: object) -> SH.ShadowConfig:
     defaults: dict[str, object] = dict(
         command=["/x/nonexistent-govhost-binary"],  # PII-OK: synthetic placeholder path
-        forms=("table@1",),
+        forms=("said@1",),
         log_path=tmp_path / "shadow.jsonl",
         queue_size=64,
         max_respawns=3,
@@ -179,8 +179,13 @@ def _wait_until(predicate: object, *, timeout_s: float = 2.0, poll_s: float = 0.
 # --- start(): boots off one synchronous snapshot, writes a boot record per form ----------
 
 
-def test_start_boots_every_form_and_writes_a_boot_record_each(tmp_path: Path) -> None:
-    cfg = _cfg(tmp_path, forms=("table@1", "latent@1"))
+def test_start_boots_every_form_and_writes_a_boot_record_each(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # the re-derived wire declares ONE form; two forms side by side is a test-only shape,
+    # so widen the declared set (ShadowConfig + handshake_decl both validate against it).
+    monkeypatch.setattr(W, "UTILITY_FORMS", ("said@1", "said@2"))
+    cfg = _cfg(tmp_path, forms=("said@1", "said@2"))
     calls, snapshot = _snapshot_calls_counter()
     factory = _FakeFactory()
     sh = SH.MembraneShadow(
@@ -190,18 +195,18 @@ def test_start_boots_every_form_and_writes_a_boot_record_each(tmp_path: Path) ->
         sh.start()
         ok = _wait_until(
             lambda: all(
-                sh.stats()["forms"][f]["alive"] for f in ("table@1", "latent@1")  # type: ignore[index]
+                sh.stats()["forms"][f]["alive"] for f in ("said@1", "said@2")  # type: ignore[index]
             )
         )
         assert ok
         records = _read_records(cfg.log_path)
         boots = [r for r in records if r["kind"] == "boot"]
-        assert {b["form"] for b in boots} == {"table@1", "latent@1"}
+        assert {b["form"] for b in boots} == {"said@1", "said@2"}
         for b in boots:
             assert b["event_type"] == "membrane-shadow"
             assert b["engine"] == {"ok": True, "proto": 1, "form": b["form"]}
             assert b["binary_sha256"] == "unknown"  # command[0] doesn't exist
-            assert set(b["forms"]) == {"table@1", "latent@1"}  # type: ignore[arg-type]
+            assert set(b["forms"]) == {"said@1", "said@2"}  # type: ignore[arg-type]
             assert b["respawn_count"] == 0
             expected_digest = SH.world_digest(_u_bar(), utility_form=str(b["form"]))
             assert b["world_digest"] == expected_digest
@@ -218,7 +223,7 @@ def test_shadow_config_rejects_an_unknown_form_at_construction(tmp_path: Path) -
     into a permanently dead form inside a supervisor that still looked healthy. A stated
     safety property has to be the code's."""
     with pytest.raises(ValueError, match="unknown membrane utility form"):
-        _cfg(tmp_path, forms=("table@1", "table@2"))
+        _cfg(tmp_path, forms=("said@1", "table@2"))
     with pytest.raises(ValueError, match="must not be empty"):
         _cfg(tmp_path, forms=())
     _cfg(tmp_path, forms=W.UTILITY_FORMS)  # every declared form is accepted
@@ -242,7 +247,7 @@ def test_boot_record_persists_the_real_u_bar_not_just_its_digest(tmp_path: Path)
         boot = boots[0]
         assert boot["u_bar"] == _u_bar()
         # and it is the SAME u_bar the declared world was digested under
-        assert boot["world_digest"] == SH.world_digest(_u_bar(), utility_form="table@1")
+        assert boot["world_digest"] == SH.world_digest(_u_bar(), utility_form="said@1")
     finally:
         sh.close()
 
@@ -288,15 +293,15 @@ def test_respawn_boot_record_reflects_the_fresh_snapshots_n_source_records(
     def snapshot() -> SH.BootSnapshot:
         return next(remaining, fresh)
 
-    dying = _FakeSession("table@1", decide_raises=True)
-    healthy = _FakeSession("table@1")
-    factory = _FakeFactory({"table@1": [dying, healthy]})
+    dying = _FakeSession("said@1", decide_raises=True)
+    healthy = _FakeSession("said@1")
+    factory = _FakeFactory({"said@1": [dying, healthy]})
     sh = SH.MembraneShadow(
         cfg, u_bar=_u_bar, snapshot=snapshot, session_factory=factory, clock=_FakeClock(),
     )
     try:
         sh.start()
-        assert _wait_until(lambda: sh.stats()["forms"]["table@1"]["alive"])  # type: ignore[index]
+        assert _wait_until(lambda: sh.stats()["forms"]["said@1"]["alive"])  # type: ignore[index]
         sh.submit_decide("q-001", {"candidates": []}, {"credences": [], "effector": "report"})
         assert _wait_until(lambda: healthy.boot_calls != [])
         # Wait on the SECOND boot record's own arrival, not just `healthy.boot_calls`
@@ -320,17 +325,17 @@ def test_periodic_stats_record_written_every_stats_every_processed_items(
     monkeypatch.setattr(SH, "_STATS_EVERY", 3)
     cfg = _cfg(tmp_path)
     _calls, snapshot = _snapshot_calls_counter()
-    session = _FakeSession("table@1")
-    factory = _FakeFactory({"table@1": [session]})
+    session = _FakeSession("said@1")
+    factory = _FakeFactory({"said@1": [session]})
     sh = SH.MembraneShadow(
         cfg, u_bar=_u_bar, snapshot=snapshot, session_factory=factory, clock=_FakeClock(),
     )
     try:
         sh.start()
-        assert _wait_until(lambda: sh.stats()["forms"]["table@1"]["alive"])  # type: ignore[index]
+        assert _wait_until(lambda: sh.stats()["forms"]["said@1"]["alive"])  # type: ignore[index]
         for i in range(3):
             sh.submit_decide(f"q-{i}", {"candidates": []}, {"credences": [], "effector": "report"})
-        assert _wait_until(lambda: sh.stats()["forms"]["table@1"]["ticks"] >= 3)  # type: ignore[index]
+        assert _wait_until(lambda: sh.stats()["forms"]["said@1"]["ticks"] >= 3)  # type: ignore[index]
 
         def has_stats_row() -> bool:
             return any(r["kind"] == "stats" for r in _read_records(cfg.log_path))
@@ -346,7 +351,7 @@ def test_periodic_stats_record_written_every_stats_every_processed_items(
         assert set(row) >= {
             "forms", "drops", "skips", "submit_errors", "queue_depth", "snapshot_records",
         }
-        assert row["forms"]["table@1"]["ticks"] >= 3
+        assert row["forms"]["said@1"]["ticks"] >= 3
     finally:
         sh.close()
 
@@ -357,16 +362,16 @@ def test_no_stats_row_written_before_stats_every_items_processed(
     monkeypatch.setattr(SH, "_STATS_EVERY", 100)
     cfg = _cfg(tmp_path)
     _calls, snapshot = _snapshot_calls_counter()
-    session = _FakeSession("table@1")
-    factory = _FakeFactory({"table@1": [session]})
+    session = _FakeSession("said@1")
+    factory = _FakeFactory({"said@1": [session]})
     sh = SH.MembraneShadow(
         cfg, u_bar=_u_bar, snapshot=snapshot, session_factory=factory, clock=_FakeClock(),
     )
     try:
         sh.start()
-        assert _wait_until(lambda: sh.stats()["forms"]["table@1"]["alive"])  # type: ignore[index]
+        assert _wait_until(lambda: sh.stats()["forms"]["said@1"]["alive"])  # type: ignore[index]
         sh.submit_decide("q-1", {"candidates": []}, {"credences": [], "effector": "report"})
-        assert _wait_until(lambda: sh.stats()["forms"]["table@1"]["ticks"] >= 1)  # type: ignore[index]
+        assert _wait_until(lambda: sh.stats()["forms"]["said@1"]["ticks"] >= 1)  # type: ignore[index]
         records = _read_records(cfg.log_path)
         assert not any(r["kind"] == "stats" for r in records)  # below threshold: none yet
     finally:
@@ -376,20 +381,20 @@ def test_no_stats_row_written_before_stats_every_items_processed(
 def test_close_writes_a_final_stats_record(tmp_path: Path) -> None:
     cfg = _cfg(tmp_path)
     _calls, snapshot = _snapshot_calls_counter()
-    session = _FakeSession("table@1")
-    factory = _FakeFactory({"table@1": [session]})
+    session = _FakeSession("said@1")
+    factory = _FakeFactory({"said@1": [session]})
     sh = SH.MembraneShadow(
         cfg, u_bar=_u_bar, snapshot=snapshot, session_factory=factory, clock=_FakeClock(),
     )
     sh.start()
-    assert _wait_until(lambda: sh.stats()["forms"]["table@1"]["alive"])  # type: ignore[index]
+    assert _wait_until(lambda: sh.stats()["forms"]["said@1"]["alive"])  # type: ignore[index]
     sh.submit_decide("q-1", {"candidates": []}, {"credences": [], "effector": "report"})
-    assert _wait_until(lambda: sh.stats()["forms"]["table@1"]["ticks"] >= 1)  # type: ignore[index]
+    assert _wait_until(lambda: sh.stats()["forms"]["said@1"]["ticks"] >= 1)  # type: ignore[index]
     sh.close()
     records = _read_records(cfg.log_path)
     stats_rows = [r for r in records if r["kind"] == "stats"]
     assert len(stats_rows) >= 1
-    assert stats_rows[-1]["forms"]["table@1"]["ticks"] >= 1
+    assert stats_rows[-1]["forms"]["said@1"]["ticks"] >= 1
 
 
 def test_close_before_start_writes_a_stats_record_without_raising(tmp_path: Path) -> None:
@@ -417,13 +422,13 @@ def test_stats_record_write_failure_is_fail_open(tmp_path: Path) -> None:
         )
         try:
             sh.start()
-            assert _wait_until(lambda: sh.stats()["forms"]["table@1"]["alive"])  # type: ignore[index]
+            assert _wait_until(lambda: sh.stats()["forms"]["said@1"]["alive"])  # type: ignore[index]
             for i in range(monkeypatch_value):
                 sh.submit_decide(
                     f"q-{i}", {"candidates": []}, {"credences": [], "effector": "report"},
                 )
             assert _wait_until(
-                lambda: sh.stats()["forms"]["table@1"]["ticks"] >= monkeypatch_value  # type: ignore[index]
+                lambda: sh.stats()["forms"]["said@1"]["ticks"] >= monkeypatch_value  # type: ignore[index]
             )
             assert sh.stats()["drops"] >= 1
         finally:
@@ -442,18 +447,18 @@ def test_decide_submit_is_drained_into_a_decide_record(tmp_path: Path) -> None:
     sh = SH.MembraneShadow(cfg, u_bar=_u_bar, snapshot=snapshot, session_factory=factory)
     try:
         sh.start()
-        assert _wait_until(lambda: sh.stats()["forms"]["table@1"]["alive"])  # type: ignore[index]
+        assert _wait_until(lambda: sh.stats()["forms"]["said@1"]["alive"])  # type: ignore[index]
         payload = {"candidates": ["a"], "observations": [1, 2], "era_split": True}
         dec = {"credences": [0.8], "p_none": 0.1, "effector": "report"}
         sh.submit_decide("q-001", payload, dec)
-        assert _wait_until(lambda: sh.stats()["forms"]["table@1"]["ticks"] >= 1)  # type: ignore[index]
+        assert _wait_until(lambda: sh.stats()["forms"]["said@1"]["ticks"] >= 1)  # type: ignore[index]
         records = _read_records(cfg.log_path)
         decides = [r for r in records if r["kind"] == "decide"]
         assert len(decides) == 1
         row = decides[0]
         assert row["event_type"] == "membrane-shadow"
         assert row["question_id"] == "q-001"
-        assert row["form"] == "table@1"
+        assert row["form"] == "said@1"
         assert row["action"] == "respond"
         assert row["raw_internal"] is False
         assert row["real_effector"] == "report"
@@ -498,11 +503,11 @@ def test_session_that_always_fails_to_boot_respawns_up_to_max_then_stays_dead(
 ) -> None:
     cfg = _cfg(tmp_path, max_respawns=3, respawn_backoff_s=0.0)
     calls, snapshot = _snapshot_calls_counter()
-    factory = _FakeFactory({"table@1": [_FakeSession("table@1", boot_raises=True)]})
+    factory = _FakeFactory({"said@1": [_FakeSession("said@1", boot_raises=True)]})
     # every subsequent respawn attempt also gets a boot_raises=True session (the
     # factory's fallback builds a plain fresh() session otherwise) — script enough.
-    factory.sessions_for["table@1"] = [
-        _FakeSession("table@1", boot_raises=True) for _ in range(6)
+    factory.sessions_for["said@1"] = [
+        _FakeSession("said@1", boot_raises=True) for _ in range(6)
     ]
     sh = SH.MembraneShadow(
         cfg, u_bar=_u_bar, snapshot=snapshot, session_factory=factory, clock=_FakeClock(),
@@ -510,11 +515,11 @@ def test_session_that_always_fails_to_boot_respawns_up_to_max_then_stays_dead(
     try:
         sh.start()
         assert _wait_until(
-            lambda: sh.stats()["forms"]["table@1"]["respawns"] == cfg.max_respawns  # type: ignore[index]
+            lambda: sh.stats()["forms"]["said@1"]["respawns"] == cfg.max_respawns  # type: ignore[index]
         )
         stats = sh.stats()
-        assert stats["forms"]["table@1"]["alive"] is False  # type: ignore[index]
-        assert stats["forms"]["table@1"]["respawns"] == 3  # type: ignore[index]
+        assert stats["forms"]["said@1"]["alive"] is False  # type: ignore[index]
+        assert stats["forms"]["said@1"]["respawns"] == 3  # type: ignore[index]
         # 1 initial snapshot (start()) + one fresh snapshot per respawn attempt (3)
         assert len(calls) == cfg.max_respawns + 1
         records = _read_records(cfg.log_path)
@@ -536,21 +541,21 @@ def test_session_that_raises_during_a_live_tick_dies_and_respawns_against_fresh_
     # exercises the live-tick death path (not the initial-boot-failure path above).
     cfg = _cfg(tmp_path, max_respawns=1, respawn_backoff_s=0.0)
     calls, snapshot = _snapshot_calls_counter()
-    dying = _FakeSession("table@1", decide_raises=True)
-    factory = _FakeFactory({"table@1": [dying, _FakeSession("table@1", boot_raises=True)]})
+    dying = _FakeSession("said@1", decide_raises=True)
+    factory = _FakeFactory({"said@1": [dying, _FakeSession("said@1", boot_raises=True)]})
     sh = SH.MembraneShadow(
         cfg, u_bar=_u_bar, snapshot=snapshot, session_factory=factory, clock=_FakeClock(),
     )
     try:
         sh.start()
-        assert _wait_until(lambda: sh.stats()["forms"]["table@1"]["alive"])  # type: ignore[index]
+        assert _wait_until(lambda: sh.stats()["forms"]["said@1"]["alive"])  # type: ignore[index]
         sh.submit_decide("q-001", {"candidates": []}, {"credences": [], "effector": "report"})
         assert _wait_until(
-            lambda: sh.stats()["forms"]["table@1"]["respawns"] == 1  # type: ignore[index]
+            lambda: sh.stats()["forms"]["said@1"]["respawns"] == 1  # type: ignore[index]
         )
         stats = sh.stats()
-        assert stats["forms"]["table@1"]["alive"] is False  # type: ignore[index]
-        assert factory.calls["table@1"] == 2  # initial boot + the one respawn attempt
+        assert stats["forms"]["said@1"]["alive"] is False  # type: ignore[index]
+        assert factory.calls["said@1"] == 2  # initial boot + the one respawn attempt
         assert len(calls) == 2  # 1 initial (start) + 1 fresh (the respawn)
     finally:
         sh.close()
@@ -559,26 +564,26 @@ def test_session_that_raises_during_a_live_tick_dies_and_respawns_against_fresh_
 def test_a_dead_form_recovers_when_its_respawn_succeeds(tmp_path: Path) -> None:
     cfg = _cfg(tmp_path, max_respawns=2, respawn_backoff_s=0.0)
     _calls, snapshot = _snapshot_calls_counter()
-    dying = _FakeSession("table@1", decide_raises=True)
-    healthy = _FakeSession("table@1")
-    factory = _FakeFactory({"table@1": [dying, healthy]})
+    dying = _FakeSession("said@1", decide_raises=True)
+    healthy = _FakeSession("said@1")
+    factory = _FakeFactory({"said@1": [dying, healthy]})
     sh = SH.MembraneShadow(
         cfg, u_bar=_u_bar, snapshot=snapshot, session_factory=factory, clock=_FakeClock(),
     )
     try:
         sh.start()
-        assert _wait_until(lambda: sh.stats()["forms"]["table@1"]["alive"])  # type: ignore[index]
+        assert _wait_until(lambda: sh.stats()["forms"]["said@1"]["alive"])  # type: ignore[index]
         sh.submit_decide("q-001", {"candidates": []}, {"credences": [], "effector": "report"})
         # dies, then the respawn (with `healthy`) brings it back alive. Wait on the
         # factory having actually built the SECOND session, not merely on "alive" —
         # `dying` is also alive right up until the queued item kills it, so polling
         # "alive" alone could spuriously pass before the death/respawn cycle even ran.
-        assert _wait_until(lambda: factory.calls.get("table@1", 0) == 2)
-        assert _wait_until(lambda: sh.stats()["forms"]["table@1"]["alive"])  # type: ignore[index]
+        assert _wait_until(lambda: factory.calls.get("said@1", 0) == 2)
+        assert _wait_until(lambda: sh.stats()["forms"]["said@1"]["alive"])  # type: ignore[index]
         # respawn_count counts every ATTEMPT against the budget, success or failure (the
         # Task 4 review's C2 fix — see shadow.py's `_boot_form`/`_attempt_respawn`
         # docstring), so a SUCCESSFUL respawn still consumes exactly 1.
-        assert sh.stats()["forms"]["table@1"]["respawns"] == 1  # type: ignore[index]
+        assert sh.stats()["forms"]["said@1"]["respawns"] == 1  # type: ignore[index]
         sh.submit_decide("q-002", {"candidates": []}, {"credences": [], "effector": "report"})
         assert _wait_until(lambda: len(healthy.decide_calls) == 1)
     finally:
@@ -595,16 +600,16 @@ def test_a_dying_sessions_client_is_shut_down_when_its_form_dies(tmp_path: Path)
     # (Popen's finalizer does not kill the child).
     cfg = _cfg(tmp_path, max_respawns=0, respawn_backoff_s=0.0)
     _calls, snapshot = _snapshot_calls_counter()
-    dying = _FakeSession("table@1", decide_raises=True)
-    factory = _FakeFactory({"table@1": [dying]})
+    dying = _FakeSession("said@1", decide_raises=True)
+    factory = _FakeFactory({"said@1": [dying]})
     sh = SH.MembraneShadow(
         cfg, u_bar=_u_bar, snapshot=snapshot, session_factory=factory, clock=_FakeClock(),
     )
     try:
         sh.start()
-        assert _wait_until(lambda: sh.stats()["forms"]["table@1"]["alive"])  # type: ignore[index]
+        assert _wait_until(lambda: sh.stats()["forms"]["said@1"]["alive"])  # type: ignore[index]
         sh.submit_decide("q-1", {"candidates": []}, {"credences": [], "effector": "report"})
-        assert _wait_until(lambda: not sh.stats()["forms"]["table@1"]["alive"])  # type: ignore[index]
+        assert _wait_until(lambda: not sh.stats()["forms"]["said@1"]["alive"])  # type: ignore[index]
         assert dying.client.shutdown_calls == 1
     finally:
         sh.close()
@@ -618,14 +623,14 @@ def test_a_session_whose_boot_fails_after_spawning_is_still_shut_down(tmp_path: 
     # the point of failure.
     cfg = _cfg(tmp_path, max_respawns=0, respawn_backoff_s=0.0)
     _calls, snapshot = _snapshot_calls_counter()
-    failing = _FakeSession("table@1", boot_raises=True)
-    factory = _FakeFactory({"table@1": [failing]})
+    failing = _FakeSession("said@1", boot_raises=True)
+    factory = _FakeFactory({"said@1": [failing]})
     sh = SH.MembraneShadow(
         cfg, u_bar=_u_bar, snapshot=snapshot, session_factory=factory, clock=_FakeClock(),
     )
     try:
         sh.start()
-        assert _wait_until(lambda: not sh.stats()["forms"]["table@1"]["alive"])  # type: ignore[index]
+        assert _wait_until(lambda: not sh.stats()["forms"]["said@1"]["alive"])  # type: ignore[index]
         assert _wait_until(lambda: failing.client.shutdown_calls == 1)
     finally:
         sh.close()
@@ -642,26 +647,26 @@ def test_a_form_that_boots_ok_but_dies_on_every_tick_exhausts_the_full_respawn_b
     # Each incarnation here boots cleanly and only dies on its first `decide()`.
     cfg = _cfg(tmp_path, max_respawns=3, respawn_backoff_s=0.0)
     _calls, snapshot = _snapshot_calls_counter()
-    sessions = [_FakeSession("table@1", decide_raises=True) for _ in range(4)]
-    factory = _FakeFactory({"table@1": list(sessions)})
+    sessions = [_FakeSession("said@1", decide_raises=True) for _ in range(4)]
+    factory = _FakeFactory({"said@1": list(sessions)})
     sh = SH.MembraneShadow(
         cfg, u_bar=_u_bar, snapshot=snapshot, session_factory=factory, clock=_FakeClock(),
     )
     try:
         sh.start()
-        assert _wait_until(lambda: sh.stats()["forms"]["table@1"]["alive"])  # type: ignore[index]
+        assert _wait_until(lambda: sh.stats()["forms"]["said@1"]["alive"])  # type: ignore[index]
         for i in range(4):
             sh.submit_decide(f"q-{i}", {"candidates": []}, {"credences": [], "effector": "report"})
             if i < 3:  # a respawn follows every death except the budget-exhausting last one
-                assert _wait_until(lambda i=i: factory.calls.get("table@1", 0) == i + 2)
-                assert _wait_until(lambda: sh.stats()["forms"]["table@1"]["alive"])  # type: ignore[index]
-        assert _wait_until(lambda: sh.stats()["forms"]["table@1"]["alive"] is False)  # type: ignore[index]
+                assert _wait_until(lambda i=i: factory.calls.get("said@1", 0) == i + 2)
+                assert _wait_until(lambda: sh.stats()["forms"]["said@1"]["alive"])  # type: ignore[index]
+        assert _wait_until(lambda: sh.stats()["forms"]["said@1"]["alive"] is False)  # type: ignore[index]
         stats = sh.stats()
-        assert stats["forms"]["table@1"]["respawns"] == 3  # type: ignore[index]
-        assert factory.calls["table@1"] == 4  # 1 free initial boot + 3 respawn attempts
+        assert stats["forms"]["said@1"]["respawns"] == 3  # type: ignore[index]
+        assert factory.calls["said@1"] == 4  # 1 free initial boot + 3 respawn attempts
         # the budget is truly exhausted: one more submit builds no further session.
         sh.submit_decide("q-extra", {"candidates": []}, {"credences": [], "effector": "report"})
-        assert not _wait_until(lambda: factory.calls["table@1"] > 4, timeout_s=0.3)
+        assert not _wait_until(lambda: factory.calls["said@1"] > 4, timeout_s=0.3)
     finally:
         sh.close()
 
@@ -685,15 +690,15 @@ def test_respawn_boots_the_new_session_off_the_freshly_returned_snapshot_content
     def snapshot() -> SH.BootSnapshot:
         return next(remaining, fresh)
 
-    dying = _FakeSession("table@1", decide_raises=True)
-    healthy = _FakeSession("table@1")
-    factory = _FakeFactory({"table@1": [dying, healthy]})
+    dying = _FakeSession("said@1", decide_raises=True)
+    healthy = _FakeSession("said@1")
+    factory = _FakeFactory({"said@1": [dying, healthy]})
     sh = SH.MembraneShadow(
         cfg, u_bar=_u_bar, snapshot=snapshot, session_factory=factory, clock=_FakeClock(),
     )
     try:
         sh.start()
-        assert _wait_until(lambda: sh.stats()["forms"]["table@1"]["alive"])  # type: ignore[index]
+        assert _wait_until(lambda: sh.stats()["forms"]["said@1"]["alive"])  # type: ignore[index]
         assert dying.boot_calls[0] == ([], [])  # the STALE initial snapshot's content
         sh.submit_decide("q-001", {"candidates": []}, {"credences": [], "effector": "report"})
         assert _wait_until(lambda: healthy.boot_calls != [])
@@ -724,11 +729,11 @@ def test_a_raising_u_bar_does_not_kill_the_worker_and_the_boot_record_failure_is
         sh.start()
         # the worker survived `_write_boot_record`'s `u_bar()` call raising: the form is
         # alive (the session itself booted fine — only the boot RECORD write failed).
-        assert _wait_until(lambda: sh.stats()["forms"]["table@1"]["alive"])  # type: ignore[index]
+        assert _wait_until(lambda: sh.stats()["forms"]["said@1"]["alive"])  # type: ignore[index]
         # ... and it kept draining afterward — a decide submitted post-boot still reaches
         # the (unkilled) worker.
         sh.submit_decide("q-1", {"candidates": []}, {"credences": [], "effector": "report"})
-        assert _wait_until(lambda: sh.stats()["forms"]["table@1"]["ticks"] >= 1)  # type: ignore[index]
+        assert _wait_until(lambda: sh.stats()["forms"]["said@1"]["ticks"] >= 1)  # type: ignore[index]
         assert sh.stats()["drops"] >= 1  # the failed boot-record write, visible
         records = _read_records(cfg.log_path)
         assert not any(r["kind"] == "boot" for r in records)  # it never got written
@@ -749,29 +754,32 @@ def test_a_log_path_that_cannot_be_written_is_fail_open_and_the_worker_keeps_dra
     )
     try:
         sh.start()
-        assert _wait_until(lambda: sh.stats()["forms"]["table@1"]["alive"])  # type: ignore[index]
+        assert _wait_until(lambda: sh.stats()["forms"]["said@1"]["alive"])  # type: ignore[index]
         sh.submit_decide("q-1", {"candidates": []}, {"credences": [], "effector": "report"})
-        assert _wait_until(lambda: sh.stats()["forms"]["table@1"]["ticks"] >= 1)  # type: ignore[index]
+        assert _wait_until(lambda: sh.stats()["forms"]["said@1"]["ticks"] >= 1)  # type: ignore[index]
         assert sh.stats()["drops"] >= 1
     finally:
         sh.close()
 
 
-def test_one_dead_form_does_not_stop_another_form_from_ticking(tmp_path: Path) -> None:
-    cfg = _cfg(tmp_path, forms=("table@1", "latent@1"), max_respawns=0, respawn_backoff_s=0.0)
+def test_one_dead_form_does_not_stop_another_form_from_ticking(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(W, "UTILITY_FORMS", ("said@1", "said@2"))
+    cfg = _cfg(tmp_path, forms=("said@1", "said@2"), max_respawns=0, respawn_backoff_s=0.0)
     _calls, snapshot = _snapshot_calls_counter()
-    dead = _FakeSession("table@1", boot_raises=True)
-    factory = _FakeFactory({"table@1": [dead]})  # latent@1 falls back to a healthy default
+    dead = _FakeSession("said@1", boot_raises=True)
+    factory = _FakeFactory({"said@1": [dead]})  # said@2 falls back to a healthy default
     sh = SH.MembraneShadow(
         cfg, u_bar=_u_bar, snapshot=snapshot, session_factory=factory, clock=_FakeClock(),
     )
     try:
         sh.start()
-        assert _wait_until(lambda: not sh.stats()["forms"]["table@1"]["alive"])  # type: ignore[index]
-        assert _wait_until(lambda: sh.stats()["forms"]["latent@1"]["alive"])  # type: ignore[index]
+        assert _wait_until(lambda: not sh.stats()["forms"]["said@1"]["alive"])  # type: ignore[index]
+        assert _wait_until(lambda: sh.stats()["forms"]["said@2"]["alive"])  # type: ignore[index]
         sh.submit_decide("q-1", {"candidates": []}, {"credences": [], "effector": "report"})
-        assert _wait_until(lambda: sh.stats()["forms"]["latent@1"]["ticks"] >= 1)  # type: ignore[index]
-        assert sh.stats()["forms"]["table@1"]["ticks"] == 0  # type: ignore[index]
+        assert _wait_until(lambda: sh.stats()["forms"]["said@2"]["ticks"] >= 1)  # type: ignore[index]
+        assert sh.stats()["forms"]["said@1"]["ticks"] == 0  # type: ignore[index]
     finally:
         sh.close()
 
@@ -782,17 +790,17 @@ def test_one_dead_form_does_not_stop_another_form_from_ticking(tmp_path: Path) -
 def test_dead_form_drops_are_counted(tmp_path: Path) -> None:
     cfg = _cfg(tmp_path, max_respawns=0, respawn_backoff_s=0.0)
     _calls, snapshot = _snapshot_calls_counter()
-    dying = _FakeSession("table@1", boot_raises=True)
-    factory = _FakeFactory({"table@1": [dying]})
+    dying = _FakeSession("said@1", boot_raises=True)
+    factory = _FakeFactory({"said@1": [dying]})
     sh = SH.MembraneShadow(
         cfg, u_bar=_u_bar, snapshot=snapshot, session_factory=factory, clock=_FakeClock(),
     )
     try:
         sh.start()
-        assert _wait_until(lambda: not sh.stats()["forms"]["table@1"]["alive"])  # type: ignore[index]
+        assert _wait_until(lambda: not sh.stats()["forms"]["said@1"]["alive"])  # type: ignore[index]
         sh.submit_decide("q-1", {"candidates": []}, {"credences": [], "effector": "report"})
         sh.submit_decide("q-2", {"candidates": []}, {"credences": [], "effector": "report"})
-        assert _wait_until(lambda: sh.stats()["forms"]["table@1"]["dead_drops"] >= 2)  # type: ignore[index]
+        assert _wait_until(lambda: sh.stats()["forms"]["said@1"]["dead_drops"] >= 2)  # type: ignore[index]
     finally:
         sh.close()
 
@@ -866,14 +874,14 @@ def test_reaction_after_decision_feeds_the_remembered_live_summary_not_the_fallb
 ) -> None:
     cfg = _cfg(tmp_path)
     _calls, snapshot = _snapshot_calls_counter()
-    session = _FakeSession("table@1")
-    factory = _FakeFactory({"table@1": [session]})
+    session = _FakeSession("said@1")
+    factory = _FakeFactory({"said@1": [session]})
     sh = SH.MembraneShadow(
         cfg, u_bar=_u_bar, snapshot=snapshot, session_factory=factory, clock=_FakeClock(),
     )
     try:
         sh.start()
-        assert _wait_until(lambda: sh.stats()["forms"]["table@1"]["alive"])  # type: ignore[index]
+        assert _wait_until(lambda: sh.stats()["forms"]["said@1"]["alive"])  # type: ignore[index]
         payload = {"candidates": ["a", "b"], "observations": [1], "owner_scoped": True}
         dec = {"credences": [0.6, 0.3], "p_none": 0.2, "effector": "report"}
         live_summary = W.summary_from_payload(payload, dec)
@@ -898,7 +906,7 @@ def test_reaction_after_decision_feeds_the_remembered_live_summary_not_the_fallb
         assert evidence[0]["stream"] == "verdict"
         assert evidence[0]["decision_id"] == "dec-42"
         assert evidence[0]["y"] == 1
-        assert evidence[0]["form"] == "table@1"
+        assert evidence[0]["form"] == "said@1"
         assert evidence[0]["t"] == 0  # the t sent on the wire, pre-increment
     finally:
         sh.close()
@@ -909,14 +917,14 @@ def test_reaction_falls_back_to_decision_event_summary_when_no_live_summary_was_
 ) -> None:
     cfg = _cfg(tmp_path)
     _calls, snapshot = _snapshot_calls_counter()
-    session = _FakeSession("table@1")
-    factory = _FakeFactory({"table@1": [session]})
+    session = _FakeSession("said@1")
+    factory = _FakeFactory({"said@1": [session]})
     sh = SH.MembraneShadow(
         cfg, u_bar=_u_bar, snapshot=snapshot, session_factory=factory, clock=_FakeClock(),
     )
     try:
         sh.start()
-        assert _wait_until(lambda: sh.stats()["forms"]["table@1"]["alive"])  # type: ignore[index]
+        assert _wait_until(lambda: sh.stats()["forms"]["said@1"]["alive"])  # type: ignore[index]
         event = {"chosen_action": "abstain", "posterior_summary": {"credences": [0.4]}}
         sh.submit_decision("dec-99", "q-never-decided", event)
         sh.submit_reaction("dec-99", "bad")  # (abstain, bad) -> y=1
@@ -931,14 +939,17 @@ def test_reaction_falls_back_to_decision_event_summary_when_no_live_summary_was_
 # --- close(): joins the worker, force-shuts-down every client ----------------------------
 
 
-def test_close_joins_worker_and_shuts_down_every_client(tmp_path: Path) -> None:
-    cfg = _cfg(tmp_path, forms=("table@1", "latent@1"))
+def test_close_joins_worker_and_shuts_down_every_client(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(W, "UTILITY_FORMS", ("said@1", "said@2"))
+    cfg = _cfg(tmp_path, forms=("said@1", "said@2"))
     _calls, snapshot = _snapshot_calls_counter()
     factory = _FakeFactory()
     sh = SH.MembraneShadow(cfg, u_bar=_u_bar, snapshot=snapshot, session_factory=factory)
     sh.start()
     assert _wait_until(
-        lambda: all(sh.stats()["forms"][f]["alive"] for f in ("table@1", "latent@1"))  # type: ignore[index]
+        lambda: all(sh.stats()["forms"][f]["alive"] for f in ("said@1", "said@2"))  # type: ignore[index]
     )
     worker = sh._worker  # white-box: confirm the worker thread actually stops
     assert worker is not None
@@ -949,23 +960,26 @@ def test_close_joins_worker_and_shuts_down_every_client(tmp_path: Path) -> None:
             assert s.client.shutdown_calls == 1
 
 
-def test_close_marks_every_form_dead_in_stats(tmp_path: Path) -> None:
+def test_close_marks_every_form_dead_in_stats(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(W, "UTILITY_FORMS", ("said@1", "said@2"))
     # Review finding (Task 4 -> Task 5): close() shut down every client but never nulled
     # `state.session`, so `stats()["forms"][f]["alive"]` stayed True after close() — a
     # caller (e.g. GET /ready) reading stats() post-close would be told a dead shadow was
     # still alive.
-    cfg = _cfg(tmp_path, forms=("table@1", "latent@1"))
+    cfg = _cfg(tmp_path, forms=("said@1", "said@2"))
     _calls, snapshot = _snapshot_calls_counter()
     factory = _FakeFactory()
     sh = SH.MembraneShadow(cfg, u_bar=_u_bar, snapshot=snapshot, session_factory=factory)
     sh.start()
     assert _wait_until(
-        lambda: all(sh.stats()["forms"][f]["alive"] for f in ("table@1", "latent@1"))  # type: ignore[index]
+        lambda: all(sh.stats()["forms"][f]["alive"] for f in ("said@1", "said@2"))  # type: ignore[index]
     )
     sh.close()
     stats = sh.stats()
-    assert stats["forms"]["table@1"]["alive"] is False  # type: ignore[index]
-    assert stats["forms"]["latent@1"]["alive"] is False  # type: ignore[index]
+    assert stats["forms"]["said@1"]["alive"] is False  # type: ignore[index]
+    assert stats["forms"]["said@2"]["alive"] is False  # type: ignore[index]
 
 
 def test_close_is_safe_before_start(tmp_path: Path) -> None:
@@ -995,15 +1009,15 @@ def test_submit_methods_never_raise_on_malformed_input(tmp_path: Path) -> None:
 
 
 def test_stats_shape(tmp_path: Path) -> None:
-    cfg = _cfg(tmp_path, forms=("table@1",))
+    cfg = _cfg(tmp_path, forms=("said@1",))
     _calls, snapshot = _snapshot_calls_counter()
     sh = SH.MembraneShadow(cfg, u_bar=_u_bar, snapshot=snapshot, session_factory=_FakeFactory())
     stats = sh.stats()
     assert set(stats) == {
         "forms", "drops", "skips", "submit_errors", "queue_depth", "snapshot_records",
     }
-    assert set(stats["forms"]) == {"table@1"}  # type: ignore[arg-type]
-    assert set(stats["forms"]["table@1"]) == {  # type: ignore[index]
+    assert set(stats["forms"]) == {"said@1"}  # type: ignore[arg-type]
+    assert set(stats["forms"]["said@1"]) == {  # type: ignore[index]
         "alive", "respawns", "ticks", "dead_drops",
     }
 

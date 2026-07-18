@@ -1,11 +1,15 @@
 # The membrane shadow — host-declaration register (life-agent)
 
-Status: as-built, 2026-07-12 (branch `feat/membrane-shadow`, Tasks 1–9 + the final-review fix
-wave). This is the question→resolution→why register for every host-declared value and rule the
-membrane shadow feature fixes. Everything here is life-agent-side DATA or transport; nothing
-binds the frozen proplang engine — we never edit that repo, or the sibling credence-governor
-repo whose own register (`docs/membrane-shadow.md` there) this one is modeled on and
-cross-checked against. Items marked **FLAG** are ones where a defensible alternative existed
+Status: as-built **v2, 2026-07-19** (branch `feat/membrane-v2`) — re-targeted at the
+RE-DERIVED proplang engine ("IMPLEMENT THE BRIEF", steps 3–10, proplang `7da274b`): the
+`proplang-govhost` executable this register was first written against was retired at
+proplang's step-3 freeze, and the `table@1`/`latent@1` utility forms with it. v1 sections
+that declared against the dead wire are kept, bracketed **[v1 — historical]**, because they
+carry field findings; current declarations are the unbracketed ones. This is the
+question→resolution→why register for every host-declared value and rule the membrane shadow
+fixes. Everything here is life-agent-side DATA or transport; nothing binds the proplang
+engine — we never edit that repo, or the sibling credence-governor repo whose own register
+this one is modeled on. Items marked **FLAG** are ones where a defensible alternative existed
 and the owner may re-decide.
 
 Two of this register's own claims were FALSE as first published and are corrected in place,
@@ -15,11 +19,13 @@ loudly at construction" was aspirational). §2 item 5 records a defect in the wo
 the information actions were priced as pure costs, which made them unfirable at any credence —
 and the honest bake-in that replaces it.
 
-Conformance source: the frozen proplang-govhost wire protocol. This register states
-only life-agent's OWN declarations against that wire (the world, the utility forms, the
-evidence mapping); it does not restate the wire's own conformance sources — those live
-in the sibling repo's register and in the frozen engine's own docs, neither of which we
-edit or duplicate here.
+Conformance source: **`membrane-wire.md` sections 1–3 as amended through step-10** in the
+proplang repo (read at `7da274b`) — per proplang's own step-3 rider, "host conformance binds
+to membrane-wire.md, never to GHC artifacts". Sections 4–6 of that file (the governor
+encoding, `table@1`, `latent@1`) are bracketed there as the OLD roadmap's record, binding on
+nothing current — exactly the forms this register's v1 declared. This register states only
+life-agent's OWN declarations against the current wire (the world, the `said@1` sentence,
+the evidence mapping); it does not restate the wire's own conformance sources.
 
 Code map: `src/life_agent/membrane/world.py` (the answer-domain world — menu, features,
 utility declarations), `session.py` (one booted session, evidence mapping),
@@ -27,7 +33,11 @@ utility declarations), `session.py` (one booted session, evidence mapping),
 transport), `core/shadow_mirror.py` (the fan-out poster), `bridge/server.py` (wiring +
 shutdown), `scripts/membrane/report.py` (the differential + demand report).
 
-## 0. The stated field prediction (read first)
+## 0. The stated field prediction **[v1 — historical]**
+
+*(2026-07-19: the `latent@1` form this prediction instrumented died with the old wire; the
+prediction, its field confirmation, and the trap it names are kept as the record of how the
+v1 shadow earned its reading of the old engine.)*
 
 `life_agent.membrane.world.latent_utility_decl` sends `said: ["var", 1]` — utility is a
 pointer into the learned latent, not a function of the fired action. Under the frozen
@@ -61,27 +71,24 @@ in the report's §1b) and check the engine against it, which is now done on ever
 
 ## 1. The affordance menu and feature vocabulary (`world.py`)
 
-1. **Menu — `gather(4), ask(3), abstain(2), respond(1)`, listing order NORMATIVE.**
-   `argmaxEU` ties resolve first-listed (the wire's own rule), so this order is a live
-   policy declaration, not cosmetic. It encodes two stacked preferences at exact
-   indifference: information-buying beats committing (`gather`/`ask` before
-   `abstain`/`respond`), and among the two terminals, withholding beats asserting
-   (`abstain` before `respond`) — a fail-safe polarity: when genuinely undecided between
-   silence and a claim, the world defaults to silence. **FLAG:** reordering to engineer
-   an outcome would be adapter-side steering; we keep this order because it is the
-   direct translation of the executor's own risk posture (bayesian-foundations §8), not
-   because it was tuned against any observed run.
-2. **A menu option literally named `ask` carries the θ charge — name-keyed, not
-   position-keyed.** `latent_utility_decl`'s sole residual is named `theta_ask`
-   (`world.py:239`); the sibling governor's own register (its item 2) states the SAME
-   convention for a menu whose `ask` IS first-listed. Life-agent's `ask` is
-   second-listed (id 3), yet the charge still binds correctly by name — the frozen
-   engine's v2 wire keys the charge off the literal affordance name `ask`, not its menu
-   position. Convenient alignment for us: our own `ask` doctrinally means "pay to
-   interrupt the owner" (`world.py`'s module docstring — "the daemon's own
-   interrupt-cost affordance"), which is exactly the wire's own reserved meaning for a
-   thing named `ask`. Not independently verified against the frozen engine's source
-   (out of tree); inferred from the two registers' matching behavior.
+1. **Menu — ONE writable name `act`, grid `[1.0, 2.0, 3.0, 4.0]` = `abstain, gather,
+   ask, respond`; GRID ORDER NORMATIVE.** The re-derived wire's menu is names+grids (the
+   step-5 shape; id/slots died); the agent's choice is a full assignment
+   `{"act": {"act": <value>}}`, `wait` is every name at its grid's FIRST point, and
+   argmaxEU ties resolve first-listed (membrane-wire.md §2, CL-3) — so wait keeps ties
+   by construction. That forces a tie-posture change from v1: **`abstain` sits first**
+   (the safe structural wait — when genuinely undecided, the world defaults to silence);
+   v1's gather-wins-ties preference could not survive a wire whose wait keeps ties,
+   because the only way to keep it would be to make `gather` the wait, and a shadow
+   whose do-nothing default is "spend effort" is the wrong polarity. Then gather, ask,
+   respond. **FLAG:** the order beyond the forced first slot is owner-re-decidable.
+   `act` is a namespace member (RIDER 2: every writable name is; membership immutable)
+   and DISJOINT from every tick feature name (ruling D-b2) by construction — indicators
+   are `family=value` strings and `t`, never `act`.
+2. **No name-keyed `ask` charge.** v1's `theta_ask` residual (the `latent@1` machinery,
+   and the wire meaning it keyed off the literal name `ask`) died with the old wire; the
+   interrupt cost now lives ONLY inside the `said@1` sentence's `ask` arm (§2), priced
+   from `lambda_int` as before.
 3. **Features — one-hot indicator families, buckets from `world._CANDIDATES_BUCKETS`
    etc., absent = 0.0.** `n-candidates∈{0,1,2plus}`, `leader-credence∈{lt50,50to70,
    70to80,80to90,ge90}`, `p-none∈{lt20,20to50,ge50}`, `n-obs∈{0,1to2,3plus}`, plus three
@@ -94,16 +101,27 @@ in the report's §1b) and check the engine against it, which is now done on ever
    `80to90` is "closer" to `70to80` than to `lt50`. Each bucket is an independent binary
    feature the engine conditions on separately — a declaration, not an accident.
 
-## 2. `table@1` — the utility declaration (`world.utility_rows`)
+## 2. `said@1` — the utility declaration (`world.utility_said`)
 
-5. **`u_bar → rows` mapping — the information actions are priced as MYOPIC PERFECT
-   INFORMATION.** `u_correct`/`u_abstain` are the posterior's gauge constants (1.0 / 0.0);
-   `u_wrong = u_bar["u_wrong"]` (fallback −9.0); `q = |u_bar["lambda_int"]|` (fallback 0.1);
-   `g = |u_bar["kappa_att"]|` (fallback 0.02). Rows:
-   `gather → [u_abstain − g, u_correct − g]`, `ask → [u_abstain − q, u_correct − q]`,
-   `abstain → [u_abstain, u_abstain]`, `respond → [u_wrong, u_correct]`, plus the required
-   `internal: "think"` sentinel one unit below the minimum entry of every real row (so it is
-   strictly worse at EVERY p1, by construction — never hand-checked per call).
+5. **`u_bar → sentence` mapping — the information actions are priced as MYOPIC PERFECT
+   INFORMATION.** Utility crosses the re-derived wire as a SENTENCE of the priced grammar
+   (step-8: `Util a y` is deleted engine-side; utility is a priced program evaluated at
+   the tick's features — actions are features, so the sentence reads the chosen act via
+   `["get", "act"]`). The program is nested `if (= (get act) (c <grid value>))` branches,
+   one arm per affordance, each arm linear in the outcome residue `["var", 1]`:
+   `u0 + var1·(u1 − u0)`. The (u0, u1) pairs are UNCHANGED from v1's table and live in
+   ONE place, `world.utility_by_action` — the sentence is BUILT from those pairs and every
+   host-side consumer (EU arithmetic, `respond_threshold`, the report's realized loss)
+   reads the same function, so the wire declaration and the host arithmetic cannot drift
+   (test-pinned by evaluating the sentence against the pairs). `u_correct`/`u_abstain`
+   are the posterior's gauge constants (1.0 / 0.0); `u_wrong = u_bar["u_wrong"]`
+   (fallback −9.0); `q = |u_bar["lambda_int"]|` (fallback 0.1); `g = |u_bar["kappa_att"]|`
+   (fallback 0.02). Pairs: `gather → (u_abstain − g, u_correct − g)`,
+   `ask → (u_abstain − q, u_correct − q)`, `abstain → (u_abstain, u_abstain)`,
+   `respond → (u_wrong, u_correct)`. The v1 `internal: "think"` sentinel is GONE — the
+   internal act died at the wire's step 5; no sentinel exists to dominate. Only the
+   wire-accepted `parseSaid` subset is used (var, c, +, −, *, get, if, >, =; verified against the
+   built engine in the B0 spike, 2026-07-19).
 
    The information rows read "having gathered (or asked), you then take the CORRECT act:
    withhold if y=0, respond if y=1". That is the **credence-governor's own declared
@@ -138,7 +156,11 @@ in the report's §1b) and check the engine against it, which is now done on ever
    floats (utility means) enter the world declaration sent to the govhost subprocess —
    no owner profile text, no corpus content, ever reaches the wire.
 
-## 3. `latent@1` — the utility declaration (`world.latent_utility_decl`)
+## 3. `latent@1` — the utility declaration **[v1 — historical]**
+
+*(2026-07-19: `latent@1` is sections-4–6 machinery in `membrane-wire.md`, bracketed there as
+"binding on nothing current"; `world.latent_utility_decl` is deleted. Items 8–12 record what
+the v1 dual shadow declared.)*
 
 8. **`said → ["var", 1]`.** Utility is the learned pointer latent, not the fired action
    (`["var", 0]` would be nonsense here — same reasoning the governor's register gives
@@ -174,7 +196,8 @@ in the report's §1b) and check the engine against it, which is now done on ever
     `ask_clarify`, and any `report`/`report_scoped`/`abstain` combination not listed
     above — is a **named exclusion**: `verdict_y` returns `None`, the caller counts a
     skip. Ambiguous is not evidence.
-14. **The `latent@1` verdict double-feed.** One owner verdict emits two ticks at the
+14. **The `latent@1` verdict double-feed [v1 — historical; the `stream`-tagged tick died
+    with the old wire — every verdict/outcome is now ONE untagged evidence tick].** One owner verdict emits two ticks at the
     SAME `t` (the evidence-stream index advances once, after both): an untagged tick
     (world-report role) then a `stream: "verdict"` tick (owner-response/pointer role).
     Adopted verbatim from the governor's own precedent (its item 9) — the two ticks move
@@ -246,15 +269,34 @@ in the report's §1b) and check the engine against it, which is now done on ever
     budget) plus a one-strike circuit breaker per question — the first failure or
     timeout on a question trips the breaker for the rest of that question, so a wedged
     shadow can never repeatedly stall an already-computed real answer.
-20. **Readouts are logged, never branched on.** `p1`/`entropy_bits`
-    (`table@1`)/`residual_mean`/`sensitivity` (`latent@1`) land in
-    `ShadowChoice.readouts` and are copied verbatim onto the shadow's own `decide`
-    record — `MembraneSession.decide` is a pure choice-relay over them; no adapter code
-    path reads them back into control flow (HOSTS_PLAN 8.12(b): observation, never a
-    host-side decision fork). Test-pinned: two replies differing only in readouts yield
-    the identical chosen action.
+20. **Readouts are logged, never branched on.** `p1`/`entropy_bits` land in
+    `ShadowChoice.readouts` (the reply minus its `act` assignment) and are copied
+    verbatim onto the shadow's own `decide` record — `MembraneSession.decide` is a pure
+    choice-relay over them; no adapter code path reads them back into control flow
+    (observation, never a host-side decision fork). Test-pinned: two replies differing
+    only in readouts yield the identical chosen action.
+21. **The pty stdout shim — an engine defect carried host-side, until fixed there.**
+    The re-derived `proplang-host`'s `hostMain` (`src/PropLang/Host.hs`) is
+    `getLine`/`putStrLn` with no `hSetBuffering`, so GHC block-buffers stdout on a pipe
+    and replies do not flush until stdin closes — measured in the B0 wire spike
+    (2026-07-19); it breaks the wire's "one request, exactly one reply, synchronous" for
+    any pipe-spawning host. `MembraneClient.spawn` therefore gives the child a PTY for
+    stdout (a tty flips GHC to line buffering); the injectable-transport constructor is
+    unchanged. The one-line fix belongs engine-side; this shim is carried until then and
+    named in the demand ledger. The wire's escape-set constraint (`\"` `\\` `\n`
+    only, `request_json` re-scan) is UNCHANGED on the re-derived wire and stays.
 
-## 7. `respond` is unreachable — but NOT for the reason first published
+## 7. `respond` is unreachable — but NOT for the reason first published **[v1 analysis;
+v2 status: EMPIRICAL, re-measured by the v2 shadow]**
+
+*(2026-07-19: the arithmetic below is the v1 world's, against the retired govhost. What
+carries over: the host-side pairs are unchanged (§2), `thetaPoints` is still the linear
+`{0.1..0.9}` ladder in the re-derived engine (`src/PropLang/Enumerate.hs:118` at `7da274b`,
+line never touched), so the gather-outbids-respond structure plausibly survives — but the
+re-derived engine prices actions as E[ΔU] over its own learned transition model, and whether
+respond stays unreachable under it is exactly what the v2 shadow's differential measures.
+The B0/B1 smokes saw the engine fire `gather` at p1 0.5–0.63, agreeing with the host-side
+argmax at those credences.)*
 
 **Correction (final review).** This section previously read: "at `u_wrong = −9`, `u_correct =
 1` (this posterior's current means), `respond` needs `p1 > 0.9` strictly to beat
@@ -300,7 +342,8 @@ to derive any of the above offline. The parametrised test includes a falsificati
 (`u_wrong = −0.1`, whole-menu threshold 0.80 < 0.8918) under which respond **does** fire, so
 "respond never fires" is not an unfalsifiable artifact of the fixture.
 
-## 8. The 2026-07-11 field-smoke numbers
+## 8. The 2026-07-11 field-smoke numbers **[v1 — historical field record, retired
+govhost + dual forms]**
 
 Run against the real `proplang-govhost` binary, both forms (`table@1,latent@1`), off an
 isolated copy of the real, warm knowledge base (production KB verified untouched by the
@@ -369,25 +412,36 @@ answers is recorded here; only shapes and counts are.
 ## 9. The coordination contract
 
 This register, together with `scripts/membrane/report.py`'s rendered differential and
-demand ledger (written to `$LIFE_AGENT_KB/membrane/report.md`), is what the frozen
-proplang repo's `HOSTS_PLAN` reads at two gates: its §9 A-gate ("life-agent differential
-vs the credence brain") and its §5 B-gate. We never edit `HOSTS_PLAN`, the frozen
-proplang repo, or the sibling credence-governor repo — this document and the report are
-the whole of life-agent's side of that contract.
+demand ledger (written to `$LIFE_AGENT_KB/membrane/report.md`), is life-agent's side of the
+coordination contract with proplang. The old `HOSTS_PLAN` §9 A-gate is historical (that
+roadmap was demolished by the re-derivation); the LIVE consumer is named in proplang's
+`AGENT_PLAN.md` (§ K-ary observations, read at `7da274b:1256`): K-ary observation support is
+"demand-gated on the life-agent differential — SURVIVES, UNCHANGED", and
+`HOSTS_D_PACK.md:198` records "life-agent demand never materialized" — because the v1 shadow
+never ran flag-on in production. The v2 shadow's accrued demand ledger is that materialization.
+We never edit the proplang repo or the sibling credence-governor repo — this document and the
+report are the whole of life-agent's side of that contract.
 
 ## 10. Deployment provenance
 
-The binary is a copied build artifact of the frozen proplang repo, installed at
-`~/.local/bin/proplang-govhost`, sha256
-`96ec3de7a59100c8d46d569452af0f379ee6f0e44036f7706e8282af1ffd6c18` — **the SAME
-artifact the sibling credence-governor repo field-deploys**: one engine binary, two
-independent hosts (this shadow and the governor's own), one upgrade path. Selection is
-`LIFE_AGENT_MEMBRANE_COMMAND` (absence = disabled = zero behavior change on the bridge);
-forms via `LIFE_AGENT_MEMBRANE_UTILITY` (default `table@1`; field deploy
-`table@1,latent@1`, the dual shadow). An unknown form raises `ValueError` in
-`ShadowConfig.__post_init__` — at construction, before anything is spawned or served — and the
-bridge's `_build_membrane` catches it, prints it, and serves with the membrane DISABLED
-(never a half-running dual shadow). *This claim was previously false in both this register and
-`config.membrane_utility_forms`'s docstring: nothing validated the forms, and an unknown one
-died later and quieter, per-form, on the worker thread, leaving a permanently dead form inside
-a supervisor that still reported healthy. It is now the code's, and test-pinned.*
+**Conformance binds to the wire SPEC, not the binary** (proplang's step-3 rider:
+"host conformance binds to membrane-wire.md, never to GHC artifacts"): the v2 pin is
+`membrane-wire.md` sections 1–3 as amended through step-10, read at proplang `7da274b`
+(file sha256 `32ff980a0d83914bba07b190d1f53132307c354531f83f8c4fb9eac4f040b82f`). The
+deployed engine at pin time: `~/.local/bin/proplang-host`, sha256
+`16982176e13f0fa38c20980b3cd7f6705de65ec32bc161417a9835b2d19c7762` (built 2026-07-18 from
+`7da274b`) — provenance, not conformance.
+The engine executable is `proplang-host` (cabal target `proplang-host`,
+`app/Main.hs → PropLang.Host.hostMain`), built from the same repo; its sha256 is recorded
+live at every boot (`shadow._binary_sha256`, fail-open to "unknown") as PROVENANCE ONLY —
+a rebuilt engine that still conforms to §§1–3 is a lawful upgrade, which is the point of
+binding to the spec. The v1 pinned binary `proplang-govhost` sha256 `96ec3de7…` is
+**orphaned** — its build target was retired at proplang's step-3 freeze and the hash is
+unreproducible from master; the sibling credence-governor's live deployment still runs that
+orphaned artifact (its repo's own concern, flagged to the owner 2026-07-19, not ours to
+edit). Selection is `LIFE_AGENT_MEMBRANE_COMMAND` (absence = disabled = zero behavior
+change on the bridge); forms via `LIFE_AGENT_MEMBRANE_UTILITY` (default and sole declared
+form: `said@1`). An unknown form raises `ValueError` in `ShadowConfig.__post_init__` — at
+construction, before anything is spawned or served — and the bridge's `_build_membrane`
+catches it, prints it, and serves with the membrane DISABLED. *(The v1 correction note
+stands: that validation was once aspirational; it is the code's, and test-pinned.)*

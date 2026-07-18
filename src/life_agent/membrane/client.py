@@ -2,8 +2,9 @@
 
 One line out, one line back. Ported from the credence-governor's proven
 `MembraneClient` (`packages/governor_core/credence_governor_core/membrane.py:233-316`):
-`spawn` launches the frozen `proplang-govhost` decider binary as a subprocess, wires its
-stdin/stdout as write/read callables, and enforces a per-read timeout so a wedged driver
+`spawn` launches the frozen `proplang-host` decider binary as a subprocess (its stdout on
+a pty slave — see the in-function note on GHC buffering), wires write/read callables, and
+enforces a per-read timeout so a wedged driver
 surfaces as an error instead of parking the caller on `readline()` forever (a timeout
 caveat carries over unchanged: a driver that writes a partial line and then wedges passes
 the readiness check and still blocks — rare enough to accept). `MembraneClient.__init__`
@@ -20,8 +21,10 @@ escape outside that three-name set before the line ever reaches `write_line`.
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import os
+import pty
 import selectors
 import shlex
 import subprocess
@@ -64,39 +67,51 @@ class MembraneClient:
         read_timeout_s: float = DEFAULT_READ_TIMEOUT_S,
     ) -> MembraneClient:
         log(f"life-agent: membrane engine = {' '.join(argv)}")
+        # The child's stdout is a PTY SLAVE, not a pipe: the re-derived proplang-host's
+        # hostMain (src/PropLang/Host.hs) is getLine/putStrLn with no hSetBuffering, so
+        # GHC block-buffers stdout on a pipe and replies do not flush until stdin closes
+        # — measured in the B0 wire spike (2026-07-19). A tty flips GHC to line
+        # buffering, restoring the wire's "one request, one reply, synchronous". The
+        # shim belongs engine-side (one hSetBuffering line); carry it here until then.
+        master_fd, slave_fd = pty.openpty()
         proc = subprocess.Popen(
             argv,
             stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            text=True,
-            bufsize=1,
+            stdout=slave_fd,
         )
+        os.close(slave_fd)
+        read_buf = bytearray()
 
         def write_line(s: str) -> None:
             assert proc.stdin is not None
-            proc.stdin.write(s + "\n")
+            proc.stdin.write((s + "\n").encode("utf-8"))
             proc.stdin.flush()
 
         def read_line() -> str:
-            assert proc.stdout is not None
-            if read_timeout_s > 0:
-                # a hung driver (alive, no reply) must surface as an error, not park
-                # the caller forever. read_timeout_s <= 0 disables this check (blocks
-                # on readline() directly) — the documented opt-out for a driver whose
-                # per-tick replies are legitimately slow.
+            # a hung driver (alive, no reply) must surface as an error, not park the
+            # caller forever. read_timeout_s <= 0 blocks indefinitely — the documented
+            # opt-out for a driver whose per-tick replies are legitimately slow.
+            while b"\n" not in read_buf:
                 sel = selectors.DefaultSelector()
                 try:
-                    sel.register(proc.stdout, selectors.EVENT_READ)
-                    if not sel.select(timeout=read_timeout_s):
+                    sel.register(master_fd, selectors.EVENT_READ)
+                    timeout = read_timeout_s if read_timeout_s > 0 else None
+                    if not sel.select(timeout=timeout):
                         raise MembraneError(
                             f"membrane driver unresponsive ({read_timeout_s}s read timeout)"
                         )
                 finally:
                     sel.close()
-            line = proc.stdout.readline()
-            if line == "":
-                raise MembraneError("membrane driver closed the wire (EOF)")
-            return line.rstrip("\n")
+                try:
+                    chunk = os.read(master_fd, 65536)
+                except OSError:  # pty master EIO after the child exits = EOF
+                    chunk = b""
+                if chunk == b"":
+                    raise MembraneError("membrane driver closed the wire (EOF)")
+                read_buf.extend(chunk)
+            line, _, rest = bytes(read_buf).partition(b"\n")
+            read_buf[:] = rest
+            return line.decode("utf-8").rstrip("\r")
 
         def shutdown() -> None:
             try:
@@ -105,6 +120,9 @@ class MembraneClient:
                 proc.wait(timeout=5)
             except Exception:
                 proc.kill()
+            finally:
+                with contextlib.suppress(OSError):
+                    os.close(master_fd)
 
         return cls(write_line, read_line, shutdown)
 

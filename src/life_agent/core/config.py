@@ -74,7 +74,7 @@ MEMBRANE_UTILITY_ENV = "LIFE_AGENT_MEMBRANE_UTILITY"
 MEMBRANE_READ_TIMEOUT_ENV = "LIFE_AGENT_MEMBRANE_READ_TIMEOUT"
 MEMBRANE_WARM_VECTORS_ENV = "LIFE_AGENT_MEMBRANE_WARM_VECTORS"
 
-MEMBRANE_DEFAULT_UTILITY_FORMS = "table@1"
+MEMBRANE_DEFAULT_UTILITY_FORMS = "said@1"
 MEMBRANE_DEFAULT_READ_TIMEOUT_S = 300.0
 
 
@@ -99,7 +99,8 @@ def membrane_command() -> list[str] | None:
 
 def membrane_utility_forms() -> tuple[str, ...]:
     """Every declared utility form to run side by side, comma-separated
-    (default: just ``table@1``) — life_agent.membrane.world.UTILITY_FORMS is the declared
+    (default: just ``said@1``, the re-derived wire's one form) —
+    life_agent.membrane.world.UTILITY_FORMS is the declared
     vocabulary, and ``ShadowConfig.__post_init__`` validates membership against it, raising
     on an unknown form before anything is spawned (the bridge then serves with the membrane
     disabled). This function itself only splits the env var: it never validates, so a typo

@@ -1,44 +1,49 @@
-"""world.py — the answer-domain world (proplang-govhost's handshake declaration).
+"""world.py — the answer-domain world (the ``proplang-host`` handshake declaration).
 
 Task 2 of the membrane-shadow feature (Task 1: :mod:`life_agent.membrane.client`, the
-generic JSON-lines transport). This module is pure data/functions: it declares the
-world the host sends the decider on the handshake line (namespace, guards, menu,
-utility — ``membrane-wire.md`` §2), and the canonical per-tick feature encoding
+generic JSON-lines transport), re-targeted at the RE-DERIVED engine (proplang steps
+3-10, 2026-07): the ``proplang-govhost`` executable and its ``table@1``/``latent@1``
+utility forms are retired; conformance binds to ``membrane-wire.md`` sections 1-3 as
+amended (step-8: UTILITY IS A SENTENCE), never to a GHC artifact. This module is pure
+data/functions: the handshake world (namespace, guards, a names+grids menu, a
+``said@1`` utility sentence) and the canonical per-tick feature encoding
 (:func:`shadow_features`) both the live executor loop and the decision-log replay path
 reduce to via one shared :class:`DecideSummary`. Nothing here spawns a process or reads
-a file — the shadow supervisor (a later task) is the caller that does.
+a file — the shadow supervisor is the caller that does.
 
-The four affordances are the executor's own action vocabulary, folded to the world's
-binary predicate y = "asserting now would be correct" (bayesian-foundations §8):
-``respond`` fires the report/report_scoped/hedge assert-shaped actions, ``abstain``
-the status-quo withhold, ``ask`` the daemon's own interrupt-cost affordance, ``gather``
-the recall-growth affordance (core/gather_outcomes.py's grow menu). ``AFFORDANCES``
-listing order is NORMATIVE on the wire (membrane-wire.md §2: argmaxEU ties resolve
-first-listed) — gather, then ask, then abstain, then respond: at exact indifference the
-world prefers to gather, then ask, before it abstains or commits, mirroring the wire
-spec's own ``ask, block, proceed`` ordering (R1, HOSTS_PLAN 8.1).
+The action vocabulary is ONE writable name, ``act``, whose grid VALUES encode the
+executor's four affordances folded to the world's binary predicate y = "asserting now
+would be correct" (bayesian-foundations §8): ``respond`` fires the
+report/report_scoped/hedge assert-shaped actions, ``abstain`` the status-quo withhold,
+``ask`` the daemon's interrupt-cost affordance, ``gather`` the recall-growth
+affordance. Grid order is NORMATIVE on the wire: ``wait`` is every name at its grid's
+FIRST point and argmaxEU ties resolve first-listed (membrane-wire.md §2, CL-3) — so
+``abstain`` sits first (the safe structural wait; the v1 gather-wins-ties posture died
+with the id/slots menu), then gather, ask, respond.
 """
 from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import Any
 
-# --- the affordance vocabulary (menu ids are world-owned, stable, positive) --------------
+# --- the affordance vocabulary (ONE writable name; grid values are world-owned) ----------
 
-AFFORDANCES: tuple[tuple[str, int], ...] = (
-    ("gather", 4), ("ask", 3), ("abstain", 2), ("respond", 1),
+ACT_NAME = "act"
+# (affordance, grid value) in GRID ORDER — normative: first point = wait = the safe
+# abstain (ties resolve first-listed on the wire, and wait keeps ties by construction).
+AFFORDANCES: tuple[tuple[str, float], ...] = (
+    ("abstain", 1.0), ("gather", 2.0), ("ask", 3.0), ("respond", 4.0),
 )
-MENU_IDS: list[int] = [mid for _, mid in AFFORDANCES]
-ID_TO_ACTION: dict[int, str] = {mid: name for name, mid in AFFORDANCES}
-_ID_FOR: dict[str, int] = {name: mid for name, mid in AFFORDANCES}
+ACT_GRID: list[float] = [v for _, v in AFFORDANCES]
+VALUE_TO_ACTION: dict[float, str] = {v: name for name, v in AFFORDANCES}
+_VALUE_FOR: dict[str, float] = {name: v for name, v in AFFORDANCES}
 
-UTILITY_FORMS: tuple[str, ...] = ("table@1", "latent@1")
-
-# Documented posture: the internal "think" act winning a tick maps to the world's abstain
-# affordance (a non-answer, never a silent default) — the adapter's one fixed reading of
-# membrane-wire.md §3's "the driver reports it honestly if it wins".
-THINK_POSTURE = "abstain"
+# The one utility form the re-derived wire accepts: the priced sentence (step-8 —
+# ``assign@1`` died on its printed date; ``table@1``/``latent@1`` are the OLD roadmap's
+# record, binding on nothing current). The internal "think" sentinel died at step 5 with
+# the id/slots menu, so no think posture exists to map.
+UTILITY_FORMS: tuple[str, ...] = ("said@1",)
 
 
 # --- DecideSummary: the one canonical context both the live and warm paths reduce to -----
@@ -191,65 +196,67 @@ def shadow_features(s: DecideSummary, t: float) -> dict[str, float]:
 # --- the utility declaration ----------------------------------------------------------
 
 
-def utility_rows(u_bar: Mapping[str, float]) -> list[dict[str, object]]:
-    """The ``table@1`` step table over y = "asserting now would be correct"
-    (membrane-wire.md §2/§5): one ``{"fire": <menu id>, "u": [u(y=0), u(y=1)]}`` row per
-    affordance, plus the one required ``internal: "think"`` row at a dominated sentinel
-    (re-derived from the real rows themselves — strictly below every entry of every row, so
-    it is worse at EVERY p1 by construction; never tuned, never hand-checked per call).
+def utility_by_action(u_bar: Mapping[str, float]) -> dict[str, tuple[float, float]]:
+    """``{affordance: (u(y=0), u(y=1))}`` — THE one source of this world's utility
+    numbers: the ``said@1`` sentence (:func:`utility_said`) is BUILT from these pairs and
+    every host-side consumer (EU arithmetic, thresholds, the report's realized loss)
+    reads them here, so the wire declaration and the host arithmetic cannot drift.
+
     ``u_wrong``/``lambda_int``/``kappa_att`` are the real
     :meth:`life_agent.core.utility.UtilityPosterior.u_bar` keys (verified against
     ``core/utility.py``'s ``REQUIRED_LATENTS`` + ``bridge/server.py``'s ``/utility``
-    handler); ``u_correct``/``u_abstain`` are its gauge constants (``utility.GAUGE`` — 1.0
-    and 0.0, fixed by the gauge, read here rather than re-spelled so the table and every
-    threshold derived from it (:func:`respond_threshold`) speak one utility). The ``.get``
+    handler); ``u_correct``/``u_abstain`` are its gauge constants. The ``.get``
     fallbacks are this world's declared defaults when no posterior is available.
 
-    **The information actions are priced as MYOPIC PERFECT INFORMATION** — ``gather`` and
-    ``ask`` are worth ``[u_abstain - cost, u_correct - cost]``, i.e. having gathered (or
-    asked), you then take the CORRECT act: withhold when y=0, respond when y=1. This is the
-    credence-governor's own declared convention for its ``ask`` row (its HOSTS_PLAN register
-    item 8.4: "u(ask,·) = -q bakes 'a resolved ask makes the correct act free'"),
-    transposed to this world's gauge, where the correct act is worth ``u_correct`` rather
-    than 0.
-
-    **FLAG — this OVERVALUES information, deliberately and namedly.** A real gather round
-    does not guarantee the correct act: it grows recall, and the executor may still be
-    wrong or still withhold. The alternative — the pure-cost rows this table shipped with
-    (``gather → [-g, -g]``, ``ask → [-q, -q]``) — is not a conservative choice but a
-    degenerate one: both rows are then CONSTANT in y, so ``EU(gather) = -g < 0 =
-    EU(abstain)`` at every p1 and abstain strictly dominates the entire information menu,
-    which can therefore never fire. A menu whose whole point is effort allocation cannot
-    price effort at pure cost. So the bake-in stays, it is declared here and in
-    ``docs/membrane-shadow.md`` (register item 5), and the gap between it and reality is
-    exactly what the shadow's differential MEASURES — it is never to be tuned away to make
-    an action distribution look better. Owner-re-decidable."""
+    **The information actions are priced as MYOPIC PERFECT INFORMATION** — ``gather``
+    and ``ask`` are worth ``[u_abstain - cost, u_correct - cost]``: having gathered (or
+    asked), you then take the CORRECT act. **FLAG — this OVERVALUES information,
+    deliberately and namedly** (register item 5): the pure-cost alternative is constant
+    in y and can never fire, and the gap between this bake-in and reality is exactly
+    what the shadow's differential MEASURES — never to be tuned away. The re-derived
+    engine prices actions as E[dU] over its own learned transition model (step-8);
+    whether that dissolves the v1 gather-bar pathology (respond's bar 0.994 vs the
+    engine p1 ceiling) is an EMPIRICAL question the v2 shadow answers. Owner-re-decidable."""
     u_correct = float(u_bar.get("u_correct", 1.0))
     u_abstain = float(u_bar.get("u_abstain", 0.0))
     u_wrong = float(u_bar.get("u_wrong", -9.0))
     q = abs(float(u_bar.get("lambda_int", 0.1)))
     g = abs(float(u_bar.get("kappa_att", 0.02)))
-    real: list[dict[str, object]] = [
-        {"fire": _ID_FOR["gather"], "u": [u_abstain - g, u_correct - g]},
-        {"fire": _ID_FOR["ask"], "u": [u_abstain - q, u_correct - q]},
-        {"fire": _ID_FOR["abstain"], "u": [u_abstain, u_abstain]},
-        {"fire": _ID_FOR["respond"], "u": [u_wrong, u_correct]},
-    ]
-    sentinel = min(float(v) for r in real for v in cast("list[float]", r["u"])) - 1.0
-    return [*real, {"internal": "think", "u": [sentinel, sentinel]}]
+    return {
+        "abstain": (u_abstain, u_abstain),
+        "gather": (u_abstain - g, u_correct - g),
+        "ask": (u_abstain - q, u_correct - q),
+        "respond": (u_wrong, u_correct),
+    }
 
 
-def utility_by_action(u_bar: Mapping[str, float]) -> dict[str, tuple[float, float]]:
-    """``{affordance: (u(y=0), u(y=1))}`` off :func:`utility_rows` — the one place anything
-    downstream (EU arithmetic, thresholds, the report's realized loss) reads the table's
-    numbers, so no consumer ever re-spells them."""
-    pairs: dict[str, tuple[float, float]] = {}
-    for row in utility_rows(u_bar):
-        fire = row.get("fire")
-        if isinstance(fire, int):  # the internal "think" sentinel is not an affordance
-            u0, u1 = (float(x) for x in cast("list[float]", row["u"]))
-            pairs[ID_TO_ACTION[fire]] = (u0, u1)
-    return pairs
+def _lin(u0: float, u1: float) -> list[object]:
+    """``u0 + var1 * (u1 - u0)`` in the priced grammar — the (y=0, y=1) pair as a
+    sentence linear in the outcome residue ``["var", 1]``."""
+    return ["+", ["c", u0], ["*", ["var", 1], ["c", u1 - u0]]]
+
+
+def utility_said(u_bar: Mapping[str, float]) -> list[object]:
+    """The ``said@1`` utility sentence (membrane-wire.md §2 as amended at step-8:
+    UTILITY IS A SENTENCE, evaluated at the tick's features): nested
+    ``if (= (get act) (c <grid value>))`` branches over :data:`AFFORDANCES`, each arm
+    the affordance's (u0, u1) pair linear in the outcome residue. Actions are features
+    on the re-derived wire, so the sentence reads the CHOSEN act through
+    ``["get", "act"]`` — the assignment under evaluation binds it. Built from
+    :func:`utility_by_action`, never re-spelled, so the declaration and the host
+    arithmetic share one source. Uses only the wire's accepted subset
+    (``parseSaid``: var, c, +, -, *, get, if, >, =) — verified against the built engine in the
+    B0 spike (2026-07-19)."""
+    pairs = utility_by_action(u_bar)
+    names_in_grid_order = [name for name, _ in AFFORDANCES]
+    # innermost arm = the LAST affordance (no trailing test needed: the engine only
+    # evaluates the sentence at declared grid points).
+    last = names_in_grid_order[-1]
+    expr: list[object] = _lin(*pairs[last])
+    for name in reversed(names_in_grid_order[:-1]):
+        expr = ["if", ["=", ["get", ACT_NAME], ["c", _VALUE_FOR[name]]],
+                _lin(*pairs[name]), expr]
+    return expr
 
 
 def eu_by_action(u_bar: Mapping[str, float], p1: float) -> dict[str, float]:
@@ -263,8 +270,9 @@ def eu_by_action(u_bar: Mapping[str, float], p1: float) -> dict[str, float]:
 
 def argmax_action(u_bar: Mapping[str, float], p1: float) -> str:
     """The affordance this world's utility fires at ``p1`` — argmaxEU with ties resolved
-    FIRST-LISTED in :data:`AFFORDANCES` order (the wire's own rule), so this predicts the
-    frozen chooser rather than merely scoring it."""
+    FIRST-LISTED in :data:`AFFORDANCES` (= grid) order, the wire's own rule (wait — the
+    grid's first point, abstain — keeps ties), so this predicts the engine's chooser
+    rather than merely scoring it."""
     eus = eu_by_action(u_bar, p1)
     return min(enumerate(AFFORDANCES), key=lambda it: (-eus[it[1][0]], it[0]))[1][0]
 
@@ -297,58 +305,27 @@ def respond_threshold(u_bar: Mapping[str, float]) -> float | None:
     return max(thresholds) if thresholds else None
 
 
-def latent_utility_decl(u_bar: Mapping[str, float]) -> dict[str, object]:
-    """The ``latent@1`` utility block (membrane-wire.md §6.1): a priced sentence over
-    (action, outcome) rather than a constants table. ``theta_ask`` is the sole residual
-    (v0 scope — the ask affordance's interrupt-cost exchange rate), FIRST in
-    ``residuals`` so it name-keys the charge ``theta_ask``. Its grid must be strictly
-    positive and strictly ascending with ``grid[0] == q`` (the floor) for ANY real
-    ``lambda_int`` posterior mean — not only the wire spec's golden-example floor (0.05),
-    which is safely below its fixed 0.1/0.2/0.4 points but the example utility model's
-    real prior (mu=1.0) is not. So the three points above the floor are declared as
-    FIXED OFFSETS (+0.1, +0.2, +0.4) rather than absolute grid points: this keeps
-    strict ascent for any non-negative floor by construction, at the cost of the grid no
-    longer being byte-identical to the golden example once ``q`` exceeds 0.05. The floor
-    is additionally clamped to a tiny positive epsilon so a exactly-zero posterior mean
-    (measure-zero, but not excluded by the model's stated support) never violates the
-    wire's "grids are POSITIVE by rule" (§6.1, the charity restriction)."""
-    q = abs(float(u_bar.get("lambda_int", 0.1)))
-    floor = max(q, 1e-6)
-    grid = [floor, floor + 0.1, floor + 0.2, floor + 0.4]
-    return {
-        "form": "latent@1",
-        "said": ["var", 1],
-        "residuals": [{"name": "theta_ask", "grid": grid}],
-        "tau": {"points": [0.5, 1, 2], "weights": [0.5, 0.3, 0.2]},
-        "price": "tick-price",
-        "gauge": {"zero": "status-quo", "scale": "answer-utility"},
-    }
-
-
-def handshake_decl(u_bar: Mapping[str, float], *, utility_form: str = "table@1") -> dict[str, Any]:
-    """The full handshake line (membrane-wire.md §2): namespace = ``["t"] +
-    indicator_names()``, one singleton ``[0.5]``-grid guard per indicator, the menu in
-    :data:`AFFORDANCES` order (NORMATIVE — argmaxEU ties resolve first-listed), the
-    utility block dispatched by ``utility_form``, and an all-false ``echo`` (epoch-1
-    restriction, §2). Raises :class:`ValueError` on an undeclared ``utility_form``."""
+def handshake_decl(u_bar: Mapping[str, float], *, utility_form: str = "said@1") -> dict[str, Any]:
+    """The full handshake line (membrane-wire.md §2 as amended through step-10):
+    ``namespace`` = ``["t"] + indicator_names() + [ACT_NAME]`` (RIDER 2: every writable
+    name is a namespace member, and membership is immutable), one singleton
+    ``[0.5]``-grid guard per indicator, the menu as the ONE writable name with its grid
+    (names+grids — the step-5 shape; grid order normative, wait first), and the utility
+    as a ``said@1`` sentence. The tick features (``shadow_features``) and the writable
+    name are DISJOINT by construction (ruling D-b2) — indicators are ``family=value``
+    strings and ``t``, never ``act``. No ``echo`` block: it died with the step-5 wire.
+    Raises :class:`ValueError` on an undeclared ``utility_form``."""
     if utility_form not in UTILITY_FORMS:
         raise ValueError(
             f"unknown utility form {utility_form!r} (declared: {list(UTILITY_FORMS)})"
         )
     names = indicator_names()
-    menu = [{"id": mid, "name": name, "slots": []} for name, mid in AFFORDANCES]
-    utility: dict[str, object]
-    if utility_form == "table@1":
-        utility = {"form": "table@1", "rows": utility_rows(u_bar)}
-    else:
-        utility = latent_utility_decl(u_bar)
     return {
         "membrane": 1,
         "world": {
-            "namespace": ["t", *names],
+            "namespace": ["t", *names, ACT_NAME],
             "guards": [{"name": n, "grid": [0.5]} for n in names],
-            "menu": menu,
-            "utility": utility,
-            "echo": {"last_action": False, "tick": False, "ticks_spent_thinking": False},
+            "menu": [{"name": ACT_NAME, "grid": list(ACT_GRID)}],
+            "utility": {"form": "said@1", "said": utility_said(u_bar)},
         },
     }
