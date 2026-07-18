@@ -313,6 +313,25 @@ def test_reextract_allow_new_enlarges_the_candidate_set(
     assert payload2["observations"] == [] and "new_candidate" not in payload2
 
 
+def test_reextract_returns_the_reads_own_confidence(
+        deps: BridgeDeps, monkeypatch: pytest.MonkeyPatch) -> None:
+    # The wire must not discard the instrument's stated uncertainty: the k=0 strong rescue
+    # conditions at min(tier rho, this confidence), so a hesitant read hedges instead of
+    # asserting at the tier's flat prior (the q-005 near-miss at credence 0.995).
+    import life_agent.core.joint_extract as JE
+
+    monkeypatch.setattr(JE, "extract_joint",
+                        lambda root, q, hits, *, model, k: JE.JointResult(
+                            value="NEW-7", confidence=0.55, as_of=None))
+    status, payload = _call(deps, "POST", "/probe/corroborate", {
+        "reextract": True, "allow_new": True, "question": "id?",
+        "hits": [{"artifact_cache_key": "d0", "chunk_text": "…"}],
+        "candidates": [], "model": "claude-opus-4-8", "rho": 0.95})
+    assert status == 200
+    assert payload["confidence"] == 0.55
+    assert payload["new_candidate"] == "NEW-7"
+
+
 # --- /utility (GET): the utility posterior's u_bar, computed server-side ----------------
 
 def test_utility_returns_u_bar(deps: BridgeDeps) -> None:

@@ -309,7 +309,11 @@ def _probe_corroborate(deps: BridgeDeps, p: Payload) -> Payload:
                 tf = _corroborate_time_factor(jr, hits, p)
                 obs = [{"reports": idx, "group": 0, "authority": 1.0,
                         "subject_factor": 1.0, "time_factor": tf}]
+        # the read's own stated confidence rides beside the tier rho: the k=0 strong rescue
+        # conditions at min(tier, confidence), so the wire never discards the instrument's
+        # uncertainty (a lone unsupported read must not enter at the tier's flat prior).
         out: Payload = {"observations": obs, "gather_rho": tier_rho, "value": jr.value,
+                        "confidence": jr.confidence,
                         "served_model": jr.served_model, "tokens": jr.in_tokens + jr.out_tokens}
         if new_candidate is not None:
             out["new_candidate"] = new_candidate

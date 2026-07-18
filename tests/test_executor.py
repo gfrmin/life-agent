@@ -442,3 +442,109 @@ def test_render_view_narrative_passes_through_verbatim() -> None:
             "p_none": None, "eu": None, "n_obs": 0, "hits": [], "route": None,
             "rendered": "you travelled in May [1]\n\nnarrative footer"}
     assert EX.render_view(view) == "you travelled in May [1]\n\nnarrative footer"
+
+
+# --- the k=0 strong rescue (extraction-loss conversion; the q-005 class) -----------------
+# Nothing grounds locally AND every retrieval rung of the k=0 walk comes back empty: the walk
+# now reaches its last, priciest rung — the strong whole-doc re-read with allow_new — instead
+# of conceding miss with the one capable reader unconsulted. The minted candidate hands the
+# decision straight back to the daemon (k >= 1 again); the rescue conditions at the READ'S OWN
+# stated confidence (capped by the tier prior), so a hesitant strong read hedges rather than
+# asserting at the tier's flat rho — the wire must not discard the instrument's uncertainty.
+
+_EMPTY_EXTRACT = {"candidates": [], "observations": [], "rho": 0.7, "era_split": False,
+                  "indeterminate": 2, "half_life_years": 5.0}
+
+
+def test_zero_candidate_walk_reaches_the_strong_re_extract() -> None:
+    fake = FakeServices(
+        route={"construct": "mortgage", "time_indexed": False},
+        extracts=[_EMPTY_EXTRACT, _EMPTY_EXTRACT, _EMPTY_EXTRACT],
+        corroborate={"observations": [{"reports": 0, "group": 0, "authority": 1.0,
+                                       "subject_factor": 1.0, "time_factor": 1.0}],
+                     "gather_rho": 0.95, "value": "NEW-7", "new_candidate": "NEW-7",
+                     "confidence": 0.9},
+        decides=[{"effector": "report", "value": "NEW-7", "credences": [0.93],
+                  "p_none": 0.07, "eu": 0.8}])
+    view = _loop(fake, grow_lane=True)
+    assert view["effector"] == "report"
+    assert view["asserted"] == ["NEW-7"]
+    corr = fake.posted("/probe/corroborate")
+    assert len(corr) == 1
+    assert corr[0]["allow_new"] is True and corr[0]["candidates"] == []
+    decides = fake.posted("/decide")
+    assert decides[0]["candidates"] == ["NEW-7"]
+    assert decides[0]["rho"] == 0.9              # min(tier 0.95, confidence 0.9)
+    logged = {p["probe"]: p["recovered"] for p in fake.posted("/log_gather")}
+    assert logged == {"retrieve_rerank": False, "retrieve_expand": False,
+                      "re_extract_strong": True}
+
+
+def test_zero_candidate_rescue_carries_low_confidence_into_rho() -> None:
+    # The q-005 shape: the strong read answers but says 0.55 — the decide must condition
+    # there, not at the tier's 0.95 (the flat rho asserted a near-miss at credence 0.995).
+    fake = FakeServices(
+        route={"construct": "mortgage", "time_indexed": False},
+        extracts=[_EMPTY_EXTRACT, _EMPTY_EXTRACT, _EMPTY_EXTRACT],
+        corroborate={"observations": [{"reports": 0, "group": 0, "authority": 1.0,
+                                       "subject_factor": 1.0, "time_factor": 1.0}],
+                     "gather_rho": 0.95, "value": "NEW-7", "new_candidate": "NEW-7",
+                     "confidence": 0.55},
+        decides=[{"effector": "hedge", "credences": [0.62], "p_none": 0.38, "eu": 0.3}])
+    view = _loop(fake, grow_lane=True)
+    assert view["effector"] == "hedge"
+    assert view["candidates"] == ["NEW-7"]       # named, not silently dropped
+    assert fake.posted("/decide")[0]["rho"] == 0.55
+
+
+def test_zero_candidate_rescue_without_confidence_uses_the_tier_rho() -> None:
+    # A legacy bridge reply without "confidence" degrades to the tier prior, never crashes.
+    fake = FakeServices(
+        route={"construct": "mortgage", "time_indexed": False},
+        extracts=[_EMPTY_EXTRACT, _EMPTY_EXTRACT, _EMPTY_EXTRACT],
+        corroborate={"observations": [{"reports": 0, "group": 0, "authority": 1.0,
+                                       "subject_factor": 1.0, "time_factor": 1.0}],
+                     "gather_rho": 0.95, "value": "NEW-7", "new_candidate": "NEW-7"},
+        decides=[{"effector": "report", "value": "NEW-7", "credences": [0.93],
+                  "p_none": 0.07, "eu": 0.8}])
+    _loop(fake, grow_lane=True)
+    assert fake.posted("/decide")[0]["rho"] == 0.95
+
+
+def test_zero_candidate_rescue_empty_read_stays_miss() -> None:
+    # The q-017 shape (known-unanswerable, junk pool): the strong read names nothing ⇒ no
+    # candidate is minted, no decide fires, the miss stands — the rescue must not turn an
+    # honest miss into anything else.
+    fake = FakeServices(
+        route={"construct": "visa expiry", "time_indexed": False},
+        extracts=[_EMPTY_EXTRACT, _EMPTY_EXTRACT, _EMPTY_EXTRACT],
+        corroborate={"observations": [], "gather_rho": 0.95, "value": None,
+                     "confidence": None})
+    view = _loop(fake, grow_lane=True)
+    assert view["effector"] == "miss"
+    assert fake.posted("/decide") == []
+    logged = {p["probe"]: p["recovered"] for p in fake.posted("/log_gather")}
+    assert logged["re_extract_strong"] is False
+
+
+def test_zero_candidate_rescue_needs_hits() -> None:
+    # Nothing retrieved at any breadth ⇒ there is nothing to re-read: no corroborate call.
+    fake = FakeServices(
+        route={"construct": "mortgage", "time_indexed": False},
+        hits=[],
+        extracts=[_EMPTY_EXTRACT, _EMPTY_EXTRACT, _EMPTY_EXTRACT])
+    view = _loop(fake, grow_lane=True)
+    assert view["effector"] == "miss"
+    assert fake.posted("/probe/corroborate") == []
+
+
+def test_zero_candidates_without_grow_lane_stays_miss() -> None:
+    # Flag parity: grow_lane off keeps the legacy k=0 behaviour byte-for-byte — the breadth
+    # cascade still walks its three passes, but no rescue, no corroborate, no decide.
+    fake = FakeServices(
+        route={"construct": "mortgage", "time_indexed": False},
+        extracts=[_EMPTY_EXTRACT, _EMPTY_EXTRACT, _EMPTY_EXTRACT])
+    view = _loop(fake)
+    assert view["effector"] == "miss"
+    assert fake.posted("/probe/corroborate") == []
+    assert fake.posted("/decide") == []
