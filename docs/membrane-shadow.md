@@ -445,3 +445,28 @@ form: `said@1`). An unknown form raises `ValueError` in `ShadowConfig.__post_ini
 construction, before anything is spawned or served — and the bridge's `_build_membrane`
 catches it, prints it, and serves with the membrane DISABLED. *(The v1 correction note
 stands: that validation was once aspirational; it is the code's, and test-pinned.)*
+
+**The prod flip (prepared 2026-07-19, owner-gated on merging `feat/membrane-v2`).** The
+sequencing is load-bearing: master's v1 world speaks the dead wire, so setting the env var
+before the merge yields only a fail-open bad-hello loop (harmless to the answer path,
+pointless as a shadow). After merge:
+
+```ini
+# ~/.config/systemd/user/life-agent-bridge.service.d/membrane.conf
+[Service]
+# proplang tag: re-derivation step-10, repo @7da274b
+# binary sha256: 16982176e13f0fa38c20980b3cd7f6705de65ec32bc161417a9835b2d19c7762
+Environment=LIFE_AGENT_MEMBRANE_COMMAND=%h/.local/bin/proplang-host
+```
+
+then `systemctl --user daemon-reload && systemctl --user restart life-agent-bridge.service`,
+and verify `curl -s localhost:8798/ready` shows the `said@1` form `alive: true` under
+`membrane.forms`. The
+first live accrual (2026-07-19, worktree bridge :18798, real traffic): boot ok off 867 warm
+source records, 2 decide ticks mirrored, differential enumerated its first real
+disagreement (real `report` at leader-credence 0.98 vs shadow `gather` at its own p1 0.34),
+and the `respond_unreachable_p1_ceiling` demand FIRED with both thresholds printed
+(0.8559 vs-abstain cleared; 0.9942 whole-menu unreachable, binding competitor `gather`).
+One first-spawn transient ("Extra data" JSON read glitch, non-reproducible, absorbed by
+respawn 1/3 and clean thereafter) — WATCH on subsequent boots; if it recurs it will eat the
+respawn budget and needs a root-cause pass.
