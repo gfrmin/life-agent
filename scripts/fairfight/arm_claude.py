@@ -18,7 +18,10 @@ Per question:
    --strict-mcp-config --allowedTools mcp__pkm__search,mcp__pkm__extract --max-turns N``,
    cwd = the empty ``workdir`` (no repo CLAUDE.md leak). In headless mode tools outside
    ``--allowedTools`` are denied, so pkm search/extract is the arm's ONLY evidence
-   channel — the enforced half of the prompt's "pkm tools only" rule.
+   channel — the enforced half of the prompt's "pkm tools only" rule. The permission
+   mode is pinned to ``default`` explicitly: headless claude otherwise inherits the
+   MACHINE's ambient default, and a restrictive one (e.g. "plan") silently denies even
+   the allowed tools — rc=0, no error, zero evidence (PR-33 review CRITICAL).
 3. Parse the single result-JSON line from stdout: ``result`` (the answer text),
    ``total_cost_usd``, ``num_turns``, ``usage`` (token counts), ``session_id``,
    ``is_error``/``subtype``. The parsed values are re-shaped into the SAME usage-dict
@@ -224,6 +227,13 @@ def answer_deliberative(q: dict[str, Any], cfg: ClaudeArmConfig) -> CompetitorRe
             "--mcp-config", str(mcp_config_path),
             "--strict-mcp-config",
             "--allowedTools", _ALLOWED_TOOLS,
+            # PR-33 review CRITICAL: headless claude inherits the MACHINE's ambient
+            # permission-mode default (e.g. settings.json defaultMode "plan"), under
+            # which the allowed MCP tools are silently DENIED — rc=0, is_error=false,
+            # zero evidence gathered, and the apology text would grade as an ordinary
+            # wrong answer. Pin the mode explicitly so the arm's behavior never depends
+            # on the invoking machine's interactive configuration.
+            "--permission-mode", "default",
             "--max-turns", str(cfg.max_turns),
         ]
 
