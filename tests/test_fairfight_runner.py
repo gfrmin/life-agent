@@ -1033,3 +1033,45 @@ def test_external_arms_reexported_from_the_package() -> None:
     import life_agent.fairfight as FF
     assert FF.EXTERNAL_ARMS == REC.EXTERNAL_ARMS
     assert "EXTERNAL_ARMS" in FF.__all__
+    assert FF.HERMES_ARMS == REC.HERMES_ARMS
+    assert "HERMES_ARMS" in FF.__all__
+
+
+def test_deliberative_arm_requires_claude_bin_and_binds_claude_config(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Selecting deliberative without a resolvable claude CLI fails fast; with one, the
+    runner binds arm_claude's driver with the CLI-selected model/timeout and records the
+    arm config + prompt sha in run_meta."""
+    kb = _kb(tmp_path, monkeypatch)
+    _write_questions(kb, [_q()])
+    monkeypatch.setattr(RF.shutil, "which", lambda name: None)
+    args = _args(tmp_path, arms="deliberative", claude_bin=None)
+    with pytest.raises(SystemExit, match="claude CLI"):
+        RF.run(args, arm_impls={}, judge_impl=_fake_judge(),
+               conn_factory=lambda p: _FakeConn())
+
+    seen_cfg: list[Any] = []
+
+    def _fake_delib(q: dict[str, Any], cfg: Any) -> Any:
+        seen_cfg.append(cfg)
+        return AH.CompetitorResult(raw=_raw(question_id=q["id"]), usage=None, tool_log=[])
+
+    monkeypatch.setattr(RF.AC, "answer_deliberative", _fake_delib)
+    monkeypatch.setattr(RF, "_claude_version", lambda b: "9.9.9 (fake)")
+    args = _args(tmp_path, arms="deliberative", claude_bin="/fake/claude",
+                 deliberative_model="fake-delib-model", deliberative_timeout_s=123)
+    result = RF.run(args, judge_impl=_fake_judge(), conn_factory=lambda p: _FakeConn())
+
+    (cfg,) = seen_cfg
+    assert cfg.claude_bin == "/fake/claude"
+    assert cfg.model == "fake-delib-model"
+    assert cfg.timeout_s == 123
+    assert cfg.arm_name == "deliberative"
+    meta = json.loads((result["run_dir"] / "run_meta.json").read_text())
+    assert meta["arm_configs"]["deliberative"]["model"] == "fake-delib-model"
+    assert meta["arm_configs"]["deliberative"]["claude_bin"] == "/fake/claude"
+    assert meta["claude_version"] == "9.9.9 (fake)"
+    assert len(meta["prompt_delib_v1_sha256"]) == 64
+    # no hermes requirement was triggered for a deliberative-only run
+    assert meta["hermes_git"]["note"] == "no external (hermes-driven) arm selected"
+    assert (result["run_dir"] / "arms" / "deliberative" / "vectors.jsonl").exists()
