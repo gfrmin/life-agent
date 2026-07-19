@@ -28,6 +28,7 @@ from typing import Any
 from life_agent.core import gather_outcomes as GO
 from life_agent.core import lookup as LK
 from life_agent.core import matching as MATCH
+from life_agent.core import seam as SEAM
 
 # The transport seams, injected by the caller (PRINCIPLES §5): ``post(url, payload)`` returns the
 # decoded JSON object, or ``None`` for ``/route`` on a non-typed question; ``get(url)`` returns the
@@ -277,7 +278,11 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
         if sensors is not None and menu is not None:
             payload["sensors"] = sensors
             payload["grow"] = menu
-        return _obj(post, f"{daemon}/decide", payload)
+        # committed through the ONE act seam (roadmap M0); the reply view is the daemon's
+        # decision verbatim, so the loop below is unchanged.
+        dec = SEAM.commit(SEAM.DaemonDecide(post=post, daemon=daemon, payload=payload)).view
+        assert dec is not None  # a DaemonDecide commit always carries the reply view
+        return dec
 
     dec = _decide(obs, rho, era, applied)
     grow_probes = ({str(a["probe"]) for a in menu["actuators"]} if menu is not None else set())

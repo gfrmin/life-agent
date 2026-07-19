@@ -508,7 +508,7 @@ justification. There is no third bucket; a fork found later is a doctrine bug.
 | i-10 | ask_clarify — `core/lookup.py:695` priced row, `_ORACLE_P=0.9` host constant | EU-in-skin; price is host | M3 menu (`ask` affordance exists); price from P(U) |
 | i-11 | report_scoped / hedge choice — `core/lookup.py:675-698,807-842` | EU-in-skin over host-built utility rows | M5 (E1 outcome refinement, D1 exit) |
 | i-12 | Grounding-gate USE — `core/lookup.py:536-540` (`continue` on ungrounded) | rule fork on observation admission | M4: whether an ungrounded quote is weak evidence is a likelihood declaration, not a host `continue` |
-| i-13 | Retry/dispatch forks — `scripts/ask.py:1155-1162` executor-vs-inprocess; `core/executor.py:120-151` route-null→narrative, grow_lane branch | if-forks | M0 unification collapses these into the one seam |
+| i-13 | Retry/dispatch forks — `scripts/ask.py:1155-1162` executor-vs-inprocess; `core/executor.py:120-151` route-null→narrative, grow_lane branch | if-forks | NOT collapsed at M0 (re-staged at landing, see §12) — family routing in disguise; moves at M3+ |
 | i-14 | Bridge fold-eligibility — `bridge/server.py:484-489,527` `folds = chosen_action=="abstain"` | rule fork on what enters calibration | M4 (what folds is part of the observation model the engine conditions on) |
 | i-15 | (offline) adoption gate — `core/gate.py:243-283` `P(Δ>δ)≥level` | EU-in-host, frozen constants | stays host FOR NOW: it is the eval harness measuring the system, not the agent acting; FLAG — revisit when the engine can express meta-decisions |
 | i-16 | escalate-to-frontier (new act, not in inventory) | absent today | B3: new affordance + lambda_cost latent (owner-elicited) |
@@ -544,3 +544,40 @@ removed; exactly ONE act-committing seam, speaking only to proplang-host; every 
 either migrated or bucket-(ii)-justified; no EU regression vs the credence-era baseline on
 the fairfight gate + loss ledger at n≥100 (the question factory is the prerequisite
 instrument).
+
+## 12. M0 — seam unification: LANDED (2026-07-19)
+
+`life_agent.core.seam` is the one act-committing function: `seam.commit()` takes either a
+`SkinOptimise` request (a P1 in-process `brain.optimise` — the lookup family's response
+decision and the narrative family's per-claim include/withhold), a `DaemonDecide` request
+(the P2 executor loop's `POST {daemon}/decide`, over the caller's injected transport so the
+membrane shadow mirror keeps wrapping it unchanged), or a **declared gate observation** —
+and returns the committed act. Behaviour-preserving by construction: on every dispatch the
+seam does exactly what the old call site did, byte-for-byte on the wire; the full hermetic
+suite passed unchanged, and the fairfight baseline arm was re-run as the eval gate.
+
+Status against the §11 rows:
+
+- **i-1 / i-2 / i-3** — all three terminal-act commit sites now route through
+  `seam.commit()`. The narrative host fold ("report iff any included") stays outside the
+  seam: it is the exact powerset argmax under claim independence (the separability proof
+  in `core/decide`) — deterministic given the per-claim acts, re-examined at M5/E1.
+- **i-4** — the weak-retrieval abstain is now a **declared observation**
+  (`GATE_WEAK_RETRIEVAL`) into the seam; the seam chooses abstain and the host obeys the
+  returned act. The threshold *computation* (floor/min-hits arithmetic) stays host — a
+  sensor producing the observation; the *fork* is data at the seam.
+- **i-5** — the executor-down abstain is likewise declared (`GATE_EXECUTOR_DOWN`).
+  Register note: against a down stack no other act is enactable, so the host asserts the
+  seam's abstain rather than branching on it — an enactment constraint, not a second
+  decision. The M3 obligation (the same declared safe default when the *proplang engine*
+  errors on live traffic) remains open.
+- **i-13** — NOT collapsed by this landing, re-staged: the executor-vs-inprocess dispatch
+  fork and the route-null→narrative fork still stand outside the seam. They are family
+  routing in disguise (i-6) and move when the route verdict becomes an observation the
+  engine conditions on (M3+), not in a behaviour-preserving refactor.
+
+Enforcement (prefiguring M6's drift gate): `tests/test_seam.py` fails if any module in
+`src/life_agent` other than `seam.py`/`brain.py` calls `.optimise(`, or builds a
+`/decide` URL outside `seam.py` — the decide path string is single-sourced as
+`seam.DECIDE_PATH` (the shadow mirror recognises decide ticks by it). A fork found
+outside the seam is a doctrine bug (§11), and now a red test.
