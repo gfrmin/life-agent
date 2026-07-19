@@ -396,13 +396,35 @@ def map_real_effector(real_effector: object) -> str | None:
     return REAL_TO_MEMBRANE.get(real_effector)
 
 
-def differential(records: list[dict[str, Any]], form: str) -> dict[str, Any]:
+def _eu_delta(u_bar: Mapping[str, float] | None, p1: float | None,
+              would: object, real_mapped: str) -> float | None:
+    """The engine's own pricing of one disagreement (M2 advisory): EU(would) - EU(real),
+    both under the form's boot-declared utility at the tick's own p1 — the EU the engine
+    believes the incumbent's choice left on the table, in ITS world. ``None`` whenever the
+    inputs to that claim are missing (no boot u_bar, no p1 readout, an action outside the
+    affordance menu) — unpriceable is named, never guessed."""
+    if u_bar is None or p1 is None or not isinstance(would, str):
+        return None
+    eus = W.eu_by_action(u_bar, p1)
+    if would not in eus or real_mapped not in eus:
+        return None
+    return round(eus[would] - eus[real_mapped], 4)
+
+
+def differential(records: list[dict[str, Any]], form: str,
+                 u_bar: Mapping[str, float] | None = None) -> dict[str, Any]:
     """Real (legend-mapped) vs would (the shadow's own ``action``) over EVERY decide
     tick for ``form`` — not only terminal ticks: every real ``/decide`` call is mirrored
     (Task 6), so every one is a real comparison point. A tick whose ``real_effector``
     falls outside :data:`REAL_TO_MEMBRANE` is excluded from the agreement rate (there is
     no real action to agree or disagree with) but tallied by name in
-    ``n_unmapped_real_effector`` — never silently dropped from view."""
+    ``n_unmapped_real_effector`` — never silently dropped from view.
+
+    With ``u_bar`` (the form's boot-declared posterior), each disagreement additionally
+    carries ``eu_delta`` (:func:`_eu_delta`) and ``disagreement_eu_by_class`` aggregates
+    them per ``real->would`` class — the M2 advisory ledger's {agree?, EU delta} fields.
+    ``priced_n`` counts the rows the sum actually covers; a class whose every row was
+    unpriceable reports ``eu_delta_sum: None``, not 0.0."""
     decides = _of_kind(records, "decide", form)
     unmapped: Counter[str] = Counter()
     per_real: dict[str, dict[str, int]] = {}
@@ -427,6 +449,7 @@ def differential(records: list[dict[str, Any]], form: str) -> dict[str, Any]:
                 "question_id": r.get("question_id"), "t": r.get("t"),
                 "real": real_raw, "real_mapped": mapped, "would": would,
                 "p1": _p1(r), "summary": r.get("summary"),
+                "eu_delta": _eu_delta(u_bar, _p1(r), would, mapped),
             })
     agreement_per_real_action = {
         action: {
@@ -435,6 +458,14 @@ def differential(records: list[dict[str, Any]], form: str) -> dict[str, Any]:
         }
         for action, v in sorted(per_real.items())
     }
+    by_class: dict[str, dict[str, Any]] = {}
+    for d in disagreements:
+        cls = f"{d['real_mapped']}->{d['would']}"
+        cell = by_class.setdefault(cls, {"n": 0, "priced_n": 0, "eu_delta_sum": None})
+        cell["n"] += 1
+        if d["eu_delta"] is not None:
+            cell["priced_n"] += 1
+            cell["eu_delta_sum"] = round((cell["eu_delta_sum"] or 0.0) + d["eu_delta"], 4)
     return {
         "n_mapped": n_mapped,
         "n_unmapped_real_effector": dict(sorted(unmapped.items())),
@@ -444,6 +475,34 @@ def differential(records: list[dict[str, Any]], form: str) -> dict[str, Any]:
         },
         "agreement_per_real_action": agreement_per_real_action,
         "disagreements": disagreements,
+        "disagreement_eu_by_class": dict(sorted(by_class.items())),
+    }
+
+
+GATE_NOTE = (
+    "Seam gate pre-emptions (M2 advisory): the host committed abstain by declared policy "
+    "BEFORE any engine saw the question (register §11 i-4/i-5 — the engine may abstain, "
+    "the host may not refuse). Each row is what the engine, consulted under the faithful "
+    "empty-evidence context, would have done instead. A `would` other than abstain is "
+    "M3's preview: coarse-menu-live hands exactly this tick to the engine."
+)
+
+
+def gate_advisory(records: list[dict[str, Any]], form: str) -> dict[str, Any]:
+    """`kind: "gate"` rows for ``form``, reduced per gate name x the engine's would-action
+    — the M2 coverage the decide differential structurally cannot have (a gated question
+    never reaches `/decide`, so no decide tick exists to disagree with)."""
+    gates = _of_kind(records, "gate", form)
+    by_gate: dict[str, dict[str, Any]] = {}
+    for r in gates:
+        cell = by_gate.setdefault(str(r.get("gate")), {"n": 0, "would": Counter()})
+        cell["n"] += 1
+        cell["would"][str(r.get("action"))] += 1
+    return {
+        "n": len(gates),
+        "by_gate": {g: {"n": c["n"], "would": dict(sorted(c["would"].items()))}
+                    for g, c in sorted(by_gate.items())},
+        "note": GATE_NOTE,
     }
 
 
@@ -1032,7 +1091,10 @@ def build_report(
     stats_record = latest_stats_record(records)
 
     per_form_stats = {f: form_stats(records, f, stats_record=stats_record) for f in forms}
-    differential_by_form = {f: differential(records, f) for f in forms}
+    differential_by_form = {
+        f: differential(records, f, u_bar=latest_boot_u_bar(records, f)) for f in forms
+    }
+    gates_by_form = {f: gate_advisory(records, f) for f in forms}
     provenance_by_form = provenance(records, forms)
 
     grounded_by_form: dict[str, Any] | None = None
@@ -1062,6 +1124,7 @@ def build_report(
         "per_form_stats": per_form_stats,
         "world_policy": world_policy(records, forms),
         "differential": differential_by_form,
+        "gates": gates_by_form,
         "grounded": grounded_by_form,
         "demand_ledger": demand_ledger(records, forms),
         "provenance": provenance_by_form,
@@ -1141,16 +1204,40 @@ def _md_differential(form: str, diff: dict[str, Any]) -> list[str]:
     lines.append(f"#### Disagreements ({len(dis)} enumerated)")
     lines.append("")
     if dis:
-        lines.append("| question_id | t | real | real_mapped | would | p1 |")
-        lines.append("|---|---|---|---|---|---|")
+        lines.append("| question_id | t | real | real_mapped | would | p1 | eu_delta |")
+        lines.append("|---|---|---|---|---|---|---|")
         for d in dis:
             lines.append(
                 f"| {d['question_id']} | {d['t']} | {d['real']} | {d['real_mapped']} | "
-                f"{d['would']} | {d['p1']} |"
+                f"{d['would']} | {d['p1']} | {d.get('eu_delta')} |"
             )
+        by_class = diff.get("disagreement_eu_by_class") or {}
+        if by_class:
+            lines.append("")
+            lines.append("Engine EU delta by class (EU(would) - EU(real), the form's own "
+                         "boot u_bar at each tick's p1; unpriceable rows named, never 0):")
+            lines.append("")
+            for cls, cell in by_class.items():
+                lines.append(
+                    f"- `{cls}`: n={cell['n']}, priced={cell['priced_n']}, "
+                    f"Σ eu_delta={cell['eu_delta_sum']}"
+                )
     else:
         lines.append("_none._")
     lines.append("")
+    return lines
+
+
+def _md_gates(form: str, g: dict[str, Any]) -> list[str]:
+    lines = [f"### {form}", ""]
+    if not g["n"]:
+        lines += ["_No gate rows: no seam gate pre-emption reached the shadow._", ""]
+        return lines
+    lines.append(f"- gate pre-emptions observed: {g['n']}")
+    for gate, cell in g["by_gate"].items():
+        would = ", ".join(f"{a}: {n}" for a, n in cell["would"].items())
+        lines.append(f"  - `{gate}`: n={cell['n']} — engine would: {would}")
+    lines += ["", f"_{g['note']}_", ""]
     return lines
 
 
@@ -1276,6 +1363,10 @@ def render_md(report: dict[str, Any]) -> str:
     lines.append("")
     for form, diff in report["differential"].items():
         lines += _md_differential(form, diff)
+
+    lines += ["## 2b. Seam gate pre-emptions (M2 advisory)", ""]
+    for form, g in report["gates"].items():
+        lines += _md_gates(form, g)
 
     lines += ["## 3. Grounded joins", ""]
     if report["grounded"] is None:

@@ -581,3 +581,60 @@ Enforcement (prefiguring M6's drift gate): `tests/test_seam.py` fails if any mod
 `/decide` URL outside `seam.py` — the decide path string is single-sourced as
 `seam.DECIDE_PATH` (the shadow mirror recognises decide ticks by it). A fork found
 outside the seam is a doctrine bug (§11), and now a red test.
+
+## 13. M2 — advisory: LANDED (2026-07-19)
+
+The roadmap's M2 deliverable — "proplang beside credence, `{proplang_act, credence_act,
+agree?, EU delta}` published in the ledger; disagreements are the B4 need-note fuel" —
+lands as **coverage completion plus pricing on the one existing record stream**, not a
+second ledger: `shadow.jsonl` stays the single source, `scripts/membrane/report.py` stays
+the pure reducer that publishes it. Nothing here touches the decision path, and nothing
+here changes the engine or the wire — M2 requires zero proplang-side changes, so no
+`gfrmin/proplang` issue accompanies it.
+
+What landed:
+
+- **EU delta on every disagreement** (`report.differential`, now priced under each form's
+  own boot-recorded u_bar): `eu_delta = EU(would) - EU(real)` at the tick's own `p1` —
+  the EU the engine believes the incumbent's choice left on the table, in the engine's
+  own world — plus `disagreement_eu_by_class` aggregates per `real->would` class with
+  `priced_n` honesty (a row with no `p1` readout or no boot u_bar is named unpriceable,
+  never guessed or summed as 0).
+- **Seam gate pre-emptions reach the shadow** — the M2 coverage the decide differential
+  structurally cannot have: a question gated at the seam (`GATE_WEAK_RETRIEVAL`,
+  `GATE_EXECUTOR_DOWN`) never produces a `/decide` tick, so until now the host's
+  pre-emption was invisible to the membrane. Now `scripts/ask.py` mirrors each gate
+  commit to the bridge's `POST /gate-support` (`shadow_mirror.mirror_gate` — fail-open,
+  one-shot, short-timeout, fired after the abstain is already committed), the shadow
+  consults every live form under the **faithful empty-evidence context**
+  (`shadow.GATE_SUMMARY`: zero candidates, no posterior, zero grounded observations —
+  which is exactly the state at both gates) and logs a `kind: "gate"` row: the gate
+  name, the committed act (always abstain — the seam's gate contract), and what the
+  engine would have done instead. The report's §2b reduces these per gate x would-action.
+  A `would` other than abstain is M3's preview data: coarse-menu-live hands exactly this
+  tick to the engine (i-4's "engine may abstain, host may not refuse the question").
+
+Named coverage boundaries (decided, not discovered):
+
+- **P1 lookup (i-2)** — not advisory-consulted: the in-process lookup path fires only
+  under `--legacy` (never in production since the M1 executor default), and its decision
+  context is already fully mirrored on the executor path it replaced. Revisit only if
+  `--legacy` returns to production use.
+- **P1 narrative per-claim (i-3)** — not advisory-consulted: a per-claim
+  include/withhold does not reduce faithfully to this world's feature vocabulary
+  (`summary_from_decision_event` already documents the narrative family degrading to
+  "no candidates known"); a consult under a strained summary would manufacture
+  disagreement noise, not evidence. Its migration stage is M5 (E1 per-claim acts);
+  the loss ledger, not this log, sequences it.
+- **Gate rows carry no `eu_delta`** — the engine's `p1` at the gate context prices the
+  engine's OWN menu, but the host's abstain-by-policy has no EU claim to compare against
+  (there was no competing engine act committed). The row's information is the would-act
+  distribution itself.
+
+E2 probe result (recorded here because M2's design depended on it): a fresh
+session-per-decide against the live binary costs ~420ms end-to-end (spawn 0.4ms,
+handshake + 14-round-trip replay ~370ms at ~26ms/round-trip, decide tick ~50ms); a
+persistent session's marginal decide tick is ~50ms. Session-per-question handshakes are
+viable at today's evidence volume but the replay grows linearly (~26ms per verdict), so
+E2's per-question act sets need a warm-counts boot (or a rider change) before the
+verdict stream reaches O(1k) — a need-note for B4, not a blocker for M2/M3.
