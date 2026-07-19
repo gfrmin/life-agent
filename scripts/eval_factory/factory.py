@@ -26,10 +26,16 @@ before a question is admitted. The owner audits a seeded sample, one bit per row
 Every rejection is counted by reason; the report prints admission rates per stage —
 silent truncation would read as coverage.
 
-**What v1 deliberately does not do (on the page, not hidden):** unanswerable-by-
+**v1.1 (2026-07-19, deliberative-audit findings):** three more mechanical gates —
+``subject_voice`` (a first-person question whose fact belongs to a third party, the
+q2-084 class), ``multi_slot`` (two interrogative clauses, one gold — the q2-007 class),
+``source_cap`` (admissions per source_path bounded, the CSV-trivia class) — plus
+``--merge`` (combine chunked runs: cross-run dedup, re-id, fresh audit sample).
+
+**What this deliberately does not do (on the page, not hidden):** unanswerable-by-
 construction questions (a verifier's failure to answer cannot certify absence — needs a
-different protocol); per-value dedup caps; date-stratified sampling (v1 stratifies by
-``source_origin`` only). Each is a named follow-up, not an accident.
+different protocol); date-stratified sampling (stratifies by ``source_origin`` only).
+Each is a named follow-up, not an accident.
 
 **Outputs (all under the out dir, PII fail-closed — corpus content never leaves
 ``$LIFE_AGENT_KB``):** ``questions_v2.yaml`` (the candidate corpus: id ``q2-NNN``,
@@ -67,7 +73,7 @@ FORMAT_VERSION = 1
 
 # Frozen prompt contracts — sha256 of each goes into factory_meta.json; editing wording is
 # a NEW version, never an in-place edit (the arm_hermes PROMPT_V1 discipline).
-PROPOSER_V1 = """You write evaluation questions for a personal-records question-answering \
+PROPOSER_V2 = """You write evaluation questions for a personal-records question-answering \
 system. You are given ONE text chunk from the owner's private corpus, with its source path.
 
 Propose at most ONE point-fact question about it, as strict JSON (no prose, no fences):
@@ -78,9 +84,11 @@ Rules, in order of importance:
 - The answer MUST be a short factual value (a number, date, ID, name, amount) that appears \
 VERBATIM in the chunk. Never invent, reformat-only variants go in answer_variants.
 - Only ask about a fact whose OWNER is clear. If the fact belongs to the corpus owner, \
-phrase the question in their voice ("What is my ...?"). If it belongs to someone or \
-something else, name the subject explicitly in the question. Set "subject" to who/what \
-the fact is about.
+phrase the question in their voice ("What is my ...?") and set "subject" to exactly \
+"owner". If it belongs to someone or something else, name that subject explicitly in the \
+question, never use first-person phrasing, and set "subject" to the named third party.
+- Ask about exactly ONE fact — one value slot. Never join two asks in one question \
+("... and when ...", "... and how much ...").
 - The question must be answerable from records alone, unambiguous, and likely to have \
 exactly this one answer (not a list, not an opinion, not something that changes daily).
 - "answer_variants": other formats of the SAME value a grader should accept (with/without \
@@ -107,6 +115,24 @@ CONTEXT:
 {context}"""
 
 _NOT_FOUND_RE = re.compile(r"^not[_\s-]?found\b", re.IGNORECASE)
+
+# v1.1 gates (deliberative-audit findings 2026-07-19). Each mechanical check is the
+# enforcement half of a PROPOSER_V2 contract line — prompt and gate move together.
+SUBJECT_OWNER = "owner"
+_FIRST_PERSON_RE = re.compile(r"\b(i|me|my|mine|we|our|us)\b", re.IGNORECASE)
+# an interrogative that OPENS a clause (start of question, or after and/or/comma) marks a
+# value slot; a relative "who/which" mid-phrase does not.
+_SLOT_RE = re.compile(
+    r"(?:^|\b(?:and|or)\b|,)\s*(what|when|who|whom|whose|which|where|why|how)\b",
+    re.IGNORECASE)
+
+
+def _is_first_person(question: str) -> bool:
+    return _FIRST_PERSON_RE.search(question) is not None
+
+
+def _slot_count(question: str) -> int:
+    return len(_SLOT_RE.findall(question))
 
 # complete(system, user) -> the model's text. Injected so tests never touch a network.
 Complete = Callable[[str, str], str]
@@ -198,7 +224,7 @@ def _parse_json(text: str) -> dict[str, Any] | None:
 def propose(chunk: dict[str, Any], complete: Complete) -> dict[str, Any] | None:
     """One proposal for one chunk: the parsed JSON dict, ``{"skip": true}``, or None on a
     malformed reply (counted, never raised)."""
-    user = _fill(PROPOSER_V1,
+    user = _fill(PROPOSER_V2,
                  {"source_path": chunk["source_path"], "chunk": chunk["chunk_text"]})
     return _parse_json(complete("You emit strict JSON only.", user))
 
@@ -228,12 +254,15 @@ def verify(question: str, answer: str, variants: list[str], conn: Any,
 
 def run_factory(conn: Any, propose_complete: Complete, verify_complete: Complete, *,
                 target: int, max_proposals: int, k: int, min_chars: int,
-                seed: int) -> FactoryResult:
-    """The admission pipeline: sample → propose → ground → dedup → verify, until
-    ``target`` admitted or ``max_proposals`` generator calls spent (the cost ceiling)."""
+                seed: int, per_source_cap: int = 2) -> FactoryResult:
+    """The admission pipeline: sample → propose → ground + v1.1 gates → dedup → source
+    cap → verify, until ``target`` admitted or ``max_proposals`` generator calls spent
+    (the cost ceiling). ``per_source_cap`` bounds admissions per source_path (0 =
+    uncapped) — the CSV-trivia guard: one dense file must not fill the corpus."""
     chunks = sample_chunks(conn, min_chars=min_chars, limit=max_proposals, seed=seed)
     result = FactoryResult()
     seen_questions: set[str] = set()
+    admitted_per_source: Counter = Counter()
 
     for chunk in chunks:
         if len(result.admitted) >= target or result.n_proposal_calls >= max_proposals:
@@ -258,6 +287,18 @@ def run_factory(conn: Any, propose_complete: Complete, verify_complete: Complete
         if not question or not answer:
             result.rejections["parse_error"] += 1
             continue
+        subject = str(obj.get("subject", "")).strip()
+        if _is_first_person(question) and subject.lower() != SUBJECT_OWNER:
+            # the q2-084 class: a first-person question about a third party's fact reads
+            # the owner's voice onto someone else's record — the gold then grades a
+            # question the corpus never supports.
+            result.rejections["subject_voice"] += 1
+            continue
+        if _slot_count(question) >= 2:
+            # two interrogative clauses = two value slots; a single gold cannot grade a
+            # compound question (the q2-007 class).
+            result.rejections["multi_slot"] += 1
+            continue
         if answer_matches(answer, variants, question):
             # the question quotes its own gold: FTS on the question text would rank the
             # source chunk by the smuggled token and the verifier could read the answer
@@ -273,14 +314,18 @@ def run_factory(conn: Any, propose_complete: Complete, verify_complete: Complete
             result.rejections["duplicate"] += 1
             continue
         seen_questions.add(norm)
+        if per_source_cap and admitted_per_source[chunk["source_path"]] >= per_source_cap:
+            result.rejections["source_cap"] += 1
+            continue
         result.n_verify_calls += 1
         ok, verifier_answer = verify(question, answer, variants, conn, verify_complete, k=k)
         if not ok:
             result.rejections["not_verified"] += 1
             continue
+        admitted_per_source[chunk["source_path"]] += 1
         result.admitted.append(Admitted(
             question=question, answer=answer, answer_variants=tuple(variants),
-            subject=str(obj.get("subject", "")), notes=str(obj.get("notes", "")),
+            subject=subject, notes=str(obj.get("notes", "")),
             chunk_id=int(chunk["chunk_id"]), source_path=chunk["source_path"],
             source_origin=chunk["source_origin"], verifier_answer=verifier_answer))
     return result
@@ -314,6 +359,55 @@ def questions_yaml_dict(result: FactoryResult, *, audit_fraction: float,
     return {"format_version": FORMAT_VERSION, "questions": questions}
 
 
+def merge_corpora(corpora: list[tuple[str, dict[str, Any]]], *, seed: int,
+                  audit_fraction: float) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Merge chunked factory runs into one corpus (the in-repo replacement for the
+    2026-07-19 one-off scratchpad merge, for the nightly loop): cross-run dedup on
+    normalised question text OR the (answer, source_path) pair (same fact re-asked in
+    other words), sequential ``q2-NNN`` ids, per-question ``provenance.factory_run``
+    tag, and a FRESH seeded audit sample over the merged set (inherited flags dropped —
+    the owner audits the corpus that ships, not the chunks). Returns
+    ``(merged_corpus, merge_meta)``."""
+    merged: list[dict[str, Any]] = []
+    seen_q: set[str] = set()
+    seen_pair: set[tuple[str, str]] = set()
+    dropped = 0
+    kept_per_run: dict[str, int] = {}
+    for run_name, corpus in corpora:
+        kept = 0
+        for q in corpus["questions"]:
+            key_q = _normalise_question(str(q["question"]))
+            key_pair = (str(q["answer"]), str(q["provenance"]["source_path"]))
+            if key_q in seen_q or key_pair in seen_pair:
+                dropped += 1
+                continue
+            seen_q.add(key_q)
+            seen_pair.add(key_pair)
+            merged_q = dict(q)
+            merged_q.pop("audit", None)  # re-drawn over the merged set below
+            merged_q["provenance"] = dict(q["provenance"])
+            merged_q["provenance"]["factory_run"] = run_name
+            merged.append(merged_q)
+            kept += 1
+        kept_per_run[run_name] = kept
+    for i, q in enumerate(merged):
+        q["id"] = f"q2-{i + 1:03d}"
+    rng = random.Random(seed)
+    n_audit = max(1, round(len(merged) * audit_fraction)) if merged else 0
+    for i in (rng.sample(range(len(merged)), n_audit) if n_audit else []):
+        merged[i]["audit"] = True
+    meta = {
+        "runs": [name for name, _ in corpora],
+        "kept_per_run": kept_per_run,
+        "n_merged": len(merged),
+        "n_dropped_duplicates": dropped,
+        "audit_fraction": audit_fraction,
+        "n_audit": n_audit,
+        "seed": seed,
+    }
+    return {"format_version": FORMAT_VERSION, "questions": merged}, meta
+
+
 def report_md(result: FactoryResult, corpus: dict[str, Any], *, cost_usd: float | None) -> str:
     audit_rows = [q for q in corpus["questions"] if q.get("audit")]
     lines = [
@@ -336,9 +430,9 @@ def report_md(result: FactoryResult, corpus: dict[str, Any], *, cost_usd: float 
                   f"({q['provenance']['source_path']})"]
     lines += [
         "",
-        "_v1 limitations (named, not hidden): answerable questions only "
-        "(unanswerable-by-construction needs a different protocol); question-text dedup "
-        "only; origin-stratified sampling only._",
+        "_Limitations (named, not hidden): answerable questions only "
+        "(unanswerable-by-construction needs a different protocol); origin-stratified "
+        "sampling only; cross-run dedup happens at --merge, not here._",
     ]
     return "\n".join(lines) + "\n"
 
@@ -363,9 +457,43 @@ def _kb_root() -> Path:
     return KB
 
 
+def _run_merge(args: argparse.Namespace) -> int:
+    """The --merge mode: no generation, no models, no catalogue — read the named run
+    dirs' corpora, merge, write a run dir of its own (+ --publish like a generation run)."""
+    from datetime import UTC, datetime
+
+    corpora: list[tuple[str, dict[str, Any]]] = []
+    for d in args.merge:
+        path = Path(d).expanduser() / "questions_v2.yaml"
+        if not path.exists():
+            print(f"MISSING {path} — aborting so nothing partial is written")
+            return 1
+        corpora.append((Path(d).name, yaml.safe_load(path.read_text(encoding="utf-8"))))
+    merged, meta = merge_corpora(corpora, seed=args.seed,
+                                 audit_fraction=args.audit_fraction)
+    run_id = args.run_id or f"factory-merged-{datetime.now(UTC):%Y%m%dT%H%M%SZ}"
+    out_dir = _kb_root() / "eval" / "factory" / run_id
+    out_dir.mkdir(parents=True, exist_ok=True)
+    ypath = out_dir / "questions_v2.yaml"
+    ypath.write_text(yaml.safe_dump(merged, sort_keys=False, allow_unicode=True),
+                     encoding="utf-8")
+    (out_dir / "merge_meta.json").write_text(
+        json.dumps(meta, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    print(f"merge {run_id}: {meta['n_merged']} merged "
+          f"(dropped {meta['n_dropped_duplicates']} dupes; per-run {meta['kept_per_run']}; "
+          f"audit sample {meta['n_audit']})")
+    print(ypath)
+    if args.publish:
+        canonical = _kb_root() / "eval" / "questions_v2.yaml"
+        canonical.write_text(ypath.read_text(encoding="utf-8"), encoding="utf-8")
+        print(f"published → {canonical}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--config", required=True, help="pkm config.yaml (for the catalogue)")
+    parser.add_argument("--config", default=None,
+                        help="pkm config.yaml (for the catalogue); required unless --merge")
     parser.add_argument("--target", type=int, default=100)
     parser.add_argument("--max-proposals", type=int, default=400,
                         help="generator-call ceiling (the cost bound)")
@@ -373,13 +501,26 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--min-chars", type=int, default=200)
     parser.add_argument("--seed", type=int, default=7)
     parser.add_argument("--audit-fraction", type=float, default=0.10)
+    parser.add_argument("--per-source-cap", type=int, default=2,
+                        help="max admissions per source_path (0 = uncapped) — the "
+                             "CSV-trivia guard")
     parser.add_argument("--propose-model", default="claude-sonnet-4-6")
     parser.add_argument("--verify-model", default="claude-sonnet-4-6")
     parser.add_argument("--run-id", default=None)
+    parser.add_argument("--merge", nargs="+", default=None, metavar="RUN_DIR",
+                        help="merge mode: combine these factory run dirs' corpora "
+                             "(cross-run dedup, re-id, fresh audit sample) instead of "
+                             "generating; only --seed/--audit-fraction/--run-id/--publish "
+                             "apply")
     parser.add_argument("--publish", action="store_true",
                         help="ALSO overwrite $LIFE_AGENT_KB/eval/questions_v2.yaml (default: "
                              "run-dir only, inspect before it becomes the corpus)")
     args = parser.parse_args(argv)
+
+    if args.merge:
+        return _run_merge(args)
+    if not args.config:
+        parser.error("--config is required unless --merge is given")
 
     import duckdb
 
@@ -398,7 +539,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         result = run_factory(conn, _propose_complete, _verify_complete,
                              target=args.target, max_proposals=args.max_proposals,
-                             k=args.k, min_chars=args.min_chars, seed=args.seed)
+                             k=args.k, min_chars=args.min_chars, seed=args.seed,
+                             per_source_cap=args.per_source_cap)
     finally:
         conn.close()
     calls = LLM.meter_read()
@@ -414,8 +556,9 @@ def main(argv: list[str] | None = None) -> int:
         "target": args.target, "max_proposals": args.max_proposals, "k": args.k,
         "min_chars": args.min_chars, "seed": args.seed,
         "audit_fraction": args.audit_fraction,
+        "per_source_cap": args.per_source_cap,
         "propose_model": args.propose_model, "verify_model": args.verify_model,
-        "proposer_prompt_sha256": hashlib.sha256(PROPOSER_V1.encode()).hexdigest(),
+        "proposer_prompt_sha256": hashlib.sha256(PROPOSER_V2.encode()).hexdigest(),
         "verifier_prompt_sha256": hashlib.sha256(VERIFIER_V1.encode()).hexdigest(),
         "n_admitted": len(result.admitted),
         "n_proposal_calls": result.n_proposal_calls,
