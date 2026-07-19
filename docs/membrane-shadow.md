@@ -470,3 +470,77 @@ and the `respond_unreachable_p1_ceiling` demand FIRED with both thresholds print
 One first-spawn transient ("Extra data" JSON read glitch, non-reproducible, absorbed by
 respawn 1/3 and clean thereafter) — WATCH on subsequent boots; if it recurs it will eat the
 respawn budget and needs a root-cause pass.
+
+## 11. The decision classification — "decisions ONLY by proplang" (rulings of 2026-07-19)
+
+Owner rulings (the gold-standard roadmap plan of 2026-07-19, kept out of tree):
+ALL non-deterministic/rule-based decisions on the answer path are made by the proplang
+engine; credence is retired entirely (daemon :8799 + `core/brain.py` skin); proplang may be
+adjusted based on need, and **every proplang change is first an issue on the public
+`gfrmin/proplang` repo** (PII fail-closed: wire/grammar terms, synthetic examples only),
+paired with a need-note here.
+
+**The line:** deterministic computation (pure functions of inputs — parsing, scoring
+arithmetic, folding a declared model, projecting a ledger) stays host. Anything that
+**selects among alternatives** — a threshold fork, a rule gate, an ordering that changes
+the outcome, a model-verdict-conditioned branch, an EU comparison — is a decision and
+belongs to the engine. Model verdicts (the Qwen subject/route classifiers) are **sensors**:
+observations with measured error; their decision-effect flows only through declared
+likelihoods, never a host `continue`.
+
+**Two buckets only.** (i) = engine decision, carries its migration stage (M0–M6 / E1–E3
+per the roadmap). (ii) = sensor / deterministic computation, carries a one-line
+justification. There is no third bucket; a fork found later is a doctrine bug.
+
+### Bucket (i) — engine decisions (migrate)
+
+| # | Decision (file:line at inventory time, 2026-07-19) | Today's mechanism | Stage |
+| --- | --- | --- | --- |
+| i-1 | Terminal act, P2 executor path — `core/executor.py:280` posts `{daemon}/decide`; effector obeyed at `run_pass:361` | EU-in-credence-daemon | M0 seam → M3 live |
+| i-2 | Terminal act, P1 lookup — `core/lookup.py:705-719` `decide()` via `brain.optimise` over {report_j, hedge, ask_clarify, abstain, report_scoped} | EU-in-credence-skin | M0 seam → M3/M5 |
+| i-3 | Terminal act, P1 narrative — `core/narrative.py:345-382` per-claim `brain.optimise` + host fold "report iff any included" | EU-in-skin + host fold | M0 seam → M5 (E1 per-claim acts) |
+| i-4 | Weak-retrieval abstain gate — `scripts/ask.py:765` (`WEAK_SCORE_FLOOR=4.0`, `MIN_STRONG_HITS=1`) | threshold fork, pre-empts every engine | M0: becomes a declared retrieval-strength observation; engine may abstain, host may not refuse the question |
+| i-5 | Executor-down ⇒ abstain — `scripts/ask.py:946-947` | liveness fork | M3: the declared engine-error safe default (abstain), a policy the register names, not a silent fork |
+| i-6 | Family routing (lookup vs narrative) — `scripts/ask.py:774-807`, `core/lookup.py:461-488` `route_question` | model-verdict-conditioned branch | route verdict = sensor observation; the route CHOICE = an effort-allocation act (M5) |
+| i-7 | Subject determinate exclusion — `core/subject.py:224-264` `apply_owner_filter` (`not_owner→excluded`, hard `continue`) | verdict-conditioned partition | `owner_verdict` = sensor; exclusion dissolves into the candidate's declared likelihood (M4); no candidate silently removed by host code |
+| i-8 | Grow trigger + tier + stop-rule + cheapest-first order — `core/executor.py:88-103,154-173,219-261` | in-model comparison + host loop/ordering | E3 sequential decisions; tier menu = declared acts (B3) |
+| i-9 | Grow re-ask gate — `core/executor.py:347-357` | host decides when to OFFER the grow block | E3 (engine-held "decide again") |
+| i-10 | ask_clarify — `core/lookup.py:695` priced row, `_ORACLE_P=0.9` host constant | EU-in-skin; price is host | M3 menu (`ask` affordance exists); price from P(U) |
+| i-11 | report_scoped / hedge choice — `core/lookup.py:675-698,807-842` | EU-in-skin over host-built utility rows | M5 (E1 outcome refinement, D1 exit) |
+| i-12 | Grounding-gate USE — `core/lookup.py:536-540` (`continue` on ungrounded) | rule fork on observation admission | M4: whether an ungrounded quote is weak evidence is a likelihood declaration, not a host `continue` |
+| i-13 | Retry/dispatch forks — `scripts/ask.py:1155-1162` executor-vs-inprocess; `core/executor.py:120-151` route-null→narrative, grow_lane branch | if-forks | M0 unification collapses these into the one seam |
+| i-14 | Bridge fold-eligibility — `bridge/server.py:484-489,527` `folds = chosen_action=="abstain"` | rule fork on what enters calibration | M4 (what folds is part of the observation model the engine conditions on) |
+| i-15 | (offline) adoption gate — `core/gate.py:243-283` `P(Δ>δ)≥level` | EU-in-host, frozen constants | stays host FOR NOW: it is the eval harness measuring the system, not the agent acting; FLAG — revisit when the engine can express meta-decisions |
+| i-16 | escalate-to-frontier (new act, not in inventory) | absent today | B3: new affordance + lambda_cost latent (owner-elicited) |
+
+### Bucket (ii) — sensors / deterministic computation (stay host, justified)
+
+| # | Item (file:line) | Justification |
+| --- | --- | --- |
+| ii-1 | Retrieval scoring arithmetic (pkm FTS/BM25) | pure computation over the corpus; produces evidence, selects nothing |
+| ii-2 | Qwen subject classifier — `core/subject.py:173-213` `owner_verdict` | a sensor with cached, measurable error; its USE migrates (i-7), the measurement stays |
+| ii-3 | Qwen route classifier — `core/lookup.py:461-488` (the verdict itself) | sensor; its USE migrates (i-6) |
+| ii-4 | `dedup_correlated` — `core/lookup.py:592-624` | deterministic collapse rule, declared as part of the observation model |
+| ii-5 | Covariate factor computation — `subject_factor:220`, `time_factor:234`, `authority_for:369`, `era_split:330` | deterministic likelihood inputs; the engine weighs them |
+| ii-6 | Narrative cell audit — `core/narrative.py:178-190` | deterministic classification feeding observations |
+| ii-7 | `_competing_value_shape` + containment — `bridge/server.py:248-344` | deterministic observation-emission rule; FLAG: its conservative no-observation choice is a declared observation-model property, revisit under the joint-extract follow-up (PR #23 comment) |
+| ii-8 | Currency source-of-truth override — `bridge/server.py:183` (`VOL.half_life`) | declared world knowledge (volatility table), not a choice among acts |
+| ii-9 | GTD ledger folds, knowledge projection, demand logs | ledger projections — pure folds |
+
+### Migration stages (the roadmap's M-ladder, for the Stage column)
+
+M0 seam unification · M1 prod flip (owner) · M2 advisory (proplang beside credence,
+disagreements logged) · M3 coarse menu live (abstain/gather/ask/respond) · M4 belief
+migration (engine conditions on raw observations + measured reliabilities; `core/brain.py`
+dies; :8799 decommissioned) · M5 fine acts (value-indexed report, scoped/hedge, per-claim)
+· M6 sweep + CI enforcement (no-credence-import drift gate). Engine extensions: E1
+categorical outcome over {candidates, NONE}; E2 per-question act sets (try
+session-per-question handshake before touching RIDER 2); E3 sequential gather with an
+engine stop-rule (pays down the §2/§7 myopic-information FLAG on the way).
+
+Exit criteria for "credence fully retired" (checkable): no credence import in src/ or
+scripts/ on the answer path; `answer-brain.service` decommissioned and `ANSWER_BRAIN_URL`
+removed; exactly ONE act-committing seam, speaking only to proplang-host; every row above
+either migrated or bucket-(ii)-justified; no EU regression vs the credence-era baseline on
+the fairfight gate + loss ledger at n≥100 (the question factory is the prerequisite
+instrument).
