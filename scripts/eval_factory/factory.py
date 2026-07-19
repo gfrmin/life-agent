@@ -43,7 +43,9 @@ classes, but a compound built from nouns outside the slot-noun list, or two sent
 joined by punctuation, passes to the verifier — and a SAME-class pair is assumed to
 name one fact, which fails open when a bill really carries two values from one class's
 vocabulary ("premium amount and total balance due"); the classes are kept narrow for
-exactly that reason. Each is a named follow-up, not an accident.
+exactly that reason, and the symmetric price is over-rejection of DIFFERENT-class pairs
+that really name one fact ("the price and cost of the service" — fails safe, a re-ask).
+Each is a named follow-up, not an accident.
 
 **Outputs (all under the out dir, PII fail-closed — corpus content never leaves
 ``$LIFE_AGENT_KB``):** ``questions_v2.yaml`` (the candidate corpus: id ``q2-NNN``,
