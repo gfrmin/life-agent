@@ -65,6 +65,7 @@ from life_agent.core import decisions as DEC
 from life_agent.core import derivations as D
 from life_agent.core import llm as LLM
 from life_agent.core import outcomes as O
+from life_agent.core import seam as SEAM
 from life_agent.core.brain import Brain
 from life_agent.core.citation import SourceLike, extract_citations, value_spans
 from life_agent.core.decide import u_assert
@@ -349,7 +350,8 @@ def decide_claims(brain: Brain,
                   ) -> tuple[tuple[Claim, ...], str, float, str]:
     """Per-claim inclusion under Ū, decided OVER THE WIRE: each claim's include/withhold is the
     engine's ``optimise{include, withhold}`` on its cell Beta (the integrated include-EU via
-    `centered_power`, the staleness factor ``tf`` scaling the utility coefficients) — never a
+    `centered_power`, the staleness factor ``tf`` scaling the utility coefficients), committed
+    through the ONE act seam (:func:`life_agent.core.seam.commit` — roadmap M0) — never a
     host EU compare. The answer action is ``report`` iff any claim clears (the per-claim
     threshold is the exact powerset argmax under claim independence — the separability proof in
     :mod:`life_agent.core.decide`). Each scored tuple is (text, cites, cell, as_of, tf); ``as_of``
@@ -364,8 +366,9 @@ def decide_claims(brain: Brain,
                 a, b = cells_ab[cell]
                 sid = brain.create_state({"type": "beta", "alpha": a, "beta": b})
                 cell_states[cell] = sid
-            action, _eu = brain.optimise(sid, actions=_CLAIM_ACTIONS,
-                                         preference=_claim_pref(u_bar, tf))
+            action = SEAM.commit(SEAM.SkinOptimise(
+                brain=brain, state_id=sid, actions=_CLAIM_ACTIONS,
+                preference=_claim_pref(u_bar, tf))).action
             eu_i = brain.expect(sid, function=_include_fn(u_bar, tf))  # recorded include-EU
             credence = brain.mean(sid) * tf  # display (staleness-decayed); decision was `action`
             claims.append(Claim(text=text, cites=cites, cell=cell, credence=credence,

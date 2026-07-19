@@ -26,6 +26,7 @@ import urllib.request
 from typing import Any
 
 from life_agent.core import executor as EX
+from life_agent.core import seam as SEAM
 
 # Short, and strictly less than every real-leg poster's own (300s) timeout — see module
 # docstring. A wedged-but-up bridge can cost at most this much, once, per question.
@@ -54,7 +55,7 @@ def mirror_decide(mirror_post: EX.Post, bridge: str, question_id: str, url: str,
     mirror) also returns ``True``, since that is not a mirror failure. The caller
     (:func:`shadow_wrapped_post`) uses the return value to drive its circuit breaker; this
     function itself never raises."""
-    if not url.endswith("/decide") or resp is None:
+    if not url.endswith(SEAM.DECIDE_PATH) or resp is None:
         return True
     try:
         mirror_post(f"{bridge}/decide-support",
