@@ -84,7 +84,7 @@ def _args(tmp_path: Path, **overrides: Any) -> argparse.Namespace:
         competitor_base_url=None, oracle_model="claude-opus-4-8",
         oracle_provider="anthropic", oracle_base_url=None,
         hermes_bin="/fake/hermes", timeout_s=300, limit=None,
-        no_judge=False, fresh=False, run_id="ff-test",
+        no_judge=False, fresh=False, run_id="ff-test", questions=None,
     )
     base.update(overrides)
     return argparse.Namespace(**base)
@@ -159,6 +159,64 @@ def _kb(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     kb = tmp_path / "kb"
     monkeypatch.setenv("LIFE_AGENT_KB", str(kb))
     return kb
+
+
+# --- --questions: an alternate corpus (e.g. the factory's questions_v2.yaml) -----------
+
+
+def test_questions_flag_loads_the_alternate_corpus_and_pins_its_path_and_sha(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """--questions must swap BOTH the loaded corpus and the run_meta pin — a pin that
+    still sha256s the default file while the run answered a different one would be a
+    provenance lie."""
+    import hashlib
+
+    kb = _kb(tmp_path, monkeypatch)
+    _write_questions(kb, [_q("q-001")])  # the default corpus — must NOT be consumed
+    v2 = kb / "eval" / "questions_v2.yaml"
+    v2.write_text(yaml.safe_dump({"questions": [_q("q2-001", answer="P456")]}),
+                  encoding="utf-8")
+    args = _args(tmp_path, questions=str(v2))
+
+    seen: list[str] = []
+
+    def _impl(q: dict[str, Any]) -> AB.RawAnswer:
+        seen.append(q["id"])
+        return _raw(question_id=q["id"])
+
+    result = RF.run(args, arm_impls={"inprocess": _impl},
+                    judge_impl=_fake_judge(), conn_factory=lambda p: _FakeConn())
+
+    assert seen == ["q2-001"]
+    meta = json.loads((result["run_dir"] / "run_meta.json").read_text())
+    assert meta["questions_path"] == str(v2)
+    assert meta["questions_sha256"] == hashlib.sha256(v2.read_bytes()).hexdigest()
+    assert (result["run_dir"] / "questions.sha256").read_text().strip() == \
+        meta["questions_sha256"]
+
+
+def test_questions_flag_absent_from_namespace_falls_back_to_the_kb_default(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A bare Namespace without the attribute (older callers/tests) keeps the default
+    corpus — same getattr tolerance the fresh flag established."""
+    kb = _kb(tmp_path, monkeypatch)
+    _write_questions(kb, [_q("q-001")])
+    args = _args(tmp_path)
+    delattr(args, "questions")
+
+    result = RF.run(args, arm_impls={"inprocess": lambda q: _raw(question_id=q["id"])},
+                    judge_impl=_fake_judge(), conn_factory=lambda p: _FakeConn())
+
+    meta = json.loads((result["run_dir"] / "run_meta.json").read_text())
+    assert meta["questions_path"] == str(kb / "eval" / "questions.yaml")
+
+
+def test_parse_args_questions_flag_default_none_and_roundtrip() -> None:
+    default = RF._parse_args(["--config", "/fake/pkm.yaml"])
+    assert default.questions is None
+    explicit = RF._parse_args(
+        ["--config", "/fake/pkm.yaml", "--questions", "/fake/questions_v2.yaml"])
+    assert explicit.questions == "/fake/questions_v2.yaml"
 
 
 # --- run_meta.json: written first, pinned ----------------------------------------------
