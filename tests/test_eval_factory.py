@@ -457,6 +457,22 @@ def test_multi_slot_synonym_slot_nouns_are_one_class_not_compound() -> None:
     assert F._slot_count("what is the fake amount and due date on the invoice?") >= 2
 
 
+def test_multi_slot_price_and_cost_are_distinct_classes_fail_open_closed() -> None:
+    """PR-32 post-merge stress test: a same-class pair is ASSUMED one fact (fails open
+    if wrong), so the money class is narrow — price/cost/value are their own classes;
+    two-different-money-facts compounds are caught again."""
+    assert F._slot_count("what is the fake purchase price and the shipping cost?") >= 2
+    assert F._slot_count(
+        "what is the fake minimum payment amount and the total cost of the plan?") >= 2
+    assert F._slot_count("what is the fake item price and the amount due?") >= 2
+    # named residuals, pinned so a change is deliberate: within-class pairs still pass
+    # (assumed one fact) — the amount/total/balance merge is the accepted narrow bet
+    assert F._slot_count(
+        "what is the fake premium amount and the total balance due?") < 2
+    assert F._slot_count(
+        "what is the fake loan term and the grace period duration?") < 2
+
+
 def test_proposer_v2_contract_names_the_gates() -> None:
     """The prompt is the other half of each mechanical gate — the contract the model is
     told must match the code that enforces it."""
