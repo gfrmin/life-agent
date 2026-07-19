@@ -111,7 +111,13 @@ QUESTION: {question}"""
 class HermesArmConfig:
     """Everything ``answer_competitor`` needs to drive one hermes run. ``run_dir`` is the
     fair-fight run's own output directory (a later task's concern) — this arm nests its own
-    scratch state under ``run_dir/arms/competitor/``, never beside it."""
+    scratch state under ``run_dir/arms/<arm_name>/``, never beside it. ``arm_name`` selects
+    which externally-driven arm this config serves (``records.EXTERNAL_ARMS``): the same
+    driver runs both the ``competitor`` (ceiling-model adversary) and the ``oracle``
+    (frontier reference policy π* — roadmap A1, 2026-07-19); each gets its own scratch tree,
+    including a separate ``hermes_home``, so their session state never interleaves. Both
+    share the SAME frozen ``PROMPT_V1`` deliberately — a difference between the two arms is
+    attributable to the model and its agentic budget, never to prompt drift."""
 
     hermes_bin: str
     run_dir: Path
@@ -120,6 +126,7 @@ class HermesArmConfig:
     provider: str = "anthropic"
     base_url: str | None = None
     timeout_s: int = 300
+    arm_name: str = "competitor"
 
 
 @dataclass(frozen=True)
@@ -135,7 +142,7 @@ class CompetitorResult:
 
 
 def _hermes_home(cfg: HermesArmConfig) -> Path:
-    return cfg.run_dir / "arms/competitor/hermes_home"
+    return cfg.run_dir / "arms" / cfg.arm_name / "hermes_home"
 
 
 def write_hermes_config(cfg: HermesArmConfig, qid: str) -> Path:
@@ -146,7 +153,7 @@ def write_hermes_config(cfg: HermesArmConfig, qid: str) -> Path:
     log despite hermes filtering the env passed to MCP subprocesses (§ module docstring)."""
     hermes_home = _hermes_home(cfg)
     hermes_home.mkdir(parents=True, exist_ok=True)
-    tool_log_path = cfg.run_dir / "arms/competitor/tool_calls" / f"{qid}.jsonl"
+    tool_log_path = cfg.run_dir / "arms" / cfg.arm_name / "tool_calls" / f"{qid}.jsonl"
     tool_log_path.parent.mkdir(parents=True, exist_ok=True)
 
     model_cfg: dict[str, Any] = {"default": cfg.model, "provider": cfg.provider}
@@ -171,7 +178,7 @@ def write_hermes_config(cfg: HermesArmConfig, qid: str) -> Path:
 
 
 def _usage_path(cfg: HermesArmConfig, qid: str) -> Path:
-    p = cfg.run_dir / "arms/competitor/usage" / f"{qid}.json"
+    p = cfg.run_dir / "arms" / cfg.arm_name / "usage" / f"{qid}.json"
     p.parent.mkdir(parents=True, exist_ok=True)
     return p
 
