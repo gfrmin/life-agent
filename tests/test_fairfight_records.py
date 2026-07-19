@@ -239,3 +239,12 @@ def test_scored_all_excluded_returns_empty() -> None:
     vecs = [_vector(question_id="q-1", status="error"),
             _vector(question_id="q-2", status="timeout")]
     assert R.scored(vecs) == []
+
+
+def test_external_arms_is_a_subset_of_arms_and_names_both_hermes_arms() -> None:
+    """Drift gate: every externally-driven arm must also be a declared arm (a vector with
+    that arm name must construct), and the set is exactly the two hermes-driven arms —
+    growing it means touching BOTH constants deliberately."""
+    assert R.EXTERNAL_ARMS <= R.ARMS
+    assert frozenset({"competitor", "oracle"}) == R.EXTERNAL_ARMS
+    assert "baseline" not in R.EXTERNAL_ARMS

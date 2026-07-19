@@ -45,8 +45,15 @@ from typing import Any
 
 FORMAT_VERSION = 1
 
-# The harness's three life-agent read-paths plus the external competitor.
-ARMS: frozenset[str] = frozenset({"baseline", "inprocess", "synthesis", "competitor"})
+# The harness's three life-agent read-paths plus the two externally-driven arms.
+ARMS: frozenset[str] = frozenset({"baseline", "inprocess", "synthesis", "competitor", "oracle"})
+
+# The hermes-CLI-driven arms (subset of ARMS -- drift-gated in tests): "competitor" is the
+# fair-fight adversary at the in-process arms' own ceiling model; "oracle" is the frontier
+# reference policy pi* (the gold-standard referee -- roadmap A1, 2026-07-19). Same driver,
+# same frozen prompt: an oracle/competitor difference is attributable to the model and its
+# agentic budget, never to prompt drift.
+EXTERNAL_ARMS: frozenset[str] = frozenset({"competitor", "oracle"})
 
 # measured: a real dollar cost was computed (core.pricing found the model).
 # estimated: no exact price but a placeholder cost was derived.
