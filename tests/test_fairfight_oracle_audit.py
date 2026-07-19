@@ -135,6 +135,36 @@ def test_main_writes_json_and_md_under_the_run_dir(tmp_path: Path,
     assert "Oracle-vs-gold audit — oracle @ ff-test" in md
 
 
+def test_main_joins_against_the_corpus_the_run_meta_pins(tmp_path: Path,
+                                                          monkeypatch: Any) -> None:
+    """A run made with --questions must be audited against THAT corpus — joining a v2
+    run's vectors to the v1 gold would adjudicate against answers the run never saw."""
+    run_dir = tmp_path / "ff-v2"
+    arm_dir = run_dir / "arms" / "oracle"
+    arm_dir.mkdir(parents=True)
+    (arm_dir / "vectors.jsonl").write_text(
+        json.dumps(_vec("q2-001", "CORRECT")) + "\n", encoding="utf-8")
+    (arm_dir / "answers.jsonl").write_text(
+        json.dumps(_ans("q2-001", "P111")) + "\n", encoding="utf-8")
+    (run_dir / "run_meta.json").write_text(json.dumps(
+        {"run_id": "ff-v2", "questions_path": "/fake/questions_v2.yaml"}),
+        encoding="utf-8")
+    seen: list[Any] = []
+
+    def _fake_load(path: Any = None) -> list[dict[str, Any]]:
+        seen.append(path)
+        return [{"id": "q2-001", "question": "what is the value?", "answer": "P111"}]
+
+    monkeypatch.setattr(OA, "load_questions", _fake_load)
+
+    assert OA.main(["--run-dir", str(run_dir)]) == 0
+    assert seen == ["/fake/questions_v2.yaml"]
+    # an explicit --questions overrides the pin
+    seen.clear()
+    assert OA.main(["--run-dir", str(run_dir), "--questions", "/fake/other.yaml"]) == 0
+    assert seen == ["/fake/other.yaml"]
+
+
 def test_main_survives_malformed_and_missing_run_meta(tmp_path: Path,
                                                        monkeypatch: Any) -> None:
     """PR-27 review Important-1: a truncated run_meta.json (non-atomic _write_json +

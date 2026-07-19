@@ -918,7 +918,14 @@ def run(
     run_dir = kb_root / "eval" / "fairfight" / run_id
     run_dir.mkdir(parents=True, exist_ok=True)  # nothing created above this point on a bad CLI arg
 
-    questions = load_questions()
+    # --questions selects an alternate corpus (e.g. the factory's questions_v2.yaml);
+    # getattr tolerance for bare Namespaces mirrors the fresh flag. The SAME resolved
+    # path feeds both load_questions and the run_meta sha256 pin — they must never
+    # diverge (the pin is the run's provenance).
+    questions_arg = getattr(args, "questions", None)
+    questions_path = (Path(questions_arg).expanduser() if questions_arg
+                      else kb_root / "eval" / "questions.yaml")
+    questions = load_questions(questions_path)
     if args.limit is not None:
         questions = questions[: args.limit]
 
@@ -927,7 +934,6 @@ def run(
     conn = (conn_factory or default_conn_factory)(db_path)
 
     try:
-        questions_path = kb_root / "eval" / "questions.yaml"
         meta = _build_run_meta(
             run_id=run_id, args=args, arms=arms, questions_path=questions_path,
             conn=conn, hermes_bin=hermes_bin)
@@ -1007,6 +1013,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
              "unresolved and the competitor arm is selected — never a hardcoded path)")
     parser.add_argument("--timeout-s", type=int, default=300)
     parser.add_argument("--limit", type=int, default=None, help="cap the question count")
+    parser.add_argument(
+        "--questions", default=None,
+        help="alternate question corpus (e.g. $LIFE_AGENT_KB/eval/questions_v2.yaml — "
+             "the factory output); default: $LIFE_AGENT_KB/eval/questions.yaml. The "
+             "run_meta questions_path/sha256 pin follows whichever file is used.")
     parser.add_argument("--no-judge", action="store_true", help="skip the LLM judge entirely")
     parser.add_argument(
         "--fresh", action="store_true",
