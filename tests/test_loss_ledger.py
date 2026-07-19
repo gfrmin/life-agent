@@ -256,3 +256,114 @@ def test_regret_is_never_negative_across_the_act_grid() -> None:
                            asserted=asserted, asserted_correct=asserted_correct,
                            declined=not asserted and bucket != "SCOPED")
                 assert one(row) >= 0.0, (bucket, answerable, gic)
+
+
+# --- v2: the empirical-pi* comparison ----------------------------------------------------
+
+def _cost_row(qid: str, bucket: str, *, asserted: bool, asserted_correct: bool,
+              cost: float | None = None, status: str = "ok") -> dict:
+    row = _row(qid, bucket, answerable=True, gold_in_corpus=True, asserted=asserted,
+               asserted_correct=asserted_correct, declined=not asserted, status=status)
+    row["cost_usd"] = cost
+    row["cost_status"] = "estimated" if cost is not None else "unavailable"
+    return row
+
+
+def test_pi_star_shortfall_positive_when_reference_answers_what_arm_withheld() -> None:
+    arm = [_cost_row("q-901", "WRONGLY_WITHHELD", asserted=False, asserted_correct=False)]
+    ref = [_cost_row("q-901", "CORRECT", asserted=True, asserted_correct=True)]
+    per_q, only_arm, only_ref = LL.pi_star_samples(
+        arm, ref, _fake_posterior(), oracle_p=_ORACLE_P, n_samples=1, seed=7)
+    # u_correct(1.0) - u_abstain(0.0) = +1.0: the arm's shortfall
+    assert per_q["q-901"][0] == pytest.approx(1.0)
+    assert only_arm == () and only_ref == ()
+
+
+def test_pi_star_shortfall_negative_when_arm_beats_the_fallible_reference() -> None:
+    # The q-014 shape from the live audit: the arm rightly held back, the frontier
+    # reference confidently asserted a stale value. Regret vs pi* MUST go negative.
+    arm = [_cost_row("q-902", "CORRECT", asserted=True, asserted_correct=True)]
+    ref = [_cost_row("q-902", "CONFIDENT_WRONG", asserted=True, asserted_correct=False)]
+    per_q, _, _ = LL.pi_star_samples(
+        arm, ref, _fake_posterior(), oracle_p=_ORACLE_P, n_samples=1, seed=7)
+    # u_wrong(-6.0) - u_correct(1.0) = -7.0: the arm beat pi*
+    assert per_q["q-902"][0] == pytest.approx(-7.0)
+
+
+def test_pi_star_unjoined_questions_are_named_never_dropped() -> None:
+    arm = [_cost_row("q-901", "CORRECT", asserted=True, asserted_correct=True),
+           _cost_row("q-903", "CORRECT", asserted=True, asserted_correct=True)]
+    ref = [_cost_row("q-901", "CORRECT", asserted=True, asserted_correct=True),
+           _cost_row("q-904", "CORRECT", asserted=True, asserted_correct=True)]
+    per_q, only_arm, only_ref = LL.pi_star_samples(
+        arm, ref, _fake_posterior(), oracle_p=_ORACLE_P, n_samples=1, seed=7)
+    assert set(per_q) == {"q-901"}
+    assert only_arm == ("q-903",)
+    assert only_ref == ("q-904",)
+
+
+def test_pi_star_cost_ratio_over_joined_rows_only() -> None:
+    arm = [_cost_row("q-901", "CORRECT", asserted=True, asserted_correct=True, cost=0.10),
+           _cost_row("q-903", "CORRECT", asserted=True, asserted_correct=True, cost=9.99)]
+    ref = [_cost_row("q-901", "CORRECT", asserted=True, asserted_correct=True, cost=0.50),
+           _cost_row("q-904", "CORRECT", asserted=True, asserted_correct=True, cost=9.99)]
+    ps = LL.build_pi_star(arm, ref, _fake_posterior(), ref_run_id="ff-ref", ref_arm="oracle",
+                          oracle_p=_ORACLE_P, n_samples=1, seed=7)
+    # q-903/q-904 are unjoined: their costs must NOT enter either side
+    assert ps.arm_cost_usd == pytest.approx(0.10)
+    assert ps.ref_cost_usd == pytest.approx(0.50)
+    assert ps.cost_ratio == pytest.approx(0.2)
+    assert ps.only_in_arm == ("q-903",) and ps.only_in_ref == ("q-904",)
+
+
+def test_pi_star_cost_ratio_none_when_a_side_is_unpriced() -> None:
+    arm = [_cost_row("q-901", "CORRECT", asserted=True, asserted_correct=True, cost=None)]
+    ref = [_cost_row("q-901", "CORRECT", asserted=True, asserted_correct=True, cost=0.50)]
+    ps = LL.build_pi_star(arm, ref, _fake_posterior(), ref_run_id="ff-ref", ref_arm="oracle",
+                          oracle_p=_ORACLE_P, n_samples=1, seed=7)
+    assert ps.arm_cost_usd is None
+    assert ps.cost_ratio is None
+
+
+def test_ledger_with_pi_star_renders_and_round_trips(tmp_path: Path) -> None:
+    run_dir = _write_run(tmp_path, _synthetic_rows())
+    ref_dir = run_dir / "arms" / "oracle"
+    ref_dir.mkdir(parents=True)
+    ref_rows = [
+        _cost_row("q-901", "CORRECT", asserted=True, asserted_correct=True, cost=0.25),
+        # the reference answers what the arm withheld (q-903) -> positive shortfall
+        _cost_row("q-903", "CORRECT", asserted=True, asserted_correct=True, cost=0.25),
+        # ...and is confidently wrong where the arm was right at q-902?
+        # No: q-902 is the ARM's CW. The reference abstains there -> shortfall negative
+        # (abstain 0.0 vs the arm's u_wrong -6.0 => pi* - arm = +6.0, still positive).
+        _cost_row("q-902", "WRONGLY_WITHHELD", asserted=False, asserted_correct=False,
+                  cost=0.25),
+    ]
+    (ref_dir / "vectors.jsonl").write_text(
+        "".join(json.dumps(r) + "\n" for r in ref_rows), encoding="utf-8")
+
+    ledger = LL.load_and_build(run_dir, "baseline", _fake_posterior(), oracle_p=_ORACLE_P,
+                               n_samples=50, seed=7, pi_star_arm="oracle")
+    assert ledger.pi_star is not None
+    assert ledger.pi_star.n_joined == 3  # q-901..q-903 (q-904/905 not in ref; 905 infra)
+    # q-903: ref correct vs arm abstain = +1; q-902: ref abstain vs arm wrong = +6
+    by_q = {pq.question_id: pq for pq in ledger.pi_star.per_question}
+    assert by_q["q-902"].mean == pytest.approx(6.0)
+    assert by_q["q-903"].mean == pytest.approx(1.0)
+    assert ledger.pi_star.total_mean == pytest.approx(7.0)
+
+    d = LL.to_json_dict(ledger)
+    assert json.loads(json.dumps(d, sort_keys=True)) == d
+    assert d["pi_star"]["n_joined"] == 3
+    md = LL.render_md(ledger)
+    assert "## Versus the empirical π* (oracle @" in md
+    assert "negative = the arm beat π\\*" in md
+
+
+def test_ledger_without_reference_vectors_degrades_to_v1(tmp_path: Path) -> None:
+    run_dir = _write_run(tmp_path, _synthetic_rows())
+    ledger = LL.load_and_build(run_dir, "baseline", _fake_posterior(), oracle_p=_ORACLE_P,
+                               n_samples=10, seed=7, pi_star_arm="oracle")
+    assert ledger.pi_star is None
+    assert LL.to_json_dict(ledger)["pi_star"] is None
+    assert "Versus the empirical" not in LL.render_md(ledger)
