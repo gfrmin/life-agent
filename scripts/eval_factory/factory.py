@@ -10,9 +10,12 @@ before a question is admitted. The owner audits a seeded sample, one bit per row
 
 1. **Propose.** The generator sees ONE chunk (+ its source path) and proposes a question
    whose answer is a value in that chunk — or skips. Its output is a strict-JSON object.
-2. **Ground.** The proposed gold must be token-present in the source chunk
-   (``core.matching.answer_matches`` against the chunk text) — a mechanical gate; a
-   hallucinated gold never reaches verification.
+2. **Ground.** Two mechanical gates: the proposed gold must be token-present in the
+   source chunk (``core.matching.answer_matches`` against the chunk text — a hallucinated
+   gold never reaches verification), and must NOT be quoted in the question text itself —
+   a self-quoting question ("what is my policy number P111222?") would smuggle the gold
+   into the verifier's retrieval query AND its prompt's QUESTION line, so "independent"
+   verification would never actually occur (rejected as ``gold_in_question``).
 3. **Dedup.** Normalised question text must be new for this run.
 4. **Verify (independent).** The verifier receives ONLY the question text; it retrieves
    its own top-k over the SAME pkm FTS surface the answer arms use
@@ -103,10 +106,18 @@ QUESTION: {question}
 CONTEXT:
 {context}"""
 
-_NOT_FOUND = "NOT_FOUND"
+_NOT_FOUND_RE = re.compile(r"^not[_\s-]?found\b", re.IGNORECASE)
 
 # complete(system, user) -> the model's text. Injected so tests never touch a network.
 Complete = Callable[[str, str], str]
+
+
+def _fill(template: str, mapping: dict[str, str]) -> str:
+    """Single-pass placeholder substitution. Chained ``str.replace`` re-scans substituted
+    content, so LLM/corpus text containing a literal ``{context}``/``{question}`` would be
+    expanded on the next pass — one regex scan closes that injection class."""
+    return re.sub(r"\{(" + "|".join(map(re.escape, mapping)) + r")\}",
+                  lambda m: mapping[m.group(1)], template)
 
 
 @dataclass(frozen=True)
@@ -148,6 +159,7 @@ def sample_chunks(conn: Any, *, min_chars: int, limit: int, seed: int) -> list[d
         JOIN sources s ON a.input_hash = s.source_id
         JOIN path_current pc ON s.source_id = pc.source_id
         WHERE length(c.chunk_text) >= ?
+        ORDER BY c.chunk_id
         """,
         [min_chars],
     ).fetchall()
@@ -186,8 +198,8 @@ def _parse_json(text: str) -> dict[str, Any] | None:
 def propose(chunk: dict[str, Any], complete: Complete) -> dict[str, Any] | None:
     """One proposal for one chunk: the parsed JSON dict, ``{"skip": true}``, or None on a
     malformed reply (counted, never raised)."""
-    user = PROPOSER_V1.replace("{source_path}", chunk["source_path"]).replace(
-        "{chunk}", chunk["chunk_text"])
+    user = _fill(PROPOSER_V1,
+                 {"source_path": chunk["source_path"], "chunk": chunk["chunk_text"]})
     return _parse_json(complete("You emit strict JSON only.", user))
 
 
@@ -207,9 +219,9 @@ def verify(question: str, answer: str, variants: list[str], conn: Any,
         f"[{i + 1}] ({h.source_path})\n{h.chunk_text}" for i, h in enumerate(hits))
     reply = complete(
         "You answer from the provided context only.",
-        VERIFIER_V1.replace("{question}", question).replace("{context}", context),
+        _fill(VERIFIER_V1, {"question": question, "context": context}),
     ).strip()
-    if not reply or reply.upper().startswith(_NOT_FOUND):
+    if not reply or _NOT_FOUND_RE.match(reply):
         return False, reply
     return answer_matches(answer, variants, reply), reply
 
@@ -236,9 +248,22 @@ def run_factory(conn: Any, propose_complete: Complete, verify_complete: Complete
             continue
         question = str(obj.get("question", "")).strip()
         answer = str(obj.get("answer", "")).strip()
-        variants = [str(v) for v in obj.get("answer_variants", []) or []]
+        raw_variants = obj.get("answer_variants") or []
+        if not isinstance(raw_variants, list):
+            # a bare string here would iterate CHARACTERS into single-char "variants" —
+            # eval-corpus contamination; the strict-JSON contract was violated, reject.
+            result.rejections["parse_error"] += 1
+            continue
+        variants = [str(v) for v in raw_variants]
         if not question or not answer:
             result.rejections["parse_error"] += 1
+            continue
+        if answer_matches(answer, variants, question):
+            # the question quotes its own gold: FTS on the question text would rank the
+            # source chunk by the smuggled token and the verifier could read the answer
+            # off its own QUESTION line — "independent" verification never happens.
+            # The protocol's Critical hole (PR-29 review); mechanically gated out.
+            result.rejections["gold_in_question"] += 1
             continue
         if not answer_matches(answer, variants, chunk["chunk_text"]):
             result.rejections["ungrounded"] += 1  # the gold is NOT in its own chunk
