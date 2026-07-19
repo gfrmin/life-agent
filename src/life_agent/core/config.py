@@ -61,7 +61,7 @@ UTILITY_ELICITATIONS = KB / "utility" / "elicitations.jsonl"
 
 # --- Membrane shadow (membrane-shadow feature, Task 5) ---
 # The shadow supervisor (life_agent.membrane.shadow.MembraneShadow) runs the frozen
-# proplang-govhost decider beside the production bridge, off the SAME live traffic,
+# proplang-host decider beside the production bridge, off the SAME live traffic,
 # never on the decision path itself. Its env-name constants live here (not in
 # life_agent.membrane.client, which independently defines the identical two names for
 # its own from_env() — core never imports the membrane package, so the two are
@@ -90,7 +90,7 @@ def membrane_shadow_log() -> Path:
 
 
 def membrane_command() -> list[str] | None:
-    """The proplang-govhost launch argv, shell-split — ``None`` when unset, which is
+    """The proplang-host launch argv, shell-split — ``None`` when unset, which is
     the shadow's enable/disable switch (the bridge constructs a MembraneShadow iff this
     is not None)."""
     raw = os.environ.get(MEMBRANE_COMMAND_ENV)

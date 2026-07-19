@@ -11,6 +11,7 @@ proplang world/session shape, which later tasks add.
 from __future__ import annotations
 
 import json
+import os
 import shlex
 import sys
 
@@ -185,3 +186,26 @@ def test_spawn_eof_on_child_exit_raises_membrane_error() -> None:
             client.request({"ping": 1})
     finally:
         client.shutdown()
+
+
+def test_spawn_failure_closes_both_pty_fds(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A spawn that never produces a process (ENOENT) must not leak the pty pair —
+    the supervisor's respawn loop would otherwise leak one pair per attempt against
+    a bad command (e.g. a typo'd LIFE_AGENT_MEMBRANE_COMMAND in the prod drop-in)."""
+    import pty as _pty
+
+    opened: list[int] = []
+    real_openpty = _pty.openpty
+
+    def recording_openpty() -> tuple[int, int]:
+        master, slave = real_openpty()
+        opened.extend((master, slave))
+        return master, slave
+
+    monkeypatch.setattr("life_agent.membrane.client.pty.openpty", recording_openpty)
+    with pytest.raises(FileNotFoundError):
+        MembraneClient.spawn(["/fake/nonexistent-engine-binary"], log=lambda _m: None)
+    assert len(opened) == 2
+    for fd in opened:
+        with pytest.raises(OSError):
+            os.fstat(fd)

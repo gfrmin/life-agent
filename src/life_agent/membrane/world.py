@@ -284,7 +284,7 @@ def respond_threshold(u_bar: Mapping[str, float]) -> float | None:
 
     NOT merely respond-vs-abstain: the engine argmaxes over EVERY row, so respond must also
     outbid the information actions, which under the perfect-information bake-in
-    (:func:`utility_rows`) are worth more than abstain at any p1 above their own cost. Each
+    (:func:`utility_by_action`) are worth more than abstain at any p1 above their own cost. Each
     row's EU is linear in p1 and respond's slope (``u_correct - u_wrong``) is the steepest
     (since ``u_wrong < u_abstain``), so respond overtakes each competitor at exactly one
     crossing and the binding bar is the LAST of them.
