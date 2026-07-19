@@ -293,8 +293,8 @@ def _probe_corroborate(deps: BridgeDeps, p: Payload) -> Payload:
             idx = next((i for i, c in enumerate(candidates) if LK._norm_value(c) == vn), None)
             if idx is None:
                 # The join must not read a CONFIRMING sentence as a disagreement (the q-011
-                # pooling loss: the strong read confirmed the
-                # grounded passport leader inside a full sentence; exact equality returned no observation and
+                # pooling loss: the strong read confirmed the grounded passport leader
+                # inside a full sentence; exact equality returned no observation and
                 # the replace-contract erased the grounded channel). A candidate uniquely
                 # contained in the re-read value — the graders' own token-boundary matcher —
                 # is the confirmed leader; two contained candidates settle nothing and keep
