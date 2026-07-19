@@ -133,3 +133,52 @@ def test_main_writes_json_and_md_under_the_run_dir(tmp_path: Path,
     assert audit["arm_config"] == {"model": "fake-frontier"}
     md = (run_dir / "audit" / "oracle_vs_gold.md").read_text()
     assert "Oracle-vs-gold audit — oracle @ ff-test" in md
+
+
+def test_main_survives_malformed_and_missing_run_meta(tmp_path: Path,
+                                                       monkeypatch: Any) -> None:
+    """PR-27 review Important-1: a truncated run_meta.json (non-atomic _write_json +
+    interrupted run) must cost the header fields, never the audit."""
+    for name, meta_bytes in (("corrupt", b'{"run_id": "ff-tr'), ("missing", None)):
+        run_dir = tmp_path / name
+        arm_dir = run_dir / "arms" / "oracle"
+        arm_dir.mkdir(parents=True)
+        (arm_dir / "vectors.jsonl").write_text(
+            json.dumps(_vec("q-001", "CORRECT")) + "\n", encoding="utf-8")
+        (arm_dir / "answers.jsonl").write_text(
+            json.dumps(_ans("q-001", "P111")) + "\n", encoding="utf-8")
+        if meta_bytes is not None:
+            (run_dir / "run_meta.json").write_bytes(meta_bytes)
+        monkeypatch.setattr(OA, "load_questions", _qs)
+
+        assert OA.main(["--run-dir", str(run_dir)]) == 0
+        audit = json.loads((run_dir / "audit" / "oracle_vs_gold.json").read_text())
+        assert audit["agreement_rate"] == 1.0
+        assert audit["run_id"] == name  # fallback: the run dir's own name
+        assert audit["arm_config"] is None
+
+
+def test_scoped_rows_are_listed_without_the_three_way_checklist() -> None:
+    audit = _build([_vec("q-001", "SCOPED")], [_ans("q-001", "P111 (as of earlier)")])
+    md = OA.render_md(audit)
+    assert "### q-001 — scoped (SCOPED)" in md
+    assert "[ ] oracle_right" not in md  # not a factual dispute — no owner bit pulled
+    assert "no adjudication required" in md
+
+
+def test_not_in_gold_placeholder_is_distinct_from_unanswerable(tmp_path: Path) -> None:
+    audit = OA.build_audit(
+        [_vec("q-999", "CONFIDENT_WRONG"), _vec("q-004", "CONFIDENT_WRONG",
+                                                 answerable=False)],
+        [_ans("q-999", "P000"), _ans("q-004", "P000")],
+        _qs(), arm="oracle", run_id="ff-test", arm_config=None)
+    md = OA.render_md(audit)
+    assert "**gold:** (not in the gold file)" in md          # q-999: lookup gap
+    assert "**gold:** (none — marked unanswerable)" in md    # q-004: real semantics
+
+
+def test_zero_scored_is_named_not_a_clean_bill(tmp_path: Path) -> None:
+    audit = _build([_vec("q-001", "CORRECT", status="error")], [_ans("q-001", "")])
+    md = OA.render_md(audit)
+    assert "Nothing was scored (n=0)" in md
+    assert "agrees with the gold everywhere" not in md
