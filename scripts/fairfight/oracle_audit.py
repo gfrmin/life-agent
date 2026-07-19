@@ -48,6 +48,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from run_eval import load_questions
 
+from life_agent.fairfight import records as REC
+
 # bucket -> audit class (see module docstring). Unknown buckets map to "other" and are
 # listed, never silently dropped.
 _AUDIT_CLASS: dict[str, str] = {
@@ -58,8 +60,12 @@ _AUDIT_CLASS: dict[str, str] = {
     "SCOPED": "scoped",
 }
 
-# The classes that get an owner-adjudication checklist row in the md.
+# The classes listed in the disagreement queue. Only _CHECKLIST classes get the three-way
+# adjudication tick — a SCOPED answer is "an honest non-answer... never the sin"
+# (triage_grading's own vocabulary), not a factual dispute, so it gets a lighter callout
+# instead of pulling an owner bit that doesn't apply.
 _ADJUDICATE = ("disagree_value", "oracle_miss", "scoped", "other")
+_CHECKLIST = ("disagree_value", "oracle_miss", "other")
 
 
 def _read_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -85,7 +91,7 @@ def build_audit(
     q_by_id = {str(q["id"]): q for q in questions}
     text_by_id = {str(a["question_id"]): a.get("text", "") for a in answers}
 
-    scored = [v for v in vectors if v.get("status") == "ok"]
+    scored = REC.scored(vectors)  # the ONE canonical scored-population filter
     excluded = [v for v in vectors if v.get("status") != "ok"]
 
     rows: list[dict[str, Any]] = []
@@ -94,6 +100,7 @@ def build_audit(
         q = q_by_id.get(qid, {})
         rows.append({
             "question_id": qid,
+            "in_gold": qid in q_by_id,
             "question": q.get("question", "(question not in the gold file)"),
             "gold": q.get("answer", ""),
             "oracle_text": text_by_id.get(qid, ""),
@@ -152,20 +159,28 @@ def render_md(audit: dict[str, Any]) -> str:
         "",
         "## Disagreements (the adjudication queue)",
     ]
-    if not audit["disagreements"]:
+    if audit["n_scored"] == 0:
+        lines += ["", "**Nothing was scored (n=0)** — no evaluation happened; this is "
+                       "NOT a clean bill of health."]
+    elif not audit["disagreements"]:
         lines += ["", "None — the oracle agrees with the gold everywhere it was scored."]
     for r in audit["disagreements"]:
+        gold_display = r["gold"] or (
+            "(none — marked unanswerable)" if r["in_gold"] else "(not in the gold file)")
         lines += [
             "",
             f"### {r['question_id']} — {r['audit_class']} ({r['bucket']}"
             + (f" / {r['cause']}" if r["cause"] else "") + ")",
             "",
             f"**Q:** {r['question']}",
-            f"**gold:** {r['gold'] or '(none — marked unanswerable)'}",
+            f"**gold:** {gold_display}",
             f"**oracle said:** {r['oracle_text'] or '(empty)'}",
-            "",
-            "adjudicate: `[ ] oracle_right   [ ] gold_right   [ ] both_wrong`",
         ]
+        if r["audit_class"] in _CHECKLIST:
+            lines += ["", "adjudicate: `[ ] oracle_right   [ ] gold_right   [ ] both_wrong`"]
+        else:
+            lines += ["", "_scoped — no adjudication required; flag only if the scope "
+                          "itself is wrong._"]
     lines += [
         "",
         "## All scored rows",
@@ -200,7 +215,11 @@ def main(argv: list[str] | None = None) -> int:
     answers = _read_jsonl(arm_dir / "answers.jsonl")
     try:
         meta = json.loads((run_dir / "run_meta.json").read_text(encoding="utf-8"))
-    except OSError:
+    except (OSError, json.JSONDecodeError):
+        # fail-open, same as arm_hermes's usage-file read: a missing OR truncated/corrupt
+        # run_meta.json (run_fairfight's _write_json is not atomic — an interrupted run
+        # is exactly what a post-hoc audit tool meets) costs the header fields, never
+        # the audit.
         meta = {}
     audit = build_audit(
         vectors, answers, load_questions(), arm=args.arm,
