@@ -120,10 +120,14 @@ def grade_retrieval(conn, q: dict, k: int) -> dict:
     variants = q["answer_variants"]
     distractors = q["distractors"] if q["subject"] != "n/a" else []
 
-    # Top-k chunks across all search_queries (union).
+    # Top-k chunks across all search_queries (union). Corpora without authored
+    # search_queries (the factory's questions_v2.yaml emits none) fall back to the
+    # question text itself — otherwise topk stays empty and PASS is structurally
+    # unreachable, misreporting the corpus as total retrieval failure. No-op for the
+    # v1 corpus (every question authors its queries).
     topk_texts: list[str] = []
     top_snippet = ""
-    for query in q["search_queries"]:
+    for query in q["search_queries"] or [q["question"]]:
         for hit in search(conn, query, k=k):
             topk_texts.append(hit.chunk_text)
             if not top_snippet:

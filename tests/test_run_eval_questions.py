@@ -66,3 +66,57 @@ def test_empty_questions_list_fails_fast(tmp_path: Path) -> None:
     p = _write(tmp_path / "alt.yaml", [])
     with pytest.raises(SystemExit):
         RE.load_questions(p)
+
+
+class _Hit:
+    chunk_text = "the value is P123"
+    score = 1.0
+    source_path = "/fake/a.txt"
+
+
+def test_grade_retrieval_falls_back_to_question_text_without_search_queries(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """PR-31 review Important-1: a corpus with no authored search_queries (the factory's
+    questions_v2.yaml emits none) must not make PASS structurally unreachable — the
+    question text itself becomes the query."""
+    import pkm.retrieval as PR
+
+    seen: list[str] = []
+
+    def _search(conn: object, query: str, k: int = 20) -> list[_Hit]:
+        seen.append(query)
+        return [_Hit()]
+
+    monkeypatch.setattr(PR, "search", _search)
+    p = _write(tmp_path / "alt.yaml",
+               [{"id": "q2-001", "question": "what is the value?", "answer": "P123"}])
+    q = RE.load_questions(p)[0]
+
+    row = RE.grade_retrieval(None, q, k=5)
+
+    assert seen == ["what is the value?"]  # the fallback query, nothing else
+    assert row["verdict"] == "PASS"
+
+
+def test_grade_retrieval_authored_search_queries_still_win(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The fallback is empty-only: authored queries are used verbatim and the question
+    text is NOT appended (no behavior change for the v1 corpus)."""
+    import pkm.retrieval as PR
+
+    seen: list[str] = []
+
+    def _search(conn: object, query: str, k: int = 20) -> list[_Hit]:
+        seen.append(query)
+        return [_Hit()]
+
+    monkeypatch.setattr(PR, "search", _search)
+    p = _write(tmp_path / "alt.yaml",
+               [{"id": "q-001", "question": "what is the value?", "answer": "P123",
+                 "search_queries": ["P123", "the value"]}])
+    q = RE.load_questions(p)[0]
+
+    row = RE.grade_retrieval(None, q, k=5)
+
+    assert seen == ["P123", "the value"]
+    assert row["verdict"] == "PASS"

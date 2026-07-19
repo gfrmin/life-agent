@@ -229,7 +229,8 @@ def main(argv: list[str] | None = None) -> int:
     # join against the corpus the run actually answered (run_meta's pin), unless
     # overridden; the zero-arg call is kept distinct so the KB default stays reachable
     # when the pin is absent (fail-open meta).
-    questions_src = args.questions or meta.get("questions_path")
+    meta_qp = meta.get("questions_path")
+    questions_src = args.questions or (meta_qp if isinstance(meta_qp, str) else None)
     questions = load_questions(questions_src) if questions_src else load_questions()
     audit = build_audit(
         vectors, answers, questions, arm=args.arm,
