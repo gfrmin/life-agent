@@ -21,6 +21,7 @@ The mirror leg must never delay an already-computed answer. Two guards enforce t
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import urllib.request
 from typing import Any
@@ -63,6 +64,19 @@ def mirror_decide(mirror_post: EX.Post, bridge: str, question_id: str, url: str,
         return True
     except Exception:
         return False
+
+
+def mirror_gate(bridge: str, question_id: str, gate: str, *,
+                mirror_post: EX.Post = _default_mirror_post) -> None:
+    """Fan one seam gate pre-emption out to the shadow's `/gate-support` (M2 advisory) —
+    fired at the two declared-gate commit sites (`scripts/ask.py`'s weak-retrieval and
+    executor-down observations into `core.seam.commit`), AFTER the gate's abstain is
+    already committed, so it can never alter or delay the act. Fail-open and one-shot on
+    the mirror leg's own short-timeout transport (never a real-leg poster): a down bridge
+    is an instant connection refusal, a wedged one costs at most `MIRROR_TIMEOUT_S` once
+    (gates fire at most once per question, so no breaker is needed)."""
+    with contextlib.suppress(Exception):
+        mirror_post(f"{bridge}/gate-support", {"question_id": question_id, "gate": gate})
 
 
 def shadow_wrapped_post(post: EX.Post, bridge: str, question_id: str, *,
