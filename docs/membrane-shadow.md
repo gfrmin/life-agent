@@ -638,3 +638,78 @@ persistent session's marginal decide tick is ~50ms. Session-per-question handsha
 viable at today's evidence volume but the replay grows linearly (~26ms per verdict), so
 E2's per-question act sets need a warm-counts boot (or a rider change) before the
 verdict stream reaches O(1k) — a need-note for B4, not a blocker for M2/M3.
+
+## 14. M3 — the coarse menu live: LANDED (2026-07-19), flag-gated
+
+The engine's coarse act — abstain / gather / ask / respond — IS the committed act on the
+executor read-path when `LIFE_AGENT_MEMBRANE_LIVE=1`. Absence of the flag (the default,
+and production's state until the owner flips it) is byte-for-byte the credence daemon's
+decision; **rollback is unsetting the flag**. No proplang/wire change — the live consult
+is the same decide tick the shadow always sent, so no gfrmin/proplang issue was needed.
+
+**The seam re-point (M0's promise kept).** `core.seam.DaemonDecide` gains an injected
+`live` consult; `commit()` still posts the daemon `/decide` first (the posterior is the
+engine's feature context AND the transitional value source), then commits the consult's
+rewrite of the daemon view. The executor loop is unchanged — it reads one view shape
+whichever decider produced it.
+
+**The consult path.** Host closure (`membrane.coarse.live_decide`, its own
+`LIVE_TIMEOUT_S=20s` transport) → bridge `POST /decide-live` → `MembraneShadow.
+decide_live` (a reply-slot queue item; the worker still owns every session, bounded wait
+`_LIVE_WAIT_S=10s`) → one engine decide on the PRIMARY form + the coarse mapping
+(`membrane.coarse.map_action`) → the mapped view back to the seam. One `kind: "enact"`
+row per consult on the one stream: `action` (engine), `daemon_effector` (what credence
+would have done), `real_effector` (what the host enacted), `degraded` (named), the
+summary, the readouts. A terminal enactment also feeds the reaction-binding summary map,
+because under the flag the live path REPLACES the decide mirror (one engine, one consult
+per tick — the wrapped post stays off).
+
+**Transitional rules (each named, each with its exit):**
+
+- **Agreement passes through** — engine coarse act == the daemon effector's coarse class
+  (`world.REAL_TO_MEMBRANE`, now single-sourced in src; the report reads the same dict)
+  ⇒ the daemon's finer selection stands (report vs hedge, which probe). Exit: M5
+  fine-grained acts.
+- **respond → host MAP** — the engine holds no per-candidate posterior (E1 not built);
+  an engine respond over a daemon withhold asserts the argmax-credence candidate. No
+  well-formed posterior ⇒ `respond_no_value` ⇒ abstain. Exit: E1.
+- **gather → cheapest unapplied voi transform** (payload menu order — the k=0 walk's own
+  precedent); guards never selected. Exhausted ⇒ `gather_exhausted`: argmax over the
+  enactable remainder {abstain, ask, respond} at the engine's OWN p1 readout under the
+  world's one utility source (`world.eu_by_action`); missing p1/u_bar ⇒ `no_p1` ⇒
+  abstain. Exit: E3 (engine-held stop-rule).
+- **Engine down/malformed ⇒ DECLARED abstain** — `seam.GATE_ENGINE_DOWN`, committed by
+  policy at the seam with the posterior kept for an honest render; never a silent host
+  fallback. Fires on: bridge down, membrane disabled, primary form dead, engine death
+  mid-tick, full queue, either timeout.
+
+**Named coverage boundaries (unchanged from §13, restated where M3 touches them):** the
+narrative family and the P1 lookup stay outside the live path (route-declined questions
+never reach `/decide`; `--legacy` never runs in production). The k=0 miss path (zero
+extracted candidates) also stays host-held: the daemon requires k≥1, so there is no
+decide tick to re-point; its grow walk is already the body's declared menu-order rule.
+Staged with E2/M5.
+
+**Report §2c** (`enactment()`): enact rows counted by engine action, by
+`daemon->enacted` transition, and by degradation; they never enter the §2 differential
+(an enactment is not a would-vs-did tick).
+
+**Expected posture at flip, stated up front:** §13's ledger shows the engine's p1 ceiling
+~0.34 on its 13-verdict evidence stream — under the flag the system will be
+gather-then-withhold-heavy until verdicts accrue (respond's reachability bar is far above
+0.34). That is the honest consequence of giving the act to a young posterior, not a bug;
+the verdict stream (which the live path keeps feeding) is what raises it.
+
+**Review round (PR #37, 2026-07-19):** no Critical/Important findings; flag-off inertness,
+answer-path fail-closed layers, loop termination against an always-gather engine, the
+reply-slot threading, and the EU arithmetic all independently verified. Two Minors, both
+handled: (1) flag-branching wiring pins added for all three callers
+(test_ask_mirror / test_ask_client / test_eval_executor_mirror); (2) a NAMED latent:
+`coarse._gather` selects probes from the payload's transform menu without an assertion
+that `run_pass`'s enactment branches recognise the name — safe under DEFAULT_TRANSFORMS
+(all voi probes are `corroborate_*`), falls to a non-terminal `else: break` only if a
+future voi transform ships an unrecognised probe (the same latency the daemon's own
+schedule already has). Revisit when the transform menu next grows. Reviewer note kept
+open-eyed for the prod flip: the single-threaded bridge serialises `/decide-live` behind
+every other request — a stalled engine costs concurrent bridge callers up to
+`_LIVE_WAIT_S` per tick; concurrency remains the deliberate Move-4 deferral.

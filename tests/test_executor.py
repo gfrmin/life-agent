@@ -549,3 +549,54 @@ def test_zero_candidates_without_grow_lane_stays_miss() -> None:
     assert view["effector"] == "miss"
     assert fake.posted("/probe/corroborate") == []
     assert fake.posted("/decide") == []
+
+
+# --- M3: the live coarse-menu consult threads through to the seam ------------------------
+
+def test_live_consult_rewrites_the_terminal_view() -> None:
+    # the daemon says report; the injected live consult (the seam's DaemonDecide.live)
+    # overrides to abstain — the loop terminates on the REWRITTEN view.
+    fake = FakeServices(
+        route={"construct": "passport number", "time_indexed": False},
+        decides=[{"effector": "report", "value": "P123", "credences": [0.9],
+                  "p_none": 0.05, "eu": 0.8}])
+    consults: list[tuple[dict[str, Any], dict[str, Any]]] = []
+
+    def live(payload: dict[str, Any], dec: dict[str, Any]) -> tuple[dict[str, Any], str | None]:
+        consults.append((payload, dec))
+        return ({**dec, "effector": "abstain", "value": None}, None)
+
+    view = _loop(fake, grow=False, live=live)
+    assert view["effector"] == "abstain"
+    assert view["asserted"] == []
+    assert len(consults) == 1
+    assert consults[0][1]["effector"] == "report"  # consulted with the daemon's own reply
+
+
+def test_live_consult_gather_override_enacts_the_probe() -> None:
+    # daemon terminal-abstains twice; the live consult overrides the FIRST to a gather at
+    # the haiku tier (the transitional fine selection) and passes the second through — the
+    # loop enacts the corroborate re-read exactly as a daemon-scheduled gather.
+    fake = FakeServices(
+        route={"construct": "tax id", "time_indexed": False},
+        corroborate={"observations": [{"reports": 0, "group": 0, "authority": 1.0,
+                                       "subject_factor": 1.0, "time_factor": 1.0}],
+                     "gather_rho": 0.80, "value": "P123"},
+        decides=[{"effector": "abstain", "value": None, "credences": [0.5],
+                  "p_none": 0.4, "eu": 0.0},
+                 {"effector": "abstain", "value": None, "credences": [0.6],
+                  "p_none": 0.3, "eu": 0.0}])
+    calls = iter([("gather", "corroborate_haiku"), (None, None)])
+
+    def live(payload: dict[str, Any], dec: dict[str, Any]) -> tuple[dict[str, Any], str | None]:
+        eff, probe = next(calls)
+        if eff is None:
+            return (dec, None)
+        return ({**dec, "effector": eff, "probe": probe}, None)
+
+    view = _loop(fake, grow=False, live=live)
+    assert view["effector"] == "abstain"
+    corr = fake.posted("/probe/corroborate")
+    assert len(corr) == 1
+    assert corr[0]["model"] == "claude-haiku-4-5"
+    assert len(fake.posted("/decide")) == 2

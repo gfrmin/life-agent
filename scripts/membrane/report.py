@@ -38,6 +38,9 @@ Report structure:
     2b. ``gates``           — seam gate pre-emptions (`kind: "gate"`): where the host
                               abstained before any engine saw the question, and what the
                               engine would have done instead (M2 advisory).
+    2c. ``enactments``      — live enactments (`kind: "enact"`, M3): ticks where the
+                              engine's coarse act WAS the committed act, counted by engine
+                              action, daemon->enacted transition, and named degradation.
     3. ``grounded``         — (only with ``--vectors``) the join's own arithmetic, then
                               contingency tables + realized loss per decision, against the
                               fair-fight baseline arm. The two sides speak DIFFERENT id
@@ -362,15 +365,11 @@ def form_stats(
 
 # --- 2. the differential vs the incumbent -----------------------------------------------
 
-# The executor's own effector vocabulary (core/executor.py's `_WITHHOLD`, core/gate.py's
-# `ASSERT_ACTIONS`/`WITHHOLD_ACTIONS`, and the daemon-scheduled "gather" steer) mapped
-# onto the world's four affordances. A NAMED, printed legend — never a silent guess.
-REAL_TO_MEMBRANE: dict[str, str] = {
-    "report": "respond", "report_scoped": "respond", "hedge": "respond",
-    "abstain": "abstain", "miss": "abstain",
-    "ask_clarify": "ask",
-    "gather": "gather",
-}
+# The executor's effector vocabulary folded onto the world's four affordances — the ONE
+# source is life_agent.membrane.world.REAL_TO_MEMBRANE (M3's live mapping reads the same
+# dict, so the report and the enactment path cannot drift). A NAMED, printed legend —
+# never a silent guess.
+REAL_TO_MEMBRANE: dict[str, str] = W.REAL_TO_MEMBRANE
 
 LEGEND_LINES: tuple[str, ...] = (
     "report|report_scoped|hedge -> respond",
@@ -508,6 +507,33 @@ def gate_advisory(records: list[dict[str, Any]], form: str) -> dict[str, Any]:
                     for g, c in sorted(by_gate.items())},
         "note": GATE_NOTE,
     }
+
+
+ENACT_NOTE = (
+    "Live enactments (kind: enact) are M3 ticks where the ENGINE's coarse act WAS the "
+    "committed act (flag LIFE_AGENT_MEMBRANE_LIVE=1): action = the engine's affordance, "
+    "real_effector = the effector the host enacted under the named transitional rules "
+    "(respond -> host-MAP value; gather -> cheapest unapplied voi transform, exhausted "
+    "-> restricted argmax at the engine's own p1), daemon_effector = what credence "
+    "would have done. They are enactments, not would-vs-did shadow ticks, so they never "
+    "enter the differential."
+)
+
+
+def enactment(records: list[dict[str, Any]], form: str) -> dict[str, Any]:
+    """The M3 live-enactment ledger for one form: every `kind: "enact"` row counted by
+    the engine's coarse action, by the full daemon->enacted transition, and by named
+    degradation. Empty (n=0) whenever the flag has never been on — the section then says
+    so rather than vanishing."""
+    rows = _of_kind(records, "enact", form)
+    by_action: Counter[str] = Counter(str(r.get("action")) for r in rows)
+    by_transition: Counter[str] = Counter(
+        f"{r.get('daemon_effector')}->{r.get('real_effector')}" for r in rows)
+    degraded: Counter[str] = Counter(
+        str(r["degraded"]) for r in rows if r.get("degraded") is not None)
+    return {"n": len(rows), "by_engine_action": dict(by_action),
+            "by_transition": dict(by_transition), "degraded": dict(degraded),
+            "note": ENACT_NOTE}
 
 
 # --- 3. grounded joins (only with --vectors) --------------------------------------------
@@ -1129,6 +1155,7 @@ def build_report(
         "world_policy": world_policy(records, forms),
         "differential": differential_by_form,
         "gates": gates_by_form,
+        "enactments": {f: enactment(records, f) for f in forms},
         "grounded": grounded_by_form,
         "demand_ledger": demand_ledger(records, forms),
         "provenance": provenance_by_form,
@@ -1242,6 +1269,24 @@ def _md_gates(form: str, g: dict[str, Any]) -> list[str]:
         would = ", ".join(f"{a}: {n}" for a, n in cell["would"].items())
         lines.append(f"  - `{gate}`: n={cell['n']} — engine would: {would}")
     lines += ["", f"_{g['note']}_", ""]
+    return lines
+
+
+def _md_enactment(form: str, e: dict[str, Any]) -> list[str]:
+    lines = [f"### {form}", ""]
+    if not e["n"]:
+        lines += ["_No enact rows: the live flag (LIFE_AGENT_MEMBRANE_LIVE) has not "
+                  "produced a tick in this log._", ""]
+        return lines
+    lines.append(f"- live enactments: {e['n']}")
+    by_action = ", ".join(f"{a}: {n}" for a, n in sorted(e["by_engine_action"].items()))
+    lines.append(f"  - by engine action: {by_action}")
+    for tr, n in sorted(e["by_transition"].items()):
+        lines.append(f"  - `{tr}`: {n}")
+    if e["degraded"]:
+        deg = ", ".join(f"{k}: {n}" for k, n in sorted(e["degraded"].items()))
+        lines.append(f"  - degradations: {deg}")
+    lines += ["", f"_{e['note']}_", ""]
     return lines
 
 
@@ -1371,6 +1416,10 @@ def render_md(report: dict[str, Any]) -> str:
     lines += ["## 2b. Seam gate pre-emptions (M2 advisory)", ""]
     for form, g in report["gates"].items():
         lines += _md_gates(form, g)
+
+    lines += ["## 2c. Live enactments (M3 — the coarse menu live)", ""]
+    for form, e in report.get("enactments", {}).items():
+        lines += _md_enactment(form, e)
 
     lines += ["## 3. Grounded joins", ""]
     if report["grounded"] is None:

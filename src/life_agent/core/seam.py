@@ -37,9 +37,19 @@ DECIDE_PATH = "/decide"
 # The declared pre-empting observations (M0's two; later stages add to this vocabulary).
 GATE_WEAK_RETRIEVAL = "weak_retrieval"   # retrieval cleared no chunk above the floor
 GATE_EXECUTOR_DOWN = "executor_down"     # the daemon/bridge stack is unreachable
+# M3: the live coarse-menu consult failed (bridge/shadow down, engine dead or malformed)
+# — the DECLARED fallback is abstain, chosen by policy, never a silent host guess.
+GATE_ENGINE_DOWN = "engine_down"
 
 # The executor's transport seam shape (executor.Post, restated to avoid an import cycle).
 Post = Callable[[str, dict[str, Any]], "dict[str, Any] | None"]
+
+# M3's live consult shape: (payload, daemon reply) -> (enactable view, gate | None).
+# The production implementation is life_agent.membrane.coarse.live_decide (one
+# /decide-live round-trip + the coarse-act mapping); the seam only ever calls it —
+# injected, so this module stays free of membrane imports and the consult is a pure
+# function under test.
+LiveFn = Callable[[dict[str, Any], dict[str, Any]], "tuple[dict[str, Any], str | None]"]
 
 
 @dataclass(frozen=True)
@@ -57,10 +67,18 @@ class SkinOptimise:
 class DaemonDecide:
     """A P2 act request: one ``POST {daemon}{DECIDE_PATH}`` over the injected
     transport. The reply object is the daemon's decision view, passed through
-    verbatim as :attr:`SeamDecision.view`."""
+    verbatim as :attr:`SeamDecision.view`.
+
+    ``live`` (M3 — the coarse menu live, flag-gated at the caller) re-points the COARSE
+    act at the proplang engine: the daemon still computes the posterior, but the
+    committed act is the consult's rewrite of the daemon view (agreement passes it
+    through unchanged; a failed consult is the DECLARED :data:`GATE_ENGINE_DOWN`
+    abstain). ``None`` — the default, and the only production value while
+    ``LIFE_AGENT_MEMBRANE_LIVE`` is unset — is byte-for-byte today's behaviour."""
     post: Post
     daemon: str
     payload: dict[str, Any]
+    live: LiveFn | None = None
 
 
 @dataclass(frozen=True)
@@ -90,6 +108,12 @@ def commit(request: SkinOptimise | DaemonDecide | None, *,
         return SeamDecision(action=action, eu=eu)
     reply = request.post(f"{request.daemon}{DECIDE_PATH}", request.payload)
     assert reply is not None, f"{request.daemon}{DECIDE_PATH} returned null"
+    if request.live is not None:
+        view, gate = request.live(request.payload, reply)
+        raw_eu = view.get("eu")
+        return SeamDecision(action=view["effector"],
+                            eu=float(raw_eu) if raw_eu is not None else None,
+                            gate=gate, view=view)
     raw_eu = reply.get("eu")
     return SeamDecision(action=reply["effector"],
                         eu=float(raw_eu) if raw_eu is not None else None, view=reply)
