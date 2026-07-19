@@ -344,7 +344,30 @@ def test_reextract_confirming_sentence_maps_to_the_candidate(
     assert payload2["observations"][0]["reports"] == 0
 
 
+def test_reextract_correction_sentence_never_confirms_the_stale_candidate(
+        deps: BridgeDeps, monkeypatch: pytest.MonkeyPatch) -> None:
+    # The review's manufactured-CW case: a re-read that MENTIONS the known candidate while
+    # CORRECTING it to a same-shaped successor. Containment alone would confirm the
+    # superseded value at the tier's trusted rho (0.95 on the daemon-scheduled paths);
+    # the same-shape competing token must keep the conservative no-observation contract —
+    # and allow_new must NOT mint the whole correction sentence as a candidate either.
+    import life_agent.core.joint_extract as JE
+
+    monkeypatch.setattr(JE, "extract_joint",
+                        lambda root, q, hits, *, model, k: JE.JointResult(
+                            value="PL-900001 was renewed; the new number is PL-800002",
+                            confidence=0.9, as_of=None))
+    status, payload = _call(deps, "POST", "/probe/corroborate", {
+        "reextract": True, "allow_new": True, "question": "id?", "hits": [
+            {"artifact_cache_key": "d0", "chunk_text": "…"}],
+        "candidates": ["PL-900001"], "model": "claude-opus-4-8", "rho": 0.95})
+    assert status == 200
+    assert payload["observations"] == []
+    assert "new_candidate" not in payload
+
+
 def test_reextract_ambiguous_containment_stays_no_observation(
+
         deps: BridgeDeps, monkeypatch: pytest.MonkeyPatch) -> None:
     # A sentence containing TWO candidates settles nothing — the conservative contract
     # (outside-set => no observation) holds; disagreement semantics are preserved.
