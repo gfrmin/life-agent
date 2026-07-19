@@ -555,3 +555,23 @@ def test_unexpected_exception_maps_to_status_error(
     assert result.raw.text == ""
     assert result.usage is None
     assert result.tool_log == []
+
+
+# --- arm_name (the oracle arm shares this driver; scratch trees must not interleave) --------
+
+
+def test_arm_name_oracle_scratch_tree_is_under_arms_oracle(tmp_path: Path) -> None:
+    cfg = _cfg(tmp_path, tmp_path / "hermes", arm_name="oracle", model="frontier-model-x")
+    tool_log_path = AH.write_hermes_config(cfg, "q-001")
+
+    assert tool_log_path == cfg.run_dir / "arms/oracle/tool_calls/q-001.jsonl"
+    assert (cfg.run_dir / "arms/oracle/hermes_home/config.yaml").exists()
+    assert AH._usage_path(cfg, "q-001") == cfg.run_dir / "arms/oracle/usage/q-001.json"
+    # the competitor tree is untouched by an oracle-configured driver
+    assert not (cfg.run_dir / "arms/competitor").exists()
+
+
+def test_arm_name_defaults_to_competitor(tmp_path: Path) -> None:
+    cfg = _cfg(tmp_path, tmp_path / "hermes")
+    assert cfg.arm_name == "competitor"
+    assert AH.write_hermes_config(cfg, "q-001").parent.parent == cfg.run_dir / "arms/competitor"
