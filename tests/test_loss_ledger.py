@@ -367,3 +367,67 @@ def test_ledger_without_reference_vectors_degrades_to_v1(tmp_path: Path) -> None
     assert ledger.pi_star is None
     assert LL.to_json_dict(ledger)["pi_star"] is None
     assert "Versus the empirical" not in LL.render_md(ledger)
+
+
+def _noisy_posterior() -> UtilityPosterior:
+    """Non-zero variance on u_wrong — the one place the zero-variance file convention is
+    deliberately broken, so pairing is distinguishable from independent draws."""
+    def lp(name: str, mean: float, var: float, lo: float, hi: float) -> LatentPosterior:
+        return LatentPosterior(name=name, mean=mean, variance=var, lo=lo, hi=hi)
+
+    return UtilityPosterior(
+        gauge={"u_correct": 1.0, "u_abstain": 0.0},
+        latents={
+            "u_wrong": lp("u_wrong", -6.0, 4.0, -10.0, 0.0),
+            "u_wrong_scoped": lp("u_wrong_scoped", -2.0, 0.0, -6.0, 0.0),
+            "u_hedged": lp("u_hedged", 0.4, 0.0, 0.0, 1.0),
+            "lambda_int": lp("lambda_int", 1.0, 0.0, 0.0, 3.0),
+            "kappa_att": lp("kappa_att", 0.03, 0.0, 0.0, 1.0),
+        },
+        n_events=0,
+        fold_version="test-noisy-posterior",
+    )
+
+
+def test_pi_star_draws_are_genuinely_paired_under_a_noisy_posterior() -> None:
+    # PR-28 review Important: under the zero-variance posterior, paired and unpaired
+    # sampling are numerically identical, so no zero-variance test can pin pairing.
+    # Here BOTH sides take the SAME act (report-wrong), whose price rides the noisy
+    # u_wrong latent: paired draws difference to EXACTLY 0.0 in every sample; any
+    # unpairing regression (a second _sample_u per iteration, or drawing inside the
+    # qid loop) yields nonzero differences with overwhelming probability.
+    row = _cost_row("q-901", "CONFIDENT_WRONG", asserted=True, asserted_correct=False)
+    per_q, _, _ = LL.pi_star_samples(
+        [row], [dict(row)], _noisy_posterior(), oracle_p=_ORACLE_P, n_samples=64, seed=11)
+    assert per_q["q-901"] == [0.0] * 64
+
+
+def test_pi_star_scoped_reference_row_prices_report_scoped_end_to_end() -> None:
+    # arm abstained; the reference gave an honest scoped answer matching gold:
+    # shortfall = u_hedged(0.4) - u_abstain(0.0) = +0.4 through build_pi_star itself.
+    arm = [_cost_row("q-901", "WRONGLY_WITHHELD", asserted=False, asserted_correct=False)]
+    ref_row = _cost_row("q-901", "SCOPED", asserted=False, asserted_correct=True)
+    ps = LL.build_pi_star(arm, [ref_row], _fake_posterior(), ref_run_id="ff-ref",
+                          ref_arm="oracle", oracle_p=_ORACLE_P, n_samples=1, seed=7)
+    assert ps.per_question[0].mean == pytest.approx(0.4)
+    assert ps.per_question[0].ref_bucket == "SCOPED"
+
+
+def test_pi_star_infra_excluded_reference_rows_never_join(tmp_path: Path) -> None:
+    run_dir = _write_run(tmp_path, _synthetic_rows())
+    ref_dir = run_dir / "arms" / "oracle"
+    ref_dir.mkdir(parents=True)
+    ref_rows = [
+        _cost_row("q-901", "CORRECT", asserted=True, asserted_correct=True),
+        # a timeout on the reference side for q-902: must be filtered BEFORE the join,
+        # so q-902 lands in only_in_arm, not in the comparison.
+        _cost_row("q-902", "CORRECT", asserted=True, asserted_correct=True,
+                  status="timeout"),
+    ]
+    (ref_dir / "vectors.jsonl").write_text(
+        "".join(json.dumps(r) + "\n" for r in ref_rows), encoding="utf-8")
+    ledger = LL.load_and_build(run_dir, "baseline", _fake_posterior(), oracle_p=_ORACLE_P,
+                               n_samples=5, seed=7, pi_star_arm="oracle")
+    assert ledger.pi_star is not None
+    assert ledger.pi_star.n_joined == 1
+    assert "q-902" in ledger.pi_star.only_in_arm
