@@ -45,6 +45,7 @@ import yaml
 # Shared infra (metered LLM call, secret lookup, source rendering, the resolved KB /
 # PKM_CONFIG paths) lives in the installed life_agent package (see life-agent's pyproject).
 import life_agent.core as C
+import life_agent.core.config as CFG
 import life_agent.core.decisions as DEC
 import life_agent.core.derivations as D
 import life_agent.core.executor as EX
@@ -61,6 +62,7 @@ import life_agent.core.subject as S
 import life_agent.core.synthesis as SYN
 import life_agent.core.temporal as T
 import life_agent.core.temporal_intent as TI
+import life_agent.membrane.coarse as CRS
 import life_agent.owner as owner
 import life_agent.tasks.events as ev
 import life_agent.tasks.knowledge as knowledge
@@ -970,10 +972,19 @@ def answer_via_executor(question: str, k: int
     # /log_decision stamps, so a live decide tick mirrored here and the terminal decision
     # logged below join on one key.
     question_id = DEC.question_id(question)
+    if CFG.membrane_live():
+        # M3 — the coarse menu live: the seam consults the proplang engine on every
+        # decide tick (bridge /decide-live) and enacts ITS act; the enact record is
+        # written by that same consult, so the async decide mirror stays OFF here — the
+        # wrapped post would consult the one engine twice per tick.
+        live: SEAM.LiveFn | None = CRS.live_decide(EXECUTOR_BRIDGE, question_id)
+        post: EX.Post = _http_post
+    else:
+        live = None
+        post = SM.shadow_wrapped_post(_http_post, EXECUTOR_BRIDGE, question_id)
     view = EX.decide_via_loop(question, k, bridge=EXECUTOR_BRIDGE, daemon=EXECUTOR_DAEMON,
-                              post=SM.shadow_wrapped_post(_http_post, EXECUTOR_BRIDGE, question_id),
-                              get=_http_get,
-                              grow_lane=EXECUTOR_GROW_LANE)
+                              post=post, get=_http_get,
+                              grow_lane=EXECUTOR_GROW_LANE, live=live)
     EXECUTOR_VIEW_LAST = view
     _log_executor_decision(question, view)
     pairs = _cards_from_set(view["hits"])

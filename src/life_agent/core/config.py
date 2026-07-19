@@ -73,6 +73,7 @@ MEMBRANE_COMMAND_ENV = "LIFE_AGENT_MEMBRANE_COMMAND"
 MEMBRANE_UTILITY_ENV = "LIFE_AGENT_MEMBRANE_UTILITY"
 MEMBRANE_READ_TIMEOUT_ENV = "LIFE_AGENT_MEMBRANE_READ_TIMEOUT"
 MEMBRANE_WARM_VECTORS_ENV = "LIFE_AGENT_MEMBRANE_WARM_VECTORS"
+MEMBRANE_LIVE_ENV = "LIFE_AGENT_MEMBRANE_LIVE"
 
 MEMBRANE_DEFAULT_UTILITY_FORMS = "said@1"
 MEMBRANE_DEFAULT_READ_TIMEOUT_S = 300.0
@@ -111,6 +112,14 @@ def membrane_utility_forms() -> tuple[str, ...]:
 
 def membrane_read_timeout_s() -> float:
     return float(os.environ.get(MEMBRANE_READ_TIMEOUT_ENV, MEMBRANE_DEFAULT_READ_TIMEOUT_S))
+
+
+def membrane_live() -> bool:
+    """M3 — the coarse menu live: ``"1"`` re-points the executor read-path's coarse act
+    at the proplang engine (the seam's ``DaemonDecide.live`` consult through the
+    bridge's ``/decide-live``). Anything else — including absence, the default — is
+    byte-for-byte the credence daemon's decision. Rollback is unsetting this."""
+    return os.environ.get(MEMBRANE_LIVE_ENV) == "1"
 
 
 def membrane_warm_vectors_dir() -> Path | None:

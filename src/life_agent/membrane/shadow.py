@@ -39,8 +39,8 @@ summary_from_decision_event`, the fallback for a `submit_decision` that never sa
 live `submit_decide`, e.g. warm-replay or an out-of-process decider).
 
 **Records are append-only JSON lines at `cfg.log_path`** — one `event_type:
-"membrane-shadow"` envelope, `kind` in {`boot`, `respawn`, `decide`, `gate`, `evidence`,
-`stats`}. Every append is wrapped fail-open (a write error is swallowed, counted as a
+"membrane-shadow"` envelope, `kind` in {`boot`, `respawn`, `decide`, `gate`, `enact`,
+`evidence`, `stats`}. Every append is wrapped fail-open (a write error is swallowed, counted as a
 drop — this is a shadow, its own I/O failing must never touch the real decision path);
 the boot-record write itself (`_write_boot_record`, which calls the caller-supplied
 `u_bar()` and the handshake encoder — both of which can raise) is fail-open the same
@@ -85,6 +85,7 @@ from life_agent.core import decisions as DEC
 from life_agent.core import jsonl_log as JL
 from life_agent.core import reactions as RX
 
+from . import coarse as CO
 from . import world as W
 from .client import MembraneClient, request_json
 from .session import MembraneSession, ShadowChoice, verdict_y
@@ -190,6 +191,12 @@ GATE_SUMMARY = W.DecideSummary(
 _QUEUE_POLL_S = 0.05
 _CLOSE_JOIN_TIMEOUT_S = 5.0
 
+# decide_live's bounded synchronous wait (M3): generous next to a healthy engine tick
+# (~50ms measured, register §13's E2 probe) yet far below the host consult's own
+# LIVE_TIMEOUT_S — a wedged engine fails here first, into the bridge's honest "down"
+# reply, not into the host's socket timeout.
+_LIVE_WAIT_S = 10.0
+
 # how often (in PROCESSED QUEUE ITEMS, never wall-clock — stays inside the module's
 # injected-clock discipline, keeps tests deterministic) the worker flushes a `kind:
 # "stats"` row carrying the full `stats()` payload. The daemons this runs as
@@ -279,7 +286,25 @@ class _GateItem:
     gate: str
 
 
-_QueueItem = _DecideItem | _VerdictItem | _GateItem
+@dataclass
+class _LiveReply:
+    """decide_live's reply slot: the worker fills `result` then sets `event`. `result`
+    stays None on any failure path (dead form, engine death, mapping error) — the
+    caller's declared engine-down policy needs no more detail than that."""
+    event: threading.Event
+    result: dict[str, Any] | None = None
+
+
+@dataclass(frozen=True)
+class _LiveItem:
+    question_id: str
+    summary: W.DecideSummary
+    payload: dict[str, Any]
+    dec: dict[str, Any]
+    reply: _LiveReply
+
+
+_QueueItem = _DecideItem | _VerdictItem | _GateItem | _LiveItem
 
 
 class MembraneShadow:
@@ -412,6 +437,31 @@ class MembraneShadow:
         except Exception:
             self._count_submit_error()
 
+    def decide_live(self, question_id: str, payload: dict[str, Any], dec: dict[str, Any],
+                    *, wait_s: float = _LIVE_WAIT_S) -> dict[str, Any] | None:
+        """M3's ONE synchronous consult (the bridge's `/decide-live` blocks on it): reduce
+        the tick to the same `DecideSummary` every shadow tick uses, enqueue a reply-slot
+        item, and wait — bounded — for the worker to run the engine decide and the coarse
+        mapping (:func:`life_agent.membrane.coarse.map_action`). The worker still owns
+        every session (single-threaded engine access is preserved); this thread only
+        waits. Returns ``{"dec", "action", "degraded"}``, or ``None`` on ANY failure —
+        a full queue, a dead primary form, an engine death, a timeout — which the host
+        maps to its declared engine-down abstain. Never raises."""
+        try:
+            item = _LiveItem(
+                question_id=str(question_id),
+                summary=W.summary_from_payload(payload, dec),
+                payload=payload, dec=dec, reply=_LiveReply(event=threading.Event()),
+            )
+            self._queue.put_nowait(item)
+        except Exception:
+            with self._lock:
+                self._drops += 1
+            return None
+        if not item.reply.event.wait(wait_s):
+            return None
+        return item.reply.result
+
     def submit_reaction(self, decision_id: str, valence: str) -> None:
         try:
             with self._lock:
@@ -493,6 +543,18 @@ class MembraneShadow:
 
     def _process_item(self, item: _QueueItem) -> None:
         now = time.time()
+        if isinstance(item, _LiveItem):
+            # a live consult is answered by the PRIMARY form only (cfg.forms[0] — the
+            # declared order is the authority order); replaying an act-committing tick
+            # against every side-by-side form would mean two engines answering one act.
+            try:
+                self._tick_live(item, now)
+            finally:
+                item.reply.event.set()  # the waiter is released on EVERY path
+            self._processed_count += 1
+            if self._processed_count % _STATS_EVERY == 0:
+                self._write_stats_record()
+            return
         for form in self._cfg.forms:
             state = self._forms[form]
             if state.session is None:
@@ -551,6 +613,49 @@ class MembraneShadow:
             "action": choice.action, "real_effector": "abstain", "latency_ms": latency_ms,
             "readouts": choice.readouts, "summary": asdict(GATE_SUMMARY), "t": t_before,
         })
+
+    def _tick_live(self, item: _LiveItem, ts: float) -> None:
+        """One LIVE decide (M3): the engine's coarse choice, mapped to the enactable
+        rewrite, recorded as `kind: "enact"` — `action` is the engine's affordance,
+        `real_effector` the effector the host enacts, `daemon_effector` what credence
+        would have done, `degraded` the named transitional degradation (or None). Same
+        engine semantics as every decision tick (never advances `t`; a raise marks the
+        form dead). A terminal enactment also remembers the submit-time summary
+        (`_live_summaries`), because the live path REPLACES the mirror leg's
+        `submit_decide` — a later verdict must still bind to the exact live context."""
+        form = self._cfg.forms[0]
+        state = self._forms[form]
+        session = state.session
+        if session is None:
+            state.dead_drops += 1
+            return
+        t_before = session.t
+        start = time.time()
+        try:
+            choice: ShadowChoice = session.decide(item.summary)
+            mapped, degraded = CO.map_action(item.payload, item.dec,
+                                             choice.action, choice.readouts)
+        except Exception as exc:
+            self._handle_death(form, state, exc)
+            return
+        latency_ms = (time.time() - start) * 1000.0
+        state.ticks += 1
+        if _is_terminal_effector(mapped.get("effector")):
+            with self._lock:
+                _bounded_put(
+                    self._live_summaries, item.question_id, item.summary,
+                    cap=_MAX_TRACKED_ENTRIES,
+                )
+        self._append_record({
+            "event_type": "membrane-shadow", "kind": "enact", "ts": ts,
+            "question_id": item.question_id, "form": form,
+            "action": choice.action, "raw_internal": choice.raw_internal,
+            "daemon_effector": item.dec.get("effector"),
+            "real_effector": mapped.get("effector"), "degraded": degraded,
+            "latency_ms": latency_ms, "readouts": choice.readouts,
+            "summary": asdict(item.summary), "t": t_before,
+        })
+        item.reply.result = {"dec": mapped, "action": choice.action, "degraded": degraded}
 
     def _tick_verdict(self, form: str, state: _FormState, item: _VerdictItem, ts: float) -> None:
         session = state.session
