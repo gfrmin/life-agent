@@ -29,13 +29,14 @@ from __future__ import annotations
 import argparse
 import json
 import random
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 
 from life_agent.core.gate import RealisedResponse, _sample_u, realised_utility
 from life_agent.core.utility import UtilityPosterior
 
-FORMAT_VERSION = 1
+FORMAT_VERSION = 2  # v2: + the empirical-pi* comparison (regret vs a realised reference arm)
 
 # The modelling choices, printed verbatim into the report (the brief's discipline: every
 # choice is on the page, not buried in code).
@@ -56,6 +57,16 @@ MODELLING_CHOICES: tuple[str, ...] = (
     "regret = realised_utility(oracle) - realised_utility(actual), priced by "
     "life_agent.core.gate.realised_utility under u ~ P(U); ask_clarify would be priced at "
     "oracle_p (life_agent.core.lookup._ORACLE_P), though neither act uses it in v1.",
+    "empirical pi* (v2): the reference arm's REALISED acts, mapped by the same actual-act "
+    "rule and priced under the SAME u draw as the arm's act (paired sampling). Unlike the "
+    "dominating oracle, pi* is a fallible, UNAUDITED policy (until its oracle-vs-gold "
+    "queue is adjudicated) — regret vs pi* MAY be negative, meaning the arm beat the "
+    "reference on that question; that is a finding, not a bug. Questions present in only "
+    "one of the two vector sets are named and excluded, never silently dropped. A "
+    "cross-run reference assumes the corpus did not change between the two runs.",
+    "cost ratio (v2): sum of cost_usd over the JOINED scored rows, arm/pi*; each side's "
+    "cost_status mix is printed beside it — a 'partial' arm cost (e.g. the baseline "
+    "executor's invisible daemon spend) understates the true ratio.",
 )
 
 
@@ -146,6 +157,41 @@ class ClassRegret:
 
 
 @dataclass(frozen=True)
+class PiStarQuestion:
+    """One joined question's paired-draw EU shortfall vs the reference arm. Positive =
+    the reference did better here (the arm's shortfall); negative = the arm beat the
+    (unaudited) reference."""
+
+    question_id: str
+    arm_bucket: str
+    ref_bucket: str
+    mean: float
+    q05: float
+    q95: float
+
+
+@dataclass(frozen=True)
+class PiStarComparison:
+    """The v2 headline block: regret vs the empirical reference policy (the oracle arm's
+    realised answers) + the cost ratio, over the questions both vector sets scored."""
+
+    ref_run_id: str
+    ref_arm: str
+    n_joined: int
+    only_in_arm: tuple[str, ...]
+    only_in_ref: tuple[str, ...]
+    per_question: tuple[PiStarQuestion, ...]
+    total_mean: float
+    total_q05: float
+    total_q95: float
+    arm_cost_usd: float | None
+    arm_cost_statuses: dict[str, int]
+    ref_cost_usd: float | None
+    ref_cost_statuses: dict[str, int]
+    cost_ratio: float | None
+
+
+@dataclass(frozen=True)
 class Ledger:
     run_id: str
     arm: str
@@ -159,6 +205,7 @@ class Ledger:
     total_mean: float
     total_q05: float
     total_q95: float
+    pi_star: PiStarComparison | None = None
 
 
 # --- aggregation (pure) ------------------------------------------------------------------
@@ -202,9 +249,77 @@ def regret_samples(rows: list[dict], posterior: UtilityPosterior, *, oracle_p: f
     return per_q
 
 
+def pi_star_samples(
+    rows: list[dict], ref_rows: list[dict], posterior: UtilityPosterior, *,
+    oracle_p: float, n_samples: int, seed: int,
+) -> tuple[dict[str, list[float]], tuple[str, ...], tuple[str, ...]]:
+    """Paired-draw shortfall vs the reference arm's REALISED acts: for each question both
+    sets scored, ``realised_utility(ref_act, u) - realised_utility(arm_act, u)`` under the
+    SAME ``u`` draw (pairing removes the u-sampling variance from the difference). Returns
+    ``(per_qid_samples, only_in_arm, only_in_ref)`` — unjoined questions are NAMED, never
+    silently dropped. Samples may be negative: the reference is a fallible realised
+    policy, not the dominating construct."""
+    arm_by = {str(r["question_id"]): r for r in rows}
+    ref_by = {str(r["question_id"]): r for r in ref_rows}
+    joined = [qid for qid in arm_by if qid in ref_by]
+    only_in_arm = tuple(sorted(qid for qid in arm_by if qid not in ref_by))
+    only_in_ref = tuple(sorted(qid for qid in ref_by if qid not in arm_by))
+    arm_act = {qid: actual_response(arm_by[qid]) for qid in joined}
+    ref_act = {qid: actual_response(ref_by[qid]) for qid in joined}
+    per_q: dict[str, list[float]] = {qid: [] for qid in joined}
+    rng = random.Random(seed)
+    for _ in range(n_samples):
+        u = _sample_u(posterior, rng)
+        for qid in joined:
+            per_q[qid].append(realised_utility(ref_act[qid], u, oracle_p=oracle_p)
+                              - realised_utility(arm_act[qid], u, oracle_p=oracle_p))
+    return per_q, only_in_arm, only_in_ref
+
+
+def _cost_summary(rows: list[dict]) -> tuple[float | None, dict[str, int]]:
+    """(total cost_usd over rows or None if none priced, cost_status counts)."""
+    present = [r["cost_usd"] for r in rows if r.get("cost_usd") is not None]
+    statuses = dict(Counter(str(r.get("cost_status")) for r in rows))
+    return (sum(present) if present else None), statuses
+
+
+def build_pi_star(
+    rows: list[dict], ref_rows: list[dict], posterior: UtilityPosterior, *,
+    ref_run_id: str, ref_arm: str, oracle_p: float, n_samples: int, seed: int,
+) -> PiStarComparison:
+    """Assemble the empirical-pi* comparison over the joined scored questions."""
+    per_q, only_in_arm, only_in_ref = pi_star_samples(
+        rows, ref_rows, posterior, oracle_p=oracle_p, n_samples=n_samples, seed=seed)
+    arm_bucket = {str(r["question_id"]): str(r["bucket"]) for r in rows}
+    ref_bucket = {str(r["question_id"]): str(r["bucket"]) for r in ref_rows}
+
+    per_question: list[PiStarQuestion] = []
+    for qid, samples in per_q.items():
+        m, lo, hi = _quantiles(samples)
+        per_question.append(PiStarQuestion(qid, arm_bucket[qid], ref_bucket[qid], m, lo, hi))
+    per_question.sort(key=lambda pq: pq.mean, reverse=True)
+
+    tm, tlo, thi = _quantiles(_sum_over_samples(list(per_q.values()), n_samples))
+
+    joined = set(per_q)
+    arm_cost, arm_statuses = _cost_summary(
+        [r for r in rows if str(r["question_id"]) in joined])
+    ref_cost, ref_statuses = _cost_summary(
+        [r for r in ref_rows if str(r["question_id"]) in joined])
+    cost_ratio = (arm_cost / ref_cost
+                  if arm_cost is not None and ref_cost is not None and ref_cost > 0
+                  else None)
+    return PiStarComparison(
+        ref_run_id=ref_run_id, ref_arm=ref_arm, n_joined=len(per_q),
+        only_in_arm=only_in_arm, only_in_ref=only_in_ref,
+        per_question=tuple(per_question), total_mean=tm, total_q05=tlo, total_q95=thi,
+        arm_cost_usd=arm_cost, arm_cost_statuses=arm_statuses,
+        ref_cost_usd=ref_cost, ref_cost_statuses=ref_statuses, cost_ratio=cost_ratio)
+
+
 def build_ledger(rows: list[dict], excluded: int, posterior: UtilityPosterior, *,
                  run_id: str, arm: str, oracle_p: float, n_samples: int,
-                 seed: int) -> Ledger:
+                 seed: int, pi_star: PiStarComparison | None = None) -> Ledger:
     """Assemble the ledger from the scored rows and the MC regret samples."""
     per_q = regret_samples(rows, posterior, oracle_p=oracle_p, n_samples=n_samples, seed=seed)
     cls = {r["question_id"]: stage_class(r) for r in rows}
@@ -229,15 +344,29 @@ def build_ledger(rows: list[dict], excluded: int, posterior: UtilityPosterior, *
     return Ledger(run_id=run_id, arm=arm, n_samples=n_samples, seed=seed,
                   posterior_fold_version=posterior.fold_version, u_bar=posterior.u_bar(),
                   excluded_rows=excluded, per_question=tuple(per_question),
-                  per_class=tuple(per_class), total_mean=tm, total_q05=tlo, total_q95=thi)
+                  per_class=tuple(per_class), total_mean=tm, total_q05=tlo, total_q95=thi,
+                  pi_star=pi_star)
 
 
 def load_and_build(run_dir: Path, arm: str, posterior: UtilityPosterior, *, oracle_p: float,
-                   n_samples: int, seed: int) -> Ledger:
+                   n_samples: int, seed: int, pi_star_run_dir: Path | None = None,
+                   pi_star_arm: str | None = None) -> Ledger:
+    """``pi_star_arm`` set + its vectors present -> the ledger carries the v2 empirical-π*
+    block; a missing reference vectors file degrades to the v1 ledger (the caller prints
+    the note — a run without an oracle arm is still a valid ledger run)."""
     rows_all = load_rows(run_dir / "arms" / arm / "vectors.jsonl")
     rows, excluded = partition_scored(rows_all)
+    pi_star: PiStarComparison | None = None
+    if pi_star_arm:
+        ref_dir = pi_star_run_dir or run_dir
+        ref_path = ref_dir / "arms" / pi_star_arm / "vectors.jsonl"
+        if ref_path.exists():
+            ref_rows, _ref_excluded = partition_scored(load_rows(ref_path))
+            pi_star = build_pi_star(
+                rows, ref_rows, posterior, ref_run_id=ref_dir.name, ref_arm=pi_star_arm,
+                oracle_p=oracle_p, n_samples=n_samples, seed=seed)
     return build_ledger(rows, excluded, posterior, run_id=run_dir.name, arm=arm,
-                        oracle_p=oracle_p, n_samples=n_samples, seed=seed)
+                        oracle_p=oracle_p, n_samples=n_samples, seed=seed, pi_star=pi_star)
 
 
 # --- outputs -----------------------------------------------------------------------------
@@ -264,6 +393,24 @@ def to_json_dict(ledger: Ledger) -> dict:
              "mean": cr.mean, "q05": cr.q05, "q95": cr.q95}
             for cr in ledger.per_class],
         "total": {"mean": ledger.total_mean, "q05": ledger.total_q05, "q95": ledger.total_q95},
+        "pi_star": None if ledger.pi_star is None else {
+            "ref_run_id": ledger.pi_star.ref_run_id,
+            "ref_arm": ledger.pi_star.ref_arm,
+            "n_joined": ledger.pi_star.n_joined,
+            "only_in_arm": list(ledger.pi_star.only_in_arm),
+            "only_in_ref": list(ledger.pi_star.only_in_ref),
+            "per_question": [
+                {"question_id": pq.question_id, "arm_bucket": pq.arm_bucket,
+                 "ref_bucket": pq.ref_bucket, "mean": pq.mean, "q05": pq.q05, "q95": pq.q95}
+                for pq in ledger.pi_star.per_question],
+            "total": {"mean": ledger.pi_star.total_mean, "q05": ledger.pi_star.total_q05,
+                      "q95": ledger.pi_star.total_q95},
+            "arm_cost_usd": ledger.pi_star.arm_cost_usd,
+            "arm_cost_statuses": ledger.pi_star.arm_cost_statuses,
+            "ref_cost_usd": ledger.pi_star.ref_cost_usd,
+            "ref_cost_statuses": ledger.pi_star.ref_cost_statuses,
+            "cost_ratio": ledger.pi_star.cost_ratio,
+        },
     }
 
 
@@ -310,7 +457,43 @@ def render_md(ledger: Ledger) -> str:
             lines.append(f"| {qr.question_id} | {qr.cls} | {tag} | "
                          f"{qr.mean:+.3f} | [{qr.q05:+.3f}, {qr.q95:+.3f}] |")
     lines += ["", "The ranking above is the explicit basis for 'what do we attack next'."]
+    if ledger.pi_star is not None:
+        lines += _pi_star_md(ledger.pi_star)
     return "\n".join(lines) + "\n"
+
+
+def _pi_star_md(ps: PiStarComparison) -> list[str]:
+    def usd(x: float | None) -> str:
+        return f"${x:.2f}" if x is not None else "—"
+
+    lines = [
+        "",
+        f"## Versus the empirical π* ({ps.ref_arm} @ {ps.ref_run_id})",
+        "",
+        "The reference here is the oracle arm's REALISED answers — fallible and unaudited "
+        "until its oracle-vs-gold queue is adjudicated. Positive = π* did better (the "
+        "arm's shortfall); **negative = the arm beat π\\*** on that question.",
+        "",
+        f"- joined questions: {ps.n_joined}"
+        + (f"  ·  only in this arm: {list(ps.only_in_arm)}" if ps.only_in_arm else "")
+        + (f"  ·  only in π*: {list(ps.only_in_ref)}" if ps.only_in_ref else ""),
+        f"- **EU shortfall vs π***: {ps.total_mean:+.3f} "
+        f"[{ps.total_q05:+.3f}, {ps.total_q95:+.3f}]",
+        f"- **cost**: arm {usd(ps.arm_cost_usd)} {ps.arm_cost_statuses} vs "
+        f"π* {usd(ps.ref_cost_usd)} {ps.ref_cost_statuses}"
+        + (f"  →  ratio {ps.cost_ratio:.2f}" if ps.cost_ratio is not None else
+           "  →  ratio — (a side is unpriced)"),
+        "",
+        "| question | arm bucket | π* bucket | Δ EU (π* - arm) | [q05, q95] |",
+        "| --- | --- | --- | ---: | --- |",
+    ]
+    lines += [f"| {pq.question_id} | {pq.arm_bucket} | {pq.ref_bucket} | {pq.mean:+.3f} | "
+              f"[{pq.q05:+.3f}, {pq.q95:+.3f}] |"
+              for pq in ps.per_question if pq.mean != 0.0]
+    lines += ["",
+              "_The standing target: match π*'s EU at a fraction of its cost — shortfall "
+              "→ 0 while the cost ratio stays ≪ 1._"]
+    return lines
 
 
 def write_outputs(run_dir: Path, ledger: Ledger) -> tuple[Path, Path]:
@@ -331,6 +514,11 @@ def main() -> int:
     parser.add_argument("--arm", default="baseline", help="which arm's vectors to score")
     parser.add_argument("--samples", type=int, default=4000, help="P(U) Monte-Carlo draws")
     parser.add_argument("--seed", type=int, default=7, help="RNG seed (reproducibility)")
+    parser.add_argument("--pi-star-arm", default="oracle",
+                        help="the empirical reference arm (v2); '' disables the comparison")
+    parser.add_argument("--pi-star-run-dir", type=Path, default=None,
+                        help="the run dir holding the reference arm's vectors (default: "
+                             "--run-dir; a CROSS-run reference assumes an unchanged corpus)")
     args = parser.parse_args()
 
     import life_agent.core.config as LCFG
@@ -347,7 +535,13 @@ def main() -> int:
         print(f"  ⚠ {warning}")
 
     ledger = load_and_build(args.run_dir, args.arm, posterior, oracle_p=LK._ORACLE_P,
-                            n_samples=args.samples, seed=args.seed)
+                            n_samples=args.samples, seed=args.seed,
+                            pi_star_run_dir=args.pi_star_run_dir,
+                            pi_star_arm=args.pi_star_arm or None)
+    if args.pi_star_arm and ledger.pi_star is None:
+        ref_dir = args.pi_star_run_dir or args.run_dir
+        print(f"  note: no {args.pi_star_arm!r} vectors under {ref_dir} — "
+              "v1 ledger only (no empirical-pi* block)")
     _jpath, mpath = write_outputs(args.run_dir, ledger)
     print(f"Loss ledger → {mpath}")
     print(f"  posterior fold_version={posterior.fold_version[:12]}  "
@@ -357,6 +551,12 @@ def main() -> int:
               f"[{cr.q05:+.3f}, {cr.q95:+.3f}]")
     print(f"  TOTAL            mean={ledger.total_mean:+.3f} "
           f"[{ledger.total_q05:+.3f}, {ledger.total_q95:+.3f}]")
+    if ledger.pi_star is not None:
+        ps = ledger.pi_star
+        ratio = f"{ps.cost_ratio:.2f}" if ps.cost_ratio is not None else "—"
+        print(f"  vs pi* ({ps.ref_arm}@{ps.ref_run_id}): shortfall {ps.total_mean:+.3f} "
+              f"[{ps.total_q05:+.3f}, {ps.total_q95:+.3f}]  ·  cost ratio {ratio}  ·  "
+              f"joined {ps.n_joined}")
     return 0
 
 
