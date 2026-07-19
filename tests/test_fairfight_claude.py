@@ -111,6 +111,10 @@ def test_cmd_pins_the_evidence_channel_and_the_agentic_budget(tmp_path: Path) ->
     assert argv[argv.index("--model") + 1] == "fake-delib-model"
     assert argv[argv.index("--output-format") + 1] == "json"
     assert argv[argv.index("--max-turns") + 1] == "40"
+    # PR-33 review CRITICAL regression pin: without an explicit permission mode the
+    # machine's ambient default (e.g. "plan") silently DENIES the allowed MCP tools —
+    # rc=0, no error, zero evidence, and the apology grades as a wrong answer.
+    assert argv[argv.index("--permission-mode") + 1] == "default"
     # the prompt carries the question and the deliberation contract
     prompt = argv[1]
     assert "what is the fake policy number?" in prompt
