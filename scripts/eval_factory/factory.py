@@ -36,10 +36,12 @@ q2-084 class), ``multi_slot`` (two interrogative clauses, one gold — the q2-00
 construction questions (a verifier's failure to answer cannot certify absence — needs a
 different protocol); date-stratified sampling (stratifies by ``source_origin`` only).
 The regex gates are nets, not proofs: first-person detection still trips on a
-roman-numeral "I" (fails safe — a rejection); the compound-question net catches
-repeated interrogatives and slot-noun pairs across an "and", but a compound built from
-nouns outside the slot-noun list, or two sentences joined by punctuation, passes to the
-verifier. Each is a named follow-up, not an accident.
+roman-numeral "I" (fails safe — a rejection) and misses ALL-CAPS pronoun phrasing
+(fails open; judged ~zero for an instruction-following proposer); the compound-question
+net catches repeated interrogatives and cross-"and" slot nouns of different synonym
+classes, but a compound built from nouns outside the slot-noun list, an unencoded
+synonym mapping, or two sentences joined by punctuation, passes to the verifier. Each
+is a named follow-up, not an accident.
 
 **Outputs (all under the out dir, PII fail-closed — corpus content never leaves
 ``$LIFE_AGENT_KB``):** ``questions_v2.yaml`` (the candidate corpus: id ``q2-NNN``,
@@ -134,12 +136,21 @@ _SLOT_RE = re.compile(
     r"(?:^|\b(?:and|or)\b|,)\s*(what|when|who|whom|whose|which|where|why|how)\b",
     re.IGNORECASE)
 # the single-wh two-noun-phrase compound ("what is the policy number and effective
-# date?"): two DIFFERENT slot-typed nouns joined across an "and" is a second value slot
-# even with one interrogative (PR-32 review Important-2). List-based, so imperfect by
+# date?"): slot-typed nouns of two DIFFERENT classes joined across an "and" is a second
+# value slot even with one interrogative (PR-32 review Important-2). Nouns are compared
+# by synonym CLASS, not raw word — "balance and amount due" is standard single-field
+# bill phrasing, not a compound (PR-32 verify round). List-based, so imperfect by
 # construction — the miss class is named in the module docstring.
-_SLOT_NOUN = (r"\b(number|date|amount|total|balance|name|id|code|address|email|phone|"
-              r"value|price|cost|rate|currency|term|duration)\b")
-_SLOT_NOUN_RE = re.compile(_SLOT_NOUN, re.IGNORECASE)
+_SLOT_NOUN_CLASS = {
+    "amount": "money", "total": "money", "balance": "money", "cost": "money",
+    "price": "money", "value": "money",
+    "term": "span", "duration": "span",
+    "number": "number", "date": "date", "name": "name", "id": "id", "code": "code",
+    "address": "address", "email": "email", "phone": "phone", "rate": "rate",
+    "currency": "currency",
+}
+_SLOT_NOUN_RE = re.compile(
+    r"\b(" + "|".join(map(re.escape, _SLOT_NOUN_CLASS)) + r")\b", re.IGNORECASE)
 _AND_RE = re.compile(r"\band\b", re.IGNORECASE)
 
 
@@ -151,8 +162,10 @@ def _slot_count(question: str) -> int:
     n = len(_SLOT_RE.findall(question))
     and_m = _AND_RE.search(question)
     if n < 2 and and_m:
-        before = {m.lower() for m in _SLOT_NOUN_RE.findall(question[: and_m.start()])}
-        after = {m.lower() for m in _SLOT_NOUN_RE.findall(question[and_m.end():])}
+        before = {_SLOT_NOUN_CLASS[m.lower()]
+                  for m in _SLOT_NOUN_RE.findall(question[: and_m.start()])}
+        after = {_SLOT_NOUN_CLASS[m.lower()]
+                 for m in _SLOT_NOUN_RE.findall(question[and_m.end():])}
         if before and after and (before != after or len(before | after) > 1):
             n = max(n, 2)
     return n

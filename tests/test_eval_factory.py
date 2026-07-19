@@ -447,6 +447,16 @@ def test_multi_slot_same_slot_noun_both_sides_is_not_compound() -> None:
     assert F._slot_count("what is the fake total cost of gas and electricity?") < 2
 
 
+def test_multi_slot_synonym_slot_nouns_are_one_class_not_compound() -> None:
+    """PR-32 verify round: 'balance and amount due' is standard single-field bill
+    phrasing; slot nouns compare by synonym class, not raw word."""
+    assert F._slot_count("what is the fake balance and amount due on the account?") < 2
+    assert F._slot_count("what is the fake term and duration of the loan?") < 2
+    assert F._slot_count("what is the fake account balance and total?") < 2
+    # different CLASSES across the 'and' still compound
+    assert F._slot_count("what is the fake amount and due date on the invoice?") >= 2
+
+
 def test_proposer_v2_contract_names_the_gates() -> None:
     """The prompt is the other half of each mechanical gate — the contract the model is
     told must match the code that enforces it."""
