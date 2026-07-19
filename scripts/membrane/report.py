@@ -971,7 +971,7 @@ def world_policy(records: list[dict[str, Any]], forms: list[str]) -> dict[str, A
             "note": (
                 "argmax_by_p1 is this world's OWN utility arithmetic (world.argmax_action) "
                 "over the boot-recorded u_bar — the same table the frozen engine argmaxes. "
-                "Information actions are priced as myopic perfect information (utility_rows' "
+                "Information actions are priced as myopic perfect information (utility_by_action's "
                 "declared bake-in), which is why gather owns most of the interior."
             ),
         }

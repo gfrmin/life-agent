@@ -74,11 +74,19 @@ class MembraneClient:
         # buffering, restoring the wire's "one request, one reply, synchronous". The
         # shim belongs engine-side (one hSetBuffering line); carry it here until then.
         master_fd, slave_fd = pty.openpty()
-        proc = subprocess.Popen(
-            argv,
-            stdin=subprocess.PIPE,
-            stdout=slave_fd,
-        )
+        try:
+            proc = subprocess.Popen(
+                argv,
+                stdin=subprocess.PIPE,
+                stdout=slave_fd,
+            )
+        except OSError:
+            # a failed spawn (ENOENT, EACCES) must not leak the pty pair: nothing else
+            # ever learns these fds exist, so the supervisor's respawn loop would leak
+            # one pair per attempt against a bad command
+            os.close(master_fd)
+            os.close(slave_fd)
+            raise
         os.close(slave_fd)
         read_buf = bytearray()
 
@@ -131,7 +139,7 @@ class MembraneClient:
         cmd = os.environ.get(MEMBRANE_ENV)
         if not cmd:
             raise MembraneError(
-                f"no membrane engine: set {MEMBRANE_ENV} to the proplang-govhost launch argv"
+                f"no membrane engine: set {MEMBRANE_ENV} to the proplang-host launch argv"
             )
         timeout = float(os.environ.get(READ_TIMEOUT_ENV, DEFAULT_READ_TIMEOUT_S))
         return cls.spawn(shlex.split(cmd), log=log, read_timeout_s=timeout)
