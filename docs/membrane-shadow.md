@@ -508,7 +508,7 @@ justification. There is no third bucket; a fork found later is a doctrine bug.
 | i-10 | ask_clarify — `core/lookup.py:695` priced row, `_ORACLE_P=0.9` host constant | EU-in-skin; price is host | M3 menu (`ask` affordance exists); price from P(U) |
 | i-11 | report_scoped / hedge choice — `core/lookup.py:675-698,807-842` | EU-in-skin over host-built utility rows | M5 (E1 outcome refinement, D1 exit) |
 | i-12 | Grounding-gate USE — `core/lookup.py:536-540` (`continue` on ungrounded) | rule fork on observation admission | M4: whether an ungrounded quote is weak evidence is a likelihood declaration, not a host `continue` |
-| i-13 | Retry/dispatch forks — `scripts/ask.py:1155-1162` executor-vs-inprocess; `core/executor.py:120-151` route-null→narrative, grow_lane branch | if-forks | M0 unification collapses these into the one seam |
+| i-13 | Retry/dispatch forks — `scripts/ask.py:1155-1162` executor-vs-inprocess; `core/executor.py:120-151` route-null→narrative, grow_lane branch | if-forks | NOT collapsed at M0 (re-staged at landing, see §12) — family routing in disguise; moves at M3+ |
 | i-14 | Bridge fold-eligibility — `bridge/server.py:484-489,527` `folds = chosen_action=="abstain"` | rule fork on what enters calibration | M4 (what folds is part of the observation model the engine conditions on) |
 | i-15 | (offline) adoption gate — `core/gate.py:243-283` `P(Δ>δ)≥level` | EU-in-host, frozen constants | stays host FOR NOW: it is the eval harness measuring the system, not the agent acting; FLAG — revisit when the engine can express meta-decisions |
 | i-16 | escalate-to-frontier (new act, not in inventory) | absent today | B3: new affordance + lambda_cost latent (owner-elicited) |
