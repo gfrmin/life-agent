@@ -241,10 +241,13 @@ def test_scored_all_excluded_returns_empty() -> None:
     assert R.scored(vecs) == []
 
 
-def test_external_arms_is_a_subset_of_arms_and_names_both_hermes_arms() -> None:
+def test_external_arms_is_a_subset_of_arms_and_names_all_three() -> None:
     """Drift gate: every externally-driven arm must also be a declared arm (a vector with
-    that arm name must construct), and the set is exactly the two hermes-driven arms —
-    growing it means touching BOTH constants deliberately."""
+    that arm name must construct); the hermes-driven set is a strict subset (the
+    deliberative arm is claude-driven) — growing either means touching the constants
+    deliberately."""
     assert R.EXTERNAL_ARMS <= R.ARMS
-    assert frozenset({"competitor", "oracle"}) == R.EXTERNAL_ARMS
+    assert frozenset({"competitor", "oracle", "deliberative"}) == R.EXTERNAL_ARMS
+    assert frozenset({"competitor", "oracle"}) == R.HERMES_ARMS
+    assert R.HERMES_ARMS < R.EXTERNAL_ARMS
     assert "baseline" not in R.EXTERNAL_ARMS

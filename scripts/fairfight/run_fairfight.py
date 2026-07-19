@@ -134,6 +134,7 @@ import life_agent.core.jsonl_log as JL
 import life_agent.core.outcomes as OUT
 import life_agent.core.pricing as PRICING
 from fairfight import arm_baseline as AB
+from fairfight import arm_claude as AC
 from fairfight import arm_hermes as AH
 from fairfight import arm_synthesis as AS
 from fairfight import grading as G
@@ -225,8 +226,8 @@ def _corpus_fingerprint(conn: Any) -> dict[str, Any]:
 # --- run_meta.json -------------------------------------------------------------------------
 
 
-def _arm_configs(args: argparse.Namespace, arms: list[str], hermes_bin: str | None
-                  ) -> dict[str, dict[str, Any]]:
+def _arm_configs(args: argparse.Namespace, arms: list[str], hermes_bin: str | None,
+                  claude_bin: str | None = None) -> dict[str, dict[str, Any]]:
     cfgs: dict[str, dict[str, Any]] = {}
     fresh = bool(getattr(args, "fresh", False))
     if "baseline" in arms:
@@ -240,12 +241,22 @@ def _arm_configs(args: argparse.Namespace, arms: list[str], hermes_bin: str | No
     if "synthesis" in arms:
         cfgs["synthesis"] = {"entrypoint": "ask.answer", "path": "inprocess", "gather": False,
                              "fresh": fresh}
-    for ext in sorted(REC.EXTERNAL_ARMS & set(arms)):
+    for ext in sorted(REC.HERMES_ARMS & set(arms)):
         model, provider, base_url = _external_model_args(args, ext)
         cfgs[ext] = {
             "model": model, "provider": provider,
             "base_url": base_url, "timeout_s": args.timeout_s,
             "hermes_bin": hermes_bin,
+        }
+    if "deliberative" in arms:
+        cfgs["deliberative"] = {
+            "entrypoint": "claude -p",
+            "model": getattr(args, "deliberative_model", AC.ClaudeArmConfig.model),
+            "timeout_s": int(getattr(args, "deliberative_timeout_s",
+                                     AC.ClaudeArmConfig.timeout_s)),
+            "max_turns": AC.ClaudeArmConfig.max_turns,
+            "allowed_tools": AC._ALLOWED_TOOLS,
+            "claude_bin": claude_bin,
         }
     return cfgs
 
@@ -259,9 +270,23 @@ def _external_model_args(args: argparse.Namespace, arm: str) -> tuple[str, str, 
     return args.competitor_model, args.competitor_provider, args.competitor_base_url
 
 
+def _claude_version(claude_bin: str | None) -> str | None:
+    """Best-effort ``claude --version`` provenance for the deliberative arm — the CLI's
+    version (and the machine's Claude Code config it implies) is part of the reference
+    policy's identity. Never raises."""
+    if not claude_bin:
+        return None
+    try:
+        out = subprocess.run([claude_bin, "--version"], capture_output=True, text=True,
+                             timeout=30)
+        return out.stdout.strip() or None
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
 def _build_run_meta(
     *, run_id: str, args: argparse.Namespace, arms: list[str], questions_path: Path,
-    conn: Any, hermes_bin: str | None,
+    conn: Any, hermes_bin: str | None, claude_bin: str | None = None,
 ) -> dict[str, Any]:
     import _common as JC  # scripts/comparison/_common.py — the judge pin
     from blind_judge import RUBRIC
@@ -278,7 +303,10 @@ def _build_run_meta(
         "run_id": run_id,
         "created_at": _now_iso(),
         "life_agent_git": _git_info(_REPO_ROOT),
-        "hermes_git": _hermes_git_info(hermes_bin if REC.EXTERNAL_ARMS & set(arms) else None),
+        "hermes_git": _hermes_git_info(hermes_bin if REC.HERMES_ARMS & set(arms) else None),
+        "claude_version": _claude_version(claude_bin if "deliberative" in arms else None),
+        "prompt_delib_v1_sha256": hashlib.sha256(
+            AC.PROMPT_DELIB_V1.encode("utf-8")).hexdigest(),
         "questions_path": str(questions_path),
         "questions_sha256": hashlib.sha256(questions_path.read_bytes()).hexdigest(),
         "rubric_path": str(RUBRIC),
@@ -290,7 +318,7 @@ def _build_run_meta(
         "pricing_version": PRICING.PRICING_VERSION,
         "prompt_v1_sha256": hashlib.sha256(AH.PROMPT_V1.encode("utf-8")).hexdigest(),
         "arms": arms,
-        "arm_configs": _arm_configs(args, arms, hermes_bin),
+        "arm_configs": _arm_configs(args, arms, hermes_bin, claude_bin),
         "corpus_fingerprint": _corpus_fingerprint(conn),
         "pkm_config_path": args.config,
         # LIFE_AGENT_BRIDGE_URL / ANSWER_BRAIN_URL are the exact names scripts/ask.py
@@ -904,14 +932,21 @@ def run(
 
     arms = _parse_arms(args.arms)
     hermes_bin: str | None = None
-    external_arms = sorted(REC.EXTERNAL_ARMS & set(arms))
-    if external_arms:
+    hermes_arms = sorted(REC.HERMES_ARMS & set(arms))
+    if hermes_arms:
         hermes_bin = args.hermes_bin or shutil.which("hermes")
         if not hermes_bin:
             raise SystemExit(
-                f"the {'/'.join(external_arms)} arm(s) need a hermes binary: pass "
+                f"the {'/'.join(hermes_arms)} arm(s) need a hermes binary: pass "
                 "--hermes-bin or put 'hermes' on PATH (never hardcoded — see the CLI's "
                 "own --hermes-bin help)")
+    claude_bin: str | None = None
+    if "deliberative" in arms:
+        claude_bin = getattr(args, "claude_bin", None) or shutil.which("claude")
+        if not claude_bin:
+            raise SystemExit(
+                "the deliberative arm needs the claude CLI: pass --claude-bin or put "
+                "'claude' on PATH")
 
     kb_root = _kb_root()
     run_id = args.run_id or f"ff-{datetime.now(UTC):%Y%m%dT%H%M%SZ}"
@@ -936,7 +971,7 @@ def run(
     try:
         meta = _build_run_meta(
             run_id=run_id, args=args, arms=arms, questions_path=questions_path,
-            conn=conn, hermes_bin=hermes_bin)
+            conn=conn, hermes_bin=hermes_bin, claude_bin=claude_bin)
         _write_json(run_dir / "run_meta.json", meta)  # FIRST — before any arm runs
         (run_dir / "questions.sha256").write_text(meta["questions_sha256"] + "\n",
                                                     encoding="utf-8")
@@ -949,7 +984,12 @@ def run(
             # last iteration's config.
             return lambda q: AH.answer_competitor(q, cfg)
 
-        for ext in external_arms:
+        def _bind_deliberative(cfg: AC.ClaudeArmConfig) -> Callable[[dict[str, Any]], Any]:
+            # typed binder, not a default-arg lambda — mypy cannot infer those (the
+            # PR-26 CI lesson)
+            return lambda q: AC.answer_deliberative(q, cfg)
+
+        for ext in hermes_arms:
             assert hermes_bin is not None
             model, provider, base_url = _external_model_args(args, ext)
             impls[ext] = _bind_external(AH.HermesArmConfig(
@@ -957,6 +997,15 @@ def run(
                 model=model, provider=provider, base_url=base_url,
                 timeout_s=args.timeout_s, arm_name=ext,
             ))
+        if "deliberative" in arms:
+            assert claude_bin is not None
+            delib_cfg = AC.ClaudeArmConfig(
+                claude_bin=claude_bin, run_dir=run_dir, pkm_config=args.config,
+                model=getattr(args, "deliberative_model", AC.ClaudeArmConfig.model),
+                timeout_s=int(getattr(args, "deliberative_timeout_s",
+                                      AC.ClaudeArmConfig.timeout_s)),
+            )
+            impls["deliberative"] = _bind_deliberative(delib_cfg)
         if arm_impls:
             impls.update(arm_impls)
 
@@ -996,8 +1045,9 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--arms", default="baseline,inprocess,synthesis,competitor",
         help="comma list of arms to run (subset of baseline,inprocess,synthesis,"
-             "competitor,oracle; `oracle` — the frontier reference-policy arm π*, "
-             "roadmap A1 — is opt-in, never in the default set)")
+             "competitor,oracle,deliberative; `oracle` — the FRONTIER BASELINE — and "
+             "`deliberative` — the actual reference policy π* (claude -p, roadmap A1b) "
+             "— are opt-in, never in the default set)")
     parser.add_argument("--competitor-model", default="claude-sonnet-4-6")
     parser.add_argument("--competitor-provider", default="anthropic")
     parser.add_argument("--competitor-base-url", default=None)
@@ -1011,6 +1061,17 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--hermes-bin", default=None,
         help="path to the hermes CLI (default: 'hermes' resolved off $PATH; required if "
              "unresolved and the competitor arm is selected — never a hardcoded path)")
+    parser.add_argument(
+        "--claude-bin", default=None,
+        help="path to the claude CLI for the deliberative arm (default: 'claude' "
+             "resolved off $PATH; required if unresolved and deliberative is selected)")
+    parser.add_argument(
+        "--deliberative-model", default="claude-opus-4-8",
+        help="the deliberative (π*) arm's model — the claude CLI's --model value")
+    parser.add_argument(
+        "--deliberative-timeout-s", type=int, default=600,
+        help="per-question wall clock for the deliberative arm (deliberation is slower "
+             "than a oneshot by design; separate from --timeout-s)")
     parser.add_argument("--timeout-s", type=int, default=300)
     parser.add_argument("--limit", type=int, default=None, help="cap the question count")
     parser.add_argument(

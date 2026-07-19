@@ -45,15 +45,22 @@ from typing import Any
 
 FORMAT_VERSION = 1
 
-# The harness's three life-agent read-paths plus the two externally-driven arms.
-ARMS: frozenset[str] = frozenset({"baseline", "inprocess", "synthesis", "competitor", "oracle"})
+# The harness's three life-agent read-paths plus the three externally-driven arms.
+ARMS: frozenset[str] = frozenset(
+    {"baseline", "inprocess", "synthesis", "competitor", "oracle", "deliberative"})
 
-# The hermes-CLI-driven arms (subset of ARMS -- drift-gated in tests): "competitor" is the
-# fair-fight adversary at the in-process arms' own ceiling model; "oracle" is the frontier
-# reference policy pi* (the gold-standard referee -- roadmap A1, 2026-07-19). Same driver,
-# same frozen prompt: an oracle/competitor difference is attributable to the model and its
-# agentic budget, never to prompt drift.
-EXTERNAL_ARMS: frozenset[str] = frozenset({"competitor", "oracle"})
+# The externally-driven subprocess arms (subset of ARMS -- drift-gated in tests): each
+# produces the shared usage-dict + tool-log shape the runner's economics/vector assembly
+# ingests. "competitor" is the fair-fight adversary at the in-process arms' own ceiling
+# model; "oracle" is the FRONTIER BASELINE (one-shot frontier model, hermes-driven);
+# "deliberative" is the actual reference policy pi* -- Claude-Code-grade deliberation via
+# `claude -p` (owner ruling 2026-07-19: "YOU are the gold standard", roadmap A1b).
+EXTERNAL_ARMS: frozenset[str] = frozenset({"competitor", "oracle", "deliberative"})
+
+# The hermes-CLI-driven subset of EXTERNAL_ARMS: same driver, same frozen prompt -- an
+# oracle/competitor difference is attributable to the model and its agentic budget,
+# never to prompt drift. The deliberative arm is driven by arm_claude instead.
+HERMES_ARMS: frozenset[str] = frozenset({"competitor", "oracle"})
 
 # measured: a real dollar cost was computed (core.pricing found the model).
 # estimated: no exact price but a placeholder cost was derived.
