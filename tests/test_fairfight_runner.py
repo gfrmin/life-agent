@@ -81,7 +81,9 @@ def _args(tmp_path: Path, **overrides: Any) -> argparse.Namespace:
     base: dict[str, Any] = dict(
         config=str(_write_pkm_config(tmp_path)), k=8, arms="inprocess",
         competitor_model="claude-sonnet-4-6", competitor_provider="anthropic",
-        competitor_base_url=None, hermes_bin="/fake/hermes", timeout_s=300, limit=None,
+        competitor_base_url=None, oracle_model="claude-opus-4-8",
+        oracle_provider="anthropic", oracle_base_url=None,
+        hermes_bin="/fake/hermes", timeout_s=300, limit=None,
         no_judge=False, fresh=False, run_id="ff-test",
     )
     base.update(overrides)
@@ -194,9 +196,11 @@ def test_run_meta_written_first_and_pinned(tmp_path: Path, monkeypatch: pytest.M
     assert len(meta["prompt_v1_sha256"]) == 64
     # a real git checkout — best-effort provenance actually resolves here
     assert meta["life_agent_git"]["sha"] is None or len(meta["life_agent_git"]["sha"]) == 40
-    # competitor not selected -> hermes provenance is honestly absent, not guessed
+    # no external (hermes-driven) arm selected -> hermes provenance is honestly absent,
+    # not guessed
     assert meta["hermes_git"] == {
-        "sha": None, "dirty": None, "version": None, "note": "competitor arm not selected"}
+        "sha": None, "dirty": None, "version": None,
+        "note": "no external (hermes-driven) arm selected"}
     assert meta["corpus_fingerprint"] == {"n_chunks": 3, "n_sources": 3, "note": None}
     # the exact env var names scripts/ask.py reads for EXECUTOR_BRIDGE/EXECUTOR_DAEMON —
     # which daemon the baseline arm hit is run provenance (null = unset, ask.py's
@@ -881,3 +885,93 @@ def test_summarize_arm_excludes_error_rows_from_rates_and_reports_excluded_count
     assert summary["correct"] == 1
     assert summary["correct_rate"] == 1.0
     assert summary["cost"]["total_usd"] == pytest.approx(0.01)
+
+
+# --- the oracle arm (roadmap A1): same driver, own scratch tree, own model coordinates ------
+
+
+def test_external_model_args_maps_each_arm_to_its_own_flags(tmp_path: Path) -> None:
+    args = _args(tmp_path, competitor_model="m-comp", oracle_model="m-oracle",
+                 oracle_base_url="http://localhost:11434/v1")
+    assert RF._external_model_args(args, "competitor") == ("m-comp", "anthropic", None)
+    assert RF._external_model_args(args, "oracle") == (
+        "m-oracle", "anthropic", "http://localhost:11434/v1")
+
+
+def test_oracle_arm_runs_with_its_own_config_and_layout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Both external arms selected: each `answer_competitor` call must receive ITS OWN
+    HermesArmConfig (the late-binding-lambda hazard — a bare closure would hand every arm
+    the last iteration's config), and the oracle's outputs must land under arms/oracle/."""
+    kb = _kb(tmp_path, monkeypatch)
+    _write_questions(kb, [_q()])
+
+    seen_cfgs: list[AH.HermesArmConfig] = []
+
+    def _fake_answer(q: dict[str, Any], cfg: AH.HermesArmConfig) -> AH.CompetitorResult:
+        seen_cfgs.append(cfg)
+        tool_log = [{"tool": "search", "args": {}, "results": [
+            {"chunk_id": 1, "artifact_cache_key": "k", "source_path": "a.txt",
+             "chunk_text_full": "the value for q-001 is P123"}]}]
+        raw = _raw(question_id=str(q["id"]), text="P123 [a.txt]", cards=(),
+                   effort={"tool_calls": 1, "gather_rounds": 1, "asks_issued": 0})
+        usage = {"estimated_cost_usd": 0.5, "model": cfg.model, "api_calls": 2,
+                 "input_tokens": 10, "output_tokens": 5, "session_id": "s1"}
+        return AH.CompetitorResult(raw=raw, usage=usage, tool_log=tool_log)
+
+    monkeypatch.setattr(AH, "answer_competitor", _fake_answer)
+    args = _args(tmp_path, arms="competitor,oracle", no_judge=True)
+    result = RF.run(args, conn_factory=lambda p: _FakeConn())
+
+    assert {c.arm_name for c in seen_cfgs} == {"competitor", "oracle"}
+    by_arm = {c.arm_name: c for c in seen_cfgs}
+    assert by_arm["competitor"].model == "claude-sonnet-4-6"
+    assert by_arm["oracle"].model == "claude-opus-4-8"
+
+    run_dir = result["run_dir"]
+    for arm in ("competitor", "oracle"):
+        assert (run_dir / "arms" / arm / "answers.jsonl").exists()
+        vectors = [json.loads(line) for line in
+                   (run_dir / "arms" / arm / "vectors.jsonl").read_text().splitlines()]
+        assert [v["arm"] for v in vectors] == [arm]
+        assert vectors[0]["cost_usd"] == 0.5  # external-arm economics applied to BOTH
+
+    meta = json.loads((run_dir / "run_meta.json").read_text())
+    assert meta["arm_configs"]["oracle"]["model"] == "claude-opus-4-8"
+    assert meta["arm_configs"]["competitor"]["model"] == "claude-sonnet-4-6"
+
+
+def test_oracle_arm_alone_layout_and_meta(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Oracle selected WITHOUT the competitor: arm_configs carries only oracle, hermes
+    provenance is looked up (not the honestly-absent note), and no competitor scratch
+    tree appears."""
+    kb = _kb(tmp_path, monkeypatch)
+    _write_questions(kb, [_q()])
+
+    def _fake_answer(q: dict[str, Any], cfg: AH.HermesArmConfig) -> AH.CompetitorResult:
+        raw = _raw(question_id=str(q["id"]), text="NOT_IN_CORPUS: nothing found",
+                   declined=True, cards=(), effort={"tool_calls": 0, "gather_rounds": 0})
+        return AH.CompetitorResult(raw=raw, usage=None, tool_log=[])
+
+    monkeypatch.setattr(AH, "answer_competitor", _fake_answer)
+    args = _args(tmp_path, arms="oracle", no_judge=True)
+    result = RF.run(args, conn_factory=lambda p: _FakeConn())
+
+    run_dir = result["run_dir"]
+    meta = json.loads((run_dir / "run_meta.json").read_text())
+    assert set(meta["arm_configs"]) == {"oracle"}
+    assert meta["arm_configs"]["oracle"]["model"] == "claude-opus-4-8"
+    assert meta["hermes_git"]["note"] != "no external (hermes-driven) arm selected"
+    assert (run_dir / "arms" / "oracle" / "vectors.jsonl").exists()
+    assert not (run_dir / "arms" / "competitor").exists()
+
+
+def test_external_arms_reexported_from_the_package() -> None:
+    """Minor-1 from the PR-26 review: consumers import via the package's convention
+    (`from life_agent.fairfight import ...`) — the new constant must ride along."""
+    import life_agent.fairfight as FF
+    assert FF.EXTERNAL_ARMS == REC.EXTERNAL_ARMS
+    assert "EXTERNAL_ARMS" in FF.__all__

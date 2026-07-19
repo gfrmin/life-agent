@@ -3,17 +3,20 @@
 
 Drives every selected arm (``baseline`` = the credence executor daemon, ``inprocess`` =
 the in-process typed-families path with gather on, ``synthesis`` = the same path with
-gather off — mirroring ``run_eval.py --synthesis`` — and ``competitor`` = hermes over the
-pkm MCP server) over the frozen eval corpus, grades each answer with the EXISTING referee
-machinery (``grading.grade_channels`` + ``judge.judge_modal``, never rebuilt), and writes
+gather off — mirroring ``run_eval.py --synthesis`` — and the two hermes-driven external
+arms: ``competitor`` = the ceiling-model adversary, ``oracle`` = the frontier reference
+policy π* at ``claude-opus-4-8`` by default, opt-in — roadmap A1) over the frozen eval
+corpus, grades each answer with the EXISTING referee machinery
+(``grading.grade_channels`` + ``judge.judge_modal``, never rebuilt), and writes
 one ``OutcomeVector`` per (arm, question) plus per-arm summaries under
 ``$LIFE_AGENT_KB/eval/fairfight/<run_id>/``.
 
 Usage::
 
     uv run --project . python scripts/fairfight/run_fairfight.py --config PATH \\
-        [--k 20] [--arms baseline,inprocess,synthesis,competitor] \\
+        [--k 20] [--arms baseline,inprocess,synthesis,competitor[,oracle]] \\
         [--competitor-model M] [--competitor-provider P] [--competitor-base-url URL] \\
+        [--oracle-model M] [--oracle-provider P] [--oracle-base-url URL] \\
         [--hermes-bin PATH] [--timeout-s 300] [--limit N] [--no-judge] [--fresh] \\
         [--run-id ID]
 
@@ -193,7 +196,7 @@ def _hermes_git_info(hermes_bin: str | None) -> dict[str, Any]:
     arm isn't selected (``hermes_bin`` is ``None``) or no ``.git`` is found from its path."""
     if not hermes_bin:
         return {"sha": None, "dirty": None, "version": None,
-                "note": "competitor arm not selected"}
+                "note": "no external (hermes-driven) arm selected"}
     version = _hermes_version(hermes_bin)
     root = _hermes_repo_root(hermes_bin)
     if root is None:
@@ -237,13 +240,23 @@ def _arm_configs(args: argparse.Namespace, arms: list[str], hermes_bin: str | No
     if "synthesis" in arms:
         cfgs["synthesis"] = {"entrypoint": "ask.answer", "path": "inprocess", "gather": False,
                              "fresh": fresh}
-    if "competitor" in arms:
-        cfgs["competitor"] = {
-            "model": args.competitor_model, "provider": args.competitor_provider,
-            "base_url": args.competitor_base_url, "timeout_s": args.timeout_s,
+    for ext in sorted(REC.EXTERNAL_ARMS & set(arms)):
+        model, provider, base_url = _external_model_args(args, ext)
+        cfgs[ext] = {
+            "model": model, "provider": provider,
+            "base_url": base_url, "timeout_s": args.timeout_s,
             "hermes_bin": hermes_bin,
         }
     return cfgs
+
+
+def _external_model_args(args: argparse.Namespace, arm: str) -> tuple[str, str, str | None]:
+    """The (model, provider, base_url) CLI coordinates for one external arm — the ONLY
+    place the per-arm flag names are mapped, so the config block and the arm impl can
+    never drift apart."""
+    if arm == "oracle":
+        return args.oracle_model, args.oracle_provider, args.oracle_base_url
+    return args.competitor_model, args.competitor_provider, args.competitor_base_url
 
 
 def _build_run_meta(
@@ -265,7 +278,7 @@ def _build_run_meta(
         "run_id": run_id,
         "created_at": _now_iso(),
         "life_agent_git": _git_info(_REPO_ROOT),
-        "hermes_git": _hermes_git_info(hermes_bin if "competitor" in arms else None),
+        "hermes_git": _hermes_git_info(hermes_bin if REC.EXTERNAL_ARMS & set(arms) else None),
         "questions_path": str(questions_path),
         "questions_sha256": hashlib.sha256(questions_path.read_bytes()).hexdigest(),
         "rubric_path": str(RUBRIC),
@@ -455,7 +468,7 @@ def _calibration(arm: str, raw: AB.RawAnswer, grades: G.ChannelGrades) -> _Calib
 
 
 def _economics(arm: str, raw: AB.RawAnswer, usage: dict[str, Any] | None) -> dict[str, Any]:
-    if arm == "competitor":
+    if arm in REC.EXTERNAL_ARMS:
         usage = usage or {}
         estimated_cost = usage.get("estimated_cost_usd")
         model_tier_mix = (
@@ -530,13 +543,13 @@ def _gather_rounds(arm: str, raw: AB.RawAnswer) -> int | None:
     from)."""
     if arm in ("inprocess", "synthesis"):
         return raw.effort.get("gather_tiers")
-    if arm == "competitor":
+    if arm in REC.EXTERNAL_ARMS:
         return raw.effort.get("gather_rounds")
     return None  # baseline: not derivable from the executor's View — see above
 
 
 def _tool_calls(arm: str, raw: AB.RawAnswer) -> int | None:
-    return raw.effort.get("tool_calls") if arm == "competitor" else None
+    return raw.effort.get("tool_calls") if arm in REC.EXTERNAL_ARMS else None
 
 
 # --- per-arm driver: answer + grade every question ----------------------------------------
@@ -553,18 +566,18 @@ def _run_arm(
     answers_path = run_dir / "arms" / arm / "answers.jsonl"
     answers_path.parent.mkdir(parents=True, exist_ok=True)
     answers_path.unlink(missing_ok=True)  # fresh per run (defends a --run-id re-run)
-    if arm == "competitor":
+    if arm in REC.EXTERNAL_ARMS:
         # Final-review IMPORTANT-6: clean arm_hermes.py's own per-qid scratch dirs at run
         # start too — a --run-id re-run (or a run with a smaller --limit than a prior run
         # under the same run_id) could otherwise leave a STALE tool_calls/<qid>.jsonl or
         # usage/<qid>.json for a question not in THIS run's set lying around.
         for sub in ("tool_calls", "usage"):
-            shutil.rmtree(run_dir / "arms" / "competitor" / sub, ignore_errors=True)
+            shutil.rmtree(run_dir / "arms" / arm / sub, ignore_errors=True)
 
     rows: list[dict[str, Any]] = []
     for q in questions:
         usage: dict[str, Any] | None = None
-        if arm == "competitor":
+        if arm in REC.EXTERNAL_ARMS:
             result = arm_fn(q)
             raw, usage, tool_log = result.raw, result.usage, result.tool_log
             if _tool_log_has_error(tool_log):  # item 8: retry ONCE on a locked-catalogue etc.
@@ -837,9 +850,10 @@ def _summary_md(run_id: str, summaries: dict[str, dict[str, Any]]) -> str:
     lines += [
         "",
         "_recall@k legend: for the in-process arms (baseline/inprocess/synthesis) recall@k "
-        "= gold present in the k-card retrieval set; for the competitor it = gold present "
-        "in the UNION of its own tool-call results (a different, self-chosen retrieval "
-        "surface, not the same k cards) — the two are not directly comparable._",
+        "= gold present in the k-card retrieval set; for the external arms "
+        "(competitor/oracle) it = gold present in the UNION of that arm's own tool-call "
+        "results (a different, self-chosen retrieval surface, not the same k cards) — the "
+        "two are not directly comparable._",
     ]
     return "\n".join(lines) + "\n"
 
@@ -890,12 +904,14 @@ def run(
 
     arms = _parse_arms(args.arms)
     hermes_bin: str | None = None
-    if "competitor" in arms:
+    external_arms = sorted(REC.EXTERNAL_ARMS & set(arms))
+    if external_arms:
         hermes_bin = args.hermes_bin or shutil.which("hermes")
         if not hermes_bin:
             raise SystemExit(
-                "the competitor arm needs a hermes binary: pass --hermes-bin or put "
-                "'hermes' on PATH (never hardcoded — see the CLI's own --hermes-bin help)")
+                f"the {'/'.join(external_arms)} arm(s) need a hermes binary: pass "
+                "--hermes-bin or put 'hermes' on PATH (never hardcoded — see the CLI's "
+                "own --hermes-bin help)")
 
     kb_root = _kb_root()
     run_id = args.run_id or f"ff-{datetime.now(UTC):%Y%m%dT%H%M%SZ}"
@@ -921,14 +937,20 @@ def run(
 
         judge_fn = judge_impl or J.judge_modal
         impls = dict(default_arm_impls(args))
-        if "competitor" in arms:
+        def _bind_external(cfg: AH.HermesArmConfig) -> Callable[[dict[str, Any]], Any]:
+            # binds THIS iteration's cfg via the function parameter — a bare loop-body
+            # closure over the loop variable would late-bind every external arm to the
+            # last iteration's config.
+            return lambda q: AH.answer_competitor(q, cfg)
+
+        for ext in external_arms:
             assert hermes_bin is not None
-            hermes_cfg = AH.HermesArmConfig(
+            model, provider, base_url = _external_model_args(args, ext)
+            impls[ext] = _bind_external(AH.HermesArmConfig(
                 hermes_bin=hermes_bin, run_dir=run_dir, pkm_config=args.config,
-                model=args.competitor_model, provider=args.competitor_provider,
-                base_url=args.competitor_base_url, timeout_s=args.timeout_s,
-            )
-            impls["competitor"] = lambda q: AH.answer_competitor(q, hermes_cfg)
+                model=model, provider=provider, base_url=base_url,
+                timeout_s=args.timeout_s, arm_name=ext,
+            ))
         if arm_impls:
             impls.update(arm_impls)
 
@@ -967,10 +989,18 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--k", type=int, default=20, help="top-k per question")
     parser.add_argument(
         "--arms", default="baseline,inprocess,synthesis,competitor",
-        help="comma list of arms to run (subset of baseline,inprocess,synthesis,competitor)")
+        help="comma list of arms to run (subset of baseline,inprocess,synthesis,"
+             "competitor,oracle; `oracle` — the frontier reference-policy arm π*, "
+             "roadmap A1 — is opt-in, never in the default set)")
     parser.add_argument("--competitor-model", default="claude-sonnet-4-6")
     parser.add_argument("--competitor-provider", default="anthropic")
     parser.add_argument("--competitor-base-url", default=None)
+    parser.add_argument(
+        "--oracle-model", default="claude-opus-4-8",
+        help="the oracle (reference policy) arm's model — frontier by default; the arm "
+             "shares the competitor's driver, prompt, and pkm-MCP toolset")
+    parser.add_argument("--oracle-provider", default="anthropic")
+    parser.add_argument("--oracle-base-url", default=None)
     parser.add_argument(
         "--hermes-bin", default=None,
         help="path to the hermes CLI (default: 'hermes' resolved off $PATH; required if "
