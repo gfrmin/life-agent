@@ -1075,3 +1075,93 @@ def test_main_default_paths_use_config(monkeypatch: Any, tmp_path: Path) -> None
     args = R._parse_args([])
     assert args.shadow_log == str(kb / "membrane" / "shadow.jsonl")
     assert args.out_dir == str(kb / "membrane")
+
+
+# --- M2 advisory: engine EU delta on disagreements + gate pre-emption rows ---------------
+
+
+def _gate(*, form: str, question_id: str, gate: str, action: str, t: int = 0,
+          ts: float = 100.0, p1: float | None = 0.4) -> dict[str, Any]:
+    """A `kind: "gate"` row shaped exactly like `MembraneShadow._tick_gate`'s output."""
+    readouts: dict[str, Any] = {}
+    if p1 is not None:
+        readouts["p1"] = p1
+    return {
+        "event_type": "membrane-shadow", "kind": "gate", "ts": ts,
+        "question_id": question_id, "gate": gate, "form": form, "action": action,
+        "real_effector": "abstain", "latency_ms": 5.0, "readouts": readouts,
+        "summary": _summary(n_candidates=0, leader_credence=None, p_none=None, n_obs=0),
+        "t": t,
+    }
+
+
+_EU_U_BAR = {"u_correct": 1.0, "u_abstain": 0.0, "u_wrong": -4.0,
+             "lambda_int": 0.1, "kappa_att": 0.02}
+
+
+def test_differential_disagreement_rows_carry_engine_eu_delta() -> None:
+    records = [
+        # disagree at p1=0.3: real=abstain (EU 0), would=gather (EU -0.02 + 0.3 = 0.28)
+        _decide(form="said@1", question_id="q-002", action="gather",
+                real_effector="abstain", t=1, p1=0.3),
+        # disagree at p1=0.91: real=ask_clarify -> ask (EU 0.81), would=respond (EU 0.55)
+        _decide(form="said@1", question_id="q-004", action="respond",
+                real_effector="ask_clarify", t=3, p1=0.91),
+        # disagree with NO p1 readout: unpriceable, named, never guessed
+        _decide(form="said@1", question_id="q-005", action="gather",
+                real_effector="abstain", t=4, p1=None),
+    ]
+    diff = R.differential(records, "said@1", u_bar=_EU_U_BAR)
+    by_q = {d["question_id"]: d for d in diff["disagreements"]}
+    assert by_q["q-002"]["eu_delta"] == 0.28
+    assert by_q["q-004"]["eu_delta"] == -0.26
+    assert by_q["q-005"]["eu_delta"] is None
+    classes = diff["disagreement_eu_by_class"]
+    assert classes["abstain->gather"] == {"n": 2, "priced_n": 1, "eu_delta_sum": 0.28}
+    assert classes["ask->respond"] == {"n": 1, "priced_n": 1, "eu_delta_sum": -0.26}
+
+
+def test_differential_without_u_bar_prices_nothing() -> None:
+    records = [
+        _decide(form="said@1", question_id="q-002", action="gather",
+                real_effector="abstain", t=1, p1=0.3),
+    ]
+    diff = R.differential(records, "said@1")
+    assert diff["disagreements"][0]["eu_delta"] is None
+    assert diff["disagreement_eu_by_class"]["abstain->gather"] == {
+        "n": 1, "priced_n": 0, "eu_delta_sum": None,
+    }
+
+
+def test_gate_advisory_counts_by_gate_and_engine_would_action() -> None:
+    records = [
+        _gate(form="said@1", question_id="q-001", gate="weak_retrieval", action="gather"),
+        _gate(form="said@1", question_id="q-002", gate="weak_retrieval", action="gather"),
+        _gate(form="said@1", question_id="q-003", gate="weak_retrieval", action="abstain"),
+        _gate(form="said@1", question_id="q-004", gate="executor_down", action="abstain"),
+        _gate(form="other@1", question_id="q-005", gate="weak_retrieval", action="gather"),
+    ]
+    g = R.gate_advisory(records, "said@1")
+    assert g["n"] == 4  # the other form's row is not this form's
+    assert g["by_gate"]["weak_retrieval"] == {"n": 3, "would": {"abstain": 1, "gather": 2}}
+    assert g["by_gate"]["executor_down"] == {"n": 1, "would": {"abstain": 1}}
+    assert "pre-empt" in g["note"]  # the i-4 debt is named, not implied
+
+
+def test_gate_advisory_empty_is_zero_not_a_crash() -> None:
+    g = R.gate_advisory([], "said@1")
+    assert g["n"] == 0
+    assert g["by_gate"] == {}
+
+
+def test_build_report_includes_gates_and_priced_disagreements() -> None:
+    records = [
+        _boot("said@1", u_bar=dict(_EU_U_BAR)),
+        _decide(form="said@1", question_id="q-002", action="gather",
+                real_effector="abstain", t=1, p1=0.3),
+        _gate(form="said@1", question_id="q-009", gate="weak_retrieval", action="gather"),
+    ]
+    report = R.build_report(records)
+    assert report["gates"]["said@1"]["n"] == 1
+    # the differential is priced under the form's OWN boot u_bar, not a default
+    assert report["differential"]["said@1"]["disagreements"][0]["eu_delta"] == 0.28
