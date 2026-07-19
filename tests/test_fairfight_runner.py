@@ -940,3 +940,38 @@ def test_oracle_arm_runs_with_its_own_config_and_layout(
     meta = json.loads((run_dir / "run_meta.json").read_text())
     assert meta["arm_configs"]["oracle"]["model"] == "claude-opus-4-8"
     assert meta["arm_configs"]["competitor"]["model"] == "claude-sonnet-4-6"
+
+
+def test_oracle_arm_alone_layout_and_meta(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Oracle selected WITHOUT the competitor: arm_configs carries only oracle, hermes
+    provenance is looked up (not the honestly-absent note), and no competitor scratch
+    tree appears."""
+    kb = _kb(tmp_path, monkeypatch)
+    _write_questions(kb, [_q()])
+
+    def _fake_answer(q: dict[str, Any], cfg: AH.HermesArmConfig) -> AH.CompetitorResult:
+        raw = _raw(question_id=str(q["id"]), text="NOT_IN_CORPUS: nothing found",
+                   declined=True, cards=(), effort={"tool_calls": 0, "gather_rounds": 0})
+        return AH.CompetitorResult(raw=raw, usage=None, tool_log=[])
+
+    monkeypatch.setattr(AH, "answer_competitor", _fake_answer)
+    args = _args(tmp_path, arms="oracle", no_judge=True)
+    result = RF.run(args, conn_factory=lambda p: _FakeConn())
+
+    run_dir = result["run_dir"]
+    meta = json.loads((run_dir / "run_meta.json").read_text())
+    assert set(meta["arm_configs"]) == {"oracle"}
+    assert meta["arm_configs"]["oracle"]["model"] == "claude-opus-4-8"
+    assert meta["hermes_git"]["note"] != "no external (hermes-driven) arm selected"
+    assert (run_dir / "arms" / "oracle" / "vectors.jsonl").exists()
+    assert not (run_dir / "arms" / "competitor").exists()
+
+
+def test_external_arms_reexported_from_the_package() -> None:
+    """Minor-1 from the PR-26 review: consumers import via the package's convention
+    (`from life_agent.fairfight import ...`) — the new constant must ride along."""
+    import life_agent.fairfight as FF
+    assert FF.EXTERNAL_ARMS == REC.EXTERNAL_ARMS
+    assert "EXTERNAL_ARMS" in FF.__all__

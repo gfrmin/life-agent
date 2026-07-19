@@ -850,9 +850,10 @@ def _summary_md(run_id: str, summaries: dict[str, dict[str, Any]]) -> str:
     lines += [
         "",
         "_recall@k legend: for the in-process arms (baseline/inprocess/synthesis) recall@k "
-        "= gold present in the k-card retrieval set; for the competitor it = gold present "
-        "in the UNION of its own tool-call results (a different, self-chosen retrieval "
-        "surface, not the same k cards) — the two are not directly comparable._",
+        "= gold present in the k-card retrieval set; for the external arms "
+        "(competitor/oracle) it = gold present in the UNION of that arm's own tool-call "
+        "results (a different, self-chosen retrieval surface, not the same k cards) — the "
+        "two are not directly comparable._",
     ]
     return "\n".join(lines) + "\n"
 
