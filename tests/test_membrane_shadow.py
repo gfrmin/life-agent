@@ -1339,3 +1339,148 @@ def test_gate_tick_that_raises_marks_the_form_dead_like_a_decide_tick(tmp_path: 
         assert dying.client.shutdown_calls >= 1
     finally:
         sh.close()
+
+
+# --- M3: decide_live — the synchronous coarse-menu consult on the answer path -------------
+#
+# The ONE synchronous surface: the bridge's /decide-live blocks on it. The worker still
+# owns every session (single-threaded engine access is preserved); decide_live enqueues a
+# reply-slot item and waits, bounded. A dead primary form, a full queue, or a timeout all
+# return None — the host's declared engine-down abstain, never an exception.
+
+_LIVE_PAYLOAD: dict[str, object] = {
+    "candidates": ["alpha", "beta"], "observations": [1, 2], "rho": 0.8,
+    "u_bar": {"u_correct": 1.0, "u_abstain": 0.0, "u_wrong": -4.0,
+              "lambda_int": 0.1, "kappa_att": 0.02},
+    "era_split": False, "owner_scoped": False, "applied_probes": [],
+    "transforms": [{"name": "corroborate_haiku", "probe": "corroborate_haiku",
+                    "kind": "voi", "trigger": "below_bar", "rho": 0.8, "cost": 0.004}],
+}
+_LIVE_DEC: dict[str, object] = {
+    "effector": "abstain", "value": None, "probe": None,
+    "credences": [0.2, 0.3], "p_none": 0.5, "eu": 0.0, "n_obs": 2,
+}
+
+
+def test_decide_live_returns_the_mapped_view_and_writes_an_enact_record(
+    tmp_path: Path,
+) -> None:
+    cfg = _cfg(tmp_path)
+    factory = _FakeFactory()  # _FakeSession decides "respond" at p1=0.7
+    sh = SH.MembraneShadow(
+        cfg, u_bar=_u_bar, snapshot=_snapshot_calls_counter()[1],
+        session_factory=factory, clock=_FakeClock(),
+    )
+    try:
+        sh.start()
+        assert _wait_until(lambda: sh.stats()["forms"]["said@1"]["alive"])  # type: ignore[index]
+        out = sh.decide_live("q-live-1", dict(_LIVE_PAYLOAD), dict(_LIVE_DEC))
+        assert out is not None
+        # engine respond over daemon abstain → host-MAP report of the leader (beta)
+        assert out["action"] == "respond"
+        assert out["degraded"] is None
+        assert out["dec"]["effector"] == "report"
+        assert out["dec"]["value"] == "beta"
+        # the engine was consulted under the SAME reduction the shadow ticks use
+        session = factory.built["said@1"][0]
+        assert session.decide_calls == [W.summary_from_payload(_LIVE_PAYLOAD, _LIVE_DEC)]
+        assert _wait_until(
+            lambda: any(r.get("kind") == "enact" for r in _read_records(cfg.log_path)))
+        rec, = [r for r in _read_records(cfg.log_path) if r.get("kind") == "enact"]
+        assert rec["question_id"] == "q-live-1"
+        assert rec["form"] == "said@1"
+        assert rec["action"] == "respond"            # the engine's coarse choice
+        assert rec["daemon_effector"] == "abstain"   # what credence would have done
+        assert rec["real_effector"] == "report"      # what the host enacted
+        assert rec["degraded"] is None
+        assert rec["readouts"] == {"p1": 0.7}
+        assert rec["summary"] == {
+            "n_candidates": 2, "leader_credence": 0.3, "p_none": 0.5, "n_obs": 2,
+            "era_split": False, "owner_scoped": False, "grow_pass": False,
+        }
+        assert rec["t"] == 0  # a decision tick never advances the evidence stream
+    finally:
+        sh.close()
+
+
+def test_decide_live_terminal_enactment_binds_the_reaction_summary(
+    tmp_path: Path,
+) -> None:
+    # the live path replaces submit_decide on the mirror leg, so IT must remember the
+    # summary a later submit_decision/submit_reaction binds the verdict to.
+    cfg = _cfg(tmp_path)
+    factory = _FakeFactory()
+    sh = SH.MembraneShadow(
+        cfg, u_bar=_u_bar, snapshot=_snapshot_calls_counter()[1],
+        session_factory=factory, clock=_FakeClock(),
+    )
+    try:
+        sh.start()
+        assert _wait_until(lambda: sh.stats()["forms"]["said@1"]["alive"])  # type: ignore[index]
+        sh.decide_live("q-live-2", dict(_LIVE_PAYLOAD), dict(_LIVE_DEC))
+        expected = W.summary_from_payload(_LIVE_PAYLOAD, _LIVE_DEC)
+        sh.submit_decision("d-live-2", "q-live-2", {"chosen_action": "report"})
+        sh.submit_reaction("d-live-2", "good")
+        session = factory.built["said@1"][0]
+        assert _wait_until(lambda: session.observe_verdict_calls == [(expected, 1)])
+    finally:
+        sh.close()
+
+
+def test_decide_live_dead_form_returns_none(tmp_path: Path) -> None:
+    cfg = _cfg(tmp_path, max_respawns=0)
+    factory = _FakeFactory(
+        sessions_for={"said@1": [_FakeSession("said@1", boot_raises=True)]})
+    sh = SH.MembraneShadow(
+        cfg, u_bar=_u_bar, snapshot=_snapshot_calls_counter()[1],
+        session_factory=factory, clock=_FakeClock(),
+    )
+    try:
+        sh.start()
+        assert _wait_until(
+            lambda: not sh.stats()["forms"]["said@1"]["alive"])  # type: ignore[index]
+        assert sh.decide_live("q-live-3", dict(_LIVE_PAYLOAD), dict(_LIVE_DEC)) is None
+    finally:
+        sh.close()
+
+
+def test_decide_live_engine_death_returns_none_and_marks_the_form_dead(
+    tmp_path: Path,
+) -> None:
+    cfg = _cfg(tmp_path, max_respawns=0)
+    factory = _FakeFactory(
+        sessions_for={"said@1": [_FakeSession("said@1", decide_raises=True)]})
+    sh = SH.MembraneShadow(
+        cfg, u_bar=_u_bar, snapshot=_snapshot_calls_counter()[1],
+        session_factory=factory, clock=_FakeClock(),
+    )
+    try:
+        sh.start()
+        assert _wait_until(lambda: sh.stats()["forms"]["said@1"]["alive"])  # type: ignore[index]
+        assert sh.decide_live("q-live-4", dict(_LIVE_PAYLOAD), dict(_LIVE_DEC)) is None
+        assert not sh.stats()["forms"]["said@1"]["alive"]  # type: ignore[index]
+    finally:
+        sh.close()
+
+
+def test_decide_live_timeout_returns_none(tmp_path: Path) -> None:
+    # never start the worker: the item sits unprocessed, so the bounded wait expires.
+    cfg = _cfg(tmp_path)
+    sh = SH.MembraneShadow(
+        cfg, u_bar=_u_bar, snapshot=_snapshot_calls_counter()[1],
+        session_factory=_FakeFactory(), clock=_FakeClock(),
+    )
+    assert sh.decide_live(
+        "q-live-5", dict(_LIVE_PAYLOAD), dict(_LIVE_DEC), wait_s=0.05) is None
+
+
+def test_decide_live_full_queue_returns_none(tmp_path: Path) -> None:
+    cfg = _cfg(tmp_path, queue_size=1)
+    sh = SH.MembraneShadow(
+        cfg, u_bar=_u_bar, snapshot=_snapshot_calls_counter()[1],
+        session_factory=_FakeFactory(), clock=_FakeClock(),
+    )
+    # worker never started; one submit fills the queue, the live consult can't enqueue
+    sh.submit_gate("q-fill", "weak_retrieval")
+    assert sh.decide_live(
+        "q-live-6", dict(_LIVE_PAYLOAD), dict(_LIVE_DEC), wait_s=0.05) is None
