@@ -45,6 +45,21 @@ _VALUE_FOR: dict[str, float] = {name: v for name, v in AFFORDANCES}
 # the id/slots menu, so no think posture exists to map.
 UTILITY_FORMS: tuple[str, ...] = ("said@1",)
 
+# The executor's own effector vocabulary (core/executor.py's `_WITHHOLD`, core/gate.py's
+# `ASSERT_ACTIONS`/`WITHHOLD_ACTIONS`, the daemon-scheduled "gather" steer, and the
+# zero-observation "miss") folded onto this world's four affordances. ONE source: the
+# offline report (`scripts/membrane/report.py`) and the M3 live mapping
+# (:mod:`life_agent.membrane.coarse`) both read this dict — a hand-copy in either place
+# is exactly the drift the report's own legend warns against. `hedge -> respond` is a
+# declared modelling choice (assert-shaped but uncommitted — the report prints the
+# caveat beside its copy of the legend).
+REAL_TO_MEMBRANE: dict[str, str] = {
+    "report": "respond", "report_scoped": "respond", "hedge": "respond",
+    "abstain": "abstain", "miss": "abstain",
+    "ask_clarify": "ask",
+    "gather": "gather",
+}
+
 
 # --- DecideSummary: the one canonical context both the live and warm paths reduce to -----
 

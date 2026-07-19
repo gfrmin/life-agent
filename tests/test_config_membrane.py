@@ -91,3 +91,21 @@ def test_membrane_command_env_name_matches_client() -> None:
 
 def test_membrane_read_timeout_env_name_matches_client() -> None:
     assert config.MEMBRANE_READ_TIMEOUT_ENV == MC.READ_TIMEOUT_ENV
+
+
+# --- M3: the live coarse-menu flag -------------------------------------------------------
+
+def test_membrane_live_default_off(monkeypatch) -> None:
+    monkeypatch.delenv(config.MEMBRANE_LIVE_ENV, raising=False)
+    assert config.membrane_live() is False
+
+
+def test_membrane_live_on(monkeypatch) -> None:
+    monkeypatch.setenv(config.MEMBRANE_LIVE_ENV, "1")
+    assert config.membrane_live() is True
+
+
+def test_membrane_live_other_values_stay_off(monkeypatch) -> None:
+    for v in ("0", "", "true", "yes"):
+        monkeypatch.setenv(config.MEMBRANE_LIVE_ENV, v)
+        assert config.membrane_live() is False, v

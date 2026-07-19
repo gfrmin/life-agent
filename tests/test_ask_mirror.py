@@ -48,3 +48,60 @@ def test_answer_via_executor_wires_the_shared_shadow_mirror(monkeypatch: Any) ->
     assert bridge_arg == ask.EXECUTOR_BRIDGE
     assert qid_arg == hashlib.sha256(b"my passport?").hexdigest()[:16]
     assert captured["post"] is sentinel_wrapped  # decide_via_loop gets the WRAPPED post back
+
+
+def test_answer_via_executor_flag_off_passes_no_live_consult(monkeypatch: Any) -> None:
+    monkeypatch.setattr(ask, "_executor_ready", lambda: True)
+    monkeypatch.setattr(ask.CFG, "membrane_live", lambda: False)
+    captured: dict[str, Any] = {}
+
+    def fake_decide_via_loop(question: str, k: int, **kwargs: Any) -> dict[str, Any]:
+        captured.update(kwargs)
+        return {"effector": "miss", "asserted": [], "candidates": [], "credences": [],
+                "p_none": None, "eu": None, "n_obs": 0, "hits": [], "route": None}
+
+    monkeypatch.setattr(ask.EX, "decide_via_loop", fake_decide_via_loop)
+    ask.answer_via_executor("my passport?", 20)
+    assert captured["live"] is None  # today's behaviour — the daemon decides
+
+
+def test_answer_via_executor_flag_on_wires_the_live_consult_and_skips_the_mirror(
+    monkeypatch: Any,
+) -> None:
+    # M3 wiring pin (review finding): under the flag, decide_via_loop must get the
+    # coarse.live_decide consult AND the BARE transport — the decide mirror stays off
+    # (the live path records its own enact tick; a wrapped post would consult the one
+    # engine twice per tick).
+    monkeypatch.setattr(ask, "_executor_ready", lambda: True)
+    monkeypatch.setattr(ask.CFG, "membrane_live", lambda: True)
+
+    def sentinel_consult(payload: dict[str, Any], dec: dict[str, Any]) -> Any:
+        return (dec, None)
+
+    live_calls: list[tuple[str, str]] = []
+
+    def fake_live_decide(bridge: str, question_id: str, **kw: Any) -> Any:
+        live_calls.append((bridge, question_id))
+        return sentinel_consult
+
+    monkeypatch.setattr(ask.CRS, "live_decide", fake_live_decide)
+
+    def forbidden_wrap(*a: Any, **kw: Any) -> Any:
+        raise AssertionError("shadow_wrapped_post must not be constructed under the flag")
+
+    monkeypatch.setattr(ask.SM, "shadow_wrapped_post", forbidden_wrap)
+
+    captured: dict[str, Any] = {}
+
+    def fake_decide_via_loop(question: str, k: int, **kwargs: Any) -> dict[str, Any]:
+        captured.update(kwargs)
+        return {"effector": "miss", "asserted": [], "candidates": [], "credences": [],
+                "p_none": None, "eu": None, "n_obs": 0, "hits": [], "route": None}
+
+    monkeypatch.setattr(ask.EX, "decide_via_loop", fake_decide_via_loop)
+    ask.answer_via_executor("my passport?", 20)
+
+    assert live_calls == [(ask.EXECUTOR_BRIDGE,
+                           hashlib.sha256(b"my passport?").hexdigest()[:16])]
+    assert captured["live"] is sentinel_consult
+    assert captured["post"] is ask._http_post  # the bare transport — no mirror wrap
