@@ -35,7 +35,11 @@ q2-084 class), ``multi_slot`` (two interrogative clauses, one gold — the q2-00
 **What this deliberately does not do (on the page, not hidden):** unanswerable-by-
 construction questions (a verifier's failure to answer cannot certify absence — needs a
 different protocol); date-stratified sampling (stratifies by ``source_origin`` only).
-Each is a named follow-up, not an accident.
+The regex gates are nets, not proofs: first-person detection still trips on a
+roman-numeral "I" (fails safe — a rejection); the compound-question net catches
+repeated interrogatives and slot-noun pairs across an "and", but a compound built from
+nouns outside the slot-noun list, or two sentences joined by punctuation, passes to the
+verifier. Each is a named follow-up, not an accident.
 
 **Outputs (all under the out dir, PII fail-closed — corpus content never leaves
 ``$LIFE_AGENT_KB``):** ``questions_v2.yaml`` (the candidate corpus: id ``q2-NNN``,
@@ -119,12 +123,24 @@ _NOT_FOUND_RE = re.compile(r"^not[_\s-]?found\b", re.IGNORECASE)
 # v1.1 gates (deliberative-audit findings 2026-07-19). Each mechanical check is the
 # enforcement half of a PROPOSER_V2 contract line — prompt and gate move together.
 SUBJECT_OWNER = "owner"
-_FIRST_PERSON_RE = re.compile(r"\b(i|me|my|mine|we|our|us)\b", re.IGNORECASE)
+# "us" is case-SENSITIVE lowercase (PR-32 review: "US visa/bank/dollar" is common in a
+# finance corpus and would false-fire the gate); "I" exact-case (bare lowercase "i" is
+# not first person in edited text). Residual named edge: roman-numeral "I" ("Chapter I")
+# still trips — the gate fails safe (a rejection, never contamination).
+_FIRST_PERSON_RE = re.compile(r"\b(?:[Mm]y|[Mm]ine|[Mm]e|[Ww]e|[Oo]ur|I|us)\b")
 # an interrogative that OPENS a clause (start of question, or after and/or/comma) marks a
 # value slot; a relative "who/which" mid-phrase does not.
 _SLOT_RE = re.compile(
     r"(?:^|\b(?:and|or)\b|,)\s*(what|when|who|whom|whose|which|where|why|how)\b",
     re.IGNORECASE)
+# the single-wh two-noun-phrase compound ("what is the policy number and effective
+# date?"): two DIFFERENT slot-typed nouns joined across an "and" is a second value slot
+# even with one interrogative (PR-32 review Important-2). List-based, so imperfect by
+# construction — the miss class is named in the module docstring.
+_SLOT_NOUN = (r"\b(number|date|amount|total|balance|name|id|code|address|email|phone|"
+              r"value|price|cost|rate|currency|term|duration)\b")
+_SLOT_NOUN_RE = re.compile(_SLOT_NOUN, re.IGNORECASE)
+_AND_RE = re.compile(r"\band\b", re.IGNORECASE)
 
 
 def _is_first_person(question: str) -> bool:
@@ -132,7 +148,14 @@ def _is_first_person(question: str) -> bool:
 
 
 def _slot_count(question: str) -> int:
-    return len(_SLOT_RE.findall(question))
+    n = len(_SLOT_RE.findall(question))
+    and_m = _AND_RE.search(question)
+    if n < 2 and and_m:
+        before = {m.lower() for m in _SLOT_NOUN_RE.findall(question[: and_m.start()])}
+        after = {m.lower() for m in _SLOT_NOUN_RE.findall(question[and_m.end():])}
+        if before and after and (before != after or len(before | after) > 1):
+            n = max(n, 2)
+    return n
 
 # complete(system, user) -> the model's text. Injected so tests never touch a network.
 Complete = Callable[[str, str], str]
@@ -386,6 +409,10 @@ def merge_corpora(corpora: list[tuple[str, dict[str, Any]]], *, seed: int,
             merged_q = dict(q)
             merged_q.pop("audit", None)  # re-drawn over the merged set below
             merged_q["provenance"] = dict(q["provenance"])
+            # no aliasing into the inputs (PR-32 review: the nightly loop may reuse
+            # corpus objects in-process — a shared list would let a later mutation
+            # reach back into a source corpus)
+            merged_q["answer_variants"] = list(q.get("answer_variants") or [])
             merged_q["provenance"]["factory_run"] = run_name
             merged.append(merged_q)
             kept += 1
