@@ -49,6 +49,7 @@ from life_agent.core import decisions as DEC
 from life_agent.core import derivations as D
 from life_agent.core import outcomes as O
 from life_agent.core import reactions as R
+from life_agent.core import seam as SEAM
 from life_agent.core import utility as UT
 from life_agent.core.brain import Brain
 from life_agent.core.dates import parse_date as _parse_date
@@ -704,16 +705,21 @@ _LOOKUP_ACTIONS: dict[str, Any] = {"type": "finite", "values": [0.0]}
 
 def decide(brain: Brain, state_id: str, weights: list[float],
            u_bar: dict[str, float], scoped_eu: float = 0.0) -> tuple[str, float]:
-    """`optimise` over the response actions on the live rho-latent state. `report` expands into
+    """`optimise` over the response actions on the live rho-latent state, committed through
+    the ONE act seam (:func:`life_agent.core.seam.commit` — roadmap M0). `report` expands into
     a per-candidate `report_j` so the engine picks the asserted candidate (no host argmax); a
     `report_j` winner maps to action ``report`` (its candidate is the weight-MAP = the weight-sorted
-    ``candidates[0]`` the caller renders). ``scoped_eu`` prices report_scoped (0.0 ⇒ never wins)."""
+    ``candidates[0]`` the caller renders — a render label, not a second decision).
+    ``scoped_eu`` prices report_scoped (0.0 ⇒ never wins)."""
     utilities = action_utilities(weights, u_bar, scoped_eu)
     preference = {
         "type": "functional_per_action",
         "actions": {name: {"type": "tabular", "values": vec} for name, vec in utilities.items()},
     }
-    action, eu = brain.optimise(state_id, actions=_LOOKUP_ACTIONS, preference=preference)
+    dec = SEAM.commit(SEAM.SkinOptimise(brain=brain, state_id=state_id,
+                                        actions=_LOOKUP_ACTIONS, preference=preference))
+    action, eu = dec.action, dec.eu
+    assert eu is not None  # a SkinOptimise commit always carries the engine's EU
     if isinstance(action, str) and action.startswith("report_") and action != "report_scoped":
         action = "report"  # report_j → report; the asserted value is the weight-MAP candidate
     return action, eu
