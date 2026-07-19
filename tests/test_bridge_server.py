@@ -620,6 +620,10 @@ class _FakeMembrane:
     raise_on_submit_reaction: bool = False
     raise_on_submit_gate: bool = False
     raise_on_stats: bool = False
+    decide_live_calls: list[tuple[str, dict[str, Any], dict[str, Any]]] = dataclasses.field(
+        default_factory=list)
+    decide_live_value: dict[str, Any] | None = None
+    raise_on_decide_live: bool = False
 
     def submit_decide(self, question_id: str, payload: dict[str, Any],
                       dec: dict[str, Any]) -> None:
@@ -641,6 +645,13 @@ class _FakeMembrane:
         self.submit_gate_calls.append((question_id, gate))
         if self.raise_on_submit_gate:
             raise RuntimeError("boom: submit_gate")
+
+    def decide_live(self, question_id: str, payload: dict[str, Any],
+                    dec: dict[str, Any]) -> dict[str, Any] | None:
+        self.decide_live_calls.append((question_id, payload, dec))
+        if self.raise_on_decide_live:
+            raise RuntimeError("boom: decide_live")
+        return self.decide_live_value
 
     def stats(self) -> dict[str, Any]:
         if self.raise_on_stats:
@@ -1057,3 +1068,54 @@ def test_gate_support_never_raises_when_submit_gate_raises(deps: BridgeDeps) -> 
                             {"question_id": "q-1", "gate": "weak_retrieval"})
     assert status == 200
     assert payload == {"ok": True}
+
+
+# --- /decide-live: the M3 synchronous coarse-menu consult --------------------------------
+
+def test_decide_live_disabled_fast_path(deps: BridgeDeps) -> None:
+    status, payload = _call(deps, "POST", "/decide-live", {})
+    assert status == 200
+    assert payload == {"ok": False, "disabled": True}
+
+
+def test_decide_live_returns_the_shadow_result(deps: BridgeDeps) -> None:
+    result = {"dec": {"effector": "report", "value": "beta"},
+              "action": "respond", "degraded": None}
+    fake = _FakeMembrane(decide_live_value=result)
+    deps2 = _with_membrane(deps, fake)
+    body = {"question_id": "q-1", "payload": {"candidates": ["beta"]},
+            "dec": {"effector": "abstain"}}
+    status, payload = _call(deps2, "POST", "/decide-live", body)
+    assert status == 200
+    assert payload == {"ok": True, **result}
+    assert fake.decide_live_calls == [
+        ("q-1", {"candidates": ["beta"]}, {"effector": "abstain"})]
+
+
+def test_decide_live_down_shadow_is_named(deps: BridgeDeps) -> None:
+    fake = _FakeMembrane(decide_live_value=None)
+    deps2 = _with_membrane(deps, fake)
+    status, payload = _call(deps2, "POST", "/decide-live",
+                            {"question_id": "q-1", "payload": {}, "dec": {}})
+    assert status == 200
+    assert payload == {"ok": False, "down": True}
+
+
+def test_decide_live_never_raises_when_the_shadow_raises(deps: BridgeDeps) -> None:
+    fake = _FakeMembrane(raise_on_decide_live=True)
+    deps2 = _with_membrane(deps, fake)
+    status, payload = _call(deps2, "POST", "/decide-live",
+                            {"question_id": "q-1", "payload": {}, "dec": {}})
+    assert status == 200
+    assert payload == {"ok": False, "down": True}
+
+
+def test_decide_live_malformed_body_is_400(deps: BridgeDeps) -> None:
+    fake = _FakeMembrane()
+    deps2 = _with_membrane(deps, fake)
+    for body in ({"payload": {}, "dec": {}},
+                 {"question_id": "q-1", "payload": "x", "dec": {}},
+                 {"question_id": "q-1", "payload": {}, "dec": "x"}):
+        status, _payload = _call(deps2, "POST", "/decide-live", body)
+        assert status == 400, body
+    assert fake.decide_live_calls == []

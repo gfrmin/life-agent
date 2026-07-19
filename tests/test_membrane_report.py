@@ -1165,3 +1165,73 @@ def test_build_report_includes_gates_and_priced_disagreements() -> None:
     assert report["gates"]["said@1"]["n"] == 1
     # the differential is priced under the form's OWN boot u_bar, not a default
     assert report["differential"]["said@1"]["disagreements"][0]["eu_delta"] == 0.28
+
+
+# --- M3: live enactments (`kind: "enact"`) — reported apart from the shadow ticks ---------
+
+def _enact(*, form: str, question_id: str, action: str, daemon_effector: str,
+           real_effector: str, degraded: str | None = None, t: int = 0,
+           ts: float = 100.0, p1: float | None = 0.4) -> dict[str, Any]:
+    """A `kind: "enact"` row shaped exactly like `MembraneShadow._tick_live`'s output."""
+    return {
+        "event_type": "membrane-shadow", "kind": "enact", "ts": ts,
+        "question_id": question_id, "form": form, "action": action,
+        "raw_internal": False, "daemon_effector": daemon_effector,
+        "real_effector": real_effector, "degraded": degraded, "latency_ms": 5.0,
+        "readouts": {"p1": p1} if p1 is not None else {}, "summary": _summary(), "t": t,
+    }
+
+
+def test_enactment_counts_transitions_and_degradations() -> None:
+    records = [
+        _enact(form="said@1", question_id="q-101", action="gather",
+               daemon_effector="abstain", real_effector="gather"),
+        _enact(form="said@1", question_id="q-102", action="gather",
+               daemon_effector="abstain", real_effector="ask_clarify",
+               degraded="gather_exhausted"),
+        _enact(form="said@1", question_id="q-103", action="respond",
+               daemon_effector="report", real_effector="report"),
+        _enact(form="said@2", question_id="q-104", action="ask",
+               daemon_effector="abstain", real_effector="ask_clarify"),  # other form
+        _decide(form="said@1", question_id="q-105", action="gather",
+                real_effector="abstain"),  # a shadow tick — never an enactment
+    ]
+    e = R.enactment(records, "said@1")
+    assert e["n"] == 3
+    assert e["by_engine_action"] == {"gather": 2, "respond": 1}
+    assert e["by_transition"] == {"abstain->gather": 1, "abstain->ask_clarify": 1,
+                                  "report->report": 1}
+    assert e["degraded"] == {"gather_exhausted": 1}
+    assert "note" in e
+
+
+def test_enact_rows_never_enter_the_differential() -> None:
+    records = [
+        _decide(form="said@1", question_id="q-001", action="gather",
+                real_effector="abstain", t=0),
+        _enact(form="said@1", question_id="q-002", action="respond",
+               daemon_effector="abstain", real_effector="report", t=1),
+    ]
+    diff = R.differential(records, "said@1")
+    assert diff["n_mapped"] == 1  # only the shadow tick; the enactment is not a would-vs-did
+    assert [d["question_id"] for d in diff["disagreements"]] == ["q-001"]
+
+
+def test_build_report_includes_enactments_and_md_section() -> None:
+    records = [
+        _boot("said@1"),
+        _enact(form="said@1", question_id="q-101", action="abstain",
+               daemon_effector="report", real_effector="abstain"),
+    ]
+    report = R.build_report(records)
+    assert report["enactments"]["said@1"]["n"] == 1
+    md = R.render_md(report)
+    assert "Live enactments" in md
+
+
+def test_real_to_membrane_is_single_sourced_from_world() -> None:
+    # the legend moved to life_agent.membrane.world (M3 needs it in src); the report must
+    # read the SAME mapping object, never a hand-copy that can drift.
+    from life_agent.membrane import world as W
+
+    assert R.REAL_TO_MEMBRANE is W.REAL_TO_MEMBRANE
