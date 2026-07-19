@@ -40,13 +40,19 @@ FORMAT_VERSION = 1
 # The modelling choices, printed verbatim into the report (the brief's discipline: every
 # choice is on the page, not buried in code).
 MODELLING_CHOICES: tuple[str, ...] = (
-    "actual act: a vector with asserted=True is priced as a 'report' (correct = "
-    "asserted_correct); anything else (declined, or asserted=False) is an 'abstain'.",
-    "hedges/scoped assertions are folded into 'report' in v1 — the vectors carry buckets, "
-    "not the fine action; refine later from decision_view.",
-    "oracle: corpus-omniscient — it reports the gold whenever the gold is knowable from the "
-    "corpus (answerable AND gold_in_corpus), else it abstains. Reachability is handled by the "
-    "stage attribution below, NOT by weakening the oracle.",
+    "actual act: a SCOPED-bucket row is priced as a 'report_scoped' (correct = "
+    "asserted_correct, which the graders compute over the scoped value); otherwise "
+    "asserted=True is priced as a 'report' (correct = asserted_correct); anything else "
+    "(declined) is an 'abstain'.",
+    "hedges are folded into 'report' in v1 — the vectors carry buckets, not the fine "
+    "action; refine later from decision_view.",
+    "oracle: corpus-omniscient AND dominating — it reports the gold whenever the gold is "
+    "knowable from the corpus (answerable AND gold_in_corpus) OR the arm itself proved the "
+    "gold attainable (asserted_correct, even where the retrieval-channel proxy "
+    "gold_in_corpus missed it); else it abstains. The oracle therefore dominates every "
+    "realised act and regret is never negative — a negative sample would be a bug, not a "
+    "finding. Reachability is handled by the stage attribution below, NOT by weakening "
+    "the oracle.",
     "regret = realised_utility(oracle) - realised_utility(actual), priced by "
     "life_agent.core.gate.realised_utility under u ~ P(U); ask_clarify would be priced at "
     "oracle_p (life_agent.core.lookup._ORACLE_P), though neither act uses it in v1.",
@@ -72,17 +78,25 @@ def partition_scored(rows: list[dict]) -> tuple[list[dict], int]:
 # --- the two acts + the stage label (pure) -----------------------------------------------
 
 def actual_response(row: dict) -> RealisedResponse:
-    """The act the arm actually took. asserted → a report (graded by asserted_correct);
-    anything else is a withholding, priced at the gauge (abstain)."""
+    """The act the arm actually took. A SCOPED row is a report_scoped (its asserted_correct
+    is computed over the scoped value — grading.py's asserted_values for a scoped view);
+    asserted → a report (graded by asserted_correct); anything else is a withholding,
+    priced at the gauge (abstain)."""
+    if row["bucket"] == "SCOPED":
+        return RealisedResponse("report_scoped", correct=bool(row["asserted_correct"]))
     if row["asserted"]:
         return RealisedResponse("report", correct=bool(row["asserted_correct"]))
     return RealisedResponse("abstain")
 
 
 def oracle_response(row: dict) -> RealisedResponse:
-    """The corpus-omniscient reference: reports the gold whenever it is knowable from the
-    corpus, else abstains (an unanswerable question, or gold absent from the corpus)."""
-    if bool(row["answerable"]) and bool(row["gold_in_corpus"]):
+    """The corpus-omniscient, dominating reference: reports the gold whenever it is knowable
+    from the corpus — or whenever the arm itself proved it attainable (asserted_correct,
+    unconditionally: the graders never mark it true on an unanswerable or out-of-corpus
+    question, but a row that somehow did would still be dominated, never negative-regret) —
+    else abstains. Domination keeps regret non-negative by construction (MODELLING_CHOICES)."""
+    if bool(row["asserted_correct"]) or (bool(row["answerable"])
+                                         and bool(row["gold_in_corpus"])):
         return RealisedResponse("report", correct=True)
     return RealisedResponse("abstain")
 
@@ -94,6 +108,12 @@ def stage_class(row: dict) -> str:
     bucket = row["bucket"]
     if bucket in ("CORRECT", "RIGHTLY_WITHHELD"):
         return "none"
+    if bucket == "SCOPED":
+        # an honest time-scoped non-answer: its regret (u_correct - u_hedged when the
+        # scoped value matches gold, u_correct - u_wrong_scoped when it does not) is the
+        # cost of scoping instead of asserting — its own lever, neither a withhold-cause
+        # nor the cardinal sin.
+        return "scoped"
     if bucket == "CONFIDENT_WRONG":
         return "confident_wrong"
     if bucket == "WRONGLY_WITHHELD":
