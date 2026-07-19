@@ -39,7 +39,7 @@ summary_from_decision_event`, the fallback for a `submit_decision` that never sa
 live `submit_decide`, e.g. warm-replay or an out-of-process decider).
 
 **Records are append-only JSON lines at `cfg.log_path`** — one `event_type:
-"membrane-shadow"` envelope, `kind` in {`boot`, `respawn`, `decide`, `evidence`,
+"membrane-shadow"` envelope, `kind` in {`boot`, `respawn`, `decide`, `gate`, `evidence`,
 `stats`}. Every append is wrapped fail-open (a write error is swallowed, counted as a
 drop — this is a shadow, its own I/O failing must never touch the real decision path);
 the boot-record write itself (`_write_boot_record`, which calls the caller-supplied

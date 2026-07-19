@@ -2,7 +2,7 @@
 """``scripts/membrane/report.py`` — the membrane shadow's differential + demand report.
 
 Reads ``life_agent.membrane.shadow.MembraneShadow``'s append-only shadow log (kinds
-``boot``/``respawn``/``decide``/``evidence``/``stats`` — see that module's docstring for
+``boot``/``respawn``/``decide``/``gate``/``evidence``/``stats`` — see that module's docstring for
 the exact record shapes; this file reads them, never re-derives them) and, optionally, a
 fair-fight run directory's ``baseline`` arm outcomes (``life_agent.fairfight.records
 .OutcomeVector`` — the SAME executor ``/decide`` loop the shadow mirrors, per
@@ -33,7 +33,11 @@ Report structure:
                               derived from the u_bar its OWN boot record persisted.
     2. ``differential``     — the real (incumbent) action vs the shadow's would-action,
                               mapped through a NAMED legend, per form; every disagreement
-                              enumerated (never only aggregated — the §8.5 discipline).
+                              enumerated (never only aggregated — the §8.5 discipline) and
+                              EU-priced under the form's own boot u_bar (M2 advisory).
+    2b. ``gates``           — seam gate pre-emptions (`kind: "gate"`): where the host
+                              abstained before any engine saw the question, and what the
+                              engine would have done instead (M2 advisory).
     3. ``grounded``         — (only with ``--vectors``) the join's own arithmetic, then
                               contingency tables + realized loss per decision, against the
                               fair-fight baseline arm. The two sides speak DIFFERENT id
