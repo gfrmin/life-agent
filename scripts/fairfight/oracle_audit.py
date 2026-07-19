@@ -207,6 +207,11 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run-dir", required=True, help="the fair-fight run directory")
     parser.add_argument("--arm", default="oracle")
+    parser.add_argument(
+        "--questions", default=None,
+        help="alternate question corpus; default: the run_meta.json questions_path "
+             "(the corpus the run actually answered), falling back to "
+             "$LIFE_AGENT_KB/eval/questions.yaml")
     args = parser.parse_args(argv)
 
     run_dir = Path(args.run_dir).expanduser()
@@ -221,8 +226,14 @@ def main(argv: list[str] | None = None) -> int:
         # is exactly what a post-hoc audit tool meets) costs the header fields, never
         # the audit.
         meta = {}
+    # join against the corpus the run actually answered (run_meta's pin), unless
+    # overridden; the zero-arg call is kept distinct so the KB default stays reachable
+    # when the pin is absent (fail-open meta).
+    meta_qp = meta.get("questions_path")
+    questions_src = args.questions or (meta_qp if isinstance(meta_qp, str) else None)
+    questions = load_questions(questions_src) if questions_src else load_questions()
     audit = build_audit(
-        vectors, answers, load_questions(), arm=args.arm,
+        vectors, answers, questions, arm=args.arm,
         run_id=meta.get("run_id", run_dir.name),
         arm_config=(meta.get("arm_configs") or {}).get(args.arm),
     )
