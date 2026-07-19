@@ -39,9 +39,11 @@ The regex gates are nets, not proofs: first-person detection still trips on a
 roman-numeral "I" (fails safe — a rejection) and misses ALL-CAPS pronoun phrasing
 (fails open; judged ~zero for an instruction-following proposer); the compound-question
 net catches repeated interrogatives and cross-"and" slot nouns of different synonym
-classes, but a compound built from nouns outside the slot-noun list, an unencoded
-synonym mapping, or two sentences joined by punctuation, passes to the verifier. Each
-is a named follow-up, not an accident.
+classes, but a compound built from nouns outside the slot-noun list, or two sentences
+joined by punctuation, passes to the verifier — and a SAME-class pair is assumed to
+name one fact, which fails open when a bill really carries two values from one class's
+vocabulary ("premium amount and total balance due"); the classes are kept narrow for
+exactly that reason. Each is a named follow-up, not an accident.
 
 **Outputs (all under the out dir, PII fail-closed — corpus content never leaves
 ``$LIFE_AGENT_KB``):** ``questions_v2.yaml`` (the candidate corpus: id ``q2-NNN``,
@@ -139,11 +141,16 @@ _SLOT_RE = re.compile(
 # date?"): slot-typed nouns of two DIFFERENT classes joined across an "and" is a second
 # value slot even with one interrogative (PR-32 review Important-2). Nouns are compared
 # by synonym CLASS, not raw word — "balance and amount due" is standard single-field
-# bill phrasing, not a compound (PR-32 verify round). List-based, so imperfect by
+# bill phrasing, not a compound (PR-32 verify round). Class merging is deliberately
+# NARROW (PR-32 post-merge stress test): a same-class pair is ASSUMED one fact, which
+# fails open if wrong — so only near-substitutable field vocabulary shares a class
+# (amount/total/balance; term/duration). price and cost keep their own classes: "unit
+# price and total cost" style pairs are routinely two different numbers on one page,
+# and collapsing them admitted real two-fact compounds. List-based, so imperfect by
 # construction — the miss class is named in the module docstring.
 _SLOT_NOUN_CLASS = {
-    "amount": "money", "total": "money", "balance": "money", "cost": "money",
-    "price": "money", "value": "money",
+    "amount": "money", "total": "money", "balance": "money",
+    "cost": "cost", "price": "price", "value": "value",
     "term": "span", "duration": "span",
     "number": "number", "date": "date", "name": "name", "id": "id", "code": "code",
     "address": "address", "email": "email", "phone": "phone", "rate": "rate",
