@@ -29,9 +29,12 @@ from collections import Counter
 from datetime import datetime
 from pathlib import Path
 
+from life_agent.core import config as CFG
 from life_agent.core import decisions as DEC
 from life_agent.core import executor as EX
+from life_agent.core import seam as SEAM
 from life_agent.core import shadow_mirror as SM
+from life_agent.membrane import coarse as CRS
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from answer_labels import Label, load_labels, verdict
@@ -66,8 +69,20 @@ def _post_for(question: str) -> EX.Post:
     """The shadow-wrapped post for one eval question — the ONE question_id derivation
     (``core.decisions.question_id``) and the same shared mirror
     (life_agent.core.shadow_mirror) as every production caller, so a live-service eval run
-    feeds the membrane shadow exactly like the ask read-path does."""
+    feeds the membrane shadow exactly like the ask read-path does. Under the M3 live flag
+    the mirror is OFF (the live consult records its own enact tick — one engine, one
+    consult per tick), matching ask.py."""
+    if CFG.membrane_live():
+        return _post
     return SM.shadow_wrapped_post(_post, BRIDGE, DEC.question_id(question))
+
+
+def _live_for(question: str) -> SEAM.LiveFn | None:
+    """The M3 live consult for one eval question — None (today's behaviour) unless
+    LIFE_AGENT_MEMBRANE_LIVE=1, exactly as ask.py's read-path."""
+    if not CFG.membrane_live():
+        return None
+    return CRS.live_decide(BRIDGE, DEC.question_id(question))
 
 
 def _grade(conn, q: dict, view: dict, labels: list[Label]) -> dict:
@@ -183,7 +198,8 @@ def main() -> int:
     for q in questions:
         view = EX.decide_via_loop(q["question"], args.k, bridge=BRIDGE, daemon=DAEMON,
                                   post=_post_for(q["question"]), get=_get, grow=_GROW,
-                                  rerank=args.rerank, grow_lane=_GROW_LANE)
+                                  rerank=args.rerank, grow_lane=_GROW_LANE,
+                                  live=_live_for(q["question"]))
         p = _grade(conn, q, view, labels)
         packets.append(p)
         print(f"  {p['id']}: {p['effector']} → {p['bucket']}"

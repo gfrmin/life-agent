@@ -21,7 +21,6 @@ from typing import Any
 
 from life_agent.core import seam as SEAM
 from life_agent.membrane import coarse as CO
-from life_agent.membrane import world as W
 
 # The same hand-computable utility the report tests use: eu_by_action(p1) =
 #   abstain: 0 · gather: p1 - 0.02 · ask: p1 - 0.1 · respond: 5*p1 - 4

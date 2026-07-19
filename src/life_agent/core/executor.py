@@ -121,7 +121,7 @@ def _obj(post: Post, url: str, payload: dict[str, Any]) -> dict[str, Any]:
 def decide_via_loop(question: str, k: int, *, bridge: str, daemon: str, post: Post, get: Get,
                     grow: bool = True, rerank: bool = False,
                     transforms: list[dict[str, Any]] | None = None,
-                    grow_lane: bool = False) -> View:
+                    grow_lane: bool = False, live: SEAM.LiveFn | None = None) -> View:
     """Drive one question through the live loop: route, then a cheap pass, then recall growth.
 
     A declined route (``/route`` → null) is the NARRATIVE family — synthesize a cited answer,
@@ -134,6 +134,11 @@ def decide_via_loop(question: str, k: int, *, bridge: str, daemon: str, post: Po
     structure-BMA ``g``), and the body enacts the named probe and logs the outcome
     (``/log_gather`` — the structure-observe stream). No body-side cascade, no
     ``_truth_likely_missing`` gate: P(NONE) enters only as a bucketed *sensor*.
+
+    ``live`` (M3 — the coarse menu live, flag-gated at the caller): the seam consults the
+    proplang engine on every decide tick and the loop enacts the ENGINE's coarse act
+    (abstain/gather/ask/respond, mapped by :mod:`life_agent.membrane.coarse`); ``None``
+    (the default) is the credence daemon's decision, byte-for-byte today's behaviour.
 
     ``grow_lane=False`` (the legacy adapter, deleted at cutover): a typed route runs
     :func:`run_pass`; if ``grow`` and the cheap pass withholds AND the agent's belief says the
@@ -149,9 +154,10 @@ def decide_via_loop(question: str, k: int, *, bridge: str, daemon: str, post: Po
                 "hits": nv.get("hits", []), "route": None, "rendered": nv.get("rendered")}
     if grow_lane:
         return run_pass(question, k, route, bridge=bridge, daemon=daemon, post=post, get=get,
-                        rerank=False, expand=False, transforms=transforms, grow_lane=True)
+                        rerank=False, expand=False, transforms=transforms, grow_lane=True,
+                        live=live)
     view = run_pass(question, k, route, bridge=bridge, daemon=daemon, post=post, get=get,
-                    rerank=rerank, expand=rerank, transforms=transforms)
+                    rerank=rerank, expand=rerank, transforms=transforms, live=live)
     if grow and not rerank:
         # Grow recall ONLY when the agent's BELIEF says the answer is outside the set — NONE is the
         # MAP hypothesis, or nothing was extracted (:func:`_truth_likely_missing`). A withhold with
@@ -168,7 +174,7 @@ def decide_via_loop(question: str, k: int, *, bridge: str, daemon: str, post: Po
             if view["effector"] not in _WITHHOLD or not _truth_likely_missing(view):
                 break
             grown = run_pass(question, k, route, bridge=bridge, daemon=daemon, post=post, get=get,
-                             rerank=rr, expand=ex, transforms=transforms)
+                             rerank=rr, expand=ex, transforms=transforms, live=live)
             if grown["effector"] == "report" or not view["candidates"]:
                 view = grown
     return view
@@ -177,7 +183,7 @@ def decide_via_loop(question: str, k: int, *, bridge: str, daemon: str, post: Po
 def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemon: str,
              post: Post, get: Get, rerank: bool, expand: bool = False,
              transforms: list[dict[str, Any]] | None = None,
-             grow_lane: bool = False) -> View:
+             grow_lane: bool = False, live: SEAM.LiveFn | None = None) -> View:
     """One retrieve→probe→extract→decide pass at a given recall breadth, enacting each
     scheduled transform the daemon returns. With ``grow_lane`` the daemon also prices the
     grow menu (recall actuators), and each enactment is logged to ``/log_gather``. Returns
@@ -278,9 +284,12 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
         if sensors is not None and menu is not None:
             payload["sensors"] = sensors
             payload["grow"] = menu
-        # committed through the ONE act seam (roadmap M0); the reply view is the daemon's
-        # decision verbatim, so the loop below is unchanged.
-        dec = SEAM.commit(SEAM.DaemonDecide(post=post, daemon=daemon, payload=payload)).view
+        # committed through the ONE act seam (roadmap M0). With `live` (M3, flag-gated)
+        # the seam consults the proplang engine and the view is the mapped enactment;
+        # without it the reply view is the daemon's decision verbatim — either way the
+        # loop below reads one view shape and is unchanged.
+        dec = SEAM.commit(SEAM.DaemonDecide(post=post, daemon=daemon, payload=payload,
+                                            live=live)).view
         assert dec is not None  # a DaemonDecide commit always carries the reply view
         return dec
 
