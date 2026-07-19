@@ -426,6 +426,22 @@ def _decide_support(deps: BridgeDeps, p: Payload) -> Payload:
     return {"ok": True}
 
 
+def _gate_support(deps: BridgeDeps, p: Payload) -> Payload:
+    """The shadow's seam-gate feed (M2 advisory): `scripts/ask.py` mirrors each declared
+    gate pre-emption (`core.seam.commit(None, gates=...)` — weak-retrieval / executor-down)
+    here so the ledger can say how often the host abstained before any engine saw the
+    question, and what the engine would have done instead. Same contract as
+    `/decide-support`: disabled fast-path before any parsing; `submit_gate` is enqueue-only
+    and never raises, the suppress is defense-in-depth."""
+    if deps.membrane is None:
+        return {"ok": False, "disabled": True}
+    question_id = _req_str(p, "question_id")
+    gate = _req_str(p, "gate")
+    with contextlib.suppress(Exception):
+        deps.membrane.submit_gate(question_id, gate)
+    return {"ok": True}
+
+
 # Terminal brain actions (DEC.LOOKUP_ACTION_ORDER) each map to one logged lookup decision; the
 # steer `gather` is enacted by the body internally (re-extract + re-decide) and is never a
 # terminal decision, so /log_decision rejects it.
@@ -570,6 +586,7 @@ _POST: dict[str, Handler] = {
     "/log_reaction": _log_reaction,
     "/log_gather": _log_gather,
     "/decide-support": _decide_support,
+    "/gate-support": _gate_support,
 }
 _GET: dict[str, Handler] = {"/utility": _utility, "/grow_menu": _grow_menu}
 
@@ -746,6 +763,7 @@ def main() -> None:
     print("  POST /route /retrieve /extract /probe/{recency,subject,authority,corroborate}")
     print("  POST /log_decision /log_reaction   (answer-brain verdict-emission seam)")
     print("  POST /decide-support   (membrane shadow per-tick feed; no-op unless enabled)")
+    print("  POST /gate-support     (membrane shadow seam-gate feed; no-op unless enabled)")
     print("  GET  /utility /ready")
     try:
         server.serve_forever()

@@ -1272,3 +1272,70 @@ def test_boot_snapshot_malformed_vector_line_is_skipped_not_raised(tmp_path: Pat
     dpath, rpath = tmp_path / "decisions.jsonl", tmp_path / "reactions.jsonl"
     snap = SH.boot_snapshot(dpath, rpath, run_dir)
     assert len(snap.outcome_replay) == 1
+
+
+# --- submit_gate: a seam gate pre-emption becomes a per-form `kind: "gate"` tick (M2) ----
+
+
+def test_gate_submit_is_drained_into_a_gate_record_per_form(tmp_path: Path) -> None:
+    cfg = _cfg(tmp_path)
+    _calls, snapshot = _snapshot_calls_counter()
+    factory = _FakeFactory()
+    sh = SH.MembraneShadow(cfg, u_bar=_u_bar, snapshot=snapshot, session_factory=factory)
+    try:
+        sh.start()
+        assert _wait_until(lambda: sh.stats()["forms"]["said@1"]["alive"])  # type: ignore[index]
+        sh.submit_gate("q-001", "weak_retrieval")
+        assert _wait_until(lambda: sh.stats()["forms"]["said@1"]["ticks"] >= 1)  # type: ignore[index]
+        records = _read_records(cfg.log_path)
+        gates = [r for r in records if r.get("kind") == "gate"]
+        assert len(gates) == 1
+        row = gates[0]
+        assert row["event_type"] == "membrane-shadow"
+        assert row["question_id"] == "q-001"
+        assert row["gate"] == "weak_retrieval"
+        assert row["form"] == "said@1"
+        assert row["action"] == "respond"  # the fake session's canned choice
+        assert row["real_effector"] == "abstain"  # a gate's committed act is always abstain
+        assert row["readouts"] == {"p1": 0.7}
+        # the engine was consulted under the FAITHFUL empty-evidence context: nothing
+        # retrieved/extracted at either declared gate, so zero candidates, no posterior.
+        assert row["summary"] == {
+            "n_candidates": 0, "leader_credence": None, "p_none": None, "n_obs": 0,
+            "era_split": False, "owner_scoped": False, "grow_pass": False,
+        }
+        session = factory.built["said@1"][0]
+        assert session.decide_calls == [SH.GATE_SUMMARY]
+        assert row["t"] == 0
+        assert isinstance(row["latency_ms"], (int, float))
+    finally:
+        sh.close()
+
+
+def test_gate_submit_never_raises_and_full_queue_drops(tmp_path: Path) -> None:
+    cfg = _cfg(tmp_path, queue_size=1)
+    _calls, snapshot = _snapshot_calls_counter()
+    factory = _FakeFactory()
+    # Never call start(): nothing drains the queue, so the second submit overflows it.
+    sh = SH.MembraneShadow(cfg, u_bar=_u_bar, snapshot=snapshot, session_factory=factory)
+    sh.submit_gate("q-001", "weak_retrieval")
+    sh.submit_gate("q-002", "executor_down")
+    stats = sh.stats()
+    assert stats["drops"] == 1
+    assert stats["queue_depth"] == 1
+
+
+def test_gate_tick_that_raises_marks_the_form_dead_like_a_decide_tick(tmp_path: Path) -> None:
+    cfg = _cfg(tmp_path, max_respawns=0)
+    _calls, snapshot = _snapshot_calls_counter()
+    dying = _FakeSession("said@1", decide_raises=True)
+    factory = _FakeFactory({"said@1": [dying]})
+    sh = SH.MembraneShadow(cfg, u_bar=_u_bar, snapshot=snapshot, session_factory=factory)
+    try:
+        sh.start()
+        assert _wait_until(lambda: sh.stats()["forms"]["said@1"]["alive"])  # type: ignore[index]
+        sh.submit_gate("q-001", "weak_retrieval")
+        assert _wait_until(lambda: not sh.stats()["forms"]["said@1"]["alive"])  # type: ignore[index]
+        assert dying.client.shutdown_calls >= 1
+    finally:
+        sh.close()

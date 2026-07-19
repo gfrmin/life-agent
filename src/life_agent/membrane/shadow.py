@@ -174,6 +174,19 @@ SessionFactory = Callable[[str], MembraneSession]
 # for THIS round, as opposed to growing recall and re-asking).
 _GATHER_EFFECTOR = "gather"
 
+# The empty-evidence context a seam gate fires under (M2 advisory): at BOTH declared
+# gates (`scripts/ask.py`'s weak-retrieval and executor-down observations into
+# `core.seam.commit`) nothing has been retrieved or extracted yet, so zero candidates,
+# no posterior, zero grounded observations is the FAITHFUL summary — not a degraded
+# stand-in. The engine consulted under it says what IT would do where the host
+# pre-empted it (register §11 i-4: "engine may abstain, host may not refuse the
+# question"); the committed act at a gate is always abstain (the seam's gate contract,
+# pinned by test_seam).
+GATE_SUMMARY = W.DecideSummary(
+    n_candidates=0, leader_credence=None, p_none=None, n_obs=0,
+    era_split=False, owner_scoped=False, grow_pass=False,
+)
+
 _QUEUE_POLL_S = 0.05
 _CLOSE_JOIN_TIMEOUT_S = 5.0
 
@@ -260,7 +273,13 @@ class _VerdictItem:
     y: int
 
 
-_QueueItem = _DecideItem | _VerdictItem
+@dataclass(frozen=True)
+class _GateItem:
+    question_id: str
+    gate: str
+
+
+_QueueItem = _DecideItem | _VerdictItem | _GateItem
 
 
 class MembraneShadow:
@@ -383,6 +402,16 @@ class MembraneShadow:
         except Exception:
             self._count_submit_error()
 
+    def submit_gate(self, question_id: str, gate: str) -> None:
+        """One seam gate pre-emption (M2 advisory): the host committed abstain by declared
+        policy before any engine saw the question. Enqueue-only, never raises — the worker
+        consults every live form under :data:`GATE_SUMMARY` and logs what the engine would
+        have done instead (`kind: "gate"`)."""
+        try:
+            self._enqueue(_GateItem(question_id=str(question_id), gate=str(gate)))
+        except Exception:
+            self._count_submit_error()
+
     def submit_reaction(self, decision_id: str, valence: str) -> None:
         try:
             with self._lock:
@@ -471,6 +500,8 @@ class MembraneShadow:
                 continue
             if isinstance(item, _DecideItem):
                 self._tick_decide(form, state, item, now)
+            elif isinstance(item, _GateItem):
+                self._tick_gate(form, state, item, now)
             else:
                 self._tick_verdict(form, state, item, now)
         self._processed_count += 1
@@ -495,6 +526,30 @@ class MembraneShadow:
             "action": choice.action, "raw_internal": choice.raw_internal,
             "real_effector": item.real_effector, "latency_ms": latency_ms,
             "readouts": choice.readouts, "summary": asdict(item.summary), "t": t_before,
+        })
+
+    def _tick_gate(self, form: str, state: _FormState, item: _GateItem, ts: float) -> None:
+        """A decision tick under :data:`GATE_SUMMARY` — same engine semantics as
+        `_tick_decide` (never advances `t`, a raise marks the form dead), logged as
+        `kind: "gate"` so the decide differential never mixes a host pre-emption in with
+        the ticks the credence engine actually decided. `real_effector` is the literal
+        "abstain" — the act the seam's gate contract committed, not a mirrored reply."""
+        session = state.session
+        assert session is not None
+        t_before = session.t
+        start = time.time()
+        try:
+            choice: ShadowChoice = session.decide(GATE_SUMMARY)
+        except Exception as exc:
+            self._handle_death(form, state, exc)
+            return
+        latency_ms = (time.time() - start) * 1000.0
+        state.ticks += 1
+        self._append_record({
+            "event_type": "membrane-shadow", "kind": "gate", "ts": ts,
+            "question_id": item.question_id, "gate": item.gate, "form": form,
+            "action": choice.action, "real_effector": "abstain", "latency_ms": latency_ms,
+            "readouts": choice.readouts, "summary": asdict(GATE_SUMMARY), "t": t_before,
         })
 
     def _tick_verdict(self, form: str, state: _FormState, item: _VerdictItem, ts: float) -> None:

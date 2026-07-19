@@ -612,11 +612,13 @@ class _FakeMembrane:
     submit_decision_calls: list[tuple[str, str, dict[str, Any]]] = dataclasses.field(
         default_factory=list)
     submit_reaction_calls: list[tuple[str, str]] = dataclasses.field(default_factory=list)
+    submit_gate_calls: list[tuple[str, str]] = dataclasses.field(default_factory=list)
     stats_value: dict[str, Any] = dataclasses.field(
         default_factory=lambda: {"forms": {}, "drops": 0})
     raise_on_submit_decide: bool = False
     raise_on_submit_decision: bool = False
     raise_on_submit_reaction: bool = False
+    raise_on_submit_gate: bool = False
     raise_on_stats: bool = False
 
     def submit_decide(self, question_id: str, payload: dict[str, Any],
@@ -634,6 +636,11 @@ class _FakeMembrane:
         self.submit_reaction_calls.append((decision_id, valence))
         if self.raise_on_submit_reaction:
             raise RuntimeError("boom: submit_reaction")
+
+    def submit_gate(self, question_id: str, gate: str) -> None:
+        self.submit_gate_calls.append((question_id, gate))
+        if self.raise_on_submit_gate:
+            raise RuntimeError("boom: submit_gate")
 
     def stats(self) -> dict[str, Any]:
         if self.raise_on_stats:
@@ -1007,3 +1014,46 @@ def test_shutdown_with_no_membrane_still_exits() -> None:
     with pytest.raises(SystemExit) as exc:
         bridge_server._shutdown(_FakeShutdownServer(None))  # type: ignore[arg-type]
     assert exc.value.code == 0
+
+
+# --- /gate-support: the seam's gate pre-emptions reach the shadow (M2) -------------------
+
+def test_gate_support_disabled_fast_path_no_validation(deps: BridgeDeps) -> None:
+    status, payload = _call(deps, "POST", "/gate-support", {})
+    assert status == 200
+    assert payload == {"ok": False, "disabled": True}
+
+
+def test_gate_support_enabled_calls_submit_gate(deps: BridgeDeps) -> None:
+    fake = _FakeMembrane()
+    deps2 = _with_membrane(deps, fake)
+    status, payload = _call(deps2, "POST", "/gate-support",
+                            {"question_id": "q-1", "gate": "weak_retrieval"})
+    assert status == 200
+    assert payload == {"ok": True}
+    assert fake.submit_gate_calls == [("q-1", "weak_retrieval")]
+
+
+def test_gate_support_enabled_missing_gate_is_400(deps: BridgeDeps) -> None:
+    fake = _FakeMembrane()
+    deps2 = _with_membrane(deps, fake)
+    status, _payload = _call(deps2, "POST", "/gate-support", {"question_id": "q-1"})
+    assert status == 400
+    assert fake.submit_gate_calls == []
+
+
+def test_gate_support_enabled_missing_question_id_is_400(deps: BridgeDeps) -> None:
+    fake = _FakeMembrane()
+    deps2 = _with_membrane(deps, fake)
+    status, _payload = _call(deps2, "POST", "/gate-support", {"gate": "weak_retrieval"})
+    assert status == 400
+    assert fake.submit_gate_calls == []
+
+
+def test_gate_support_never_raises_when_submit_gate_raises(deps: BridgeDeps) -> None:
+    fake = _FakeMembrane(raise_on_submit_gate=True)
+    deps2 = _with_membrane(deps, fake)
+    status, payload = _call(deps2, "POST", "/gate-support",
+                            {"question_id": "q-1", "gate": "weak_retrieval"})
+    assert status == 200
+    assert payload == {"ok": True}

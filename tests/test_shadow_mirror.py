@@ -286,3 +286,29 @@ def test_shadow_wrapped_post_defaults_to_the_short_timeout_mirror_poster() -> No
     # accidentally passing the real leg's own `post`) breaks this.
     sig = inspect.signature(SM.shadow_wrapped_post)
     assert sig.parameters["mirror_post"].default is SM._default_mirror_post
+
+
+# --- mirror_gate: the seam's gate pre-emptions fan out to /gate-support (M2) ----------- #
+
+def test_mirror_gate_posts_question_id_and_gate_to_gate_support() -> None:
+    calls: list[tuple[str, dict[str, Any]]] = []
+
+    def mirror_post(url: str, body: dict[str, Any]) -> dict[str, Any] | None:
+        calls.append((url, body))
+        return {"ok": True}
+
+    SM.mirror_gate(B, "q-1", "weak_retrieval", mirror_post=mirror_post)
+    assert calls == [(f"{B}/gate-support", {"question_id": "q-1", "gate": "weak_retrieval"})]
+
+
+def test_mirror_gate_is_fail_open_when_the_post_raises() -> None:
+    def mirror_post(url: str, body: dict[str, Any]) -> dict[str, Any] | None:
+        raise RuntimeError("bridge unreachable")
+
+    SM.mirror_gate(B, "q-1", "executor_down", mirror_post=mirror_post)  # must not raise
+
+
+def test_mirror_gate_default_transport_is_the_short_timeout_mirror_post() -> None:
+    # the default must be the mirror leg's own bounded transport, never a real-leg poster
+    sig = inspect.signature(SM.mirror_gate)
+    assert sig.parameters["mirror_post"].default is SM._default_mirror_post

@@ -768,6 +768,10 @@ def answer(conn: duckdb.DuckDBPyConnection, question: str,
     # it is a refusal, not an answer.
     if retrieval_is_weak(scores, floor=WEAK_SCORE_FLOOR, min_hits=MIN_STRONG_HITS) and not profile:
         gated = SEAM.commit(None, gates=(SEAM.GATE_WEAK_RETRIEVAL,))
+        # M2 advisory: the pre-emption itself is ledger data — mirrored to the shadow
+        # (fail-open, off the answer path) so the register can say how often the host
+        # abstained before any engine saw the question, and what the engine would have done.
+        SM.mirror_gate(EXECUTOR_BRIDGE, DEC.question_id(question), SEAM.GATE_WEAK_RETRIEVAL)
         if gated.action == "abstain":
             return (ABSTENTION, cards, scores)
 
@@ -958,6 +962,9 @@ def answer_via_executor(question: str, k: int
         # nothing but abstain is ENACTABLE against a down stack — an enactment constraint,
         # not a second decision; the seam's gate contract pins the act (test_seam).
         assert gated.action == "abstain"
+        # M2 advisory mirror, fail-open: the bridge (which hosts the shadow) may be the very
+        # thing that is down — then this is an instant refusal, swallowed inside mirror_gate.
+        SM.mirror_gate(EXECUTOR_BRIDGE, DEC.question_id(question), SEAM.GATE_EXECUTOR_DOWN)
         return (EXECUTOR_DOWN, [], {})
     # The ONE question_id derivation (core.decisions.question_id) — the same key the bridge's
     # /log_decision stamps, so a live decide tick mirrored here and the terminal decision
