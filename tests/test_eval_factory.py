@@ -245,3 +245,51 @@ def test_factory_never_touches_questions_yaml(tmp_path: Path,
     F.write_outputs(kb / "eval" / "factory" / "t", result, corpus, {}, cost_usd=None)
     assert gold.read_text(encoding="utf-8") == "questions: []\n"  # owner file untouched
     assert not (kb / "eval" / "questions_v2.yaml").exists()  # canonical only via --publish
+
+
+# --- PR-29 review findings, pinned ---------------------------------------------------------
+
+def test_self_quoting_question_is_rejected_before_verification() -> None:
+    """PR-29 Critical: a question that quotes its own gold would leak the answer into the
+    verifier's retrieval query and prompt — mechanical gate, no verifier call spent."""
+    calls = {"verify": 0}
+
+    def verify_complete(s: str, u: str) -> str:
+        calls["verify"] += 1
+        return "P111222"
+
+    result = F.run_factory(
+        _FakeConn(_chunk_rows()),
+        lambda s, u: _proposal("is my fake policy number P111222 current?", "P111222"),
+        verify_complete,
+        target=10, max_proposals=3, k=5, min_chars=10, seed=1)
+    assert not result.admitted
+    assert result.rejections["gold_in_question"] == 3
+    assert calls["verify"] == 0
+
+
+def test_non_list_answer_variants_rejected_not_char_split() -> None:
+    """PR-29 Important: a bare-string answer_variants must never iterate into
+    single-character variants (eval-corpus contamination) — strict contract, rejected."""
+    reply = json.dumps({"question": "what is my fake policy number?",
+                        "answer": "P111222", "answer_variants": "P111222",
+                        "subject": "owner", "notes": ""})
+    result = _run([reply] * 3)
+    assert not result.admitted
+    assert result.rejections["parse_error"] == 3
+
+
+def test_fill_is_single_pass_no_template_injection() -> None:
+    """PR-29 Important: LLM/corpus text containing a literal placeholder must not be
+    expanded by a later substitution pass."""
+    out = F._fill(F.VERIFIER_V1, {"question": "what about {context} literally?",
+                                  "context": "SECRET-CONTEXT"})
+    assert "what about {context} literally?" in out  # survives verbatim, unexpanded
+    assert out.count("SECRET-CONTEXT") == 1
+
+
+def test_not_found_detection_tolerates_phrasing() -> None:
+    assert F._NOT_FOUND_RE.match("NOT_FOUND")
+    assert F._NOT_FOUND_RE.match("Not found in the context")
+    assert F._NOT_FOUND_RE.match("not-found")
+    assert not F._NOT_FOUND_RE.match("P111222 was found")
