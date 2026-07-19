@@ -74,6 +74,15 @@ _WITHHOLD = frozenset({"miss", "abstain", "hedge", "ask_clarify"})
 # (core/gather_outcomes.GROW_ACTUATORS, served by the bridge's /grow_menu).
 _GROW_RETRIEVE = {"retrieve_rerank": (True, False), "retrieve_expand": (True, True)}
 _RE_EXTRACT_MODEL = "claude-opus-4-8"
+# The k=0 rescue channel's reliability CAP — a stated wide prior (mean of the local
+# extractor's own Beta(4,4), core/lookup._RHO_PRIOR_*), declared blind, NOT the tier's
+# 0.95 and NOT the model's self-stated confidence: a lone strong read with zero local
+# corroboration is an unmeasured instrument, and the first field run showed fiat trust
+# asserting a true-but-vague read at 0.866 (q-015, graded wrong). Under this cap the
+# rescue NAMES candidates (hedge — EU-positive under u_hedged vs silence) and earns
+# assert-grade trust only through conditioned verdicts, exactly as the local channel
+# did after its own 0.85-fiat prior was refuted.
+_RESCUE_RHO = 0.5
 
 
 def _truth_likely_missing(view: View) -> bool:
@@ -209,23 +218,47 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
     applied: list[str] = []
     if grow_lane and not ext["candidates"] and menu is not None:
         # The k=0 degenerate case: nothing extracted ⇒ there is no candidate posterior to price
-        # against (the daemon requires k ≥ 1), so the body walks the RETRIEVAL actuators
-        # cheapest-first (menu order) until candidates ground — the one place enactment order is
-        # body-held; every enactment is still logged, so the counts teach g here too. Each walked
-        # probe is APPLIED (the daemon must not re-offer it later in this pass — one outcome row
-        # per enacted grow, never a double count).
+        # against (the daemon requires k ≥ 1), so the body walks the menu cheapest-first (menu
+        # order) until candidates ground — the one place enactment order is body-held; every
+        # enactment is still logged, so the counts teach g here too. Each walked probe is
+        # APPLIED (the daemon must not re-offer it later in this pass — one outcome row per
+        # enacted grow, never a double count). The walk's last rung is the strong re-extract
+        # with allow_new: it MINTS a candidate from zero (the q-005 class — a chunk the local
+        # edge cannot read at all), handing the decision straight back to the daemon at k ≥ 1.
+        # Its decide conditions at min(tier rho, the read's own stated confidence): a lone
+        # strong observation with no local support must not enter at the corroboration tier's
+        # flat prior (measured: that asserted a 0.55-confident read at credence 0.995).
         sensors0 = GO.sensors_from(candidates=[], credences=[], p_none=None,
                                    indeterminate=int(ext.get("indeterminate") or 0))
         for actuator in menu["actuators"]:
             g_probe = str(actuator["probe"])
-            if g_probe not in _GROW_RETRIEVE:
-                continue   # the strong re-extract needs candidates to corroborate against
-            rr, ex = _GROW_RETRIEVE[g_probe]
-            hits, recency, ext = _evidence(rr, ex)
-            enacted.append((g_probe, sensors0, bool(ext["candidates"])))
-            applied.append(g_probe)
-            if ext["candidates"]:
-                break
+            if g_probe in _GROW_RETRIEVE:
+                rr, ex = _GROW_RETRIEVE[g_probe]
+                hits, recency, ext = _evidence(rr, ex)
+                enacted.append((g_probe, sensors0, bool(ext["candidates"])))
+                applied.append(g_probe)
+                if ext["candidates"]:
+                    break
+            elif g_probe == "re_extract_strong" and hits:
+                cr = _obj(post, f"{bridge}/probe/corroborate",
+                          {"reextract": True, "allow_new": True, "question": question,
+                           "hits": hits, "candidates": [], "model": _RE_EXTRACT_MODEL,
+                           "rho": _GATHER_RHO,
+                           "time_indexed": route["time_indexed"],
+                           "construct": route["construct"],
+                           "covariates": {"doc_date": recency}})
+                minted = bool(cr.get("new_candidate"))
+                enacted.append((g_probe, sensors0, minted))
+                applied.append(g_probe)
+                if minted:
+                    conf = cr.get("confidence")
+                    rescue_rho = (min(_RESCUE_RHO, max(0.0, float(conf)))
+                                  if conf is not None else _RESCUE_RHO)
+                    ext = {"candidates": [str(cr["new_candidate"])],
+                           "observations": cr["observations"], "rho": rescue_rho,
+                           "era_split": False,
+                           "indeterminate": ext.get("indeterminate", 0)}
+                    break
     if not ext["candidates"]:  # zero grounded observations → the local edge declined
         _log_outcomes("miss")
         return {"effector": "miss", "asserted": [], "candidates": [], "credences": [],

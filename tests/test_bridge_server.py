@@ -313,6 +313,97 @@ def test_reextract_allow_new_enlarges_the_candidate_set(
     assert payload2["observations"] == [] and "new_candidate" not in payload2
 
 
+def test_reextract_confirming_sentence_maps_to_the_candidate(
+        deps: BridgeDeps, monkeypatch: pytest.MonkeyPatch) -> None:
+    # The q-011 pooling loss: the strong re-read CONFIRMS the leader but phrases it inside a
+    # full sentence with the expiry date beside it; exact-normalized equality
+    # saw a disagreement, returned no observation, and the replace-contract erased the grounded
+    # channel — a formatting mismatch masquerading as evidence conflict. The join now matches
+    # by unique token-boundary containment (the graders' own answer_matches), exact first.
+    import life_agent.core.joint_extract as JE
+
+    monkeypatch.setattr(JE, "extract_joint",
+                        lambda root, q, hits, *, model, k: JE.JointResult(
+                            value="Passport number PL-900001, expires 23 May 2032",
+                            confidence=0.9, as_of=None))
+    status, payload = _call(deps, "POST", "/probe/corroborate", {
+        "reextract": True, "question": "passport?", "hits": [
+            {"artifact_cache_key": "d0", "chunk_text": "…"}],
+        "candidates": ["PL-800002", "PL-900001"], "model": "claude-opus-4-8", "rho": 0.95})
+    assert status == 200
+    assert payload["observations"] == [{"reports": 1, "group": 0, "authority": 1.0,
+                                        "subject_factor": 1.0, "time_factor": 1.0}]
+    # containment resolves BEFORE allow_new: a confirming sentence must never mint a
+    # duplicate candidate and split the posterior mass with the value it confirms.
+    status2, payload2 = _call(deps, "POST", "/probe/corroborate", {
+        "reextract": True, "allow_new": True, "question": "passport?", "hits": [
+            {"artifact_cache_key": "d0", "chunk_text": "…"}],
+        "candidates": ["PL-900001"], "model": "claude-opus-4-8", "rho": 0.95})
+    assert status2 == 200
+    assert "new_candidate" not in payload2
+    assert payload2["observations"][0]["reports"] == 0
+
+
+def test_reextract_correction_sentence_never_confirms_the_stale_candidate(
+        deps: BridgeDeps, monkeypatch: pytest.MonkeyPatch) -> None:
+    # The review's manufactured-CW case: a re-read that MENTIONS the known candidate while
+    # CORRECTING it to a same-shaped successor. Containment alone would confirm the
+    # superseded value at the tier's trusted rho (0.95 on the daemon-scheduled paths);
+    # the same-shape competing token must keep the conservative no-observation contract —
+    # and allow_new must NOT mint the whole correction sentence as a candidate either.
+    import life_agent.core.joint_extract as JE
+
+    monkeypatch.setattr(JE, "extract_joint",
+                        lambda root, q, hits, *, model, k: JE.JointResult(
+                            value="PL-900001 was renewed; the new number is PL-800002",
+                            confidence=0.9, as_of=None))
+    status, payload = _call(deps, "POST", "/probe/corroborate", {
+        "reextract": True, "allow_new": True, "question": "id?", "hits": [
+            {"artifact_cache_key": "d0", "chunk_text": "…"}],
+        "candidates": ["PL-900001"], "model": "claude-opus-4-8", "rho": 0.95})
+    assert status == 200
+    assert payload["observations"] == []
+    assert "new_candidate" not in payload
+
+
+def test_reextract_ambiguous_containment_stays_no_observation(
+
+        deps: BridgeDeps, monkeypatch: pytest.MonkeyPatch) -> None:
+    # A sentence containing TWO candidates settles nothing — the conservative contract
+    # (outside-set => no observation) holds; disagreement semantics are preserved.
+    import life_agent.core.joint_extract as JE
+
+    monkeypatch.setattr(JE, "extract_joint",
+                        lambda root, q, hits, *, model, k: JE.JointResult(
+                            value="either PL-900001 or PL-800002 depending on the scan",
+                            confidence=0.6, as_of=None))
+    status, payload = _call(deps, "POST", "/probe/corroborate", {
+        "reextract": True, "question": "passport?", "hits": [
+            {"artifact_cache_key": "d0", "chunk_text": "…"}],
+        "candidates": ["PL-800002", "PL-900001"], "model": "claude-opus-4-8", "rho": 0.95})
+    assert status == 200
+    assert payload["observations"] == []
+
+
+def test_reextract_returns_the_reads_own_confidence(
+        deps: BridgeDeps, monkeypatch: pytest.MonkeyPatch) -> None:
+    # The wire must not discard the instrument's stated uncertainty: the k=0 strong rescue
+    # conditions at min(tier rho, this confidence), so a hesitant read hedges instead of
+    # asserting at the tier's flat prior (the q-005 near-miss at credence 0.995).
+    import life_agent.core.joint_extract as JE
+
+    monkeypatch.setattr(JE, "extract_joint",
+                        lambda root, q, hits, *, model, k: JE.JointResult(
+                            value="NEW-7", confidence=0.55, as_of=None))
+    status, payload = _call(deps, "POST", "/probe/corroborate", {
+        "reextract": True, "allow_new": True, "question": "id?",
+        "hits": [{"artifact_cache_key": "d0", "chunk_text": "…"}],
+        "candidates": [], "model": "claude-opus-4-8", "rho": 0.95})
+    assert status == 200
+    assert payload["confidence"] == 0.55
+    assert payload["new_candidate"] == "NEW-7"
+
+
 # --- /utility (GET): the utility posterior's u_bar, computed server-side ----------------
 
 def test_utility_returns_u_bar(deps: BridgeDeps) -> None:

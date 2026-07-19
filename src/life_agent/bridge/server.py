@@ -245,6 +245,26 @@ def _probe_authority(_deps: BridgeDeps, p: Payload) -> Payload:
     return {"authority": {k: [klass, value] for k, (klass, value) in auth.items()}}
 
 
+def _competing_value_shape(value: str, candidate: str) -> bool:
+    """True when the re-read text carries a digit-bearing token OUTSIDE the contained
+    candidate whose digit-count matches one of the candidate's own — the signature of a
+    correction-shaped read ("…PL-900001 was renewed; the new number is PL-800002") that
+    mentions the stale value while naming a same-shaped successor. Containment alone would
+    confirm the superseded value at the tier's trusted rho (a manufactured confident-wrong,
+    the review's reproduced case). Adjacent facts of a DIFFERENT shape (an expiry date's
+    2- and 4-digit tokens beside a 6-digit id) stay confirmable — the q-011 confirming
+    sentence keeps its fix. Digit-free values have no shape signature and never trip this
+    (a prose correction of a word answer is out of this heuristic's reach — accepted)."""
+    def digit_count(t: str) -> int:
+        return sum(ch.isdigit() for ch in t)
+
+    cand_tokens = set(MATCH.tokenize(candidate))
+    cand_shapes = {digit_count(t) for t in cand_tokens if digit_count(t)}
+    return any(digit_count(t) in cand_shapes
+               for t in MATCH.tokenize(value)
+               if t not in cand_tokens and digit_count(t))
+
+
 def _corroborate_time_factor(jr: JE.JointResult, hits: list[Payload], p: Payload) -> float:
     """The recency covariate for the corroborate re-read's observation — the construct's
     volatility decay, the same projection `/extract` applies (`LK.time_factor`). Recency is a
@@ -291,13 +311,35 @@ def _probe_corroborate(deps: BridgeDeps, p: Payload) -> Payload:
         if jr.value is not None:
             vn = LK._norm_value(jr.value)
             idx = next((i for i, c in enumerate(candidates) if LK._norm_value(c) == vn), None)
-            if idx is None and p.get("allow_new"):
+            contained: list[int] = []
+            if idx is None:
+                # The join must not read a CONFIRMING sentence as a disagreement (the q-011
+                # pooling loss: the strong read confirmed the grounded passport leader
+                # inside a full sentence; exact equality returned no observation and
+                # the replace-contract erased the grounded channel). A candidate uniquely
+                # contained in the re-read value — the graders' own token-boundary matcher —
+                # is the confirmed leader; two contained candidates settle nothing and keep
+                # the conservative outside-set ⇒ no-observation contract. Nor may it read a
+                # CORRECTING sentence as a confirmation ("…was renewed; the new number is
+                # …"): containment alone cannot tell confirm from correct-while-mentioning,
+                # and the daemon-scheduled tiers feed this join at trusted rho — a
+                # misclassified correction would assert the superseded value as a
+                # confident-wrong. A same-shaped competing token beside the contained
+                # candidate keeps the conservative no-observation contract.
+                contained = [i for i, c in enumerate(candidates)
+                             if MATCH.answer_matches(str(c), [], jr.value)]
+                if (len(contained) == 1
+                        and not _competing_value_shape(jr.value, candidates[contained[0]])):
+                    idx = contained[0]
+            if idx is None and not contained and p.get("allow_new"):
                 # The re-extract GROW actuator (slice 6): the strong re-read named a value
                 # OUTSIDE the current candidate set — with allow_new it ENLARGES K (that is what
                 # grow is for): the value comes back as a new candidate whose observation is
                 # indexed at len(candidates); the body appends it and re-decides. Without
                 # allow_new the corroborate contract is unchanged (outside-set ⇒ no observation
-                # ⇒ disagree-abstain).
+                # ⇒ disagree-abstain). Gated on `not contained`: a read that MENTIONS a known
+                # candidate (ambiguous or correction-shaped above) must not be minted
+                # wholesale as a new candidate — the sentence is not a value.
                 new_candidate = jr.value
                 idx = len(candidates)
             if idx is not None:
@@ -309,7 +351,11 @@ def _probe_corroborate(deps: BridgeDeps, p: Payload) -> Payload:
                 tf = _corroborate_time_factor(jr, hits, p)
                 obs = [{"reports": idx, "group": 0, "authority": 1.0,
                         "subject_factor": 1.0, "time_factor": tf}]
+        # the read's own stated confidence rides beside the tier rho: the k=0 strong rescue
+        # conditions at min(tier, confidence), so the wire never discards the instrument's
+        # uncertainty (a lone unsupported read must not enter at the tier's flat prior).
         out: Payload = {"observations": obs, "gather_rho": tier_rho, "value": jr.value,
+                        "confidence": jr.confidence,
                         "served_model": jr.served_model, "tokens": jr.in_tokens + jr.out_tokens}
         if new_candidate is not None:
             out["new_candidate"] = new_candidate
