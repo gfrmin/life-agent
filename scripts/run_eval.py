@@ -67,12 +67,15 @@ def _kb_root() -> Path:
     return Path(env).expanduser() if env else Path.home() / ".life-agent/kb"
 
 
-def load_questions() -> list[dict]:
-    """Load the answer-grounded question set from the KB fixture; fail fast if absent
-    (it holds PII and is not in this repo). Fills optional-field defaults."""
+def load_questions(path: Path | str | None = None) -> list[dict]:
+    """Load an answer-grounded question set; fail fast if absent (every corpus holds
+    PII and lives in $LIFE_AGENT_KB, never in this repo). Fills optional-field defaults.
+
+    ``path`` selects an alternate corpus (e.g. the factory's ``questions_v2.yaml``);
+    the default remains the owner-authored ``$LIFE_AGENT_KB/eval/questions.yaml``."""
     import yaml
 
-    fixture = _kb_root() / "eval/questions.yaml"
+    fixture = Path(path).expanduser() if path is not None else _kb_root() / "eval/questions.yaml"
     if not fixture.exists():
         raise SystemExit(
             f"eval fixture not found: {fixture}\n"
@@ -117,10 +120,14 @@ def grade_retrieval(conn, q: dict, k: int) -> dict:
     variants = q["answer_variants"]
     distractors = q["distractors"] if q["subject"] != "n/a" else []
 
-    # Top-k chunks across all search_queries (union).
+    # Top-k chunks across all search_queries (union). Corpora without authored
+    # search_queries (the factory's questions_v2.yaml emits none) fall back to the
+    # question text itself — otherwise topk stays empty and PASS is structurally
+    # unreachable, misreporting the corpus as total retrieval failure. No-op for the
+    # v1 corpus (every question authors its queries).
     topk_texts: list[str] = []
     top_snippet = ""
-    for query in q["search_queries"]:
+    for query in q["search_queries"] or [q["question"]]:
         for hit in search(conn, query, k=k):
             topk_texts.append(hit.chunk_text)
             if not top_snippet:
@@ -687,6 +694,11 @@ def main() -> int:
         help="pkm config.yaml (default: $PKM_CONFIG or ~/.config/life-agent/pkm.yaml)",
     )
     parser.add_argument("--k", type=int, default=20, help="top-k per query")
+    parser.add_argument(
+        "--questions", default=None,
+        help="alternate question corpus (e.g. $LIFE_AGENT_KB/eval/questions_v2.yaml — "
+             "the factory output); default: $LIFE_AGENT_KB/eval/questions.yaml",
+    )
     parser.add_argument("--rebuild-index", action="store_true", help="rebuild FTS first")
     parser.add_argument(
         "--synthesis", action="store_true",
@@ -723,7 +735,7 @@ def main() -> int:
     import duckdb
     import yaml
 
-    questions = load_questions()
+    questions = load_questions(args.questions)
     cfg = yaml.safe_load(Path(args.config).read_text(encoding="utf-8"))
     db_path = Path(cfg["root_dir"]).expanduser() / "catalogue.duckdb"
     conn = duckdb.connect(str(db_path))
