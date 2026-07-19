@@ -37,3 +37,28 @@ def test_post_for_wires_the_shared_shadow_mirror(monkeypatch: Any) -> None:
     assert post_arg is EE._post          # the real (unwrapped) transport goes in
     assert bridge_arg == EE.BRIDGE
     assert qid_arg == hashlib.sha256(b"what is my passport number?").hexdigest()[:16]
+
+
+def test_flag_off_no_live_consult_and_the_mirror_stays_on(monkeypatch: Any) -> None:
+    monkeypatch.setattr(EE.CFG, "membrane_live", lambda: False)
+    assert EE._live_for("my passport?") is None
+    # _post_for still wraps (the shadow mirror is the flag-off feed) — pinned by the
+    # existing test above; this only pins the live arm's absence.
+
+
+def test_flag_on_wires_the_live_consult_and_skips_the_mirror(monkeypatch: Any) -> None:
+    monkeypatch.setattr(EE.CFG, "membrane_live", lambda: True)
+
+    def sentinel_consult(payload: dict[str, Any], dec: dict[str, Any]) -> Any:
+        return (dec, None)
+
+    live_calls: list[tuple[str, str]] = []
+
+    def fake_live_decide(bridge: str, question_id: str, **kw: Any) -> Any:
+        live_calls.append((bridge, question_id))
+        return sentinel_consult
+
+    monkeypatch.setattr(EE.CRS, "live_decide", fake_live_decide)
+    assert EE._live_for("my passport?") is sentinel_consult
+    assert live_calls == [(EE.BRIDGE, hashlib.sha256(b"my passport?").hexdigest()[:16])]
+    assert EE._post_for("my passport?") is EE._post  # bare — the mirror stays off

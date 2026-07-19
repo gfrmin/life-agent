@@ -699,3 +699,17 @@ Staged with E2/M5.
 gather-then-withhold-heavy until verdicts accrue (respond's reachability bar is far above
 0.34). That is the honest consequence of giving the act to a young posterior, not a bug;
 the verdict stream (which the live path keeps feeding) is what raises it.
+
+**Review round (PR #37, 2026-07-19):** no Critical/Important findings; flag-off inertness,
+answer-path fail-closed layers, loop termination against an always-gather engine, the
+reply-slot threading, and the EU arithmetic all independently verified. Two Minors, both
+handled: (1) flag-branching wiring pins added for all three callers
+(test_ask_mirror / test_ask_client / test_eval_executor_mirror); (2) a NAMED latent:
+`coarse._gather` selects probes from the payload's transform menu without an assertion
+that `run_pass`'s enactment branches recognise the name — safe under DEFAULT_TRANSFORMS
+(all voi probes are `corroborate_*`), falls to a non-terminal `else: break` only if a
+future voi transform ships an unrecognised probe (the same latency the daemon's own
+schedule already has). Revisit when the transform menu next grows. Reviewer note kept
+open-eyed for the prod flip: the single-threaded bridge serialises `/decide-live` behind
+every other request — a stalled engine costs concurrent bridge callers up to
+`_LIVE_WAIT_S` per tick; concurrency remains the deliberate Move-4 deferral.

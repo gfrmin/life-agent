@@ -112,3 +112,41 @@ def test_react_failure_is_named_not_silent() -> None:
         raise OSError("connection refused")
 
     assert "not recorded" in AC.react("ab-1", "good", post=post_boom)
+
+
+def test_answer_flag_on_wires_the_live_consult_and_skips_the_mirror(monkeypatch: Any) -> None:
+    # M3 wiring pin (review finding): under LIFE_AGENT_MEMBRANE_LIVE the consult goes in
+    # as `live` and the transport stays BARE (the live path records its own enact tick).
+    monkeypatch.setattr(AC.CFG, "membrane_live", lambda: True)
+
+    def sentinel_consult(payload: dict[str, Any], dec: dict[str, Any]) -> Any:
+        return (dec, None)
+
+    live_calls: list[tuple[str, str]] = []
+
+    def fake_live_decide(bridge: str, question_id: str, **kw: Any) -> Any:
+        live_calls.append((bridge, question_id))
+        return sentinel_consult
+
+    monkeypatch.setattr(AC.CRS, "live_decide", fake_live_decide)
+    monkeypatch.setattr(
+        AC.SM, "shadow_wrapped_post",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("mirror must stay off")))
+
+    def bare_post(url: str, payload: dict[str, Any]) -> dict[str, Any] | None:
+        return {"ok": True}
+
+    captured: dict[str, Any] = {}
+
+    def fake_decide_via_loop(question: str, k: int, **kwargs: Any) -> dict[str, Any]:
+        captured.update(kwargs)
+        return _fake_view("miss")
+
+    monkeypatch.setattr(EX, "decide_via_loop", fake_decide_via_loop)
+    AC.answer("what is my passport number?", post=bare_post, get=lambda u: {},
+              check_ready=False)
+
+    assert live_calls == [(AC.BRIDGE,
+                           hashlib.sha256(b"what is my passport number?").hexdigest()[:16])]
+    assert captured["live"] is sentinel_consult
+    assert captured["post"] is bare_post
