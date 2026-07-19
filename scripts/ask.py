@@ -55,6 +55,7 @@ import life_agent.core.narrative as N
 import life_agent.core.outcomes as O
 import life_agent.core.probes as P
 import life_agent.core.reactions as R
+import life_agent.core.seam as SEAM
 import life_agent.core.shadow_mirror as SM
 import life_agent.core.subject as S
 import life_agent.core.synthesis as SYN
@@ -760,10 +761,15 @@ def answer(conn: duckdb.DuckDBPyConnection, question: str,
     cards = [c for c, _ in pairs]
     scores = {c.n: s for c, s in pairs}
     # Abstain on weak retrieval (subsumes the zero-hit case) unless the owner profile can answer
-    # an identity question on its own. Returns the weak cards so the dogfood loop sees the misses.
-    # No synthesize derivation is recorded for an abstention — it is a refusal, not an answer.
+    # an identity question on its own. The weakness is a DECLARED observation into the one act
+    # seam (roadmap M0) — the seam chooses abstain and this host obeys the returned act; the
+    # fork is data at the seam, not an undeclared refusal here. Returns the weak cards so the
+    # dogfood loop sees the misses. No synthesize derivation is recorded for an abstention —
+    # it is a refusal, not an answer.
     if retrieval_is_weak(scores, floor=WEAK_SCORE_FLOOR, min_hits=MIN_STRONG_HITS) and not profile:
-        return (ABSTENTION, cards, scores)
+        gated = SEAM.commit(None, gates=(SEAM.GATE_WEAK_RETRIEVAL,))
+        if gated.action == "abstain":
+            return (ABSTENTION, cards, scores)
 
     # The lookup family (Ask v0, foundations §4): typed point-fact questions take the
     # Bayesian path — grounded per-hit observations → tempered mixture posterior → EU
@@ -944,6 +950,14 @@ def answer_via_executor(question: str, k: int
     # consumer can tell "not tracked here" apart from "zero rounds fired".
     EFFORT_LAST = {}
     if not _executor_ready():
+        # A down stack is a DECLARED observation into the one act seam (roadmap M0) — the
+        # seam chooses abstain and this host obeys, naming the reason (interaction
+        # contract). The engine that would otherwise decide IS the unreachable daemon, so
+        # the observation must be able to force abstain without reaching it.
+        gated = SEAM.commit(None, gates=(SEAM.GATE_EXECUTOR_DOWN,))
+        # nothing but abstain is ENACTABLE against a down stack — an enactment constraint,
+        # not a second decision; the seam's gate contract pins the act (test_seam).
+        assert gated.action == "abstain"
         return (EXECUTOR_DOWN, [], {})
     # The ONE question_id derivation (core.decisions.question_id) — the same key the bridge's
     # /log_decision stamps, so a live decide tick mirrored here and the terminal decision
