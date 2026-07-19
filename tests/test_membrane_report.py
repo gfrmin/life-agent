@@ -202,10 +202,10 @@ def _write_baseline_run(run_dir: Path, vectors: list[dict[str, Any]],
 def test_load_shadow_records_skips_malformed_and_non_membrane_lines(tmp_path: Path) -> None:
     path = tmp_path / "shadow.jsonl"
     path.write_text(
-        json.dumps(_boot("table@1")) + "\n"
+        json.dumps(_boot("said@1")) + "\n"
         "not json at all\n"
         + json.dumps({"event_type": "something-else", "kind": "boot"}) + "\n"
-        + json.dumps(_decide(form="table@1", question_id="q-001", action="respond",
+        + json.dumps(_decide(form="said@1", question_id="q-001", action="respond",
                               real_effector="report")) + "\n",
         encoding="utf-8",
     )
@@ -263,14 +263,14 @@ def test_load_baseline_vectors_missing_run_dir_is_empty(tmp_path: Path) -> None:
 
 
 def test_declared_forms_from_boot_record() -> None:
-    records = [_boot("latent@1", forms=["table@1", "latent@1"])]
-    assert R.declared_forms(records) == ["table@1", "latent@1"]
+    records = [_boot("latent@1", forms=["said@1", "latent@1"])]
+    assert R.declared_forms(records) == ["said@1", "latent@1"]
 
 
 def test_declared_forms_falls_back_to_form_field_union() -> None:
-    records = [_decide(form="table@1", question_id="q-001", action="respond",
+    records = [_decide(form="said@1", question_id="q-001", action="respond",
                         real_effector="report")]
-    assert R.declared_forms(records) == ["table@1"]
+    assert R.declared_forms(records) == ["said@1"]
 
 
 # --- legend mapping ------------------------------------------------------------------------
@@ -296,18 +296,18 @@ def test_map_real_effector_unknown_is_none() -> None:
 
 def test_form_stats_counts_action_distribution_and_percentiles() -> None:
     records = [
-        _decide(form="table@1", question_id="q-001", action="respond",
+        _decide(form="said@1", question_id="q-001", action="respond",
                 real_effector="report", latency_ms=10.0),
-        _decide(form="table@1", question_id="q-002", action="respond",
+        _decide(form="said@1", question_id="q-002", action="respond",
                 real_effector="report", latency_ms=20.0),
-        _decide(form="table@1", question_id="q-003", action="abstain",
+        _decide(form="said@1", question_id="q-003", action="abstain",
                 real_effector="abstain", latency_ms=30.0, raw_internal=True),
-        _decide(form="table@1", question_id="q-004", action="abstain",
+        _decide(form="said@1", question_id="q-004", action="abstain",
                 real_effector="abstain", latency_ms=40.0),
-        _evidence("table@1"),
-        _respawn("table@1"),
+        _evidence("said@1"),
+        _respawn("said@1"),
     ]
-    stats = R.form_stats(records, "table@1")
+    stats = R.form_stats(records, "said@1")
     assert stats["n_decide_ticks"] == 4
     assert stats["n_evidence_ticks"] == 1
     assert stats["ticks_total"] == 5
@@ -326,7 +326,7 @@ def test_form_stats_counts_action_distribution_and_percentiles() -> None:
 
 
 def test_form_stats_empty_form_has_no_denominator_crash() -> None:
-    stats = R.form_stats([], "table@1")
+    stats = R.form_stats([], "said@1")
     assert stats["n_decide_ticks"] == 0
     assert stats["decide_latency_ms"] == {"p50": None, "p95": None, "n": 0}
     assert stats["raw_internal"] == {"n": 0, "of": 0}
@@ -340,14 +340,14 @@ def test_form_stats_reports_only_its_own_per_form_counter_dead_drops() -> None:
     one submit path, every form) — copying them into each form's block made a reader at the
     default two-form deployment double-count all three. Only dead_drops is per-form."""
     records = [
-        _decide(form="table@1", question_id=mirror("q-001"), action="respond",
+        _decide(form="said@1", question_id=mirror("q-001"), action="respond",
                 real_effector="report"),
     ]
     stats_row = _stats(
         drops=3, skips=1, submit_errors=2,
-        forms={"table@1": {"alive": True, "respawns": 0, "ticks": 5, "dead_drops": 7}},
+        forms={"said@1": {"alive": True, "respawns": 0, "ticks": 5, "dead_drops": 7}},
     )
-    stats = R.form_stats(records, "table@1", stats_record=stats_row)
+    stats = R.form_stats(records, "said@1", stats_record=stats_row)
     assert stats["dead_drops"] == 7
     assert "drops" not in stats and "skips" not in stats and "submit_errors" not in stats
     assert "process-global" in stats["dead_drops_note"]
@@ -355,7 +355,7 @@ def test_form_stats_reports_only_its_own_per_form_counter_dead_drops() -> None:
 
 def test_global_counters_are_reported_once_and_labelled_global() -> None:
     stats_row = _stats(drops=3, skips=1, submit_errors=2, queue_depth=4,
-                       forms={"table@1": {"dead_drops": 7}, "latent@1": {"dead_drops": 0}})
+                       forms={"said@1": {"dead_drops": 7}, "latent@1": {"dead_drops": 0}})
     gc = R.global_counters(stats_row)
     assert gc["observable"] is True
     assert (gc["drops"], gc["skips"], gc["submit_errors"]) == (3, 1, 2)
@@ -371,10 +371,10 @@ def test_global_counters_without_a_stats_record_are_not_observable_never_zero() 
 
 def test_form_stats_falls_back_to_the_honest_note_without_a_stats_record() -> None:
     records = [
-        _decide(form="table@1", question_id=mirror("q-001"), action="respond",
+        _decide(form="said@1", question_id=mirror("q-001"), action="respond",
                 real_effector="report"),
     ]
-    stats = R.form_stats(records, "table@1", stats_record=None)
+    stats = R.form_stats(records, "said@1", stats_record=None)
     assert stats["dead_drops"] is None
     assert "not observable" in stats["dead_drops_note"]
 
@@ -383,11 +383,11 @@ def test_form_stats_falls_back_when_stats_record_has_no_entry_for_this_form() ->
     # a stats row exists, but this form isn't in its "forms" map (e.g. a log from a run
     # that declared a different form set) -> honest fallback, never a fabricated zero.
     records = [
-        _decide(form="table@1", question_id=mirror("q-001"), action="respond",
+        _decide(form="said@1", question_id=mirror("q-001"), action="respond",
                 real_effector="report"),
     ]
     stats_row = _stats(drops=1, skips=0, submit_errors=0, forms={"latent@1": {"dead_drops": 0}})
-    stats = R.form_stats(records, "table@1", stats_record=stats_row)
+    stats = R.form_stats(records, "said@1", stats_record=stats_row)
     assert stats["dead_drops"] is None
     assert "not observable" in stats["dead_drops_note"]
 
@@ -396,14 +396,14 @@ def test_form_stats_falls_back_when_stats_record_has_no_entry_for_this_form() ->
 
 
 def test_latest_stats_record_returns_the_last_one() -> None:
-    records = [_stats(ts=1.0, drops=1), _stats(ts=2.0, drops=2), _boot("table@1")]
+    records = [_stats(ts=1.0, drops=1), _stats(ts=2.0, drops=2), _boot("said@1")]
     row = R.latest_stats_record(records)
     assert row is not None
     assert row["drops"] == 2
 
 
 def test_latest_stats_record_none_when_absent() -> None:
-    records = [_boot("table@1"), _decide(form="table@1", question_id="q-001",
+    records = [_boot("said@1"), _decide(form="said@1", question_id="q-001",
                                           action="respond", real_effector="report")]
     assert R.latest_stats_record(records) is None
 
@@ -414,19 +414,19 @@ def test_latest_stats_record_none_when_absent() -> None:
 def test_differential_agreement_and_disagreement_enumeration() -> None:
     records = [
         # agree: real=report -> respond, would=respond
-        _decide(form="table@1", question_id="q-001", action="respond",
+        _decide(form="said@1", question_id="q-001", action="respond",
                 real_effector="report", t=0, p1=0.95),
         # disagree: real=abstain -> abstain, would=gather
-        _decide(form="table@1", question_id="q-002", action="gather",
+        _decide(form="said@1", question_id="q-002", action="gather",
                 real_effector="abstain", t=1, p1=0.3),
         # agree: real=gather -> gather, would=gather
-        _decide(form="table@1", question_id="q-003", action="gather",
+        _decide(form="said@1", question_id="q-003", action="gather",
                 real_effector="gather", t=2, p1=0.4),
         # disagree: real=ask_clarify -> ask, would=respond
-        _decide(form="table@1", question_id="q-004", action="respond",
+        _decide(form="said@1", question_id="q-004", action="respond",
                 real_effector="ask_clarify", t=3, p1=0.91),
     ]
-    diff = R.differential(records, "table@1")
+    diff = R.differential(records, "said@1")
     assert diff["n_mapped"] == 4
     assert diff["agreement_overall"] == {"n": 4, "agree": 2, "rate": 0.5}
     assert diff["agreement_per_real_action"]["abstain"] == {"n": 1, "agree": 0, "rate": 0.0}
@@ -447,12 +447,12 @@ def test_differential_agreement_and_disagreement_enumeration() -> None:
 
 def test_differential_unmapped_real_effector_named_and_excluded() -> None:
     records = [
-        _decide(form="table@1", question_id="q-001", action="respond",
+        _decide(form="said@1", question_id="q-001", action="respond",
                 real_effector="mystery_effector", t=0),
-        _decide(form="table@1", question_id="q-002", action="respond",
+        _decide(form="said@1", question_id="q-002", action="respond",
                 real_effector="report", t=1),
     ]
-    diff = R.differential(records, "table@1")
+    diff = R.differential(records, "said@1")
     assert diff["n_mapped"] == 1  # the mystery effector is excluded from the denominator
     assert diff["n_unmapped_real_effector"] == {"mystery_effector": 1}
     assert diff["agreement_overall"] == {"n": 1, "agree": 1, "rate": 1.0}
@@ -460,7 +460,7 @@ def test_differential_unmapped_real_effector_named_and_excluded() -> None:
 
 
 def test_differential_no_ticks_rate_is_none() -> None:
-    diff = R.differential([], "table@1")
+    diff = R.differential([], "said@1")
     assert diff["agreement_overall"] == {"n": 0, "agree": 0, "rate": None}
 
 
@@ -469,11 +469,11 @@ def test_differential_no_ticks_rate_is_none() -> None:
 
 def test_contingency_would_abstain_x_actual_wrong() -> None:
     terminal = {
-        mirror("q-001"): _decide(form="table@1", question_id=mirror("q-001"), action="abstain",
+        mirror("q-001"): _decide(form="said@1", question_id=mirror("q-001"), action="abstain",
                           real_effector="abstain"),
-        mirror("q-002"): _decide(form="table@1", question_id=mirror("q-002"), action="respond",
+        mirror("q-002"): _decide(form="said@1", question_id=mirror("q-002"), action="respond",
                           real_effector="report"),
-        mirror("q-003"): _decide(form="table@1", question_id=mirror("q-003"), action="abstain",
+        mirror("q-003"): _decide(form="said@1", question_id=mirror("q-003"), action="abstain",
                           real_effector="abstain"),
     }
     vectors = {
@@ -495,9 +495,9 @@ def test_contingency_would_abstain_x_actual_wrong() -> None:
 
 def test_contingency_would_gather_x_actual_miss_narrow_cause() -> None:
     terminal = {
-        mirror("q-001"): _decide(form="table@1", question_id=mirror("q-001"), action="gather",
+        mirror("q-001"): _decide(form="said@1", question_id=mirror("q-001"), action="gather",
                           real_effector="abstain"),
-        mirror("q-002"): _decide(form="table@1", question_id=mirror("q-002"), action="respond",
+        mirror("q-002"): _decide(form="said@1", question_id=mirror("q-002"), action="respond",
                           real_effector="report"),
     }
     vectors = {
@@ -513,7 +513,7 @@ def test_contingency_would_gather_x_actual_miss_narrow_cause() -> None:
 
 def test_contingency_miss_excludes_extraction_and_pooling_loss() -> None:
     terminal = {
-        mirror("q-001"): _decide(form="table@1", question_id=mirror("q-001"), action="gather",
+        mirror("q-001"): _decide(form="said@1", question_id=mirror("q-001"), action="gather",
                           real_effector="abstain"),
     }
     # WRONGLY_WITHHELD but NOT retrieval_miss: must not count as "actual-miss" for the
@@ -547,9 +547,9 @@ def test_utility_table_by_action_is_the_given_posterior_not_a_default() -> None:
 
 def test_realized_loss_arithmetic_precise_under_the_declared_u_bar() -> None:
     terminal = {
-        mirror("q-001"): _decide(form="table@1", question_id=mirror("q-001"), action="abstain",
+        mirror("q-001"): _decide(form="said@1", question_id=mirror("q-001"), action="abstain",
                           real_effector="report"),
-        mirror("q-002"): _decide(form="table@1", question_id=mirror("q-002"), action="respond",
+        mirror("q-002"): _decide(form="said@1", question_id=mirror("q-002"), action="respond",
                           real_effector="report"),
     }
     vectors = {
@@ -579,7 +579,7 @@ def test_realized_loss_refuses_to_score_without_a_boot_u_bar() -> None:
     fallback table would publish a loss the run never incurred, so the report REFUSES and
     says why — a known unknown, never a fabricated number."""
     terminal = {
-        mirror("q-001"): _decide(form="table@1", question_id=mirror("q-001"), action="respond",
+        mirror("q-001"): _decide(form="said@1", question_id=mirror("q-001"), action="respond",
                           real_effector="report"),
     }
     vectors = {mirror("q-001"): _vector(question_id="q-001", asserted=True,
@@ -593,7 +593,7 @@ def test_realized_loss_refuses_to_score_without_a_boot_u_bar() -> None:
 
 def test_realized_loss_excludes_non_decisive_rows() -> None:
     terminal = {
-        mirror("q-001"): _decide(form="table@1", question_id=mirror("q-001"), action="abstain",
+        mirror("q-001"): _decide(form="said@1", question_id=mirror("q-001"), action="abstain",
                           real_effector="abstain"),
     }
     vectors = {
@@ -608,9 +608,9 @@ def test_realized_loss_excludes_non_decisive_rows() -> None:
 
 def test_realized_loss_window_from_timestamps() -> None:
     terminal = {
-        mirror("q-001"): _decide(form="table@1", question_id=mirror("q-001"), action="respond",
+        mirror("q-001"): _decide(form="said@1", question_id=mirror("q-001"), action="respond",
                           real_effector="report", ts=1000.0),
-        mirror("q-002"): _decide(form="table@1", question_id=mirror("q-002"), action="respond",
+        mirror("q-002"): _decide(form="said@1", question_id=mirror("q-002"), action="respond",
                           real_effector="report", ts=2000.0),
     }
     vectors = {
@@ -652,12 +652,12 @@ def test_demand_ledger_respond_threshold_is_derived_from_the_boot_u_bar_not_hard
     threshold is a function of the utility posterior, so it is derived from the u_bar the
     boot record actually persisted."""
     records = [
-        _boot("table@1", u_bar=LIVE_U_BAR),
-        _decide(form="table@1", question_id=mirror("q-001"), action="gather",
+        _boot("said@1", u_bar=LIVE_U_BAR),
+        _decide(form="said@1", question_id=mirror("q-001"), action="gather",
                 real_effector="gather", p1=0.89),
     ]
-    entry = _respond_entry(records, ["table@1"])
-    per_form = entry["per_form"]["table@1"]
+    entry = _respond_entry(records, ["said@1"])
+    per_form = entry["per_form"]["said@1"]
     assert per_form["u_bar_source"] == "boot record"
     # vs abstain: (0 - -5.9395)/(1 - -5.9395) = 0.8559 — BELOW the engine's own asymptote
     # (0.8918), so "respond can't beat silence" is simply FALSE under the live posterior.
@@ -678,12 +678,12 @@ def test_demand_ledger_respond_does_not_fire_when_it_is_actually_reachable() -> 
     below the engine's ceiling, and the report says so instead of repeating the demand."""
     mild = {**LIVE_U_BAR, "u_wrong": -0.05, "kappa_att": 0.001}
     records = [
-        _boot("table@1", u_bar=mild),
-        _decide(form="table@1", question_id=mirror("q-001"), action="respond",
+        _boot("said@1", u_bar=mild),
+        _decide(form="said@1", question_id=mirror("q-001"), action="respond",
                 real_effector="report", p1=0.88),
     ]
-    entry = _respond_entry(records, ["table@1"])
-    assert entry["per_form"]["table@1"]["fires"] is False
+    entry = _respond_entry(records, ["said@1"])
+    assert entry["per_form"]["said@1"]["fires"] is False
     assert entry["fires"] is False
     assert "DOES NOT FIRE" in entry["note"]
     assert "REACHABLE" in entry["note"]
@@ -694,11 +694,11 @@ def test_demand_ledger_respond_observed_respond_tick_overrides_the_arithmetic() 
     says. Observation beats derivation; and a tick that responded is never counted into a
     "respond couldn't fire" tally."""
     records = [
-        _boot("table@1", u_bar=LIVE_U_BAR),
-        _decide(form="table@1", question_id=mirror("q-001"), action="respond",
+        _boot("said@1", u_bar=LIVE_U_BAR),
+        _decide(form="said@1", question_id=mirror("q-001"), action="respond",
                 real_effector="report", p1=0.9),
     ]
-    per_form = _respond_entry(records, ["table@1"])["per_form"]["table@1"]
+    per_form = _respond_entry(records, ["said@1"])["per_form"]["said@1"]
     assert per_form["n_respond_chosen"] == 1
     assert per_form["n_ticks_at_ceiling_without_responding"] == 0
     assert per_form["fires"] is False
@@ -706,12 +706,12 @@ def test_demand_ledger_respond_observed_respond_tick_overrides_the_arithmetic() 
 
 def test_demand_ledger_respond_without_a_boot_u_bar_asserts_nothing() -> None:
     records = [
-        _boot("table@1", u_bar=None),  # an old log
-        _decide(form="table@1", question_id=mirror("q-001"), action="abstain",
+        _boot("said@1", u_bar=None),  # an old log
+        _decide(form="said@1", question_id=mirror("q-001"), action="abstain",
                 real_effector="abstain", p1=0.9),
     ]
-    entry = _respond_entry(records, ["table@1"])
-    assert entry["per_form"]["table@1"]["fires"] is None
+    entry = _respond_entry(records, ["said@1"])
+    assert entry["per_form"]["said@1"]["fires"] is None
     assert entry["fires"] is False  # a demand is never claimed on absent evidence
     assert "NOT DETERMINED" in entry["note"]
 
@@ -721,14 +721,14 @@ def test_demand_ledger_ask_is_dominated_by_gather_under_the_live_posterior() -> 
     differ only by cost, so q=|lambda_int| ~ 1.0 against g=|kappa_att| ~ 0.03 makes ask
     unfirable at ANY credence — a consequence of where the exchange rates are sourced."""
     records = [
-        _boot("table@1", u_bar=LIVE_U_BAR),
-        _decide(form="table@1", question_id=mirror("q-001"), action="gather",
+        _boot("said@1", u_bar=LIVE_U_BAR),
+        _decide(form="said@1", question_id=mirror("q-001"), action="gather",
                 real_effector="gather", p1=0.5),
     ]
-    ledger = {e["name"]: e for e in R.demand_ledger(records, ["table@1"])}
+    ledger = {e["name"]: e for e in R.demand_ledger(records, ["said@1"])}
     entry = ledger["ask_dominated_by_gather"]
     assert entry["fires"] is True
-    assert entry["per_form"]["table@1"]["dominated"] is True
+    assert entry["per_form"]["said@1"]["dominated"] is True
     assert entry["count"] == 0  # no tick chose ask, as predicted
 
 
@@ -749,7 +749,7 @@ def test_demand_ledger_latent_degenerate_when_present() -> None:
 
 
 def test_demand_ledger_latent_absent_form_named_not_run() -> None:
-    ledger = {e["name"]: e for e in R.demand_ledger([], ["table@1"])}
+    ledger = {e["name"]: e for e in R.demand_ledger([], ["said@1"])}
     entry = ledger["latent_action_degenerate"]
     assert entry["count"] == 0
     assert "not run" in entry["note"]
@@ -760,27 +760,27 @@ def test_demand_ledger_kary_candidates_counted_once_across_forms() -> None:
     # not twice (deduped to the canonical/first-declared form).
     shared_summary = _summary(n_candidates=3)
     records = [
-        _decide(form="table@1", question_id="q-001", action="respond",
+        _decide(form="said@1", question_id="q-001", action="respond",
                 real_effector="report", summary=shared_summary),
         _decide(form="latent@1", question_id="q-001", action="respond",
                 real_effector="report", summary=shared_summary),
-        _decide(form="table@1", question_id="q-002", action="respond",
+        _decide(form="said@1", question_id="q-002", action="respond",
                 real_effector="report", summary=_summary(n_candidates=1)),
     ]
-    ledger = {e["name"]: e for e in R.demand_ledger(records, ["table@1", "latent@1"])}
+    ledger = {e["name"]: e for e in R.demand_ledger(records, ["said@1", "latent@1"])}
     entry = ledger["kary_candidates_inexpressible"]
-    assert entry["count"] == 1  # only q-001, counted once (on table@1, the canonical form)
-    assert entry["of"] == 2  # table@1 has 2 decide ticks
+    assert entry["count"] == 1  # only q-001, counted once (on said@1, the canonical form)
+    assert entry["of"] == 2  # said@1 has 2 decide ticks
 
 
 def test_demand_ledger_cold_start_p1_exactly_half() -> None:
     records = [
-        _decide(form="table@1", question_id="q-001", action="abstain",
+        _decide(form="said@1", question_id="q-001", action="abstain",
                 real_effector="abstain", p1=0.5),
-        _decide(form="table@1", question_id="q-002", action="abstain",
+        _decide(form="said@1", question_id="q-002", action="abstain",
                 real_effector="abstain", p1=0.51),
     ]
-    ledger = {e["name"]: e for e in R.demand_ledger(records, ["table@1"])}
+    ledger = {e["name"]: e for e in R.demand_ledger(records, ["said@1"])}
     entry = ledger["cold_start_feature_insensitivity"]
     assert entry["count"] == 1  # the p1==0.5 secondary/corroborating signal, unchanged
 
@@ -790,13 +790,13 @@ def test_demand_ledger_cold_start_reports_real_n_source_records_from_the_boot_re
     # persisted in the boot record, so the report reads the REAL count — no more
     # "DEVIATION FROM THE BRIEF" substitution.
     records = [
-        _boot("table@1", n_source_records=250),
-        _decide(form="table@1", question_id="q-001", action="abstain",
+        _boot("said@1", n_source_records=250),
+        _decide(form="said@1", question_id="q-001", action="abstain",
                 real_effector="abstain", p1=0.5),
     ]
-    ledger = {e["name"]: e for e in R.demand_ledger(records, ["table@1"])}
+    ledger = {e["name"]: e for e in R.demand_ledger(records, ["said@1"])}
     entry = ledger["cold_start_feature_insensitivity"]
-    assert entry["boot_snapshot_n_source_records"] == {"table@1": 250}
+    assert entry["boot_snapshot_n_source_records"] == {"said@1": 250}
     assert "DEVIATION FROM THE BRIEF" not in entry["note"]
 
 
@@ -804,25 +804,25 @@ def test_demand_ledger_cold_start_n_source_records_none_without_a_boot_record() 
     # An older log (predates this field) or a form that never wrote a boot record: named
     # honestly as unknown, never fabricated as 0.
     records = [
-        _decide(form="table@1", question_id="q-001", action="abstain",
+        _decide(form="said@1", question_id="q-001", action="abstain",
                 real_effector="abstain", p1=0.5),
     ]
-    ledger = {e["name"]: e for e in R.demand_ledger(records, ["table@1"])}
+    ledger = {e["name"]: e for e in R.demand_ledger(records, ["said@1"])}
     entry = ledger["cold_start_feature_insensitivity"]
-    assert entry["boot_snapshot_n_source_records"] == {"table@1": None}
+    assert entry["boot_snapshot_n_source_records"] == {"said@1": None}
 
 
 def test_demand_ledger_cold_start_n_source_records_uses_the_latest_boot_per_form() -> None:
     # A respawned form's LATEST boot record wins, not its first (a respawn re-snapshots).
     records = [
-        _boot("table@1", ts=100.0, n_source_records=0),
-        _boot("table@1", ts=200.0, n_source_records=99),
-        _decide(form="table@1", question_id="q-001", action="abstain",
+        _boot("said@1", ts=100.0, n_source_records=0),
+        _boot("said@1", ts=200.0, n_source_records=99),
+        _decide(form="said@1", question_id="q-001", action="abstain",
                 real_effector="abstain", p1=0.5),
     ]
-    ledger = {e["name"]: e for e in R.demand_ledger(records, ["table@1"])}
+    ledger = {e["name"]: e for e in R.demand_ledger(records, ["said@1"])}
     entry = ledger["cold_start_feature_insensitivity"]
-    assert entry["boot_snapshot_n_source_records"] == {"table@1": 99}
+    assert entry["boot_snapshot_n_source_records"] == {"said@1": 99}
 
 
 def test_demand_ledger_no_forms_is_empty_but_safe() -> None:
@@ -841,10 +841,10 @@ def test_demand_ledger_no_forms_is_empty_but_safe() -> None:
 
 def test_provenance_single_identity_not_drifted() -> None:
     records = [
-        _boot("table@1", world_digest="digest-1", ts=100.0),
-        _boot("table@1", world_digest="digest-1", ts=200.0),  # a same-identity respawn
+        _boot("said@1", world_digest="digest-1", ts=100.0),
+        _boot("said@1", world_digest="digest-1", ts=200.0),  # a same-identity respawn
     ]
-    prov = R.provenance(records, ["table@1"])["table@1"]
+    prov = R.provenance(records, ["said@1"])["said@1"]
     assert prov["n_boot_records"] == 2
     assert prov["drifted"] is False
     assert len(prov["distinct_identities"]) == 1
@@ -852,16 +852,16 @@ def test_provenance_single_identity_not_drifted() -> None:
 
 def test_provenance_distinct_identities_flagged_drifted() -> None:
     records = [
-        _boot("table@1", world_digest="digest-1", ts=100.0),
-        _boot("table@1", world_digest="digest-2", ts=200.0),  # a live-posterior drift
+        _boot("said@1", world_digest="digest-1", ts=100.0),
+        _boot("said@1", world_digest="digest-2", ts=200.0),  # a live-posterior drift
     ]
-    prov = R.provenance(records, ["table@1"])["table@1"]
+    prov = R.provenance(records, ["said@1"])["said@1"]
     assert prov["drifted"] is True
     assert len(prov["distinct_identities"]) == 2
 
 
 def test_provenance_no_boot_records() -> None:
-    prov = R.provenance([], ["table@1"])["table@1"]
+    prov = R.provenance([], ["said@1"])["said@1"]
     assert prov["n_boot_records"] == 0
     assert prov["distinct_identities"] == []
     assert prov["drifted"] is False
@@ -872,35 +872,35 @@ def test_provenance_no_boot_records() -> None:
 
 def test_build_report_without_vectors_has_no_grounded_section() -> None:
     records = [
-        _boot("table@1"),
-        _decide(form="table@1", question_id=mirror("q-001"), action="respond",
+        _boot("said@1"),
+        _decide(form="said@1", question_id=mirror("q-001"), action="respond",
                 real_effector="report"),
     ]
     report = R.build_report(records, None)
-    assert report["forms_declared"] == ["table@1"]
+    assert report["forms_declared"] == ["said@1"]
     assert report["grounded"] is None
-    assert "table@1" in report["per_form_stats"]
-    assert "table@1" in report["differential"]
+    assert "said@1" in report["per_form_stats"]
+    assert "said@1" in report["differential"]
     assert len(report["demand_ledger"]) == 5
     # no kind:"stats" row in this log -> the honest not-observable note, never zeros.
     assert report["global_counters"]["observable"] is False
-    assert report["per_form_stats"]["table@1"]["dead_drops"] is None
+    assert report["per_form_stats"]["said@1"]["dead_drops"] is None
 
 
 def test_build_report_renders_the_global_counters_once_not_per_form() -> None:
     records = [
-        _boot("table@1", forms=["table@1", "latent@1"]),
-        _boot("latent@1", forms=["table@1", "latent@1"]),
-        _decide(form="table@1", question_id=mirror("q-001"), action="respond",
+        _boot("said@1", forms=["said@1", "latent@1"]),
+        _boot("latent@1", forms=["said@1", "latent@1"]),
+        _decide(form="said@1", question_id=mirror("q-001"), action="respond",
                 real_effector="report"),
         _decide(form="latent@1", question_id=mirror("q-001"), action="gather",
                 real_effector="report"),
         _stats(drops=4, skips=1, submit_errors=0,
-               forms={"table@1": {"dead_drops": 2}, "latent@1": {"dead_drops": 3}}),
+               forms={"said@1": {"dead_drops": 2}, "latent@1": {"dead_drops": 3}}),
     ]
     report = R.build_report(records, None)
     assert report["global_counters"]["drops"] == 4  # once, not once per form
-    assert report["per_form_stats"]["table@1"]["dead_drops"] == 2
+    assert report["per_form_stats"]["said@1"]["dead_drops"] == 2
     assert report["per_form_stats"]["latent@1"]["dead_drops"] == 3
     md = R.render_md(report)
     assert md.count("drops=4") == 1
@@ -917,12 +917,12 @@ def test_build_report_grounded_join_bridges_the_two_id_namespaces(tmp_path: Path
         _vector(question_id="q-001", asserted=True, asserted_correct=True),
     ])
     records = [
-        _boot("table@1", u_bar=LIVE_U_BAR),
-        _decide(form="table@1", question_id=mirror("q-001"), action="respond",
+        _boot("said@1", u_bar=LIVE_U_BAR),
+        _decide(form="said@1", question_id=mirror("q-001"), action="respond",
                 real_effector="report"),
     ]
     report = R.build_report(records, R.load_baseline_vectors(run_dir))
-    g = report["grounded"]["table@1"]
+    g = report["grounded"]["said@1"]
     assert g["join"]["n_joined"] == 1
     assert g["contingency"]["n_joined"] == 1
     assert g["realized_loss"]["n_decisive"] == 1
@@ -941,12 +941,12 @@ def test_build_report_grounded_empty_join_is_named_not_narrated_as_a_small_sampl
         _vector(question_id="q-001", asserted=True, asserted_correct=True),
     ])
     records = [
-        _boot("table@1", u_bar=LIVE_U_BAR),
-        _decide(form="table@1", question_id=mirror("q-004"),  # a question this run never graded
+        _boot("said@1", u_bar=LIVE_U_BAR),
+        _decide(form="said@1", question_id=mirror("q-004"),  # a question this run never graded
                 action="respond", real_effector="report"),
     ]
     report = R.build_report(records, R.load_baseline_vectors(run_dir))
-    g = report["grounded"]["table@1"]
+    g = report["grounded"]["said@1"]
     assert g["join"]["n_joined"] == 0
     assert "DISJOINT CORPUS" in g["join"]["note"]
     assert "not a small sample" in g["join"]["note"]
@@ -962,19 +962,19 @@ def test_build_report_grounded_refuses_realized_loss_on_a_log_without_u_bar(
         _vector(question_id="q-001", asserted=True, asserted_correct=False),
     ])
     records = [
-        _boot("table@1", u_bar=None),  # an older log
-        _decide(form="table@1", question_id=mirror("q-001"), action="respond",
+        _boot("said@1", u_bar=None),  # an older log
+        _decide(form="said@1", question_id=mirror("q-001"), action="respond",
                 real_effector="report"),
     ]
     report = R.build_report(records, R.load_baseline_vectors(run_dir))
-    rl = report["grounded"]["table@1"]["realized_loss"]
+    rl = report["grounded"]["said@1"]["realized_loss"]
     assert rl["scored"] is False
     assert "NOT SCORED" in rl["reason"]
 
 
 def test_build_report_world_policy_publishes_the_p1_regions(tmp_path: Path) -> None:
-    records = [_boot("table@1", u_bar=LIVE_U_BAR)]
-    policy = R.build_report(records, None)["world_policy"]["table@1"]
+    records = [_boot("said@1", u_bar=LIVE_U_BAR)]
+    policy = R.build_report(records, None)["world_policy"]["said@1"]
     assert policy["u_bar"] == LIVE_U_BAR
     # under the live posterior: abstain only at the very bottom, gather across the interior,
     # respond only above ~0.994 (which the engine's 0.9 grid cannot reach)
@@ -985,7 +985,7 @@ def test_build_report_world_policy_publishes_the_p1_regions(tmp_path: Path) -> N
 
 
 def test_build_report_is_reproducible_no_wallclock_field() -> None:
-    records = [_boot("table@1"), _decide(form="table@1", question_id=mirror("q-001"),
+    records = [_boot("said@1"), _decide(form="said@1", question_id=mirror("q-001"),
                                           action="respond", real_effector="report")]
     r1 = R.build_report(records, None)
     r2 = R.build_report(records, None)
@@ -994,8 +994,8 @@ def test_build_report_is_reproducible_no_wallclock_field() -> None:
 
 def test_render_md_has_section_headers() -> None:
     records = [
-        _boot("table@1"),
-        _decide(form="table@1", question_id=mirror("q-001"), action="respond",
+        _boot("said@1"),
+        _decide(form="said@1", question_id=mirror("q-001"), action="respond",
                 real_effector="report"),
     ]
     report = R.build_report(records, None)
@@ -1006,7 +1006,7 @@ def test_render_md_has_section_headers() -> None:
     assert "## 3. Grounded joins" in md
     assert "## 4. Demand ledger" in md
     assert "## 5. Provenance" in md
-    assert "### table@1" in md
+    assert "### said@1" in md
     assert "Not run: pass `--vectors" in md
 
 
@@ -1015,8 +1015,8 @@ def test_render_md_grounded_section_present_when_given(tmp_path: Path) -> None:
     _write_baseline_run(run_dir, [_vector(question_id="q-001", asserted=True,
                                           asserted_correct=True)])
     records = [
-        _boot("table@1"),
-        _decide(form="table@1", question_id=mirror("q-001"), action="respond",
+        _boot("said@1"),
+        _decide(form="said@1", question_id=mirror("q-001"), action="respond",
                 real_effector="report"),
     ]
     report = R.build_report(records, R.load_baseline_vectors(run_dir))
@@ -1031,15 +1031,15 @@ def test_render_md_grounded_section_present_when_given(tmp_path: Path) -> None:
 def test_main_writes_report_json_and_md(tmp_path: Path, capsys: Any) -> None:
     shadow_log = tmp_path / "shadow.jsonl"
     _write_jsonl(shadow_log, [
-        _boot("table@1"),
-        _decide(form="table@1", question_id=mirror("q-001"), action="respond",
+        _boot("said@1"),
+        _decide(form="said@1", question_id=mirror("q-001"), action="respond",
                 real_effector="report"),
     ])
     out_dir = tmp_path / "out"
     rc = R.main(["--shadow-log", str(shadow_log), "--out-dir", str(out_dir)])
     assert rc == 0
     report_json = json.loads((out_dir / "report.json").read_text())
-    assert report_json["forms_declared"] == ["table@1"]
+    assert report_json["forms_declared"] == ["said@1"]
     assert report_json["grounded"] is None
     md_text = (out_dir / "report.md").read_text()
     assert "Membrane shadow" in md_text
@@ -1050,8 +1050,8 @@ def test_main_writes_report_json_and_md(tmp_path: Path, capsys: Any) -> None:
 def test_main_with_vectors_enables_grounded(tmp_path: Path) -> None:
     shadow_log = tmp_path / "shadow.jsonl"
     _write_jsonl(shadow_log, [
-        _boot("table@1"),
-        _decide(form="table@1", question_id=mirror("q-001"), action="respond",
+        _boot("said@1"),
+        _decide(form="said@1", question_id=mirror("q-001"), action="respond",
                 real_effector="report"),
     ])
     run_dir = tmp_path / "run-1"

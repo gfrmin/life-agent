@@ -1,6 +1,6 @@
 """life_agent.membrane — the proplang membrane shadow.
 
-A Python host driving the frozen `proplang-govhost` decider binary over JSON-lines
+A Python host driving the frozen `proplang-host` decider binary over JSON-lines
 stdio, shadow-logging its choices beside the production answer executor (never on the
 decision path itself — see the feature's design doc).
 

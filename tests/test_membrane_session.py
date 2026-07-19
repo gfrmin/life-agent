@@ -3,15 +3,14 @@
 No wire, no subprocess: `_FakeClient` is a scripted transport — an object with a
 `.request(obj) -> dict` method that records every request and pops canned replies off a
 list, matching `MembraneClient`'s surface without importing it (Task 3's session only
-ever calls `client.request(dict) -> dict`). These pin: boot's two-segment replay order
-+ not-ok/error handshake raising; decide leaving `_t` unmoved and relaying readouts
-verbatim (the choice-relay discipline, membrane-wire.md §6.4); the verdict double-feed
-(latent@1: two ticks same `t`; table@1: one tick), `_t` advancing by exactly one either
-way; outcome dedup by event_id across boot and live, and table@1's outcome tick being
-an ordinary untagged evidence tick (NOT inert — the one deliberate divergence from the
-credence-governor precedent, whose table@1 has no outcome channel at all); the internal
-`think` choice mapping to `world.THINK_POSTURE` with `raw_internal=True`; any
-`{"error": ...}` reply raising; and the `verdict_y` evidence-mapping table.
+ever calls `client.request(dict) -> dict`). These pin: boot's `said@1` handshake +
+two-segment replay order + not-ok/error handshake raising; decide leaving `_t` unmoved
+and relaying readouts verbatim (the choice-relay discipline, membrane-wire.md §6.4); the
+re-derived wire's ONE untagged evidence tick per verdict/outcome (the table@1/latent@1
+stream-tagged double-feed is historical), `_t` advancing by exactly one; outcome dedup by
+event_id across boot and live; the full-assignment `{"act": {"act": <grid value>}}`
+choice decode (int and float accepted, bool rejected, an undeclared value raising); and
+the `verdict_y` evidence-mapping table.
 """
 from __future__ import annotations
 
@@ -22,6 +21,14 @@ from life_agent.membrane.client import MembraneError
 from life_agent.membrane.session import MembraneSession, ShadowChoice, verdict_y
 
 HANDSHAKE_OK: dict[str, object] = {"ok": True, "proto": 1, "models": 100, "namespace_bits": 5.0}
+
+# every affordance's grid value, by name — the reply encoding `{"act": {"act": <value>}}`.
+_V = dict(W.AFFORDANCES)
+
+
+def _act(name: str) -> dict[str, object]:
+    """A well-formed decide reply choosing affordance `name`."""
+    return {"act": {"act": _V[name]}}
 
 
 class _FakeClient:
@@ -67,7 +74,7 @@ def _tick_body(sent: dict[str, object]) -> dict[str, object]:
 def test_boot_sends_the_declared_handshake_line() -> None:
     client, sess = _make([HANDSHAKE_OK])
     sess.boot()
-    assert client.sent == [W.handshake_decl({}, utility_form="table@1")]
+    assert client.sent == [W.handshake_decl({}, utility_form="said@1")]
 
 
 def test_boot_keeps_the_reply_dict_as_engine() -> None:
@@ -119,22 +126,18 @@ def test_engine_and_seen_outcomes_default_before_boot() -> None:
 
 def test_decide_sends_declared_menu_features_and_no_per_tick_utility_key() -> None:
     s = _summary()
-    client, sess = _make([HANDSHAKE_OK, {"choice": {"fire": 1, "slots": {}}}])
+    client, sess = _make([HANDSHAKE_OK, _act("respond")])
     sess.boot()
     sess.decide(s)
     tick = _tick_body(client.sent[1])
-    assert tick["menu"] == W.MENU_IDS
-    assert "utility" not in tick
+    assert tick["menu"] == [W.ACT_NAME]  # the one writable name
+    assert "utility" not in tick         # the sentence is declared once, at the handshake
     assert tick["features"] == W.shadow_features(s, 0.0)
 
 
 def test_decide_leaves_t_unmoved_across_calls() -> None:
     s = _summary()
-    client, sess = _make([
-        HANDSHAKE_OK,
-        {"choice": {"fire": 1, "slots": {}}},
-        {"choice": {"fire": 1, "slots": {}}},
-    ])
+    client, sess = _make([HANDSHAKE_OK, _act("respond"), _act("respond")])
     sess.boot()
     sess.decide(s)
     sess.decide(s)
@@ -142,12 +145,9 @@ def test_decide_leaves_t_unmoved_across_calls() -> None:
     assert _tick_body(client.sent[2])["features"]["t"] == 0.0  # type: ignore[index]
 
 
-def test_decide_returns_readouts_verbatim_minus_choice() -> None:
+def test_decide_returns_readouts_verbatim_minus_the_act_key() -> None:
     s = _summary()
-    _client, sess = _make([
-        HANDSHAKE_OK,
-        {"choice": {"fire": 1, "slots": {}}, "p1": 0.8, "entropy_bits": 1.2},
-    ])
+    _client, sess = _make([HANDSHAKE_OK, {**_act("respond"), "p1": 0.8, "entropy_bits": 1.2}])
     sess.boot()
     choice = sess.decide(s)
     assert choice == ShadowChoice(
@@ -157,12 +157,12 @@ def test_decide_returns_readouts_verbatim_minus_choice() -> None:
 
 def test_decide_is_a_pure_choice_relay_readouts_never_affect_the_action() -> None:
     # membrane-wire.md §6.4: two replies differing ONLY in observability scalars must
-    # yield the identical action — the adapter branches on "choice", nothing else.
+    # yield the identical action — the adapter branches on "act", nothing else.
     s = _summary()
     _client, sess = _make([
         HANDSHAKE_OK,
-        {"choice": {"fire": 2, "slots": {}}, "p1": 0.9, "entropy_bits": 1.0},
-        {"choice": {"fire": 2, "slots": {}}, "p1": 0.1, "entropy_bits": 9.0},
+        {**_act("abstain"), "p1": 0.9, "entropy_bits": 1.0},
+        {**_act("abstain"), "p1": 0.1, "entropy_bits": 9.0},
     ])
     sess.boot()
     c1 = sess.decide(s)
@@ -171,31 +171,36 @@ def test_decide_is_a_pure_choice_relay_readouts_never_affect_the_action() -> Non
     assert c1.readouts != c2.readouts
 
 
-def test_decide_maps_every_fire_id_to_its_declared_action() -> None:
+def test_decide_maps_every_declared_value_to_its_action() -> None:
     s = _summary()
-    for action, mid in W.AFFORDANCES:
-        _client, sess = _make([HANDSHAKE_OK, {"choice": {"fire": mid, "slots": {}}}])
+    for action, value in W.AFFORDANCES:
+        _client, sess = _make([HANDSHAKE_OK, {"act": {"act": value}}])
         sess.boot()
         choice = sess.decide(s)
         assert choice.action == action
         assert choice.raw_internal is False
 
 
-def test_decide_unknown_fire_id_raises_membrane_error() -> None:
+def test_decide_accepts_int_and_float_act_values_but_rejects_bool() -> None:
     s = _summary()
-    _client, sess = _make([HANDSHAKE_OK, {"choice": {"fire": 99, "slots": {}}}])
+    gather = _V["gather"]  # 2.0
+    for raw in (int(gather), float(gather)):
+        _client, sess = _make([HANDSHAKE_OK, {"act": {"act": raw}}])
+        sess.boot()
+        assert sess.decide(s).action == "gather"
+    # a bool is not a grid value, even though `True == 1` numerically.
+    _client, sess = _make([HANDSHAKE_OK, {"act": {"act": True}}])
     sess.boot()
     with pytest.raises(MembraneError):
         sess.decide(s)
 
 
-def test_decide_internal_think_maps_to_think_posture_with_raw_internal_flag() -> None:
+def test_decide_undeclared_act_value_raises_membrane_error() -> None:
     s = _summary()
-    _client, sess = _make([HANDSHAKE_OK, {"choice": {"internal": "think"}}])
+    _client, sess = _make([HANDSHAKE_OK, {"act": {"act": 9}}])
     sess.boot()
-    choice = sess.decide(s)
-    assert choice.action == W.THINK_POSTURE == "abstain"
-    assert choice.raw_internal is True
+    with pytest.raises(MembraneError):
+        sess.decide(s)
 
 
 def test_decide_error_reply_raises_membrane_error() -> None:
@@ -206,46 +211,33 @@ def test_decide_error_reply_raises_membrane_error() -> None:
         sess.decide(s)
 
 
-def test_decide_malformed_reply_without_choice_or_error_raises() -> None:
+@pytest.mark.parametrize("reply", [
+    {"ok": True},                 # no act key at all
+    {"act": "not-a-dict"},        # act present but not an assignment dict
+    {"act": {}},                  # assignment dict without the writable name
+])
+def test_decide_malformed_reply_raises(reply: dict[str, object]) -> None:
     s = _summary()
-    _client, sess = _make([HANDSHAKE_OK, {"ok": True}])
+    _client, sess = _make([HANDSHAKE_OK, reply])
     sess.boot()
     with pytest.raises(MembraneError):
         sess.decide(s)
 
 
-# --- observe_verdict(): the double-feed rule -------------------------------------------
+# --- observe_verdict(): one untagged evidence tick ------------------------------------
 
 
-def test_observe_verdict_single_untagged_tick_on_table_and_advances_t_once() -> None:
+def test_observe_verdict_single_untagged_tick_and_advances_t_once() -> None:
     s = _summary()
-    client, sess = _make([HANDSHAKE_OK, {"observed": 0}, {"choice": {"fire": 1, "slots": {}}}])
+    client, sess = _make([HANDSHAKE_OK, {"observed": 0}, _act("respond")])
     sess.boot()
     sess.observe_verdict(s, 0)
     assert len(client.sent) == 2  # handshake + one evidence tick
     tick = _tick_body(client.sent[1])
-    assert "stream" not in tick
+    assert "stream" not in tick   # the stream-tagged double-feed was latent@1 machinery
     assert tick["evidence"] == 0
     sess.decide(s)
     assert _tick_body(client.sent[2])["features"]["t"] == 1.0  # type: ignore[index]
-
-
-def test_observe_verdict_double_feeds_on_latent_same_t_then_advances_once() -> None:
-    s = _summary()
-    client, sess = _make(
-        [HANDSHAKE_OK, {"observed": 1}, {"observed": 1}, {"choice": {"fire": 1, "slots": {}}}],
-        utility_form="latent@1",
-    )
-    sess.boot()
-    sess.observe_verdict(s, 1)
-    assert len(client.sent) == 3  # handshake + two evidence ticks
-    untagged, verdict_tagged = _tick_body(client.sent[1]), _tick_body(client.sent[2])
-    assert "stream" not in untagged
-    assert verdict_tagged["stream"] == "verdict"
-    assert untagged["evidence"] == verdict_tagged["evidence"] == 1
-    assert untagged["features"]["t"] == verdict_tagged["features"]["t"] == 0.0  # type: ignore[index]
-    sess.decide(s)
-    assert _tick_body(client.sent[3])["features"]["t"] == 1.0  # type: ignore[index]
 
 
 def test_observe_verdict_error_reply_raises_membrane_error() -> None:
@@ -256,35 +248,20 @@ def test_observe_verdict_error_reply_raises_membrane_error() -> None:
         sess.observe_verdict(s, 1)
 
 
-# --- observe_outcome(): stream tag by form, dedup by event_id -------------------------
+# --- observe_outcome(): one untagged evidence tick, dedup by event_id -----------------
 
 
-def test_observe_outcome_table_sends_a_single_untagged_evidence_tick() -> None:
-    # the deliberate divergence from the credence-governor precedent: table@1 outcome
-    # evidence is an ordinary untagged tick, never inert.
+def test_observe_outcome_sends_a_single_untagged_evidence_tick() -> None:
+    # the ``said@1`` utility already prices y for every affordance, so an outcome is
+    # ordinary evidence — one untagged tick, never inert, never stream-tagged.
     s = _summary()
-    client, sess = _make([HANDSHAKE_OK, {"observed": 1}, {"choice": {"fire": 1, "slots": {}}}])
+    client, sess = _make([HANDSHAKE_OK, {"observed": 1}, _act("respond")])
     sess.boot()
     sess.observe_outcome("ev-1", s, 1)
     assert len(client.sent) == 2
     tick = _tick_body(client.sent[1])
     assert "stream" not in tick
     assert tick["evidence"] == 1
-    sess.decide(s)
-    assert _tick_body(client.sent[2])["features"]["t"] == 1.0  # type: ignore[index]
-
-
-def test_observe_outcome_latent_sends_a_single_stream_tagged_tick() -> None:
-    s = _summary()
-    client, sess = _make(
-        [HANDSHAKE_OK, {"observed": 1}, {"choice": {"fire": 1, "slots": {}}}],
-        utility_form="latent@1",
-    )
-    sess.boot()
-    sess.observe_outcome("ev-1", s, 1)
-    assert len(client.sent) == 2
-    tick = _tick_body(client.sent[1])
-    assert tick["stream"] == "outcome"
     sess.decide(s)
     assert _tick_body(client.sent[2])["features"]["t"] == 1.0  # type: ignore[index]
 

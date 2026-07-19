@@ -671,12 +671,12 @@ def test_ready_membrane_disabled(deps: BridgeDeps) -> None:
 
 
 def test_ready_membrane_enabled_reports_stats(deps: BridgeDeps) -> None:
-    fake = _FakeMembrane(stats_value={"forms": {"table@1": {"alive": True}}, "drops": 2})
+    fake = _FakeMembrane(stats_value={"forms": {"said@1": {"alive": True}}, "drops": 2})
     deps2 = _with_membrane(deps, fake)
     status, payload = _call(deps2, "GET", "/ready")
     assert status == 200
     assert payload["status"] == "ok"
-    assert payload["membrane"] == {"forms": {"table@1": {"alive": True}}, "drops": 2}
+    assert payload["membrane"] == {"forms": {"said@1": {"alive": True}}, "drops": 2}
 
 
 def test_ready_membrane_stats_raising_does_not_crash_ready(deps: BridgeDeps) -> None:
@@ -743,7 +743,7 @@ def test_build_membrane_constructs_and_starts_when_command_set(
     assert isinstance(result, _FakeShadowInstance)
     assert result.start_called is True
     assert result.cfg.command == ["fake-govhost", "--flag"]
-    assert result.cfg.forms == ("table@1",)                   # the declared default
+    assert result.cfg.forms == ("said@1",)                   # the declared default
     assert result.cfg.log_path == tmp_path / "membrane" / "shadow.jsonl"
     assert result.cfg.queue_size == bridge_server._MEMBRANE_QUEUE_SIZE
     assert result.cfg.max_respawns == bridge_server._MEMBRANE_MAX_RESPAWNS

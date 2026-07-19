@@ -223,7 +223,7 @@ def latest_boot_u_bar(records: list[dict[str, Any]], form: str) -> dict[str, flo
 
     Everything downstream that needs the world's numbers (the realized-loss table, the
     respond-reachability threshold) reads them from HERE and refuses to proceed without
-    them. It used to fall back to ``world.utility_rows``' declared DEFAULTS, which are not
+    them. It used to fall back to ``world.utility_by_action``' declared DEFAULTS, which are not
     what any live shadow ever ran under — the live ``u_wrong`` is around -5.9, not -9.0 —
     so the report scored losses under a table the shadow never used and published a
     reachability claim that was an artifact of a fallback constant."""
@@ -569,7 +569,7 @@ def utility_table_by_action(u_bar: Mapping[str, float]) -> dict[str, list[float]
 UNSCORABLE_NO_U_BAR = (
     "NOT SCORED — this form's boot record carries no u_bar (a log written before the shadow "
     "persisted it). Realized loss is only meaningful under the utility the shadow actually "
-    "decided under; scoring it under world.utility_rows' fallback defaults (u_wrong=-9.0) "
+    "decided under; scoring it under world.utility_by_action's fallback defaults (u_wrong=-9.0) "
     "would report a loss no live run ever incurred. Re-run the shadow to get a boot record "
     "with u_bar, then re-run this report."
 )
@@ -707,7 +707,7 @@ def _respond_reachability(records: list[dict[str, Any]], form: str) -> dict[str,
       which the engine's own asymptote (0.8918) CLEARS.
     * ``threshold_whole_menu`` (:func:`world.respond_threshold`) — the bar that actually
       binds, because the engine argmaxes over the WHOLE menu: respond must also outbid
-      ``gather``/``ask``, which are priced as myopic perfect information (world.utility_rows'
+      ``gather``/``ask``, which are priced as myopic perfect information (world.utility_by_action'
       declared bake-in). ``binding_competitor`` names which row sets it.
 
     ``fires`` is True only when the binding threshold genuinely exceeds what the engine can
@@ -780,7 +780,7 @@ def demand_ledger(records: list[dict[str, Any]], forms: list[str]) -> list[dict[
             f"engine can attain (its grid ceilings at p1={ENGINE_P1_CEILING}; 40 y=1 verdicts "
             f"asymptote at {ENGINE_P1_OBSERVED_ASYMPTOTE}, live-verified). The binding bar is "
             "threshold_whole_menu, NOT threshold_vs_abstain — the engine argmaxes over the "
-            "whole menu, so respond must outbid gather/ask, which world.utility_rows prices "
+            "whole menu, so respond must outbid gather/ask, which world.utility_by_action prices "
             "as myopic perfect information (a DECLARED overvaluation of information; see the "
             "register, item 5). Read the two thresholds together: where threshold_vs_abstain "
             "is cleared but threshold_whole_menu is not, the demand is on OUR OWN information "
@@ -971,7 +971,7 @@ def world_policy(records: list[dict[str, Any]], forms: list[str]) -> dict[str, A
             "note": (
                 "argmax_by_p1 is this world's OWN utility arithmetic (world.argmax_action) "
                 "over the boot-recorded u_bar — the same table the frozen engine argmaxes. "
-                "Information actions are priced as myopic perfect information (utility_rows' "
+                "Information actions are priced as myopic perfect information (utility_by_action's "
                 "declared bake-in), which is why gather owns most of the interior."
             ),
         }
