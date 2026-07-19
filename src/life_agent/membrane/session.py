@@ -8,12 +8,11 @@ decide/verdict/outcome ticks over an injected client, holding the evidence-strea
 sessions run at once — that is Task 4's supervisor. No threading here.
 
 Ported from the credence-governor's proven `MembraneSession`
-(`packages/governor_core/credence_governor_core/membrane.py:327-521`), with one
-deliberate divergence named at :func:`MembraneSession.observe_outcome`: the governor's
-table@1 form has no outcome channel at all (epoch-1 waste-only), while this world's
-table@1 utility already prices y = "asserting now would be correct" for every
-affordance, so a table@1 outcome is fed as an ordinary untagged evidence tick rather
-than being inert.
+(`packages/governor_core/credence_governor_core/membrane.py:327-521`), re-targeted at
+the re-derived wire (one `said@1` form; the table@1/latent@1 split and its stream-tagged
+double-feed are historical): every verdict/outcome is one untagged evidence tick,
+because the declared utility sentence already prices y = "asserting now would be
+correct" for every affordance.
 
 The t-convention (carried over unchanged): `t` is the EVIDENCE-STREAM INDEX, not wall
 time — one step per conditioned verdict/outcome. A decision tick sends the CURRENT
@@ -32,10 +31,9 @@ from dataclasses import dataclass
 
 from .client import MembraneClient, MembraneError
 from .world import (
-    ID_TO_ACTION,
-    MENU_IDS,
-    THINK_POSTURE,
+    ACT_NAME,
     UTILITY_FORMS,
+    VALUE_TO_ACTION,
     DecideSummary,
     handshake_decl,
     shadow_features,
@@ -44,10 +42,11 @@ from .world import (
 
 @dataclass(frozen=True)
 class ShadowChoice:
-    """One decide() outcome: `action` is the world affordance name (or
-    `world.THINK_POSTURE` when the internal act won), `raw_internal` names that case
-    honestly, and `readouts` is the reply's observability-only scalars (p1,
-    entropy_bits, ...) — telemetry, never branched on."""
+    """One decide() outcome: `action` is the world affordance name decoded from the
+    reply's full assignment (`{"act": {"act": <grid value>}}` — the internal think act
+    died with the step-5 wire, so `raw_internal` is always False and is kept only for
+    the shadow record's stable shape), and `readouts` is the reply's observability-only
+    scalars (p1, entropy_bits, ...) — telemetry, never branched on."""
 
     action: str
     raw_internal: bool
@@ -78,7 +77,7 @@ class MembraneSession:
         client: MembraneClient,
         *,
         u_bar: Mapping[str, float],
-        utility_form: str = "table@1",
+        utility_form: str = "said@1",
         log: Callable[[str], None] = print,
     ) -> None:
         if utility_form not in UTILITY_FORMS:
@@ -89,7 +88,6 @@ class MembraneSession:
         self.client = client
         self._u_bar = u_bar
         self.utility_form = utility_form
-        self._latent = utility_form == "latent@1"
         self._log = log
         self.engine: dict[str, object] = {}
         self.seen_outcomes: set[str] = set()
@@ -131,50 +129,41 @@ class MembraneSession:
         return reply
 
     def decide(self, s: DecideSummary) -> ShadowChoice:
-        """Features + the declared menu, at the CURRENT `_t` — a decision tick never
-        advances it. No per-tick `utility` key: the table is declared once at the
-        handshake (module docstring)."""
-        reply = self._tick({"features": shadow_features(s, float(self._t)), "menu": MENU_IDS})
-        readouts = {k: v for k, v in reply.items() if k != "choice"}
-        choice = reply.get("choice")
-        if isinstance(choice, dict) and "fire" in choice:
-            action = ID_TO_ACTION.get(int(choice["fire"]))
-            if action is None:
-                raise MembraneError(f"undeclared affordance in reply: {choice!r}")
-            return ShadowChoice(action=action, raw_internal=False, readouts=readouts)
-        if isinstance(choice, dict) and choice.get("internal") == "think":
-            self._log(
-                f"life-agent: membrane chose the internal think act; "
-                f"posture={THINK_POSTURE}"
-            )
-            return ShadowChoice(action=THINK_POSTURE, raw_internal=True, readouts=readouts)
+        """Features + the menu (the one writable name), at the CURRENT `_t` — a decision
+        tick never advances it. No per-tick `utility` key: the sentence is declared once
+        at the handshake (module docstring). The reply's choice is the FULL ASSIGNMENT
+        `{"act": {"act": <grid value>}}` (the step-5 encoding — fire/slots and the
+        internal think act died with the old wire); an undeclared value is a wire
+        error, never a silent default."""
+        reply = self._tick({"features": shadow_features(s, float(self._t)),
+                            "menu": [ACT_NAME]})
+        readouts = {k: v for k, v in reply.items() if k != "act"}
+        assignment = reply.get("act")
+        if isinstance(assignment, dict) and ACT_NAME in assignment:
+            raw = assignment[ACT_NAME]
+            if isinstance(raw, (int, float)) and not isinstance(raw, bool):
+                action = VALUE_TO_ACTION.get(float(raw))
+                if action is not None:
+                    return ShadowChoice(action=action, raw_internal=False,
+                                        readouts=readouts)
+            raise MembraneError(f"undeclared act value in reply: {assignment!r}")
         raise MembraneError(f"malformed choice in reply: {reply!r}")
 
     def observe_verdict(self, s: DecideSummary, y: int) -> None:
-        """One human verdict. table@1: a single untagged evidence tick. latent@1: the
-        double-feed — an untagged tick (world-report role) then a `stream: "verdict"`
-        tick (owner-response role), both at the SAME `t` (one event, two disjoint
-        agents). Either way `_t` then advances by exactly one."""
-        feats = shadow_features(s, float(self._t))
-        ev = int(y)
-        self._tick({"features": feats, "evidence": ev})
-        if self._latent:
-            self._tick({"stream": "verdict", "features": feats, "evidence": ev})
+        """One human verdict: a single untagged evidence tick (the `stream`-tagged
+        double-feed was latent@1 machinery — historical with the old wire). `_t` then
+        advances by exactly one."""
+        self._tick({"features": shadow_features(s, float(self._t)), "evidence": int(y)})
         self._t += 1
 
     def observe_outcome(self, event_id: str, s: DecideSummary, y: int) -> None:
         """One grounded outcome, deduped by `event_id` across boot replay and every
-        live call (the session-held `seen_outcomes` set). latent@1: a single
-        `stream: "outcome"` tick (the responder-free evidence). table@1: a single
-        untagged evidence tick — NOT inert (module docstring's divergence from the
-        credence-governor precedent). Either way `_t` advances by one."""
+        live call (the session-held `seen_outcomes` set): a single untagged evidence
+        tick — the ``said@1`` utility already prices y = "asserting now would be
+        correct" for every affordance, so an outcome is ordinary evidence. `_t`
+        advances by one."""
         if event_id in self.seen_outcomes:
             return
         self.seen_outcomes.add(event_id)
-        feats = shadow_features(s, float(self._t))
-        ev = int(y)
-        if self._latent:
-            self._tick({"stream": "outcome", "features": feats, "evidence": ev})
-        else:
-            self._tick({"features": feats, "evidence": ev})
+        self._tick({"features": shadow_features(s, float(self._t)), "evidence": int(y)})
         self._t += 1
