@@ -936,17 +936,20 @@ def run(
 
         judge_fn = judge_impl or J.judge_modal
         impls = dict(default_arm_impls(args))
+        def _bind_external(cfg: AH.HermesArmConfig) -> Callable[[dict[str, Any]], Any]:
+            # binds THIS iteration's cfg via the function parameter — a bare loop-body
+            # closure over the loop variable would late-bind every external arm to the
+            # last iteration's config.
+            return lambda q: AH.answer_competitor(q, cfg)
+
         for ext in external_arms:
             assert hermes_bin is not None
             model, provider, base_url = _external_model_args(args, ext)
-            ext_cfg = AH.HermesArmConfig(
+            impls[ext] = _bind_external(AH.HermesArmConfig(
                 hermes_bin=hermes_bin, run_dir=run_dir, pkm_config=args.config,
                 model=model, provider=provider, base_url=base_url,
                 timeout_s=args.timeout_s, arm_name=ext,
-            )
-            # bind THIS iteration's cfg as a default arg — a bare closure over `ext_cfg`
-            # would late-bind every external arm to the last loop iteration's config.
-            impls[ext] = lambda q, cfg=ext_cfg: AH.answer_competitor(q, cfg)
+            ))
         if arm_impls:
             impls.update(arm_impls)
 
