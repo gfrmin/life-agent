@@ -129,7 +129,8 @@ def test_stage_class_mapping() -> None:
     assert cls("CONFIDENT_WRONG") == "confident_wrong"
     assert cls("WRONGLY_WITHHELD", "extraction_miss") == "extraction_miss"
     assert cls("WRONGLY_WITHHELD", None) == "unattributed"
-    assert cls("SCOPED") == "unattributed"  # a known bucket outside the mapping, counted
+    assert cls("SCOPED") == "scoped"  # an honest scoped claim: its own lever, own class
+    assert cls("SOME_FUTURE_BUCKET") == "unattributed"  # unknown buckets counted, never crash
 
 
 # --- the assembled ledger ----------------------------------------------------------------
@@ -191,3 +192,67 @@ def test_write_outputs_lands_both_files_under_run_dir(tmp_path: Path) -> None:
     assert mpath == run_dir / "loss_ledger" / "baseline.md"
     assert json.loads(jpath.read_text())["arm"] == "baseline"
     assert mpath.read_text().startswith("# Loss ledger — baseline")
+
+
+# --- the review's two correctness findings, pinned ---------------------------------------
+
+def test_scoped_rows_price_as_report_scoped_with_their_own_class() -> None:
+    # A SCOPED row has asserted=False (triage_answers: asserted = report|hedge only) but its
+    # asserted_correct IS the scoped value's gold match (grading.py computes it over
+    # asserted_values, which for a scoped view is [scoped_value]). Pricing it as abstain
+    # charged an honest non-answer full withhold-regret and dumped it in "unattributed".
+    post = _fake_posterior()
+
+    def one(row: dict) -> float:
+        return LL.regret_samples([row], post, oracle_p=_ORACLE_P,
+                                 n_samples=1, seed=7)[row["question_id"]][0]
+
+    ok = _row("q-906", "SCOPED", answerable=True, gold_in_corpus=True,
+              asserted=False, asserted_correct=True, declined=False, cause="as_of_record")
+    bad = _row("q-907", "SCOPED", answerable=True, gold_in_corpus=True,
+               asserted=False, asserted_correct=False, declined=False, cause="as_of_record")
+    assert LL.actual_response(ok).action == "report_scoped"
+    assert LL.stage_class(ok) == "scoped"
+    # scoped-correct: oracle u_correct(1.0) - u_hedged(0.4) = 0.6
+    assert one(ok) == pytest.approx(0.6)
+    # scoped-incorrect: oracle u_correct(1.0) - u_wrong_scoped(-2.0) = 3.0
+    assert one(bad) == pytest.approx(3.0)
+
+
+def test_correct_outside_corpus_proxy_has_zero_regret_not_negative() -> None:
+    # The reviewer's reproduced case: CORRECT (asserted_correct=True) while the FTS
+    # retrieval-channel proxy says gold_in_corpus=False. A corpus-only oracle abstains
+    # (utility 0) against the arm's u_correct (1.0) — regret -1, dragging the "none"
+    # class negative. The dominating oracle reports-correct whenever the arm itself
+    # proved the gold attainable, so regret is exactly 0.
+    post = _fake_posterior()
+
+    def one(row: dict) -> float:
+        return LL.regret_samples([row], post, oracle_p=_ORACLE_P,
+                                 n_samples=1, seed=7)[row["question_id"]][0]
+
+    row = _row("q-908", "CORRECT", answerable=True, gold_in_corpus=False,
+               asserted=True, asserted_correct=True, declined=False)
+    assert LL.stage_class(row) == "none"
+    assert one(row) == pytest.approx(0.0)
+
+
+def test_regret_is_never_negative_across_the_act_grid() -> None:
+    # Domination, exhaustively: every (bucket-shape, answerable, gold_in_corpus,
+    # asserted_correct) combination the vector schema can express prices >= 0.
+    post = _fake_posterior()
+
+    def one(row: dict) -> float:
+        return LL.regret_samples([row], post, oracle_p=_ORACLE_P,
+                                 n_samples=1, seed=7)[row["question_id"]][0]
+
+    shapes = [("CORRECT", True, True), ("CONFIDENT_WRONG", True, False),
+              ("WRONGLY_WITHHELD", False, False), ("RIGHTLY_WITHHELD", False, False),
+              ("SCOPED", False, True), ("SCOPED", False, False)]
+    for bucket, asserted, asserted_correct in shapes:
+        for answerable in (True, False):
+            for gic in (True, False):
+                row = _row("q-909", bucket, answerable=answerable, gold_in_corpus=gic,
+                           asserted=asserted, asserted_correct=asserted_correct,
+                           declined=not asserted and bucket != "SCOPED")
+                assert one(row) >= 0.0, (bucket, answerable, gic)
