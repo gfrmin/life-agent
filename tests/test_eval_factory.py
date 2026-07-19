@@ -409,6 +409,44 @@ def test_source_cap_zero_disables_the_cap() -> None:
     assert len(result.admitted) == 3
 
 
+def test_first_person_gate_ignores_acronym_us_and_matches_real_first_person() -> None:
+    """PR-32 review Important-1: 'US' (visa/bank/dollar) must not read as first person;
+    the real pronouns still must."""
+    assert not F._is_first_person("What is Stephen Fake's US visa number?")
+    assert not F._is_first_person("Which US bank issued the fake statement?")
+    assert F._is_first_person("What database do I have a fake subscription for?")
+    assert F._is_first_person("What is my fake policy number?")
+    assert F._is_first_person("When did we sign the fake lease?")
+    assert F._is_first_person("What did the letter tell us to pay?")  # lowercase 'us'
+
+
+def test_multi_slot_catches_single_wh_two_slot_noun_compound() -> None:
+    """PR-32 review Important-2: one wh-word governing two conjoined slot nouns is still
+    two value slots ('what is the policy number and effective date?')."""
+    calls = {"verify": 0}
+
+    def verify_complete(s: str, u: str) -> str:
+        calls["verify"] += 1
+        return "P111222"
+
+    result = F.run_factory(
+        _FakeConn(_chunk_rows()),
+        lambda s, u: _proposal(
+            "what is the fake policy number and effective date?", "P111222"),
+        verify_complete,
+        target=10, max_proposals=3, k=5, min_chars=10, seed=1)
+    assert not result.admitted
+    assert result.rejections["multi_slot"] == 3
+    assert calls["verify"] == 0
+
+
+def test_multi_slot_same_slot_noun_both_sides_is_not_compound() -> None:
+    # "the number on the letter and the number on the permit" asks ONE fact class;
+    # only DIFFERENT slot types across the "and" mark a second slot
+    assert F._slot_count("which fake number appears on the letter and the permit?") < 2
+    assert F._slot_count("what is the fake total cost of gas and electricity?") < 2
+
+
 def test_proposer_v2_contract_names_the_gates() -> None:
     """The prompt is the other half of each mechanical gate — the contract the model is
     told must match the code that enforces it."""
@@ -461,6 +499,17 @@ def test_merge_corpora_dedups_reids_and_redraws_audit() -> None:
     again, _ = F.merge_corpora([("runA", c1), ("runB", c2)], seed=7, audit_fraction=0.34)
     assert [q["id"] for q in again["questions"] if q.get("audit")] == \
         [q["id"] for q in qs if q.get("audit")]  # seeded — stable
+
+
+def test_merge_corpora_never_aliases_into_the_input_corpora() -> None:
+    """PR-32 review Minor-1: the nightly loop may reuse corpus objects in-process — a
+    merged row mutation must never reach back into a source corpus."""
+    c1 = _corpus([_cq("what is my fake policy number?", "P111222", "/fake/a.pdf")])
+    merged, _ = F.merge_corpora([("runA", c1)], seed=7, audit_fraction=0.5)
+    merged["questions"][0]["answer_variants"].append("MUTATED")
+    merged["questions"][0]["provenance"]["source_path"] = "MUTATED"
+    assert c1["questions"][0]["answer_variants"] == []
+    assert c1["questions"][0]["provenance"]["source_path"] == "/fake/a.pdf"
 
 
 def test_merge_mode_cli_writes_outputs_without_touching_generation(
