@@ -31,7 +31,7 @@ normalisation; ``reports`` (the 0-based candidate index) becomes code ``reports 
 from __future__ import annotations
 
 import contextlib
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -286,7 +286,13 @@ def decide_categorical(
     raise MembraneError(f"malformed categorical choice in reply: {dec!r}")
 
 
-SpawnFn = Callable[..., Any]
+class SpawnFn(Protocol):
+    """The client-spawn seam, signature-checked (a bare ``Callable[..., X]`` would erase
+    it under the strict gate): positionally the launch argv, keyword the per-read
+    timeout, returning anything speaking the ``_Client`` surface.
+    ``MembraneClient.spawn`` satisfies it (its extra defaulted kwargs are compatible)."""
+
+    def __call__(self, argv: list[str], *, read_timeout_s: float) -> _Client: ...
 
 
 def run_categorical(
@@ -299,7 +305,13 @@ def run_categorical(
 ) -> CatChoice:
     """Spawn one engine process, run :func:`decide_categorical`, and ALWAYS shut the
     client down (suppressed — a shadow's own cleanup must never raise past the real
-    failure). This is the shadow supervisor's injectable entry (``cat_runner``)."""
+    failure). This is the shadow supervisor's injectable entry (``cat_runner``).
+
+    ``read_timeout_s`` here is PER READ on this episode's own subprocess — the caller
+    (the shadow's ``_tick_cat``) passes a bound far below the persistent sessions'
+    ``cfg.read_timeout_s``, because this runner executes on the ONE worker thread and a
+    wedged cat engine must never starve the live decides queued behind it (PR #38
+    review, Important 1)."""
     spawn_fn: SpawnFn = spawn if spawn is not None else MembraneClient.spawn
     client = spawn_fn(command, read_timeout_s=read_timeout_s)
     try:
