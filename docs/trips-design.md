@@ -57,8 +57,10 @@ Everything below was checked against the real system, not assumed.
 | Kayak records no cancellations | **Verified** — 260/260 `isBooked`, 0 `isCancelled` |
 | Kayak's `allParsedEmails` / `allOrderDetails` return nothing | **Verified** — 260/260 null on a `DEEP` run; source emails are not recoverable through the API |
 | The owner's Sent folder holds forwards to Kayak's ingest address | **Verified** — 189 messages, 2011→2026, 187 with a `Fwd:` prefix |
-| **kitinerary's yield on that corpus is low** | **Verified** — 28/189 forwards (15%) produce any reservation, 39 total; on the 32 carrying a true original as `message/rfc822`, 15 parse (47%) |
+| **kitinerary's yield on that corpus is low** | **Verified** — over the full 225-message corpus (notmuch `to:` query, 189 Sent + 56 Archive), 28 messages yield any reservation at all: **12%**, 39 reservations total |
 | Unwrapping a forward adds no coverage | **Verified** — inner-`rfc822` and PDF hits are a strict subset of what the whole forward yields; kitinerary already recurses into parts |
+| **Email-derived history has a hard cliff at 2018** | **Verified** — all 28 hits are 2018+, 27 of them 2022–2025; 2011–2017 yields **zero** |
+| The cliff is a forwarding artifact, not vendor coverage | **Verified** — **0%** of pre-2018 forwards carry a `message/rfc822` original vs 20% after; the older ones are inline-flattened HTML with no structure left to parse |
 | Kayak ICS feed has no date-range parameter | **Verified negative** — only a per-trip `calendarFeed` route |
 | Kayak offers no self-service data export | **Verified negative** — its privacy-management page offers deletion only |
 | No prior-art Kayak Trips exporter on GitHub | **Verified negative** — all hits scrape flight *search* |
@@ -230,6 +232,13 @@ The Kayak import, by contrast, returns **260 events with no gaps**. So:
 The tier ordering is unchanged and correct; what changes is the expectation of how much of
 the timeline each tier will actually populate. A design that assumed email would eventually
 supersede most of the Kayak data would have been quietly wrong for years.
+
+Sharper still: the upgrade path is **not available at all before 2018**. Every parseable
+message in the corpus is 2018 or later, because no pre-2018 forward preserves the original
+as an attachment — they are inline-flattened HTML. The evidence is gone, not merely
+unparsed. Pre-2018 travel is therefore **permanently tier 3**, and the Kayak import is the
+only record of it that will ever exist. This raises the stakes on Phase 0 (already run) and
+removes any temptation to treat the export as disposable scaffolding.
 
 ## Extraction seam
 
