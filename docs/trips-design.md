@@ -59,8 +59,10 @@ Everything below was checked against the real system, not assumed.
 | The owner's Sent folder holds forwards to Kayak's ingest address | **Verified** — 189 messages, 2011→2026, 187 with a `Fwd:` prefix |
 | **kitinerary's yield on that corpus is low** | **Verified** — over the full 225-message corpus (notmuch `to:` query, 189 Sent + 56 Archive), 28 messages yield any reservation at all: **12%**, 39 reservations total |
 | Unwrapping a forward adds no coverage | **Verified** — inner-`rfc822` and PDF hits are a strict subset of what the whole forward yields; kitinerary already recurses into parts |
-| **Email-derived history has a hard cliff at 2018** | **Verified** — all 28 hits are 2018+, 27 of them 2022–2025; 2011–2017 yields **zero** |
-| The cliff is a forwarding artifact, not vendor coverage | **Verified** — **0%** of pre-2018 forwards carry a `message/rfc822` original vs 20% after; the older ones are inline-flattened HTML with no structure left to parse |
+| Parsing *forwards* has a hard cliff at 2018 | **Verified** — all 28 forward-hits are 2018+; 2011–2017 yields zero, because **0%** of pre-2018 forwards carry a `message/rfc822` original vs 20% after |
+| **Forwards can be resolved to their originals via threading headers** | **Verified** — 200/225 (89%): `X-Forwarded-Message-Id` 136, `In-Reply-To` 52, `References` 2, subject-match 10, 25 unresolved. The two mechanisms split by era (98% of 2018+ carry `X-Forwarded-Message-Id`; 79% of pre-2018 carry `In-Reply-To`/`References`) |
+| **Parsing the original instead of the forward doubles the yield** | **Verified** — 61/225 messages and **80 reservations**, against 28/225 and 39 from the forwards. `LodgingReservation` rises 9 → 46 |
+| **The 2018 cliff is an artifact of the forward, not of the evidence** | **Verified** — resolving to originals lifts pre-2018 from **0 hits to 20**, spanning 2013–2017 |
 | Kayak ICS feed has no date-range parameter | **Verified negative** — only a per-trip `calendarFeed` route |
 | Kayak offers no self-service data export | **Verified negative** — its privacy-management page offers deletion only |
 | No prior-art Kayak Trips exporter on GitHub | **Verified negative** — all hits scrape flight *search* |
@@ -69,24 +71,50 @@ Everything below was checked against the real system, not assumed.
 
 The last row justifies the ingest design; the ICS rows justify the seeder design.
 
-## Ingest — the `Trips` folder
+## Ingest — a notmuch query, not a folder scan
 
-The owner files booking confirmations into a `Trips` folder in their mail account. mbsync
-(`Patterns *`, `Create Both`) syncs it to `<maildir>/Trips` with no config change. Ingest
-reads that folder; the concrete path is declared in the `data-sources.yaml` registry under
-`$LIFE_AGENT_KB`, never here.
+Selection is a **notmuch query**, evaluated against the already-maintained index. The query
+string is configuration (`data-sources.yaml` under `$LIFE_AGENT_KB`), never a literal here.
 
-This is deliberate over the alternatives:
+An earlier draft scanned a `Trips` maildir folder directly. Measurement retired that: a
+folder scan of `Sent` found 189 forwards, while the equivalent notmuch query found **225** —
+the missing 56 had been filed to `Archive`. A directory scan silently misses anything that
+moved, and offers no way to *say which* messages without physically filing them.
 
-- **Not** a full-Maildir scan — the owner's archive exceeds 690k messages on a slow mount,
-  overwhelmingly airline marketing rather than bookings.
-- **Not** a forwarding address — needs SMTP infrastructure and a second mail path.
-- **Not** an auto-detect + review queue — a queue that must be worked is a queue that rots.
+A query is strictly better on every axis that mattered:
 
-Filing an email is one gesture, works from a phone mid-trip, and the folder doubles as the
-permanent record of what fed the system. Backfill is the same mechanism: drag old
-confirmations in and re-run. Ingest is idempotent by `Message-ID` + SHA256, so re-running
-costs nothing.
+- **It is the manual selection.** The owner names the emails by describing them, which was
+  the original requirement — no filing gesture needed, and re-runnable as the corpus grows.
+- **It spans folders**, so archiving a message never removes it from the corpus.
+- **It is fast** — an indexed query over a 690k-message archive returns in seconds, where
+  the equivalent `grep` over a slow mount took minutes.
+- **It composes** — `folder:Trips or to:<ingest-address>` covers filing *and* history.
+
+The `Trips` folder survives as the filing gesture for new bookings: one drag, works from a
+phone mid-trip. It is now one clause in a query rather than the whole mechanism.
+
+Still rejected: a **forwarding address** (needs SMTP infrastructure and a second mail path)
+and an **auto-detect review queue** (a queue that must be worked is a queue that rots).
+
+### Resolve forwards to their originals
+
+A selected message that is a *forward* must be resolved to the message it forwarded before
+extraction. This is not a refinement — it doubles the yield (39 → 80 reservations) and is
+the sole reason pre-2018 history is recoverable at all.
+
+Resolution precedence, each a notmuch `id:` lookup:
+
+1. `X-Forwarded-Message-Id` — present on 98% of the owner's 2018+ forwards
+2. `In-Reply-To` — present on 76% of pre-2018 forwards (different client, same intent)
+3. the last id in `References`
+4. subject match with forwarding prefixes (`Fwd:`, `Re:`, `TR:`, `WG:`, …) stripped
+
+Measured on the owner's corpus this resolves **200/225 (89%)**. Extraction then runs on
+whichever of {original, forward} yields more — the original nearly always does, but the
+forward is the fallback when resolution fails or the original has been deleted.
+
+Ingest is idempotent by `Message-ID` + SHA256, so re-running a broadened query costs
+nothing and never double-files.
 
 Two supplementary paths, both landing in the same place: **file upload** (for PDFs and
 `.pkpass` files that never arrive as mail) and a **CLI** (`trips ingest <path>`).
@@ -233,12 +261,15 @@ The tier ordering is unchanged and correct; what changes is the expectation of h
 the timeline each tier will actually populate. A design that assumed email would eventually
 supersede most of the Kayak data would have been quietly wrong for years.
 
-Sharper still: the upgrade path is **not available at all before 2018**. Every parseable
-message in the corpus is 2018 or later, because no pre-2018 forward preserves the original
-as an attachment — they are inline-flattened HTML. The evidence is gone, not merely
-unparsed. Pre-2018 travel is therefore **permanently tier 3**, and the Kayak import is the
-only record of it that will ever exist. This raises the stakes on Phase 0 (already run) and
-removes any temptation to treat the export as disposable scaffolding.
+A first pass concluded that the upgrade path was unavailable before 2018 — every parseable
+message was 2018+, because no pre-2018 forward preserves the original as an attachment.
+That conclusion was **wrong, and instructively so**: it measured the forwards rather than
+the evidence. The originals were never destroyed, only unreferenced.
+
+A forward carries a pointer back to what it forwarded. Following it recovers the pre-2018
+era entirely (0 hits → 20) and doubles the corpus-wide yield (39 → 80 reservations). The
+lesson generalises: **when a transform yields poorly, suspect the input selection before
+concluding the data is absent.**
 
 ## Extraction seam
 
