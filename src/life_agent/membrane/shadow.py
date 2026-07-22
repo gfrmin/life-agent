@@ -85,6 +85,7 @@ from life_agent.core import decisions as DEC
 from life_agent.core import jsonl_log as JL
 from life_agent.core import reactions as RX
 
+from . import categorical as CAT
 from . import coarse as CO
 from . import world as W
 from .client import MembraneClient, request_json
@@ -117,6 +118,11 @@ class ShadowConfig:
     queue_size: int = 1024
     max_respawns: int = 3
     respawn_backoff_s: float = 60.0
+    # E1 stage 1: run the categorical mirror (membrane/categorical.py — one fresh
+    # engine session per decide tick, obs_arity = K+1) beside the binary forms, off the
+    # same stream. Default False is BYTE-INERT: no reduction computed, no runner called,
+    # no rows written.
+    categorical: bool = False
 
     def __post_init__(self) -> None:
         unknown = [f for f in self.forms if f not in W.UTILITY_FORMS]
@@ -169,6 +175,9 @@ class BootSnapshot:
 
 SnapshotFn = Callable[[], BootSnapshot]
 SessionFactory = Callable[[str], MembraneSession]
+# the categorical mirror's injectable session runner (categorical.run_categorical's
+# shape): (command, u_bar, summary, *, read_timeout_s) -> CatChoice
+CatRunner = Callable[..., CAT.CatChoice]
 
 # the executor's own vocabulary (core/executor.py's `dec["effector"]`): everything
 # except "gather" is a terminal tick (the daemon has committed to an answer/withhold/ask
@@ -271,6 +280,7 @@ class _DecideItem:
     question_id: str
     summary: W.DecideSummary
     real_effector: object
+    cat: CAT.CatSummary | None = None
 
 
 @dataclass(frozen=True)
@@ -302,6 +312,7 @@ class _LiveItem:
     payload: dict[str, Any]
     dec: dict[str, Any]
     reply: _LiveReply
+    cat: CAT.CatSummary | None = None
 
 
 _QueueItem = _DecideItem | _VerdictItem | _GateItem | _LiveItem
@@ -320,12 +331,14 @@ class MembraneShadow:
         snapshot: SnapshotFn,
         session_factory: SessionFactory | None = None,
         clock: Callable[[], float] = time.monotonic,
+        cat_runner: CatRunner | None = None,
     ) -> None:
         self._cfg = cfg
         self._u_bar = u_bar
         self._snapshot = snapshot
         self._session_factory = session_factory or _default_session_factory(cfg, u_bar)
         self._clock = clock
+        self._cat_runner: CatRunner = cat_runner if cat_runner is not None else CAT.run_categorical
 
         self._lock = threading.Lock()
         self._queue: queue.Queue[_QueueItem] = queue.Queue(maxsize=cfg.queue_size)
@@ -338,6 +351,11 @@ class MembraneShadow:
         self._drops = 0
         self._skips = 0
         self._submit_errors = 0
+        # the categorical mirror's own accounting: skips at submit time (a 0-candidate
+        # tick has nothing categorical to declare), ticks/errors on the worker.
+        self._cat_skips = 0
+        self._cat_ticks = 0
+        self._cat_errors = 0
         self._snapshot_records = 0
         # worker-thread-owned, like `state.ticks` — only `_process_item` (on the worker)
         # ever increments it, so no lock is needed for that write; `close()`'s own
@@ -409,6 +427,7 @@ class MembraneShadow:
                     )
             self._enqueue(_DecideItem(
                 question_id=question_id, summary=summary, real_effector=effector,
+                cat=self._reduce_cat(payload, dec),
             ))
         except Exception:
             self._count_submit_error()
@@ -452,6 +471,7 @@ class MembraneShadow:
                 question_id=str(question_id),
                 summary=W.summary_from_payload(payload, dec),
                 payload=payload, dec=dec, reply=_LiveReply(event=threading.Event()),
+                cat=self._reduce_cat(payload, dec),
             )
             self._queue.put_nowait(item)
         except Exception:
@@ -478,6 +498,18 @@ class MembraneShadow:
         except Exception:
             self._count_submit_error()
 
+    def _reduce_cat(self, payload: dict[str, Any], dec: dict[str, Any]) -> CAT.CatSummary | None:
+        """The categorical reduction, at submit time (pure, cheap) — ``None`` (and no
+        skip counted) when the mirror is off; a 0-candidate tick under an enabled mirror
+        is the NAMED skip (`stats()["cat"]["skips"]`)."""
+        if not self._cfg.categorical:
+            return None
+        cat = CAT.summary_from_payload_cat(payload, dec)
+        if cat is None:
+            with self._lock:
+                self._cat_skips += 1
+        return cat
+
     def _enqueue(self, item: _QueueItem) -> None:
         try:
             self._queue.put_nowait(item)
@@ -500,6 +532,10 @@ class MembraneShadow:
             drops, skips, submit_errors, snapshot_records = (
                 self._drops, self._skips, self._submit_errors, self._snapshot_records,
             )
+            cat = {
+                "ticks": self._cat_ticks, "errors": self._cat_errors,
+                "skips": self._cat_skips,
+            }
         forms: dict[str, object] = {}
         for form in self._cfg.forms:
             state = self._forms[form]
@@ -516,6 +552,7 @@ class MembraneShadow:
             "submit_errors": submit_errors,
             "queue_depth": self._queue.qsize(),
             "snapshot_records": snapshot_records,
+            "cat": cat,
         }
 
     # --- the worker thread ---------------------------------------------------------------
@@ -551,6 +588,14 @@ class MembraneShadow:
                 self._tick_live(item, now)
             finally:
                 item.reply.event.set()  # the waiter is released on EVERY path
+            # the categorical mirror runs strictly AFTER the live waiter is released,
+            # so it can never add latency to the answer path; real_effector is what the
+            # host actually ENACTED (the mapped view) when the consult succeeded, the
+            # daemon's own plan otherwise.
+            enacted = ((item.reply.result or {}).get("dec") or {}).get("effector")
+            self._tick_cat(item.question_id, item.cat,
+                           enacted if enacted is not None else item.dec.get("effector"),
+                           now)
             self._processed_count += 1
             if self._processed_count % _STATS_EVERY == 0:
                 self._write_stats_record()
@@ -566,6 +611,8 @@ class MembraneShadow:
                 self._tick_gate(form, state, item, now)
             else:
                 self._tick_verdict(form, state, item, now)
+        if isinstance(item, _DecideItem):
+            self._tick_cat(item.question_id, item.cat, item.real_effector, now)
         self._processed_count += 1
         if self._processed_count % _STATS_EVERY == 0:
             self._write_stats_record()
@@ -656,6 +703,41 @@ class MembraneShadow:
             "summary": asdict(item.summary), "t": t_before,
         })
         item.reply.result = {"dec": mapped, "action": choice.action, "degraded": degraded}
+
+    def _tick_cat(self, question_id: str, cat: CAT.CatSummary | None,
+                  real_effector: object, ts: float) -> None:
+        """One categorical mirror episode (E1 stage 1): a FRESH engine session per tick
+        (`categorical.run_categorical` — session-per-question, OB-11's K-at-tick-0
+        shape), logged as `kind: "cat"`. Worker-thread only, strictly after the binary
+        forms (and after a live waiter is released). Fail-open: any raise — the spawn,
+        the u_bar read, the wire — is one counted error (`stats()["cat"]["errors"]`),
+        never a respawn (there is no persistent session to respawn) and never a dead
+        binary form."""
+        if cat is None or not self._cfg.categorical:
+            return
+        start = time.time()
+        try:
+            u_bar = {k: float(v) for k, v in self._u_bar().items()}
+            choice = self._cat_runner(
+                self._cfg.command, u_bar, cat,
+                read_timeout_s=self._cfg.read_timeout_s,
+            )
+        except Exception:
+            with self._lock:
+                self._cat_errors += 1
+            return
+        latency_ms = (time.time() - start) * 1000.0
+        self._cat_ticks += 1
+        self._append_record({
+            "event_type": "membrane-shadow", "kind": "cat", "ts": ts,
+            "question_id": question_id, "k": cat.k,
+            "action": choice.action, "j": choice.j,
+            "daemon_map_index": cat.daemon_map_index,
+            "real_effector": real_effector, "readouts": choice.readouts,
+            "n_evidence": len(cat.obs_codes), "n_obs_unmapped": cat.n_obs_unmapped,
+            "engine": choice.engine, "latency_ms": latency_ms,
+            "summary": asdict(cat),
+        })
 
     def _tick_verdict(self, form: str, state: _FormState, item: _VerdictItem, ts: float) -> None:
         session = state.session

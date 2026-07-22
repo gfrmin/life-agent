@@ -74,6 +74,7 @@ MEMBRANE_UTILITY_ENV = "LIFE_AGENT_MEMBRANE_UTILITY"
 MEMBRANE_READ_TIMEOUT_ENV = "LIFE_AGENT_MEMBRANE_READ_TIMEOUT"
 MEMBRANE_WARM_VECTORS_ENV = "LIFE_AGENT_MEMBRANE_WARM_VECTORS"
 MEMBRANE_LIVE_ENV = "LIFE_AGENT_MEMBRANE_LIVE"
+MEMBRANE_CAT_ENV = "LIFE_AGENT_MEMBRANE_CAT"
 
 MEMBRANE_DEFAULT_UTILITY_FORMS = "said@1"
 MEMBRANE_DEFAULT_READ_TIMEOUT_S = 300.0
@@ -120,6 +121,15 @@ def membrane_live() -> bool:
     bridge's ``/decide-live``). Anything else — including absence, the default — is
     byte-for-byte the credence daemon's decision. Rollback is unsetting this."""
     return os.environ.get(MEMBRANE_LIVE_ENV) == "1"
+
+
+def membrane_categorical() -> bool:
+    """E1 stage 1 — the categorical shadow mirror: ``"1"`` runs the obs_arity = K+1
+    world (life_agent.membrane.categorical, one fresh engine session per decide tick)
+    beside the binary form, SHADOW-ONLY — it writes ``kind: "cat"`` rows and never
+    touches the decision path. Anything else — including absence, the default — is
+    byte-inert. Rollback is unsetting this."""
+    return os.environ.get(MEMBRANE_CAT_ENV) == "1"
 
 
 def membrane_warm_vectors_dir() -> Path | None:

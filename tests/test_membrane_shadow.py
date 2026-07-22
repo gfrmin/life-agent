@@ -1016,7 +1016,9 @@ def test_stats_shape(tmp_path: Path) -> None:
     stats = sh.stats()
     assert set(stats) == {
         "forms", "drops", "skips", "submit_errors", "queue_depth", "snapshot_records",
+        "cat",
     }
+    assert stats["cat"] == {"ticks": 0, "errors": 0, "skips": 0}
     assert set(stats["forms"]) == {"said@1"}  # type: ignore[arg-type]
     assert set(stats["forms"]["said@1"]) == {  # type: ignore[index]
         "alive", "respawns", "ticks", "dead_drops",
@@ -1576,7 +1578,7 @@ def test_categorical_enabled_writes_a_cat_row_beside_the_binary_decide(
         # the binary mirror still ran beside it
         assert [r for r in _read_records(cfg.log_path) if r.get("kind") == "decide"]
         # the runner saw the exact reduction and the cfg command
-        (command, u_bar, s), = runner.calls
+        (command, _u, s), = runner.calls
         assert command == cfg.command
         assert s == CAT.summary_from_payload_cat(_CAT_PAYLOAD, _CAT_DEC)
         assert sh.stats()["cat"] == {"ticks": 1, "errors": 0, "skips": 0}

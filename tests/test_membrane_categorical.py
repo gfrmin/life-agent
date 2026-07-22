@@ -214,8 +214,8 @@ def test_utility_sentence_semantics_match_the_declared_rows() -> None:
     g0, g1 = pairs["gather"]
     a0, a1 = pairs["ask"]
     uw, uc = pairs["respond"]
-    K = 3
-    for y in range(0, K + 1):
+    k = 3
+    for y in range(0, k + 1):
         # abstain: constant (gauge — u_abstain regardless of y, doc §4.3)
         assert _eval_said(sent, 1.0, y) == pytest.approx(ua)
         # the info rows: myopic perfect information, categorical translation — having
@@ -223,7 +223,7 @@ def test_utility_sentence_semantics_match_the_declared_rows() -> None:
         assert _eval_said(sent, 2.0, y) == pytest.approx(g0 if y == 0 else g1)
         assert _eval_said(sent, 3.0, y) == pytest.approx(a0 if y == 0 else a1)
         # respond_j (grid value 3+j): u_correct iff y == j, else u_wrong
-        for j in range(1, K + 1):
+        for j in range(1, k + 1):
             expected = uc if y == j else uw
             assert _eval_said(sent, 3.0 + j, y) == pytest.approx(expected)
 
