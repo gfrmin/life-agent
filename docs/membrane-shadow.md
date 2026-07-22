@@ -921,3 +921,31 @@ Narrative rows (no leader) are out of scope until the aggregate family's verdict
 designed. Question text for deliberation is recovered from the KB's eval question files by
 `question_id`; ad-hoc live questions whose text is unrecovered are named as such, not
 skipped silently.
+
+### 17.1 First fold — measured (2026-07-22)
+
+180 deliberated verdicts issued over the answer-brain decision log (every unverdicted
+lookup decision whose question maps to a refereed eval question: 78 distinct
+(question, leader-claim) pairs, one deliberation each, applied to the 180 decisions
+asserting them). 140 correct / 40 incorrect. The 40 incorrect split into the two failure
+shapes the A-phase named: corpus **distractors** (adjacent-field reads — the phone where
+the fax was asked, a neighbouring row's IMEI, the volume number where the page range was
+asked) and **extraction artifacts** (`io`, `]=`, `id`, `user`, `(852)` — a leader that
+asserts no value at all). The multidimensional record earns its keep immediately on rows
+where the two dimensions disagree: q2-007's leader `27,500` is `correct=1, complete=0` —
+nothing false is asserted, but the question asked count *and* price per share. A scalar
+verdict would have had to lie in one direction or the other.
+
+The fold, measured end to end:
+
+- `verdict_replay` 13 → **193** (49 y=0, 144 y=1); boot `n_source_records` 1463 → 1643.
+- Same live question as the M3 flip smoke, same daemon proposal (leader credence 0.959):
+  engine p1 **0.338 → 0.871**, and the committed act moved **abstain → report**. The
+  engine still gathers on every consult and still exits via `gather_exhausted` (§16's
+  analytic gather-row finding is untouched — that binder is E3/proplang#15), but its
+  restricted argmax at exhaustion now clears the respond threshold instead of falling
+  under it.
+
+So the withhold posture recorded at the flip (§14) was verdict starvation, exactly as
+priced — not a defect in the coarse mapping, and not a threshold that needed moving. The
+channel is the lever E1 stage-1 said it was.
