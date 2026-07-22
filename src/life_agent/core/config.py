@@ -47,6 +47,12 @@ DECISIONS_LOG = KB / "calibration" / "decisions.jsonl"
 # decisions, joined to DECISIONS_LOG by decision_id. The calibration leg's third
 # append-only log; the utility posterior folds the clean abstain-verdicts from it.
 REACTIONS_LOG = KB / "calibration" / "reactions.jsonl"
+# The Claude verdict log (owner-authorized 2026-07-22): deliberative verdicts issued
+# in-session on the owner's behalf, overrulable by any owner reaction on the same
+# decision_id (core/claude_verdicts.py). Joins DECISIONS_LOG by decision_id; feeds the
+# membrane's verdict evidence ONLY — never the utility posterior (P(U) stays
+# owner-preference-only by construction).
+CLAUDE_VERDICTS_LOG = KB / "calibration" / "claude_verdicts.jsonl"
 # The gather-outcome log (ask-as-connection §4 caveat 2): one row per enacted grow
 # actuator — the structure-observe stream the daemon's gather structure-BMA warm-seeds
 # from (core/gather_outcomes.py). The calibration leg's fourth append-only log.

@@ -81,6 +81,7 @@ from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 from typing import Any, Protocol
 
+from life_agent.core import claude_verdicts as CV
 from life_agent.core import decisions as DEC
 from life_agent.core import jsonl_log as JL
 from life_agent.core import reactions as RX
@@ -947,6 +948,16 @@ def _read_reactions(path: Path) -> list[RX.ReactionEvent]:
     return events
 
 
+def _read_claude_verdicts(path: Path) -> list[CV.ClaudeVerdictEvent]:
+    events: list[CV.ClaudeVerdictEvent] = []
+    for line in _read_lines_fail_open(path):
+        try:
+            events.append(CV.from_line(line))
+        except Exception:
+            continue
+    return events
+
+
 def _read_json_rows(path: Path) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for line in _read_lines_fail_open(path):
@@ -1052,6 +1063,7 @@ def _warm_outcomes(
 
 def boot_snapshot(
     decisions_path: Path, reactions_path: Path, warm_vectors_dir: Path | None,
+    *, claude_verdicts_path: Path | None = None,
 ) -> BootSnapshot:
     """decisions.jsonl ⋈ reactions.jsonl on `decision_id` -> `verdict_y` (the same
     exclusion table `MembraneSession.observe_verdict`'s caller uses) -> `verdict_replay`;
@@ -1060,6 +1072,16 @@ def boot_snapshot(
     counts the raw row, which is how a caller notices the exclusion happened. Supersedes
     on `decision_id` the same way `core.reactions.load_reactions` does (latest reaction
     per decision_id wins, file order is replay order).
+
+    If `claude_verdicts_path` is given, the Claude verdict channel
+    (:mod:`life_agent.core.claude_verdicts` — owner-authorized 2026-07-22) joins the
+    same decisions and replays as `y = CV.y(event)` (the `correct` dimension, no
+    `verdict_y` valence decode — the record stores the objective bit directly). Owner
+    precedence is by SOURCE, not file order: a decision with any owner reaction takes
+    the owner's verdict and every Claude verdict on it is superseded silently. The
+    replay order is deterministic: the owner segment first, then the Claude segment
+    (each in its own log's file order). `None` — the default — is byte-for-byte
+    today's behaviour.
 
     If `warm_vectors_dir` is given (a fair-fight run directory), :func:`_warm_outcomes`
     also replays that run's baseline-arm outcomes — joined across the id namespaces, and
@@ -1073,7 +1095,11 @@ def boot_snapshot(
     """
     decisions = _read_decisions(decisions_path)
     reactions = _read_reactions(reactions_path)
-    n_source = len(decisions) + len(reactions)
+    claude_verdicts = (
+        _read_claude_verdicts(claude_verdicts_path)
+        if claude_verdicts_path is not None else []
+    )
+    n_source = len(decisions) + len(reactions) + len(claude_verdicts)
 
     by_decision_id = {d.decision_id: d for d in decisions if d.decision_id}
     latest_reaction: dict[str, RX.ReactionEvent] = {}
@@ -1089,6 +1115,14 @@ def boot_snapshot(
         if y is None:
             continue
         verdict_replay.append((W.summary_from_decision_event(asdict(d)), y))
+
+    for decision_id, cv in CV.latest_by_decision(claude_verdicts).items():
+        if decision_id in latest_reaction:
+            continue  # owner precedence: his reaction overrules the Claude verdict
+        d = by_decision_id.get(decision_id)
+        if d is None:
+            continue
+        verdict_replay.append((W.summary_from_decision_event(asdict(d)), CV.y(cv)))
 
     outcome_replay: list[tuple[str, W.DecideSummary, int]] = []
     warm: WarmJoin | None = None
