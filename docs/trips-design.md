@@ -55,6 +55,10 @@ Everything below was checked against the real system, not assumed.
 | Event taxonomy maps onto schema.org | **Verified** — 160 flight, 90 hotel, 8 train, 1 restaurant, 1 custom |
 | `confirmationNumber` is too sparse to key identity | **Verified** — 151/260 present, and only 147 distinct where present |
 | Kayak records no cancellations | **Verified** — 260/260 `isBooked`, 0 `isCancelled` |
+| Kayak's `allParsedEmails` / `allOrderDetails` return nothing | **Verified** — 260/260 null on a `DEEP` run; source emails are not recoverable through the API |
+| The owner's Sent folder holds forwards to Kayak's ingest address | **Verified** — 189 messages, 2011→2026, 187 with a `Fwd:` prefix |
+| **kitinerary's yield on that corpus is low** | **Verified** — 28/189 forwards (15%) produce any reservation, 39 total; on the 32 carrying a true original as `message/rfc822`, 15 parse (47%) |
+| Unwrapping a forward adds no coverage | **Verified** — inner-`rfc822` and PDF hits are a strict subset of what the whole forward yields; kitinerary already recurses into parts |
 | Kayak ICS feed has no date-range parameter | **Verified negative** — only a per-trip `calendarFeed` route |
 | Kayak offers no self-service data export | **Verified negative** — its privacy-management page offers deletion only |
 | No prior-art Kayak Trips exporter on GitHub | **Verified negative** — all hits scrape flight *search* |
@@ -201,9 +205,31 @@ filed email or a manual correction. A Kayak re-import must therefore never be tr
 authoritative about *absence*: a reservation missing from a later export means nothing, and
 must not be inferred as a cancellation.
 
-This yields the desired property: **the ICS gives 12 populated trips on day one, and each
-one silently upgrades** as real confirmation emails are filed into `Trips`. A full history
-immediately, improving over time, with no need to gather every email up front.
+This yields the desired property: **the Kayak import gives a full history on day one, and
+individual records silently upgrade** as confirmation emails are filed into `Trips`. A
+complete timeline immediately, improving in fidelity over time, with no need to gather
+every email up front.
+
+### Fidelity is not coverage
+
+An earlier draft treated email-via-kitinerary as the primary source and the Kayak import as
+a seeder. Measurement inverts that. Against the owner's 189 forwards to Kayak's ingest
+address, kitinerary yields **39 reservations from 28 messages — a 15% hit rate**; even
+restricted to the 32 that carry a pristine original as a `message/rfc822` attachment, only
+15 parse (47%). Its 349 extractors are vendor-specific, and a corpus spanning fifteen years
+of airlines, hotels and rail operators runs well past their coverage.
+
+The Kayak import, by contrast, returns **260 events with no gaps**. So:
+
+- **`kayak-api` (tier 3) is the coverage floor** and, for pre-mailbox history, the only
+  source that exists. It is not a bootstrap to be discarded.
+- **`email-kitinerary` (tier 2) is a fidelity upgrade on the subset it can parse** — still
+  ranked higher per record, because a parsed original *is* better evidence than a vendor's
+  reinterpretation. It simply reaches fewer records than assumed.
+
+The tier ordering is unchanged and correct; what changes is the expectation of how much of
+the timeline each tier will actually populate. A design that assumed email would eventually
+supersede most of the Kayak data would have been quietly wrong for years.
 
 ## Extraction seam
 
