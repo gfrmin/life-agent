@@ -642,10 +642,23 @@ verdict stream reaches O(1k) — a need-note for B4, not a blocker for M2/M3.
 ## 14. M3 — the coarse menu live: LANDED (2026-07-19), flag-gated
 
 The engine's coarse act — abstain / gather / ask / respond — IS the committed act on the
-executor read-path when `LIFE_AGENT_MEMBRANE_LIVE=1`. Absence of the flag (the default,
-and production's state until the owner flips it) is byte-for-byte the credence daemon's
-decision; **rollback is unsetting the flag**. No proplang/wire change — the live consult
-is the same decide tick the shadow always sent, so no gfrmin/proplang issue was needed.
+executor read-path when `LIFE_AGENT_MEMBRANE_LIVE=1`. Absence of the flag is byte-for-byte
+the credence daemon's decision; **rollback is unsetting the flag**. No proplang/wire
+change — the live consult is the same decide tick the shadow always sent, so no
+gfrmin/proplang issue was needed.
+
+**Prod flip: 2026-07-22, owner-authorized.** The flag is read CLIENT-side (the seam's
+callers: `core/ask_client.py`, `scripts/ask.py`, `scripts/eval_executor.py`; the bridge
+serves `/decide-live` unconditionally, and the mail→GTD timer never touches the ask
+path), so the flip lives in the client environments: a `jarvis.service.d` drop-in plus
+the repo's untracked `.env` (ask-live shells). First live decision confirmed the M3
+override on the committed path: the daemon proposed report (leader credence 0.96); the
+engine chose gather on every consult, hit `gather_exhausted`, and its own p1 (0.34,
+binary world) fell below the respond threshold — committed act abstain, rendered as the
+withheld "Held back" reply, `kind:"enact"` rows accruing in the shadow ledger. This is
+exactly the "expected posture at flip" stated below when M3 landed — the honest
+consequence of the young posterior, not a bug; the verdict stream (which the live path
+keeps feeding) is what raises it.
 
 **The seam re-point (M0's promise kept).** `core.seam.DaemonDecide` gains an injected
 `live` consult; `commit()` still posts the daemon `/decide` first (the posterior is the
