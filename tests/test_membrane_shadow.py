@@ -1512,14 +1512,14 @@ class _FakeCatRunner:
     `CatChoice` (or raises when told to)."""
 
     def __init__(self, *, raises: bool = False) -> None:
-        self.calls: list[tuple[list[str], dict[str, float], CAT.CatSummary]] = []
+        self.calls: list[tuple[list[str], dict[str, float], CAT.CatSummary, float]] = []
         self.raises = raises
 
     def __call__(
         self, command: list[str], u_bar: Mapping[str, float], s: CAT.CatSummary,
         *, read_timeout_s: float = 300.0,
     ) -> CAT.CatChoice:
-        self.calls.append((list(command), dict(u_bar), s))
+        self.calls.append((list(command), dict(u_bar), s, read_timeout_s))
         if self.raises:
             raise MembraneError("cat engine died")
         return CAT.CatChoice(
@@ -1578,9 +1578,13 @@ def test_categorical_enabled_writes_a_cat_row_beside_the_binary_decide(
         # the binary mirror still ran beside it
         assert [r for r in _read_records(cfg.log_path) if r.get("kind") == "decide"]
         # the runner saw the exact reduction and the cfg command
-        (command, _u, s), = runner.calls
+        (command, _u, s, timeout), = runner.calls
         assert command == cfg.command
         assert s == CAT.summary_from_payload_cat(_CAT_PAYLOAD, _CAT_DEC)
+        # the mirror's own bound, DECOUPLED from read_timeout_s (PR #38 review): a
+        # wedged cat subprocess fails fast instead of starving queued live decides
+        assert timeout == cfg.cat_timeout_s
+        assert cfg.cat_timeout_s < cfg.read_timeout_s
         assert sh.stats()["cat"] == {"ticks": 1, "errors": 0, "skips": 0}
     finally:
         sh.close()

@@ -781,3 +781,17 @@ flag-gated.** The world v3 declaration, against the LANDED wire only:
 **Cat rows never enter the §2 differential** (they are a different world's choices, not
 the binary form's would-vs-did), and the offline report ignores unknown kinds by
 construction. Stage 2 (M4) and stage 3 (M5) remain as staged in the doc.
+
+**Review round (PR #38, 2026-07-22):** one Important, one should-fix, both folded in
+before merge. (1) The cat episode runs inline on the ONE worker thread; with the
+persistent sessions' `read_timeout_s` (300s) a wedged cat subprocess could have starved
+live decides queued behind it (their callers time out at `_LIVE_WAIT_S` into the
+engine-down abstain — answer-path degradation from shadow overhead). Fixed:
+`ShadowConfig.cat_timeout_s` (default 20s, test-pinned `< read_timeout_s`) bounds the
+mirror's own per-read wait; the residual worst case is one bounded stall per wedged
+episode, and moving the mirror off the worker thread stays available if flag-on traffic
+ever shows the bound binding. (2) `Callable[..., X]` aliases erased the two injectable
+seams' signatures under the strict gate — both are now explicit `Protocol.__call__`s
+(`categorical.SpawnFn`, `shadow.CatRunner`). Verified solid by the same review:
+flag-off byte-inertness, worker survival on any cat failure, the t-convention,
+counter thread-safety, numbers-only rows, and non-circular tests.

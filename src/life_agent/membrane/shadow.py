@@ -79,7 +79,7 @@ import time
 from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass, fields
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from life_agent.core import decisions as DEC
 from life_agent.core import jsonl_log as JL
@@ -121,8 +121,13 @@ class ShadowConfig:
     # E1 stage 1: run the categorical mirror (membrane/categorical.py — one fresh
     # engine session per decide tick, obs_arity = K+1) beside the binary forms, off the
     # same stream. Default False is BYTE-INERT: no reduction computed, no runner called,
-    # no rows written.
+    # no rows written. `cat_timeout_s` is the mirror's OWN per-read bound, deliberately
+    # decoupled from `read_timeout_s` (300s): the cat episode runs inline on the one
+    # worker thread, so a wedged cat subprocess must fail fast rather than starve the
+    # live decides queued behind it (PR #38 review, Important 1). Generous next to the
+    # measured episode (~420ms fresh session + ~50ms/tick, register §13's E2 probe).
     categorical: bool = False
+    cat_timeout_s: float = 20.0
 
     def __post_init__(self) -> None:
         unknown = [f for f in self.forms if f not in W.UTILITY_FORMS]
@@ -175,9 +180,18 @@ class BootSnapshot:
 
 SnapshotFn = Callable[[], BootSnapshot]
 SessionFactory = Callable[[str], MembraneSession]
-# the categorical mirror's injectable session runner (categorical.run_categorical's
-# shape): (command, u_bar, summary, *, read_timeout_s) -> CatChoice
-CatRunner = Callable[..., CAT.CatChoice]
+
+
+class CatRunner(Protocol):
+    """The categorical mirror's injectable session runner —
+    ``categorical.run_categorical``'s call shape, signature-checked (a bare
+    ``Callable[..., CatChoice]`` would erase it under the strict gate; PR #38 review,
+    should-fix 2)."""
+
+    def __call__(
+        self, command: list[str], u_bar: Mapping[str, float], s: CAT.CatSummary,
+        *, read_timeout_s: float,
+    ) -> CAT.CatChoice: ...
 
 # the executor's own vocabulary (core/executor.py's `dec["effector"]`): everything
 # except "gather" is a terminal tick (the daemon has committed to an answer/withhold/ask
@@ -720,7 +734,7 @@ class MembraneShadow:
             u_bar = {k: float(v) for k, v in self._u_bar().items()}
             choice = self._cat_runner(
                 self._cfg.command, u_bar, cat,
-                read_timeout_s=self._cfg.read_timeout_s,
+                read_timeout_s=self._cfg.cat_timeout_s,
             )
         except Exception:
             with self._lock:
