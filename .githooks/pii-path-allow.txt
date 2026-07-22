@@ -28,3 +28,8 @@
 # GTD webapp (reach/web): its JSON route namespace (`/api/board`, `/api/tasks/{id}/...`,
 # `/api/today/clear`) trips the same path-shape heuristic; public API surface, never personal data.
 /api
+# Kayak Trips export tool (scripts/kayak_trips_export.js): the vendor's own route namespace
+# (`/i/api/trips/trip/v3/allTrips`, `/i/api/trips/event/v1/...`) trips the same heuristic. Third-party
+# HTTP routes, not filesystem paths, and they carry no account identifiers — the trip/event ids
+# interpolated into them come from the live browser session at runtime, never from tracked text.
+/i/api
