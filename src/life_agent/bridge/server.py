@@ -722,7 +722,8 @@ def _build_membrane(u_bar: Callable[[], dict[str, float]]) -> MEM.MembraneShadow
         shadow = MEM.MembraneShadow(
             cfg, u_bar=u_bar,
             snapshot=lambda: MEM.boot_snapshot(
-                config.DECISIONS_LOG, config.REACTIONS_LOG, warm_vectors_dir),
+                config.DECISIONS_LOG, config.REACTIONS_LOG, warm_vectors_dir,
+                claude_verdicts_path=config.CLAUDE_VERDICTS_LOG),
         )
         shadow.start()
         return shadow

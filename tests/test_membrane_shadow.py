@@ -27,6 +27,7 @@ from pathlib import Path
 
 import pytest
 
+from life_agent.core import claude_verdicts as CV
 from life_agent.core import decisions as DEC
 from life_agent.core import reactions as RX
 from life_agent.membrane import categorical as CAT
@@ -1119,6 +1120,105 @@ def test_boot_snapshot_missing_files_is_an_empty_snapshot_not_a_raise(tmp_path: 
         tmp_path / "nope-decisions.jsonl", tmp_path / "nope-reactions.jsonl", None,
     )
     assert snap == SH.BootSnapshot(verdict_replay=[], outcome_replay=[], n_source_records=0)
+
+
+# --- boot_snapshot(): the Claude verdict channel merges with owner precedence -------------
+
+
+def _claude_verdict(decision_id: str, question_id: str, *, correct: int) -> CV.ClaudeVerdictEvent:
+    return CV.ClaudeVerdictEvent(
+        tx_time="t", question_id=question_id, decision_id=decision_id,
+        dimensions={"correct": correct}, evidence=(), note="")
+
+
+def test_boot_snapshot_claude_verdicts_join_as_y_equals_correct(tmp_path: Path) -> None:
+    dpath, rpath = tmp_path / "decisions.jsonl", tmp_path / "reactions.jsonl"
+    cpath = tmp_path / "claude_verdicts.jsonl"
+    DEC.append(dpath, _decision("dec-1", "q-001", "report"))
+    CV.append(cpath, _claude_verdict("dec-1", "q-001", correct=1))
+    snap = SH.boot_snapshot(dpath, rpath, None, claude_verdicts_path=cpath)
+    assert [(y) for _s, y in snap.verdict_replay] == [1]
+    assert snap.n_source_records == 2  # 1 decision + 1 claude verdict
+
+
+def test_boot_snapshot_owner_reaction_overrules_a_claude_verdict(tmp_path: Path) -> None:
+    # owner precedence is by SOURCE, not file order: an owner reaction on the same
+    # decision wins even if the Claude verdict is newer.
+    dpath, rpath = tmp_path / "decisions.jsonl", tmp_path / "reactions.jsonl"
+    cpath = tmp_path / "claude_verdicts.jsonl"
+    DEC.append(dpath, _decision("dec-1", "q-001", "report"))
+    RX.append(rpath, _reaction("dec-1", "q-001", "bad"))       # owner: y=0
+    CV.append(cpath, _claude_verdict("dec-1", "q-001", correct=1))  # claude: y=1 — superseded
+    snap = SH.boot_snapshot(dpath, rpath, None, claude_verdicts_path=cpath)
+    assert [(y) for _s, y in snap.verdict_replay] == [0]
+
+
+def test_boot_snapshot_unrouted_owner_reaction_does_not_block_a_claude_verdict(
+    tmp_path: Path,
+) -> None:
+    # An owner reaction on a hedge decision decodes to NO verdict (verdict_y -> None): it
+    # contributes nothing to the replay, so it must not silently supersede the Claude
+    # verdict either — precedence belongs to an owner VERDICT, not an owner reaction row.
+    dpath, rpath = tmp_path / "decisions.jsonl", tmp_path / "reactions.jsonl"
+    cpath = tmp_path / "claude_verdicts.jsonl"
+    DEC.append(dpath, _decision("dec-1", "q-001", "hedge"))
+    RX.append(rpath, _reaction("dec-1", "q-001", "good"))  # (hedge, good) -> y=None
+    CV.append(cpath, _claude_verdict("dec-1", "q-001", correct=1))
+    snap = SH.boot_snapshot(dpath, rpath, None, claude_verdicts_path=cpath)
+    assert [(y) for _s, y in snap.verdict_replay] == [1]  # the Claude verdict binds
+
+
+def test_boot_snapshot_claude_verdict_without_a_decision_is_excluded(tmp_path: Path) -> None:
+    dpath, rpath = tmp_path / "decisions.jsonl", tmp_path / "reactions.jsonl"
+    cpath = tmp_path / "claude_verdicts.jsonl"
+    CV.append(cpath, _claude_verdict("dec-999", "q-999", correct=1))
+    snap = SH.boot_snapshot(dpath, rpath, None, claude_verdicts_path=cpath)
+    assert snap.verdict_replay == []
+    assert snap.n_source_records == 1  # the raw row still counts — the gap names the exclusion
+
+
+def test_boot_snapshot_latest_claude_verdict_per_decision_wins(tmp_path: Path) -> None:
+    dpath, rpath = tmp_path / "decisions.jsonl", tmp_path / "reactions.jsonl"
+    cpath = tmp_path / "claude_verdicts.jsonl"
+    DEC.append(dpath, _decision("dec-1", "q-001", "report"))
+    CV.append(cpath, _claude_verdict("dec-1", "q-001", correct=1))
+    CV.append(cpath, _claude_verdict("dec-1", "q-001", correct=0))  # revised
+    snap = SH.boot_snapshot(dpath, rpath, None, claude_verdicts_path=cpath)
+    assert [(y) for _s, y in snap.verdict_replay] == [0]
+
+
+def test_boot_snapshot_claude_verdicts_replay_after_owner_verdicts(tmp_path: Path) -> None:
+    # deterministic replay order: owner segment first, then the Claude segment
+    dpath, rpath = tmp_path / "decisions.jsonl", tmp_path / "reactions.jsonl"
+    cpath = tmp_path / "claude_verdicts.jsonl"
+    DEC.append(dpath, _decision("dec-1", "q-001", "report"))
+    DEC.append(dpath, _decision("dec-2", "q-002", "report"))
+    CV.append(cpath, _claude_verdict("dec-2", "q-002", correct=0))
+    RX.append(rpath, _reaction("dec-1", "q-001", "good"))
+    snap = SH.boot_snapshot(dpath, rpath, None, claude_verdicts_path=cpath)
+    assert [(y) for _s, y in snap.verdict_replay] == [1, 0]
+
+
+def test_boot_snapshot_malformed_claude_verdict_line_is_skipped_not_the_file(
+    tmp_path: Path,
+) -> None:
+    dpath, rpath = tmp_path / "decisions.jsonl", tmp_path / "reactions.jsonl"
+    cpath = tmp_path / "claude_verdicts.jsonl"
+    DEC.append(dpath, _decision("dec-1", "q-001", "report"))
+    CV.append(cpath, _claude_verdict("dec-1", "q-001", correct=1))
+    with cpath.open("a", encoding="utf-8") as fh:
+        fh.write("not valid json at all\n")
+    snap = SH.boot_snapshot(dpath, rpath, None, claude_verdicts_path=cpath)
+    assert len(snap.verdict_replay) == 1
+
+
+def test_boot_snapshot_claude_verdicts_path_none_is_todays_behaviour(tmp_path: Path) -> None:
+    dpath, rpath = tmp_path / "decisions.jsonl", tmp_path / "reactions.jsonl"
+    DEC.append(dpath, _decision("dec-1", "q-001", "report"))
+    RX.append(rpath, _reaction("dec-1", "q-001", "good"))
+    snap = SH.boot_snapshot(dpath, rpath, None)
+    assert len(snap.verdict_replay) == 1
+    assert snap.n_source_records == 2
 
 
 def _write_jsonl(path: Path, rows: list[dict[str, object]]) -> None:
