@@ -868,3 +868,53 @@ account), proplang#20 (the per-code readout), the consumer conformance report on
 K-ary increment (proplang#9 comment), and the OB-12 per-channel demand evidence
 (proplang#11 comment: dense fallible machine channel — 639 ticks/run, gold-in-candidates
 0.74 — vs 14 owner verdicts lifetime under ONE shared θ). Aggregates only, throughout.
+
+## 17. The Claude verdict channel — deliberative verdicts on the owner's behalf (2026-07-22)
+
+Owner ruling (2026-07-22, in-session): **Claude Code — the in-session deliberative agent,
+never a one-shot API call — may issue verdicts on answers on the owner's behalf**, and the
+owner may overrule any of them; answer quality is **multidimensional** and objective;
+conversion to a single score is **deferred**. This extends §11 ruling 1 (Claude-grade
+deliberation is the gold standard) from adjudication to the verdict stream itself, and it
+targets the system's named bottleneck directly: at the M3 flip the engine held **13
+verdicted decisions lifetime** against 723 distinct unverdicted ones, and the live path's
+gather-then-withhold posture (§14) is priced exactly by that starvation.
+
+**The channel** (`core/claude_verdicts.py`, log at
+`$LIFE_AGENT_KB/calibration/claude_verdicts.jsonl`, capture CLI
+`scripts/claude_verdict.py`):
+
+- **The record stores dimensions raw** — a closed vocabulary of independent objective bits
+  (`correct` required; `complete`, `grounded` optional), plus `evidence` (what the
+  deliberation read) and a free `note` (the agent's prose is cheap; the owner's stays the
+  loop's one expensive resource). No combined scalar exists anywhere in the record: the
+  deferred single-score question stays open.
+- **The engine projection is `y = correct`** — "asserting the decision's leader candidate
+  now would have been correct", exactly the fact `said@1` prices. This is a measured bit,
+  not a scalarization. `boot_snapshot` merges the channel into `verdict_replay`
+  (owner segment first, then the Claude segment); verdicts bind at the next boot replay
+  (bridge restart) — **no live tick in v0**, disclosed.
+- **Owner precedence is by source, not file order**: a decision with any owner reaction
+  takes the owner's verdict; every Claude verdict on it is superseded silently, whenever
+  issued. Among Claude verdicts, latest per decision wins. Overrule therefore needs no new
+  surface — the owner's existing one-bit reaction (`/react`, `/log_reaction`) IS the
+  overrule.
+- **Never the utility posterior.** P(U) is the owner's revealed preference; a Claude
+  verdict is a truth measurement. The isolation is by construction —
+  `core.reactions.load_reactions` reads a different file and is untouched.
+- **A third reliability class** beside OB-12's two (proplang#11): denser than the owner's
+  verdicts, more authoritative than the extraction ticks — today merged untagged under the
+  one shared θ, which is additional demand evidence for the per-channel reliability ask
+  already filed there.
+- **Deliberated, never batch-derived.** Each verdict is the session agent reading the
+  decision's actual leader candidate against the corpus. Mechanically projecting a
+  grader's output through this log would re-create the extraction channel at owner-verdict
+  authority — the CLI's contract forbids it, and the A-phase result (deliberative π\*
+  92.3% correct, all failures adjudication-shaped) is the measured basis for granting the
+  channel owner-behalf authority at all.
+
+Scope v0: lookup-family decisions with a nameable leader (candidates + credences).
+Narrative rows (no leader) are out of scope until the aggregate family's verdict shape is
+designed. Question text for deliberation is recovered from the KB's eval question files by
+`question_id`; ad-hoc live questions whose text is unrecovered are named as such, not
+skipped silently.
