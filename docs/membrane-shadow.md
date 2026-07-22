@@ -795,3 +795,63 @@ seams' signatures under the strict gate — both are now explicit `Protocol.__ca
 (`categorical.SpawnFn`, `shadow.CatRunner`). Verified solid by the same review:
 flag-off byte-inertness, worker survival on any cat failure, the t-convention,
 counter thread-safety, numbers-only rows, and non-circular tests.
+
+## 16. E1 stage-1 ledger analysis: the θ ceiling is not the binder — the gather row is (2026-07-22)
+
+The stage-1 measurement run: one flag-off fairfight baseline pass over the v2 corpus
+(`ff-v2-baseline-e1cat`, n=104, 101 ok + 3 infra-errored — the same class as m3on's
+3/104), every daemon consult mirrored through the categorical world. **436 cat episodes
+over 76 questions, 639 code-valued evidence ticks, 0 errors, 0 skips, 0 unmapped
+observations** — the reduction was total on this corpus, and the eval side reproduced
+the standing baseline (gold-in-candidates 57/77, asserts 24/25 correct), so the rows
+were accrued under a normal, uncontaminated pass.
+
+**Finding 1 — the categorical evidence stream BINDS.** The E1 claim was that code-valued
+extraction hits at machine speed would move a posterior that verdict-starved binary p1
+could not. Measured: at K=1 the predictive on the candidate atom climbs monotonically
+with supporting evidence — p1 = 0.500 (0 obs) → 0.629 (1) → 0.703 (2) → 0.747 (3) →
+0.775 (4) → 0.794 (5) → 0.848 (12) → 0.867 (18 obs, the run's global max) — asymptoting
+exactly toward the wire's θ ceiling (0.9). The binary world's p1 ceiling on the same
+traffic era was ~0.34 on 13 verdicts. The mechanism works.
+
+**Finding 2 — at the observed maximum, respond BEATS ABSTAIN — the first time any
+world's readout has cleared that bar.** Under the boot u_bar (u_wrong −5.94, u_correct
+1.0), EU(respond_j) > EU(abstain) requires p_j > 0.856; the run's max 0.867 clears it
+(EU +0.078). The binary world never came within a factor of 2.5 of this bar.
+
+**Finding 3 — all 436 episodes chose gather, and that is ANALYTIC, not empirical.**
+Under the myopic-perfect-information gather row (`world.utility_by_action`'s named
+FLAG, register item 5), EU(gather) = 0.9656 − P(y=0) at the boot u_bar, so respond_j
+overtakes gather only at p_j > 0.99504 − P(y=0)/6.94 — i.e. **p_j > 0.9942 even at the
+feasibility limit** — while the θ grid caps any atom's predictive mass at ~0.9. The
+whole-menu bar is unreachable BY CONSTRUCTION at any evidence volume; the §5.6(i) risk
+("the θ ceiling may cap P(next=j) below respond's bar") is confirmed, but the binding
+constraint is the deliberately-overvalued information row, not the ceiling: were gather
+priced at its realized (not perfect-information) value, the observed 0.867 already
+clears every remaining bar. This names E3 (engine-held stop rule) / proplang #15
+(act-conditional outcome hypotheses) as the exit, exactly as staged — and it is what
+the differential was built to measure, never to be tuned away silently.
+
+**Finding 4 — session cost is linear in K via the model population, minute-scale at
+K≳10.** models = 1601·K (one atom's said@1 sentence population per candidate); median
+episode latency 71ms (K=1), 189ms (K=2), 514ms (K=3), 1.2s (K=5), 2.8s (K=7), 6.9s
+(K=10); the two K=12 episodes ran 8.6s and 58.8s. Six episodes exceeded 20s (five at
+K=10, one at K=12). `cat_timeout_s` (20s) never fired because it bounds a single read,
+not the episode — the worst episode stalled the one worker thread for ~1 minute.
+Shadow-only today (queue absorbed it, drops 0),
+but stage 2 (M4, on the decision path) needs either a K cap with a named-skip, an
+episode-level budget, or the warm-counts boot before minute-scale episodes can sit on
+the answer path.
+
+**Finding 5 — R-D23 cap-binding is UNOBSERVABLE without the per-code readout.** The
+decide reply's scalar `p1` cannot show P(y=0), so whether the null-mass cap (1/(K−1))
+binds on this 73.5%-over-abstention corpus is unanswerable from these rows. Filed as
+gfrmin/proplang#20 (observability-only per-code readout: argmax code + its mass + null
+mass); the R-D23 heir evidence (§5.4(e)) is blocked behind it.
+
+§5.4 sends filed against this ledger: the OB-11 position (proplang#10 comment:
+K-at-tick-0 suffices, session-per-question, bounded-reserved-tail not needed on our
+account), proplang#20 (the per-code readout), the consumer conformance report on the
+K-ary increment (proplang#9 comment), and the OB-12 per-channel demand evidence
+(proplang#11 comment: dense fallible machine channel — 639 ticks/run, gold-in-candidates
+0.74 — vs 14 owner verdicts lifetime under ONE shared θ). Aggregates only, throughout.
