@@ -19,9 +19,11 @@ NEVER the utility posterior — P(U) is the owner's revealed preference, and a C
 verdict is a truth measurement, not a preference. The isolation is by construction:
 ``core.reactions.load_reactions`` reads a different file and is untouched.
 
-**Overrule is by source, not file order.** Any owner reaction on the same ``decision_id``
-supersedes every Claude verdict on it, regardless of which came later (the merge lives in
-``boot_snapshot``). Among Claude verdicts, the latest per decision wins
+**Overrule is by source, not file order — and it belongs to an owner VERDICT, not a
+reaction row.** An owner reaction on the same ``decision_id`` that decodes through
+``verdict_y`` supersedes every Claude verdict on it, regardless of which came later (the
+merge lives in ``boot_snapshot``); an unrouted reaction (e.g. ``good`` on a ``hedge``)
+contributes no owner verdict and blocks nothing. Among Claude verdicts, the latest per decision wins
 (:func:`latest_by_decision` — file order is replay order, the ``core.reactions``
 convention).
 

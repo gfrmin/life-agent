@@ -68,6 +68,20 @@ def test_emit_names_owner_precedence_when_a_reaction_exists(
     assert len(CV.read(config.CLAUDE_VERDICTS_LOG)) == 1  # recorded regardless
 
 
+def test_emit_after_an_unrouted_owner_reaction_is_not_superseded(
+    kb: Path, capsys: pytest.CaptureFixture[str],
+) -> None:
+    # (hedge, good) decodes to no owner verdict — the Claude verdict still binds, and the
+    # fate line must say so rather than misreport an overrule.
+    DEC.append(config.DECISIONS_LOG, _decision("dec-1", chosen_action="hedge"))
+    RX.append(config.REACTIONS_LOG, RX.ReactionEvent(
+        tx_time="t", question_id="q1x", decision_id="dec-1",
+        kind="verdict", valence="good"))
+    assert CLI.main(["emit", "dec-1", "--correct"]) == 0
+    out = capsys.readouterr().out
+    assert "SUPERSEDED" not in out and "next boot" in out
+
+
 def test_list_hides_verdicted_by_default_and_shows_with_all(
     kb: Path, capsys: pytest.CaptureFixture[str],
 ) -> None:

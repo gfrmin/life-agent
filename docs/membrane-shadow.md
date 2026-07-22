@@ -894,9 +894,12 @@ gather-then-withhold posture (§14) is priced exactly by that starvation.
   not a scalarization. `boot_snapshot` merges the channel into `verdict_replay`
   (owner segment first, then the Claude segment); verdicts bind at the next boot replay
   (bridge restart) — **no live tick in v0**, disclosed.
-- **Owner precedence is by source, not file order**: a decision with any owner reaction
-  takes the owner's verdict; every Claude verdict on it is superseded silently, whenever
-  issued. Among Claude verdicts, latest per decision wins. Overrule therefore needs no new
+- **Owner precedence is by source, not file order — and it belongs to an owner VERDICT,
+  not a reaction row**: a decision whose latest owner reaction decodes through
+  `verdict_y` takes the owner's verdict; every Claude verdict on it is superseded,
+  whenever issued. An unrouted reaction (e.g. `good` on a `hedge`) contributes no owner
+  verdict and blocks nothing (review round caught the presence-not-validity gate).
+  Among Claude verdicts, latest per decision wins. Overrule therefore needs no new
   surface — the owner's existing one-bit reaction (`/react`, `/log_reaction`) IS the
   overrule.
 - **Never the utility posterior.** P(U) is the owner's revealed preference; a Claude
