@@ -835,9 +835,10 @@ the differential was built to measure, never to be tuned away silently.
 **Finding 4 — session cost is linear in K via the model population, minute-scale at
 K≳10.** models = 1601·K (one atom's said@1 sentence population per candidate); median
 episode latency 71ms (K=1), 189ms (K=2), 514ms (K=3), 1.2s (K=5), 2.8s (K=7), 6.9s
-(K=10), 58.8s (K=12, n=2). Six episodes exceeded 20s. `cat_timeout_s` (20s) never
-fired because it bounds a single read, not the episode — the K=12 episodes stalled the
-one worker thread for ~1 minute each. Shadow-only today (queue absorbed it, drops 0),
+(K=10); the two K=12 episodes ran 8.6s and 58.8s. Six episodes exceeded 20s (five at
+K=10, one at K=12). `cat_timeout_s` (20s) never fired because it bounds a single read,
+not the episode — the worst episode stalled the one worker thread for ~1 minute.
+Shadow-only today (queue absorbed it, drops 0),
 but stage 2 (M4, on the decision path) needs either a K cap with a named-skip, an
 episode-level budget, or the warm-counts boot before minute-scale episodes can sit on
 the answer path.
