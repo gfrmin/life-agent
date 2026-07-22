@@ -109,3 +109,23 @@ def test_membrane_live_other_values_stay_off(monkeypatch) -> None:
     for v in ("0", "", "true", "yes"):
         monkeypatch.setenv(config.MEMBRANE_LIVE_ENV, v)
         assert config.membrane_live() is False, v
+
+
+# --- E1 stage 1: the categorical mirror's enable switch ----------------------------------
+
+
+def test_membrane_categorical_default_off(monkeypatch) -> None:
+    monkeypatch.delenv(config.MEMBRANE_CAT_ENV, raising=False)
+    assert config.membrane_categorical() is False
+
+
+def test_membrane_categorical_on(monkeypatch) -> None:
+    monkeypatch.setenv(config.MEMBRANE_CAT_ENV, "1")
+    assert config.membrane_categorical() is True
+
+
+def test_membrane_categorical_other_values_stay_off(monkeypatch) -> None:
+    monkeypatch.setenv(config.MEMBRANE_CAT_ENV, "0")
+    assert config.membrane_categorical() is False
+    monkeypatch.setenv(config.MEMBRANE_CAT_ENV, "true")
+    assert config.membrane_categorical() is False

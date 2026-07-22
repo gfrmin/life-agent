@@ -716,6 +716,7 @@ def _build_membrane(u_bar: Callable[[], dict[str, float]]) -> MEM.MembraneShadow
             read_timeout_s=config.membrane_read_timeout_s(),
             queue_size=_MEMBRANE_QUEUE_SIZE, max_respawns=_MEMBRANE_MAX_RESPAWNS,
             respawn_backoff_s=_MEMBRANE_RESPAWN_BACKOFF_S,
+            categorical=config.membrane_categorical(),
         )
         warm_vectors_dir = config.membrane_warm_vectors_dir()
         shadow = MEM.MembraneShadow(
