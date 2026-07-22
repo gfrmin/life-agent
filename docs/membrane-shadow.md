@@ -713,3 +713,71 @@ schedule already has). Revisit when the transform menu next grows. Reviewer note
 open-eyed for the prod flip: the single-threaded bridge serialises `/decide-live` behind
 every other request — a stalled engine costs concurrent bridge callers up to
 `_LIVE_WAIT_S` per tick; concurrency remains the deliberate Move-4 deferral.
+
+## 15. E1 stages 0–1 — engine rebuilt at the W3/W4 wire; the categorical shadow world: LANDED (2026-07-22)
+
+The E1 deliberation doc (`docs/candidates/e1-categorical-outcome.md`, owner-approved
+2026-07-21) is the governing design; this section is its landing record for the first
+two rungs of the §5.5 ladder.
+
+**Stage 0 — the engine rebuild (a lawful §10 upgrade).** `~/.local/bin/proplang-host`
+rebuilt from proplang local HEAD `1a0cea7` (W3 obs_arity + W4 full priced grammar +
+R1, all engine-side; local master ahead of origin), sha256
+`ebc06c81b954afb0f7b951548ed5d06d5b69cfc4e3f0f04b6597d55bcdd644d3`; the pre-W3 binary
+kept beside it as `proplang-host-7da274b`. Byte-compatibility verified BEFORE the swap:
+the existing binary world's handshake reply and a decide reply are IDENTICAL old-vs-new
+(sorted-JSON compare), and all four `test_membrane_live.py` system smokes pass against
+the new binary. Prod bridge restarted 2026-07-22; boot record carries the new sha256,
+said@1 alive, 1364 source records replayed, respawn 0. The service drop-in's provenance
+comment now reads `@1a0cea7`.
+
+**Stage 1 — the categorical mirror (`membrane/categorical.py`), shadow-only,
+flag-gated.** The world v3 declaration, against the LANDED wire only:
+
+- **Outcome:** `obs_arity = K + 1` — atoms 1..K are the tick's candidates in candidate
+  order, atom 0 the wire's own NULL emission (NONE). A 0-candidate tick is a NAMED SKIP
+  (no lawful arity below 2, nothing to measure), counted at `stats()["cat"]["skips"]`.
+- **Observations:** code-valued evidence ticks — the bridge's abstract-observation
+  boundary already carries `reports` (the 0-based candidate index), so an extraction
+  hit becomes `evidence: reports + 1`. Unmappable observations are a counted named
+  exclusion (`n_obs_unmapped`), mirroring the `_VERDICT_Y` rule. No verdicts feed this
+  world yet (the §4.1 bad-verdict exclusion stands until OB-12).
+- **Acts:** one writable name, grid `[abstain=1, gather=2, ask=3,
+  respond_1=4 .. respond_K=3+K]` — grid order normative, wait first. The engine's
+  chosen `respond_j` names a candidate by VALUE — the M5 prerequisite.
+- **Utility (§4.3, inside the shipped grammar — `if = - c var get`):** rows built from
+  `world.utility_by_action` (ONE source with the binary world): abstain constant;
+  gather/ask keep the declared myopic-perfect-information overvaluation, categorically
+  split on y=0 (NONE side) vs any candidate code; `respond_j` pays `u_correct` iff
+  `y = (get act) − 3`, else `u_wrong`. y is the PREDICTIVE NEXT OBSERVATION, not a
+  latent truth — the doc's honest-semantics note carries into the row meanings.
+- **Lifecycle:** SESSION-PER-QUESTION (OB-11's K-at-tick-0 shape): one fresh engine
+  process per mirrored tick — handshake, this question's own evidence ticks (t
+  advancing 0..n−1), one decide at t=n, shutdown. No cross-question learning in stage 1
+  (the §5.1 two-layer split; shared channel counts arrive with the warm-counts
+  companion, a named B4 need).
+- **Supervision:** `ShadowConfig.categorical` (env `LIFE_AGENT_MEMBRANE_CAT=1`;
+  absence = the default = BYTE-INERT — no reduction computed, no runner called, no rows
+  written). The worker runs the cat episode strictly AFTER the binary forms on a decide
+  item, and strictly AFTER the live waiter is released on an M3 `/decide-live` item —
+  the mirror can never add answer-path latency. Any failure is one counted error
+  (`stats()["cat"]["errors"]`), never a respawn (no persistent session exists) and
+  never a dead binary form.
+- **The ledger row (`kind: "cat"`, same shadow.jsonl stream):** question_id, k, the
+  engine's action + j, `daemon_map_index` (does the engine's respond_j name the same
+  candidate the daemon's posterior leads with — the M5 question), real_effector,
+  readouts (NOTE: the landed wire's decide reply still carries only scalar `p1` = the
+  predictive mass of ATOM 1 — the per-code readout is the §5.4(d) observability issue,
+  not yet filed as landed), n_evidence, n_obs_unmapped, the handshake reply (`models`
+  grows with K), latency, and the numeric summary. `CatSummary` is numbers-only by
+  construction — no candidate string ever enters the mirror or its rows.
+- **What stage 1 measures (the §5.6 risks, empirically):** whether `respond_j` ever
+  clears its whole-menu bar under the wire's θ ceiling (0.9) at machine-speed evidence;
+  whether R-D23's null-mass cap (1/(K−1)) binds on the over-abstention corpus; the
+  per-tick cost of session-per-question at live K. These rows are also the §5.4
+  evidence payloads for gfrmin/proplang (conformance report on the K-ary issue; OB-12
+  per-channel demand; R-D23 heir demand) — aggregates only, per the PII rule.
+
+**Cat rows never enter the §2 differential** (they are a different world's choices, not
+the binary form's would-vs-did), and the offline report ignores unknown kinds by
+construction. Stage 2 (M4) and stage 3 (M5) remain as staged in the doc.
