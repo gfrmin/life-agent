@@ -232,3 +232,51 @@ def test_respond_reachability_is_a_function_of_the_utility_posterior(
         )
     finally:
         client.shutdown()
+
+
+# --- test 3 (E1 stage 1): the categorical world on the real binary ------------------------
+
+
+def test_categorical_world_handshakes_and_decides(
+    membrane_argv: list[str], binary_sha256: str,
+) -> None:
+    """First contact for the E1 categorical declaration (obs_arity = K+1, the
+    value-indexed act grid, the §4.3 utility sentence) against the REAL engine: one
+    session-per-question episode — handshake, three code-valued evidence ticks, one
+    decide — through ``categorical.run_categorical`` exactly as the shadow runs it.
+    Asserts well-formed replies and a decodable act, never a specific choice (the
+    engine's internals aren't this test's contract)."""
+    from life_agent.membrane import categorical as C
+
+    s = C.CatSummary(
+        k=3, obs_codes=(1, 1, 2), n_obs=3, n_obs_unmapped=0, daemon_map_index=0,
+        era_split=False, owner_scoped=True, grow_pass=False,
+    )
+    choice = C.run_categorical(membrane_argv, U_BAR, s, read_timeout_s=60.0)
+    assert choice.engine.get("ok") is True
+    assert choice.engine.get("proto") == 1
+    assert isinstance(choice.engine.get("models"), int)
+    valid = {"abstain", "gather", "ask", "respond_1", "respond_2", "respond_3"}
+    assert choice.action in valid, (
+        f"undecodable act {choice.action!r} (binary {binary_sha256[:12]})"
+    )
+    assert "p1" in choice.readouts
+    print(f"\n  categorical K=3: models={choice.engine['models']} "
+          f"action={choice.action} p1={choice.readouts.get('p1')} "
+          f"(binary {binary_sha256[:12]})")
+
+
+def test_categorical_k2_declaration_is_accepted_alongside_binary(
+    membrane_argv: list[str],
+) -> None:
+    """A K=1 world (obs_arity 2 — the wire's floor, extensionally the binary channel)
+    must also handshake: the smallest lawful categorical episode."""
+    from life_agent.membrane import categorical as C
+
+    s = C.CatSummary(
+        k=1, obs_codes=(1,), n_obs=1, n_obs_unmapped=0, daemon_map_index=0,
+        era_split=False, owner_scoped=False, grow_pass=False,
+    )
+    choice = C.run_categorical(membrane_argv, U_BAR, s, read_timeout_s=60.0)
+    assert choice.engine.get("ok") is True
+    assert choice.action in {"abstain", "gather", "ask", "respond_1"}
