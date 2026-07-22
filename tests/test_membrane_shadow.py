@@ -29,6 +29,7 @@ import pytest
 
 from life_agent.core import decisions as DEC
 from life_agent.core import reactions as RX
+from life_agent.membrane import categorical as CAT
 from life_agent.membrane import shadow as SH
 from life_agent.membrane import world as W
 from life_agent.membrane.client import MembraneError
@@ -1484,3 +1485,164 @@ def test_decide_live_full_queue_returns_none(tmp_path: Path) -> None:
     sh.submit_gate("q-fill", "weak_retrieval")
     assert sh.decide_live(
         "q-live-6", dict(_LIVE_PAYLOAD), dict(_LIVE_DEC), wait_s=0.05) is None
+
+
+# --- E1 stage 1: the categorical mirror (kind: "cat" rows, flag-gated, shadow-only) -------
+#
+# `ShadowConfig.categorical=True` runs the categorical world (membrane/categorical.py:
+# session-per-tick, obs_arity = K+1) beside the binary forms on the SAME decide stream —
+# never on the decision path. Default False is byte-inert: no reduction is computed, no
+# runner is called, no rows appear. The runner is injected (`cat_runner`) so these tests
+# never spawn a process.
+
+_CAT_PAYLOAD: dict[str, object] = {
+    "candidates": ["alpha", "beta"],
+    "observations": [{"reports": 0}, {"reports": 1}, {"reports": 0}],
+    "era_split": False, "owner_scoped": True,
+}
+_CAT_DEC: dict[str, object] = {
+    "effector": "abstain", "credences": [0.6, 0.2], "p_none": 0.2,
+}
+
+
+class _FakeCatRunner:
+    """Duck-types `categorical.run_categorical`: records every call, returns a scripted
+    `CatChoice` (or raises when told to)."""
+
+    def __init__(self, *, raises: bool = False) -> None:
+        self.calls: list[tuple[list[str], dict[str, float], CAT.CatSummary]] = []
+        self.raises = raises
+
+    def __call__(
+        self, command: list[str], u_bar: Mapping[str, float], s: CAT.CatSummary,
+        *, read_timeout_s: float = 300.0,
+    ) -> CAT.CatChoice:
+        self.calls.append((list(command), dict(u_bar), s))
+        if self.raises:
+            raise MembraneError("cat engine died")
+        return CAT.CatChoice(
+            action="respond_1", j=1, readouts={"p1": 0.35, "entropy_bits": 1.1},
+            engine={"ok": True, "models": 42},
+        )
+
+
+def test_categorical_default_off_is_inert(tmp_path: Path) -> None:
+    cfg = _cfg(tmp_path)  # categorical not set -> False
+    runner = _FakeCatRunner()
+    sh = SH.MembraneShadow(
+        cfg, u_bar=_u_bar, snapshot=_snapshot_calls_counter()[1],
+        session_factory=_FakeFactory(), cat_runner=runner,
+    )
+    try:
+        sh.start()
+        assert _wait_until(lambda: sh.stats()["forms"]["said@1"]["alive"])  # type: ignore[index]
+        sh.submit_decide("q-cat-0", dict(_CAT_PAYLOAD), dict(_CAT_DEC))
+        assert _wait_until(lambda: sh.stats()["forms"]["said@1"]["ticks"] >= 1)  # type: ignore[index]
+        assert runner.calls == []
+        assert [r for r in _read_records(cfg.log_path) if r.get("kind") == "cat"] == []
+        assert sh.stats()["cat"] == {"ticks": 0, "errors": 0, "skips": 0}
+    finally:
+        sh.close()
+
+
+def test_categorical_enabled_writes_a_cat_row_beside_the_binary_decide(
+    tmp_path: Path,
+) -> None:
+    cfg = _cfg(tmp_path, categorical=True)
+    runner = _FakeCatRunner()
+    sh = SH.MembraneShadow(
+        cfg, u_bar=_u_bar, snapshot=_snapshot_calls_counter()[1],
+        session_factory=_FakeFactory(), cat_runner=runner,
+    )
+    try:
+        sh.start()
+        assert _wait_until(lambda: sh.stats()["forms"]["said@1"]["alive"])  # type: ignore[index]
+        sh.submit_decide("q-cat-1", dict(_CAT_PAYLOAD), dict(_CAT_DEC))
+        assert _wait_until(
+            lambda: any(r.get("kind") == "cat" for r in _read_records(cfg.log_path)))
+        rec, = [r for r in _read_records(cfg.log_path) if r.get("kind") == "cat"]
+        assert rec["event_type"] == "membrane-shadow"
+        assert rec["question_id"] == "q-cat-1"
+        assert rec["k"] == 2
+        assert rec["action"] == "respond_1"
+        assert rec["j"] == 1
+        assert rec["daemon_map_index"] == 0
+        assert rec["real_effector"] == "abstain"
+        assert rec["readouts"] == {"p1": 0.35, "entropy_bits": 1.1}
+        assert rec["n_evidence"] == 3
+        assert rec["n_obs_unmapped"] == 0
+        assert rec["engine"] == {"ok": True, "models": 42}
+        assert isinstance(rec["latency_ms"], (int, float))
+        # the binary mirror still ran beside it
+        assert [r for r in _read_records(cfg.log_path) if r.get("kind") == "decide"]
+        # the runner saw the exact reduction and the cfg command
+        (command, u_bar, s), = runner.calls
+        assert command == cfg.command
+        assert s == CAT.summary_from_payload_cat(_CAT_PAYLOAD, _CAT_DEC)
+        assert sh.stats()["cat"] == {"ticks": 1, "errors": 0, "skips": 0}
+    finally:
+        sh.close()
+
+
+def test_categorical_zero_candidates_is_a_counted_skip(tmp_path: Path) -> None:
+    cfg = _cfg(tmp_path, categorical=True)
+    runner = _FakeCatRunner()
+    sh = SH.MembraneShadow(
+        cfg, u_bar=_u_bar, snapshot=_snapshot_calls_counter()[1],
+        session_factory=_FakeFactory(), cat_runner=runner,
+    )
+    try:
+        sh.start()
+        assert _wait_until(lambda: sh.stats()["forms"]["said@1"]["alive"])  # type: ignore[index]
+        sh.submit_decide("q-cat-2", {"candidates": []}, {"credences": [], "effector": "abstain"})
+        assert _wait_until(lambda: sh.stats()["cat"]["skips"] >= 1)  # type: ignore[index]
+        assert runner.calls == []
+        assert [r for r in _read_records(cfg.log_path) if r.get("kind") == "cat"] == []
+    finally:
+        sh.close()
+
+
+def test_categorical_runner_error_is_counted_and_the_worker_survives(
+    tmp_path: Path,
+) -> None:
+    cfg = _cfg(tmp_path, categorical=True)
+    runner = _FakeCatRunner(raises=True)
+    sh = SH.MembraneShadow(
+        cfg, u_bar=_u_bar, snapshot=_snapshot_calls_counter()[1],
+        session_factory=_FakeFactory(), cat_runner=runner,
+    )
+    try:
+        sh.start()
+        assert _wait_until(lambda: sh.stats()["forms"]["said@1"]["alive"])  # type: ignore[index]
+        sh.submit_decide("q-cat-3", dict(_CAT_PAYLOAD), dict(_CAT_DEC))
+        assert _wait_until(lambda: sh.stats()["cat"]["errors"] >= 1)  # type: ignore[index]
+        assert [r for r in _read_records(cfg.log_path) if r.get("kind") == "cat"] == []
+        # a cat failure never kills the binary mirror: a second submit still ticks
+        sh.submit_decide("q-cat-4", dict(_CAT_PAYLOAD), dict(_CAT_DEC))
+        assert _wait_until(lambda: sh.stats()["forms"]["said@1"]["ticks"] >= 2)  # type: ignore[index]
+    finally:
+        sh.close()
+
+
+def test_categorical_mirrors_the_live_path_too(tmp_path: Path) -> None:
+    # M3 flag-on replaces the mirror leg's submit_decide with decide_live — the
+    # categorical mirror must see that traffic as well, AFTER the live reply is released.
+    cfg = _cfg(tmp_path, categorical=True)
+    runner = _FakeCatRunner()
+    sh = SH.MembraneShadow(
+        cfg, u_bar=_u_bar, snapshot=_snapshot_calls_counter()[1],
+        session_factory=_FakeFactory(), clock=_FakeClock(), cat_runner=runner,
+    )
+    try:
+        sh.start()
+        assert _wait_until(lambda: sh.stats()["forms"]["said@1"]["alive"])  # type: ignore[index]
+        out = sh.decide_live("q-cat-live", dict(_LIVE_PAYLOAD), dict(_LIVE_DEC))
+        assert out is not None  # the live reply is never blocked on the cat mirror
+        assert _wait_until(
+            lambda: any(r.get("kind") == "cat" for r in _read_records(cfg.log_path)))
+        rec, = [r for r in _read_records(cfg.log_path) if r.get("kind") == "cat"]
+        assert rec["question_id"] == "q-cat-live"
+        # real_effector is what the host ENACTED (the mapped view), not the daemon's plan
+        assert rec["real_effector"] == "report"
+    finally:
+        sh.close()
