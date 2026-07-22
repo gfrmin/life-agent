@@ -1077,11 +1077,13 @@ def boot_snapshot(
     (:mod:`life_agent.core.claude_verdicts` — owner-authorized 2026-07-22) joins the
     same decisions and replays as `y = CV.y(event)` (the `correct` dimension, no
     `verdict_y` valence decode — the record stores the objective bit directly). Owner
-    precedence is by SOURCE, not file order: a decision with any owner reaction takes
-    the owner's verdict and every Claude verdict on it is superseded silently. The
-    replay order is deterministic: the owner segment first, then the Claude segment
-    (each in its own log's file order). `None` — the default — is byte-for-byte
-    today's behaviour.
+    precedence is by SOURCE, not file order — but it belongs to an owner VERDICT, not
+    an owner reaction row: a Claude verdict is superseded only when the decision's
+    latest owner reaction actually decodes through `verdict_y` (an unrouted reaction —
+    e.g. a `good` on a `hedge` — contributes nothing to the replay, so it must not
+    silently block the Claude verdict either). The replay order is deterministic: the
+    owner segment first, then the Claude segment (each in its own log's file order).
+    `None` — the default — is byte-for-byte today's behaviour.
 
     If `warm_vectors_dir` is given (a fair-fight run directory), :func:`_warm_outcomes`
     also replays that run's baseline-arm outcomes — joined across the id namespaces, and
@@ -1117,11 +1119,12 @@ def boot_snapshot(
         verdict_replay.append((W.summary_from_decision_event(asdict(d)), y))
 
     for decision_id, cv in CV.latest_by_decision(claude_verdicts).items():
-        if decision_id in latest_reaction:
-            continue  # owner precedence: his reaction overrules the Claude verdict
         d = by_decision_id.get(decision_id)
         if d is None:
             continue
+        r_owner = latest_reaction.get(decision_id)
+        if r_owner is not None and verdict_y(d.chosen_action, r_owner.valence) is not None:
+            continue  # owner precedence: his ROUTABLE verdict overrules the Claude one
         verdict_replay.append((W.summary_from_decision_event(asdict(d)), CV.y(cv)))
 
     outcome_replay: list[tuple[str, W.DecideSummary, int]] = []

@@ -1153,6 +1153,21 @@ def test_boot_snapshot_owner_reaction_overrules_a_claude_verdict(tmp_path: Path)
     assert [(y) for _s, y in snap.verdict_replay] == [0]
 
 
+def test_boot_snapshot_unrouted_owner_reaction_does_not_block_a_claude_verdict(
+    tmp_path: Path,
+) -> None:
+    # An owner reaction on a hedge decision decodes to NO verdict (verdict_y -> None): it
+    # contributes nothing to the replay, so it must not silently supersede the Claude
+    # verdict either — precedence belongs to an owner VERDICT, not an owner reaction row.
+    dpath, rpath = tmp_path / "decisions.jsonl", tmp_path / "reactions.jsonl"
+    cpath = tmp_path / "claude_verdicts.jsonl"
+    DEC.append(dpath, _decision("dec-1", "q-001", "hedge"))
+    RX.append(rpath, _reaction("dec-1", "q-001", "good"))  # (hedge, good) -> y=None
+    CV.append(cpath, _claude_verdict("dec-1", "q-001", correct=1))
+    snap = SH.boot_snapshot(dpath, rpath, None, claude_verdicts_path=cpath)
+    assert [(y) for _s, y in snap.verdict_replay] == [1]  # the Claude verdict binds
+
+
 def test_boot_snapshot_claude_verdict_without_a_decision_is_excluded(tmp_path: Path) -> None:
     dpath, rpath = tmp_path / "decisions.jsonl", tmp_path / "reactions.jsonl"
     cpath = tmp_path / "claude_verdicts.jsonl"

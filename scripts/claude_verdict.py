@@ -36,6 +36,7 @@ import life_agent.core.config as config
 import life_agent.core.decisions as DEC
 import life_agent.core.outcomes as O
 import life_agent.core.reactions as RX
+from life_agent.membrane.session import verdict_y
 
 
 def _question_texts() -> dict[str, str]:
@@ -79,11 +80,20 @@ def _eligible() -> dict[str, DEC.DecisionEvent]:
     return out
 
 
-def _owner_reacted() -> set[str]:
+def _owner_verdicted(eligible: dict[str, DEC.DecisionEvent]) -> set[str]:
+    """Decisions whose LATEST owner reaction decodes to a verdict (`verdict_y` non-None)
+    — only these supersede a Claude verdict. An unrouted reaction (e.g. `good` on a
+    `hedge`) contributes no owner verdict, so it must not block the channel either."""
     try:
-        return {r.decision_id for r in RX.read(config.REACTIONS_LOG)}
+        latest: dict[str, str] = {}
+        for r in RX.read(config.REACTIONS_LOG):
+            latest[r.decision_id] = r.valence
     except FileNotFoundError:
         return set()
+    return {
+        did for did, valence in latest.items()
+        if did in eligible and verdict_y(eligible[did].chosen_action, valence) is not None
+    }
 
 
 def _claude_verdicted() -> set[str]:
@@ -104,8 +114,9 @@ def _leader(d: DEC.DecisionEvent) -> tuple[str, float]:
 
 def cmd_list(args: argparse.Namespace) -> int:
     texts = _question_texts()
-    reacted, verdicted = _owner_reacted(), _claude_verdicted()
-    rows = sorted(_eligible().values(), key=lambda d: d.tx_time, reverse=True)
+    eligible = _eligible()
+    reacted, verdicted = _owner_verdicted(eligible), _claude_verdicted()
+    rows = sorted(eligible.values(), key=lambda d: d.tx_time, reverse=True)
     shown = 0
     for d in rows:
         done = d.decision_id in reacted or d.decision_id in verdicted
@@ -141,7 +152,7 @@ def cmd_show(args: argparse.Namespace) -> int:
         "question": texts.get(d.question_id, "(text unrecovered)"),
         "family": d.family, "chosen_action": d.chosen_action,
         "posterior_summary": d.posterior_summary,
-        "owner_reacted": d.decision_id in _owner_reacted(),
+        "owner_verdicted": d.decision_id in _owner_verdicted(_eligible()),
         "claude_verdicted": d.decision_id in _claude_verdicted(),
     }, indent=2, ensure_ascii=False))
     return 0
@@ -162,8 +173,8 @@ def cmd_emit(args: argparse.Namespace) -> int:
         tx_time=O.now_iso(), question_id=d.question_id, decision_id=d.decision_id,
         dimensions=dims, evidence=tuple(args.evidence or ()), note=args.note or "")
     CV.append(config.CLAUDE_VERDICTS_LOG, event)
-    fate = ("recorded but SUPERSEDED (an owner reaction exists on this decision — "
-            "owner precedence)" if d.decision_id in _owner_reacted()
+    fate = ("recorded but SUPERSEDED (an owner VERDICT exists on this decision — "
+            "owner precedence)" if d.decision_id in _owner_verdicted({d.decision_id: d})
             else "recorded; joins the engine verdict replay at the next boot "
                  "(restart the bridge to fold)")
     print(f"claude verdict on {d.decision_id[:20]}…: dimensions={dims} — {fate}")
