@@ -50,6 +50,11 @@ Everything below was checked against the real system, not assumed.
 | It returns `[]` for the Kayak ICS, whole file *and* single event | **Verified** — Kayak VEVENTs are unstructured prose |
 | kitinerary ships **no** Kayak extractor | **Verified** — 464 files under `src/lib/scripts`, zero matches |
 | Kayak private Trips API exists | **Verified** — routes 401 authenticated vs 404 bogus |
+| The API requires an `X-CSRF` header | **Verified** — otherwise `INVALID_FORM_TOKEN`; token is absent from cookies, localStorage, sessionStorage and meta tags, so it must be lifted from the page's own requests |
+| A full export succeeds and reaches back to 2010 | **Verified** — 115 trips, 260 events, unbroken year histogram 2010→2026 |
+| Event taxonomy maps onto schema.org | **Verified** — 160 flight, 90 hotel, 8 train, 1 restaurant, 1 custom |
+| `confirmationNumber` is too sparse to key identity | **Verified** — 151/260 present, and only 147 distinct where present |
+| Kayak records no cancellations | **Verified** — 260/260 `isBooked`, 0 `isCancelled` |
 | Kayak ICS feed has no date-range parameter | **Verified negative** — only a per-trip `calendarFeed` route |
 | Kayak offers no self-service data export | **Verified negative** — its privacy-management page offers deletion only |
 | No prior-art Kayak Trips exporter on GitHub | **Verified negative** — all hits scrape flight *search* |
@@ -125,16 +130,41 @@ rather than a lossy migration. It is also what makes Phase 2 cheap.
 
 ### Reservation identity
 
-Mirroring `assertion_identity()` — keyed on **content, deliberately excluding provenance**:
+Mirroring `assertion_identity()` — keyed on **content, deliberately excluding provenance**.
+
+An earlier draft of this document keyed identity on
+`(res_type, confirmation_number, leg_key)`. **Measurement killed that.** In a 260-event
+export, `confirmationNumber` was present on only 151 events (58%) — 113/160 flights,
+37/90 hotels, 1/8 trains. Falling back to `bookingDetail.bookingReferenceNumber` lifts
+coverage to 191/260 (73%), still far from total. Worse, `(res_type, confirmation_number)`
+was not even unique where present: 151 references collapsed to 147 distinct pairs, because
+one booking reference legitimately covers several reservations (an outbound and a return,
+two rooms, two travelers). A confirmation number is neither necessary nor sufficient.
+
+So identity is derived **entirely from the booked thing itself**:
 
 ```
-reservation_identity(res_type, confirmation_number, leg_key)
+reservation_identity(res_type, content_key)
+
+  flight, train  ->  ordered tuple over segments of
+                     (departure_iata, arrival_iata, departure_datetime, flight_number)
+  lodging        ->  (property_id or property_name, check_in, check_out)
+  other          ->  (title, start, end)
 ```
 
-where `leg_key` is the underlying booked thing (flight number + departure day; hotel +
-check-in date). Provenance is excluded so that the *same booking* seen via the Kayak ICS
-and later via its original email resolves to one identity and dedups, rather than
-appearing twice.
+Confirmation number becomes an ordinary **attribute** — displayed, searchable, and useful
+for matching a record against an email, but never load-bearing for identity.
+
+Measured against the same export, this yields **259 distinct identities from 260 events**.
+The single collision is two flight events in one trip sharing a confirmation number and an
+identical segment list with different vendor `eventId`s — a true duplicate, which this
+scheme is *supposed* to collapse. Zero false merges; the degenerate cases are empty too
+(0 flights/trains with no segments, 0 lodging rows with neither id nor name).
+
+Vendor `eventId` is unique across the export (260/260) and would make an easy key — which
+is exactly why it is not used. It is provenance. Keying on it would make the same booking
+seen via Kayak and later via its own confirmation email resolve to two identities instead
+of dedup'ing into one, which is the whole point of the exercise.
 
 ### Fidelity tiers and supersession
 
@@ -150,11 +180,26 @@ So records are ranked by **(fidelity, then `received_at`)**, highest wins:
 |---|---|---|
 | 1 | `manual` | An explicit human correction always wins |
 | 2 | `email-kitinerary` | Structured, deterministic, barcode-verified |
-| 3 | `kayak-api` | Kayak's trip JSON — structured but second-hand |
+| 3 | `kayak-api` | Kayak's trip JSON — structured, second-hand, but richer than expected |
 | 4 | `kayak-ics` | Text-scraped calendar stub; known to contain errors |
+
+Tier 3 earns its rank. The API returns per-segment IATA codes *and* coordinates, IANA
+timezones on both ends (223/260 events), operating-carrier distinct from marketing
+carrier (47 segments), seat numbers (33), and for lodging the address, phone, coordinates
+and star rating. Several enrichments the extraction seam was expected to recover from
+kitinerary's airport database arrive already populated. It stays below `email-kitinerary`
+because it is still a vendor's reinterpretation of an email we may later hold directly —
+but it is a far better floor than the ICS.
 
 When a higher-ranked record arrives for an existing identity, the older row is marked
 `superseded_by` and retained. Cancellations mark the chain cancelled rather than deleting.
+
+One caveat the export makes concrete: **all 260 events came back `isBooked`, with zero
+`isCancelled`.** Kayak appears to drop cancellations rather than tombstone them. So the
+ledger's `cancelled` transition has no Kayak source at all — it can only ever arrive from a
+filed email or a manual correction. A Kayak re-import must therefore never be treated as
+authoritative about *absence*: a reservation missing from a later export means nothing, and
+must not be inferred as a cancellation.
 
 This yields the desired property: **the ICS gives 12 populated trips on day one, and each
 one silently upgrades** as real confirmation emails are filed into `Trips`. A full history
