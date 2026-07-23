@@ -120,7 +120,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         args = parser.parse_args(argv)
     except SystemExit as e:
-        return int(e.code or 2)
+        return e.code if isinstance(e.code, int) else 2
     store.init_db()
     return int(args.func(args))
 
