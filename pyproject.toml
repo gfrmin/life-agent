@@ -37,6 +37,7 @@ dependencies = [
 
 [project.scripts]
 pkm = "pkm.cli:main"
+trips = "life_agent.trips.cli:main"
 
 [dependency-groups]
 dev = [

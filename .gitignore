@@ -27,8 +27,9 @@ eval/questions.yaml
 eval/phase0_log.md
 FAILURES.md
 
-# local-only: superpowers specs are symlinked to $LIFE_AGENT_KB (out of tree, PII-bearing)
-docs/superpowers/
+# local-only: superpowers specs are symlinked out of tree (may be PII-bearing).
+# Plans are kept PII-free and committed alongside the design spec.
+docs/superpowers/specs/
 
 # Throwaway sandbox built by scripts/bootstrap-sample.sh (KB + pkm store + config)
 examples/.sandbox/
