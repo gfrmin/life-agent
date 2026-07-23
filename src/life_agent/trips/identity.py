@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from datetime import datetime, timezone
 from typing import Any
 
 _WS = re.compile(r"\s+")
@@ -26,6 +27,27 @@ def res_type(jsonld: dict[str, Any]) -> str:
 
 def _norm(s: Any) -> str:
     return _WS.sub(" ", str(s or "")).strip()
+
+
+def _timekey(v: Any) -> str:
+    """Canonicalize a schema.org time value for identity comparison.
+
+    kitinerary emits times as QDateTime dicts ({"@value": "...+01:00", "timezone": ...}); the
+    Kayak importer emits offset-resolved ISO strings; a bare date is a plain string. Unwrap the
+    dict, then — when the value is offset-AWARE — reduce it to a UTC instant so two
+    representations of the same moment (Kayak-vs-email, or "+01:00" vs "Z") collide. Naive
+    datetimes and bare dates pass through as their normalized string. Never raises."""
+    raw = v.get("@value") if isinstance(v, dict) else v
+    s = _norm(raw)
+    if not s:
+        return ""
+    try:
+        dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return s
+    if dt.tzinfo is None:
+        return s
+    return dt.astimezone(timezone.utc).isoformat()
 
 
 def _reservation_for(jsonld: dict[str, Any]) -> list[dict[str, Any]]:
@@ -50,7 +72,7 @@ def _segment_key(seg: dict[str, Any]) -> tuple[str, str, str, str]:
     return (
         _endpoint(seg.get("departureAirport") or seg.get("departureStation") or seg.get("departureBusStop")),
         _endpoint(seg.get("arrivalAirport") or seg.get("arrivalStation") or seg.get("arrivalBusStop")),
-        _norm(seg.get("departureTime")),
+        _timekey(seg.get("departureTime")),
         _norm(seg.get("flightNumber") or seg.get("trainNumber") or seg.get("busNumber")),
     )
 
@@ -67,11 +89,11 @@ def content_key(jsonld: dict[str, Any]) -> tuple[Any, ...]:
         lodging = _reservation_for(jsonld)
         place = lodging[0] if lodging else {}
         pid = _norm(place.get("@id") or place.get("identifier") or place.get("name"))
-        return (pid, _norm(jsonld.get("checkinTime")), _norm(jsonld.get("checkoutTime")))
+        return (pid, _timekey(jsonld.get("checkinTime")), _timekey(jsonld.get("checkoutTime")))
     # Everything else (restaurant, event, generic): title + start + end.
     place0 = (_reservation_for(jsonld) or [{}])[0]
     title = _norm(place0.get("name") or jsonld.get("name"))
-    return (title, _norm(jsonld.get("startTime")), _norm(jsonld.get("endTime")))
+    return (title, _timekey(jsonld.get("startTime")), _timekey(jsonld.get("endTime")))
 
 
 def reservation_identity(jsonld: dict[str, Any]) -> str:
