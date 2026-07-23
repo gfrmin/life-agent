@@ -47,3 +47,20 @@ def test_search_matches_iata_and_confirmation() -> None:
     assert store.search("AMS")
     assert store.search("EXMPL0")
     assert store.search("nowhere") == []
+
+
+def test_multisegment_flight_projects_origin_and_final_destination() -> None:
+    j = {"@type": "FlightReservation", "reservationFor": [
+        {"flightNumber": "EX1", "departureAirport": {"iataCode": "LIS"},
+         "arrivalAirport": {"iataCode": "CDG"}, "departureTime": "2019-08-12T09:00:00Z",
+         "arrivalTime": "2019-08-12T12:00:00Z"},
+        {"flightNumber": "EX2", "departureAirport": {"iataCode": "CDG"},
+         "arrivalAirport": {"iataCode": "JFK"}, "departureTime": "2019-08-12T14:00:00Z",
+         "arrivalTime": "2019-08-12T18:00:00Z"}]}
+    events = [ev.observed("id1", j, fidelity="kayak-api", source_id="k1",
+                          received_at="2019-08-01T00:00:00")]
+    with store.get_db() as conn:
+        store.rebuild(conn, events)
+    row = store.get_reservation("id1")
+    assert row["dep_iata"] == "LIS"
+    assert row["arr_iata"] == "JFK"   # final destination, not the CDG connection

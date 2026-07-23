@@ -83,9 +83,10 @@ def _project_columns(r: Reservation) -> dict[str, Any]:
     t = res_type(j)
     rf = j.get("reservationFor")
     seg0 = _first(rf)
-    dep, arr = seg0.get("departureAirport"), seg0.get("arrivalAirport")
+    seg_last = _last_seg(rf)
+    dep, arr = seg0.get("departureAirport"), seg_last.get("arrivalAirport")
     start = seg0.get("departureTime") or j.get("checkinTime") or j.get("startTime")
-    end = _last_seg(rf).get("arrivalTime") or j.get("checkoutTime") or j.get("endTime")
+    end = seg_last.get("arrivalTime") or j.get("checkoutTime") or j.get("endTime")
     geo = arr.get("geo") if isinstance(arr, dict) else None
     provider = seg0.get("name") or (seg0.get("airline") or {}).get("iataCode") \
         or _first(rf).get("name")
