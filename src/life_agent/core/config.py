@@ -37,7 +37,9 @@ JARVIS_DB_PATH = Path(
 # Append-only event ledger (Observed/Superseded/Cancelled/Amended) — THE source of truth
 # for reservations, keyed on a content-derived reservation identity (not vendor eventId).
 # The timeline is a fold of it. See life_agent/trips/events.py.
-TRIPS_LEDGER = KB / "trips" / "events.jsonl"
+TRIPS_LEDGER = Path(
+    os.environ.get("TRIPS_LEDGER", str(KB / "trips" / "events.jsonl"))
+).expanduser()
 # The trips read-model: a materialised SQLite projection of fold(TRIPS_LEDGER) — rebuildable,
 # derived (NOT truth; safe to delete and rebuild). No PII: reservation content lives under KB.
 TRIPS_DB_PATH = Path(os.environ.get("TRIPS_DB_PATH", str(KB / "trips" / "trips.db"))).expanduser()

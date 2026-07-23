@@ -10,7 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 _WS = re.compile(r"\s+")
@@ -47,7 +47,7 @@ def _timekey(v: Any) -> str:
         return s
     if dt.tzinfo is None:
         return s
-    return dt.astimezone(timezone.utc).isoformat()
+    return dt.astimezone(UTC).isoformat()
 
 
 def _reservation_for(jsonld: dict[str, Any]) -> list[dict[str, Any]]:
@@ -69,9 +69,11 @@ def _endpoint(place: Any) -> str:
 
 
 def _segment_key(seg: dict[str, Any]) -> tuple[str, str, str, str]:
+    dep = seg.get("departureAirport") or seg.get("departureStation") or seg.get("departureBusStop")
+    arr = seg.get("arrivalAirport") or seg.get("arrivalStation") or seg.get("arrivalBusStop")
     return (
-        _endpoint(seg.get("departureAirport") or seg.get("departureStation") or seg.get("departureBusStop")),
-        _endpoint(seg.get("arrivalAirport") or seg.get("arrivalStation") or seg.get("arrivalBusStop")),
+        _endpoint(dep),
+        _endpoint(arr),
         _timekey(seg.get("departureTime")),
         _norm(seg.get("flightNumber") or seg.get("trainNumber") or seg.get("busNumber")),
     )

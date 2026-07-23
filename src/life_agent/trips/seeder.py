@@ -63,7 +63,7 @@ def _ics_dt(v: str) -> str:
 
 
 def _is_container(ev: dict[str, Any]) -> bool:
-    return ev.get("UID", "").startswith("!")
+    return str(ev.get("UID", "")).startswith("!")
 
 
 def _recognise_flight(ev: dict[str, Any]) -> dict[str, Any] | None:
@@ -77,13 +77,16 @@ def _recognise_flight(ev: dict[str, Any]) -> dict[str, Any] | None:
                 "departureDay": _ics_dt(ev.get("DTSTART", ""))[:10]}}
 
 
-def pair_and_recognise(vevents: list[dict[str, Any]]) -> list[tuple[dict[str, Any], str | None, datetime]]:
+_Recognised = tuple[dict[str, Any], str | None, datetime]
+
+
+def pair_and_recognise(vevents: list[dict[str, Any]]) -> list[_Recognised]:
     """Return (minimal_jsonld, trip_id, context_date) for each recognised reservation.
 
     Container events become trip labels (handled by import_ics), not reservations. Hotel
     check-in/check-out VEVENTs are re-paired by their shared UID suffix into one lodging."""
     hotels: dict[str, dict[str, Any]] = {}
-    out: list[tuple[dict[str, Any], str | None, datetime]] = []
+    out: list[_Recognised] = []
     for ev in vevents:
         if _is_container(ev):
             continue
@@ -101,11 +104,14 @@ def pair_and_recognise(vevents: list[dict[str, Any]]) -> list[tuple[dict[str, An
         if flight:
             out.append((flight, tid, cd))
     for slot in hotels.values():
-        name = (slot.get("name") or "").replace("Check in to ", "").replace("Check out from ", "").strip()
+        name = (slot.get("name") or "")
+        name = name.replace("Check in to ", "").replace("Check out from ", "").strip()
+        slot_trip: str | None = slot.get("trip")
+        slot_cd: datetime = slot["cd"]
         out.append(({"@context": "http://schema.org", "@type": "LodgingReservation",
                      "reservationFor": {"@type": "LodgingBusiness", "name": name},
                      "checkinTime": slot.get("checkin"), "checkoutTime": slot.get("checkout")},
-                    slot.get("trip"), slot.get("cd")))
+                    slot_trip, slot_cd))
     return out
 
 

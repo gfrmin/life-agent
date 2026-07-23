@@ -63,7 +63,8 @@ def test_supersede_links_old_to_new_and_updates_current() -> None:
                            received_at="2019-08-01T00:00:00")
     new_jsonld = {"@type": "FlightReservation",
                   "reservationFor": {"flightNumber": "EX9",
-                      "departureAirport": {"iataCode": "LIS"}, "arrivalAirport": {"iataCode": "AMS"},
+                      "departureAirport": {"iataCode": "LIS"},
+                      "arrivalAirport": {"iataCode": "AMS"},
                       "departureTime": "2019-08-12T18:00:00Z"}}
     new = commands.observe(new_jsonld, fidelity="email-kitinerary", source_id="m2",
                            received_at="2019-08-02T00:00:00")

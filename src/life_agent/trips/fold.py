@@ -61,7 +61,8 @@ def fold(events: list[Event]) -> dict[str, Reservation]:
 
     for e in events:
         if e.type == "superseded" and e.identity in reservations:
-            reservations[e.identity] = replace(reservations[e.identity], superseded_by=e.superseded_by)
+            reservations[e.identity] = replace(
+                reservations[e.identity], superseded_by=e.superseded_by)
         elif e.type == "cancelled" and e.identity in reservations:
             reservations[e.identity] = replace(reservations[e.identity], cancelled=True)
         elif e.type == "amended" and e.identity in reservations:
