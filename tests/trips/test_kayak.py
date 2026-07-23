@@ -21,6 +21,10 @@ def test_flight_event_maps_to_schema_org_with_segments() -> None:
     seg = jsonld["reservationFor"]
     seg0 = seg[0] if isinstance(seg, list) else seg
     assert seg0["departureAirport"]["iataCode"] == "LIS"
+    # Bare flight number + separate airline dict, matching kitinerary's own shape (NOT
+    # concatenated "TP123" — a concatenated number would never match the email's identity).
+    assert seg0["flightNumber"] == "123"
+    assert seg0["airline"]["iataCode"] == "TP"
 
 
 def test_import_projects_full_history_at_kayak_fidelity() -> None:
@@ -65,8 +69,11 @@ def test_kayak_and_kitinerary_shaped_email_dedupe_across_formats() -> None:
          "airlineCode": "EX", "flightNumber": "123"}]}]}
     kid = commands.observe(kayak.event_to_jsonld(kayak_event), fidelity="kayak-api",
                            source_id="k-dedup", received_at="2019-08-01T00:00:00")
+    # Real kitinerary output shape: a BARE flight number + a separate `airline` dict (NOT
+    # "EX123" concatenated) — this is what a hand-written "EX123" test would have hidden.
     email_jsonld = {"@type": "FlightReservation", "reservationFor": {"@type": "Flight",
-        "flightNumber": "EX123",
+        "flightNumber": "123",
+        "airline": {"@type": "Airline", "iataCode": "EX", "name": "Example Air"},
         "departureAirport": {"@type": "Airport", "iataCode": "LIS"},
         "arrivalAirport": {"@type": "Airport", "iataCode": "AMS"},
         "departureTime": {"@type": "QDateTime", "@value": "2019-08-12T09:30:00+01:00",
