@@ -1,0 +1,28 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+UID:evt-flight-1@example.com
+SUMMARY:Flight EX 123 LIS to AMS
+DESCRIPTION:Lisbon (LIS) to Amsterdam (AMS)\nhttps://www.kayak.com/trips/!TRIPX
+DTSTART:20190812T093000Z
+DTEND:20190812T134500Z
+END:VEVENT
+BEGIN:VEVENT
+UID:0-hotel-h1@example.com
+SUMMARY:Check in to Hotel Example
+DESCRIPTION:Hotel Example, Amsterdam\nhttps://www.kayak.com/trips/!TRIPX
+DTSTART:20190812T150000Z
+END:VEVENT
+BEGIN:VEVENT
+UID:1-hotel-h1@example.com
+SUMMARY:Check out from Hotel Example
+DESCRIPTION:Hotel Example, Amsterdam\nhttps://www.kayak.com/trips/!TRIPX
+DTSTART:20190815T110000Z
+END:VEVENT
+BEGIN:VEVENT
+UID:!TRIPX@example.com
+SUMMARY:Amsterdam trip
+DTSTART;VALUE=DATE:20190812
+DTEND;VALUE=DATE:20190816
+END:VEVENT
+END:VCALENDAR
