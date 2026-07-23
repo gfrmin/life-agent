@@ -57,13 +57,15 @@ def test_reschedule_reissue_cancel_folds_to_one_current_cancelled() -> None:
     assert len(superseded) == 2  # conf, sched retained
 
 
-def test_amendment_merges_into_jsonld() -> None:
+def test_amendment_deep_merges_without_clobbering_siblings() -> None:
     events = [
         ev.observed("id1", _flight("EX1"), fidelity="kayak-api",
                     source_id="k", received_at="2019-08-01T00:00:00"),
-        ev.amended("id1", {"reservationFor": {"flightNumber": "EX1", "seat": "12A"}}),
+        ev.amended("id1", {"reservationFor": {"seat": "12A"}}),
     ]
-    assert fold(events)["id1"].jsonld["reservationFor"]["seat"] == "12A"
+    merged = fold(events)["id1"].jsonld
+    assert merged["reservationFor"]["flightNumber"] == "EX1"  # sibling preserved (deep-merge)
+    assert merged["reservationFor"]["seat"] == "12A"          # new key merged in
 
 
 def test_kayak_import_never_infers_cancellation_from_absence() -> None:
@@ -72,3 +74,27 @@ def test_kayak_import_never_infers_cancellation_from_absence() -> None:
     events = [ev.observed("id1", _flight("EX1"), fidelity="kayak-api",
                           source_id="k", received_at="2019-08-01T00:00:00")]
     assert fold(events)["id1"].cancelled is False
+
+
+def test_unknown_fidelity_degrades_and_never_crashes() -> None:
+    events = [
+        ev.observed("id1", _flight("EX1"), fidelity="mystery-source",
+                    source_id="x", received_at="2019-08-01T00:00:00"),
+        ev.observed("id1", _flight("EX1"), fidelity="email-kitinerary",
+                    source_id="mail", received_at="2019-08-02T00:00:00"),
+    ]
+    # A ranked fidelity beats an unranked one (which degrades to worst rank), no KeyError.
+    assert fold(events)["id1"].fidelity == "email-kitinerary"
+    # And a lone unranked observation is still retained, not dropped.
+    solo = fold([ev.observed("id2", _flight("EX2"), fidelity="mystery",
+                             source_id="y", received_at="2019-08-01T00:00:00")])
+    assert solo["id2"].fidelity == "mystery"
+
+
+def test_orphan_events_without_observation_are_ignored() -> None:
+    events = [
+        ev.superseded("ghost-old", "ghost-new"),
+        ev.cancelled("ghost", reason="stray"),
+        ev.amended("ghost", {"seat": "1A"}),
+    ]
+    assert fold(events) == {}  # nothing observed -> empty projection, no KeyError
