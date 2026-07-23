@@ -27,6 +27,7 @@ def test_import_projects_full_history_at_kayak_fidelity() -> None:
     assert stats["reservations"] >= 3
     rows = store.timeline()
     assert rows and all(r["fidelity"] == "kayak-api" for r in rows)
+    assert any(r["confirmation"] is None for r in rows)  # sparse-confirmation case still imports
 
 
 def test_reimport_is_idempotent() -> None:
@@ -50,3 +51,26 @@ def test_kayak_and_email_of_same_flight_dedupe_to_one_row() -> None:
     assert len(after) == before  # no new row
     upgraded = store.get_reservation(row["identity"])
     assert upgraded["fidelity"] == "email-kitinerary"
+
+
+def test_kayak_and_kitinerary_shaped_email_dedupe_across_formats() -> None:
+    """The real upgrade path: a Kayak naive-timestamp+IANA-zone flight and a kitinerary
+    QDateTime-dict record of the SAME instant must share ONE identity and upgrade to email."""
+    from life_agent.trips import commands
+    kayak_event = {"type": "flight", "eventId": "XDEDUP", "legs": [{"segments": [
+        {"departureAirportCode": "LIS", "arrivalAirportCode": "AMS",
+         "departureTimestamp": "2019-08-12T09:30:00", "departureTimeZone": "Europe/Lisbon",
+         "marketingCarrierCode": "EX", "flightNumber": "123"}]}]}
+    kid = commands.observe(kayak.event_to_jsonld(kayak_event), fidelity="kayak-api",
+                           source_id="k-dedup", received_at="2019-08-01T00:00:00")
+    email_jsonld = {"@type": "FlightReservation", "reservationFor": {"@type": "Flight",
+        "flightNumber": "EX123",
+        "departureAirport": {"@type": "Airport", "iataCode": "LIS"},
+        "arrivalAirport": {"@type": "Airport", "iataCode": "AMS"},
+        "departureTime": {"@type": "QDateTime", "@value": "2019-08-12T09:30:00+01:00",
+                          "timezone": "Europe/Lisbon"}}}
+    eid = commands.observe(email_jsonld, fidelity="email-kitinerary",
+                           source_id="mail-dedup", received_at="2019-09-01T00:00:00")
+    assert eid == kid                                   # same identity across formats
+    assert len(store.timeline()) == 1                   # one row, not two
+    assert store.get_reservation(kid)["fidelity"] == "email-kitinerary"  # upgraded

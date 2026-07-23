@@ -6,10 +6,13 @@ source provides. Each event is mapped into schema.org JSON-LD in the SAME shape 
 emits, so reservation_identity keys a Kayak flight identically to that flight's own email:
 the two dedupe into one row that silently upgrades to tier 2 when the email is later filed.
 
-The export carries richer data than expected (per-segment IATA + coordinates, IANA timezones,
-operating carrier, seats) — mapped through where present. NB: Kayak returns 0 cancellations
-(260/260 isBooked); this importer therefore NEVER emits a `cancelled` event, and a record's
-absence from a later export is never read as a cancellation.
+The export carries richer data than expected (per-segment IATA, IANA timezones, operating
+carrier, seats). Of these, per-segment timezones are resolved here: a Kayak segment's naive
+local timestamp + separate IANA zone are combined into an offset-aware ISO string so identity
+keys it to the same instant kitinerary derives from the email (see `_resolve_dt`). Coordinates,
+seats, and operating carrier remain deferred to kitinerary enrichment on the email-upgrade path.
+NB: Kayak returns 0 cancellations (260/260 isBooked); this importer therefore NEVER emits a
+`cancelled` event, and a record's absence from a later export is never read as a cancellation.
 
 Kayak event taxonomy -> schema.org: flight -> FlightReservation (segments -> reservationFor
 list), hotel -> LodgingReservation, train -> TrainReservation, restaurant ->
@@ -18,10 +21,30 @@ FoodEstablishmentReservation, else -> generic Reservation (title/start/end).
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from life_agent.trips import commands, store
+
+
+def _resolve_dt(ts: str | None, tz: str | None) -> str | None:
+    """Combine a naive Kayak timestamp with its IANA zone into an offset-aware ISO string, so
+    identity keys it to the same instant kitinerary derives from the email. Already-aware
+    timestamps and missing/unknown zones are returned unchanged. Never raises."""
+    if not ts:
+        return ts
+    try:
+        dt = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return ts
+    if dt.tzinfo is not None or not tz:
+        return ts
+    try:
+        return dt.replace(tzinfo=ZoneInfo(tz)).isoformat()
+    except Exception:
+        return ts
 
 
 def _segment(seg: dict[str, Any]) -> dict[str, Any]:
@@ -31,9 +54,9 @@ def _segment(seg: dict[str, Any]) -> dict[str, Any]:
         "departureAirport": {"@type": "Airport", "iataCode": seg.get("departureAirportCode")},
         "arrivalAirport": {"@type": "Airport", "iataCode": seg.get("arrivalAirportCode")}}
     if seg.get("departureTimestamp"):
-        out["departureTime"] = seg["departureTimestamp"]
+        out["departureTime"] = _resolve_dt(seg["departureTimestamp"], seg.get("departureTimeZone"))
     if seg.get("arrivalTimestamp"):
-        out["arrivalTime"] = seg["arrivalTimestamp"]
+        out["arrivalTime"] = _resolve_dt(seg["arrivalTimestamp"], seg.get("arrivalTimeZone"))
     if carrier and fno:
         out["flightNumber"] = f"{carrier}{fno}"
     elif fno:

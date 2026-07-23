@@ -52,7 +52,7 @@ def test_segment_with_no_flight_number_still_keys() -> None:
         },
     }
     # Must not raise and must produce a stable id (flight_number slot empty, others present).
-    assert content_key(bare)[0][0] == ("LHR", "JFK", "2015-03-01T10:00:00Z", "")
+    assert content_key(bare)[0][0] == ("LHR", "JFK", "2015-03-01T10:00:00+00:00", "")
 
 
 def test_multisegment_flight_orders_segments() -> None:
@@ -81,7 +81,7 @@ def test_train_keys_on_stations_and_number() -> None:
         },
     }
     key = content_key(train)
-    assert key[0][0] == ("Lisboa Oriente", "Porto Campanha", "2019-08-12T09:00:00Z", "IC-100")
+    assert key[0][0] == ("Lisboa Oriente", "Porto Campanha", "2019-08-12T09:00:00+00:00", "IC-100")
 
 
 def test_other_reservation_keys_on_title_start_end() -> None:
@@ -91,4 +91,4 @@ def test_other_reservation_keys_on_title_start_end() -> None:
         "startTime": "2019-08-13T20:00:00Z",
         "endTime": "2019-08-13T22:00:00Z",
     }
-    assert content_key(dinner) == ("Cafe Example", "2019-08-13T20:00:00Z", "2019-08-13T22:00:00Z")
+    assert content_key(dinner) == ("Cafe Example", "2019-08-13T20:00:00+00:00", "2019-08-13T22:00:00+00:00")
