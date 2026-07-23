@@ -16,4 +16,6 @@ def test_extractor_path_env_overridable(monkeypatch) -> None:
     monkeypatch.setenv("KITINERARY_EXTRACTOR", "/opt/kitinerary")
     reloaded = importlib.reload(config)
     assert reloaded.KITINERARY_EXTRACTOR == "/opt/kitinerary"
-    importlib.reload(config)  # restore module state for other tests
+    monkeypatch.delenv("KITINERARY_EXTRACTOR", raising=False)
+    reloaded_default = importlib.reload(config)
+    assert reloaded_default.KITINERARY_EXTRACTOR == "/usr/lib/kf6/kitinerary-extractor"
