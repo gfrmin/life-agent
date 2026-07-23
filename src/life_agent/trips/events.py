@@ -54,6 +54,7 @@ class Event:
                 _SEP.join([
                     self.type, self.identity, self.tx_time,
                     self.superseded_by or "", self.source_id or "", self.reason or "",
+                    json.dumps(self.payload, sort_keys=True),
                 ]).encode("utf-8")
             ).hexdigest()[:16]
             object.__setattr__(self, "event_id", digest)
