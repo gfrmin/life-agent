@@ -63,6 +63,7 @@ Everything below was checked against the real system, not assumed.
 | **Forwards can be resolved to their originals via threading headers** | **Verified** — 200/225 (89%): `X-Forwarded-Message-Id` 136, `In-Reply-To` 52, `References` 2, subject-match 10, 25 unresolved. The two mechanisms split by era (98% of 2018+ carry `X-Forwarded-Message-Id`; 79% of pre-2018 carry `In-Reply-To`/`References`) |
 | **Parsing the original instead of the forward doubles the yield** | **Verified** — 61/225 messages and **80 reservations**, against 28/225 and 39 from the forwards. `LodgingReservation` rises 9 → 46 |
 | **The 2018 cliff is an artifact of the forward, not of the evidence** | **Verified** — resolving to originals lifts pre-2018 from **0 hits to 20**, spanning 2013–2017 |
+| **A large booking population was never forwarded to Kayak at all** | **Verified** — a booking-signal sweep of 1,974 *non-forwarded* Archive messages yields 130 messages / 179 reservations; the yield is recent-heavy (~84 of the hits are 2024–2026, the years the forward habit lapsed). Coverage is therefore Kayak history **plus** forwards **plus** this third, mailbox-only population — so the ingest query must key on booking signal, not on the Kayak ingest address |
 | Kayak ICS feed has no date-range parameter | **Verified negative** — only a per-trip `calendarFeed` route |
 | Kayak offers no self-service data export | **Verified negative** — its privacy-management page offers deletion only |
 | No prior-art Kayak Trips exporter on GitHub | **Verified negative** — all hits scrape flight *search* |
@@ -88,7 +89,16 @@ A query is strictly better on every axis that mattered:
 - **It spans folders**, so archiving a message never removes it from the corpus.
 - **It is fast** — an indexed query over a 690k-message archive returns in seconds, where
   the equivalent `grep` over a slow mount took minutes.
-- **It composes** — `folder:Trips or to:<ingest-address>` covers filing *and* history.
+- **It composes** — `folder:Trips or to:<ingest-address> or <booking-signal>` covers the
+  filing gesture, the Kayak-forward history, *and* bookings that went to neither.
+
+The last clause is not optional. A sweep of 1,974 messages that were **never** forwarded to
+Kayak still yielded 130 bookings (179 reservations), concentrated in 2024–2026 — the years
+the forward habit lapsed. Selecting only on the Kayak ingest address would silently drop the
+entire recent era. So the query carries a booking-signal disjunction (sender domains, subject
+patterns) alongside the address and folder clauses. Its breadth costs nothing downstream:
+extraction is deterministic and returns `[]` for a non-booking, so a false positive is a
+wasted parse, never a wrong record. The exact query string is configuration, not a literal.
 
 The `Trips` folder survives as the filing gesture for new bookings: one drag, works from a
 phone mid-trip. It is now one clause in a query rather than the whole mechanism.
@@ -351,10 +361,15 @@ from gone. Script at `kayak-trips-export.js` (reviewed: same-origin GETs only, n
 third-party calls, no exfiltration, 250ms pacing). Run diagnostic first (`DEEP = false`) to
 confirm `type=owned` returns pre-2024 trips, then `DEEP = true`.
 
-`allParsedEmails` is the prize: Kayak retains the **source confirmation emails** it parsed.
-If those return real message content, they are original airline/hotel confirmations from
-2010 onward, feedable straight into `extract()` — landing in **tier 2**, not tier 4, and
-recovering high-fidelity data for trips whose emails are long gone from the mailbox.
+`allParsedEmails` was expected to be the prize — Kayak retains the **source confirmation
+emails** it parsed, which would land historical bookings in tier 2. **The `DEEP` run
+disproved it**: `allParsedEmails` and `allOrderDetails` returned null on 260/260 events. The
+source emails are not recoverable through the API. The high-fidelity historical recovery
+comes instead from the owner's own mailbox — forwards resolved to their originals, plus the
+never-forwarded booking population — which is why the ingest design carries that weight.
+
+What Phase 0 *does* deliver is the full structured history: **115 trips, 260 events, reaching
+2010**, all at tier 3 (`kayak-api`). That is the coverage floor nothing else provides.
 
 Caveat: undocumented internal API, and Kayak's ToS prohibits automated access. It is the
 owner's own data from their own session; if 429s appear, raise `DELAY_MS` rather than push.
@@ -404,10 +419,14 @@ private config, following the `data-sources.yaml` convention.
 
 ## Open questions
 
-1. **Does `type=owned` actually return 2010-era trips?** The ownership-vs-recency reading is
-   inferred from the frontend bundle's enum, not observed. Phase 0's diagnostic run settles
-   it. If it does not, per-trip `calendarFeed` over discovered trip IDs is the fallback.
-2. **Does `allParsedEmails` return raw RFC822, or Kayak's post-parse structure?** Determines
-   whether the historical corpus lands in tier 2 or tier 3. Unknown until an authenticated
-   run.
+Both of Phase 0's blocking unknowns are now **resolved** by the export runs; they are kept
+here as settled record.
+
+1. ~~**Does `type=owned` actually return 2010-era trips?**~~ **Resolved: yes.** The export
+   returned 115 trips / 260 events with an unbroken 2010→2026 histogram. The `calendarFeed`
+   fallback is not needed.
+2. ~~**Does `allParsedEmails` return raw RFC822, or Kayak's post-parse structure?**~~
+   **Resolved: neither — it returns null** (260/260, `DEEP` run). The historical corpus
+   cannot land in tier 2 via the API; it lands in tier 3 from the export and is upgraded per
+   record from the mailbox. See Phase 0.
 3. **Which flight-status provider** for Phase 3. Deferred; unblocks nothing earlier.

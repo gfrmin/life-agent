@@ -60,7 +60,10 @@ if (!window.__kayakCsrfHook) {
 
 (async () => {
   // Set to true to additionally pull per-event order details and the parsed
-  // source emails. Much slower and much chattier; leave false for a first pass.
+  // source emails. Much slower and much chattier. NOTE: a DEEP run on this
+  // account returned null for allParsedEmails/allOrderDetails on 260/260 events
+  // — Kayak does not expose the source emails via the API — so DEEP buys nothing
+  // here; leave false. Kept as a switch in case another account behaves differently.
   const DEEP = false;
   const DELAY_MS = 250; // be polite; raise if you start seeing 429s
   const TIMEOUT_MS = 20000; // no request may hang the whole run
