@@ -47,6 +47,26 @@
           },
           "checkinDate": "2019-08-12T15:00:00",
           "checkoutDate": "2019-08-15T11:00:00"
+        },
+        {
+          "type": "flight",
+          "eventId": "loopReturnSynth01",
+          "confirmationNumber": "LOOP007",
+          "legs": [
+            {
+              "segments": [
+                {
+                  "departureAirportCode": "AMS",
+                  "arrivalAirportCode": "LIS",
+                  "departureTimestamp": "2019-08-19T10:00:00",
+                  "departureTimeZone": "Europe/Amsterdam",
+                  "arrivalTimestamp": "2019-08-19T12:30:00",
+                  "marketingCarrierCode": "TP",
+                  "flightNumber": "124"
+                }
+              ]
+            }
+          ]
         }
       ]
     },
