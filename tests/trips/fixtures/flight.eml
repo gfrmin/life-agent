@@ -1,0 +1,49 @@
+From: Example Air <noreply@example.com>
+To: traveller@example.org
+Subject: Your booking EXMPL0 -- LIS to AMS
+Date: Mon, 05 Aug 2019 10:00:00 +0100
+MIME-Version: 1.0
+Content-Type: text/html; charset=utf-8
+
+<html>
+<head>
+<script type="application/ld+json">
+[{
+  "@context": "http://schema.org",
+  "@type": "FlightReservation",
+  "reservationNumber": "EXMPL0",
+  "reservationStatus": "http://schema.org/Confirmed",
+  "underName": {
+    "@type": "Person",
+    "name": "PAX EXAMPLE"
+  },
+  "reservationFor": {
+    "@type": "Flight",
+    "flightNumber": "123",
+    "airline": {
+      "@type": "Airline",
+      "name": "Example Air",
+      "iataCode": "EX"
+    },
+    "departureAirport": {
+      "@type": "Airport",
+      "name": "Lisbon Airport",
+      "iataCode": "LIS"
+    },
+    "arrivalAirport": {
+      "@type": "Airport",
+      "name": "Amsterdam Airport Schiphol",
+      "iataCode": "AMS"
+    },
+    "departureTime": "2019-08-12T09:30:00+01:00",
+    "arrivalTime": "2019-08-12T13:45:00+02:00"
+  }
+}]
+</script>
+</head>
+<body>
+<p>Dear PAX EXAMPLE,</p>
+<p>Thank you for booking with Example Air. Your booking reference is EXMPL0.</p>
+<p>Flight EX 123 departs Lisbon (LIS) on 12 Aug at 09:30 and arrives in Amsterdam (AMS) at 13:45.</p>
+</body>
+</html>
