@@ -40,3 +40,8 @@ def test_search_subcommand(capsys) -> None:
 
 def test_unknown_command_returns_nonzero() -> None:
     assert cli.main(["frobnicate"]) != 0
+
+
+def test_help_exits_zero(capsys) -> None:
+    assert cli.main(["--help"]) == 0
+    assert cli.main(["-h"]) == 0
