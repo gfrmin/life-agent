@@ -10,11 +10,12 @@ _FIX = Path(__file__).parent / "fixtures"
 
 
 def test_flight_event_maps_to_schema_org_with_segments() -> None:
-    event = {"type": "flight", "eventId": "CKNpOC",
+    event = {"eventType": "flight", "eventId": "CKNpOC",
              "legs": [{"segments": [
-                 {"departureAirportCode": "LIS", "arrivalAirportCode": "AMS",
-                  "departureTimestamp": "2019-08-12T09:30:00", "departureTimeZone": "Europe/Lisbon",
-                  "marketingCarrierCode": "TP", "flightNumber": "123"}]}]}
+                 {"departureLocation": {"airportCode": "LIS"},
+                  "arrivalLocation": {"airportCode": "AMS"},
+                  "departureDate": "2019-08-12T09:30:00", "departureTimezone": "Europe/Lisbon",
+                  "airlineCode": "TP", "flightNumber": "123"}]}]}
     jsonld = kayak.event_to_jsonld(event)
     assert jsonld["@type"] == "FlightReservation"
     seg = jsonld["reservationFor"]
@@ -57,10 +58,11 @@ def test_kayak_and_kitinerary_shaped_email_dedupe_across_formats() -> None:
     """The real upgrade path: a Kayak naive-timestamp+IANA-zone flight and a kitinerary
     QDateTime-dict record of the SAME instant must share ONE identity and upgrade to email."""
     from life_agent.trips import commands
-    kayak_event = {"type": "flight", "eventId": "XDEDUP", "legs": [{"segments": [
-        {"departureAirportCode": "LIS", "arrivalAirportCode": "AMS",
-         "departureTimestamp": "2019-08-12T09:30:00", "departureTimeZone": "Europe/Lisbon",
-         "marketingCarrierCode": "EX", "flightNumber": "123"}]}]}
+    kayak_event = {"eventType": "flight", "eventId": "XDEDUP", "legs": [{"segments": [
+        {"departureLocation": {"airportCode": "LIS"},
+         "arrivalLocation": {"airportCode": "AMS"},
+         "departureDate": "2019-08-12T09:30:00", "departureTimezone": "Europe/Lisbon",
+         "airlineCode": "EX", "flightNumber": "123"}]}]}
     kid = commands.observe(kayak.event_to_jsonld(kayak_event), fidelity="kayak-api",
                            source_id="k-dedup", received_at="2019-08-01T00:00:00")
     email_jsonld = {"@type": "FlightReservation", "reservationFor": {"@type": "Flight",

@@ -2,33 +2,54 @@
   "trips": [
     {
       "tripId": "trip-synth-001",
-      "name": "Lisbon Loop (synthetic)",
-      "startDate": "2019-08-12",
-      "endDate": "2019-08-20",
       "events": [
         {
-          "type": "flight",
           "eventId": "CKNpOC",
+          "eventType": "flight",
+          "isCancelled": false,
+          "bookingDetail": {"bookingReferenceNumber": "ZZZ999"},
           "confirmationNumber": "ZZZ999",
+          "startDate": "2019-08-12T09:30:00",
+          "startTimezone": "Europe/Lisbon",
+          "endDate": "2019-08-12T18:00:00",
+          "endTimezone": "Europe/Amsterdam",
           "legs": [
             {
               "segments": [
                 {
-                  "departureAirportCode": "LIS",
-                  "arrivalAirportCode": "AMS",
-                  "departureTimestamp": "2019-08-12T09:30:00",
-                  "departureTimeZone": "Europe/Lisbon",
-                  "arrivalTimestamp": "2019-08-12T13:15:00",
-                  "marketingCarrierCode": "TP",
+                  "departureLocation": {
+                    "airportCode": "LIS",
+                    "airportName": "Fictional Lisbon Airport",
+                    "name": "Lisbon"
+                  },
+                  "arrivalLocation": {
+                    "airportCode": "AMS",
+                    "airportName": "Fictional Amsterdam Airport",
+                    "name": "Amsterdam"
+                  },
+                  "departureDate": "2019-08-12T09:30:00",
+                  "departureTimezone": "Europe/Lisbon",
+                  "arrivalDate": "2019-08-12T13:15:00",
+                  "arrivalTimezone": "Europe/Amsterdam",
+                  "airlineCode": "TP",
                   "flightNumber": "123"
                 },
                 {
-                  "departureAirportCode": "AMS",
-                  "arrivalAirportCode": "JFK",
-                  "departureTimestamp": "2019-08-12T15:00:00",
-                  "departureTimeZone": "Europe/Amsterdam",
-                  "arrivalTimestamp": "2019-08-12T18:00:00",
-                  "marketingCarrierCode": "KL",
+                  "departureLocation": {
+                    "airportCode": "AMS",
+                    "airportName": "Fictional Amsterdam Airport",
+                    "name": "Amsterdam"
+                  },
+                  "arrivalLocation": {
+                    "airportCode": "JFK",
+                    "airportName": "Fictional New York Airport",
+                    "name": "New York"
+                  },
+                  "departureDate": "2019-08-12T15:00:00",
+                  "departureTimezone": "Europe/Amsterdam",
+                  "arrivalDate": "2019-08-12T18:00:00",
+                  "arrivalTimezone": "America/New_York",
+                  "airlineCode": "KL",
                   "flightNumber": "643"
                 }
               ]
@@ -36,32 +57,46 @@
           ]
         },
         {
-          "type": "hotel",
           "eventId": "hEvtSynth01",
+          "eventType": "hotel",
+          "isCancelled": false,
           "confirmationNumber": "HTL0042",
           "hotelName": "Fictional Harbor Inn",
+          "startDate": "2019-08-12T15:00:00",
+          "endDate": "2019-08-15T11:00:00",
           "address": {
-            "@type": "PostalAddress",
-            "addressLocality": "Amsterdam",
-            "addressCountry": "NL"
-          },
-          "checkinDate": "2019-08-12T15:00:00",
-          "checkoutDate": "2019-08-15T11:00:00"
+            "longAddress": "1 Fictional Harbor Way, Amsterdam, NL",
+            "coordinates": {"lat": 52.37, "lng": 4.89}
+          }
         },
         {
-          "type": "flight",
           "eventId": "loopReturnSynth01",
+          "eventType": "flight",
+          "isCancelled": false,
           "confirmationNumber": "LOOP007",
+          "startDate": "2019-08-19T10:00:00",
+          "startTimezone": "Europe/Amsterdam",
+          "endDate": "2019-08-19T12:30:00",
+          "endTimezone": "Europe/Lisbon",
           "legs": [
             {
               "segments": [
                 {
-                  "departureAirportCode": "AMS",
-                  "arrivalAirportCode": "LIS",
-                  "departureTimestamp": "2019-08-19T10:00:00",
-                  "departureTimeZone": "Europe/Amsterdam",
-                  "arrivalTimestamp": "2019-08-19T12:30:00",
-                  "marketingCarrierCode": "TP",
+                  "departureLocation": {
+                    "airportCode": "AMS",
+                    "airportName": "Fictional Amsterdam Airport",
+                    "name": "Amsterdam"
+                  },
+                  "arrivalLocation": {
+                    "airportCode": "LIS",
+                    "airportName": "Fictional Lisbon Airport",
+                    "name": "Lisbon"
+                  },
+                  "departureDate": "2019-08-19T10:00:00",
+                  "departureTimezone": "Europe/Amsterdam",
+                  "arrivalDate": "2019-08-19T12:30:00",
+                  "arrivalTimezone": "Europe/Lisbon",
+                  "airlineCode": "TP",
                   "flightNumber": "124"
                 }
               ]
@@ -72,29 +107,41 @@
     },
     {
       "tripId": "trip-synth-002",
-      "name": "Fall Getaway (synthetic)",
-      "startDate": "2020-10-01",
-      "endDate": "2020-10-05",
       "events": [
         {
-          "type": "activity",
           "eventId": "actEvtSynth01",
-          "name": "Museum Visit (synthetic)",
-          "startTimestamp": "2020-10-02T10:00:00",
-          "endTimestamp": "2020-10-02T12:00:00"
+          "eventType": "custom",
+          "isCancelled": false,
+          "eventTitle": "Museum Visit (synthetic)",
+          "startDate": "2020-10-02T10:00:00",
+          "endDate": "2020-10-02T12:00:00"
         },
         {
-          "type": "flight",
           "eventId": "degFlightSynth01",
+          "eventType": "flight",
+          "isCancelled": false,
+          "startDate": "2020-10-01T08:00:00",
+          "startTimezone": "America/Chicago",
+          "endDate": "2020-10-01T09:45:00",
+          "endTimezone": "America/Denver",
           "legs": [
             {
               "segments": [
                 {
-                  "departureAirportCode": "ORD",
-                  "arrivalAirportCode": "DEN",
-                  "departureTimestamp": "2020-10-01T08:00:00",
-                  "departureTimeZone": "America/Chicago",
-                  "arrivalTimestamp": "2020-10-01T09:45:00"
+                  "departureLocation": {
+                    "airportCode": "ORD",
+                    "airportName": "Fictional Chicago Airport",
+                    "name": "Chicago"
+                  },
+                  "arrivalLocation": {
+                    "airportCode": "DEN",
+                    "airportName": "Fictional Denver Airport",
+                    "name": "Denver"
+                  },
+                  "departureDate": "2020-10-01T08:00:00",
+                  "departureTimezone": "America/Chicago",
+                  "arrivalDate": "2020-10-01T09:45:00",
+                  "arrivalTimezone": "America/Denver"
                 }
               ]
             }
