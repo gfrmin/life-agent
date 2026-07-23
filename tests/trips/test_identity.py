@@ -1,7 +1,7 @@
 """Content-keyed identity: same booked thing -> same id, regardless of provenance."""
 from __future__ import annotations
 
-from life_agent.trips.identity import content_key, reservation_identity, res_type
+from life_agent.trips.identity import content_key, res_type, reservation_identity
 
 _FLIGHT = {
     "@type": "FlightReservation",
@@ -91,4 +91,5 @@ def test_other_reservation_keys_on_title_start_end() -> None:
         "startTime": "2019-08-13T20:00:00Z",
         "endTime": "2019-08-13T22:00:00Z",
     }
-    assert content_key(dinner) == ("Cafe Example", "2019-08-13T20:00:00+00:00", "2019-08-13T22:00:00+00:00")
+    assert content_key(dinner) == (
+        "Cafe Example", "2019-08-13T20:00:00+00:00", "2019-08-13T22:00:00+00:00")
