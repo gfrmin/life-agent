@@ -18,11 +18,15 @@ def test_full_export_imports_and_dedupes() -> None:
     if not src:
         pytest.skip("set TRIPS_KAYAK_EXPORT to the real export to run acceptance")
     stats = kayak.import_export(Path(src).expanduser())
-    # The design measured 260 events -> 259 identities (one true duplicate collapses).
-    assert stats["reservations"] >= 250
+    assert stats["reservations"] >= 250          # ~260 events imported
+    assert stats["skipped"] == 0                 # every eventType recognised
     rows = store.timeline()
-    assert len(rows) <= stats["reservations"]  # dedup never inflates
-    # Re-import is a no-op.
+    # ~260 events -> ~259 distinct current reservations (one true duplicate). A collapse
+    # to a handful of rows (the eventType/field-name bug) must fail loudly here.
+    assert len(rows) >= 250, f"expected ~259 distinct reservations, got {len(rows)}"
+    assert len(rows) <= stats["reservations"]    # dedup never inflates
+    types = {r["res_type"] for r in rows}
+    assert "FlightReservation" in types and "LodgingReservation" in types
     again = len(store.timeline())
     kayak.import_export(Path(src).expanduser())
-    assert len(store.timeline()) == again
+    assert len(store.timeline()) == again        # re-import idempotent

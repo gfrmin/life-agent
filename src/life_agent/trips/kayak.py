@@ -6,17 +6,41 @@ source provides. Each event is mapped into schema.org JSON-LD in the SAME shape 
 emits, so reservation_identity keys a Kayak flight identically to that flight's own email:
 the two dedupe into one row that silently upgrades to tier 2 when the email is later filed.
 
-The export carries richer data than expected (per-segment IATA, IANA timezones, operating
-carrier, seats). Of these, per-segment timezones are resolved here: a Kayak segment's naive
-local timestamp + separate IANA zone are combined into an offset-aware ISO string so identity
-keys it to the same instant kitinerary derives from the email (see `_resolve_dt`). Coordinates,
-seats, and operating carrier remain deferred to kitinerary enrichment on the email-upgrade path.
-NB: Kayak returns 0 cancellations (260/260 isBooked); this importer therefore NEVER emits a
-`cancelled` event, and a record's absence from a later export is never read as a cancellation.
+Real export field names (profiled from the operator's actual export — an earlier version of
+this module was written against an ASSUMED shape that didn't match; the acceptance test against
+the real file caught it: every event fell to the generic branch, collapsing all 260 events to
+one identical content key):
+  - discriminator: `event["eventType"]` in {"flight", "hotel", "train", "custom", "restaurant"}
+    (NOT `event["type"]`).
+  - confirmation: `event["confirmationNumber"]` or
+    `event["bookingDetail"]["bookingReferenceNumber"]`.
+  - every event has `eventId` and `startDate` (naive local ISO); flights/trains also carry
+    `startTimezone`/`endTimezone` (IANA) at the event level and per-segment
+    `departureTimezone`/`arrivalTimezone`.
+  - flight/train segments: `event["legs"][i]["segments"][j]`, each with `departureLocation` /
+    `arrivalLocation` dicts (`airportCode`, `airportName`, `name` = city), `departureDate` /
+    `arrivalDate` (naive local ISO), `departureTimezone` / `arrivalTimezone` (IANA). Flight
+    segments add `airlineCode` + `flightNumber`; train segments have `carrier`, no flight number.
+  - hotel: `hotelName`, `startDate` (check-in) / `endDate` (check-out), `address` dict
+    (`longAddress`, `coordinates.{lat,lng}`), `confirmationNumber`.
+  - custom: `eventTitle`, `startDate`/`endDate`.
+  - restaurant: `placeDescription` is the name (`location.name` is typically empty), `startDate`.
+  - trip level: `trip["tripId"]` is present; trip name/dates are NOT top-level in the real
+    export, so `upsert_trip` is called with `name`/`start_date`/`end_date` all `None` —
+    cosmetic only, deferred to Phase 1.
+
+Per-segment timezones are resolved here: a Kayak segment's naive local timestamp + separate
+IANA zone are combined into an offset-aware ISO string so identity keys it to the same instant
+kitinerary derives from the email (see `_resolve_dt`). Coordinates, seats, and operating carrier
+remain deferred to kitinerary enrichment on the email-upgrade path. NB: Kayak returns 0
+cancellations (260/260 isBooked); this importer therefore NEVER emits a `cancelled` event, and a
+record's absence from a later export is never read as a cancellation.
 
 Kayak event taxonomy -> schema.org: flight -> FlightReservation (segments -> reservationFor
-list), hotel -> LodgingReservation, train -> TrainReservation, restaurant ->
-FoodEstablishmentReservation, else -> generic Reservation (title/start/end).
+list), train -> TrainReservation (segments -> reservationFor list), hotel ->
+LodgingReservation, restaurant -> FoodEstablishmentReservation, else (custom/unknown) ->
+generic Reservation (title/start/end) — the else branch never returns None, so nothing is
+silently dropped even for an eventType this module doesn't yet know about.
 """
 from __future__ import annotations
 
@@ -48,68 +72,83 @@ def _resolve_dt(ts: str | None, tz: str | None) -> str | None:
 
 
 def _segment(seg: dict[str, Any]) -> dict[str, Any]:
-    carrier = seg.get("marketingCarrierCode", "")
-    fno = seg.get("flightNumber", "")
+    dep = seg.get("departureLocation") or {}
+    arr = seg.get("arrivalLocation") or {}
     out: dict[str, Any] = {"@type": "Flight",
-        "departureAirport": {"@type": "Airport", "iataCode": seg.get("departureAirportCode")},
-        "arrivalAirport": {"@type": "Airport", "iataCode": seg.get("arrivalAirportCode")}}
-    if seg.get("departureTimestamp"):
-        out["departureTime"] = _resolve_dt(seg["departureTimestamp"], seg.get("departureTimeZone"))
-    if seg.get("arrivalTimestamp"):
-        out["arrivalTime"] = _resolve_dt(seg["arrivalTimestamp"], seg.get("arrivalTimeZone"))
-    if carrier and fno:
-        out["flightNumber"] = f"{carrier}{fno}"
-    elif fno:
-        out["flightNumber"] = str(fno)
+        "departureAirport": {"@type": "Airport", "iataCode": dep.get("airportCode"),
+                             "name": dep.get("airportName") or dep.get("name")},
+        "arrivalAirport": {"@type": "Airport", "iataCode": arr.get("airportCode"),
+                           "name": arr.get("airportName") or arr.get("name")}}
+    dt = _resolve_dt(seg.get("departureDate"), seg.get("departureTimezone"))
+    at = _resolve_dt(seg.get("arrivalDate"), seg.get("arrivalTimezone"))
+    if dt:
+        out["departureTime"] = dt
+    if at:
+        out["arrivalTime"] = at
+    ac, fn = seg.get("airlineCode") or "", seg.get("flightNumber") or ""
+    if ac and fn:
+        out["flightNumber"] = f"{ac}{fn}"
+    elif fn:
+        out["flightNumber"] = str(fn)
+    return out
+
+
+def _station_segment(seg: dict[str, Any]) -> dict[str, Any]:
+    dep = seg.get("departureLocation") or {}
+    arr = seg.get("arrivalLocation") or {}
+    dep_name = dep.get("name") or dep.get("airportName")
+    arr_name = arr.get("name") or arr.get("airportName")
+    out: dict[str, Any] = {"@type": "TrainTrip",
+        "departureStation": {"@type": "TrainStation", "name": dep_name},
+        "arrivalStation": {"@type": "TrainStation", "name": arr_name}}
+    dt = _resolve_dt(seg.get("departureDate"), seg.get("departureTimezone"))
+    at = _resolve_dt(seg.get("arrivalDate"), seg.get("arrivalTimezone"))
+    if dt:
+        out["departureTime"] = dt
+    if at:
+        out["arrivalTime"] = at
     return out
 
 
 def event_to_jsonld(event: dict[str, Any]) -> dict[str, Any] | None:
-    kind = event.get("type", "")
-    conf = event.get("confirmationNumber") or event.get("bookingReferenceNumber")
-
+    kind = event.get("eventType", "")
+    booking = event.get("bookingDetail") or {}
+    conf = event.get("confirmationNumber") or booking.get("bookingReferenceNumber")
     if kind == "flight":
         segs = [_segment(s) for leg in event.get("legs", []) for s in leg.get("segments", [])]
         if not segs:
             return None
         jsonld: dict[str, Any] = {"@type": "FlightReservation",
                                   "reservationFor": segs if len(segs) > 1 else segs[0]}
-    elif kind == "hotel":
-        jsonld = {"@type": "LodgingReservation",
-                  "reservationFor": {"@type": "LodgingBusiness",
-                      "name": event.get("hotelName") or event.get("name"),
-                      "address": event.get("address")},
-                  "checkinTime": event.get("checkinDate"),
-                  "checkoutTime": event.get("checkoutDate")}
     elif kind == "train":
-        jsonld = {"@type": "TrainReservation", "reservationFor": {"@type": "TrainTrip",
-            "departureStation": {"name": event.get("departureStation")},
-            "arrivalStation": {"name": event.get("arrivalStation")},
-            "departureTime": event.get("departureTimestamp")}}
+        segs = [_station_segment(s)
+                for leg in event.get("legs", []) for s in leg.get("segments", [])]
+        if not segs:
+            return None
+        jsonld = {"@type": "TrainReservation", "reservationFor": segs if len(segs) > 1 else segs[0]}
+    elif kind == "hotel":
+        addr = event.get("address") or {}
+        jsonld = {"@type": "LodgingReservation",
+                  "reservationFor": {"@type": "LodgingBusiness", "name": event.get("hotelName"),
+                                     "address": addr.get("longAddress")},
+                  "checkinTime": event.get("startDate"), "checkoutTime": event.get("endDate")}
     elif kind == "restaurant":
+        location = event.get("location") or {}
+        name = event.get("placeDescription") or location.get("name")
         jsonld = {"@type": "FoodEstablishmentReservation",
-                  "reservationFor": {"@type": "FoodEstablishment", "name": event.get("name")},
-                  "startTime": event.get("startTimestamp")}
-    else:
-        jsonld = {"@type": "Reservation", "name": event.get("name") or event.get("title"),
-                  "startTime": event.get("startTimestamp"), "endTime": event.get("endTimestamp")}
-
+                  "reservationFor": {"@type": "FoodEstablishment", "name": name},
+                  "startTime": event.get("startDate")}
+    else:  # custom / unknown -> generic (never None, so nothing is silently dropped)
+        name = event.get("eventTitle") or event.get("name") or event.get("placeDescription")
+        jsonld = {"@type": "Reservation", "name": name,
+                  "startTime": event.get("startDate"), "endTime": event.get("endDate")}
     if conf:
         jsonld["reservationNumber"] = conf
     return jsonld
 
 
 def _received_at(event: dict[str, Any]) -> str:
-    """Order key. Kayak has no ingest timestamp; use the event's own start so a later email
-    (with a real Date:) sorts after it under equal fidelity — though fidelity alone decides."""
-    for k in ("departureTimestamp", "checkinDate", "startTimestamp"):
-        if event.get(k):
-            return str(event[k])
-    for leg in event.get("legs", []):
-        for s in leg.get("segments", []):
-            if s.get("departureTimestamp"):
-                return str(s["departureTimestamp"])
-    return "1970-01-01T00:00:00"
+    return str(event.get("startDate") or "1970-01-01T00:00:00")
 
 
 def import_export(path: Path) -> dict[str, int]:
