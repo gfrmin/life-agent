@@ -20,7 +20,13 @@ one identical content key):
   - flight/train segments: `event["legs"][i]["segments"][j]`, each with `departureLocation` /
     `arrivalLocation` dicts (`airportCode`, `airportName`, `name` = city), `departureDate` /
     `arrivalDate` (naive local ISO), `departureTimezone` / `arrivalTimezone` (IANA). Flight
-    segments add `airlineCode` + `flightNumber`; train segments have `carrier`, no flight number.
+    segments add `airlineCode` + `flightNumber` — mapped as a BARE `flightNumber` plus a
+    separate `airline: {iataCode}` dict (NOT concatenated), matching kitinerary's own shape
+    (kitinerary emits `flightNumber="123"` and `airline={"iataCode":"EX",...}` separately; an
+    earlier version of this module concatenated them into `"EX123"`, which meant a Kayak flight
+    and its own email NEVER shared an identity — `identity._segment_key` keys on `flightNumber`
+    verbatim, so a mismatched format silently broke the email-upgrade path for every real
+    flight). Train segments have `carrier`, no flight number.
   - hotel: `hotelName`, `startDate` (check-in) / `endDate` (check-out), `address` dict
     (`longAddress`, `coordinates.{lat,lng}`), `confirmationNumber`.
   - custom: `eventTitle`, `startDate`/`endDate`.
@@ -85,11 +91,12 @@ def _segment(seg: dict[str, Any]) -> dict[str, Any]:
         out["departureTime"] = dt
     if at:
         out["arrivalTime"] = at
-    ac, fn = seg.get("airlineCode") or "", seg.get("flightNumber") or ""
-    if ac and fn:
-        out["flightNumber"] = f"{ac}{fn}"
-    elif fn:
-        out["flightNumber"] = str(fn)
+    fn = seg.get("flightNumber") or ""
+    if fn:
+        out["flightNumber"] = str(fn)                       # bare number, matching kitinerary
+    ac = seg.get("airlineCode")
+    if ac:
+        out["airline"] = {"@type": "Airline", "iataCode": ac}   # carrier separate, like kitinerary
     return out
 
 
