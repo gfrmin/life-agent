@@ -42,4 +42,45 @@ def test_cancel_marks_cancelled() -> None:
     ident = commands.observe(_flight(), fidelity="email-kitinerary", source_id="m1",
                              received_at="2019-08-01T00:00:00")
     commands.cancel(ident, "airline cancelled", source_id="m2")
+    assert len(ev.load(commands.LEDGER_PATH)) == 2  # observed + cancelled, append-only
     assert store.get_reservation(ident)["cancelled"] is True
+
+
+def test_amend_appends_and_merges_into_projection() -> None:
+    ident = commands.observe(_flight(), fidelity="kayak-api", source_id="k1",
+                             received_at="2019-08-01T00:00:00")
+    returned = commands.amend(ident, {"reservationFor": {"seatNumber": "12A"}})
+    assert returned == ident
+    assert len(ev.load(commands.LEDGER_PATH)) == 2  # observed + amended
+    import json
+    merged = json.loads(store.get_reservation(ident)["jsonld"])
+    assert merged["reservationFor"]["seatNumber"] == "12A"      # amended field merged
+    assert merged["reservationFor"]["flightNumber"] == "EX1"    # sibling preserved
+
+
+def test_supersede_links_old_to_new_and_updates_current() -> None:
+    old = commands.observe(_flight(), fidelity="email-kitinerary", source_id="m1",
+                           received_at="2019-08-01T00:00:00")
+    new_jsonld = {"@type": "FlightReservation",
+                  "reservationFor": {"flightNumber": "EX9",
+                      "departureAirport": {"iataCode": "LIS"}, "arrivalAirport": {"iataCode": "AMS"},
+                      "departureTime": "2019-08-12T18:00:00Z"}}
+    new = commands.observe(new_jsonld, fidelity="email-kitinerary", source_id="m2",
+                           received_at="2019-08-02T00:00:00")
+    commands.supersede(old, new)
+    assert len(ev.load(commands.LEDGER_PATH)) == 3  # two observed + one superseded
+    assert store.get_reservation(old)["superseded_by"] == new  # ancestor retained + linked
+    current = {r["identity"] for r in store.timeline()}
+    assert current == {new}  # only the successor is current
+
+
+def test_observe_persists_source_metadata_across_rebuild() -> None:
+    commands.observe(_flight(), fidelity="email-kitinerary", source_id="mail-1",
+                     received_at="2019-08-02T00:00:00",
+                     source_meta={"message_id": "<abc@example.com>", "kind": "email"})
+    with store.get_db() as conn:
+        row = conn.execute(
+            "SELECT message_id, kind FROM source WHERE source_id = ?", ("mail-1",)).fetchone()
+    assert row is not None
+    assert row["message_id"] == "<abc@example.com>"  # survived the rebuild in observe()
+    assert row["kind"] == "email"
