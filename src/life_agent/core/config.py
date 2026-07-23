@@ -33,6 +33,18 @@ JARVIS_DB_PATH = Path(
     os.environ.get("JARVIS_DB_PATH", str(KB / "jarvis" / "jarvis.db"))
 ).expanduser()
 
+# --- Trips (the itinerary faculty) ---
+# Append-only event ledger (Observed/Superseded/Cancelled/Amended) — THE source of truth
+# for reservations, keyed on a content-derived reservation identity (not vendor eventId).
+# The timeline is a fold of it. See life_agent/trips/events.py.
+TRIPS_LEDGER = KB / "trips" / "events.jsonl"
+# The trips read-model: a materialised SQLite projection of fold(TRIPS_LEDGER) — rebuildable,
+# derived (NOT truth; safe to delete and rebuild). No PII: reservation content lives under KB.
+TRIPS_DB_PATH = Path(os.environ.get("TRIPS_DB_PATH", str(KB / "trips" / "trips.db"))).expanduser()
+# The kitinerary extractor binary — an installed system tool wrapped as a producer (the
+# extraction seam). Default is the KF6 install path; override per-machine via the env var.
+KITINERARY_EXTRACTOR = os.environ.get("KITINERARY_EXTRACTOR", "/usr/lib/kf6/kitinerary-extractor")
+
 # --- Calibration (the Bayesian foundations' empirical leg) ---
 # The outcomes log (bayesian-foundations §8): append-only third evidence stream — graded
 # outcomes attributed to instrument identities. It cannot be backfilled, and its append
