@@ -34,6 +34,7 @@ def test_round_trip_through_ledger(tmp_path: Path) -> None:
     ev.append(ledger, events)
     loaded = ev.load(ledger)
     assert [e.type for e in loaded] == ["observed", "superseded", "cancelled", "amended"]
+    assert loaded[0].payload == {"@type": "FlightReservation"}
     assert loaded[1].superseded_by == "id2"
     assert loaded[3].payload["fields"] == {"seatNumber": "12A"}
 
