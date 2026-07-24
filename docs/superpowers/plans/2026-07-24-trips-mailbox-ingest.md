@@ -4,7 +4,7 @@
 
 **Goal:** Grow the trips timeline from the mailbox — a notmuch-query-selected, forward-resolved, idempotent batch ingest that upgrades reservations to `email-kitinerary` fidelity through the existing `extract` → `observe` seams.
 
-**Architecture:** Three new modules under `src/life_agent/trips/`: a subprocess adapter over the `notmuch` binary (`notmuch.py`), pure forward→original resolution (`forwards.py`), and the orchestration that wires selection → resolution → `extract()` → `commands.observe()` (`mailbox.py`). A config seam (`core/config.py` + `config/data-sources.example.yaml`) supplies the owner-specific query. A `trips ingest-mail` CLI subcommand drives it. No existing seam is modified — this is pure addition.
+**Architecture:** Three new modules under `src/life_agent/trips/`: a subprocess adapter over the `notmuch` binary (`notmuch.py`), pure forward→original resolution (`forwards.py`), and the orchestration that wires selection → resolution → `extract()` → `commands.observe()` (`mailbox.py`). A config seam (`core/config.py` + `config/data-sources.example.yaml`) supplies the owner-specific query. A `trips ingest-mail` CLI subcommand drives it. No existing *code* seam is modified; the one shared touch is additive — a new `trips:` top-level key in the existing `config/data-sources.example.yaml` registry (whose loader ignores unknown top-level keys).
 
 **Tech Stack:** Python 3.13, stdlib (`subprocess`, `email`, `hashlib`, `dataclasses`, `re`), `pyyaml` (already a dependency), `notmuch` CLI (external system binary), `uv`-managed project. Tests via `uv run python -m pytest`.
 
@@ -27,12 +27,12 @@ Every task's requirements implicitly include this section. Values are copied ver
 
 **Files:**
 - Modify: `src/life_agent/core/config.py` (add imports + three additions after the `KITINERARY_EXTRACTOR` line, ~line 48)
-- Create: `config/data-sources.example.yaml`
+- Modify: `config/data-sources.example.yaml` — **it already exists** (the `scripts/data_source_registry.py` schema: `version:1` + `roots`, documented by README/SETUP). Do NOT overwrite it. Restore its original content and **append** a `trips:` section. The registry loader reads only `version`+`roots` and ignores unknown top-level keys, so `trips:` is a safe additive extension.
 - Test: `tests/trips/test_config_trips.py` (append)
 
 **Interfaces:**
-- Consumes: existing `KB` path constant in `config.py`.
-- Produces: `config.NOTMUCH_BINARY: str`, `config.DATA_SOURCES: Path`, `config.data_sources() -> dict[str, Any]`.
+- Consumes: existing `KB` path constant in `config.py`; the existing registry path convention `KB / "config" / "data-sources.yaml"` (= `scripts/data_source_registry.default_registry_path()`).
+- Produces: `config.NOTMUCH_BINARY: str`, `config.DATA_SOURCES: Path` (= `KB / "config" / "data-sources.yaml"`), `config.data_sources() -> dict[str, Any]`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -50,6 +50,12 @@ def test_notmuch_binary_defaults_and_env_overridable(monkeypatch) -> None:
 def test_data_sources_absent_returns_empty(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(config, "DATA_SOURCES", tmp_path / "nope.yaml")
     assert config.data_sources() == {}
+
+
+def test_data_sources_default_is_the_existing_registry_path() -> None:
+    # Same file scripts/data_source_registry.default_registry_path() resolves, so the query
+    # and the source roots share one registry (loader ignores the extra `trips:` key).
+    assert config.DATA_SOURCES == config.KB / "config" / "data-sources.yaml"
 
 
 def test_data_sources_reads_yaml(tmp_path, monkeypatch) -> None:
@@ -86,18 +92,19 @@ Then, immediately after the `KITINERARY_EXTRACTOR = ...` line (~line 48), add:
 # exactly like the extractor above. Override per-machine via the env var; default assumes it
 # is on PATH.
 NOTMUCH_BINARY = os.environ.get("NOTMUCH_BINARY", "notmuch")
-# The out-of-tree data-source registry (notmuch query, ingest address — all owner-specific
-# PII). Code holds the KEY (trips.ingest.query); the VALUE lives only under $LIFE_AGENT_KB.
-# See config/data-sources.example.yaml for the shape (placeholders only).
-DATA_SOURCES = Path(
-    os.environ.get("LIFE_AGENT_DATA_SOURCES", str(KB / "data-sources.yaml"))
-).expanduser()
+# The owner's declarative data-source registry — the SAME file scripts/data_source_registry.py
+# uses (its default_registry_path() is KB/config/data-sources.yaml). The notmuch query lives
+# here as a `trips:` key the registry loader ignores (it reads only version+roots). All
+# owner-specific PII (query, ingest address); code holds the KEY (trips.ingest.query), the
+# VALUE lives only under $LIFE_AGENT_KB. See config/data-sources.example.yaml for the shape.
+DATA_SOURCES = KB / "config" / "data-sources.yaml"
 
 
 def data_sources() -> dict[str, Any]:
     """Parse the data-source registry. Returns ``{}`` when the file is absent (so a machine
-    without it never hard-fails) or when its top level is not a mapping. No PII in code — the
-    values it returns are read from ``$LIFE_AGENT_KB``, never a literal here."""
+    without it never hard-fails) or when its top level is not a mapping. A generic reader,
+    independent of the registry's version/roots validation. No PII in code — the values it
+    returns are read from ``$LIFE_AGENT_KB``, never a literal here."""
     if not DATA_SOURCES.exists():
         return {}
     import yaml
@@ -106,18 +113,27 @@ def data_sources() -> dict[str, Any]:
     return parsed if isinstance(parsed, dict) else {}
 ```
 
-- [ ] **Step 4: Create the example config (placeholders only)**
+- [ ] **Step 4: Extend the EXISTING example config (restore + append `trips:`)**
 
-Create `config/data-sources.example.yaml`:
+`config/data-sources.example.yaml` already exists and is documented by README/SETUP and consumed by `scripts/data_source_registry.py`. Task 1's implementer overwrote it — first **restore its original content**, then **append** the `trips:` section (do not remove `version`/`roots`):
+
+```bash
+git show 6b6e0d8:config/data-sources.example.yaml > config/data-sources.example.yaml
+```
+
+Then append (placeholders only — the registry loader ignores this unknown top-level key):
 
 ```yaml
-# Example data-source registry. Copy to $LIFE_AGENT_KB/data-sources.yaml and fill in the
-# real values there — NEVER commit real addresses/domains to this repo. Placeholders only here.
+
+# --- Trips mailbox ingest (life_agent.trips) --------------------------------
+# A top-level key the registry loader ignores (it reads only version+roots); read by
+# life_agent.core.config.data_sources() and life_agent.trips.mailbox.configured_query().
 trips:
   ingest:
     # notmuch query selecting booking mail. The breadth is deliberate: a false positive is a
     # wasted parse (extract returns []), never a wrong record. Compose the filing gesture, the
-    # Kayak-forward history, and non-forwarded bookings:
+    # Kayak-forward history, and non-forwarded bookings. Placeholders only — the REAL value
+    # lives in $LIFE_AGENT_KB/config/data-sources.yaml, never in this repo:
     query: 'folder:Trips or to:<kayak-ingest-address> or (from:/<booking-domains>/ and subject:/<booking-signal>/)'
 ```
 
