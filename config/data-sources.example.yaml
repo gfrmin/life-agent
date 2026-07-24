@@ -64,3 +64,13 @@ roots:
     kind: filetree
     path: /data/photoprism
     enabled: false
+
+# --- Trips mailbox ingest (life_agent.trips) --------------------------------
+# A top-level key the registry loader ignores (it reads only version+roots); read by
+# life_agent.core.config.data_sources() and life_agent.trips.mailbox.configured_query().
+trips:
+  ingest:
+    # notmuch query selecting booking mail. The breadth is deliberate: a false positive is a
+    # wasted parse (extract returns []), never a wrong record. Placeholders only — the REAL
+    # value lives in $LIFE_AGENT_KB/config/data-sources.yaml, never in this repo:
+    query: 'folder:Trips or to:<kayak-ingest-address> or (from:/<booking-domains>/ and subject:/<booking-signal>/)'
