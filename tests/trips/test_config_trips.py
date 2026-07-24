@@ -46,3 +46,9 @@ def test_data_sources_non_mapping_yaml_returns_empty(tmp_path, monkeypatch) -> N
     f.write_text("- just\n- a\n- list\n", encoding="utf-8")
     monkeypatch.setattr(config, "DATA_SOURCES", f)
     assert config.data_sources() == {}
+
+
+def test_data_sources_default_is_the_existing_registry_path() -> None:
+    # Same file scripts/data_source_registry.default_registry_path() resolves, so the query
+    # and the source roots share one registry (loader ignores the extra `trips:` key).
+    assert config.DATA_SOURCES == config.KB / "config" / "data-sources.yaml"
