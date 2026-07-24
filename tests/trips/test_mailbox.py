@@ -162,6 +162,39 @@ def test_per_message_resolution_error_degrades_to_forward() -> None:
     assert srcs == {"mail:fwd@x"}
 
 
+def test_message_without_date_is_skipped_and_counted() -> None:
+    dateless = b"Message-ID: <nodate@x>\r\nSubject: Booking\r\n\r\nbody\r\n"
+    fake = FakeNm(raws={"nodate@x": dateless}, search_map={"q": ["nodate@x"]})
+    stats = mailbox.ingest_query("q", nm=fake, extract_fn=lambda raw, ctx: [_flight("EX1")])
+    assert stats.errors == 1
+    assert stats.reservations == 0
+    assert store.timeline() == []
+
+
+def test_unparseable_date_is_skipped() -> None:
+    garbled = b"Message-ID: <garbled@x>\r\nDate: not-a-date\r\nSubject: Booking\r\n\r\nbody\r\n"
+    fake = FakeNm(raws={"garbled@x": garbled}, search_map={"q": ["garbled@x"]})
+    stats = mailbox.ingest_query("q", nm=fake, extract_fn=lambda raw, ctx: [_flight("EX1")])
+    assert stats.errors == 1
+    assert stats.reservations == 0
+    assert store.timeline() == []
+
+
+def test_dateless_forward_still_ingests_dated_original() -> None:
+    fwd = (b"Message-ID: <fwd@x>\r\nSubject: Fwd: Booking\r\n"
+           b"X-Forwarded-Message-Id: <orig@x>\r\n\r\nbody\r\n")
+    orig = _eml("orig@x")
+    fake = FakeNm(raws={"fwd@x": fwd, "orig@x": orig},
+                  search_map={"q": ["fwd@x"], "id:orig@x": ["orig@x"]})
+    extract_map = {fwd: [_flight("EX1")], orig: [_flight("EX1"), _flight("EX2")]}
+    stats = mailbox.ingest_query("q", nm=fake, extract_fn=lambda raw, ctx: extract_map[raw])
+    assert stats.errors == 0
+    assert stats.reservations >= 1
+    with store.get_db() as conn:
+        srcs = {r["source_id"] for r in conn.execute("SELECT source_id FROM source")}
+    assert srcs == {"mail:orig@x"}
+
+
 def test_configured_query_raises_when_unset(tmp_path, monkeypatch) -> None:
     from life_agent.core import config
     monkeypatch.setattr(config, "DATA_SOURCES", tmp_path / "absent.yaml")
