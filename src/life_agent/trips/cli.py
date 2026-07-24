@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from datetime import datetime
 from email import message_from_bytes, policy
 from email.utils import parsedate_to_datetime
@@ -56,6 +57,21 @@ def _cmd_ingest(args: argparse.Namespace) -> int:
                          source_meta={"path": str(path), "kind": "email"})
         n += 1
     print(f"ingested {n} reservation(s) from {path.name}")
+    return 0
+
+
+def _cmd_ingest_mail(args: argparse.Namespace) -> int:
+    from life_agent.trips import mailbox
+    try:
+        query = args.query or mailbox.configured_query()
+    except mailbox.IngestConfigError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    stats = mailbox.ingest_query(query, limit=args.limit, dry_run=args.dry_run)
+    verb = "would ingest" if args.dry_run else "ingested"
+    print(f"{verb} {stats.reservations} reservation(s) from "
+          f"{stats.messages_with_yield}/{stats.selected} message(s); "
+          f"{stats.forwards_resolved} forward(s) resolved, {stats.errors} skipped")
     return 0
 
 
@@ -112,6 +128,11 @@ def _build_parser() -> argparse.ArgumentParser:
     lp = sub.add_parser("list")
     lp.add_argument("--limit", type=int, default=None)
     lp.set_defaults(func=_cmd_list)
+    mp = sub.add_parser("ingest-mail")
+    mp.add_argument("--query", default=None)
+    mp.add_argument("--dry-run", action="store_true")
+    mp.add_argument("--limit", type=int, default=None)
+    mp.set_defaults(func=_cmd_ingest_mail)
     return p
 
 
