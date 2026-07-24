@@ -41,14 +41,39 @@ def _cmd_import_ics(args: argparse.Namespace) -> int:
     return 0
 
 
+def _email_date(raw: bytes) -> datetime | None:
+    try:
+        msg = message_from_bytes(raw, policy=policy.default)
+        date = msg["Date"]
+    except Exception:
+        return None
+    if not date:
+        return None
+    try:
+        return parsedate_to_datetime(date)
+    except (TypeError, ValueError):
+        return None
+
+
 def _cmd_ingest(args: argparse.Namespace) -> int:
     path = Path(args.path)
     raw = path.read_bytes()
-    try:
-        msg = message_from_bytes(raw, policy=policy.default)
-        ctx = parsedate_to_datetime(msg["Date"]) if msg["Date"] else datetime.now()
-    except Exception:
-        ctx = datetime.now()
+    ctx: datetime
+    if args.context_date:
+        try:
+            ctx = datetime.fromisoformat(args.context_date)
+        except ValueError:
+            print(f"invalid --context-date {args.context_date!r} (use ISO, e.g. 2019-08-12)",
+                  file=sys.stderr)
+            return 2
+    else:
+        email_ctx = _email_date(raw)
+        if email_ctx is None:
+            print(f"cannot ingest {path.name}: no usable Date header; pass "
+                  f"--context-date YYYY-MM-DD (kitinerary needs it to resolve partial dates)",
+                  file=sys.stderr)
+            return 2
+        ctx = email_ctx
     n = 0
     for jsonld in extract(raw, ctx):
         commands.observe(jsonld, fidelity="email-kitinerary",
@@ -115,7 +140,7 @@ def _build_parser() -> argparse.ArgumentParser:
     ] = [
         ("import-kayak", _cmd_import_kayak, [("path", {})]),
         ("import-ics", _cmd_import_ics, [("path", {})]),
-        ("ingest", _cmd_ingest, [("path", {})]),
+        ("ingest", _cmd_ingest, [("path", {}), ("--context-date", {"default": None})]),
         ("show", _cmd_show, [("identity", {})]),
         ("search", _cmd_search, [("term", {})]),
         ("supersede", _cmd_supersede, [("old", {}), ("new", {})]),

@@ -76,6 +76,42 @@ def test_ingest_mail_falls_back_to_configured_query(capsys, monkeypatch) -> None
     assert seen["q"] == "CONFIGURED"
 
 
+def test_ingest_dateless_file_errors_without_context_date(tmp_path, capsys, monkeypatch) -> None:
+    f = tmp_path / "dateless.eml"
+    f.write_bytes(b"Message-ID: <nodate@x>\r\nSubject: Booking\r\n\r\nbody\r\n")
+    monkeypatch.setattr(cli, "extract", lambda payload, ctx: [{"@type": "FlightReservation"}])
+    assert cli.main(["ingest", str(f)]) == 2
+    assert capsys.readouterr().err.strip() != ""
+    assert store.timeline() == []
+
+
+def test_ingest_dateless_file_with_context_date_override(tmp_path, capsys, monkeypatch) -> None:
+    f = tmp_path / "dateless.eml"
+    f.write_bytes(b"Message-ID: <nodate@x>\r\nSubject: Booking\r\n\r\nbody\r\n")
+    monkeypatch.setattr(cli, "extract", lambda payload, ctx: [_flight_jsonld()])
+    assert cli.main(["ingest", str(f), "--context-date", "2019-08-12"]) == 0
+    rows = store.timeline()
+    assert rows
+    with store.get_db() as conn:
+        received = {r["received_at"] for r in conn.execute("SELECT received_at FROM source")}
+    assert any(r and r.startswith("2019-08-12") for r in received)
+
+
+def test_ingest_invalid_context_date_errors(tmp_path, capsys, monkeypatch) -> None:
+    f = tmp_path / "dateless.eml"
+    f.write_bytes(b"Message-ID: <nodate@x>\r\nSubject: Booking\r\n\r\nbody\r\n")
+    monkeypatch.setattr(cli, "extract", lambda payload, ctx: [_flight_jsonld()])
+    assert cli.main(["ingest", str(f), "--context-date", "not-a-date"]) == 2
+
+
+def _flight_jsonld() -> dict:
+    return {"@type": "FlightReservation",
+            "reservationFor": {"flightNumber": "EX1",
+                "departureAirport": {"iataCode": "LIS"},
+                "arrivalAirport": {"iataCode": "AMS"},
+                "departureTime": "2019-08-12T09:30:00Z"}}
+
+
 def test_ingest_mail_missing_config_returns_nonzero(capsys, monkeypatch) -> None:
     from life_agent.trips import mailbox
 

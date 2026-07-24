@@ -7,7 +7,10 @@ reservation is observed idempotently (observe dedups on (identity, source_id)), 
 a broadened query costs nothing. A failure of the top-level SELECTION search raises (a bad
 query / broken index invalidates the whole run); per-message notmuch or parse failures are
 logged, skipped, and counted, and a per-message forward-resolution failure degrades to the
-forward — one bad mail never aborts the batch. One extraction seam, one write path.
+forward — one bad mail never aborts the batch. A message with no candidate carrying a usable
+Date header is likewise logged, skipped, and counted: kitinerary needs a real context date to
+resolve partial dates, so we never fabricate one (e.g. via ``datetime.now()``) — a fabricated
+context date is worse than no extraction at all. One extraction seam, one write path.
 """
 from __future__ import annotations
 
@@ -62,14 +65,17 @@ def _parse(raw: bytes) -> EmailMessage:
     return msg
 
 
-def _context_date(msg: EmailMessage) -> datetime:
+def _context_date(msg: EmailMessage) -> datetime | None:
+    """The email's Date header as a datetime, or None if absent/unparseable. kitinerary needs
+    a real context date to resolve partial dates; we never fabricate one (a wrong context date
+    is the top source of garbage output), so a date-less message is skipped upstream."""
     raw = msg.get("Date")
     if raw:
         try:
             return parsedate_to_datetime(raw)
         except (TypeError, ValueError):
             pass
-    return datetime.now()
+    return None
 
 
 def _message_id(msg: EmailMessage, fallback: str) -> str:
@@ -114,17 +120,28 @@ def ingest_query(
                 except _notmuch.NotmuchError:
                     pass                # original unfetchable (e.g. deleted) -> use the forward
 
-            best: tuple[bytes, EmailMessage, list[dict[str, Any]]] = (fwd_raw, fwd_msg, [])
+            best: tuple[bytes, EmailMessage, list[dict[str, Any]], datetime | None] = (
+                fwd_raw, fwd_msg, [], None,
+            )
+            dated = 0
             for raw, msg in candidates:
-                found = extract_fn(raw, _context_date(msg))
+                ctx = _context_date(msg)
+                if ctx is None:
+                    continue            # never fabricate a context date; skip this candidate
+                dated += 1
+                found = extract_fn(raw, ctx)
                 if len(found) > len(best[2]):
-                    best = (raw, msg, found)
+                    best = (raw, msg, found, ctx)
+            if dated == 0:              # no candidate carried a usable Date -> can't extract safely
+                _log.warning("trips ingest: skipped %s (no usable Date header)", msgid)
+                stats.errors += 1
+                continue
         except Exception as exc:        # one malformed/unfetchable message never aborts the batch
             _log.warning("trips ingest: skipped %s (%s)", msgid, type(exc).__name__)
             stats.errors += 1
             continue
 
-        best_raw, best_msg, best_yield = best
+        best_raw, best_msg, best_yield, best_ctx = best
         if not best_yield:
             continue
         stats.messages_with_yield += 1
@@ -134,7 +151,8 @@ def ingest_query(
 
         message_id = _message_id(best_msg, msgid)
         sha = hashlib.sha256(best_raw).hexdigest()
-        received = _context_date(best_msg).isoformat()
+        assert best_ctx is not None     # a non-empty yield came from a dated candidate
+        received = best_ctx.isoformat()
         for jsonld in best_yield:
             observe_fn(
                 jsonld, fidelity="email-kitinerary", source_id=f"mail:{message_id}",
