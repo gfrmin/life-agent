@@ -63,3 +63,10 @@ def test_precedence_xforwarded_over_references() -> None:
                "References": "<b@x>"}
     lookup = _lookup({"id:a@x": ["a@x"], "id:b@x": ["b@x"]})
     assert forwards.resolve_original(headers, lookup) == "a@x"
+
+
+def test_resolves_with_noncanonical_header_casing() -> None:
+    # Older mail clients emit non-canonical header casing (Message-Id, X-Forwarded-Message-ID);
+    # resolution must be case-insensitive so the pre-2018 corpus isn't silently skipped.
+    headers = {"Message-Id": "<fwd@x>", "X-Forwarded-Message-ID": "<orig@x>"}
+    assert forwards.resolve_original(headers, _lookup({"id:orig@x": ["orig@x"]})) == "orig@x"
