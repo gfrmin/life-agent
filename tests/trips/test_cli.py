@@ -45,3 +45,43 @@ def test_unknown_command_returns_nonzero() -> None:
 def test_help_exits_zero(capsys) -> None:
     assert cli.main(["--help"]) == 0
     assert cli.main(["-h"]) == 0
+
+
+def test_ingest_mail_uses_query_override_and_reports(capsys, monkeypatch) -> None:
+    from life_agent.trips import mailbox
+    seen: dict = {}
+
+    def fake_ingest(q, **kw):
+        seen["q"] = q
+        seen["kw"] = kw
+        return mailbox.Stats(selected=3, forwards_resolved=1, messages_with_yield=1,
+                             reservations=2)
+
+    monkeypatch.setattr(mailbox, "ingest_query", fake_ingest)
+    assert cli.main(["ingest-mail", "--query", "folder:Trips", "--dry-run", "--limit", "5"]) == 0
+    assert seen["q"] == "folder:Trips"
+    assert seen["kw"]["dry_run"] is True
+    assert seen["kw"]["limit"] == 5
+    out = capsys.readouterr().out
+    assert "2" in out and "would" in out.lower()
+
+
+def test_ingest_mail_falls_back_to_configured_query(capsys, monkeypatch) -> None:
+    from life_agent.trips import mailbox
+    monkeypatch.setattr(mailbox, "configured_query", lambda: "CONFIGURED")
+    seen: dict = {}
+    monkeypatch.setattr(mailbox, "ingest_query",
+                        lambda q, **kw: seen.update(q=q) or mailbox.Stats())
+    assert cli.main(["ingest-mail"]) == 0
+    assert seen["q"] == "CONFIGURED"
+
+
+def test_ingest_mail_missing_config_returns_nonzero(capsys, monkeypatch) -> None:
+    from life_agent.trips import mailbox
+
+    def boom() -> str:
+        raise mailbox.IngestConfigError("no trips.ingest.query")
+
+    monkeypatch.setattr(mailbox, "configured_query", boom)
+    assert cli.main(["ingest-mail"]) == 2
+    assert "query" in capsys.readouterr().err.lower()
