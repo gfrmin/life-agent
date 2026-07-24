@@ -632,6 +632,29 @@ def test_notmuch_error_from_search_propagates() -> None:
         mailbox.ingest_query("q", nm=Boom(), extract_fn=lambda raw, ctx: [])
 
 
+def test_per_message_resolution_error_degrades_to_forward() -> None:
+    # A NotmuchError DURING per-message forward resolution must NOT abort the run and must NOT
+    # skip the message — it degrades to extracting the forward itself. Only the top-level
+    # selection search aborts (see the test above).
+    fwd = _eml("fwd@x", subject="Fwd: Booking", extra="X-Forwarded-Message-Id: <orig@x>\r\n")
+
+    class ResolveBoom(FakeNm):
+        def search(self, query: str) -> list[str]:
+            if query == "q":
+                return ["fwd@x"]            # selection succeeds
+            raise nm.NotmuchError("index blip during resolution")  # id:/subject: lookup fails
+
+    fake = ResolveBoom(raws={"fwd@x": fwd}, search_map={})
+    stats = mailbox.ingest_query("q", nm=fake, extract_fn=lambda raw, ctx: [_flight("EX1")])
+    assert stats.errors == 0                 # degraded, not an error
+    assert stats.forwards_resolved == 0
+    assert stats.reservations == 1           # the forward itself was still ingested
+    assert len(store.timeline()) == 1
+    with store.get_db() as conn:
+        srcs = {r["source_id"] for r in conn.execute("SELECT source_id FROM source")}
+    assert srcs == {"mail:fwd@x"}
+
+
 def test_configured_query_raises_when_unset(tmp_path, monkeypatch) -> None:
     from life_agent.core import config
     monkeypatch.setattr(config, "DATA_SOURCES", tmp_path / "absent.yaml")
@@ -663,8 +686,10 @@ The tier-2 (email-kitinerary) upgrade path. Selection is a notmuch query (config
 literal). A selected forward is resolved to its original and extraction runs on whichever of
 {original, forward} yields more — the original is better evidence, so it wins a tie. Every
 reservation is observed idempotently (observe dedups on (identity, source_id)), so re-running
-a broadened query costs nothing. notmuch failures raise; a single malformed message is logged,
-skipped, and counted — one bad mail never aborts the batch. One extraction seam, one write path.
+a broadened query costs nothing. A failure of the top-level SELECTION search raises (a bad
+query / broken index invalidates the whole run); per-message notmuch or parse failures are
+logged, skipped, and counted, and a per-message forward-resolution failure degrades to the
+forward — one bad mail never aborts the batch. One extraction seam, one write path.
 """
 from __future__ import annotations
 
@@ -756,20 +781,27 @@ def ingest_query(
             fwd_msg = _parse(fwd_raw)
             candidates: list[tuple[bytes, EmailMessage]] = [(fwd_raw, fwd_msg)]
 
-            original_id = forwards.resolve_original(dict(fwd_msg.items()), nm.search)
+            # Forward resolution is BEST-EFFORT: a per-message lookup failure (e.g. a
+            # malformed subject query, or a broken index mid-scan) must NOT skip an otherwise
+            # extractable message, and must never abort the batch.
+            try:
+                original_id = forwards.resolve_original(dict(fwd_msg.items()), nm.search)
+            except _notmuch.NotmuchError:
+                original_id = None
             if original_id and original_id != msgid:
-                orig_raw = nm.show_raw(original_id)
-                candidates.insert(0, (orig_raw, _parse(orig_raw)))  # original first (tie->orig)
-                stats.forwards_resolved += 1
+                try:
+                    orig_raw = nm.show_raw(original_id)
+                    candidates.insert(0, (orig_raw, _parse(orig_raw)))  # original first (tie->orig)
+                    stats.forwards_resolved += 1
+                except _notmuch.NotmuchError:
+                    pass                # original unfetchable (e.g. deleted) -> use the forward
 
             best: tuple[bytes, EmailMessage, list[dict[str, Any]]] = (fwd_raw, fwd_msg, [])
             for raw, msg in candidates:
                 found = extract_fn(raw, _context_date(msg))
                 if len(found) > len(best[2]):
                     best = (raw, msg, found)
-        except _notmuch.NotmuchError:
-            raise                       # a notmuch failure is operational — abort the run
-        except Exception as exc:        # one malformed message never aborts the batch
+        except Exception as exc:        # one malformed/unfetchable message never aborts the batch
             _log.warning("trips ingest: skipped %s (%s)", msgid, type(exc).__name__)
             stats.errors += 1
             continue
