@@ -100,3 +100,31 @@ def test_empty_input_is_a_valid_empty_calendar() -> None:
     assert out.startswith("BEGIN:VCALENDAR\r\n")
     assert "BEGIN:VEVENT" not in out
     assert out.rstrip("\r\n").endswith("END:VCALENDAR")
+
+
+def test_dtstamp_derived_from_received_at_utc() -> None:
+    out = to_ics([_res(received_at="2019-08-01T12:00:00+02:00")])
+    assert "DTSTAMP:20190801T100000Z" in out  # +02:00 -> 10:00 UTC
+
+
+def test_dtstamp_naive_received_at_treated_as_utc() -> None:
+    out = to_ics([_res(received_at="2019-08-01T12:00:00")])
+    assert "DTSTAMP:20190801T120000Z" in out
+
+
+def test_dtstamp_falls_back_when_received_at_absent() -> None:
+    out = to_ics([_res(received_at=None)])
+    assert "DTSTAMP:19700101T000000Z" in out
+
+
+def test_to_ics_is_deterministic() -> None:
+    # DTSTAMP must come from stable data, never wall-clock now() — same input, identical output.
+    res = _res(received_at="2019-08-01T12:00:00Z")
+    assert to_ics([res]) == to_ics([res])
+
+
+def test_carriage_return_in_text_is_normalized() -> None:
+    out = to_ics([_res(res_type="LodgingReservation", title="Line1\r\nLine2\rLine3",
+                       dep_iata=None, arr_iata=None)])
+    assert "SUMMARY:Line1\\nLine2\\nLine3" in out
+    assert "\r\n\r\n" not in out.replace("BEGIN", "\nBEGIN")  # no stray double-CRLF from a raw CR

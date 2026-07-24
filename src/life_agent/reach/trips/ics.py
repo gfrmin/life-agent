@@ -19,9 +19,10 @@ PRODID = "-//life-agent//trips//EN"
 
 
 def _escape(text: str) -> str:
-    """Escape a TEXT value per RFC 5545 §3.3.11 (backslash first, then ; , and newline)."""
-    return (text.replace("\\", "\\\\").replace(";", "\\;")
-                .replace(",", "\\,").replace("\n", "\\n"))
+    """Escape a TEXT value per RFC 5545 §3.3.11 (backslash first; then ; and ,; CR and CRLF folded
+    to LF; finally newline to the literal \\n)."""
+    return (text.replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,")
+                .replace("\r\n", "\n").replace("\r", "\n").replace("\n", "\\n"))
 
 
 def _fold(line: str) -> str:
@@ -60,6 +61,22 @@ def _dt(value: str | None) -> str | None:
     return dt.strftime("%Y%m%dT%H%M%S")
 
 
+def _dtstamp(value: str | None) -> str:
+    """DTSTAMP (RFC 5545 §3.8.7.2) — always UTC DATE-TIME. Derived from reservation's stable
+    ``received_at`` so the feed stays byte-identical across fetches (no spurious re-syncs);
+    naive ``received_at`` is treated as UTC. Falls back to a fixed epoch when absent/unparseable."""
+    if value:
+        try:
+            dt = datetime.fromisoformat(value)
+        except ValueError:
+            dt = None
+        if dt is not None:
+            if dt.tzinfo is not None:
+                dt = dt.astimezone(UTC)
+            return dt.strftime("%Y%m%dT%H%M%SZ")
+    return "19700101T000000Z"
+
+
 def _summary(r: dict[str, Any]) -> str:
     dep, arr = r.get("dep_iata"), r.get("arr_iata")
     if dep and arr:
@@ -76,6 +93,7 @@ def _vevent(r: dict[str, Any]) -> list[str] | None:
     lines = [
         "BEGIN:VEVENT",
         f"UID:{r['identity']}",  # identity is content-keyed alphanumeric — no escaping needed
+        f"DTSTAMP:{_dtstamp(r.get('received_at'))}",
         f"DTSTART:{start}",
     ]
     end = _dt(r.get("end_iso"))
