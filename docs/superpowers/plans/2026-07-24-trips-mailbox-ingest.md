@@ -438,14 +438,15 @@ def resolve_original(
     ``lookup(query)`` runs a notmuch query and returns matching msgids — injected so this stays
     pure. The forward's own Message-ID is never returned as its 'original'.
     """
-    own = _clean_id(headers.get("Message-ID", ""))
+    h = {k.lower(): v for k, v in headers.items()}
+    own = _clean_id(h.get("message-id", ""))
 
     queries: list[str] = []
-    if xfwd := headers.get("X-Forwarded-Message-Id"):
+    if xfwd := h.get("x-forwarded-message-id"):
         queries.append(f"id:{_clean_id(xfwd)}")
-    if irt := headers.get("In-Reply-To"):
+    if irt := h.get("in-reply-to"):
         queries.append(f"id:{_clean_id(irt)}")
-    if (refs := headers.get("References")) and (last := _references_last(refs)):
+    if (refs := h.get("references")) and (last := _references_last(refs)):
         queries.append(f"id:{last}")
 
     for query in queries:
@@ -453,7 +454,7 @@ def resolve_original(
             if mid and mid != own:
                 return mid
 
-    subject = headers.get("Subject")
+    subject = h.get("subject")
     if subject:
         stripped = _strip_prefixes(subject)
         # Only search when the subject ACTUALLY carried a forwarding prefix — otherwise a plain
