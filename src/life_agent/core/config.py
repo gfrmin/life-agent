@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 import shlex
 from pathlib import Path
+from typing import Any
 
 KB = Path(os.environ.get("LIFE_AGENT_KB", str(Path.home() / ".life-agent/kb")))
 PKM_CONFIG = Path(os.environ.get("PKM_CONFIG", "~/.config/life-agent/pkm.yaml")).expanduser()
@@ -46,6 +47,28 @@ TRIPS_DB_PATH = Path(os.environ.get("TRIPS_DB_PATH", str(KB / "trips" / "trips.d
 # The kitinerary extractor binary — an installed system tool wrapped as a producer (the
 # extraction seam). Default is the KF6 install path; override per-machine via the env var.
 KITINERARY_EXTRACTOR = os.environ.get("KITINERARY_EXTRACTOR", "/usr/lib/kf6/kitinerary-extractor")
+# The notmuch binary — the mailbox selection seam (trips/notmuch.py), wrapped as a producer
+# exactly like the extractor above. Override per-machine via the env var; default assumes it
+# is on PATH.
+NOTMUCH_BINARY = os.environ.get("NOTMUCH_BINARY", "notmuch")
+# The out-of-tree data-source registry (notmuch query, ingest address — all owner-specific
+# PII). Code holds the KEY (trips.ingest.query); the VALUE lives only under $LIFE_AGENT_KB.
+# See config/data-sources.example.yaml for the shape (placeholders only).
+DATA_SOURCES = Path(
+    os.environ.get("LIFE_AGENT_DATA_SOURCES", str(KB / "data-sources.yaml"))
+).expanduser()
+
+
+def data_sources() -> dict[str, Any]:
+    """Parse the data-source registry. Returns ``{}`` when the file is absent (so a machine
+    without it never hard-fails) or when its top level is not a mapping. No PII in code — the
+    values it returns are read from ``$LIFE_AGENT_KB``, never a literal here."""
+    if not DATA_SOURCES.exists():
+        return {}
+    import yaml
+
+    parsed = yaml.safe_load(DATA_SOURCES.read_text(encoding="utf-8"))
+    return parsed if isinstance(parsed, dict) else {}
 
 # --- Calibration (the Bayesian foundations' empirical leg) ---
 # The outcomes log (bayesian-foundations §8): append-only third evidence stream — graded
