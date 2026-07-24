@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<title>Trips</title>
+<style>
+  :root {
+    --bg: #14171c; --panel: #1c2027; --panel2: #22272f; --line: #2c333d;
+    --fg: #e6e9ee; --muted: #8b95a3; --accent: #6ea8fe; --today: #ffd166;
+    --danger: #e5646e; --ok: #5bcf8a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 15px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  header {
+    position: sticky; top: 0; z-index: 5; background: var(--bg);
+    border-bottom: 1px solid var(--line); padding: 12px 16px;
+  }
+  h1 { font-size: 17px; margin: 0 0 10px; font-weight: 600; display: flex; gap: 8px; align-items: baseline; }
+  h1 .dot { color: var(--muted); font-weight: 400; font-size: 13px; }
+  h1 .feed { margin-left: auto; font-size: 12px; }
+  a.feed { color: var(--accent); text-decoration: none; border: 1px solid #2f3f5c; border-radius: 999px; padding: 2px 10px; }
+  a.feed:hover { background: var(--panel2); }
+  .pins { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+  .pin { background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; font-size: 13px; }
+  .pin.next { border-color: #2f3f5c; }
+  .pin .k { color: var(--muted); text-transform: uppercase; font-size: 11px; letter-spacing: .06em; margin-right: 6px; }
+  input[type=search] {
+    width: 100%; padding: 9px 11px; border-radius: 8px;
+    border: 1px solid var(--line); background: var(--panel2); color: var(--fg); font: inherit;
+  }
+  main { padding: 16px; max-width: 760px; margin: 0 auto; }
+  .year { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; margin: 18px 4px 8px; }
+  .res {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+    padding: 10px 12px; margin-bottom: 8px; display: flex; gap: 10px; align-items: baseline;
+  }
+  .res.cancelled { opacity: .55; }
+  .res.cancelled .route { text-decoration: line-through; }
+  .icon { font-size: 15px; width: 1.4em; text-align: center; flex: 0 0 auto; }
+  .rbody { flex: 1 1 auto; min-width: 0; }
+  .route { font-weight: 600; word-break: break-word; }
+  .sub { color: var(--muted); font-size: 13px; margin-top: 3px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .when { color: var(--fg); white-space: nowrap; font-size: 13px; }
+  .badge { font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 1px 8px; }
+  .badge.x { color: var(--danger); border-color: var(--danger); }
+  .empty { color: var(--muted); padding: 20px 4px; opacity: .6; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Trips <span class="dot" id="summary"></span>
+    <a class="feed" id="feed" href="/calendar.ics">calendar feed</a></h1>
+  <div class="pins" id="pins"></div>
+  <input type="search" id="q" placeholder="Search flights, hotels, confirmation…" autocomplete="off">
+</header>
+<main id="list"></main>
+
+<script>
+"use strict";
+
+// Map a schema.org reservation @type substring to a glyph. Unknown types get a neutral dot.
+const ICONS = { flight: "✈", lodging: "🛏", train: "🚆",
+                bus: "🚌", rental: "🚗", event: "🎫",
+                food: "🍽" };
+
+async function api(path) {
+  const res = await fetch(path);
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new Error((data && data.error) || (res.status + " " + res.statusText));
+  return data;
+}
+
+function el(tag, cls, text) {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text !== undefined) n.textContent = text;  // textContent = XSS-safe (every field is untrusted)
+  return n;
+}
+
+function icon(type) {
+  const t = (type || "").toLowerCase();
+  for (const k in ICONS) if (t.includes(k)) return ICONS[k];
+  return "•";
+}
+
+function routeText(r) {
+  if (r.dep_iata && r.arr_iata) return r.dep_iata + " → " + r.arr_iata;
+  return r.title || r.provider || "Reservation";
+}
+
+function whenText(r) {
+  // Show the stored calendar date + HH:MM verbatim — no tz math; the string is the record.
+  if (!r.start_iso) return "";
+  const d = r.start_iso.slice(0, 10), t = r.start_iso.slice(11, 16);
+  return t ? d + " " + t : d;
+}
+
+function resNode(r) {
+  const node = el("div", "res" + (r.cancelled ? " cancelled" : ""));
+  node.appendChild(el("div", "icon", icon(r.res_type)));
+  const body = el("div", "rbody");
+  body.appendChild(el("div", "route", routeText(r)));
+  const sub = el("div", "sub");
+  if (r.provider) sub.appendChild(el("span", null, r.provider));
+  if (r.confirmation) sub.appendChild(el("span", "badge", r.confirmation));
+  if (r.cancelled) sub.appendChild(el("span", "badge x", "cancelled"));
+  if (sub.childNodes.length) body.appendChild(sub);
+  node.appendChild(body);
+  node.appendChild(el("div", "when", whenText(r)));
+  return node;
+}
+
+function render(reservations) {
+  const list = document.getElementById("list");
+  list.innerHTML = "";
+  if (!reservations.length) { list.appendChild(el("div", "empty", "No reservations.")); return; }
+  let year = null;
+  for (const r of reservations) {
+    const y = (r.start_iso || "").slice(0, 4) || "—";
+    if (y !== year) { year = y; list.appendChild(el("div", "year", year)); }
+    list.appendChild(resNode(r));
+  }
+}
+
+function pin(kind, r) {
+  const p = el("div", "pin" + (kind === "next" ? " next" : ""));
+  p.appendChild(el("span", "k", kind));
+  const when = whenText(r);
+  p.appendChild(el("span", null, routeText(r) + (when ? " · " + when : "")));
+  return p;
+}
+
+async function loadPins() {
+  const pins = document.getElementById("pins");
+  pins.innerHTML = "";
+  try {
+    const nn = await api("/api/now_next");
+    for (const r of (nn.now || [])) pins.appendChild(pin("now", r));
+    if (nn.next) pins.appendChild(pin("next", nn.next));
+  } catch (e) { /* pins are non-critical; the timeline still renders without them */ }
+}
+
+async function loadTimeline() {
+  const data = await api("/api/timeline");
+  const rows = data.reservations || [];
+  render(rows);
+  document.getElementById("summary").textContent = "· " + rows.length + " reservations";
+}
+
+let searchTimer = null;
+document.getElementById("q").addEventListener("input", (ev) => {
+  const q = ev.target.value.trim();
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(async () => {
+    if (!q) { loadTimeline(); return; }
+    try {
+      const data = await api("/api/search?q=" + encodeURIComponent(q));
+      const rows = data.reservations || [];
+      render(rows);
+      document.getElementById("summary").textContent = "· " + rows.length + " match";
+    } catch (e) { /* keep the current view on a failed search */ }
+  }, 200);
+});
+
+loadPins();
+loadTimeline();
+</script>
+</body>
+</html>
