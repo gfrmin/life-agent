@@ -3,8 +3,6 @@ it RAISES on failure — a broken index must never be a silent empty ingest. Ful
 subprocess is monkeypatched, the real binary is never invoked."""
 from __future__ import annotations
 
-import subprocess
-
 import pytest
 
 from life_agent.trips import notmuch as nm
