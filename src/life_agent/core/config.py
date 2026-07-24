@@ -53,10 +53,11 @@ KITINERARY_EXTRACTOR = os.environ.get("KITINERARY_EXTRACTOR", "/usr/lib/kf6/kiti
 NOTMUCH_BINARY = os.environ.get("NOTMUCH_BINARY", "notmuch")
 # The out-of-tree data-source registry (notmuch query, ingest address — all owner-specific
 # PII). Code holds the KEY (trips.ingest.query); the VALUE lives only under $LIFE_AGENT_KB.
-# See config/data-sources.example.yaml for the shape (placeholders only).
-DATA_SOURCES = Path(
-    os.environ.get("LIFE_AGENT_DATA_SOURCES", str(KB / "data-sources.yaml"))
-).expanduser()
+# This is the SAME file scripts/data_source_registry.py's registry reads (its
+# default_registry_path()) — the `trips:` key is one extra top-level key that loader
+# ignores (it reads only `version` + `roots`). See config/data-sources.example.yaml for
+# the shape (placeholders only).
+DATA_SOURCES = KB / "config" / "data-sources.yaml"
 
 
 def data_sources() -> dict[str, Any]:

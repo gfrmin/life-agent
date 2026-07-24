@@ -1,8 +1,76 @@
-# Example data-source registry. Copy to $LIFE_AGENT_KB/data-sources.yaml and fill in the
-# real values there — NEVER commit real addresses/domains to this repo. Placeholders only here.
+# Declarative registry of the local data roots life-agent feeds into pkm.
+# Consumed by scripts/data_source_registry.py (--report census) and
+# scripts/ingest_sources.py (stage + register + `pkm ingest`).
+#
+# THIS IS A FAKE EXAMPLE of the schema. The REAL registry holds your actual
+# data roots (whose paths/names can reveal personal context) and therefore
+# lives OUTSIDE this public repo, at:
+#
+#     $LIFE_AGENT_KB/config/data-sources.yaml   (default: ~/.life-agent/kb/config/...)
+#
+# Enumeration for --report comes from plocate (the system file index). For that
+# to see your data, plocate must index the data mount — see the project plan's
+# "Step 0" (un-prune the mount in /etc/updatedb.conf, then `sudo updatedb`).
+
+version: 1
+
+# Optional shared lists. Extra top-level keys are ignored by the loader (it reads
+# only `version` + `roots`), so YAML anchors can be defined here and aliased below
+# with `*name` to avoid repeating long include/exclude lists across roots.
+# Doc-include = pkm's non-image producer extensions (text-first: defer images).
+x-doc-include: &doc_include
+  ["**/*.pdf", "**/*.docx", "**/*.doc", "**/*.pptx", "**/*.md", "**/*.txt",
+   "**/*.html", "**/*.csv", "**/*.tex", "**/*.epub", "**/*.rtf", "**/*.odt"]
+x-junk-exclude: &junk_exclude
+  ["**/.git/**", "**/.stfolder/**", "**/._*", "**/node_modules/**", "**/.Trash*/**"]
+
+roots:
+  # A tree of files. The `filetree` adapter stages matching files as symlinks
+  # and lets pkm's producers (pandoc/docling/tesseract/unstructured) extract them.
+  - id: notes
+    kind: filetree
+    path: /data/notes
+    include: ["**/*.md"]      # fnmatch globs over the path relative to `path`;
+    exclude: []               # empty include = all files. `*` spans `/`.
+    tags: [notes]             # applied to every staged file (pkm source_tags)
+    enabled: true             # enabled -> eligible for ingest. false -> census-only.
+
+  # A broad doc tree: ingest document types only (images deferred — text-first),
+  # and prune junk subtrees. `**/.git/**`-style excludes (ending in `/**`) prune
+  # the os.walk, so cloned repos / VCS object trees are never crawled.
+  - id: documents
+    kind: filetree
+    path: /data/documents
+    include: *doc_include        # alias the shared list above; images not matched
+    exclude: *junk_exclude
+    tags: [documents]
+    enabled: true
+
+  # A Maildir account. The `maildir` adapter reuses mail_bridge.py's folder
+  # discovery + .eml symlinking; pkm ingests the .eml tree via its email producer.
+  - id: mail
+    kind: maildir
+    path: /data/mail/example-account   # the dir whose children are mail folders
+    include: [INBOX, Sent]             # folders relative to path (each has cur/)
+    exclude: ["Archive/*/git"]         # drop machine-generated noise
+    staging_dir: /data/staging/mail    # where the .eml symlink tree is written
+    tags: [email]
+    enabled: true
+
+  # A census-only root: counted/reported by --report, but never staged or
+  # ingested. Use for large/deferred corpora (e.g. image-heavy dirs under the
+  # text-first decision) you want visibility into without extracting.
+  - id: photos
+    kind: filetree
+    path: /data/photoprism
+    enabled: false
+
+# --- Trips mailbox ingest (life_agent.trips) --------------------------------
+# A top-level key the registry loader ignores (it reads only version+roots); read by
+# life_agent.core.config.data_sources() and life_agent.trips.mailbox.configured_query().
 trips:
   ingest:
     # notmuch query selecting booking mail. The breadth is deliberate: a false positive is a
-    # wasted parse (extract returns []), never a wrong record. Compose the filing gesture, the
-    # Kayak-forward history, and non-forwarded bookings:
+    # wasted parse (extract returns []), never a wrong record. Placeholders only — the REAL
+    # value lives in $LIFE_AGENT_KB/config/data-sources.yaml, never in this repo:
     query: 'folder:Trips or to:<kayak-ingest-address> or (from:/<booking-domains>/ and subject:/<booking-signal>/)'
