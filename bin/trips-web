@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# trips-web — the trips timeline: a read-only reach surface over the event-sourced trips store
+# (a reach channel, like the GTD webapp). Sources .env (LIFE_AGENT_KB), then serves the timeline
+# page + a small JSON API + a subscribable /calendar.ics feed, all reading through trips.store.
+# Binds 0.0.0.0 by default (firewalled host, reachable over Tailscale); no auth beyond the network
+# boundary — trips is read-only, so there are no mutations to guard. Ctrl-C to stop.
+#   trips-web                                       # bind 0.0.0.0:8800 (defaults)
+#   LIFE_AGENT_TRIPS_WEB_PORT=9000 trips-web        # override the port
+#   LIFE_AGENT_TRIPS_WEB_HOST=127.0.0.1 trips-web   # localhost only
+set -euo pipefail
+# Resolve through symlinks (e.g. ~/.local/bin/trips-web) so root is always the repo.
+root="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+set -a; [ -f "$root/.env" ] && source "$root/.env"; set +a
+exec uv run --project "$root" python -m life_agent.reach.trips.server "$@"
