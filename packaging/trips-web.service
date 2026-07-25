@@ -1,0 +1,21 @@
+# life-agent trips timeline — a systemd --user unit (a read-only reach channel, like gtd-web.service).
+# Install:
+#   mkdir -p ~/.config/systemd/user
+#   ln -s "$PWD/packaging/trips-web.service" ~/.config/systemd/user/trips-web.service   # run from the repo root
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now trips-web.service
+# LIFE_AGENT_KB resolves at runtime from the repo .env via bin/trips-web; nothing sensitive lives in
+# this file. ExecStart below assumes the repo is at %h/git/life-agent — edit it if the repo lives
+# elsewhere. The trips ledger is single-owner, so there is no JARVIS_USER_ID here (unlike gtd-web).
+[Unit]
+Description=life-agent trips timeline (read-only reach channel)
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=%h/git/life-agent/bin/trips-web
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
