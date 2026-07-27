@@ -660,6 +660,15 @@ exactly the "expected posture at flip" stated below when M3 landed — the hones
 consequence of the young posterior, not a bug; the verdict stream (which the live path
 keeps feeding) is what raises it.
 
+**Rolled back: 2026-07-28, owner-authorized.** The flag is unset (drop-in removed, `.env`
+line dropped, jarvis restarted; advisory decide-mirror resumed, no more `enact` rows). Not
+because the flip regressed against its stated design, but because the fold that raised the
+posterior (§17.1) turned out to raise a *population* dial, not per-question calibration —
+so under the flag the engine committed `report` on essentially every question, a measured
+negative-EU posture (§17.2). Rollback is the contain step of the containment plan (the
+`contain-live-over-assertion` plan of 2026-07-22, kept out of tree); the flag goes back on
+only after a pre-registered gate run, never another single-question smoke.
+
 **The seam re-point (M0's promise kept).** `core.seam.DaemonDecide` gains an injected
 `live` consult; `commit()` still posts the daemon `/decide` first (the posterior is the
 engine's feature context AND the transitional value source), then commits the consult's
@@ -949,3 +958,44 @@ The fold, measured end to end:
 So the withhold posture recorded at the flip (§14) was verdict starvation, exactly as
 priced — not a defect in the coarse mapping, and not a threshold that needed moving. The
 channel is the lever E1 stage-1 said it was.
+
+> **Correction (2026-07-28) — read §17.2 before relying on the paragraph above.** The
+> claim "abstain → report is the channel working" was measured on a single question and is
+> wrong as stated: the fold moved a population-level dial, not per-question calibration.
+> The paragraph is preserved as-recorded; §17.2 states what the fuller measurement showed.
+
+### 17.2 The fold moved a population dial, not calibration — the correction (2026-07-28)
+
+§17.1's headline (p1 0.338 → 0.871, abstain → report) was confirmed on the same single
+question the M3 flip smoke used. Planning the next step forced the measurement §17.1 should
+have opened with — p1 *across* questions, and correctness *by* evidence bucket — and it
+inverts the reading.
+
+- **p1 does not track the question.** One post-fold smoke, four consults at retrieval-leader
+  credences 0.870 / 0.965 / 0.944 / 0.959, returned p1 = 0.8683, 0.8706, 0.8706, 0.8706 — a
+  0.002 spread across a 0.095 spread in the evidence. This is §11's own measurement
+  (`p1` a rail, not tracking the leader) at the new operating point: 193 verdicts cannot
+  identify 2,393 hypotheses over the 18-guard lattice, so the posterior sits at the marginal,
+  which the fold moved from ~0.34 to ~0.87. The fold raised *one global number* past *one
+  global threshold*.
+- **Correctness is strongly bucketed, and the fold ignored it.** Over the 180 verdicts, the
+  `correct` rate by leader-credence bucket is: lt50 0.50, 50–70 0.65, 80–90 0.79, ge90 1.00.
+  The respond-beats-abstain break-even at the live `u_bar` is 0.8559, so at these rates only
+  the ge90 bucket is EU-positive; 80–90 is already −0.46, 50–70 −1.43, lt50 −2.47. Weighted
+  by the eligible population (ge90 is 100 of 342), asserting across all buckets — which the
+  `gather_exhausted` restricted-argmax does, because the railed p1 clears 0.8559 everywhere —
+  runs **≈ −0.58 EU/question vs abstaining**.
+- **Why §17.1's smoke couldn't see it.** The M3-flip question (leader 0.959) is a
+  ge90-bucket question — the one bucket where the engine is right 100% of the time. The
+  instrument that confirmed the flip is precisely the instrument blind to its cost.
+
+So §17.1's abstain → report is real and its cause diagnosis (the withhold was verdict
+starvation) is also real — but "the channel is the lever E1 said it was" overclaims. The
+channel produced clean, discriminative *data*; the engine cannot yet *use* the discrimination,
+because the guard lattice is under-identified at n≈200. The four structural causes and their
+owners (three are proplang's: the θ ceiling #19, the null-mass cap #21, the myopic-gather
+overvaluation = the JP increment) are laid out in the containment plan (out of tree). The
+immediate consequences:
+the flag is rolled back (§14); the next flip is gated on a pre-registered gate run, not a
+smoke; and the enact stream needs a priced detector so this class of regression is visible on
+the ledger rather than in a plan (P1, being built alongside this correction).
