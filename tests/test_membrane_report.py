@@ -24,6 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
 from membrane import report as R
 
+from life_agent.core import claude_verdicts as CV
 from life_agent.core import decisions as DEC
 from life_agent.fairfight import records as REC
 
@@ -1235,3 +1236,127 @@ def test_real_to_membrane_is_single_sourced_from_world() -> None:
     from life_agent.membrane import world as W
 
     assert R.REAL_TO_MEMBRANE is W.REAL_TO_MEMBRANE
+
+
+# --- P1: the enact realised-EU detector (contain-live-over-assertion plan) -----------------
+#
+# The M3 flip committed the engine's coarse act live. `enactment()` only COUNTS transitions;
+# it cannot say whether an assert the daemon would have withheld was actually right. This
+# section prices the terminal enact stream against per-question correctness labels (the
+# Claude verdict channel), so a confident-wrong the daemon avoided shows up on the ledger as
+# realised loss rather than in a plan. The abstain baseline earns 0, so realised EU is
+# directly the delta vs having withheld.
+
+
+def _cv(question_id: str, decision_id: str, correct: int) -> CV.ClaudeVerdictEvent:
+    return CV.ClaudeVerdictEvent(
+        tx_time="t", question_id=question_id, decision_id=decision_id,
+        dimensions={"correct": correct}, evidence=(), note="")
+
+
+def test_load_correctness_labels_latest_verdict_per_question(tmp_path: Path) -> None:
+    path = tmp_path / "claude_verdicts.jsonl"
+    CV.append(path, _cv(mirror("q-001"), "dec-1", 1))
+    CV.append(path, _cv(mirror("q-002"), "dec-2", 0))
+    CV.append(path, _cv(mirror("q-001"), "dec-1b", 0))  # revised — latest wins
+    labels = R.load_correctness_labels(path)
+    assert labels == {mirror("q-001"): 0, mirror("q-002"): 0}
+
+
+def test_load_correctness_labels_missing_file_is_empty(tmp_path: Path) -> None:
+    assert R.load_correctness_labels(tmp_path / "nope.jsonl") == {}
+
+
+def test_realised_utility_prices_the_committed_act_at_the_outcome() -> None:
+    u = LIVE_U_BAR
+    assert R.realised_utility(u, "report", 1) == u["u_correct"]
+    assert R.realised_utility(u, "report", 0) == u["u_wrong"]
+    assert R.realised_utility(u, "abstain", 0) == u["u_abstain"]
+    assert R.realised_utility(u, "abstain", 1) == u["u_abstain"]
+    assert R.realised_utility(u, "not-an-effector", 1) is None
+
+
+def test_terminal_enact_per_question_takes_the_last_row() -> None:
+    records = [
+        _enact(form="said@1", question_id="q-101", action="gather",
+               daemon_effector="report", real_effector="gather"),
+        _enact(form="said@1", question_id="q-101", action="gather",
+               daemon_effector="report", real_effector="report", degraded="gather_exhausted"),
+    ]
+    terminal = R.terminal_enact_per_question(records, "said@1")
+    assert set(terminal) == {"q-101"}
+    assert terminal["q-101"]["real_effector"] == "report"
+
+
+def test_enact_realised_eu_prices_over_assertion_as_loss() -> None:
+    # daemon would have withheld (gather), engine committed report, and the answer was WRONG:
+    # a confident-wrong the daemon avoided. Plus one correct assert and one honest abstain.
+    q_bad, q_ok, q_abs = mirror("q-001"), mirror("q-002"), mirror("q-003")
+    records = [
+        _boot("said@1"),
+        _enact(form="said@1", question_id=q_bad, action="gather",
+               daemon_effector="gather", real_effector="report", degraded="gather_exhausted"),
+        _enact(form="said@1", question_id=q_ok, action="gather",
+               daemon_effector="gather", real_effector="report", degraded="gather_exhausted"),
+        _enact(form="said@1", question_id=q_abs, action="abstain",
+               daemon_effector="abstain", real_effector="abstain"),
+    ]
+    labels = {q_bad: 0, q_ok: 1, q_abs: 0}
+    out = R.enact_realised_eu(records, "said@1", labels, LIVE_U_BAR)
+    assert out["n_terminal"] == 3
+    assert out["n_labelled"] == 3
+    assert out["n_priced"] == 3
+    assert out["asserts"] == {"correct": 1, "wrong": 1}
+    # over-assertion: the one wrong report the daemon would have withheld
+    assert out["over_assertion"]["n"] == 1
+    assert out["over_assertion"]["cost"] == pytest.approx(LIVE_U_BAR["u_wrong"])
+    # realised EU = u_correct (q_ok) + u_wrong (q_bad) + 0 (q_abs); abstain baseline is 0
+    expected = LIVE_U_BAR["u_correct"] + LIVE_U_BAR["u_wrong"]
+    assert out["realised_eu_total"] == pytest.approx(expected)
+    assert out["eu_vs_abstain"] == pytest.approx(expected)
+    assert out["realised_eu_per_q"] == pytest.approx(expected / 3)
+
+
+def test_enact_realised_eu_counts_unlabelled_but_does_not_price_them() -> None:
+    q_lab, q_unlab = mirror("q-001"), mirror("q-002")
+    records = [
+        _boot("said@1"),
+        _enact(form="said@1", question_id=q_lab, action="respond",
+               daemon_effector="report", real_effector="report"),
+        _enact(form="said@1", question_id=q_unlab, action="respond",
+               daemon_effector="report", real_effector="report"),
+    ]
+    out = R.enact_realised_eu(records, "said@1", {q_lab: 1}, LIVE_U_BAR)
+    assert out["n_terminal"] == 2
+    assert out["n_labelled"] == 1
+    assert out["n_priced"] == 1
+    assert out["realised_eu_total"] == pytest.approx(LIVE_U_BAR["u_correct"])
+
+
+def test_enact_realised_eu_refuses_to_derive_without_u_bar() -> None:
+    records = [
+        _enact(form="said@1", question_id=mirror("q-001"), action="respond",
+               daemon_effector="report", real_effector="report"),
+    ]
+    out = R.enact_realised_eu(records, "said@1", {mirror("q-001"): 0}, None)
+    assert out["n_terminal"] == 1
+    assert "realised_eu_total" not in out
+    assert "u_bar" in out["note"].lower()
+
+
+def test_build_report_prices_enact_stream_when_labels_given() -> None:
+    records = [
+        _boot("said@1"),
+        _enact(form="said@1", question_id=mirror("q-001"), action="gather",
+               daemon_effector="gather", real_effector="report", degraded="gather_exhausted"),
+    ]
+    report = R.build_report(records, labels={mirror("q-001"): 0})
+    assert report["enact_realised_eu"]["said@1"]["over_assertion"]["n"] == 1
+    md = R.render_md(report)
+    assert "realised" in md.lower()
+
+
+def test_build_report_enact_realised_eu_absent_without_labels() -> None:
+    records = [_boot("said@1")]
+    report = R.build_report(records)
+    assert report["enact_realised_eu"] is None
