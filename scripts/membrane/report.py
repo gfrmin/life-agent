@@ -75,6 +75,7 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # scripts/: self-import below
 
+from life_agent.core import claude_verdicts as CV
 from life_agent.core import config as C
 from life_agent.fairfight import records as REC
 from life_agent.membrane import shadow as SH
@@ -534,6 +535,139 @@ def enactment(records: list[dict[str, Any]], form: str) -> dict[str, Any]:
     return {"n": len(rows), "by_engine_action": dict(by_action),
             "by_transition": dict(by_transition), "degraded": dict(degraded),
             "note": ENACT_NOTE}
+
+
+# --- 2b. the enact realised-EU detector (contain-live-over-assertion plan, P1) ------------
+#
+# `enactment()` above only COUNTS transitions. Under the live flag the engine's coarse act
+# is the committed act, so a `report` the daemon would have withheld can be a confident-wrong
+# and nothing on the ledger says so. This detector prices the TERMINAL enact per question
+# against a per-question correctness label (the Claude verdict channel) using the world's own
+# `utility_by_action`, so realised loss is visible on the ledger rather than in a plan. The
+# abstain baseline earns 0, so realised EU IS the delta vs having withheld — a negative total
+# is a live path that lost EU against simply abstaining.
+
+ENACT_EU_NOTE = (
+    "realised utility of the TERMINAL enacted act per question, priced at the Claude-verdict "
+    "correctness label via world.utility_by_action (report/report_scoped/hedge -> respond; "
+    "abstain -> 0). The abstain baseline earns 0, so realised_eu_total is the delta vs having "
+    "withheld: negative means the live path lost EU against abstaining. over_assertion counts "
+    "the wrong asserts the daemon would have withheld (daemon withheld, engine asserted, y=0) "
+    "— the confident-wrongs M3 introduces. Owner reactions on reports are a future label "
+    "source; v1 uses the purpose-built Claude verdict (the 'asserting the leader is correct' "
+    "bit) only."
+)
+
+
+def load_correctness_labels(claude_verdicts_path: Path) -> dict[str, int]:
+    """``question_id -> correct bit`` from the Claude verdict channel, latest verdict per
+    question (file order = replay order). Missing/unreadable file -> ``{}`` (fail-open, the
+    edge convention): the detector then reports 0 labelled rather than raising."""
+    labels: dict[str, int] = {}
+    try:
+        events = CV.read(claude_verdicts_path)
+    except Exception:
+        return {}
+    for e in events:
+        labels[e.question_id] = CV.y(e)
+    return labels
+
+
+def realised_utility(
+    u_bar: Mapping[str, float], effector: object, y: int,
+) -> float | None:
+    """Realised utility of a committed ``effector`` at outcome ``y`` in {0,1}, read from the
+    world's ONE utility source (:func:`life_agent.membrane.world.utility_by_action`) so it
+    cannot drift from the engine's own pricing. ``None`` for an effector outside the declared
+    map (:func:`map_real_effector`) — an unrecognised committed act is named, never guessed."""
+    aff = map_real_effector(effector)
+    if aff is None:
+        return None
+    u0, u1 = W.utility_by_action(u_bar)[aff]
+    return u1 if y else u0
+
+
+def terminal_enact_per_question(
+    records: list[dict[str, Any]], form: str,
+) -> dict[str, dict[str, Any]]:
+    """The last TERMINAL ``kind: "enact"`` row per ``question_id`` for ``form``, file order —
+    the committed act of a multi-consult episode. A ``real_effector`` of ``gather`` is NOT
+    terminal (the host enacts a VOI probe and the episode continues on a later `/decide-live`
+    call — :func:`life_agent.membrane.shadow._is_terminal_effector`, the same predicate the
+    live path uses to decide verdict binding), so an in-flight gather row never counts as the
+    commit. A question whose only activity is gather has no terminal row and is absent here
+    (named by :func:`enact_realised_eu`'s ``n_gather_only``, never priced)."""
+    out: dict[str, dict[str, Any]] = {}
+    for r in _of_kind(records, "enact", form):
+        qid = r.get("question_id")
+        if isinstance(qid, str) and SH._is_terminal_effector(r.get("real_effector")):
+            out[qid] = r
+    return out
+
+
+def _enact_question_ids(records: list[dict[str, Any]], form: str) -> set[str]:
+    """Every ``question_id`` with an enact row for ``form`` (terminal or in-flight) — the
+    denominator against which a gather-only (never-committed) question is named."""
+    return {
+        r["question_id"] for r in _of_kind(records, "enact", form)
+        if isinstance(r.get("question_id"), str)
+    }
+
+
+def enact_realised_eu(
+    records: list[dict[str, Any]], form: str,
+    labels: Mapping[str, int], u_bar: Mapping[str, float] | None,
+) -> dict[str, Any]:
+    """Price the terminal enact stream for ``form`` against the correctness ``labels``.
+
+    Refuses to derive without a ``u_bar`` (an old boot that never persisted the posterior —
+    the same discipline :func:`differential`/:func:`realized_loss` keep): reports the counts
+    and a note, no EU. Otherwise returns realised EU vs the abstain baseline (0), the
+    correct/wrong assert split, and the ``over_assertion`` cell (daemon withheld, engine
+    asserted, outcome wrong)."""
+    terminal = terminal_enact_per_question(records, form)
+    n_terminal = len(terminal)
+    n_gather_only = len(_enact_question_ids(records, form) - set(terminal))
+    labelled = {qid: r for qid, r in terminal.items() if qid in labels}
+    if u_bar is None:
+        return {"n_terminal": n_terminal, "n_labelled": len(labelled),
+                "n_gather_only": n_gather_only,
+                "note": "no u_bar on the boot record; realised EU not derived. " + ENACT_EU_NOTE}
+
+    realised_total = 0.0
+    n_priced = correct_asserts = wrong_asserts = 0
+    over_n = 0
+    over_cost = 0.0
+    for qid, r in labelled.items():
+        y = int(labels[qid])
+        real_aff = map_real_effector(r.get("real_effector"))
+        util = realised_utility(u_bar, r.get("real_effector"), y)
+        if real_aff is None or util is None:
+            continue  # a terminal effector outside the map — counted via n_labelled - n_priced
+        n_priced += 1
+        realised_total += util
+        if real_aff == "respond":
+            if y:
+                correct_asserts += 1
+            else:
+                wrong_asserts += 1
+            daemon_aff = map_real_effector(r.get("daemon_effector"))
+            if daemon_aff is not None and daemon_aff != "respond" and y == 0:
+                over_n += 1
+                over_cost += util
+    return {
+        "n_terminal": n_terminal,
+        "n_labelled": len(labelled),
+        "n_gather_only": n_gather_only,
+        "n_priced": n_priced,
+        "realised_eu_total": realised_total,
+        "realised_eu_per_q": (realised_total / n_priced) if n_priced else 0.0,
+        "abstain_baseline_eu": 0.0,
+        "eu_vs_abstain": realised_total,
+        "asserts": {"correct": correct_asserts, "wrong": wrong_asserts},
+        "over_assertion": {"n": over_n, "cost": over_cost},
+        "note": ENACT_EU_NOTE,
+    }
 
 
 # --- 3. grounded joins (only with --vectors) --------------------------------------------
@@ -1114,9 +1248,15 @@ def _latest_boot_world_digest(records: list[dict[str, Any]], form: str) -> str |
 
 def build_report(
     records: list[dict[str, Any]], baseline: Baseline | None = None,
+    labels: Mapping[str, int] | None = None,
 ) -> dict[str, Any]:
     """The pure core: every section, over the given record list and (optional) baseline
-    arm. No wall-clock field — given the same inputs this is byte-reproducible."""
+    arm. No wall-clock field — given the same inputs this is byte-reproducible.
+
+    ``labels`` (``question_id -> correct bit``, from :func:`load_correctness_labels`) enables
+    the enact realised-EU detector (P1): passed None, the ``enact_realised_eu`` section is
+    None (and §2d renders a one-line "not run" note), so no verdict data is read and no EU is
+    derived unless labels are supplied."""
     forms = declared_forms(records)
     stats_record = latest_stats_record(records)
 
@@ -1156,6 +1296,11 @@ def build_report(
         "differential": differential_by_form,
         "gates": gates_by_form,
         "enactments": {f: enactment(records, f) for f in forms},
+        "enact_realised_eu": (
+            None if labels is None
+            else {f: enact_realised_eu(records, f, labels, latest_boot_u_bar(records, f))
+                  for f in forms}
+        ),
         "grounded": grounded_by_form,
         "demand_ledger": demand_ledger(records, forms),
         "provenance": provenance_by_form,
@@ -1290,6 +1435,27 @@ def _md_enactment(form: str, e: dict[str, Any]) -> list[str]:
     return lines
 
 
+def _md_enact_realised_eu(form: str, e: dict[str, Any]) -> list[str]:
+    lines = [f"### {form}", ""]
+    if "realised_eu_total" not in e:
+        lines += [f"- terminal enact rows: {e['n_terminal']} (labelled: {e['n_labelled']})",
+                  f"_{e['note']}_", ""]
+        return lines
+    over = e["over_assertion"]
+    lines += [
+        f"- terminal enact rows: {e['n_terminal']} (labelled {e['n_labelled']}, "
+        f"priced {e['n_priced']}; {e['n_gather_only']} in-flight gather-only, not priced)",
+        f"- **realised EU vs abstaining: {e['eu_vs_abstain']:+.2f} total, "
+        f"{e['realised_eu_per_q']:+.3f}/question** "
+        f"(abstain baseline earns 0 — negative means the live path lost EU)",
+        f"- asserts: {e['asserts']['correct']} correct, {e['asserts']['wrong']} wrong",
+        f"- **over-assertion (daemon withheld, engine asserted, wrong): {over['n']} "
+        f"(realised cost {over['cost']:+.2f})**",
+        "", f"_{e['note']}_", "",
+    ]
+    return lines
+
+
 def _md_contingency_table(name: str, table: dict[str, int]) -> list[str]:
     return [
         f"- {name} (n={table['n']}):",
@@ -1421,6 +1587,14 @@ def render_md(report: dict[str, Any]) -> str:
     for form, e in report.get("enactments", {}).items():
         lines += _md_enactment(form, e)
 
+    lines += ["## 2d. Enact realised EU (priced vs the Claude verdict labels)", ""]
+    if report.get("enact_realised_eu") is None:
+        lines += ["_Not run: pass `--verdicts <claude_verdicts.jsonl>` to price the enact "
+                  "stream against correctness labels._", ""]
+    else:
+        for form, e in report["enact_realised_eu"].items():
+            lines += _md_enact_realised_eu(form, e)
+
     lines += ["## 3. Grounded joins", ""]
     if report["grounded"] is None:
         lines.append("_Not run: pass `--vectors <fairfight run dir>` to enable this section._")
@@ -1453,6 +1627,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="a fair-fight run directory (optional; enables the grounded-join section)",
     )
     parser.add_argument(
+        "--verdicts", nargs="?", default=None, const=str(C.CLAUDE_VERDICTS_LOG),
+        help="Claude verdict log to price the enact stream against (bare flag uses the "
+             "configured path; enables §2d, the enact realised-EU detector)",
+    )
+    parser.add_argument(
         "--out-dir", default=str(C.membrane_dir()),
         help="where to write report.json + report.md (default: the membrane KB subtree)",
     )
@@ -1463,7 +1642,8 @@ def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
     records = load_shadow_records(Path(args.shadow_log))
     baseline = load_baseline_vectors(Path(args.vectors)) if args.vectors else None
-    report = build_report(records, baseline)
+    labels = load_correctness_labels(Path(args.verdicts)) if args.verdicts else None
+    report = build_report(records, baseline, labels=labels)
 
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
