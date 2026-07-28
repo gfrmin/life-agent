@@ -842,11 +842,16 @@ def test_build_membrane_constructs_and_starts_when_command_set(
         monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv(config.MEMBRANE_COMMAND_ENV, "fake-govhost --flag")
     monkeypatch.setattr(config, "KB", tmp_path)
-    # DECISIONS_LOG/REACTIONS_LOG are precomputed at import time off the REAL KB, so
-    # patching config.KB alone would not move them — pin them under tmp_path too, or the
-    # snapshot closure below would touch whatever real calibration logs exist on disk.
+    # DECISIONS_LOG/REACTIONS_LOG/CLAUDE_VERDICTS_LOG are precomputed at import time off the
+    # REAL KB, so patching config.KB alone would not move them — pin all three under tmp_path,
+    # or the snapshot closure below would touch whatever real calibration logs exist on disk.
+    # (The Claude verdict log joined boot_snapshot in the verdict-channel PR; before it had any
+    # rows this test passed by accident — n_source_records read 0 only because the file was
+    # empty. It must be pinned like the other two.)
     monkeypatch.setattr(config, "DECISIONS_LOG", tmp_path / "calibration" / "decisions.jsonl")
     monkeypatch.setattr(config, "REACTIONS_LOG", tmp_path / "calibration" / "reactions.jsonl")
+    monkeypatch.setattr(
+        config, "CLAUDE_VERDICTS_LOG", tmp_path / "calibration" / "claude_verdicts.jsonl")
     monkeypatch.setattr(bridge_server.MEM, "MembraneShadow", _FakeShadowInstance)
     result = bridge_server._build_membrane(lambda: {"u_wrong": -5.0})
     assert isinstance(result, _FakeShadowInstance)
