@@ -1393,3 +1393,106 @@ def test_enact_realised_eu_excludes_a_gather_only_question() -> None:
     assert out["n_priced"] == 0
     assert out["realised_eu_total"] == pytest.approx(0.0)
     assert out["over_assertion"]["n"] == 0
+
+
+# --- P-plan next piece: per-bucket calibration by leader credence -------------------------
+# Where the -0.58/question containment signal lives: the engine's committed p1 is ~flat
+# while empirical correctness varies strongly with the retrieval leader_credence. This
+# instrument makes that standing and priced, and is what P2 (narrow the lattice) is measured
+# against — after narrowing, engine p1 should START to track leader_credence per bucket.
+
+_BREAK_EVEN = 5.9395 / (1.0 + 5.9395)  # (u_abstain - u_wrong)/(u_correct - u_wrong), LIVE_U_BAR
+
+
+def _decide_lc(qid: str, leader_credence: float | None, p1: float) -> dict[str, Any]:
+    """A terminal decide row carrying a leader_credence and engine p1 for question `qid`."""
+    return _decide(
+        form="said@1", question_id=qid, action="respond", real_effector="report",
+        p1=p1, summary=_summary(leader_credence=leader_credence),
+    )
+
+
+def _calibration_fixture() -> tuple[list[dict[str, Any]], dict[str, int]]:
+    """Six verdict-grounded questions across the buckets: lt50 both wrong, everything
+    >=0.6 correct — a monotone-in-leader-credence correctness signal the flat p1 misses."""
+    labels = {
+        "qa": 0, "qb": 0,  # lt50 -> correct 0.0
+        "qc": 1,           # 50-70 -> correct 1.0
+        "qd": 1,           # 80-90 -> correct 1.0
+        "qe": 1, "qf": 1,  # ge90 -> correct 1.0
+    }
+    records = [
+        _boot("said@1"),
+        _decide_lc("qa", 0.20, 0.34), _decide_lc("qb", 0.40, 0.34),
+        _decide_lc("qc", 0.60, 0.34),
+        _decide_lc("qd", 0.85, 0.34),
+        _decide_lc("qe", 0.95, 0.34), _decide_lc("qf", 0.97, 0.34),
+    ]
+    return records, labels
+
+
+def test_calibration_by_leader_credence_buckets_price_and_flat_p1() -> None:
+    records, labels = _calibration_fixture()
+    out = R.calibration_by_leader_credence(records, "said@1", labels, LIVE_U_BAR)
+    assert out["n_labelled"] == 6
+    assert out["n_joined"] == 6
+    assert out["n_with_leader"] == 6
+    assert out["break_even"] == pytest.approx(_BREAK_EVEN, abs=1e-4)
+
+    by = {b["name"]: b for b in out["buckets"]}
+    assert by["lt50"]["n"] == 2 and by["lt50"]["correct"] == pytest.approx(0.0)
+    assert by["lt50"]["eu_positive"] is False
+    assert by["50-70"]["correct"] == pytest.approx(1.0) and by["50-70"]["eu_positive"] is True
+    assert by["ge90"]["n"] == 2 and by["ge90"]["eu_positive"] is True
+    # respond-all realised EU/q is negative: the two lt50 wrongs sink it below abstaining
+    assert out["respond_all_eu_per_q"] < 0.0
+    assert out["delta_per_q"] == pytest.approx(out["respond_all_eu_per_q"])  # abstain earns 0
+    # the calibration probe: p1 is flat across buckets whose true correctness ranges 0 -> 1
+    assert out["engine_p1_probe"]["spread"] == pytest.approx(0.0)
+    assert out["engine_p1_probe"]["mean"] == pytest.approx(0.34)
+
+
+def test_calibration_gate_beats_respond_all_the_p2_lever() -> None:
+    # Responding only where the bucket is EU-positive (a leader-credence gate) recovers the
+    # loss respond-all eats on the low buckets — the quantified value of P2.
+    records, labels = _calibration_fixture()
+    out = R.calibration_by_leader_credence(records, "said@1", labels, LIVE_U_BAR)
+    assert out["gate_realised_eu_per_q"] > out["respond_all_eu_per_q"]
+    assert out["gate_realised_eu_per_q"] > 0.0
+
+
+def test_calibration_excludes_a_row_with_no_leader_credence() -> None:
+    records, labels = _calibration_fixture()
+    labels["qg"] = 1
+    records.append(_decide_lc("qg", None, 0.34))  # joined, but no leader_credence
+    out = R.calibration_by_leader_credence(records, "said@1", labels, LIVE_U_BAR)
+    assert out["n_labelled"] == 7
+    assert out["n_joined"] == 7
+    assert out["n_with_leader"] == 6  # qg excluded from the curve, still counted as joined
+
+
+def test_calibration_refuses_to_derive_without_u_bar() -> None:
+    records, labels = _calibration_fixture()
+    out = R.calibration_by_leader_credence(records, "said@1", labels, None)
+    assert out["n_labelled"] == 6 and out["n_with_leader"] == 6
+    assert "break_even" not in out and "buckets" not in out
+    assert "no u_bar" in out["note"]
+
+
+def test_build_report_includes_calibration_when_labels_given() -> None:
+    records, labels = _calibration_fixture()
+    report = R.build_report(records, labels=labels)
+    assert report["calibration"] is not None
+    assert "said@1" in report["calibration"]
+    md = R.render_md(report)
+    assert "Calibration by leader credence" in md
+    assert "break-even" in md.lower()
+
+
+def test_build_report_calibration_absent_without_labels() -> None:
+    records, _ = _calibration_fixture()
+    report = R.build_report(records)  # no labels
+    assert report["calibration"] is None
+    md = R.render_md(report)
+    assert "Calibration by leader credence" in md  # header still rendered
+    assert "Not run" in md
