@@ -670,6 +670,132 @@ def enact_realised_eu(
     }
 
 
+# --- 2e. per-bucket calibration by leader credence (contain-live-over-assertion, P-plan) --
+# The containment finding priced live respond at ~-0.6 EU/question. The enact detector above
+# reads ~0 on the historical stream (the verdicted questions predate the fold's report
+# regime), so the signal lives HERE: the engine's committed p1 is ~flat across questions
+# whose true correctness — read from the same Claude verdicts — varies strongly with the
+# retrieval leader_credence. This bins by that credence, prices each bucket under the world's
+# ONE utility (a respond at the bucket's empirical rate vs abstaining), and publishes the p1
+# spread as the calibration probe. It is what P2 (narrow the guard lattice) is measured
+# against: after narrowing, p1 should begin to track leader_credence per bucket.
+
+# Buckets over the retrieval leader_credence — a named modelling choice (the plan's own
+# lt50/50-70/70-80/80-90/ge90 partition), published with the curve so a reader can re-bin.
+LEADER_CREDENCE_EDGES: tuple[tuple[float, float, str], ...] = (
+    (0.0, 0.5, "lt50"),
+    (0.5, 0.7, "50-70"),
+    (0.7, 0.8, "70-80"),
+    (0.8, 0.9, "80-90"),
+    (0.9, 1.0001, "ge90"),
+)
+
+CALIBRATION_NOTE = (
+    "Per-bucket calibration of the verdict-grounded questions, binned by the terminal decide "
+    "row's retrieval leader_credence. correct = empirical rate from the Claude verdict labels; "
+    "eu_respond = realised mean utility of RESPONDING on the bucket vs abstaining, both priced "
+    "by the world's ONE utility (world.utility_by_action). engine_p1_probe is the calibration "
+    "test: p1 ~flat while correct varies by bucket is the 'moved a population dial, not "
+    "per-question calibration' signature. gate_realised_eu_per_q is an IN-SAMPLE reference "
+    "(respond where the bucket is EU-positive, else abstain) — the value a leader-credence "
+    "gate would have realised on this sample, not a forecast."
+)
+
+
+def _leader_credence(record: Mapping[str, Any]) -> float | None:
+    summary = record.get("summary")
+    if not isinstance(summary, dict):
+        return None
+    lc = summary.get("leader_credence")
+    return float(lc) if isinstance(lc, int | float) else None
+
+
+def _mean_or_none(values: Sequence[float]) -> float | None:
+    return sum(values) / len(values) if values else None
+
+
+def calibration_by_leader_credence(
+    records: list[dict[str, Any]], form: str,
+    labels: Mapping[str, int], u_bar: Mapping[str, float] | None,
+    *, edges: Sequence[tuple[float, float, str]] = LEADER_CREDENCE_EDGES,
+) -> dict[str, Any]:
+    """Bin the verdict-grounded questions for ``form`` by their terminal decide row's
+    ``leader_credence`` and price each bucket against the correctness ``labels``.
+
+    Refuses to derive without a ``u_bar`` (same discipline as :func:`enact_realised_eu`):
+    reports the join counts and a note, no EU. A verdicted question with no terminal decide
+    row is absent from ``n_joined``; one whose decide row carries no numeric leader_credence
+    is counted in ``n_joined`` but named out of the curve via ``n_with_leader``."""
+    decide = terminal_decide_per_question(records, form)
+    joined = {qid: decide[qid] for qid in labels if qid in decide}
+    rows = [
+        (qid, _leader_credence(r), _p1(r), int(labels[qid]))
+        for qid, r in joined.items()
+    ]
+    with_leader = [(qid, lc, p1, y) for (qid, lc, p1, y) in rows if lc is not None]
+    base = {
+        "n_labelled": len(labels),
+        "n_joined": len(joined),
+        "n_with_leader": len(with_leader),
+    }
+    if u_bar is None:
+        return {**base, "note": "no u_bar on the boot record; calibration EU not derived. "
+                + CALIBRATION_NOTE}
+
+    pairs = W.utility_by_action(u_bar)
+    u0r, u1r = pairs["respond"]
+    u_abstain = pairs["abstain"][0]
+    span = u1r - u0r
+    break_even = (u_abstain - u0r) / span if span else None
+
+    def _eu_respond(correct: float) -> float:
+        """Realised mean utility of responding at empirical rate ``correct``."""
+        return (1.0 - correct) * u0r + correct * u1r
+
+    buckets: list[dict[str, Any]] = []
+    gate_realised = 0.0  # in-sample: respond on EU-positive buckets, else abstain
+    for lo, hi, name in edges:
+        group = [t for t in with_leader if lo <= t[1] < hi]
+        if not group:
+            continue
+        n = len(group)
+        correct = sum(t[3] for t in group) / n
+        eu_respond = _eu_respond(correct)
+        positive = eu_respond > u_abstain
+        p1s_here = [t[2] for t in group if t[2] is not None]
+        buckets.append({
+            "name": name, "lo": lo, "hi": hi, "n": n,
+            "correct": correct,
+            "mean_leader_credence": sum(t[1] for t in group) / n,
+            "mean_p1": _mean_or_none(p1s_here),
+            "eu_respond": eu_respond,
+            "eu_positive": positive,
+        })
+        gate_realised += sum((u1r if y else u0r) for (*_, y) in group) if positive \
+            else u_abstain * n
+
+    n_total = len(with_leader)
+    correct_all = sum(t[3] for t in with_leader) / n_total if n_total else 0.0
+    respond_all = _eu_respond(correct_all)  # == realised mean utility of respond-all
+    p1s = [t[2] for t in with_leader if t[2] is not None]
+    p1_probe: dict[str, Any] = (
+        {"n": len(p1s), "min": min(p1s), "max": max(p1s),
+         "spread": max(p1s) - min(p1s), "mean": sum(p1s) / len(p1s)}
+        if p1s else {"n": 0}
+    )
+    return {
+        **base,
+        "break_even": break_even,
+        "buckets": buckets,
+        "respond_all_eu_per_q": respond_all,
+        "abstain_eu_per_q": u_abstain,
+        "delta_per_q": respond_all - u_abstain,
+        "gate_realised_eu_per_q": gate_realised / n_total if n_total else 0.0,
+        "engine_p1_probe": p1_probe,
+        "note": CALIBRATION_NOTE,
+    }
+
+
 # --- 3. grounded joins (only with --vectors) --------------------------------------------
 
 
@@ -1301,6 +1427,11 @@ def build_report(
             else {f: enact_realised_eu(records, f, labels, latest_boot_u_bar(records, f))
                   for f in forms}
         ),
+        "calibration": (
+            None if labels is None
+            else {f: calibration_by_leader_credence(
+                records, f, labels, latest_boot_u_bar(records, f)) for f in forms}
+        ),
         "grounded": grounded_by_form,
         "demand_ledger": demand_ledger(records, forms),
         "provenance": provenance_by_form,
@@ -1456,6 +1587,49 @@ def _md_enact_realised_eu(form: str, e: dict[str, Any]) -> list[str]:
     return lines
 
 
+def _md_calibration(form: str, c: dict[str, Any]) -> list[str]:
+    lines = [f"### {form}", ""]
+    if "buckets" not in c:
+        lines += [
+            f"- verdict-grounded questions: {c['n_joined']} joined "
+            f"(with leader_credence: {c['n_with_leader']}, of {c['n_labelled']} labelled)",
+            f"_{c['note']}_", "",
+        ]
+        return lines
+    lines += [
+        f"- verdict-grounded questions: {c['n_joined']} joined "
+        f"(with leader_credence: {c['n_with_leader']}, of {c['n_labelled']} labelled)",
+        f"- respond/abstain break-even: **{c['break_even']:.4f}** correct-rate",
+        "",
+        "| leader_credence | n | correct | mean_LC | mean_p1 | EU_respond/q | EU |",
+        "|---|---:|---:|---:|---:|---:|---|",
+    ]
+    for b in c["buckets"]:
+        mp1 = f"{b['mean_p1']:.3f}" if b["mean_p1"] is not None else "—"
+        lines.append(
+            f"| {b['name']} | {b['n']} | {b['correct']:.3f} | "
+            f"{b['mean_leader_credence']:.3f} | {mp1} | {b['eu_respond']:+.3f} | "
+            f"{'EU+' if b['eu_positive'] else 'EU-'} |"
+        )
+    probe = c["engine_p1_probe"]
+    probe_str = (
+        f"min {probe['min']:.4f}, max {probe['max']:.4f}, spread **{probe['spread']:.4f}**"
+        if probe.get("n") else "no p1 readouts"
+    )
+    lines += [
+        "",
+        f"- **respond-all realised EU: {c['respond_all_eu_per_q']:+.3f}/question** vs "
+        f"abstaining ({c['abstain_eu_per_q']:+.3f}) — Δ {c['delta_per_q']:+.3f}/q",
+        f"- leader-credence-gated (in-sample reference): "
+        f"{c['gate_realised_eu_per_q']:+.3f}/question",
+        f"- engine-p1 calibration probe: {probe_str} "
+        f"(flat p1 across buckets whose correct-rate varies = a population dial, not "
+        f"per-question calibration)",
+        "", f"_{c['note']}_", "",
+    ]
+    return lines
+
+
 def _md_contingency_table(name: str, table: dict[str, int]) -> list[str]:
     return [
         f"- {name} (n={table['n']}):",
@@ -1594,6 +1768,15 @@ def render_md(report: dict[str, Any]) -> str:
     else:
         for form, e in report["enact_realised_eu"].items():
             lines += _md_enact_realised_eu(form, e)
+
+    lines += ["## 2e. Calibration by leader credence (verdict-grounded)", ""]
+    if report.get("calibration") is None:
+        lines += ["_Not run: pass `--verdicts <claude_verdicts.jsonl>` to bin the "
+                  "verdict-grounded questions by retrieval leader credence and price each "
+                  "bucket._", ""]
+    else:
+        for form, c in report["calibration"].items():
+            lines += _md_calibration(form, c)
 
     lines += ["## 3. Grounded joins", ""]
     if report["grounded"] is None:
