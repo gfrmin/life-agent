@@ -999,3 +999,31 @@ immediate consequences:
 the flag is rolled back (§14); the next flip is gated on a pre-registered gate run, not a
 smoke; and the enact stream needs a priced detector so this class of regression is visible on
 the ledger rather than in a plan (P1, being built alongside this correction).
+
+### 17.3 The two standing instruments — enact detector (P1) and the calibration curve (2026-07-28)
+
+§17.2 was a hand measurement in a plan. Both halves of it are now standing report sections,
+so the regression is re-computable from the ledger, not re-derived by hand.
+
+- **P1 — the enact realised-EU detector (§2d of the report, landed).** Prices the terminal
+  `kind:"enact"` stream per question against the Claude verdict labels under the boot `u_bar`,
+  with the `over_assertion` cell (daemon withheld, engine asserted, outcome wrong) as the
+  headline. On the historical ledger it reads **0 over-assertion** — honestly, because every
+  verdicted question flowed through the live path *before* the fold's report regime, so it was
+  withheld. It is the forward instrument: it lights up if a verdicted question ever commits on
+  the post-fold report path.
+
+- **The per-bucket calibration curve (§2e of the report, landed 2026-07-28).**
+  `calibration_by_leader_credence` bins the 74 verdict-grounded questions by their terminal
+  decide row's `leader_credence` and prices each bucket under the world's one utility. This is
+  where §17.2's −0.58 signal actually lives, and on the real data it is slightly worse than the
+  hand estimate on this exact unit:
+  - **respond-all realised EU = −0.688/question** vs abstaining (Δ −0.688/q);
+  - engine-p1 spread **0.0031** (flat) while empirical correctness ranges **0.588 → 1.000**
+    across the leader-credence buckets — §17.2's "population dial, not calibration" made a
+    standing readout: the calibration probe. (The advisory p1 here sits at ~0.34, the marginal;
+    the fold's ~0.87 was the live post-flip level — the *flatness*, not the level, is the
+    finding.)
+  - a leader-credence gate would have realised **+0.312/question** in-sample — the quantified
+    target of P2 (narrow the guard lattice so p1 begins to track the leader per bucket). P2 is
+    measured against this curve: after narrowing, the flat probe should widen and correlate.
