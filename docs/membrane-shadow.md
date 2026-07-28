@@ -1028,56 +1028,73 @@ so the regression is re-computable from the ledger, not re-derived by hand.
     target of P2 (narrow the guard lattice so p1 begins to track the leader per bucket). P2 is
     measured against this curve: after narrowing, the flat probe should widen and correlate.
 
-### 17.4 The −0.688 was a respond-ALL counterfactual; the engine's actual policy is ~neutral (2026-07-28)
+### 17.4 The −0.688 was a respond-ALL counterfactual; the engine's IN-SAMPLE policy is ~neutral, pending P3 (2026-07-28)
 
 Building P2 (narrow the guard lattice) forced the measurement §17.3 lacked: not the p1 the
 daemon *logged*, but the p1 the folded engine *would commit under*. Replaying the real 193-tick
 verdict stream through the actual `proplang-host` binary (the offline experiment
-`scripts/membrane/lattice_replay.py`) and then probing `decide()` per verdicted question inverts
+`scripts/membrane/lattice_replay.py`) and then probing `decide()` per verdicted question revises
 the §17.2/§17.3 reading. **§17.3 is preserved above as-recorded; this states what the fuller
-measurement showed.**
+measurement showed — and, per the review of PR #50, its own limits.** Every figure below is
+**in-sample** (each question's own verdict was folded before its p1 was probed and scored against
+that same label); the held-out, pre-registered P3 gate is what confirms or refutes it, not this
+replay.
 
-- **Post-fold, the engine p1 TRACKS leader_credence** — 0.584 / 0.640 / 0.866 / 0.868 / 0.871
-  across the lt50…ge90 buckets (spread **0.434**, not 0.003), correlating with the correctness
-  0.52 → 1.00. The harness is faithful: it reproduces the §17.2 smoke's four values to the digit
-  (leader 0.870 → 0.8682; 0.944/0.959/0.965 → 0.8706). The smoke's "flat 0.87" was **four
-  high-bucket samples**; it never saw the 0.58 the low buckets sit at.
+- **Post-fold, the engine p1 TRACKS leader_credence (in-sample)** — 0.584 / 0.640 / 0.866 / 0.868
+  / 0.871 across the lt50…ge90 buckets, correlating with the correctness 0.52 → 1.00. The
+  individual-question p1 spread is **0.434** — vs the 0.003 §2e reads pre-fold, computed the same
+  way (the five bucket *means* themselves span 0.287). The harness is faithful: it reproduces the
+  §17.2 smoke's four values to the digit (leader 0.870 → 0.8682; 0.944/0.959/0.965 → 0.8706). The
+  smoke's "flat 0.87" was **four high-bucket samples**; it never saw the 0.58 the low buckets sit
+  at. Because each question's verdict was folded before probing it, the tracking is a *fit*, not a
+  forecast.
 
 - **§2e's "flat p1 = 0.0031" is a PRE-FOLD artifact.** All 74 terminal decide rows were written
-  2026-07-22 07:48–08:05 — before the 180 verdicts were folded (~18:22 that day). §2e's engine-p1
-  column therefore reads a cold session at the marginal 0.338; it does **not** reflect the folded
-  commit-time p1. The `calibration_by_leader_credence` arithmetic is correct; its p1 probe simply
-  reads the wrong (pre-fold) session state, and the reader must not take "flat" as the engine's
-  commit behaviour.
+  2026-07-22 07:48–08:05 — before the 180 verdicts were folded (~15:23 UTC that day). §2e's
+  engine-p1 column therefore reads a cold session at the marginal 0.338; it does **not** reflect
+  the folded commit-time p1. The `calibration_by_leader_credence` arithmetic is correct; its p1
+  probe simply reads the wrong (pre-fold) session state, and the reader must not take "flat" as the
+  engine's commit behaviour.
 
 - **The −0.688 is the cost of respond-ALL, which the engine does not do.** At gather-exhaustion
   the host argmaxes `{abstain, ask, respond}` at the engine's OWN p1 (`coarse._gather` →
   `world.eu_by_action`), so respond fires only where p1 > 0.8559 — post-fold, the high buckets.
   Pricing the engine's *actual* commit policy (respond-iff-p1>bar, per-question) over the same
-  190 ticks gives **+0.043 EU/question** (full lattice) vs the respond-all **−0.753/q** — the
-  engine's policy is slightly EU-**positive**, not a −0.688 regression. The production enact
-  ledger corroborates it independently: across 555 live enacts the engine committed `report`
-  **once**, while the daemon wanted `report` 85 times — it **suppressed 84 of 85 daemon asserts**
-  down to gather/abstain. The live path was far *more* conservative than the daemon, not less.
+  190 ticks gives **+0.043 EU/question in-sample** (full lattice) vs the respond-all **−0.753/q**.
+  So the respond-all magnitude is not what the engine commits — but the corrected figure is
+  in-sample and awaits P3.
+  **The enact ledger does NOT independently corroborate this** (an earlier draft of this section
+  wrongly enlisted it, caught in review): 551 of the 555 live enacts are **pre-fold**, where p1 ≤
+  0.1 at exhaustion makes the 82 daemon-`report` suppressions there automatic and mute about the
+  post-fold policy — the same reason §2d reads 0. **Post-fold there are only 4 live enacts (3
+  gather, 1 report)** — too thin to conclude anything, and the single `report` is one of them. The
+  live enact stream is therefore neutral evidence here, not support.
 
 - **P2(a) — "narrow the lattice to fix flat p1" — is disconfirmed as premised.** The full lattice
-  is not flat post-fold; it already tracks. Narrowing to `leader-credence` only *does* raise the
-  policy EU to **+0.284/q** — but by *coarsening* into a ge90-only gate that refuses the
-  break-even-region buckets, not by tracking better (it collapses lt50…80-90 to a single p1
-  0.681). So the residual lever is **conservative assertion-gating**, not lattice identification.
+  is not flat post-fold; it already tracks (in-sample). Narrowing to `leader-credence` only *does*
+  raise the in-sample policy EU to **+0.284/q** — but by *coarsening* into a ge90-only gate that
+  refuses the break-even-region buckets, not by tracking better (it collapses lt50…80-90 to a
+  single p1 0.681). So the residual lever is **conservative assertion-gating**, not lattice
+  identification.
 
 - **The one genuine residual:** the 70-80 and 80-90 buckets assert (p1 0.867 > the 0.856 bar) at
   only ~0.77 correct — below break-even, so a real (small) over-assertion there (−0.6/q on those
-  ~48 questions). This is the real thing the containment instinct was reacting to; §17.2
-  overstated it ~16× by attributing the respond-all counterfactual to the engine.
+  ~48 questions). Because these buckets are already EU-negative in-sample, a held-out estimate can
+  move the aggregate back toward the negative the containment finding named — which is exactly why
+  P3, not this in-sample replay, is the arbiter. §17.2's error was attributing the respond-all
+  counterfactual to the engine, not inventing this break-even-region cost.
 
-**Caveats (so this does not overcorrect):** the replay folds all 193 verdicts at once in
-`boot_snapshot` order, whereas the live path folded incrementally — if the engine's update is not
-order-exchangeable the end posterior could differ (the exact smoke reproduction is strong evidence
-it does not). Bucket n is 13–59; correctness is the 74 Claude verdict labels.
+**Caveats (so this does not overcorrect):** (1) **every number here is in-sample** — the held-out
+P3 gate is the arbiter, and the EU-negative break-even buckets mean the held-out aggregate could
+move back negative. (2) The replay folds all 193 verdicts at once in `boot_snapshot` order vs the
+live incremental fold — if the engine's update is not order-exchangeable the end posterior could
+differ (the exact smoke reproduction is strong evidence it does not). (3) Bucket n is 13–59;
+correctness is the 74 Claude verdict labels; post-fold live enacts number only 4.
 
-**Consequence — folded into P3, not a separate build.** P3's pre-registered gate run must price the
-engine's *actual* commit policy (respond-iff-p1>bar over the folded posterior), not respond-all,
-and watch the 70-80/80-90 break-even region; `lattice_replay.py` is its measurement seed. The P0
-containment stands (it only returned to advisory and costs nothing), but its stated rationale — a
-−0.688 live regression — did not survive the fuller measurement.
+**Consequence — folded into P3, not a separate build.** P3's pre-registered, **held-out** gate run
+must price the engine's *actual* commit policy (respond-iff-p1>bar over the folded posterior), not
+respond-all, and watch the 70-80/80-90 break-even region; `lattice_replay.py` is its in-sample
+seed. The P0 containment stands (it only returned to advisory and costs nothing) as the safe
+default while P3 runs. What the fuller measurement changes is the *rationale* — the −0.688 was a
+respond-all counterfactual, not the engine's commit policy — while leaving the **sign** of the
+held-out regression for P3 to settle.

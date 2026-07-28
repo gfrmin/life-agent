@@ -16,9 +16,11 @@ Claude verdict labels. The "full" variant's handshake/features are IDENTICAL to
 and it reproduces the §17.2 smoke's p1 to the digit.
 
 Finding (2026-07-28, register §17.4): post-fold the FULL lattice p1 TRACKS leader_credence
-(spread ~0.43, not the 0.003 §2e reads pre-fold); the engine's actual policy is **+0.043 EU/q**
-(slightly positive), not the respond-ALL counterfactual -0.75; narrowing to leader-credence only
-raises it to +0.284/q by *coarsening* into a ge90-only gate, not by identifying better.
+(spread ~0.43, not the 0.003 §2e reads pre-fold); the engine's actual commit policy is
+**+0.043 EU/q**, not the respond-ALL counterfactual -0.75; narrowing to leader-credence only
+raises it to +0.284/q by *coarsening* into a ge90-only gate, not by identifying better. ALL of
+this is IN-SAMPLE — each question's verdict is folded before its own p1 is probed and scored
+against that same label — so it is a fit, not a forecast; P3's held-out gate is the arbiter.
 
 Run (needs the engine): `uv run --project . python scripts/membrane/lattice_replay.py`
 """
