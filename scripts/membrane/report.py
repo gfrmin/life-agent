@@ -590,15 +590,28 @@ def realised_utility(
 def terminal_enact_per_question(
     records: list[dict[str, Any]], form: str,
 ) -> dict[str, dict[str, Any]]:
-    """The LAST ``kind: "enact"`` row per ``question_id`` for ``form``, file order — the
-    terminal commit of a multi-consult episode (the same last-occurrence rule
-    :func:`terminal_decide_per_question` uses for decide ticks)."""
+    """The last TERMINAL ``kind: "enact"`` row per ``question_id`` for ``form``, file order —
+    the committed act of a multi-consult episode. A ``real_effector`` of ``gather`` is NOT
+    terminal (the host enacts a VOI probe and the episode continues on a later `/decide-live`
+    call — :func:`life_agent.membrane.shadow._is_terminal_effector`, the same predicate the
+    live path uses to decide verdict binding), so an in-flight gather row never counts as the
+    commit. A question whose only activity is gather has no terminal row and is absent here
+    (named by :func:`enact_realised_eu`'s ``n_gather_only``, never priced)."""
     out: dict[str, dict[str, Any]] = {}
     for r in _of_kind(records, "enact", form):
         qid = r.get("question_id")
-        if isinstance(qid, str):
+        if isinstance(qid, str) and SH._is_terminal_effector(r.get("real_effector")):
             out[qid] = r
     return out
+
+
+def _enact_question_ids(records: list[dict[str, Any]], form: str) -> set[str]:
+    """Every ``question_id`` with an enact row for ``form`` (terminal or in-flight) — the
+    denominator against which a gather-only (never-committed) question is named."""
+    return {
+        r["question_id"] for r in _of_kind(records, "enact", form)
+        if isinstance(r.get("question_id"), str)
+    }
 
 
 def enact_realised_eu(
@@ -614,9 +627,11 @@ def enact_realised_eu(
     asserted, outcome wrong)."""
     terminal = terminal_enact_per_question(records, form)
     n_terminal = len(terminal)
+    n_gather_only = len(_enact_question_ids(records, form) - set(terminal))
     labelled = {qid: r for qid, r in terminal.items() if qid in labels}
     if u_bar is None:
         return {"n_terminal": n_terminal, "n_labelled": len(labelled),
+                "n_gather_only": n_gather_only,
                 "note": "no u_bar on the boot record; realised EU not derived. " + ENACT_EU_NOTE}
 
     realised_total = 0.0
@@ -643,6 +658,7 @@ def enact_realised_eu(
     return {
         "n_terminal": n_terminal,
         "n_labelled": len(labelled),
+        "n_gather_only": n_gather_only,
         "n_priced": n_priced,
         "realised_eu_total": realised_total,
         "realised_eu_per_q": (realised_total / n_priced) if n_priced else 0.0,
@@ -1238,8 +1254,9 @@ def build_report(
     arm. No wall-clock field — given the same inputs this is byte-reproducible.
 
     ``labels`` (``question_id -> correct bit``, from :func:`load_correctness_labels`) enables
-    the enact realised-EU detector (P1): passed None, that section is None and the report is
-    byte-for-byte what it was before the detector landed."""
+    the enact realised-EU detector (P1): passed None, the ``enact_realised_eu`` section is
+    None (and §2d renders a one-line "not run" note), so no verdict data is read and no EU is
+    derived unless labels are supplied."""
     forms = declared_forms(records)
     stats_record = latest_stats_record(records)
 
@@ -1427,7 +1444,7 @@ def _md_enact_realised_eu(form: str, e: dict[str, Any]) -> list[str]:
     over = e["over_assertion"]
     lines += [
         f"- terminal enact rows: {e['n_terminal']} (labelled {e['n_labelled']}, "
-        f"priced {e['n_priced']})",
+        f"priced {e['n_priced']}; {e['n_gather_only']} in-flight gather-only, not priced)",
         f"- **realised EU vs abstaining: {e['eu_vs_abstain']:+.2f} total, "
         f"{e['realised_eu_per_q']:+.3f}/question** "
         f"(abstain baseline earns 0 — negative means the live path lost EU)",

@@ -1360,3 +1360,36 @@ def test_build_report_enact_realised_eu_absent_without_labels() -> None:
     records = [_boot("said@1")]
     report = R.build_report(records)
     assert report["enact_realised_eu"] is None
+
+
+def test_terminal_enact_per_question_ignores_a_later_in_flight_gather() -> None:
+    # A completed asking (terminal report) then the SAME question re-asked and caught
+    # mid-gather (real_effector="gather" is non-terminal — the episode continues on a later
+    # /decide-live call). The terminal selection must keep the committed report, never the
+    # in-flight gather, or the detector prices a tick where nothing was decided yet.
+    records = [
+        _enact(form="said@1", question_id="q-101", action="respond",
+               daemon_effector="report", real_effector="report"),
+        _enact(form="said@1", question_id="q-101", action="gather",
+               daemon_effector="gather", real_effector="gather"),
+    ]
+    terminal = R.terminal_enact_per_question(records, "said@1")
+    assert terminal["q-101"]["real_effector"] == "report"
+
+
+def test_enact_realised_eu_excludes_a_gather_only_question() -> None:
+    # A question whose only enact activity is an in-flight gather has NO committed act — it
+    # must be named (n_gather_only) and never priced, even though it carries a verdict label
+    # from a prior asking (question_id is reused across askings; the label collapses on it).
+    q = mirror("q-001")
+    records = [
+        _boot("said@1"),
+        _enact(form="said@1", question_id=q, action="gather",
+               daemon_effector="gather", real_effector="gather"),
+    ]
+    out = R.enact_realised_eu(records, "said@1", {q: 0}, LIVE_U_BAR)
+    assert out["n_terminal"] == 0
+    assert out["n_gather_only"] == 1
+    assert out["n_priced"] == 0
+    assert out["realised_eu_total"] == pytest.approx(0.0)
+    assert out["over_assertion"]["n"] == 0
