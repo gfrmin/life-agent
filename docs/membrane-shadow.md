@@ -1102,8 +1102,9 @@ held-out regression for P3 to settle.
 ### 17.5 P3 — the held-out gate SETTLES it: the +0.043 was in-sample leakage; held-out the flip is EU-negative (2026-07-30)
 
 P3 ran the pre-registered, **held-out** gate (protocol frozen blind at commit `839ba2e`,
-`docs/membrane/p3-pre-registration.md`; harness `scripts/membrane/p3_gate.py`, 13 hermetic
-tests, `keyed_verdict_replay` drift-guarded byte-identical to `boot_snapshot`'s projection).
+`docs/membrane/p3-pre-registration.md`; harness `scripts/membrane/p3_gate.py`, **8** hermetic
+tests atop `lattice_replay`'s 5 reused drift guards, `keyed_verdict_replay` drift-guarded
+byte-identical to `boot_snapshot`'s projection).
 It replays the same 193-tick / 84-question verdict stream through the real `proplang-host`, but
 **grouped leave-one-question-out**: to price a question, its *entire* set of verdict ticks is
 removed from the fold first. That single change — folding the label out before probing —
@@ -1129,9 +1130,13 @@ removed from the fold first. That single change — folding the label out before
 - **A3 — the differential adoption gate (FULL membrane held-out vs the credence baseline
   `ff-v2-baseline-m3off`, 74 joined questions, δ/level frozen in `core/gate.py`): FAIL.**
   P(Δ > 0.05) = **0.003** (gate ≥ 0.90), Δ̄ = **−0.338** [−0.826, −0.039]. The loss is carried by
-  the disagreement region exactly as the containment thesis predicted: **8 `report × abstain`
-  questions at −2.75 EU/q each** — the membrane asserting where the baseline correctly withholds —
-  against only 3 `abstain × report` (−1.00). This is proplang OB-12/#11's "single highest-leverage
+  the disagreement region: **8 `report × abstain` questions at −2.75 EU/q each** — the membrane
+  asserting where the baseline withholds; **3 of the 8 are confident-wrong**, the owner's −9 on
+  those dominating the +1 on the 5 the membrane got right (against 3 `abstain × report`, −1.00).
+  So the **A3 sign rests on those 3 confident-wrongs** — a thin, u_wrong-amplified margin, honestly
+  the weaker leg. A1 does **not** rest on a handful: its negativity is 19 wrong of 90 responses
+  across the low/mid buckets with the whole P(U) interval below zero, which is why A1 is the primary
+  containment test and A3 corroborates it. This is proplang OB-12/#11's "single highest-leverage
   unexecuted measurement"; it is now executed, and it fails.
 
 - **The coarsening (P2(a)) that §17.4 dismissed is the one thing that survives.** The
@@ -1168,8 +1173,12 @@ settle it — and it did. *In-sample is not a forecast*, confirmed the hard way,
 
 **Limits (up front).** One corpus (84 q / 190 ticks); verdict labels are the in-family Claude
 channel (`correct` bit only) with owner precedence; per-bucket n = 13–59; the gate's
-exchangeability-of-questions assumption is a proxy (as its docstring states). A4 (the
-membrane-independent typed-vs-monolithic `run_eval --gate`, also pre-registered for proplang's
-"both framings") did **not** complete — it needs a read-write catalogue handle and a live service
-held the lock; it is deferred, and it does not bear on the flip decision. The coarsened-lattice
-differential gate is the named next measurement, not run here.
+exchangeability-of-questions assumption is a proxy (as its docstring states). Two pre-registered
+deliverables did **not** run and neither bears on the flip: **A4** (the membrane-independent
+typed-vs-monolithic `run_eval --gate`) needs a read-write catalogue handle and a live service held
+the lock; and the **loss-ledger-vs-oracle/π\*** arm was not produced (the A3 disagreement
+decomposition already gives the where-it-loses picture). Both are deferrable. The coarsened-lattice
+differential gate is the named next measurement, not run here. One pre-reg count reconciles: it
+estimated 10 non-v2 questions; the run shows **8 membrane-only + 2 that produced no act** (no
+leader-credence-bearing probe tick) = 10, with the load-bearing **74 joined** matching the pre-reg
+exactly.
