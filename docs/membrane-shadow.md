@@ -1098,3 +1098,87 @@ seed. The P0 containment stands (it only returned to advisory and costs nothing)
 default while P3 runs. What the fuller measurement changes is the *rationale* — the −0.688 was a
 respond-all counterfactual, not the engine's commit policy — while leaving the **sign** of the
 held-out regression for P3 to settle.
+
+### 17.5 P3 — the held-out gate SETTLES it: the +0.043 was in-sample leakage; held-out the flip is EU-negative (2026-07-30)
+
+P3 ran the pre-registered, **held-out** gate (protocol frozen blind at commit `839ba2e`,
+`docs/membrane/p3-pre-registration.md`; harness `scripts/membrane/p3_gate.py`, **8** hermetic
+tests atop `lattice_replay`'s 5 reused drift guards, `keyed_verdict_replay` drift-guarded
+byte-identical to `boot_snapshot`'s projection).
+It replays the same 193-tick / 84-question verdict stream through the real `proplang-host`, but
+**grouped leave-one-question-out**: to price a question, its *entire* set of verdict ticks is
+removed from the fold first. That single change — folding the label out before probing —
+**reverses §17.4**.
+
+**The result (n = 190 leader-credence-bearing ticks / 84 questions; artefacts under
+`$LIFE_AGENT_KB/eval/p3/`):**
+
+| variant (held-out) | EU/q @ engine Ū | EU/q under P(U) [q05, q95] | responds | reading |
+| --- | ---: | --- | ---: | --- |
+| **FULL (17 indicators)** | **−0.220** | **−0.526 [−1.021, −0.035]** | 90/190 | EU-negative — the whole 90% interval is below zero |
+| leader-credence only | **+0.284** | +0.284 [degenerate] | 54/190 | the ONLY positive variant — responds *only* on ge90 (correct 1.00), so no u_wrong exposure |
+| leader-credence + p-none | −0.383 | −0.689 [−1.184, −0.198] | 59/190 | p-none re-adds the noise that breaks the separation |
+
+- **The §17.4 in-sample +0.043 was leakage.** Held-out, the FULL policy is **−0.220 at the
+  engine's own Ū and −0.526 under the owner's P(U)** — worse than abstaining (0). The per-bucket
+  table shows the mechanism directly: held-out, the 70-80 / 80-90 buckets sit at p1 ≈ 0.86 —
+  **indistinguishable from ge90** — but their correctness is only 0.77, not 1.00. So the policy
+  responds there (7/13, 16/35) at −1.06 / −1.13 EU/q, and the +1.00 from ge90's 54 correct
+  responses cannot cover it. Folding each question's own verdict (§17.4) was *what created* the
+  ge90-vs-middle discrimination; remove it and it collapses.
+
+- **A3 — the differential adoption gate (FULL membrane held-out vs the credence baseline
+  `ff-v2-baseline-m3off`, 74 joined questions, δ/level frozen in `core/gate.py`): FAIL.**
+  P(Δ > 0.05) = **0.003** (gate ≥ 0.90), Δ̄ = **−0.338** [−0.826, −0.039]. The loss is carried by
+  the disagreement region: **8 `report × abstain` questions at −2.75 EU/q each** — the membrane
+  asserting where the baseline withholds; **3 of the 8 are confident-wrong**, the owner's −9 on
+  those dominating the +1 on the 5 the membrane got right (against 3 `abstain × report`, −1.00).
+  So the **A3 sign rests on those 3 confident-wrongs** — a thin, u_wrong-amplified margin, honestly
+  the weaker leg. A1 does **not** rest on a handful: its negativity is 19 wrong of 90 responses
+  across the low/mid buckets with the whole P(U) interval below zero, which is why A1 is the primary
+  containment test and A3 corroborates it. This is proplang OB-12/#11's "single highest-leverage
+  unexecuted measurement"; it is now executed, and it fails.
+
+- **The coarsening (P2(a)) that §17.4 dismissed is the one thing that survives.** The
+  leader-credence-only lattice is the only EU-positive variant held-out (+0.284/q, risk-free:
+  its held-out p1 separates ge90 at 0.884 from every other bucket at ≈0.687, below the commit
+  bar, so it responds only where correctness is 1.00). §17.4 called this "coarsening into a
+  ge90-only gate, not identifying better" and treated it as a reason to dismiss P2(a); held-out,
+  **coarsening IS the fix** — fewer, better-chosen guards identify at n≈190 where 2,393 hypotheses
+  cannot. This does **not** license a flip: +0.284 is vs *abstain* (containment), not vs the
+  baseline — the coarsened-lattice differential gate was **not** run (A3 used the FULL lattice, as
+  pre-registered), and the win rests on this corpus's clean ge90 = 1.00 bucket (n = 54), whose
+  robustness to corpus shift is untested.
+
+- **Two utilities, stated.** The commit *policy* (respond-iff-p1>bar) runs under the engine's boot
+  Ū (u_wrong ≈ −5.94, break-even 0.856) — what the flip would actually run. The *valuation*
+  (A1's P(U) column, A3's gate) integrates the owner's true utility posterior (Ū u_wrong = −9.0).
+  The engine booted **softer** than the owner's real aversion, so it responds *more* than the
+  owner's utility warrants — which compounds the over-assertion, it does not mitigate it. Both
+  reads (engine Ū: −0.220; owner P(U): −0.526) are negative.
+
+**Verdict.** Per the pre-registration, **P3 does not flip `LIFE_AGENT_MEMBRANE_LIVE`** — and now
+there is a decisive reason not to: the flip as it would ship (FULL lattice) is EU-negative
+held-out and loses the differential gate against the credence baseline at P(Δ>0.05)=0.003. **P0
+containment is vindicated on the evidence, not just as a default.** The re-earn path is not "flip
+it back"; it is the coarsened (leader-credence-only) gate, and even that must clear its own
+held-out differential-vs-baseline gate before any flip is considered — a measurement this run did
+not make.
+
+**The reversal count is the lesson.** −0.688 (respond-all counterfactual, §17.2) → +0.043
+(in-sample actual policy, §17.4) → **−0.220 / −0.526 (held-out, §17.5)**. Three readings, each
+from a rigor upgrade, the last two changing the *sign*. §17.4 named this exact risk ("every number
+here is in-sample … the held-out aggregate could move back negative") and pre-registered P3 to
+settle it — and it did. *In-sample is not a forecast*, confirmed the hard way, on our own number.
+
+**Limits (up front).** One corpus (84 q / 190 ticks); verdict labels are the in-family Claude
+channel (`correct` bit only) with owner precedence; per-bucket n = 13–59; the gate's
+exchangeability-of-questions assumption is a proxy (as its docstring states). Two pre-registered
+deliverables did **not** run and neither bears on the flip: **A4** (the membrane-independent
+typed-vs-monolithic `run_eval --gate`) needs a read-write catalogue handle and a live service held
+the lock; and the **loss-ledger-vs-oracle/π\*** arm was not produced (the A3 disagreement
+decomposition already gives the where-it-loses picture). Both are deferrable. The coarsened-lattice
+differential gate is the named next measurement, not run here. One pre-reg count reconciles: it
+estimated 10 non-v2 questions; the run shows **8 membrane-only + 2 that produced no act** (no
+leader-credence-bearing probe tick) = 10, with the load-bearing **74 joined** matching the pre-reg
+exactly.
