@@ -332,10 +332,19 @@ def main(argv: list[str] | None = None) -> int:
     if u_bar is None:
         print("no boot u_bar on the shadow log; cannot run.")
         return 1
-    bar = W.respond_threshold(u_bar)
+    # the EFFECTIVE commit bar: the smallest p1 at which coarse._gather's restricted argmax
+    # (gather deleted, ask + abstain kept) picks respond — NOT world.respond_threshold, which
+    # is the full-menu bar (respond must also outbid gather, ≈0.994). The commit rule the flip
+    # would run is the restricted one, so this is the number that governs.
+    commit_bar = next((p / 1000 for p in range(1001)
+                       if LR.commits_respond(u_bar, p / 1000)), None)
+    full_bar = W.respond_threshold(u_bar)
     print(f"keyed replay: {len(keyed)} ticks / {len(groups)} questions; "
-          f"respond-bar p1 = {bar:.4f}" if bar is not None else
-          f"keyed replay: {len(keyed)} ticks / {len(groups)} questions; respond-bar = n/a")
+          f"commit bar (gather-exhausted, incl ask) p1 ≈ "
+          f"{commit_bar:.4f}" if commit_bar is not None else "commit bar = n/a (never fires)")
+    print(f"  (full-menu respond bar = "
+          f"{full_bar:.4f} — includes gather, not the commit rule)"
+          if full_bar is not None else "  (full-menu respond bar = n/a)")
 
     # A1 + A2: held-out actual policy, FULL vs the narrowed variants
     variants = {"FULL": tuple(LR.ALL_FAMILIES),
