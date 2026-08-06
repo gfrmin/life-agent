@@ -25,10 +25,17 @@ import re
 from collections.abc import Callable
 from typing import Any
 
+from life_agent.core import calibration as CAL
 from life_agent.core import gather_outcomes as GO
 from life_agent.core import lookup as LK
 from life_agent.core import matching as MATCH
 from life_agent.core import seam as SEAM
+
+# The per-edge reliability curves (calibration.fit_edge_curves over the outcomes log),
+# injected by the caller. None (every legacy call site) keeps the declared constants —
+# bit-identical behaviour; with curves, a read's self-stated confidence folds through
+# curve_for (pessimistic cold start) instead of a flat cap.
+Curves = dict[str, CAL.ReliabilityCurve] | None
 
 # The transport seams, injected by the caller (PRINCIPLES §5): ``post(url, payload)`` returns the
 # decoded JSON object, or ``None`` for ``/route`` on a non-typed question; ``get(url)`` returns the
@@ -86,6 +93,18 @@ _RE_EXTRACT_MODEL = "claude-opus-4-8"
 _RESCUE_RHO = 0.5
 
 
+def _conditioned_rho(curves: Curves, model: str, confidence: Any, fallback: float) -> float:
+    """Fold a re-read's self-stated confidence through the per-edge reliability curve
+    (edge = ``extract@<model>``, the joint edge's one spelling). Without curves, or
+    without a stated confidence, the declared fallback holds — an absent signal is never
+    guessed. The cold-start curve (edge unseen) is Beta(1,3)-pessimistic: stricter than
+    every legacy constant, so a mis-supplied curves dict can only withhold harder."""
+    if curves is None or confidence is None:
+        return float(fallback)
+    return CAL.curve_for(curves, f"extract@{model}").calibrate(
+        max(0.0, float(confidence)))
+
+
 def _truth_likely_missing(view: View) -> bool:
     """The agent's belief that the answer is OUTSIDE the retrieved set — the principled trigger to
     GROW recall (discover a missing candidate), versus CORROBORATE a present-but-weak leader (which
@@ -121,7 +140,8 @@ def _obj(post: Post, url: str, payload: dict[str, Any]) -> dict[str, Any]:
 def decide_via_loop(question: str, k: int, *, bridge: str, daemon: str, post: Post, get: Get,
                     grow: bool = True, rerank: bool = False,
                     transforms: list[dict[str, Any]] | None = None,
-                    grow_lane: bool = False, live: SEAM.LiveFn | None = None) -> View:
+                    grow_lane: bool = False, live: SEAM.LiveFn | None = None,
+                    curves: Curves = None) -> View:
     """Drive one question through the live loop: route, then a cheap pass, then recall growth.
 
     A declined route (``/route`` → null) is the NARRATIVE family — synthesize a cited answer,
@@ -155,9 +175,10 @@ def decide_via_loop(question: str, k: int, *, bridge: str, daemon: str, post: Po
     if grow_lane:
         return run_pass(question, k, route, bridge=bridge, daemon=daemon, post=post, get=get,
                         rerank=False, expand=False, transforms=transforms, grow_lane=True,
-                        live=live)
+                        live=live, curves=curves)
     view = run_pass(question, k, route, bridge=bridge, daemon=daemon, post=post, get=get,
-                    rerank=rerank, expand=rerank, transforms=transforms, live=live)
+                    rerank=rerank, expand=rerank, transforms=transforms, live=live,
+                    curves=curves)
     if grow and not rerank:
         # Grow recall ONLY when the agent's BELIEF says the answer is outside the set — NONE is the
         # MAP hypothesis, or nothing was extracted (:func:`_truth_likely_missing`). A withhold with
@@ -174,7 +195,8 @@ def decide_via_loop(question: str, k: int, *, bridge: str, daemon: str, post: Po
             if view["effector"] not in _WITHHOLD or not _truth_likely_missing(view):
                 break
             grown = run_pass(question, k, route, bridge=bridge, daemon=daemon, post=post, get=get,
-                             rerank=rr, expand=ex, transforms=transforms, live=live)
+                             rerank=rr, expand=ex, transforms=transforms, live=live,
+                             curves=curves)
             if grown["effector"] == "report" or not view["candidates"]:
                 view = grown
     return view
@@ -183,7 +205,8 @@ def decide_via_loop(question: str, k: int, *, bridge: str, daemon: str, post: Po
 def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemon: str,
              post: Post, get: Get, rerank: bool, expand: bool = False,
              transforms: list[dict[str, Any]] | None = None,
-             grow_lane: bool = False, live: SEAM.LiveFn | None = None) -> View:
+             grow_lane: bool = False, live: SEAM.LiveFn | None = None,
+             curves: Curves = None) -> View:
     """One retrieve→probe→extract→decide pass at a given recall breadth, enacting each
     scheduled transform the daemon returns. With ``grow_lane`` the daemon also prices the
     grow menu (recall actuators), and each enactment is logged to ``/log_gather``. Returns
@@ -259,8 +282,10 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
                 applied.append(g_probe)
                 if minted:
                     conf = cr.get("confidence")
-                    rescue_rho = (min(_RESCUE_RHO, max(0.0, float(conf)))
-                                  if conf is not None else _RESCUE_RHO)
+                    legacy = (min(_RESCUE_RHO, max(0.0, float(conf)))
+                              if conf is not None else _RESCUE_RHO)
+                    rescue_rho = _conditioned_rho(
+                        curves, _RE_EXTRACT_MODEL, conf, legacy)
                     ext = {"candidates": [str(cr["new_candidate"])],
                            "observations": cr["observations"], "rho": rescue_rho,
                            "era_split": False,
@@ -318,7 +343,11 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
                        # pass time_indexed + construct + doc_date so a stale re-read decays.
                        "time_indexed": route["time_indexed"], "construct": route["construct"],
                        "covariates": {"doc_date": recency}})
-            obs, rho, era = cr["observations"], cr["gather_rho"], False
+            # with curves, the read's own stated confidence conditions through the edge's
+            # calibration curve — the instrument's uncertainty is no longer discarded on
+            # the regular tiers (rescue-path parity); without curves the tier rho echoes.
+            obs, era = cr["observations"], False
+            rho = _conditioned_rho(curves, model, cr.get("confidence"), cr["gather_rho"])
             applied = list(dict.fromkeys([*applied, probe]))
             dec = _decide(obs, rho, era, applied)
         elif eff == "gather" and probe in _GROW_RETRIEVE:
@@ -353,7 +382,9 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
             # unconditional — an EMPTY strong re-read also replaces (the strong model failed to
             # confirm any local candidate; the weak evidence must not survive it — disagree ⇒
             # NONE-dominant ⇒ abstain, the corroborate contract verbatim).
-            obs, rho, era = cr["observations"], cr["gather_rho"], False
+            obs, era = cr["observations"], False
+            rho = _conditioned_rho(curves, _RE_EXTRACT_MODEL, cr.get("confidence"),
+                                   cr["gather_rho"])
             enacted.append((probe, last_sensors, changed))
             applied = list(dict.fromkeys([*applied, probe]))
             grow_asked = False

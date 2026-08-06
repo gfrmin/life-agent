@@ -600,3 +600,88 @@ def test_live_consult_gather_override_enacts_the_probe() -> None:
     assert len(corr) == 1
     assert corr[0]["model"] == "claude-haiku-4-5"
     assert len(fake.posted("/decide")) == 2
+
+
+# --- per-edge calibration threading (plan item 3: constants become the curve) ------------
+#
+# With `curves` supplied, a read's self-stated confidence folds through the per-edge
+# reliability curve (calibration.curve_for — pessimistic cold start) instead of the flat
+# constants. Without `curves` (every existing call site) behaviour is bit-identical to the
+# constants — pinned by all the tests above.
+
+
+def _fitted_curves(edge: str, confidence: float, n: int = 40) -> dict[str, Any]:
+    from life_agent.core import calibration as CAL
+
+    return {edge: CAL.fit_reliability_curve([CAL.Outcome(confidence, True)] * n)}
+
+
+def test_rescue_folds_confidence_through_the_edge_curve() -> None:
+    # Same fixture as the walk-reaches-strong-re-extract test, but with a fitted curve for
+    # the opus extract edge: the decide conditions at curve(0.9), not min(0.5, 0.9).
+    curves = _fitted_curves("extract@claude-opus-4-8", 0.9)
+    expected = curves["extract@claude-opus-4-8"].calibrate(0.9)
+    assert expected > 0.5  # the fitted edge has EARNED more than the flat cap
+    fake = FakeServices(
+        route={"construct": "mortgage", "time_indexed": False},
+        extracts=[_EMPTY_EXTRACT, _EMPTY_EXTRACT, _EMPTY_EXTRACT],
+        corroborate={"observations": [{"reports": 0, "group": 0, "authority": 1.0,
+                                       "subject_factor": 1.0, "time_factor": 1.0}],
+                     "gather_rho": 0.95, "value": "NEW-7", "new_candidate": "NEW-7",
+                     "confidence": 0.9},
+        decides=[{"effector": "report", "value": "NEW-7", "credences": [0.93],
+                  "p_none": 0.07, "eu": 0.8}])
+    _loop(fake, grow_lane=True, curves=curves)
+    assert fake.posted("/decide")[0]["rho"] == expected
+
+
+def test_rescue_cold_start_curve_is_more_conservative_than_the_cap() -> None:
+    # curves supplied but the edge unseen: Beta(1,3) cold start (0.25) — stricter than the
+    # 0.5 cap, never looser (§16 safe-before-calibrated).
+    fake = FakeServices(
+        route={"construct": "mortgage", "time_indexed": False},
+        extracts=[_EMPTY_EXTRACT, _EMPTY_EXTRACT, _EMPTY_EXTRACT],
+        corroborate={"observations": [{"reports": 0, "group": 0, "authority": 1.0,
+                                       "subject_factor": 1.0, "time_factor": 1.0}],
+                     "gather_rho": 0.95, "value": "NEW-7", "new_candidate": "NEW-7",
+                     "confidence": 0.9},
+        decides=[{"effector": "hedge", "credences": [0.6], "p_none": 0.4, "eu": 0.1}])
+    _loop(fake, grow_lane=True, curves={})
+    assert fake.posted("/decide")[0]["rho"] == 0.25
+
+
+def test_corroborate_tier_folds_confidence_through_the_edge_curve() -> None:
+    # The scheduled haiku tier's re-read states its own confidence; with curves the
+    # conditioning rho is curve(confidence) for extract@claude-haiku-4-5, not the echoed
+    # gather_rho — the instrument's uncertainty is no longer discarded on regular tiers.
+    curves = _fitted_curves("extract@claude-haiku-4-5", 0.7)
+    expected = curves["extract@claude-haiku-4-5"].calibrate(0.7)
+    fake = FakeServices(
+        route={"construct": "tax id", "time_indexed": False},
+        extract={**_EXTRACT, "candidates": ["P123", "Q999"]},
+        corroborate={"observations": [{"reports": 0, "group": 0, "authority": 1.0,
+                                       "subject_factor": 1.0, "time_factor": 1.0}],
+                     "gather_rho": 0.80, "value": "P123", "confidence": 0.7},
+        decides=[{"effector": "gather", "probe": "corroborate_haiku",
+                  "credences": [0.5, 0.5], "p_none": 0.1, "eu": 0.2},
+                 {"effector": "report", "value": "P123", "credences": [0.9, 0.1],
+                  "p_none": 0.05, "eu": 0.8}])
+    _loop(fake, grow=False, curves=curves)
+    assert fake.posted("/decide")[1]["rho"] == expected
+
+
+def test_corroborate_without_stated_confidence_keeps_the_tier_rho() -> None:
+    # A reply with no confidence carries no signal to map — the tier's declared rho holds
+    # even with curves supplied (fallback is the declared prior, never a guess).
+    fake = FakeServices(
+        route={"construct": "tax id", "time_indexed": False},
+        extract={**_EXTRACT, "candidates": ["P123", "Q999"]},
+        corroborate={"observations": [{"reports": 0, "group": 0, "authority": 1.0,
+                                       "subject_factor": 1.0, "time_factor": 1.0}],
+                     "gather_rho": 0.80, "value": "P123"},
+        decides=[{"effector": "gather", "probe": "corroborate_haiku",
+                  "credences": [0.5, 0.5], "p_none": 0.1, "eu": 0.2},
+                 {"effector": "report", "value": "P123", "credences": [0.9, 0.1],
+                  "p_none": 0.05, "eu": 0.8}])
+    _loop(fake, grow=False, curves={})
+    assert fake.posted("/decide")[1]["rho"] == 0.80

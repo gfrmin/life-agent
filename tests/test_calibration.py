@@ -92,3 +92,53 @@ def test_curve_for_unseen_edge_is_the_pessimistic_prior() -> None:
     curves = fit_edge_curves([EdgeOutcome("local", 0.9, True)])
     assert curve_for(curves, "joint").calibrate(0.9) == pytest.approx(PRIOR_MEAN)
     assert curve_for(curves, "local") is curves["local"]
+
+
+# --- the log fold (outcomes.jsonl → EdgeOutcomes — the first production wiring) ----------
+
+
+def _outcome_base() -> dict:
+    return dict(tx_time="t", run_id="r", question_id="q", claim="c",
+                construct="rent", lineage_keys=())
+
+
+def test_edge_outcomes_from_log_maps_grade_to_the_correct_bit(tmp_path) -> None:
+    from life_agent.core import outcomes as O
+    from life_agent.core.calibration import edge_outcomes_from_log
+
+    log = tmp_path / "outcomes.jsonl"
+    O.append(log, O.OutcomeEvent(**_outcome_base(), grade="CORRECT",
+                                 grader="eval_lookup",
+                                 instrument_identity={"edge": "deliberate@opus"},
+                                 probability=0.9))
+    O.append(log, O.OutcomeEvent(**_outcome_base(), grade="INCORRECT",
+                                 grader="eval_lookup",
+                                 instrument_identity={"edge": "deliberate@opus"},
+                                 probability=0.8))
+    assert edge_outcomes_from_log(log) == [
+        EdgeOutcome("deliberate@opus", 0.9, True),
+        EdgeOutcome("deliberate@opus", 0.8, False)]
+
+
+def test_edge_outcomes_from_log_skips_unattributed_and_unpriced_rows(tmp_path) -> None:
+    from life_agent.core import outcomes as O
+    from life_agent.core.calibration import edge_outcomes_from_log
+
+    log = tmp_path / "outcomes.jsonl"
+    # no "edge" in the identity — a legacy row; never guessed into a namespace
+    O.append(log, O.OutcomeEvent(**_outcome_base(), grade="CORRECT",
+                                 grader="eval_lookup",
+                                 instrument_identity={"producer_name": "x"},
+                                 probability=0.9))
+    # no probability — logged, not scored (the outcomes contract)
+    O.append(log, O.OutcomeEvent(**_outcome_base(), grade="CORRECT",
+                                 grader="eval_lookup",
+                                 instrument_identity={"edge": "deliberate@opus"},
+                                 probability=None))
+    assert edge_outcomes_from_log(log) == []
+
+
+def test_edge_outcomes_from_log_missing_file_is_cold_start(tmp_path) -> None:
+    from life_agent.core.calibration import edge_outcomes_from_log
+
+    assert edge_outcomes_from_log(tmp_path / "absent.jsonl") == []
