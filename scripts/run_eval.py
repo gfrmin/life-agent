@@ -789,7 +789,15 @@ def main() -> int:
     questions = load_questions(args.questions)
     cfg = yaml.safe_load(Path(args.config).read_text(encoding="utf-8"))
     db_path = Path(cfg["root_dir"]).expanduser() / "catalogue.duckdb"
-    conn = duckdb.connect(str(db_path))
+    try:
+        conn = duckdb.connect(str(db_path))
+    except duckdb.IOException as e:
+        # a live service (the bridge) may hold the write lock; every eval path only
+        # READS the catalogue except --rebuild-index, which genuinely needs the writer
+        if args.rebuild_index:
+            raise
+        print(f"catalogue write-locked ({e}); connecting read-only")
+        conn = duckdb.connect(str(db_path), read_only=True)
     conn.execute("INSTALL fts; LOAD fts;")
 
     if args.rebuild_index:
