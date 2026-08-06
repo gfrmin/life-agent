@@ -912,15 +912,22 @@ def _executor_ready() -> bool:
     return True
 
 
-def _edge_curves() -> dict[str, CAL.ReliabilityCurve]:
-    """The per-edge reliability curves folded from the outcomes log — fail-open to {}
-    (every edge at the pessimistic cold start), named: a broken fold must degrade toward
-    withholding, never toward fiat trust."""
+def _edge_curves() -> dict[str, CAL.ReliabilityCurve] | None:
+    """The per-edge reliability curves folded from the outcomes log. **None when the
+    fold yields nothing** — today's log has no edge-attributed rows yet (the writers
+    land with the first Δ2 gate run), and an empty curves dict is NOT a no-op: it
+    would flatten every corroborate tier to the 0.25 cold start and information-free
+    the ladder. No attributed evidence ⇒ the declared constants stand; the calibrated
+    regime begins when the first attributed outcome exists. Fail-open the same way,
+    named."""
     try:
-        return CAL.fit_edge_curves(CAL.edge_outcomes_from_log(CFG.OUTCOMES_LOG))
+        rows = CAL.edge_outcomes_from_log(CFG.OUTCOMES_LOG)
+        if not rows:
+            return None
+        return CAL.fit_edge_curves(rows)
     except Exception as e:
-        print(f"  (edge curves unavailable — cold start: {e})")
-        return {}
+        print(f"  (edge curves unavailable — declared constants stand: {e})")
+        return None
 
 
 def _log_executor_decision(question: str, view: dict[str, Any]) -> None:
@@ -1003,8 +1010,8 @@ def answer_via_executor(question: str, k: int
     # body fork — and every read's stated confidence folds through the per-edge
     # calibration curves instead of the flat constants.
     if CFG.deliberate_enabled():
-        transforms = [*EX.DEFAULT_TRANSFORMS, EX.DELIBERATE_TRANSFORM]
         curves = _edge_curves()
+        transforms = EX.menu_transforms(curves)  # every row priced at what enactment delivers
     else:
         transforms, curves = None, None
     view = EX.decide_via_loop(question, k, bridge=EXECUTOR_BRIDGE, daemon=EXECUTOR_DAEMON,

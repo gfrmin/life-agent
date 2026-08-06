@@ -32,7 +32,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from life_agent.core import calibration as CAL
 from life_agent.core import decisions as DEC
 from life_agent.core import derivations as D
 
@@ -122,6 +121,27 @@ def parse_value(text: str) -> tuple[str, str | None]:
     return _strip_final_line(text, _ANSWER_RE)
 
 
+def parse_protocol(text: str) -> tuple[str, str | None, float | None]:
+    """Strip BOTH protocol lines off the tail in whatever order the model emitted them
+    (the contract says ANSWER then CREDENCE; a swap must neither leak protocol traffic
+    to the owner nor drop a signal). Returns ``(text, value, credence)``."""
+    value: str | None = None
+    credence: float | None = None
+    for _ in range(2):
+        if credence is None:
+            stripped, credence = parse_credence(text)
+            if credence is not None or stripped != text:
+                text = stripped
+                continue
+        if value is None:
+            stripped, value = parse_value(text)
+            if value is not None:
+                text = stripped
+                continue
+        break
+    return text, value, credence
+
+
 def detect_decline(text: str) -> bool:
     """True iff the edge declined by its own contract: a ``NOT_IN_CORPUS:`` line. (The
     eval harness's wider decline heuristics grade OTHER arms; this edge's decline is a
@@ -132,14 +152,20 @@ def detect_decline(text: str) -> bool:
 @dataclass(frozen=True)
 class DeliberateConfig:
     """Everything one deliberative call needs. ``scratch_dir`` holds the per-question MCP
-    config, tool logs, and workdir (the CLI's cwd — empty by design, no repo CLAUDE.md
-    leak); it is scratch, never the ledger."""
+    config, tool logs, and workdir (the CLI's cwd); it is scratch, never the ledger.
+    The cwd avoids the REPO's CLAUDE.md, but the CLI still loads the machine's ambient
+    Claude Code config (user CLAUDE.md, and any CLAUDE.md above the scratch dir — under
+    the default KB scratch that includes the KB's own) — deliberately: the reference
+    policy that measured 92.3% ran under the SAME ambient (its run dir sat under the
+    KB), so the ambient is part of the instrument, named here and excluded from the
+    cache key (see derivations.deliberate_key). ``timeout_s`` stays under the ask
+    client's 300s HTTP timeout — the server must give up before the caller does."""
 
     claude_bin: str
     scratch_dir: Path
     pkm_config: str
     model: str = "claude-opus-4-8"
-    timeout_s: int = 600
+    timeout_s: int = 240
     max_turns: int = 40
 
 
@@ -168,19 +194,10 @@ class DeliberateResult:
 
 
 def instrument(model: str) -> str:
-    """The per-edge attribution name (calibration + decision log): one spelling."""
+    """The per-edge attribution name (calibration + decision log): ONE spelling — the
+    executor's curve lookups and the decision log's ``instrument`` field both call this
+    (a second, hand-derived f-string would silently split the attribution namespace)."""
     return f"deliberate@{model}"
-
-
-def calibrated_credence(result: DeliberateResult,
-                        curves: dict[str, CAL.ReliabilityCurve]) -> float:
-    """The Δ1 map: self-reported credence (a signal) → calibrated P(correct), through the
-    edge's reliability curve. Cold start is the pessimistic Beta(1,3) prior everywhere —
-    an unproven edge cannot clear the assertion floor on self-report alone (§16). A
-    missing credence (protocol violation) maps at the curve's most pessimistic bin —
-    no signal is never rewarded. Not meaningful for declines (nothing is asserted)."""
-    curve = CAL.curve_for(curves, instrument(result.model))
-    return curve.calibrate(result.credence if result.credence is not None else 0.0)
 
 
 def _workdir(cfg: DeliberateConfig) -> Path:
@@ -312,8 +329,7 @@ def answer(question: str, cfg: DeliberateConfig, *,
         tool_log_rows = []
 
     if status == "ok":
-        text, credence = parse_credence(raw_text)
-        text, value = parse_value(text)
+        text, value, credence = parse_protocol(raw_text)
     else:
         text, value, credence = raw_text, None, None
     declined = detect_decline(text)

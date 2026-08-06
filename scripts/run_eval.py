@@ -410,9 +410,12 @@ def _replay_response(row: dict, q: dict):
     abstention — the arm asserted nothing there."""
     import life_agent.core.gate as GATE
 
-    if row.get("status") != "ok" or row.get("declined"):
+    text = str(row.get("text") or "").strip()
+    if row.get("status") != "ok" or row.get("declined") or not text:
+        # a blank-but-ok row is a degenerate run, not an assertion — grading it as a
+        # report would mint a spurious confident-wrong (the A3 sign rested on 3 CWs)
         return GATE.RealisedResponse(action="abstain", correct=None)
-    correct = GATE.realised_report([str(row.get("text") or "")], q.get("answer", ""),
+    correct = GATE.realised_report([text], q.get("answer", ""),
                                    q.get("answer_variants", []))
     return GATE.RealisedResponse(action="report", correct=correct)
 
@@ -456,8 +459,9 @@ def gate_paired_outcomes(conn, questions: list[dict], k: int, ask,
     return paired
 
 
-def _paired_to_dict(p) -> dict:
-    return {"question_id": p.question_id, "answerable": p.answerable,
+def _paired_to_dict(p, baseline: str = "monolithic") -> dict:
+    # every row names its baseline arm — a Δ2 paired.jsonl must never read as the §8 one
+    return {"question_id": p.question_id, "answerable": p.answerable, "baseline": baseline,
             "typed": {"action": p.typed.action, "correct": p.typed.correct},
             "mono": {"action": p.mono.action, "correct": p.mono.correct}}
 
@@ -829,16 +833,21 @@ def main() -> int:
         result = GATE.delta_posterior(paired, post, oracle_p=LK._ORACLE_P)
         elapsed = time.monotonic() - t0
 
-        gate_dir = _kb_root() / "eval" / "gate"
+        # a Δ2 run writes to its OWN directory — it must never overwrite the frozen §8
+        # monolithic gate artifacts, and every paired row names its baseline arm
+        gate_dir = _kb_root() / "eval" / ("gate-outside-option" if replay is not None
+                                          else "gate")
+        baseline_tag = ("raw-deliberative-replay" if replay is not None
+                        else "monolithic")
         gate_dir.mkdir(parents=True, exist_ok=True)
-        # the report names its baseline — a Δ2 run must never read as the monolithic gate
         preamble = (f"> **Baseline arm:** {baseline_name}\n\n"
                     if replay is not None else "")
         (gate_dir / "report.md").write_text(
             preamble + GATE.render_report(result, run_id=run_id, elapsed=elapsed),
             encoding="utf-8")
         (gate_dir / "paired.jsonl").write_text(
-            "".join(json.dumps(_paired_to_dict(p), sort_keys=True) + "\n"
+            "".join(json.dumps(_paired_to_dict(p, baseline=baseline_tag),
+                               sort_keys=True) + "\n"
                     for p in paired), encoding="utf-8")
         print(f"\nGate report → {gate_dir / 'report.md'}")
         verdict = "PASS" if result.passed else "FAIL"

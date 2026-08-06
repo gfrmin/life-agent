@@ -26,6 +26,7 @@ from collections.abc import Callable
 from typing import Any
 
 from life_agent.core import calibration as CAL
+from life_agent.core import deliberate as DL
 from life_agent.core import gather_outcomes as GO
 from life_agent.core import lookup as LK
 from life_agent.core import matching as MATCH
@@ -80,14 +81,44 @@ DEFAULT_TRANSFORMS: list[dict[str, Any]] = [
 # gate on an unmeasured-in-production edge, never a decision fork (the daemon still
 # prices and schedules it).
 _DELIBERATE_MODEL = "claude-opus-4-8"
+# The SEED template — never offered to the daemon as-is: menu_transforms() re-prices its
+# rho to what the enactment fold can actually deliver (the daemon must never buy a probe
+# at a rho the body cannot cash). rho_seed 0.92 = the arm's measured 92.3% correct and
+# cost 0.38 = the run's mean $/question (both ff-v2-delib-20260719, frozen blind). The
+# cost rides in the tier rows' convention — approximate dollars read as gauge utility
+# ($1 ≈ 1·u_correct, the convention the 0.004/0.012/0.020 tier costs established); the
+# real $↔utility exchange rate is an owner elicitation, named in bayes §14, not a
+# constant to invent here.
 DELIBERATE_TRANSFORM: dict[str, Any] = {
     "name": "deliberate", "probe": "deliberate", "kind": "voi",
-    "trigger": "below_bar", "rho": 0.92, "cost": 0.37,
+    "trigger": "below_bar", "rho": 0.92, "cost": 0.38,
 }
 # An unmeasured deliberate read without curves conditions at min(cap, confidence) — the
 # rescue channel's stated-wide-prior rationale verbatim (a lone strong read is an
 # unmeasured instrument; fiat trust at its self-report was refuted on q-015).
 _DELIBERATE_FALLBACK_RHO = 0.5
+
+
+def menu_transforms(curves: Curves) -> list[dict[str, Any]]:
+    """The full voi menu with every row PRICED AT WHAT ENACTMENT WILL DELIVER: each
+    row's rho re-folds through the same per-edge curve the body will condition its
+    observation at (self-report proxied by the declared prior). Without curves the
+    tiers keep their declared rho (legacy parity) and the deliberate row prices at the
+    conservative cap — never the 0.92 seed by fiat. Priced-vs-enacted divergence is the
+    C2 failure: the daemon buys a probe, the body folds it at a fraction of the priced
+    reliability, and the spend converts nothing."""
+    rows: list[dict[str, Any]] = []
+    for t in DEFAULT_TRANSFORMS:
+        if t["kind"] == "voi" and t["probe"] in _TIER_MODEL:
+            edge = f"extract@{_TIER_MODEL[t['probe']]}"
+            rows.append({**t, "rho": _conditioned_rho(curves, edge, t["rho"], t["rho"])})
+        else:
+            rows.append(t)
+    rows.append({**DELIBERATE_TRANSFORM,
+                 "rho": _conditioned_rho(
+                     curves, DL.instrument(_DELIBERATE_MODEL),
+                     DELIBERATE_TRANSFORM["rho"], _DELIBERATE_FALLBACK_RHO)})
+    return rows
 
 # A withholding/miss terminal — the daemon declined to assert. Grow may escalate recall on these,
 # but only when the agent's belief says the answer is MISSING (see _truth_likely_missing).
@@ -113,13 +144,17 @@ _RESCUE_RHO = 0.5
 def _conditioned_rho(curves: Curves, edge: str, confidence: Any, fallback: float) -> float:
     """Fold a read's self-stated confidence through the per-edge reliability curve
     (``edge`` is the attribution's one spelling — ``extract@<model>`` for the joint
-    re-reads, ``deliberate@<model>`` for the promoted arm). Without curves, or without a
-    stated confidence, the declared fallback holds — an absent signal is never guessed.
-    The cold-start curve (edge unseen) is Beta(1,3)-pessimistic: stricter than every
+    re-reads, ``deliberate.instrument(<model>)`` for the promoted arm). ``curves=None``
+    (every legacy call site) returns the declared fallback — bit-identical to the
+    constants. In the calibrated regime an ABSENT confidence folds at the curve's most
+    pessimistic bin: no signal must never be trusted more than a stated one (a stated
+    0.95 cold-starts at 0.25; letting silence keep the declared prior would invert the
+    pessimism). The cold-start curve (edge unseen) is Beta(1,3) — stricter than every
     legacy constant, so a mis-supplied curves dict can only withhold harder."""
-    if curves is None or confidence is None:
+    if curves is None:
         return float(fallback)
-    return CAL.curve_for(curves, edge).calibrate(max(0.0, float(confidence)))
+    c = 0.0 if confidence is None else max(0.0, float(confidence))
+    return CAL.curve_for(curves, edge).calibrate(c)
 
 
 def _truth_likely_missing(view: View) -> bool:
@@ -395,26 +430,37 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
             # over the corpus (bridge /probe/deliberate — warm-replayed when the corpus
             # is unchanged). Its bare ANSWER value is joined bridge-side; a new value
             # comes back as a minted candidate (allow_new — the edge exists FOR the
-            # questions the local channel can't ground). The observation REPLACES the
-            # channel (conservative: independent-search corroboration is not modelled
-            # v0 — a stated coarsening), and an empty reply (decline / error / no join)
-            # collapses it — NOT_IN_CORPUS from the reference is evidence for NONE. The
-            # raw self-report conditions only through the per-edge curve (Δ1).
-            dr = _obj(post, f"{bridge}/probe/deliberate",
-                      {"question": question, "candidates": candidates,
-                       "allow_new": True})
-            if dr.get("new_candidate"):
-                candidates = [*candidates, str(dr["new_candidate"])]
-            edge_instrument = f"deliberate@{dr.get('model') or _DELIBERATE_MODEL}"
-            edge_cost = dr.get("cost_usd")
-            edge_latency = dr.get("latency_s")
-            conf = dr.get("confidence")
-            legacy = (min(_DELIBERATE_FALLBACK_RHO, max(0.0, float(conf)))
-                      if conf is not None else _DELIBERATE_FALLBACK_RHO)
-            obs, era = dr["observations"], False
-            rho = _conditioned_rho(
-                curves, f"deliberate@{dr.get('model') or _DELIBERATE_MODEL}",
-                conf, legacy)
+            # questions the local channel can't ground). On a SUCCESSFUL call the
+            # observation REPLACES the channel (conservative: independent-search
+            # corroboration is not modelled v0 — a stated coarsening) and an empty ok
+            # reply collapses it — NOT_IN_CORPUS from the reference is evidence for
+            # NONE. An INFRASTRUCTURE failure (CLI error/timeout, transport raise) is
+            # not evidence of anything: the grounded channel survives untouched and the
+            # probe is simply retired (fail-open — instrumentation never breaks an
+            # already-grounded answer). The raw self-report conditions only through the
+            # per-edge curve (Δ1).
+            try:
+                dr: dict[str, Any] | None = _obj(
+                    post, f"{bridge}/probe/deliberate",
+                    {"question": question, "candidates": candidates, "allow_new": True,
+                     "hits": hits, "time_indexed": route["time_indexed"],
+                     "construct": route["construct"],
+                     "covariates": {"doc_date": recency}})
+            except Exception as e:
+                print(f"  (deliberate probe failed, channel kept: {e})")
+                dr = None
+            if dr is not None and dr.get("status") == "ok":
+                if dr.get("new_candidate"):
+                    candidates = [*candidates, str(dr["new_candidate"])]
+                edge_instrument = DL.instrument(
+                    str(dr.get("model") or _DELIBERATE_MODEL))
+                edge_cost = dr.get("cost_usd")
+                edge_latency = dr.get("latency_s")
+                conf = dr.get("confidence")
+                legacy = (min(_DELIBERATE_FALLBACK_RHO, max(0.0, float(conf)))
+                          if conf is not None else _DELIBERATE_FALLBACK_RHO)
+                obs, era = dr["observations"], False
+                rho = _conditioned_rho(curves, edge_instrument, conf, legacy)
             applied = list(dict.fromkeys([*applied, probe]))
             dec = _decide(obs, rho, era, applied)
         elif eff == "gather" and probe == "re_extract_strong":

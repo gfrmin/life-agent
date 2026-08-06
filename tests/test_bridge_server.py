@@ -1260,6 +1260,33 @@ def test_deliberate_warm_hit_replays_without_a_model_call(
     assert deliberate_seams["answers"] == []          # the CLI was never invoked
 
 
+def test_deliberate_time_indexed_observation_decays_not_hand_set(
+        deps: BridgeDeps, deliberate_seams: dict[str, Any]) -> None:
+    # The keystone (q-006): no transform may hand-set time_factor=1.0 on a time-indexed
+    # construct. The deliberate observation is as current as the freshest retrieved
+    # source attestation, through the same volatility decay /extract applies.
+    status, payload = _call(deps, "POST", "/probe/deliberate",
+                            {"question": "what is my rent?",
+                             "candidates": ["NIS 4,200"],
+                             "time_indexed": True, "construct": "rent",
+                             "hits": [{"artifact_cache_key": "d0",
+                                       "chunk_text": "rent NIS 4,200"}],
+                             "covariates": {"doc_date": {"d0": "2019-01-01"}}})
+    assert status == 200
+    (obs,) = payload["observations"]
+    assert obs["time_factor"] < 1.0
+
+
+def test_deliberate_untimed_construct_keeps_unit_time_factor(
+        deps: BridgeDeps, deliberate_seams: dict[str, Any]) -> None:
+    status, payload = _call(deps, "POST", "/probe/deliberate",
+                            {"question": "what is my rent?",
+                             "candidates": ["NIS 4,200"]})
+    assert status == 200
+    (obs,) = payload["observations"]
+    assert obs["time_factor"] == 1.0
+
+
 def test_deliberate_digest_failure_answers_with_cache_off(
         deps: BridgeDeps, deliberate_seams: dict[str, Any],
         monkeypatch: pytest.MonkeyPatch) -> None:

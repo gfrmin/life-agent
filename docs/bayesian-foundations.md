@@ -1312,9 +1312,17 @@ on this list. Answers land here by amendment, citing their evidence.
   fair-fight run (`run_eval --gate --gate-replay`; owner decision 2026-08-06 — the old
   gauge prices abstention at zero, which silently priced the owner's fallback at zero;
   the replay arm is the cheap honest correction, not a gauge re-pin). *Decided by* the
-  per-bin reliability curve narrowing from `eval_lookup`/`eval_claim`/owner-correction
-  outcomes attributed to `deliberate@<model>`, and the Δ2 gate reading. *First
-  evidence:* the first Δ2 gate run + the first flag-on live decisions
+  per-bin reliability curve narrowing from outcomes attributed to `deliberate@<model>`
+  (`calibration.edge_outcomes_from_log` keeps only rows whose `instrument_identity`
+  names its `edge` — **no writer emits that key yet**: the attributed-outcome writer is
+  itself the named first work item of this entry, and until it lands the ask path
+  passes `curves=None`, so every declared constant stands and the calibrated regime is
+  dormant, not silently degraded), and the Δ2 gate reading. *First evidence:* the
+  attributed-outcome writer + the first Δ2 gate run + the first flag-on live decisions
   (`LIFE_AGENT_DELIBERATE=1`; flag-off at merge). Priors frozen blind and cited: menu
-  rho 0.92 (= ff-v2's measured 92.3%), cost 0.37 (= the run's mean $/question),
-  cold-start curve Beta(1,3).
+  seed rho 0.92 (= ff-v2's measured 96/104 asserted-correct) **re-priced at offer time
+  to what the enactment fold can deliver** (the daemon must never buy a probe at a rho
+  the body cannot cash — 0.5 cap cold, the curve's value once evidence exists); cost
+  0.38 (= the run's mean $0.375/question, `cost_status: estimated`, in the tier rows'
+  approximate-dollars-as-gauge-utility convention — the true $↔utility exchange rate
+  is an owner elicitation, open); cold-start curve Beta(1,3).

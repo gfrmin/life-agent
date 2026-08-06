@@ -76,7 +76,7 @@ def question_id(question: str) -> str:
 
 @dataclass(frozen=True)
 class DecisionEvent:
-    """One EU decision (bayesian-foundations §8 schema, format_version 1).
+    """One EU decision (bayesian-foundations §8 schema, format_version 2).
 
     ``posterior_summary`` is the answer-posterior digest the decision was taken under
     (claim credences, dispersion — enough to reconstruct *why* without the full
