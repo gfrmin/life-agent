@@ -58,6 +58,11 @@ LOOKUP_ANSWER_VERSION = "1"
 NARRATIVE_ANSWER_VERSION = "1"
 JOINT_EXTRACT_VERSION = "1"
 TEMPORAL_INTENT_VERSION = "1"
+DELIBERATE_VERSION = "1"
+
+# The deliberative edge's call path is the claude CLI (headless print mode), not the
+# stdlib HTTP client — a distinct runtime identity for its schema-3 keys.
+DELIBERATE_ENGINE_VERSION = "claude-cli/1"
 
 # Free-text output contract for both LLM stages (schema-3 keys require an output schema).
 TEXT_OUTPUT_SCHEMA: dict[str, Any] = {"type": "string"}
@@ -80,6 +85,7 @@ CONTENT_TYPE_LOOKUP_ANSWER = "application/x-ask-lookup-answer+json"
 CONTENT_TYPE_NARRATIVE_ANSWER = "application/x-ask-narrative-answer+json"
 CONTENT_TYPE_JOINT_EXTRACT = "application/x-ask-joint-extract+json"
 CONTENT_TYPE_TEMPORAL_INTENT = "application/x-ask-temporal-intent+json"
+CONTENT_TYPE_DELIBERATE_ANSWER = "application/x-ask-deliberate-answer+json"
 
 _PENDING_QUEUE = Path("external") / "pending.txt"
 
@@ -302,6 +308,33 @@ def joint_extract_key(question: str, chunk_set_sha: str, *, model: str,
                     producer_version=JOINT_EXTRACT_VERSION, producer_config={},
                     schema_version=3, inputs=inputs,
                     content_type=CONTENT_TYPE_JOINT_EXTRACT)
+
+
+def deliberate_key(question: str, corpus_digest: str, *, model: str,
+                   prompt_template: str, max_turns: int) -> StageKey:
+    """Key for one deliberative answer (the promoted A1b edge): claude CLI over the pkm
+    MCP surface, searching the corpus itself — so its input is the CORPUS DIGEST, not a
+    retrieval-set hash (the edge chooses its own evidence; retrieve-then-key would not
+    cover it). Keyed pre-call (system-design §3). ``model`` is the configured CLI alias;
+    the CLI binary version is recorded in metadata for audit, same provenance caveat as
+    the eval arm."""
+    inputs = {"corpus": corpus_digest, "question": question}
+    input_hash = _sha256(canonical_json(inputs))
+    cache_key = compute_cache_key(
+        input_hash, "life_agent.ask.deliberate", DELIBERATE_VERSION,
+        {"max_turns": max_turns},
+        schema_version=3,
+        model_identity={"provider": "anthropic", "model": model},
+        engine_version=DELIBERATE_ENGINE_VERSION,
+        prompt_template_hash=_sha256(prompt_template),
+        output_schema=TEXT_OUTPUT_SCHEMA,
+    )
+    return StageKey(cache_key=cache_key, input_hash=input_hash,
+                    producer_name="life_agent.ask.deliberate",
+                    producer_version=DELIBERATE_VERSION,
+                    producer_config={"max_turns": max_turns},
+                    schema_version=3, inputs=inputs,
+                    content_type=CONTENT_TYPE_DELIBERATE_ANSWER)
 
 
 def lookup_answer_key(question: str, observations_hash: str,

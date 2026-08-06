@@ -23,7 +23,11 @@ from typing import Any
 
 from life_agent.core import jsonl_log
 
-FORMAT_VERSION = 1
+# v2 (2026-08-06): + instrument / cost_usd / latency_s — the §10 metareasoning
+# accounting lands on the ledger itself (which edge answered, at what price), and the
+# per-edge calibration fold (core/calibration.EdgeOutcome) gains its attribution key.
+# v1 lines replay with the fields defaulted (no instrument, unpriced).
+FORMAT_VERSION = 2
 
 # Question families with an EU response layer. Grows by edit as families land
 # (aggregate and thread join at bayesian-foundations §12 stages 2-3).
@@ -97,6 +101,11 @@ class DecisionEvent:
     chosen_action: str
     predicted_eu: float
     decision_id: str = ""
+    # v2: the answer-proposing edge (one spelling — e.g. deliberate.instrument()) and
+    # its realised price. "" / None on v1 lines and on paths not yet metered.
+    instrument: str = ""
+    cost_usd: float | None = None
+    latency_s: float | None = None
     format_version: int = field(default=FORMAT_VERSION)
 
     def __post_init__(self) -> None:
