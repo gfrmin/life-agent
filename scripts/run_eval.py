@@ -347,6 +347,49 @@ def coverage_outcome(q: dict, nv, *, run_id: str):
     )
 
 
+def edge_outcome(q: dict, view: dict, *, run_id: str):
+    """One attributed outcome for the answer-proposing edge's RAW proposal — the
+    per-edge reliability curve's evidence (Δ1). Grades ``instrument_value`` against
+    gold on the shared token-boundary scale, independent of the committed act: an
+    in-gate abstain still yields the edge's observation (the curve is P(edge's answer
+    correct | self-report), not P(the gate asserted)). None when there is nothing to
+    grade — no edge fired, a decline/error left no value, no self-report (rows without
+    probability are never scored), or no gold scale (unanswerable: skipped, the
+    coverage_outcome precedent — a disclosed selection, never a fabricated INCORRECT).
+    Lineage is the §18.9 artifact key, the warm-replay dedup axis."""
+    import life_agent.core.outcomes as O
+
+    edge = view.get("instrument")
+    value, conf = view.get("instrument_value"), view.get("instrument_confidence")
+    if not edge or value is None or conf is None or not q.get("answer"):
+        return None
+    correct = answer_matches(q["answer"], q.get("answer_variants", []), str(value))
+    lineage = view.get("instrument_lineage")
+    return O.OutcomeEvent(
+        tx_time=O.now_iso(), run_id=run_id, question_id=str(q["id"]),
+        claim=str(value)[:200], construct="edge-proposal",
+        grade="CORRECT" if correct else "INCORRECT", grader="eval_edge",
+        instrument_identity={"edge": str(edge)},
+        lineage_keys=(str(lineage),) if lineage else (),
+        probability=float(conf),
+    )
+
+
+def dedup_edge_events(events: list, seen: set) -> list:
+    """Pure: drop edge events whose §18.9 lineage was already graded — a warm replay
+    returns the SAME artifact, and grading it once per run would double-count one
+    observation into the curve fold. ``seen`` (mutated) carries the log's
+    already-written keys in and the batch's keys out; lineage-less rows (caching was
+    off) cannot be identified and are always kept."""
+    out = []
+    for e in events:
+        if e.lineage_keys and any(k in seen for k in e.lineage_keys):
+            continue
+        out.append(e)
+        seen.update(e.lineage_keys)
+    return out
+
+
 # --- the adoption gate (bayesian-foundations §8): typed families vs the monolithic ------
 # The grading model lives here (a driver concern); the math + the stated realised-utility
 # model live in life_agent.core.gate. Each policy is graded on ONE common answer-grounded
