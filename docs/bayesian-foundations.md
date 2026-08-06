@@ -1298,3 +1298,32 @@ on this list. Answers land here by amendment, citing their evidence.
   only then; named now so its grading stream is designed in, not bolted on).
 - **The skin's batch throughput (§11).** Unknown: per-question subprocess vs pooled
   daemon. *Decided by* latency measured at stage 1; promoted per §11 if it demands.
+- **The deliberative instrument's self-report signal (§2/§7 — added 2026-08-06, OPEN).**
+  The promoted A1b arm (`core/deliberate.py`; declared: construct = the corpus-decided
+  answer, cited; class = monolithic; calibration route = the outcomes log's per-edge
+  curve, `core/calibration.py`) emits a self-reported CREDENCE consumed only as an
+  observable signal into `P(correct | signals)` — never as the posterior (M3). Unknown,
+  twice over: (1) whether the self-report is *informative* (does the fitted reliability
+  curve separate its bins, or is the signal flat?) and *stationary* across model bumps
+  (instrument identity keys on the model, so a bump cold-starts — is the accrual rate
+  enough?); (2) whether the edge's EU on the live stream clears the **Δ2 outside-option
+  gate** — the §8 criterion unchanged (δ/level frozen) with the comparator re-pointed at
+  the owner's real alternative, the raw deliberative arm replayed from the stored
+  fair-fight run (`run_eval --gate --gate-replay`; owner decision 2026-08-06 — the old
+  gauge prices abstention at zero, which silently priced the owner's fallback at zero;
+  the replay arm is the cheap honest correction, not a gauge re-pin). *Decided by* the
+  per-bin reliability curve narrowing from outcomes attributed to `deliberate@<model>`
+  (`calibration.edge_outcomes_from_log` keeps only rows whose `instrument_identity`
+  names its `edge` — **no writer emits that key yet**: the attributed-outcome writer is
+  itself the named first work item of this entry, and until it lands the ask path
+  passes `curves=None`, so every declared constant stands and the calibrated regime is
+  dormant, not silently degraded), and the Δ2 gate reading. *First evidence:* the
+  attributed-outcome writer + the first Δ2 gate run + the first flag-on live decisions
+  (`LIFE_AGENT_DELIBERATE=1`; flag-off at merge). Priors frozen blind and cited: menu
+  seed rho 0.92 (= ff-v2's 96/104 correct over all questions; conditional on asserting,
+  96/101 = 0.950) **re-priced at offer time
+  to what the enactment fold can deliver** (the daemon must never buy a probe at a rho
+  the body cannot cash — 0.5 cap cold, the curve's value once evidence exists); cost
+  0.38 (= the run's mean $0.375/question, `cost_status: estimated`, in the tier rows'
+  approximate-dollars-as-gauge-utility convention — the true $↔utility exchange rate
+  is an owner elicitation, open); cold-start curve Beta(1,3).

@@ -119,6 +119,7 @@ MEMBRANE_READ_TIMEOUT_ENV = "LIFE_AGENT_MEMBRANE_READ_TIMEOUT"
 MEMBRANE_WARM_VECTORS_ENV = "LIFE_AGENT_MEMBRANE_WARM_VECTORS"
 MEMBRANE_LIVE_ENV = "LIFE_AGENT_MEMBRANE_LIVE"
 MEMBRANE_CAT_ENV = "LIFE_AGENT_MEMBRANE_CAT"
+DELIBERATE_ENV = "LIFE_AGENT_DELIBERATE"
 
 MEMBRANE_DEFAULT_UTILITY_FORMS = "said@1"
 MEMBRANE_DEFAULT_READ_TIMEOUT_S = 300.0
@@ -165,6 +166,16 @@ def membrane_live() -> bool:
     bridge's ``/decide-live``). Anything else — including absence, the default — is
     byte-for-byte the credence daemon's decision. Rollback is unsetting this."""
     return os.environ.get(MEMBRANE_LIVE_ENV) == "1"
+
+
+def deliberate_enabled() -> bool:
+    """The deliberative edge on the live menu: ``"1"`` opts DELIBERATE_TRANSFORM into
+    the ask path's transform menu and folds observations through the per-edge
+    calibration curves. Anything else — including absence, the default — is
+    byte-for-byte today's menu (a rollout gate on an unmeasured-in-production edge
+    until the §8 gate passes; the daemon still prices every scheduled fire).
+    Rollback is unsetting this."""
+    return os.environ.get(DELIBERATE_ENV) == "1"
 
 
 def membrane_categorical() -> bool:

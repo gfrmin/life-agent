@@ -25,10 +25,18 @@ import re
 from collections.abc import Callable
 from typing import Any
 
+from life_agent.core import calibration as CAL
+from life_agent.core import deliberate as DL
 from life_agent.core import gather_outcomes as GO
 from life_agent.core import lookup as LK
 from life_agent.core import matching as MATCH
 from life_agent.core import seam as SEAM
+
+# The per-edge reliability curves (calibration.fit_edge_curves over the outcomes log),
+# injected by the caller. None (every legacy call site) keeps the declared constants —
+# bit-identical behaviour; with curves, a read's self-stated confidence folds through
+# curve_for (pessimistic cold start) instead of a flat cap.
+Curves = dict[str, CAL.ReliabilityCurve] | None
 
 # The transport seams, injected by the caller (PRINCIPLES §5): ``post(url, payload)`` returns the
 # decoded JSON object, or ``None`` for ``/route`` on a non-typed question; ``get(url)`` returns the
@@ -65,6 +73,64 @@ DEFAULT_TRANSFORMS: list[dict[str, Any]] = [
      "trigger": "below_bar", "rho": 0.95, "cost": 0.020},
 ]
 
+# The deliberative edge (core/deliberate — the promoted A1b arm) as a menu row the daemon
+# prices like any other transform. Priors frozen blind, both cited: rho 0.92 = the arm's
+# measured 92.3% correct (ff-v2-delib-20260719, 104 questions); cost 0.37 = the same
+# run's mean $/question in the tier-cost convention. NOT in DEFAULT_TRANSFORMS: the
+# caller opts the row in (env-gated at ask.py until the §8 gate passes) — a rollout
+# gate on an unmeasured-in-production edge, never a decision fork (the daemon still
+# prices and schedules it).
+_DELIBERATE_MODEL = "claude-opus-4-8"
+# The SEED template — never offered to the daemon as-is: menu_transforms() re-prices its
+# rho to what the enactment fold can actually deliver (the daemon must never buy a probe
+# at a rho the body cannot cash). rho_seed 0.92 = the arm's measured 92.3% correct and
+# cost 0.38 = the run's mean $/question (both ff-v2-delib-20260719, frozen blind). The
+# cost rides in the tier rows' convention — approximate dollars read as gauge utility
+# ($1 ≈ 1·u_correct, the convention the 0.004/0.012/0.020 tier costs established); the
+# real $↔utility exchange rate is an owner elicitation, named in bayes §14, not a
+# constant to invent here.
+DELIBERATE_TRANSFORM: dict[str, Any] = {
+    "name": "deliberate", "probe": "deliberate", "kind": "voi",
+    "trigger": "below_bar", "rho": 0.92, "cost": 0.38,
+}
+# An unmeasured deliberate read without curves conditions at min(cap, confidence) — the
+# rescue channel's stated-wide-prior rationale verbatim (a lone strong read is an
+# unmeasured instrument; fiat trust at its self-report was refuted on q-015).
+_DELIBERATE_FALLBACK_RHO = 0.5
+
+
+def extract_edge(model: str) -> str:
+    """The joint-read edge's attribution name: ONE spelling (the deliberate edge has
+    deliberate.instrument(); this is its extract@ sibling — a hand-built f-string at a
+    call site silently splits the curve namespace)."""
+    return f"extract@{model}"
+
+
+def menu_transforms(curves: Curves) -> list[dict[str, Any]]:
+    """The full voi menu with every row's rho re-priced through the same per-edge curve
+    the body will condition at. Without curves the tiers keep their declared rho
+    (legacy parity) and the deliberate row prices at the conservative cap — never the
+    0.92 seed by fiat. Priced-vs-enacted divergence is the C2 failure: the daemon buys
+    a probe, the body folds it at a fraction of the priced reliability, and the spend
+    converts nothing. HONESTY BOUND: with a FITTED (non-flat) curve this pricing is an
+    UPPER-BOUND rule — the offer prices at curve(declared prior) while enactment folds
+    at curve(actual self-report), which can be lower; exact pre-call identity is
+    structurally impossible for a self-reporting instrument. Unreachable today (no
+    attributed outcomes ⇒ curves=None); when the writer lands, re-price at the curve's
+    mean over the edge's observed confidence distribution instead."""
+    rows: list[dict[str, Any]] = []
+    for t in DEFAULT_TRANSFORMS:
+        if t["kind"] == "voi" and t["probe"] in _TIER_MODEL:
+            edge = extract_edge(_TIER_MODEL[t["probe"]])
+            rows.append({**t, "rho": _conditioned_rho(curves, edge, t["rho"], t["rho"])})
+        else:
+            rows.append(t)
+    rows.append({**DELIBERATE_TRANSFORM,
+                 "rho": _conditioned_rho(
+                     curves, DL.instrument(_DELIBERATE_MODEL),
+                     DELIBERATE_TRANSFORM["rho"], _DELIBERATE_FALLBACK_RHO)})
+    return rows
+
 # A withholding/miss terminal — the daemon declined to assert. Grow may escalate recall on these,
 # but only when the agent's belief says the answer is MISSING (see _truth_likely_missing).
 _WITHHOLD = frozenset({"miss", "abstain", "hedge", "ask_clarify"})
@@ -84,6 +150,22 @@ _RE_EXTRACT_MODEL = "claude-opus-4-8"
 # assert-grade trust only through conditioned verdicts, exactly as the local channel
 # did after its own 0.85-fiat prior was refuted.
 _RESCUE_RHO = 0.5
+
+
+def _conditioned_rho(curves: Curves, edge: str, confidence: Any, fallback: float) -> float:
+    """Fold a read's self-stated confidence through the per-edge reliability curve
+    (``edge`` is the attribution's one spelling — ``extract@<model>`` for the joint
+    re-reads, ``deliberate.instrument(<model>)`` for the promoted arm). ``curves=None``
+    (every legacy call site) returns the declared fallback — bit-identical to the
+    constants. In the calibrated regime an ABSENT confidence folds at the curve's most
+    pessimistic bin: no signal must never be trusted more than a stated one (a stated
+    0.95 cold-starts at 0.25; letting silence keep the declared prior would invert the
+    pessimism). The cold-start curve (edge unseen) is Beta(1,3) — stricter than every
+    legacy constant, so a mis-supplied curves dict can only withhold harder."""
+    if curves is None:
+        return float(fallback)
+    c = 0.0 if confidence is None else max(0.0, float(confidence))
+    return CAL.curve_for(curves, edge).calibrate(c)
 
 
 def _truth_likely_missing(view: View) -> bool:
@@ -121,7 +203,8 @@ def _obj(post: Post, url: str, payload: dict[str, Any]) -> dict[str, Any]:
 def decide_via_loop(question: str, k: int, *, bridge: str, daemon: str, post: Post, get: Get,
                     grow: bool = True, rerank: bool = False,
                     transforms: list[dict[str, Any]] | None = None,
-                    grow_lane: bool = False, live: SEAM.LiveFn | None = None) -> View:
+                    grow_lane: bool = False, live: SEAM.LiveFn | None = None,
+                    curves: Curves = None) -> View:
     """Drive one question through the live loop: route, then a cheap pass, then recall growth.
 
     A declined route (``/route`` → null) is the NARRATIVE family — synthesize a cited answer,
@@ -151,13 +234,15 @@ def decide_via_loop(question: str, k: int, *, bridge: str, daemon: str, post: Po
         nv = _obj(post, f"{bridge}/narrative", {"question": question})
         return {"effector": nv["action"], "asserted": nv["asserted"], "candidates": [],
                 "credences": [], "p_none": None, "eu": None, "n_obs": 0,
-                "hits": nv.get("hits", []), "route": None, "rendered": nv.get("rendered")}
+                "hits": nv.get("hits", []), "route": None, "rendered": nv.get("rendered"),
+                "instrument": "", "cost_usd": None, "latency_s": None}
     if grow_lane:
         return run_pass(question, k, route, bridge=bridge, daemon=daemon, post=post, get=get,
                         rerank=False, expand=False, transforms=transforms, grow_lane=True,
-                        live=live)
+                        live=live, curves=curves)
     view = run_pass(question, k, route, bridge=bridge, daemon=daemon, post=post, get=get,
-                    rerank=rerank, expand=rerank, transforms=transforms, live=live)
+                    rerank=rerank, expand=rerank, transforms=transforms, live=live,
+                    curves=curves)
     if grow and not rerank:
         # Grow recall ONLY when the agent's BELIEF says the answer is outside the set — NONE is the
         # MAP hypothesis, or nothing was extracted (:func:`_truth_likely_missing`). A withhold with
@@ -174,7 +259,8 @@ def decide_via_loop(question: str, k: int, *, bridge: str, daemon: str, post: Po
             if view["effector"] not in _WITHHOLD or not _truth_likely_missing(view):
                 break
             grown = run_pass(question, k, route, bridge=bridge, daemon=daemon, post=post, get=get,
-                             rerank=rr, expand=ex, transforms=transforms, live=live)
+                             rerank=rr, expand=ex, transforms=transforms, live=live,
+                             curves=curves)
             if grown["effector"] == "report" or not view["candidates"]:
                 view = grown
     return view
@@ -183,7 +269,8 @@ def decide_via_loop(question: str, k: int, *, bridge: str, daemon: str, post: Po
 def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemon: str,
              post: Post, get: Get, rerank: bool, expand: bool = False,
              transforms: list[dict[str, Any]] | None = None,
-             grow_lane: bool = False, live: SEAM.LiveFn | None = None) -> View:
+             grow_lane: bool = False, live: SEAM.LiveFn | None = None,
+             curves: Curves = None) -> View:
     """One retrieve→probe→extract→decide pass at a given recall breadth, enacting each
     scheduled transform the daemon returns. With ``grow_lane`` the daemon also prices the
     grow menu (recall actuators), and each enactment is logged to ``/log_gather``. Returns
@@ -259,8 +346,10 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
                 applied.append(g_probe)
                 if minted:
                     conf = cr.get("confidence")
-                    rescue_rho = (min(_RESCUE_RHO, max(0.0, float(conf)))
-                                  if conf is not None else _RESCUE_RHO)
+                    legacy = (min(_RESCUE_RHO, max(0.0, float(conf)))
+                              if conf is not None else _RESCUE_RHO)
+                    rescue_rho = _conditioned_rho(
+                        curves, extract_edge(_RE_EXTRACT_MODEL), conf, legacy)
                     ext = {"candidates": [str(cr["new_candidate"])],
                            "observations": cr["observations"], "rho": rescue_rho,
                            "era_split": False,
@@ -269,7 +358,8 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
     if not ext["candidates"]:  # zero grounded observations → the local edge declined
         _log_outcomes("miss")
         return {"effector": "miss", "asserted": [], "candidates": [], "credences": [],
-                "p_none": None, "eu": None, "n_obs": 0, "hits": hits, "route": route}
+                "p_none": None, "eu": None, "n_obs": 0, "hits": hits, "route": route,
+                "instrument": "", "cost_usd": None, "latency_s": None}
     u_bar = get(f"{bridge}/utility")["u_bar"]
     candidates = ext["candidates"]
     owner = owner_scoped(question)
@@ -297,6 +387,11 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
     grow_probes = ({str(a["probe"]) for a in menu["actuators"]} if menu is not None else set())
     grow_asked = False
     last_sensors: dict[str, str] = {}
+    # §10 accounting for the terminal decision (decisions v2): the answer-proposing edge
+    # that fired this pass and its realised price — "" / None when only the local channel ran.
+    edge_instrument = ""
+    edge_cost: float | None = None
+    edge_latency: float | None = None
     # bounded: each registry probe and each grow actuator fires at most once (dedup on the
     # probe name); a grow costs two decides (the priced re-ask + the post-enactment decide).
     for _ in range(2 + sum(t["kind"] == "voi" for t in transforms) + 2 * len(grow_probes)):
@@ -318,7 +413,12 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
                        # pass time_indexed + construct + doc_date so a stale re-read decays.
                        "time_indexed": route["time_indexed"], "construct": route["construct"],
                        "covariates": {"doc_date": recency}})
-            obs, rho, era = cr["observations"], cr["gather_rho"], False
+            # with curves, the read's own stated confidence conditions through the edge's
+            # calibration curve — the instrument's uncertainty is no longer discarded on
+            # the regular tiers (rescue-path parity); without curves the tier rho echoes.
+            obs, era = cr["observations"], False
+            rho = _conditioned_rho(curves, extract_edge(model), cr.get("confidence"),
+                                   cr["gather_rho"])
             applied = list(dict.fromkeys([*applied, probe]))
             dec = _decide(obs, rho, era, applied)
         elif eff == "gather" and probe in _GROW_RETRIEVE:
@@ -335,6 +435,47 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
             enacted.append((probe, last_sensors, changed))
             applied = list(dict.fromkeys([*applied, probe]))
             grow_asked = False
+            dec = _decide(obs, rho, era, applied)
+        elif eff == "gather" and probe == "deliberate":
+            # The promoted A1b edge, daemon-scheduled: an agentic deliberative answer
+            # over the corpus (bridge /probe/deliberate — warm-replayed when the corpus
+            # is unchanged). Its bare ANSWER value is joined bridge-side; a new value
+            # comes back as a minted candidate (allow_new — the edge exists FOR the
+            # questions the local channel can't ground). On a SUCCESSFUL call the
+            # observation REPLACES the channel (conservative: independent-search
+            # corroboration is not modelled v0 — a stated coarsening) and an empty ok
+            # reply collapses it — NOT_IN_CORPUS from the reference is evidence for
+            # NONE. An INFRASTRUCTURE failure (CLI error/timeout, transport raise) is
+            # not evidence of anything: the grounded channel survives untouched and the
+            # probe is simply retired (fail-open — instrumentation never breaks an
+            # already-grounded answer). The raw self-report conditions only through the
+            # per-edge curve (Δ1).
+            try:
+                dr: dict[str, Any] | None = _obj(
+                    post, f"{bridge}/probe/deliberate",
+                    {"question": question, "candidates": candidates, "allow_new": True,
+                     "hits": hits, "time_indexed": route["time_indexed"],
+                     "construct": route["construct"],
+                     "covariates": {"doc_date": recency}})
+            except Exception as e:
+                print(f"  (deliberate probe failed, channel kept: {e})")
+                dr = None
+            if dr is not None:
+                # spend is real even when the call failed (an is_error result still
+                # bills) — the §10 accounting must survive the ok-guard below
+                edge_instrument = DL.instrument(
+                    str(dr.get("model") or _DELIBERATE_MODEL))
+                edge_cost = dr.get("cost_usd")
+                edge_latency = dr.get("latency_s")
+            if dr is not None and dr.get("status") == "ok":
+                if dr.get("new_candidate"):
+                    candidates = [*candidates, str(dr["new_candidate"])]
+                conf = dr.get("confidence")
+                legacy = (min(_DELIBERATE_FALLBACK_RHO, max(0.0, float(conf)))
+                          if conf is not None else _DELIBERATE_FALLBACK_RHO)
+                obs, era = dr["observations"], False
+                rho = _conditioned_rho(curves, edge_instrument, conf, legacy)
+            applied = list(dict.fromkeys([*applied, probe]))
             dec = _decide(obs, rho, era, applied)
         elif eff == "gather" and probe == "re_extract_strong":
             # the K-ENLARGING strong re-extract: a whole-doc opus re-read with allow_new — a
@@ -353,7 +494,9 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
             # unconditional — an EMPTY strong re-read also replaces (the strong model failed to
             # confirm any local candidate; the weak evidence must not survive it — disagree ⇒
             # NONE-dominant ⇒ abstain, the corroborate contract verbatim).
-            obs, rho, era = cr["observations"], cr["gather_rho"], False
+            obs, era = cr["observations"], False
+            rho = _conditioned_rho(curves, extract_edge(_RE_EXTRACT_MODEL),
+                                   cr.get("confidence"), cr["gather_rho"])
             enacted.append((probe, last_sensors, changed))
             applied = list(dict.fromkeys([*applied, probe]))
             grow_asked = False
@@ -375,7 +518,9 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
     asserted = [dec["value"]] if dec["effector"] == "report" and dec["value"] else []
     return {"effector": dec["effector"], "asserted": asserted, "candidates": candidates,
             "credences": dec["credences"], "p_none": dec["p_none"], "eu": dec["eu"],
-            "n_obs": len(obs), "hits": hits, "route": route}
+            "n_obs": len(obs), "hits": hits, "route": route,
+            "instrument": edge_instrument, "cost_usd": edge_cost,
+            "latency_s": edge_latency}
 
 
 # --- render (the executor's decision in the shared credence grammar) --------------------

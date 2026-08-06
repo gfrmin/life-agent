@@ -101,7 +101,13 @@ planner (v0: template router `lookup | aggregate | temporal-lookup`, later `thre
 an AND-only predicate-slot list) and the operators (`retrieve`, `sem_map` = declared
 transforms, `filter`, `agg`, later `assemble`) live in the life_agent executor. The LLM
 appears only in cached per-document (or per-thread) projections; everything question-shaped
-downstream is deterministic. The coverage contract is algebra-wide: satisfied ·
+downstream is deterministic. *(Superseded as a global claim about the answer path,
+2026-08-06: this sentence describes the typed families' mechanism. Under
+bayesian-foundations §7 the answer-time LLM is itself a declared monolithic-class edge,
+and the promoted deliberative instrument — `core/deliberate.py`, an on-ledger §18.9
+derivation on the executor's priced transform menu — answers question-shaped work
+directly; its credence enters only through the per-edge calibration curve.)* The
+coverage contract is algebra-wide: satisfied ·
 unsatisfied · indeterminate, indeterminates attributed and carried, the denominator
 anchored at the retrieved set, retrieval recall stated as uncertifiable. Every surface
 obeys the [interaction contract](./interaction-contract.md): one grammar per concept,

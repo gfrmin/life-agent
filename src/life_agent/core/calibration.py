@@ -23,6 +23,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass
+from pathlib import Path
 
 
 @dataclass(frozen=True)
@@ -120,3 +121,21 @@ def curve_for(curves: dict[str, ReliabilityCurve], edge: str, *, prior_alpha: fl
     so a brand-new (or starved) edge errs toward scope/abstain until evidence earns its trust."""
     return curves.get(edge) or fit_reliability_curve([], prior_alpha=prior_alpha,
                                                       prior_beta=prior_beta, n_bins=n_bins)
+
+
+def edge_outcomes_from_log(path: Path) -> list[EdgeOutcome]:
+    """The per-edge grading rows out of the §8 outcomes log: every event whose
+    ``instrument_identity`` names its ``edge`` explicitly AND that carries the asserted
+    probability. Legacy rows without an edge are skipped, never guessed into a namespace
+    (the question_id lesson: a derived spelling silently splits the attribution and every
+    curve reads as cold). The correct bit is the grader's own CORRECT_GRADES fold."""
+    from life_agent.core import outcomes as O
+
+    rows: list[EdgeOutcome] = []
+    for ev in O.read(path):
+        edge = ev.instrument_identity.get("edge")
+        if not edge or ev.probability is None:
+            continue
+        rows.append(EdgeOutcome(str(edge), float(ev.probability),
+                                ev.grade in O.CORRECT_GRADES[ev.grader]))
+    return rows

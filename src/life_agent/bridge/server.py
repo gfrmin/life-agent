@@ -47,7 +47,10 @@ import duckdb
 from life_agent import owner
 from life_agent.bridge.observations import to_abstract_observations
 from life_agent.core import config
+from life_agent.core import corpus as CORPUS
 from life_agent.core import decisions as DEC
+from life_agent.core import deliberate as DL
+from life_agent.core import derivations as D
 from life_agent.core import expansion as EXP
 from life_agent.core import gather_outcomes as GO
 from life_agent.core import joint_extract as JE
@@ -265,25 +268,29 @@ def _competing_value_shape(value: str, candidate: str) -> bool:
                if t not in cand_tokens and digit_count(t))
 
 
-def _corroborate_time_factor(jr: JE.JointResult, hits: list[Payload], p: Payload) -> float:
-    """The recency covariate for the corroborate re-read's observation — the construct's
+def _source_time_factor(value: str | None, as_of: str | None, hits: list[Payload],
+                        p: Payload) -> float:
+    """The recency covariate for a re-read/whole-question observation — the construct's
     volatility decay, the same projection `/extract` applies (`LK.time_factor`). Recency is a
-    document property, independent of WHOSE value it is, so the re-read value is as current as its
+    document property, independent of WHOSE value it is, so the value is as current as its
     freshest SOURCE attestation: take the max doc_date among the hits whose text actually contains
-    the value (the shared date-aware matcher), falling back to the model's self-reported `as_of`,
-    then to None (undated time-indexed ⇒ the stated `_A_TIME_UNKNOWN` attenuation). A non
+    the value (the shared date-aware matcher), falling back to the instrument's self-reported
+    `as_of`, then to None (undated time-indexed ⇒ the stated `_A_TIME_UNKNOWN` attenuation). A non
     time-indexed construct passes through at 1.0 (no decay)."""
     if not bool(p.get("time_indexed", False)):
         return 1.0
     hl = VOL.half_life(p.get("construct"))
     doc_date = dict((p.get("covariates") or {}).get("doc_date") or {})
-    value = jr.value or ""
     src_dates = [doc_date.get(h["artifact_cache_key"]) for h in hits
-                 if MATCH.answer_matches(value, [], str(h.get("chunk_text", "")))]
+                 if MATCH.answer_matches(value or "", [], str(h.get("chunk_text", "")))]
     dated = sorted(d for d in src_dates if d)
-    date_iso = dated[-1] if dated else jr.as_of
+    date_iso = dated[-1] if dated else as_of
     return LK.time_factor(date_iso, time_indexed=True, today=_opt_date(p.get("today")),
                           half_life_years=hl)
+
+
+def _corroborate_time_factor(jr: JE.JointResult, hits: list[Payload], p: Payload) -> float:
+    return _source_time_factor(jr.value, jr.as_of, hits, p)
 
 
 def _probe_corroborate(deps: BridgeDeps, p: Payload) -> Payload:
@@ -364,6 +371,104 @@ def _probe_corroborate(deps: BridgeDeps, p: Payload) -> Payload:
         deps.conn, question, _req_str(p, "leader_value"),
         k=int(p.get("k", _DEFAULT_K)), exclude_keys=list(p.get("exclude_keys") or ()))
     return {"hits": hits}
+
+
+def _deliberate_cfg() -> DL.DeliberateConfig:
+    """The deliberative edge's server-side config: the claude CLI from the env (the same
+    provenance caveat as the eval arm — the machine's Claude Code config is part of the
+    reference policy), scratch under the KB (transient, never the ledger)."""
+    return DL.DeliberateConfig(
+        claude_bin=os.environ.get("LIFE_AGENT_CLAUDE_BIN", "claude"),
+        scratch_dir=config.KB / "tmp" / "deliberate",
+        pkm_config=os.environ.get("PKM_CONFIG", ""),
+    )
+
+
+def _join_deliberate_value(value: str | None, candidates: list[str], allow_new: bool,
+                           *, time_factor: float = 1.0) -> tuple[list[Payload], str | None]:
+    """Map the edge's bare ANSWER value onto the candidate lattice — the corroborate
+    join's contract verbatim: exact normalised match, else unique containment without a
+    competing same-shaped token, else (``allow_new``) a minted candidate indexed at
+    ``len(candidates)``, else NO observation (ambiguity keeps the conservative
+    no-observation contract). ``time_factor`` is the caller-computed
+    :func:`_source_time_factor` — the keystone holds here too: on a time-indexed
+    construct no transform may hand-set 1.0 and report a stale value as current
+    (the q-006 class); the deliberate observation is as current as its freshest
+    retrieved source attestation."""
+    if value is None:
+        return [], None
+    vn = LK._norm_value(value)
+    idx = next((i for i, c in enumerate(candidates) if LK._norm_value(c) == vn), None)
+    new_candidate: str | None = None
+    if idx is None:
+        contained = [i for i, c in enumerate(candidates)
+                     if MATCH.answer_matches(str(c), [], value)]
+        if len(contained) == 1 and not _competing_value_shape(value, candidates[contained[0]]):
+            idx = contained[0]
+        elif not contained and allow_new:
+            new_candidate = value
+            idx = len(candidates)
+    if idx is None:
+        return [], None
+    return [{"reports": idx, "group": 0, "authority": 1.0,
+             "subject_factor": 1.0, "time_factor": time_factor}], new_candidate
+
+
+def _probe_deliberate(deps: BridgeDeps, p: Payload) -> Payload:
+    """The promoted A1b edge as a scheduled transform: run (or warm-replay) one
+    deliberative answer, join its bare value onto the candidate lattice, and return the
+    observation beside the RAW self-reported credence — a signal the BODY folds through
+    the per-edge calibration curve (Δ1); the bridge scores nothing. Keyed pre-call on
+    (question, corpus digest); a warm hit replays at zero model calls; only status="ok"
+    results (including declines — a warm NOT_IN_CORPUS is valid evidence) are recorded."""
+    question = _req_str(p, "question")
+    candidates = [str(c) for c in (p.get("candidates") or [])]
+    allow_new = bool(p.get("allow_new"))
+    hits = list(p.get("hits") or [])
+    cfg = _deliberate_cfg()
+
+    try:
+        digest: str | None = CORPUS.corpus_digest(deps.conn)
+    except Exception:
+        digest = None  # caching off for this question — named, never silent
+    key = (D.deliberate_key(question, digest, model=cfg.model,
+                            prompt_template=DL.PROMPT_DELIB_V2,
+                            max_turns=cfg.max_turns)
+           if digest is not None else None)
+
+    cached = D.lookup(deps.root, key.cache_key) if key is not None else None
+    if cached is not None:
+        c = loads(cached.decode("utf-8"))
+        obs, new_candidate = _join_deliberate_value(
+            c.get("value"), candidates, allow_new,
+            time_factor=_source_time_factor(c.get("value"), None, hits, p))
+        out: Payload = {"observations": obs, "value": c.get("value"),
+                        "confidence": c.get("credence"), "declined": c.get("declined"),
+                        "status": "ok", "text": c.get("text"), "model": c.get("model"),
+                        "cost_usd": 0.0, "latency_s": 0.0,
+                        "cache": "hit"}
+        if new_candidate is not None:
+            out["new_candidate"] = new_candidate
+        return out
+
+    r = DL.answer(question, cfg)
+    if r.status == "ok" and key is not None:
+        try:
+            DL.record_answer(deps.root, key, r)
+        except Exception as e:  # a ledger write must never break an answered question
+            print(f"  (deliberate answer not recorded: {e})")
+    obs, new_candidate = _join_deliberate_value(
+        r.value, candidates, allow_new,
+        time_factor=_source_time_factor(r.value, None, hits, p))
+    if r.status != "ok":
+        obs, new_candidate = [], None
+    out = {"observations": obs, "value": r.value, "confidence": r.credence,
+           "declined": r.declined, "status": r.status, "text": r.text,
+           "model": r.model, "cost_usd": r.cost_usd, "latency_s": r.latency_s,
+           "cache": "miss" if key is not None else "off"}
+    if new_candidate is not None:
+        out["new_candidate"] = new_candidate
+    return out
 
 
 def _utility(deps: BridgeDeps, _p: Payload) -> Payload:
@@ -528,6 +633,8 @@ def _log_decision(deps: BridgeDeps, p: Payload) -> Payload:
                     if len(candidates) == len(credences) else candidates)
 
     decision_id = _decision_id(question, retrieval_keys, creds_sorted, p_none)
+    cost_usd = decision.get("cost_usd")
+    latency_s = decision.get("latency_s")
     event = DEC.DecisionEvent(
         tx_time=O.now_iso(), run_id="answer-brain",
         question_id=DEC.question_id(question),
@@ -535,7 +642,12 @@ def _log_decision(deps: BridgeDeps, p: Payload) -> Payload:
         posterior_summary={"candidates": cands_sorted, "credences": creds_sorted,
                            "p_none": p_none, "n_obs": n_obs},
         utility_fold_version=deps.fold_version(),
-        chosen_action=action, predicted_eu=eu, decision_id=decision_id)
+        chosen_action=action, predicted_eu=eu, decision_id=decision_id,
+        # decisions v2 (§10 accounting): the answer-proposing edge + its realised price,
+        # posted by the body when a priced transform fired; defaults stay honest.
+        instrument=str(decision.get("instrument") or ""),
+        cost_usd=float(cost_usd) if cost_usd is not None else None,
+        latency_s=float(latency_s) if latency_s is not None else None)
     DEC.append(deps.decisions_path, event)
     if deps.membrane is not None:
         with contextlib.suppress(Exception):
@@ -607,6 +719,7 @@ _POST: dict[str, Handler] = {
     "/probe/subject": _probe_subject,
     "/probe/authority": _probe_authority,
     "/probe/corroborate": _probe_corroborate,
+    "/probe/deliberate": _probe_deliberate,
     "/log_decision": _log_decision,
     "/log_reaction": _log_reaction,
     "/log_gather": _log_gather,

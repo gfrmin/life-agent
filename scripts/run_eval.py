@@ -391,33 +391,77 @@ def _monolithic_response(mono_text: str, q: dict, abstention: str):
     return GATE.RealisedResponse(action="report", correct=correct)
 
 
-def gate_paired_outcomes(conn, questions: list[dict], k: int, ask) -> list:
-    """Run both policies over the corpus and pair their realised answers per question.
-    The typed pass is the production answer path with the **gather-augmented** lookup loop
-    (gather=True → re-retrieve corroboration on the top candidates, then re-weight by
-    recency + whose-document before deciding); the monolithic pass is the same path with
-    the typed families switched off (families=False → raw synthesize prose)."""
+def load_replay_answers(path: Path) -> dict[str, dict]:
+    """A fair-fight arm's stored ``answers.jsonl`` (or its run dir), keyed by question id
+    — the Δ2 outside-option baseline replayed offline (owner decision 2026-08-06: the
+    comparator is what he would do anyway — ask Claude with corpus access)."""
+    import json as _json
+
+    if path.is_dir():
+        path = path / "arms" / "deliberative" / "answers.jsonl"
+    rows = [_json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()
+            if line.strip()]
+    return {str(r["question_id"]): r for r in rows}
+
+
+def _replay_response(row: dict, q: dict):
+    """One replayed raw-deliberative answer on the SAME answer-level scale as every arm
+    (gold token-containment on the prose). A decline or a failed run grades as an
+    abstention — the arm asserted nothing there."""
     import life_agent.core.gate as GATE
 
+    text = str(row.get("text") or "").strip()
+    if row.get("status") != "ok" or row.get("declined") or not text:
+        # a blank-but-ok row is a degenerate run, not an assertion — grading it as a
+        # report would mint a spurious confident-wrong (the A3 sign rested on 3 CWs)
+        return GATE.RealisedResponse(action="abstain", correct=None)
+    correct = GATE.realised_report([text], q.get("answer", ""),
+                                   q.get("answer_variants", []))
+    return GATE.RealisedResponse(action="report", correct=correct)
+
+
+def gate_paired_outcomes(conn, questions: list[dict], k: int, ask,
+                         replay: dict[str, dict] | None = None) -> list:
+    """Run the typed policy over the corpus and pair it against the baseline arm per
+    question. The typed pass is the production answer path with the **gather-augmented**
+    lookup loop (gather=True → re-retrieve corroboration on the top candidates, then
+    re-weight by recency + whose-document before deciding). The baseline is the
+    monolithic pass (families=False → raw synthesize prose) — or, with ``replay``, the
+    raw-deliberative outside option replayed from a stored run (Δ2): the join is STRICT,
+    a question the replay lacks is named and refused, never silently dropped."""
+    import life_agent.core.gate as GATE
+
+    if replay is not None:
+        missing = sorted(str(q["id"]) for q in questions if str(q["id"]) not in replay)
+        if missing:
+            raise ValueError(
+                f"replay baseline lacks {len(missing)} question(s): {missing} — "
+                "the corpora must match (no silent drop; pass the run that answered "
+                "these questions)")
     paired = []
     for q in questions:
         typed_text, _, _ = ask.answer(conn, q["question"], k, gather=True)
         lk, nv = ask.LOOKUP_LAST, ask.NARRATIVE_LAST  # capture before the next call resets
         typed = _typed_response(lk, nv, typed_text, q, ask.ABSTENTION)
-        mono_text, _, _ = ask.answer(conn, q["question"], k, families=False)
-        mono = _monolithic_response(mono_text, q, ask.ABSTENTION)
+        if replay is not None:
+            mono = _replay_response(replay[str(q["id"])], q)
+        else:
+            mono_text, _, _ = ask.answer(conn, q["question"], k, families=False)
+            mono = _monolithic_response(mono_text, q, ask.ABSTENTION)
         answerable = bool(q.get("answerable", bool(q.get("answer"))))
         paired.append(GATE.PairedOutcome(
             question_id=str(q["id"]), answerable=answerable, typed=typed, mono=mono))
         tmark = "·" if not typed.asserts() else ("✓" if typed.correct else "✗")
         mmark = "·" if not mono.asserts() else ("✓" if mono.correct else "✗")
+        blabel = "delib" if replay is not None else "mono"
         print(f"  {q['id']}: typed {tmark}{typed.action[:6]:<6} "
-              f"mono {mmark}{mono.action[:6]}")
+              f"{blabel} {mmark}{mono.action[:6]}")
     return paired
 
 
-def _paired_to_dict(p) -> dict:
-    return {"question_id": p.question_id, "answerable": p.answerable,
+def _paired_to_dict(p, baseline: str = "monolithic") -> dict:
+    # every row names its baseline arm — a Δ2 paired.jsonl must never read as the §8 one
+    return {"question_id": p.question_id, "answerable": p.answerable, "baseline": baseline,
             "typed": {"action": p.typed.action, "correct": p.typed.correct},
             "mono": {"action": p.mono.action, "correct": p.mono.correct}}
 
@@ -725,6 +769,13 @@ def main() -> int:
              "integrated over the utility posterior → eval/gate/{report.md,paired.jsonl}",
     )
     parser.add_argument(
+        "--gate-replay", default=None,
+        help="Δ2 (the outside-option gate): replace the gate's monolithic baseline with "
+             "a REPLAYED raw-deliberative arm — path to a fair-fight run dir (or its "
+             "answers.jsonl). The comparator becomes what the owner would do without "
+             "the agent; the join is strict (a missing question refuses, named).",
+    )
+    parser.add_argument(
         "--no-outcomes", action="store_true",
         help="skip appending graded outcomes to the calibration log "
              "($LIFE_AGENT_KB/calibration/outcomes.jsonl) — dry runs only; the log "
@@ -754,15 +805,18 @@ def main() -> int:
         import life_agent.core.lookup as LK
         import life_agent.core.utility as UT
 
+        replay = (load_replay_answers(Path(args.gate_replay).expanduser())
+                  if args.gate_replay else None)
+        baseline_name = (f"raw-deliberative replay ({args.gate_replay})"
+                         if replay is not None else "monolithic (families=False)")
         print(f"Running the adoption gate (k={args.k}) over {len(questions)} questions "
-              f"(both policies; the typed pass is the production path, the monolithic "
-              f"pass switches the families off) …")
+              f"(typed = the production path; baseline = {baseline_name}) …")
         sys.path.insert(0, str(Path(__file__).resolve().parent))
         import ask
 
         t0 = time.monotonic()
         run_id = f"gate-{datetime.now().strftime('%Y%m%dT%H%M%S')}"
-        paired = gate_paired_outcomes(conn, questions, args.k, ask)
+        paired = gate_paired_outcomes(conn, questions, args.k, ask, replay=replay)
 
         # the FULL utility posterior (marginals, not just Ū — the gate samples P(U)),
         # folded from the FROZEN model + elicitations (blind discipline: untouched here)
@@ -779,12 +833,21 @@ def main() -> int:
         result = GATE.delta_posterior(paired, post, oracle_p=LK._ORACLE_P)
         elapsed = time.monotonic() - t0
 
-        gate_dir = _kb_root() / "eval" / "gate"
+        # a Δ2 run writes to its OWN directory — it must never overwrite the frozen §8
+        # monolithic gate artifacts, and every paired row names its baseline arm
+        gate_dir = _kb_root() / "eval" / ("gate-outside-option" if replay is not None
+                                          else "gate")
+        baseline_tag = ("raw-deliberative-replay" if replay is not None
+                        else "monolithic")
         gate_dir.mkdir(parents=True, exist_ok=True)
+        preamble = (f"> **Baseline arm:** {baseline_name}\n\n"
+                    if replay is not None else "")
         (gate_dir / "report.md").write_text(
-            GATE.render_report(result, run_id=run_id, elapsed=elapsed), encoding="utf-8")
+            preamble + GATE.render_report(result, run_id=run_id, elapsed=elapsed),
+            encoding="utf-8")
         (gate_dir / "paired.jsonl").write_text(
-            "".join(json.dumps(_paired_to_dict(p), sort_keys=True) + "\n"
+            "".join(json.dumps(_paired_to_dict(p, baseline=baseline_tag),
+                               sort_keys=True) + "\n"
                     for p in paired), encoding="utf-8")
         print(f"\nGate report → {gate_dir / 'report.md'}")
         verdict = "PASS" if result.passed else "FAIL"
