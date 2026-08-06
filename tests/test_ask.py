@@ -352,6 +352,25 @@ def test_answer_via_executor_tags_run_id_when_set(monkeypatch) -> None:
     assert "run_id" not in decision
 
 
+def test_edge_curves_honor_the_held_out_question(monkeypatch, tmp_path) -> None:
+    # run 4 (--gate-loo): with EXECUTOR_HOLD_OUT_QUESTION_ID set, the curve fold
+    # excludes that question's own graded rows — here the log's ONLY row, so the fold
+    # empties and the declared constants stand (None), exactly the cold-start
+    # discipline. Unset, the same log folds to a curve for the edge.
+    import life_agent.core.outcomes as O
+
+    log = tmp_path / "outcomes.jsonl"
+    O.append(log, O.OutcomeEvent(
+        tx_time="t", run_id="r", question_id="q2-001", claim="c",
+        construct="edge-proposal", grade="CORRECT", grader="eval_edge",
+        instrument_identity={"edge": "deliberate@opus"}, probability=0.9))
+    monkeypatch.setattr(ask.CFG, "OUTCOMES_LOG", log)
+    curves = ask._edge_curves()
+    assert curves is not None and "deliberate@opus" in curves
+    monkeypatch.setattr(ask, "EXECUTOR_HOLD_OUT_QUESTION_ID", "q2-001")
+    assert ask._edge_curves() is None
+
+
 def test_answer_via_executor_abstains_named_when_daemon_down(monkeypatch) -> None:
     # Never a silent fallback to another path's answer: a down stack is the NAMED abstention.
     monkeypatch.setattr(ask, "_executor_ready", lambda: False)

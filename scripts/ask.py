@@ -891,6 +891,11 @@ EXECUTOR_VIEW_LAST: dict[str, Any] | None = None
 # distinguishable from live traffic in decisions.jsonl; None (live) posts no run_id and the
 # bridge's default ("answer-brain") rules.
 EXECUTOR_RUN_ID: str | None = None
+# when set (the gate's --gate-loo executor arm), _edge_curves holds this question's own
+# graded rows out of the fold — the held-out reading's discipline: a question's decide
+# never conditions on evidence derived from itself (in-sample curves = §17.4's leakage
+# re-enacted). None (live and run-3-shaped gates) folds the whole log.
+EXECUTOR_HOLD_OUT_QUESTION_ID: str | None = None
 
 
 def _http_post(url: str, payload: dict[str, Any]) -> dict[str, Any] | None:
@@ -925,7 +930,10 @@ def _edge_curves() -> dict[str, CAL.ReliabilityCurve] | None:
     regime begins when the first attributed outcome exists. Fail-open the same way,
     named."""
     try:
-        rows = CAL.edge_outcomes_from_log(CFG.OUTCOMES_LOG)
+        held_out = (frozenset({EXECUTOR_HOLD_OUT_QUESTION_ID})
+                    if EXECUTOR_HOLD_OUT_QUESTION_ID is not None else frozenset())
+        rows = CAL.edge_outcomes_from_log(CFG.OUTCOMES_LOG,
+                                          exclude_question_ids=held_out)
         if not rows:
             return None
         return CAL.fit_edge_curves(rows)
