@@ -866,6 +866,33 @@ def test_deliberate_transport_failure_is_fail_open() -> None:
     assert len(fake.posted("/decide")[1]["observations"]) == 1
 
 
+def test_failed_deliberate_call_still_accounts_its_spend() -> None:
+    # An is_error CLI result still bills — the §10 accounting must reach the view even
+    # when the observation is discarded (the channel-keeping error path).
+    fake = FakeServices(
+        route={"construct": "tax id", "time_indexed": False},
+        extract={**_EXTRACT, "candidates": ["P123"]},
+        deliberate={"observations": [], "confidence": None, "model": "claude-opus-4-8",
+                    "value": None, "status": "error", "declined": False,
+                    "cost_usd": 0.11, "latency_s": 240.0, "cache": "miss"},
+        decides=[{"effector": "gather", "probe": "deliberate",
+                  "credences": [0.6], "p_none": 0.3, "eu": 0.1},
+                 {"effector": "report", "value": "P123", "credences": [0.85],
+                  "p_none": 0.1, "eu": 0.6}])
+    view = _loop(fake, grow=False, curves={})
+    assert view["cost_usd"] == 0.11
+    assert view["latency_s"] == 240.0
+
+
+def test_tier_rho_and_menu_rho_never_drift() -> None:
+    # Drift gate (single-source constants): menu_transforms' curves=None parity — the
+    # C2 guarantee — RESTS on the declared _TIER_RHO equalling the DEFAULT_TRANSFORMS
+    # rho for every tier row. Nothing else fails if a future edit touches one of them.
+    for t in EX.DEFAULT_TRANSFORMS:
+        if t["kind"] == "voi" and t["probe"] in EX._TIER_RHO:
+            assert t["rho"] == EX._TIER_RHO[t["probe"]], t["name"]
+
+
 def test_menu_transforms_prices_what_enactment_can_deliver() -> None:
     # C2: the daemon must never buy a probe at a rho the body cannot cash. Without
     # curves the tiers keep their declared priors (parity) and the deliberate row

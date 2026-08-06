@@ -1320,7 +1320,8 @@ on this list. Answers land here by amendment, citing their evidence.
   dormant, not silently degraded), and the Δ2 gate reading. *First evidence:* the
   attributed-outcome writer + the first Δ2 gate run + the first flag-on live decisions
   (`LIFE_AGENT_DELIBERATE=1`; flag-off at merge). Priors frozen blind and cited: menu
-  seed rho 0.92 (= ff-v2's measured 96/104 asserted-correct) **re-priced at offer time
+  seed rho 0.92 (= ff-v2's 96/104 correct over all questions; conditional on asserting,
+  96/101 = 0.950) **re-priced at offer time
   to what the enactment fold can deliver** (the daemon must never buy a probe at a rho
   the body cannot cash — 0.5 cap cold, the curve's value once evidence exists); cost
   0.38 (= the run's mean $0.375/question, `cost_status: estimated`, in the tier rows'
