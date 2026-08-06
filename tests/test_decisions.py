@@ -79,6 +79,35 @@ def test_lines_are_canonical_json(tmp_path: Path) -> None:
                               separators=(",", ":"))
 
 
+def test_pricing_and_instrument_fields_round_trip(tmp_path: Path) -> None:
+    # §10 accounting on the ledger: the edge that answered, at what dollar/latency cost.
+    log = tmp_path / "decisions.jsonl"
+    priced = _event(instrument="deliberate@claude-opus-4-8",
+                    cost_usd=0.42, latency_s=23.1)
+    D.append(log, priced)
+    (back,) = D.read(log)
+    assert back.instrument == "deliberate@claude-opus-4-8"
+    assert back.cost_usd == 0.42
+    assert back.latency_s == 23.1
+
+
+def test_pre_pricing_lines_still_read(tmp_path: Path) -> None:
+    # Lines appended before format_version 2 carry no pricing keys — they must replay.
+    log = tmp_path / "decisions.jsonl"
+    D.append(log, _event())
+    line = json.loads(log.read_text(encoding="utf-8"))
+    for legacy_absent in ("instrument", "cost_usd", "latency_s"):
+        line.pop(legacy_absent)
+    line["format_version"] = 1
+    log.write_text(json.dumps(line, sort_keys=True, separators=(",", ":")) + "\n",
+                   encoding="utf-8")
+    (back,) = D.read(log)
+    assert back.instrument == ""
+    assert back.cost_usd is None
+    assert back.latency_s is None
+    assert back.format_version == 1
+
+
 def test_corrupt_line_is_loud(tmp_path: Path) -> None:
     log = tmp_path / "decisions.jsonl"
     log.write_text('{"oops": true}\n', encoding="utf-8")
