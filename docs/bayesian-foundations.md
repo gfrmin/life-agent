@@ -1298,3 +1298,23 @@ on this list. Answers land here by amendment, citing their evidence.
   only then; named now so its grading stream is designed in, not bolted on).
 - **The skin's batch throughput (§11).** Unknown: per-question subprocess vs pooled
   daemon. *Decided by* latency measured at stage 1; promoted per §11 if it demands.
+- **The deliberative instrument's self-report signal (§2/§7 — added 2026-08-06, OPEN).**
+  The promoted A1b arm (`core/deliberate.py`; declared: construct = the corpus-decided
+  answer, cited; class = monolithic; calibration route = the outcomes log's per-edge
+  curve, `core/calibration.py`) emits a self-reported CREDENCE consumed only as an
+  observable signal into `P(correct | signals)` — never as the posterior (M3). Unknown,
+  twice over: (1) whether the self-report is *informative* (does the fitted reliability
+  curve separate its bins, or is the signal flat?) and *stationary* across model bumps
+  (instrument identity keys on the model, so a bump cold-starts — is the accrual rate
+  enough?); (2) whether the edge's EU on the live stream clears the **Δ2 outside-option
+  gate** — the §8 criterion unchanged (δ/level frozen) with the comparator re-pointed at
+  the owner's real alternative, the raw deliberative arm replayed from the stored
+  fair-fight run (`run_eval --gate --gate-replay`; owner decision 2026-08-06 — the old
+  gauge prices abstention at zero, which silently priced the owner's fallback at zero;
+  the replay arm is the cheap honest correction, not a gauge re-pin). *Decided by* the
+  per-bin reliability curve narrowing from `eval_lookup`/`eval_claim`/owner-correction
+  outcomes attributed to `deliberate@<model>`, and the Δ2 gate reading. *First
+  evidence:* the first Δ2 gate run + the first flag-on live decisions
+  (`LIFE_AGENT_DELIBERATE=1`; flag-off at merge). Priors frozen blind and cited: menu
+  rho 0.92 (= ff-v2's measured 92.3%), cost 0.37 (= the run's mean $/question),
+  cold-start curve Beta(1,3).
