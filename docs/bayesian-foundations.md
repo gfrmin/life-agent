@@ -1396,3 +1396,19 @@ on this list. Answers land here by amendment, citing their evidence.
   won't flip at the 0.5 cold cap), then run 4 = the first Δ2-with-the-edge READING on
   leave-one-question-out curve folds (the p3_gate grouped-LOO precedent — curves fit
   on the gated questions themselves would be §17.4's in-sample leakage re-enacted).
+  **Run 4's harness landed ahead of the harvest (2026-08-06, `--gate-loo`):** the
+  held-out discipline is mechanical, not procedural — `gate_paired_outcomes(loo=True)`
+  sets a per-question hold-out (`ask.EXECUTOR_HOLD_OUT_QUESTION_ID`, the
+  `EXECUTOR_RUN_ID` pattern) and the executor arm's per-question curve fold excludes
+  that question's own rows at the one admission point
+  (`edge_outcomes_from_log(exclude_question_ids=…)`, keyed on the log's own
+  `question_id` attribution — exact for the `eval_edge` stream, which only gate runs
+  write: live traffic has no gold to grade against, so there is no cross-surface
+  leakage axis). Preconditions loud: `--gate-loo` refuses without `--gate-executor`
+  (the only arm that folds curves); the family arm raises rather than wearing the
+  held-out label over a no-op; the hold-out clears even on a voided run. The report
+  names the discipline and its evidence base (pre-run attributed row count), and a
+  vacuous LOO (zero rows — run 3 not yet harvested) is disclosed, never read as a
+  held-out result. Run 4 = rerun the run-3 command + `--gate-loo` (deliberate edges
+  §18.9-warm ⇒ ~$0; fresh rows dedup to zero on lineage, so the reading adds no
+  double-counted evidence).
