@@ -235,7 +235,9 @@ def decide_via_loop(question: str, k: int, *, bridge: str, daemon: str, post: Po
         return {"effector": nv["action"], "asserted": nv["asserted"], "candidates": [],
                 "credences": [], "p_none": None, "eu": None, "n_obs": 0,
                 "hits": nv.get("hits", []), "route": None, "rendered": nv.get("rendered"),
-                "instrument": "", "cost_usd": None, "latency_s": None}
+                "instrument": "", "cost_usd": None, "latency_s": None,
+                "instrument_value": None, "instrument_confidence": None,
+                "instrument_lineage": None}
     if grow_lane:
         return run_pass(question, k, route, bridge=bridge, daemon=daemon, post=post, get=get,
                         rerank=False, expand=False, transforms=transforms, grow_lane=True,
@@ -359,7 +361,9 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
         _log_outcomes("miss")
         return {"effector": "miss", "asserted": [], "candidates": [], "credences": [],
                 "p_none": None, "eu": None, "n_obs": 0, "hits": hits, "route": route,
-                "instrument": "", "cost_usd": None, "latency_s": None}
+                "instrument": "", "cost_usd": None, "latency_s": None,
+                "instrument_value": None, "instrument_confidence": None,
+                "instrument_lineage": None}
     u_bar = get(f"{bridge}/utility")["u_bar"]
     candidates = ext["candidates"]
     owner = owner_scoped(question)
@@ -392,6 +396,11 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
     edge_instrument = ""
     edge_cost: float | None = None
     edge_latency: float | None = None
+    # the edge's RAW proposal + self-report + §18.9 lineage — what the attributed-outcome
+    # writer grades against gold, independent of the committed act.
+    edge_value: str | None = None
+    edge_conf: float | None = None
+    edge_lineage: str | None = None
     # bounded: each registry probe and each grow actuator fires at most once (dedup on the
     # probe name); a grow costs two decides (the priced re-ask + the post-enactment decide).
     for _ in range(2 + sum(t["kind"] == "voi" for t in transforms) + 2 * len(grow_probes)):
@@ -467,6 +476,10 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
                     str(dr.get("model") or _DELIBERATE_MODEL))
                 edge_cost = dr.get("cost_usd")
                 edge_latency = dr.get("latency_s")
+                v = dr.get("value")
+                edge_value = str(v) if v is not None else None
+                edge_conf = dr.get("confidence")
+                edge_lineage = dr.get("cache_key")
             if dr is not None and dr.get("status") == "ok":
                 if dr.get("new_candidate"):
                     candidates = [*candidates, str(dr["new_candidate"])]
@@ -520,7 +533,8 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
             "credences": dec["credences"], "p_none": dec["p_none"], "eu": dec["eu"],
             "n_obs": len(obs), "hits": hits, "route": route,
             "instrument": edge_instrument, "cost_usd": edge_cost,
-            "latency_s": edge_latency}
+            "latency_s": edge_latency, "instrument_value": edge_value,
+            "instrument_confidence": edge_conf, "instrument_lineage": edge_lineage}
 
 
 # --- render (the executor's decision in the shared credence grammar) --------------------

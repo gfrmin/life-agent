@@ -446,7 +446,7 @@ def _probe_deliberate(deps: BridgeDeps, p: Payload) -> Payload:
                         "confidence": c.get("credence"), "declined": c.get("declined"),
                         "status": "ok", "text": c.get("text"), "model": c.get("model"),
                         "cost_usd": 0.0, "latency_s": 0.0,
-                        "cache": "hit"}
+                        "cache": "hit", "cache_key": key.cache_key}
         if new_candidate is not None:
             out["new_candidate"] = new_candidate
         return out
@@ -466,6 +466,8 @@ def _probe_deliberate(deps: BridgeDeps, p: Payload) -> Payload:
            "declined": r.declined, "status": r.status, "text": r.text,
            "model": r.model, "cost_usd": r.cost_usd, "latency_s": r.latency_s,
            "cache": "miss" if key is not None else "off"}
+    if key is not None:  # the cell's §18.9 identity — the caller's warm-replay dedup key
+        out["cache_key"] = key.cache_key
     if new_candidate is not None:
         out["new_candidate"] = new_candidate
     return out

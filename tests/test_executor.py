@@ -733,6 +733,85 @@ def test_view_without_a_deliberate_tick_is_unpriced() -> None:
     assert view["cost_usd"] is None
 
 
+def test_deliberate_tick_carries_the_raw_proposal_on_the_view() -> None:
+    # The attributed-outcome writer grades the edge's RAW proposal against gold,
+    # independent of the committed act — the view must surface what the edge SAID
+    # (value), its self-report (the curve's signal axis), and the §18.9 lineage
+    # (the warm-replay dedup key). The committed act here is abstain: the proposal
+    # must survive on the view regardless.
+    fake = FakeServices(
+        route={"construct": "rent", "time_indexed": False},
+        extract={**_EXTRACT, "candidates": ["NIS 4,200"]},
+        deliberate={"observations": [{"reports": 0, "group": 0, "authority": 1.0,
+                                      "subject_factor": 1.0, "time_factor": 1.0}],
+                    "confidence": 0.85, "model": "claude-opus-4-8",
+                    "value": "NIS 4,200", "status": "ok", "declined": False,
+                    "cost_usd": 0.42, "latency_s": 23.0, "cache": "miss",
+                    "cache_key": "dk-42"},
+        decides=[{"effector": "gather", "probe": "deliberate",
+                  "credences": [0.5], "p_none": 0.3, "eu": 0.1},
+                 {"effector": "abstain", "credences": [0.4], "p_none": 0.6,
+                  "eu": 0.0}])
+    view = _loop(fake, grow=False, curves={})
+    assert view["effector"] == "abstain"
+    assert view["instrument_value"] == "NIS 4,200"
+    assert view["instrument_confidence"] == 0.85
+    assert view["instrument_lineage"] == "dk-42"
+
+
+def test_view_without_a_deliberate_tick_has_no_raw_proposal() -> None:
+    # All consumers INDEX these keys (never .get) — the defaults must exist on the
+    # plain typed path.
+    fake = FakeServices(
+        route={"construct": "tax id", "time_indexed": False},
+        decides=[{"effector": "report", "value": "P123", "credences": [0.95],
+                  "p_none": 0.02, "eu": 0.9}])
+    view = _loop(fake, grow=False)
+    assert view["instrument_value"] is None
+    assert view["instrument_confidence"] is None
+    assert view["instrument_lineage"] is None
+
+
+def test_miss_and_narrative_views_default_the_raw_proposal_fields() -> None:
+    # The other two View return sites (extract-miss short circuit, narrative family)
+    # carry the same keys with the same defaults.
+    miss = _loop(FakeServices(
+        route={"construct": "passport number", "time_indexed": False},
+        extract={"candidates": [], "observations": [], "rho": 0.7,
+                 "era_split": False, "indeterminate": 3, "half_life_years": 5.0}),
+        grow=False)
+    assert miss["effector"] == "miss"
+    assert miss["instrument_value"] is None
+    assert miss["instrument_lineage"] is None
+    narr = _loop(FakeServices(route=None, narrative={
+        "action": "report", "asserted": ["you travelled in May"],
+        "rendered": "you travelled in May [1]\n\nnarrative footer",
+        "hits": [{"artifact_cache_key": "d0", "chunk_text": "x"}]}),
+        "tell me about my week")
+    assert narr["instrument_value"] is None
+    assert narr["instrument_lineage"] is None
+
+
+def test_deliberate_decline_leaves_no_gradeable_proposal() -> None:
+    # NOT_IN_CORPUS: no value proposed — nothing for the writer to grade (declines
+    # are not graded rows, a stated v0 coarsening) — but the lineage still names the
+    # §18.9 artifact (a decline IS recorded).
+    fake = FakeServices(
+        route={"construct": "rent", "time_indexed": False},
+        extract={**_EXTRACT, "candidates": ["NIS 9,999"]},
+        deliberate={"observations": [], "confidence": None, "model": "claude-opus-4-8",
+                    "value": None, "status": "ok", "declined": True, "cache": "miss",
+                    "cache_key": "dk-declined"},
+        decides=[{"effector": "gather", "probe": "deliberate",
+                  "credences": [0.4], "p_none": 0.5, "eu": 0.0},
+                 {"effector": "abstain", "credences": [0.1], "p_none": 0.9,
+                  "eu": 0.0}])
+    view = _loop(fake, grow=False, curves={})
+    assert view["instrument_value"] is None
+    assert view["instrument_confidence"] is None
+    assert view["instrument_lineage"] == "dk-declined"
+
+
 def test_deliberate_new_candidate_enlarges_k() -> None:
     fake = FakeServices(
         route={"construct": "rent", "time_indexed": False},
