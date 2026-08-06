@@ -184,10 +184,13 @@ class _FakeExecutorAsk:
     def __init__(self, views: list[dict[str, Any] | None]) -> None:
         self._views = list(views)
         self.EXECUTOR_VIEW_LAST: dict[str, Any] | None = None
+        self.EXECUTOR_HOLD_OUT_QUESTION_ID: str | None = None
         self.executor_calls: list[str] = []
+        self.holdouts_seen: list[str | None] = []
 
     def answer_via_executor(self, question: str, k: int) -> tuple[str, list, dict]:
         self.executor_calls.append(question)
+        self.holdouts_seen.append(self.EXECUTOR_HOLD_OUT_QUESTION_ID)
         self.EXECUTOR_VIEW_LAST = self._views.pop(0)
         return ("rendered", [], {})
 
@@ -233,6 +236,76 @@ def test_gate_executor_arm_mid_run_down_is_loud() -> None:
         RE.gate_paired_outcomes(None, _questions(), 20, fake,
                                 replay={"q2-001": _row("q2-001", "P123")},
                                 typed_arm="executor")
+
+
+# --- --gate-loo: the run-4 held-out discipline (grouped leave-one-question-out) ----------
+
+def _two_questions() -> list[dict[str, Any]]:
+    return _questions() + [{"id": "q2-002", "question": "other?", "answer": "X9",
+                            "answer_variants": [], "fuzzy": False, "answerable": True}]
+
+
+def test_gate_loo_holds_out_each_question_in_turn() -> None:
+    # under loo=True the executor arm's curve fold must exclude the question being
+    # asked — the hold-out is set BEFORE each call and cleared after the run, so a
+    # question's decide never conditions on its own graded outcome (p3_gate precedent)
+    fake = _FakeExecutorAsk([_exec_view(), _exec_view()])
+    replay = {"q2-001": _row("q2-001", "P123"), "q2-002": _row("q2-002", "X9")}
+    RE.gate_paired_outcomes(None, _two_questions(), 20, fake, replay=replay,
+                            typed_arm="executor", loo=True)
+    assert fake.holdouts_seen == ["q2-001", "q2-002"]
+    assert fake.EXECUTOR_HOLD_OUT_QUESTION_ID is None
+
+
+def test_gate_loo_off_never_touches_the_hold_out() -> None:
+    # loo=False (the default, run 3's shape) must leave the live hold-out untouched —
+    # the in-sample fold is run 3's DISCLOSED shape, not an accident of the new flag
+    fake = _FakeExecutorAsk([_exec_view()])
+    RE.gate_paired_outcomes(None, _questions(), 20, fake,
+                            replay={"q2-001": _row("q2-001", "P123")},
+                            typed_arm="executor", loo=False)
+    assert fake.holdouts_seen == [None]
+
+
+def test_gate_loo_resets_the_hold_out_when_the_run_voids() -> None:
+    # a voided reading (mid-run down) must not leak the last question's hold-out into
+    # the module state a later LIVE ask would fold under
+    fake = _FakeExecutorAsk([None])
+    with pytest.raises(RuntimeError, match="q2-001"):
+        RE.gate_paired_outcomes(None, _questions(), 20, fake,
+                                replay={"q2-001": _row("q2-001", "P123")},
+                                typed_arm="executor", loo=True)
+    assert fake.EXECUTOR_HOLD_OUT_QUESTION_ID is None
+
+
+def test_gate_loo_on_the_family_arm_refuses() -> None:
+    # the family arm folds no curves — a LOO reading over it would be a silent no-op
+    # wearing the held-out label; refuse loudly
+    with pytest.raises(ValueError, match="executor"):
+        RE.gate_paired_outcomes(None, _questions(), 20, _FakeAsk(),
+                                replay={"q2-001": _row("q2-001", "P123")}, loo=True)
+
+
+def test_gate_loo_without_executor_flag_refuses(monkeypatch, capsys) -> None:
+    # CLI precondition: --gate-loo without --gate-executor is refused BEFORE any state
+    # is touched — there is no curve fold on the family arm to hold anything out of
+    monkeypatch.setattr(sys, "argv", ["run_eval.py", "--gate", "--gate-loo"])
+    assert RE.main() == 2
+    assert "--gate-executor" in capsys.readouterr().out
+
+
+def test_gate_loo_without_deliberate_flag_refuses(monkeypatch, capsys) -> None:
+    # PR #58 review Major: with LIFE_AGENT_DELIBERATE unset, answer_via_executor never
+    # folds curves at all (ask.py: transforms, curves = None, None) — a --gate-loo run
+    # would complete and publish the held-out label over a TOTAL no-op, the §17.4
+    # label-outruns-mechanics shape. Refused before any state is touched.
+    monkeypatch.delenv("LIFE_AGENT_DELIBERATE", raising=False)
+    monkeypatch.setattr(sys, "argv",
+                        ["run_eval.py", "--gate", "--gate-executor", "--gate-loo"])
+    monkeypatch.setattr(RE, "load_questions",
+                        lambda p: (_ for _ in ()).throw(AssertionError("state touched")))
+    assert RE.main() == 2
+    assert "LIFE_AGENT_DELIBERATE" in capsys.readouterr().out
 
 
 def test_executor_run_stats_summarise_spend_and_fired() -> None:

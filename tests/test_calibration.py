@@ -142,3 +142,24 @@ def test_edge_outcomes_from_log_missing_file_is_cold_start(tmp_path) -> None:
     from life_agent.core.calibration import edge_outcomes_from_log
 
     assert edge_outcomes_from_log(tmp_path / "absent.jsonl") == []
+
+
+def test_edge_outcomes_from_log_holds_out_a_question(tmp_path) -> None:
+    # run 4's grouped leave-one-question-out (the p3_gate precedent): a question's
+    # decide must never condition on its own graded outcome — in-sample curves are
+    # §17.4's leakage re-enacted. Exclusion keys on the log's own question_id
+    # attribution, at the one admission point.
+    from life_agent.core import outcomes as O
+    from life_agent.core.calibration import EdgeOutcome, edge_outcomes_from_log
+
+    log = tmp_path / "outcomes.jsonl"
+    O.append(log, O.OutcomeEvent(**{**_outcome_base(), "question_id": "q-1"},
+                                 grade="CORRECT", grader="eval_lookup",
+                                 instrument_identity={"edge": "deliberate@opus"},
+                                 probability=0.9))
+    O.append(log, O.OutcomeEvent(**{**_outcome_base(), "question_id": "q-2"},
+                                 grade="INCORRECT", grader="eval_lookup",
+                                 instrument_identity={"edge": "deliberate@opus"},
+                                 probability=0.8))
+    assert edge_outcomes_from_log(log, exclude_question_ids=frozenset({"q-1"})) == [
+        EdgeOutcome("deliberate@opus", 0.8, False)]

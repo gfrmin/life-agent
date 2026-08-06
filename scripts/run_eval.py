@@ -499,7 +499,8 @@ def _replay_response(row: dict, q: dict):
 def gate_paired_outcomes(conn, questions: list[dict], k: int, ask,
                          replay: dict[str, dict] | None = None,
                          typed_arm: str = "family",
-                         typed_views: list | None = None) -> list:
+                         typed_views: list | None = None,
+                         loo: bool = False) -> list:
     """Run the typed policy over the corpus and pair it against the baseline arm per
     question. The typed pass is the production answer path with the **gather-augmented**
     lookup loop (gather=True → re-retrieve corroboration on the top candidates, then
@@ -511,9 +512,21 @@ def gate_paired_outcomes(conn, questions: list[dict], k: int, ask,
     writer). The baseline is the monolithic pass (families=False → raw synthesize
     prose) — or, with ``replay``, the raw-deliberative outside option replayed from a
     stored run (Δ2): the join is STRICT, a question the replay lacks is named and
-    refused, never silently dropped."""
+    refused, never silently dropped.
+
+    ``loo=True`` (executor arm only) is the held-out reading's discipline: before each
+    question the module hold-out (ask.EXECUTOR_HOLD_OUT_QUESTION_ID) is set to that
+    question's id, so the executor's per-question curve fold excludes the question's
+    own graded outcome rows — grouped leave-one-question-out (the p3_gate precedent;
+    in-sample curves = §17.4's leakage re-enacted). Cleared after the run, voided or
+    not, so nothing leaks into a later live ask's fold."""
     import life_agent.core.gate as GATE
 
+    if loo and typed_arm != "executor":
+        raise ValueError(
+            "loo holds curves out of the EXECUTOR arm's per-question fold — the "
+            "family arm folds no curves, so a LOO reading over it would be a silent "
+            "no-op wearing the held-out label (pass typed_arm='executor')")
     if replay is not None:
         missing = sorted(str(q["id"]) for q in questions if str(q["id"]) not in replay)
         if missing:
@@ -522,34 +535,40 @@ def gate_paired_outcomes(conn, questions: list[dict], k: int, ask,
                 "the corpora must match (no silent drop; pass the run that answered "
                 "these questions)")
     paired = []
-    for q in questions:
-        if typed_arm == "executor":
-            ask.answer_via_executor(q["question"], k)
-            view = ask.EXECUTOR_VIEW_LAST
-            if view is None:
-                raise RuntimeError(
-                    f"executor view missing for {q['id']} — the daemon/bridge went "
-                    "down mid-run; the reading is void (fix the stack and rerun)")
-            typed = _typed_response_executor(view, q)
-            if typed_views is not None:
-                typed_views.append((q, view))
-        else:
-            typed_text, _, _ = ask.answer(conn, q["question"], k, gather=True)
-            lk, nv = ask.LOOKUP_LAST, ask.NARRATIVE_LAST  # capture before the next call
-            typed = _typed_response(lk, nv, typed_text, q, ask.ABSTENTION)
-        if replay is not None:
-            mono = _replay_response(replay[str(q["id"])], q)
-        else:
-            mono_text, _, _ = ask.answer(conn, q["question"], k, families=False)
-            mono = _monolithic_response(mono_text, q, ask.ABSTENTION)
-        answerable = bool(q.get("answerable", bool(q.get("answer"))))
-        paired.append(GATE.PairedOutcome(
-            question_id=str(q["id"]), answerable=answerable, typed=typed, mono=mono))
-        tmark = "·" if not typed.asserts() else ("✓" if typed.correct else "✗")
-        mmark = "·" if not mono.asserts() else ("✓" if mono.correct else "✗")
-        blabel = "delib" if replay is not None else "mono"
-        print(f"  {q['id']}: typed {tmark}{typed.action[:6]:<6} "
-              f"{blabel} {mmark}{mono.action[:6]}")
+    try:
+        for q in questions:
+            if typed_arm == "executor":
+                if loo:
+                    ask.EXECUTOR_HOLD_OUT_QUESTION_ID = str(q["id"])
+                ask.answer_via_executor(q["question"], k)
+                view = ask.EXECUTOR_VIEW_LAST
+                if view is None:
+                    raise RuntimeError(
+                        f"executor view missing for {q['id']} — the daemon/bridge went "
+                        "down mid-run; the reading is void (fix the stack and rerun)")
+                typed = _typed_response_executor(view, q)
+                if typed_views is not None:
+                    typed_views.append((q, view))
+            else:
+                typed_text, _, _ = ask.answer(conn, q["question"], k, gather=True)
+                lk, nv = ask.LOOKUP_LAST, ask.NARRATIVE_LAST  # capture before next call
+                typed = _typed_response(lk, nv, typed_text, q, ask.ABSTENTION)
+            if replay is not None:
+                mono = _replay_response(replay[str(q["id"])], q)
+            else:
+                mono_text, _, _ = ask.answer(conn, q["question"], k, families=False)
+                mono = _monolithic_response(mono_text, q, ask.ABSTENTION)
+            answerable = bool(q.get("answerable", bool(q.get("answer"))))
+            paired.append(GATE.PairedOutcome(
+                question_id=str(q["id"]), answerable=answerable, typed=typed, mono=mono))
+            tmark = "·" if not typed.asserts() else ("✓" if typed.correct else "✗")
+            mmark = "·" if not mono.asserts() else ("✓" if mono.correct else "✗")
+            blabel = "delib" if replay is not None else "mono"
+            print(f"  {q['id']}: typed {tmark}{typed.action[:6]:<6} "
+                  f"{blabel} {mmark}{mono.action[:6]}")
+    finally:
+        if loo:
+            ask.EXECUTOR_HOLD_OUT_QUESTION_ID = None
     return paired
 
 
@@ -880,12 +899,39 @@ def main() -> int:
              "sees its own run's rows.",
     )
     parser.add_argument(
+        "--gate-loo", action="store_true",
+        help="the held-out reading (run 4): fold the executor arm's per-edge curves "
+             "leave-one-QUESTION-out — each question's decide conditions on curves "
+             "folded WITHOUT its own outcome rows (the p3_gate precedent; in-sample "
+             "curves = §17.4 leakage re-enacted). Requires --gate-executor (the only "
+             "arm that folds curves).",
+    )
+    parser.add_argument(
         "--no-outcomes", action="store_true",
         help="skip appending graded outcomes to the calibration log "
              "($LIFE_AGENT_KB/calibration/outcomes.jsonl) — dry runs only; the log "
              "is append-only evidence and cannot be backfilled",
     )
     args = parser.parse_args()
+
+    if args.gate_loo and not args.gate_executor:
+        # refused before any state is touched: the family arm folds no curves, so a
+        # LOO run without the executor arm would read as held-out while holding
+        # nothing out
+        print("REFUSED: --gate-loo holds curves out of the EXECUTOR arm's per-question "
+              "fold — pass --gate-executor (the only arm that folds curves).")
+        return 2
+    if args.gate_loo:
+        # PR #58 review Major: flag-off, answer_via_executor folds no curves at ALL
+        # (ask.py: transforms, curves = None, None) — the run would complete and
+        # publish the held-out label over a total no-op (§17.4's shape: the label
+        # outrunning the mechanics)
+        import life_agent.core.config as _LCFG
+        if not _LCFG.deliberate_enabled():
+            print("REFUSED: --gate-loo needs LIFE_AGENT_DELIBERATE=1 in this process "
+                  "— without it the executor arm folds no curves and the held-out "
+                  "label would be vacuous.")
+            return 2
 
     import duckdb
     import yaml
@@ -945,7 +991,8 @@ def main() -> int:
             paired = gate_paired_outcomes(
                 conn, questions, args.k, ask, replay=replay,
                 typed_arm="executor" if args.gate_executor else "family",
-                typed_views=typed_views if args.gate_executor else None)
+                typed_views=typed_views if args.gate_executor else None,
+                loo=args.gate_loo)
         finally:
             ask.EXECUTOR_RUN_ID = None
 
@@ -960,8 +1007,8 @@ def main() -> int:
             stats = executor_run_stats(typed_views)
             edge_events = [e for e in (edge_outcome(q, v, run_id=run_id)
                                        for q, v in typed_views) if e is not None]
-            seen = {key for ev in O.read(OUTCOMES_LOG) if ev.grader == "eval_edge"
-                    for key in ev.lineage_keys}
+            prior = [ev for ev in O.read(OUTCOMES_LOG) if ev.grader == "eval_edge"]
+            seen = {key for ev in prior for key in ev.lineage_keys}
             fresh = dedup_edge_events(edge_events, seen)
             n_dup = len(edge_events) - len(fresh)
             if args.no_outcomes:
@@ -978,6 +1025,21 @@ def main() -> int:
                          f"(warm {stats['warm_hits']}), spend "
                          f"${stats['spend_usd']:.2f}, edge outcomes written "
                          f"{n_written} (deduped {n_dup})\n\n")
+            if args.gate_loo:
+                # the held-out reading names its evidence base — and a vacuous LOO
+                # (no attributed rows yet) is disclosed IN THE REPORT, never read as
+                # a held-out result (stdout alone is not disclosure)
+                if not prior:
+                    print("  ⚠ --gate-loo is VACUOUS: the log has no eval_edge rows "
+                          "yet — every fold is empty either way; run the cold "
+                          "harvest (run 3) first")
+                vac = (" **(VACUOUS — no attributed rows existed; every fold was "
+                       "empty either way)**" if not prior else "")
+                exec_note += (
+                    f"> **Curves:** held-out (grouped leave-one-question-out) over "
+                    f"{len(prior)} pre-run attributed edge outcome row(s) — each "
+                    f"question's decide conditioned on curves folded without its own "
+                    f"rows{vac}\n\n")
 
         # the FULL utility posterior (marginals, not just Ū — the gate samples P(U)),
         # folded from the FROZEN model + elicitations (blind discipline: untouched here)
