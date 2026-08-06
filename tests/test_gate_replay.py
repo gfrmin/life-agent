@@ -140,3 +140,111 @@ def test_gate_replay_never_runs_the_monolithic_pass(tmp_path: Path) -> None:
 def test_gate_replay_missing_question_is_named_never_dropped() -> None:
     with pytest.raises(ValueError, match="q2-001"):
         RE.gate_paired_outcomes(None, _questions(), 20, _FakeAsk(), replay={})
+
+
+# --- the executor typed arm (--gate-executor): the gate finally SEES the edge -------------
+
+def _exec_view(**overrides: Any) -> dict[str, Any]:
+    base: dict[str, Any] = {
+        "effector": "abstain", "asserted": [], "candidates": ["P123"],
+        "credences": [0.6], "p_none": 0.4, "eu": 0.0, "n_obs": 1,
+        "hits": [], "route": {"construct": "passport number"},
+        "instrument": "", "cost_usd": None, "latency_s": None,
+        "instrument_value": None, "instrument_confidence": None,
+        "instrument_lineage": None}
+    base.update(overrides)
+    return base
+
+
+def test_typed_response_executor_grades_each_effector() -> None:
+    q = {"id": "q1", "answer": "P123", "answer_variants": []}
+    r = RE._typed_response_executor(_exec_view(effector="report", asserted=["P123"]), q)
+    assert r.action == "report" and r.correct is True
+    r = RE._typed_response_executor(_exec_view(effector="report", asserted=["WRONG"]), q)
+    assert r.action == "report" and r.correct is False
+    r = RE._typed_response_executor(
+        _exec_view(effector="hedge", candidates=["X", "P123"]), q)
+    assert r.action == "hedge" and r.correct is True
+    r = RE._typed_response_executor(_exec_view(effector="ask_clarify"), q)
+    assert r.action == "ask_clarify" and r.correct is None
+    # the executor's miss (the local edge declined) asserted nothing — an abstention
+    # on the gate's answer-level scale
+    r = RE._typed_response_executor(_exec_view(effector="miss"), q)
+    assert r.action == "abstain" and r.correct is None
+    r = RE._typed_response_executor(_exec_view(effector="abstain"), q)
+    assert r.action == "abstain" and r.correct is None
+
+
+class _FakeExecutorAsk:
+    """ask with the executor surface stubbed: answer_via_executor pops the scripted view
+    into EXECUTOR_VIEW_LAST; the family path must never run under the executor arm."""
+
+    ABSTENTION = "ABSTAIN-SENTINEL"
+
+    def __init__(self, views: list[dict[str, Any] | None]) -> None:
+        self._views = list(views)
+        self.EXECUTOR_VIEW_LAST: dict[str, Any] | None = None
+        self.executor_calls: list[str] = []
+
+    def answer_via_executor(self, question: str, k: int) -> tuple[str, list, dict]:
+        self.executor_calls.append(question)
+        self.EXECUTOR_VIEW_LAST = self._views.pop(0)
+        return ("rendered", [], {})
+
+    def answer(self, conn: Any, question: str, k: int, **kw: Any) -> tuple[str, list, dict]:
+        raise AssertionError("the family path must not run under the executor arm")
+
+
+def test_gate_executor_arm_pairs_the_view_against_replay() -> None:
+    fake = _FakeExecutorAsk([_exec_view(effector="report", asserted=["P123"],
+                                        instrument="deliberate@claude-opus-4-8",
+                                        cost_usd=0.31)])
+    replay = {"q2-001": _row("q2-001", "P123 [doc.pdf]")}
+    paired = RE.gate_paired_outcomes(None, _questions(), 20, fake, replay=replay,
+                                     typed_arm="executor")
+    (p,) = paired
+    assert p.typed.action == "report" and p.typed.correct is True
+    assert p.mono.action == "report" and p.mono.correct is True
+    assert fake.executor_calls == ["value?"]
+
+
+def test_gate_executor_arm_collects_views_for_the_writer() -> None:
+    view = _exec_view(effector="abstain", instrument="deliberate@claude-opus-4-8",
+                      instrument_value="P123", instrument_confidence=0.85,
+                      instrument_lineage="dk-1", cost_usd=0.31, latency_s=21.7)
+    fake = _FakeExecutorAsk([view])
+    out: list = []
+    RE.gate_paired_outcomes(None, _questions(), 20, fake,
+                            replay={"q2-001": _row("q2-001", "P123")},
+                            typed_arm="executor", typed_views=out)
+    ((q, v),) = out
+    assert q["id"] == "q2-001" and v is view
+    # the writer's row builds straight off the collected pair — the abstained act
+    # still grades the edge's raw proposal
+    e = RE.edge_outcome(q, v, run_id="r")
+    assert e is not None and e.grade == "CORRECT" and e.probability == 0.85
+
+
+def test_gate_executor_arm_mid_run_down_is_loud() -> None:
+    # a mid-run down stack must VOID the reading (raise, naming the question), never
+    # silently convert the remaining questions into abstentions
+    fake = _FakeExecutorAsk([None])
+    with pytest.raises(RuntimeError, match="q2-001"):
+        RE.gate_paired_outcomes(None, _questions(), 20, fake,
+                                replay={"q2-001": _row("q2-001", "P123")},
+                                typed_arm="executor")
+
+
+def test_executor_run_stats_summarise_spend_and_fired() -> None:
+    views = [
+        ({"id": "a"}, _exec_view(instrument="deliberate@claude-opus-4-8",
+                                 cost_usd=0.31)),
+        ({"id": "b"}, _exec_view(instrument="deliberate@claude-opus-4-8",
+                                 cost_usd=0.0)),          # warm §18.9 replay
+        ({"id": "c"}, _exec_view()),                      # edge never fired
+    ]
+    s = RE.executor_run_stats(views)
+    assert s["n"] == 3
+    assert s["deliberate_fired"] == 2
+    assert s["warm_hits"] == 1
+    assert s["spend_usd"] == pytest.approx(0.31)

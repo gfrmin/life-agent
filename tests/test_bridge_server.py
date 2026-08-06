@@ -462,6 +462,19 @@ def test_log_decision_carries_instrument_and_price(deps: BridgeDeps) -> None:
     assert unpriced.cost_usd is None
 
 
+def test_log_decision_run_id_passthrough(deps: BridgeDeps) -> None:
+    # in-gate executor decisions must not masquerade as live traffic: the body may tag
+    # the run; absent → the live default stands
+    _call(deps, "POST", "/log_decision",
+          {"question": "q", "retrieval_keys": ["d0"],
+           "decision": {**_decision(), "run_id": "gate-20260806T999999"}})
+    _call(deps, "POST", "/log_decision",
+          {"question": "q2", "retrieval_keys": ["d0"], "decision": _decision()})
+    tagged, untagged = DEC.read(deps.decisions_path)
+    assert tagged.run_id == "gate-20260806T999999"
+    assert untagged.run_id == "answer-brain"
+
+
 def test_log_decision_sorts_credences_leader_first(deps: BridgeDeps) -> None:
     # The load-bearing parity: the daemon returns credences in CANDIDATE order (server.jl
     # `w[1:k]`), but the fold reads credences[0] as the LEADER. The bridge must sort desc, or an

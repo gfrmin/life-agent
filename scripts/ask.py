@@ -887,6 +887,10 @@ EXECUTOR_LAST: str | None = None
 # answer_via_executor like every other "*_LAST" seam; None when the last call never reached a
 # decision (daemon down) — never a stale prior question's view.
 EXECUTOR_VIEW_LAST: dict[str, Any] | None = None
+# when set (the gate's executor arm), logged decisions carry this run_id so in-gate rows are
+# distinguishable from live traffic in decisions.jsonl; None (live) posts no run_id and the
+# bridge's default ("answer-brain") rules.
+EXECUTOR_RUN_ID: str | None = None
 
 
 def _http_post(url: str, payload: dict[str, Any]) -> dict[str, Any] | None:
@@ -954,7 +958,9 @@ def _log_executor_decision(question: str, view: dict[str, Any]) -> None:
                          # decisions v2 (§10): the answer-proposing edge + realised price
                          "instrument": view.get("instrument") or "",
                          "cost_usd": view.get("cost_usd"),
-                         "latency_s": view.get("latency_s")}})
+                         "latency_s": view.get("latency_s"),
+                         **({"run_id": EXECUTOR_RUN_ID}
+                            if EXECUTOR_RUN_ID is not None else {})}})
         EXECUTOR_LAST = (resp or {}).get("decision_id")
     except Exception as e:  # fail-open by contract, reason printed — never breaks the answer
         print(f"  (decision not logged: {e})")

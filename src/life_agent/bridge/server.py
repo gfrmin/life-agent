@@ -437,7 +437,7 @@ def _probe_deliberate(deps: BridgeDeps, p: Payload) -> Payload:
            if digest is not None else None)
 
     cached = D.lookup(deps.root, key.cache_key) if key is not None else None
-    if cached is not None:
+    if key is not None and cached is not None:
         c = loads(cached.decode("utf-8"))
         obs, new_candidate = _join_deliberate_value(
             c.get("value"), candidates, allow_new,
@@ -638,7 +638,9 @@ def _log_decision(deps: BridgeDeps, p: Payload) -> Payload:
     cost_usd = decision.get("cost_usd")
     latency_s = decision.get("latency_s")
     event = DEC.DecisionEvent(
-        tx_time=O.now_iso(), run_id="answer-brain",
+        # the body may tag the run (the gate's executor arm — in-gate decisions must
+        # not masquerade as live traffic); absent ⇒ the live default
+        tx_time=O.now_iso(), run_id=str(decision.get("run_id") or "answer-brain"),
         question_id=DEC.question_id(question),
         family="lookup", action_set=DEC.LOOKUP_ACTION_ORDER,
         posterior_summary={"candidates": cands_sorted, "credences": creds_sorted,
