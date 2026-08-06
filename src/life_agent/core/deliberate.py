@@ -32,6 +32,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from life_agent.core import calibration as CAL
 from life_agent.core import decisions as DEC
 from life_agent.core import derivations as D
 
@@ -150,6 +151,17 @@ class DeliberateResult:
 def instrument(model: str) -> str:
     """The per-edge attribution name (calibration + decision log): one spelling."""
     return f"deliberate@{model}"
+
+
+def calibrated_credence(result: DeliberateResult,
+                        curves: dict[str, CAL.ReliabilityCurve]) -> float:
+    """The Δ1 map: self-reported credence (a signal) → calibrated P(correct), through the
+    edge's reliability curve. Cold start is the pessimistic Beta(1,3) prior everywhere —
+    an unproven edge cannot clear the assertion floor on self-report alone (§16). A
+    missing credence (protocol violation) maps at the curve's most pessimistic bin —
+    no signal is never rewarded. Not meaningful for declines (nothing is asserted)."""
+    curve = CAL.curve_for(curves, instrument(result.model))
+    return curve.calibrate(result.credence if result.credence is not None else 0.0)
 
 
 def _workdir(cfg: DeliberateConfig) -> Path:

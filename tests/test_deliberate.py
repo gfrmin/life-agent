@@ -236,6 +236,37 @@ def test_record_answer_writes_file_first_and_is_write_once(tmp_path: Path) -> No
     assert DL.record_answer(tmp_path, key, r) is False  # write-once
 
 
+# --- calibrated_credence: the signal→posterior map (Δ1 — never the raw self-report) ------
+
+def test_calibrated_credence_cold_start_is_pessimistic(tmp_path: Path) -> None:
+    # An unproven edge cannot clear the assertion floor on self-report alone (§16
+    # safe-before-calibrated): Beta(1,3) cold start holds every bin at 0.25.
+    r = _ok_result(tmp_path)  # self-reported 0.85
+    assert DL.calibrated_credence(r, {}) == 0.25
+
+
+def test_calibrated_credence_rises_with_graded_outcomes(tmp_path: Path) -> None:
+    from life_agent.core import calibration as CAL
+
+    r = _ok_result(tmp_path)  # self-reported 0.85
+    curves = {DL.instrument(r.model): CAL.fit_reliability_curve(
+        [CAL.Outcome(0.85, True)] * 40)}
+    assert DL.calibrated_credence(r, curves) > 0.85
+
+
+def test_calibrated_credence_without_signal_takes_the_lowest_bin(tmp_path: Path) -> None:
+    from life_agent.core import calibration as CAL
+
+    def runner(cmd, env, cwd, timeout_s):  # type: ignore[no-untyped-def]
+        return _cli_json("42 [doc.pdf]"), "", 0, False  # protocol violation: no CREDENCE
+
+    r = DL.answer("q", _cfg(tmp_path), run_once=runner)
+    curves = {DL.instrument(r.model): CAL.fit_reliability_curve(
+        [CAL.Outcome(0.9, True)] * 40)}
+    # no signal ⇒ the curve's most pessimistic bin, never the fitted high bin
+    assert DL.calibrated_credence(r, curves) == curves[DL.instrument(r.model)].calibrate(0.0)
+
+
 def test_record_answer_refuses_failures(tmp_path: Path) -> None:
     import pytest
 
