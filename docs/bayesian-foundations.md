@@ -1336,3 +1336,32 @@ on this list. Answers land here by amendment, citing their evidence.
   0.38 (= the run's mean $0.375/question, `cost_status: estimated`, in the tier rows'
   approximate-dollars-as-gauge-utility convention — the true $↔utility exchange rate
   is an owner elicitation, open); cold-start curve Beta(1,3).
+  **Second Δ2 reading (2026-08-06, run gate-20260806T101513 — flag ON, u_wrong PINNED at
+  −9, the first elicitation line, σ=0.5): FAIL at P(Δ>0.05) = 0.010, Δ̄ = −0.644
+  [−1.046, −0.194].** Answer rate 0.13 vs 0.97; report×report −2.143/q (14 pairs, was
+  −3.684/q over 19). Three findings the rerun surfaced, each named:
+  (1) **The gate's typed arm does not carry the edge.** `gate_paired_outcomes` runs
+  `ask.answer(conn, gather=True)` — the derivation-path family decide — while the
+  deliberative transform sits on the *executor* menu (`decide_via_loop`), the live
+  ask-live/jarvis surface. All 104 in-gate decisions logged empty `instrument` and zero
+  deliberate spend: **Δ2-with-the-edge is still unmeasured**; measuring it means either
+  running the gate's typed arm through the executor surface or offering the edge to the
+  family decide. The flag-on/flag-off delta above is therefore the PIN's effect (plus
+  §18.9-warm replay drift), not the edge's.
+  (2) **The pin moved the production assert bar back to the declared 10:1.** Identical
+  warm posteriors decided differently across the two runs (leader 0.8588: report →
+  abstain): pre-pin, the decide-side fold (prior + the live reaction stream) had let
+  u_wrong drift to ≈−6 (assert bar ≈0.857) — the one-bit reactions had quietly relaxed
+  the declared aversion; the σ=0.5 elicitation dominates the fold and restores ≈−8.8
+  (bar ≈0.90), flipping the 0.85–0.90 credence band: 4 wrong reports killed at the price
+  of 2 correct reports and 3 hedges. The first reading's ~8 wrong reports were partly
+  this drift's doing. (Also disclosed: q2-014's abstain→correct-report flip rode 2 extra
+  observations recorded by the same-day live smoke's corroborate by-products — demand-led
+  cache warming, not a policy change.)
+  (3) **First flag-on live decision (executor surface, the real deployment shape):** the
+  daemon SCHEDULED the deliberate probe on a typed-abstain question; enactment cost
+  $0.310 / 21.7 s cold and $0.00 / 0.0 s on the warm re-ask (§18.9 replay verified
+  live); the self-report conditioned at the 0.5 cold cap could not lift a 0.763 leader
+  over the ≈0.90 bar — abstain held, v2 accounting (instrument/cost/latency) on the
+  ledger. The dormant-regime prediction held exactly: the attributed-outcome writer
+  stays this entry's first work item, now with a live decision demonstrating why.
