@@ -64,12 +64,27 @@ def test_decline_detected_on_any_line() -> None:
     assert DL.detect_decline("searched 4 ways\nNOT_IN_CORPUS: nothing decides it")
 
 
-# --- the prompt contract (V2 = V1's surface contract + the credence line) ---------------
+# --- parse_value: the ANSWER line gives the lattice join a bare value, never prose ------
 
-def test_prompt_v2_keeps_the_v1_surface_contract_and_adds_credence() -> None:
+def test_parse_value_strips_wellformed_line() -> None:
+    text, value = DL.parse_value("NIS 4,200 per month [lease.pdf]\nANSWER: NIS 4,200")
+    assert text == "NIS 4,200 per month [lease.pdf]"
+    assert value == "NIS 4,200"
+
+
+def test_parse_value_absent_line_returns_none() -> None:
+    text, value = DL.parse_value("NIS 4,200 per month [lease.pdf]")
+    assert text == "NIS 4,200 per month [lease.pdf]"
+    assert value is None
+
+
+# --- the prompt contract (V2 = V1's surface contract + the answer/credence lines) -------
+
+def test_prompt_v2_keeps_the_v1_surface_contract_and_adds_protocol_lines() -> None:
     assert "{question}" in DL.PROMPT_DELIB_V2
     assert "NOT_IN_CORPUS: " in DL.PROMPT_DELIB_V2
     assert "CREDENCE:" in DL.PROMPT_DELIB_V2
+    assert "ANSWER:" in DL.PROMPT_DELIB_V2
 
 
 # --- the pre-call stage key (system-design §3: keyed before any model call) -------------
@@ -116,19 +131,29 @@ def _cfg(tmp_path: Path) -> DL.DeliberateConfig:
                                pkm_config="/dev/null/pkm.yaml")
 
 
-def test_answer_success_parses_text_credence_and_cost(tmp_path: Path) -> None:
+def test_answer_success_parses_text_value_credence_and_cost(tmp_path: Path) -> None:
     def runner(cmd, env, cwd, timeout_s):  # type: ignore[no-untyped-def]
-        return _cli_json("NIS 4,200 [lease.pdf]\nCREDENCE: 0.85"), "", 0, False
+        return _cli_json(
+            "NIS 4,200 [lease.pdf]\nANSWER: NIS 4,200\nCREDENCE: 0.85"), "", 0, False
 
     r = DL.answer("what is my rent?", _cfg(tmp_path), run_once=runner)
     assert r.status == "ok"
     assert r.text == "NIS 4,200 [lease.pdf]"
+    assert r.value == "NIS 4,200"
     assert r.credence == 0.85
     assert not r.declined
     assert r.cost_usd == 0.42
     assert r.session_id == "sess-1"
     assert r.latency_s >= 0.0
     assert r.model == "claude-opus-4-8"
+
+
+def test_answer_decline_has_no_value(tmp_path: Path) -> None:
+    def runner(cmd, env, cwd, timeout_s):  # type: ignore[no-untyped-def]
+        return _cli_json("NOT_IN_CORPUS: nothing decides it"), "", 0, False
+
+    r = DL.answer("q", _cfg(tmp_path), run_once=runner)
+    assert r.value is None
 
 
 def test_answer_counts_tool_log_rows(tmp_path: Path) -> None:

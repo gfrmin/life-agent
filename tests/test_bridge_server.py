@@ -444,6 +444,24 @@ def test_log_decision_appends_lookup_shaped_event_and_returns_id(deps: BridgeDep
     assert d.utility_fold_version == "fold-test-v1"
 
 
+def test_log_decision_carries_instrument_and_price(deps: BridgeDeps) -> None:
+    # §10 accounting on the ledger (decisions v2): the edge that answered, at what price,
+    # passes through when the body posts it — and defaults stay honest when it doesn't.
+    _call(deps, "POST", "/log_decision",
+          {"question": "q", "retrieval_keys": ["d0"],
+           "decision": {**_decision(effector="report"),
+                        "instrument": "deliberate@claude-opus-4-8",
+                        "cost_usd": 0.42, "latency_s": 23.0}})
+    _call(deps, "POST", "/log_decision",
+          {"question": "q2", "retrieval_keys": ["d0"], "decision": _decision()})
+    priced, unpriced = DEC.read(deps.decisions_path)
+    assert priced.instrument == "deliberate@claude-opus-4-8"
+    assert priced.cost_usd == 0.42
+    assert priced.latency_s == 23.0
+    assert unpriced.instrument == ""
+    assert unpriced.cost_usd is None
+
+
 def test_log_decision_sorts_credences_leader_first(deps: BridgeDeps) -> None:
     # The load-bearing parity: the daemon returns credences in CANDIDATE order (server.jl
     # `w[1:k]`), but the fold reads credences[0] as the LEADER. The bridge must sort desc, or an
@@ -1124,3 +1142,134 @@ def test_decide_live_malformed_body_is_400(deps: BridgeDeps) -> None:
         status, _payload = _call(deps2, "POST", "/decide-live", body)
         assert status == 400, body
     assert fake.decide_live_calls == []
+
+
+# --- /probe/deliberate (the promoted A1b edge on the transform menu) ---------------------
+
+def _deliberate_result(**overrides: Any) -> Any:
+    from life_agent.core import deliberate as DL
+
+    base: dict[str, Any] = dict(
+        question="what is my rent?", model="claude-opus-4-8",
+        text="NIS 4,200 [lease.pdf]", value="NIS 4,200", credence=0.85,
+        declined=False, status="ok", notes="", cost_usd=0.42, latency_s=23.0,
+        input_tokens=1000, output_tokens=50, session_id="sess-1",
+        tool_calls=5, gather_rounds=3)
+    base.update(overrides)
+    return DL.DeliberateResult(**base)
+
+
+@pytest.fixture
+def deliberate_seams(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
+    """Patch the three seams the handler composes: the CLI edge, the §18.9 recorder, and
+    the corpus digest. Returns the seen-calls dict for assertions."""
+    seen: dict[str, Any] = {"answers": [], "records": [], "result": _deliberate_result()}
+    monkeypatch.setattr(bridge_server.DL, "answer",
+                        lambda q, cfg, **k: (seen["answers"].append(q),
+                                             seen["result"])[1])
+    monkeypatch.setattr(bridge_server.DL, "record_answer",
+                        lambda root, key, r: (seen["records"].append(key.cache_key),
+                                              True)[1])
+    monkeypatch.setattr(bridge_server.CORPUS, "corpus_digest", lambda conn: "digest-t")
+    return seen
+
+
+def test_deliberate_confirms_an_existing_candidate(
+        deps: BridgeDeps, deliberate_seams: dict[str, Any]) -> None:
+    status, payload = _call(deps, "POST", "/probe/deliberate",
+                            {"question": "what is my rent?",
+                             "candidates": ["NIS 4,200", "NIS 9,999"]})
+    assert status == 200
+    assert payload["observations"] == [{"reports": 0, "group": 0, "authority": 1.0,
+                                        "subject_factor": 1.0, "time_factor": 1.0}]
+    assert payload["confidence"] == 0.85
+    assert payload["cost_usd"] == 0.42
+    assert payload["model"] == "claude-opus-4-8"
+    assert payload["declined"] is False
+    assert "new_candidate" not in payload
+    assert deliberate_seams["records"]          # the §18.9 artifact was recorded
+
+
+def test_deliberate_mints_a_new_candidate_with_allow_new(
+        deps: BridgeDeps, deliberate_seams: dict[str, Any]) -> None:
+    deliberate_seams["result"] = _deliberate_result(value="NIS 5,100",
+                                                    text="NIS 5,100 [contract.pdf]")
+    status, payload = _call(deps, "POST", "/probe/deliberate",
+                            {"question": "what is my rent?",
+                             "candidates": ["NIS 9,999"], "allow_new": True})
+    assert status == 200
+    assert payload["new_candidate"] == "NIS 5,100"
+    assert payload["observations"] == [{"reports": 1, "group": 0, "authority": 1.0,
+                                        "subject_factor": 1.0, "time_factor": 1.0}]
+
+
+def test_deliberate_outside_set_without_allow_new_yields_no_observation(
+        deps: BridgeDeps, deliberate_seams: dict[str, Any]) -> None:
+    deliberate_seams["result"] = _deliberate_result(value="NIS 5,100")
+    status, payload = _call(deps, "POST", "/probe/deliberate",
+                            {"question": "what is my rent?", "candidates": ["NIS 9,999"]})
+    assert status == 200
+    assert payload["observations"] == []
+    assert "new_candidate" not in payload
+
+
+def test_deliberate_decline_yields_no_observation_and_still_records(
+        deps: BridgeDeps, deliberate_seams: dict[str, Any]) -> None:
+    deliberate_seams["result"] = _deliberate_result(
+        text="NOT_IN_CORPUS: no rent document", value=None, credence=None,
+        declined=True)
+    status, payload = _call(deps, "POST", "/probe/deliberate",
+                            {"question": "what is my rent?", "candidates": ["NIS 9,999"],
+                             "allow_new": True})
+    assert status == 200
+    assert payload["observations"] == []
+    assert payload["declined"] is True
+    # a decline IS a successful call — a warm NOT_IN_CORPUS replay is valid evidence
+    assert deliberate_seams["records"]
+
+
+def test_deliberate_error_yields_no_observation_and_no_record(
+        deps: BridgeDeps, deliberate_seams: dict[str, Any]) -> None:
+    deliberate_seams["result"] = _deliberate_result(status="error", text="", value=None,
+                                                    credence=None, cost_usd=None)
+    status, payload = _call(deps, "POST", "/probe/deliberate",
+                            {"question": "what is my rent?", "candidates": ["NIS 9,999"]})
+    assert status == 200
+    assert payload["status"] == "error"
+    assert payload["observations"] == []
+    assert deliberate_seams["records"] == []
+
+
+def test_deliberate_warm_hit_replays_without_a_model_call(
+        deps: BridgeDeps, deliberate_seams: dict[str, Any],
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    recorded = json.dumps({
+        "format_version": 1, "question": "what is my rent?",
+        "model": "claude-opus-4-8", "text": "NIS 4,200 [lease.pdf]",
+        "value": "NIS 4,200", "credence": 0.85, "declined": False,
+        "cost_usd": 0.42, "session_id": "sess-0", "tool_calls": 5,
+        "gather_rounds": 3}).encode("utf-8")
+    monkeypatch.setattr(bridge_server.D, "lookup", lambda root, key: recorded)
+    status, payload = _call(deps, "POST", "/probe/deliberate",
+                            {"question": "what is my rent?", "candidates": ["NIS 4,200"]})
+    assert status == 200
+    assert payload["cache"] == "hit"
+    assert payload["cost_usd"] == 0.0                 # a warm chain costs zero model calls
+    assert payload["observations"] == [{"reports": 0, "group": 0, "authority": 1.0,
+                                        "subject_factor": 1.0, "time_factor": 1.0}]
+    assert deliberate_seams["answers"] == []          # the CLI was never invoked
+
+
+def test_deliberate_digest_failure_answers_with_cache_off(
+        deps: BridgeDeps, deliberate_seams: dict[str, Any],
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    def boom(conn: Any) -> str:
+        raise RuntimeError("catalogue locked")
+
+    monkeypatch.setattr(bridge_server.CORPUS, "corpus_digest", boom)
+    status, payload = _call(deps, "POST", "/probe/deliberate",
+                            {"question": "what is my rent?", "candidates": ["NIS 4,200"]})
+    assert status == 200
+    assert payload["cache"] == "off"                  # named, never silent
+    assert payload["observations"] != []
+    assert deliberate_seams["records"] == []          # unkeyed ⇒ never recorded
