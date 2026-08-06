@@ -1365,3 +1365,24 @@ on this list. Answers land here by amendment, citing their evidence.
   over the ≈0.90 bar — abstain held, v2 accounting (instrument/cost/latency) on the
   ledger. The dormant-regime prediction held exactly: the attributed-outcome writer
   stays this entry's first work item, now with a live decision demonstrating why.
+  **The writer + the gate-arm unification landed (2026-08-06, one build — findings (1)
+  and (3) above are one gap seen from two sides: the gate couldn't see the edge, and
+  the edge had no evidence stream; the executor gate arm is both the measurement and
+  the harvest).** What landed: the View surfaces the edge's RAW proposal
+  (`instrument_value`/`instrument_confidence`/`instrument_lineage`), the bridge names
+  the §18.9 `cache_key` on every cached reply, `eval_edge` joins the closed grader
+  vocabulary, `run_eval` gains `edge_outcome` (grades the proposal against gold on the
+  shared token-boundary scale, **independent of the committed act** — an in-gate
+  abstain still yields the edge's observation; that is the curve's construct,
+  P(proposal correct | self-report)) and `--gate-executor` (typed arm =
+  `answer_via_executor`, the surface the menu lives on; loud services precondition; a
+  mid-run down stack voids the reading; in-gate decisions tagged with the run_id).
+  Evidence hygiene, stated: outcomes buffer during the run and append after it (the
+  in-run curve fold never conditions on its own run's rows); warm replays dedup on
+  §18.9 lineage (one artifact, one observation); declines/errors write nothing (no
+  value to grade — a disclosed v0 coarsening). **Planned next, in order:** run 3 = the
+  cold harvest (`--gate --gate-replay … --gate-executor`, flag on: ~90 typed-abstain
+  questions × ~$0.31–0.37 ≈ $30–35, ~40 min — its value is the outcome rows; decisions
+  won't flip at the 0.5 cold cap), then run 4 = the first Δ2-with-the-edge READING on
+  leave-one-question-out curve folds (the p3_gate grouped-LOO precedent — curves fit
+  on the gated questions themselves would be §17.4's in-sample leakage re-enacted).
