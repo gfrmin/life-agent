@@ -72,36 +72,54 @@ the question.
 - If the corpus does not contain (or does not decide) the answer, reply with a single \
 line, and nothing else, starting exactly with "NOT_IN_CORPUS: " followed by a short \
 description of what is missing or undecided.
-- Otherwise, end your answer with one final line of the exact form "CREDENCE: p" where \
-p is a number in [0, 1] — your honest probability that the answer you gave is correct, \
-given everything you read. Overstating it is the worst failure; calibration is graded.
+- Otherwise, end your answer with exactly two final lines: "ANSWER: v" where v is the \
+bare answer value alone (a number, an id, a date, a name — no sentence, no citation), \
+then "CREDENCE: p" where p is a number in [0, 1] — your honest probability that the \
+answer you gave is correct, given everything you read. Overstating it is the worst \
+failure; calibration is graded.
 
 QUESTION: {question}"""
 
-# The final-line credence protocol: matched only on the LAST non-empty line.
+# The final-line protocol: each line is matched only when it is the LAST non-empty line.
 _CREDENCE_RE = re.compile(r"^CREDENCE:\s*(\S+)\s*$")
+_ANSWER_RE = re.compile(r"^ANSWER:\s*(.+?)\s*$")
 
 
-def parse_credence(text: str) -> tuple[str, float | None]:
-    """Split the answer text from its CREDENCE line. A recognisable credence attempt on
-    the final non-empty line is always stripped (protocol traffic never reaches the
-    owner); it yields a signal only when it parses to a number in [0, 1] — anything else
-    is a protocol violation and folds as no-signal, never a clamp."""
+def _strip_final_line(text: str, pattern: re.Pattern[str]) -> tuple[str, str | None]:
+    """Split off the final non-empty line when it matches a protocol pattern — protocol
+    traffic never reaches the owner; a non-matching tail leaves the text untouched."""
     lines = text.splitlines()
     idx = len(lines) - 1
     while idx >= 0 and not lines[idx].strip():
         idx -= 1
     if idx < 0:
         return text, None
-    m = _CREDENCE_RE.match(lines[idx].strip())
+    m = pattern.match(lines[idx].strip())
     if m is None:
         return text, None
-    stripped = "\n".join(lines[:idx]).rstrip()
+    return "\n".join(lines[:idx]).rstrip(), m.group(1)
+
+
+def parse_credence(text: str) -> tuple[str, float | None]:
+    """Split the answer text from its CREDENCE line. A recognisable credence attempt on
+    the final non-empty line is always stripped; it yields a signal only when it parses
+    to a number in [0, 1] — anything else is a protocol violation and folds as
+    no-signal, never a clamp."""
+    stripped, raw = _strip_final_line(text, _CREDENCE_RE)
+    if raw is None:
+        return stripped, None
     try:
-        p = float(m.group(1))
+        p = float(raw)
     except ValueError:
         return stripped, None
     return stripped, (p if 0.0 <= p <= 1.0 else None)
+
+
+def parse_value(text: str) -> tuple[str, str | None]:
+    """Split the answer text from its ANSWER line — the bare value the candidate-lattice
+    join consumes (prose is for the owner; a join must never mint a sentence as a
+    value)."""
+    return _strip_final_line(text, _ANSWER_RE)
 
 
 def detect_decline(text: str) -> bool:
@@ -135,6 +153,7 @@ class DeliberateResult:
     question: str
     model: str
     text: str
+    value: str | None
     credence: float | None
     declined: bool
     status: str  # ok | error | timeout
@@ -292,11 +311,16 @@ def answer(question: str, cfg: DeliberateConfig, *,
         usage = {}
         tool_log_rows = []
 
-    text, credence = parse_credence(raw_text) if status == "ok" else (raw_text, None)
+    if status == "ok":
+        text, credence = parse_credence(raw_text)
+        text, value = parse_value(text)
+    else:
+        text, value, credence = raw_text, None, None
     declined = detect_decline(text)
     tokens = usage.get("usage") or {}
     return DeliberateResult(
         question=question, model=cfg.model, text=text,
+        value=None if declined else value,
         credence=None if declined else credence, declined=declined,
         status=status, notes="; ".join(notes_parts),
         cost_usd=usage.get("total_cost_usd"),
@@ -319,7 +343,8 @@ def record_answer(root: Path, key: D.StageKey, result: DeliberateResult) -> bool
         raise ValueError(f"only status='ok' results are recorded, got {result.status!r}")
     content = json.dumps({
         "format_version": 1, "question": result.question, "model": result.model,
-        "text": result.text, "credence": result.credence, "declined": result.declined,
+        "text": result.text, "value": result.value, "credence": result.credence,
+        "declined": result.declined,
         "cost_usd": result.cost_usd, "session_id": result.session_id,
         "tool_calls": result.tool_calls, "gather_rounds": result.gather_rounds,
     }, sort_keys=True, ensure_ascii=False).encode("utf-8")

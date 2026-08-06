@@ -111,6 +111,18 @@ def test_membrane_live_other_values_stay_off(monkeypatch) -> None:
         assert config.membrane_live() is False, v
 
 
+# --- the deliberative edge's rollout flag -------------------------------------------------
+
+def test_deliberate_default_off(monkeypatch) -> None:
+    monkeypatch.delenv(config.DELIBERATE_ENV, raising=False)
+    assert config.deliberate_enabled() is False
+
+
+def test_deliberate_on(monkeypatch) -> None:
+    monkeypatch.setenv(config.DELIBERATE_ENV, "1")
+    assert config.deliberate_enabled() is True
+
+
 # --- E1 stage 1: the categorical mirror's enable switch ----------------------------------
 
 
