@@ -202,3 +202,80 @@ def test_coverage_counts_withheld_proposals_too() -> None:
     # coverage measures the PROPOSER, pre-decision: a withheld gold claim is PROPOSED
     nv = _nv(_claim("It is 999999991.", included=False, credence=0.3))
     assert re_.coverage_outcome(_Q, nv, run_id="r").grade == "PROPOSED"
+
+
+# --- edge_outcome (the attributed-outcome writer — the per-edge curve's evidence) --------
+
+_QE = {"id": "q-042", "answer": "NIS 4,200", "answer_variants": ["4200"]}
+
+
+def _view(**overrides: object) -> dict:
+    base: dict = {"effector": "abstain",
+                  "instrument": "deliberate@claude-opus-4-8",
+                  "instrument_value": "NIS 4,200",
+                  "instrument_confidence": 0.85,
+                  "instrument_lineage": "dk-42"}
+    base.update(overrides)
+    return base
+
+
+def test_edge_outcome_grades_the_raw_proposal_not_the_committed_act() -> None:
+    # the committed act is abstain — the edge's proposal is graded anyway: the curve
+    # is P(edge's answer correct | self-report), independent of what the gate decided
+    e = re_.edge_outcome(_QE, _view(effector="abstain"), run_id="gate-r3")
+    assert e.grader == "eval_edge" and e.grade == "CORRECT"
+    assert e.probability == 0.85
+    assert e.instrument_identity == {"edge": "deliberate@claude-opus-4-8"}
+    assert e.lineage_keys == ("dk-42",)
+    assert e.question_id == "q-042" and e.run_id == "gate-r3"
+
+
+def test_edge_outcome_incorrect_when_the_proposal_misses_gold() -> None:
+    e = re_.edge_outcome(_QE, _view(instrument_value="NIS 9,999"), run_id="r")
+    assert e.grade == "INCORRECT"
+
+
+def test_edge_outcome_none_without_a_gradeable_proposal() -> None:
+    # decline/error: no value proposed
+    assert re_.edge_outcome(_QE, _view(instrument_value=None), run_id="r") is None
+    # no edge fired this pass
+    assert re_.edge_outcome(_QE, _view(instrument=""), run_id="r") is None
+    # no self-report: the curve's signal axis is absent — logged rows without
+    # probability are never scored, so nothing is written
+    assert re_.edge_outcome(_QE, _view(instrument_confidence=None),
+                            run_id="r") is None
+    # no gold scale (unanswerable): skipped, the coverage_outcome precedent —
+    # a DISCLOSED selection, never an INCORRECT fabricated from missing metadata
+    assert re_.edge_outcome({"id": "q", "answer": ""}, _view(), run_id="r") is None
+
+
+def test_edge_outcome_without_lineage_has_empty_lineage_keys() -> None:
+    # caching off (digest failure): the row still grades, it just cannot dedup
+    e = re_.edge_outcome(_QE, _view(instrument_lineage=None), run_id="r")
+    assert e.lineage_keys == ()
+
+
+def test_edge_outcome_survives_the_calibration_filter(tmp_path) -> None:
+    # end-to-end drift gate: the row the writer emits is EXACTLY the row
+    # edge_outcomes_from_log admits into the curve fold (explicit "edge" key +
+    # non-None probability)
+    from life_agent.core.calibration import EdgeOutcome, edge_outcomes_from_log
+
+    log = tmp_path / "outcomes.jsonl"
+    O.append(log, re_.edge_outcome(_QE, _view(), run_id="r"))
+    assert edge_outcomes_from_log(log) == [
+        EdgeOutcome("deliberate@claude-opus-4-8", 0.85, True)]
+
+
+def test_dedup_edge_events_drops_replayed_lineage() -> None:
+    # a warm §18.9 replay returns the SAME artifact — grading it again each run would
+    # double-count one observation; dedup on lineage, within the batch and against
+    # the log's already-written keys. Lineage-less rows (cache off) always keep.
+    e1 = re_.edge_outcome(_QE, _view(), run_id="r")
+    e2 = re_.edge_outcome(_QE, _view(), run_id="r")            # same artifact
+    e3 = re_.edge_outcome(_QE, _view(instrument_lineage="dk-77"), run_id="r")
+    e4 = re_.edge_outcome(_QE, _view(instrument_lineage=None), run_id="r")
+    seen: set = set()
+    assert re_.dedup_edge_events([e1, e2, e3, e4], seen) == [e1, e3, e4]
+    # the second batch sees the first's keys — the replayed artifact writes nothing
+    assert re_.dedup_edge_events([e2], seen) == []

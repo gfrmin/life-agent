@@ -63,6 +63,11 @@ GRADERS: dict[str, frozenset[str]] = {
     # propose the true claim at all? A MISSED event is an observed proposer miss,
     # the evidence stream the open-world tail conditions on.
     "eval_coverage": frozenset({"PROPOSED", "MISSED"}),
+    # scripts/run_eval.py edge grader — the answer-proposing edge's RAW proposal graded
+    # against gold, independent of the committed act: the per-edge reliability curve's
+    # evidence stream (Δ1; every event carries the edge's self-reported credence and an
+    # instrument_identity with the explicit "edge" key the calibration fold filters on)
+    "eval_edge": frozenset({"CORRECT", "INCORRECT"}),
     # §8 grader 2 — spot-check audits against source bytes (stratum declared now)
     "audit": frozenset({"correct", "incorrect"}),
     # §8 grader 3 — owner corrections; "unrouted" is the matcher's honest failure mode
@@ -78,6 +83,7 @@ CORRECT_GRADES: dict[str, frozenset[str]] = {
     "eval_lookup": frozenset({"CORRECT"}),
     "eval_claim": frozenset({"CORRECT"}),
     "eval_coverage": frozenset({"PROPOSED"}),
+    "eval_edge": frozenset({"CORRECT"}),
     "audit": frozenset({"correct"}),
     "owner": frozenset({"correct"}),
 }
