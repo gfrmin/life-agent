@@ -99,18 +99,29 @@ DELIBERATE_TRANSFORM: dict[str, Any] = {
 _DELIBERATE_FALLBACK_RHO = 0.5
 
 
+def extract_edge(model: str) -> str:
+    """The joint-read edge's attribution name: ONE spelling (the deliberate edge has
+    deliberate.instrument(); this is its extract@ sibling — a hand-built f-string at a
+    call site silently splits the curve namespace)."""
+    return f"extract@{model}"
+
+
 def menu_transforms(curves: Curves) -> list[dict[str, Any]]:
-    """The full voi menu with every row PRICED AT WHAT ENACTMENT WILL DELIVER: each
-    row's rho re-folds through the same per-edge curve the body will condition its
-    observation at (self-report proxied by the declared prior). Without curves the
-    tiers keep their declared rho (legacy parity) and the deliberate row prices at the
-    conservative cap — never the 0.92 seed by fiat. Priced-vs-enacted divergence is the
-    C2 failure: the daemon buys a probe, the body folds it at a fraction of the priced
-    reliability, and the spend converts nothing."""
+    """The full voi menu with every row's rho re-priced through the same per-edge curve
+    the body will condition at. Without curves the tiers keep their declared rho
+    (legacy parity) and the deliberate row prices at the conservative cap — never the
+    0.92 seed by fiat. Priced-vs-enacted divergence is the C2 failure: the daemon buys
+    a probe, the body folds it at a fraction of the priced reliability, and the spend
+    converts nothing. HONESTY BOUND: with a FITTED (non-flat) curve this pricing is an
+    UPPER-BOUND rule — the offer prices at curve(declared prior) while enactment folds
+    at curve(actual self-report), which can be lower; exact pre-call identity is
+    structurally impossible for a self-reporting instrument. Unreachable today (no
+    attributed outcomes ⇒ curves=None); when the writer lands, re-price at the curve's
+    mean over the edge's observed confidence distribution instead."""
     rows: list[dict[str, Any]] = []
     for t in DEFAULT_TRANSFORMS:
         if t["kind"] == "voi" and t["probe"] in _TIER_MODEL:
-            edge = f"extract@{_TIER_MODEL[t['probe']]}"
+            edge = extract_edge(_TIER_MODEL[t["probe"]])
             rows.append({**t, "rho": _conditioned_rho(curves, edge, t["rho"], t["rho"])})
         else:
             rows.append(t)
@@ -338,7 +349,7 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
                     legacy = (min(_RESCUE_RHO, max(0.0, float(conf)))
                               if conf is not None else _RESCUE_RHO)
                     rescue_rho = _conditioned_rho(
-                        curves, f"extract@{_RE_EXTRACT_MODEL}", conf, legacy)
+                        curves, extract_edge(_RE_EXTRACT_MODEL), conf, legacy)
                     ext = {"candidates": [str(cr["new_candidate"])],
                            "observations": cr["observations"], "rho": rescue_rho,
                            "era_split": False,
@@ -406,7 +417,7 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
             # calibration curve — the instrument's uncertainty is no longer discarded on
             # the regular tiers (rescue-path parity); without curves the tier rho echoes.
             obs, era = cr["observations"], False
-            rho = _conditioned_rho(curves, f"extract@{model}", cr.get("confidence"),
+            rho = _conditioned_rho(curves, extract_edge(model), cr.get("confidence"),
                                    cr["gather_rho"])
             applied = list(dict.fromkeys([*applied, probe]))
             dec = _decide(obs, rho, era, applied)
@@ -449,13 +460,16 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
             except Exception as e:
                 print(f"  (deliberate probe failed, channel kept: {e})")
                 dr = None
-            if dr is not None and dr.get("status") == "ok":
-                if dr.get("new_candidate"):
-                    candidates = [*candidates, str(dr["new_candidate"])]
+            if dr is not None:
+                # spend is real even when the call failed (an is_error result still
+                # bills) — the §10 accounting must survive the ok-guard below
                 edge_instrument = DL.instrument(
                     str(dr.get("model") or _DELIBERATE_MODEL))
                 edge_cost = dr.get("cost_usd")
                 edge_latency = dr.get("latency_s")
+            if dr is not None and dr.get("status") == "ok":
+                if dr.get("new_candidate"):
+                    candidates = [*candidates, str(dr["new_candidate"])]
                 conf = dr.get("confidence")
                 legacy = (min(_DELIBERATE_FALLBACK_RHO, max(0.0, float(conf)))
                           if conf is not None else _DELIBERATE_FALLBACK_RHO)
@@ -481,7 +495,7 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
             # confirm any local candidate; the weak evidence must not survive it — disagree ⇒
             # NONE-dominant ⇒ abstain, the corroborate contract verbatim).
             obs, era = cr["observations"], False
-            rho = _conditioned_rho(curves, f"extract@{_RE_EXTRACT_MODEL}",
+            rho = _conditioned_rho(curves, extract_edge(_RE_EXTRACT_MODEL),
                                    cr.get("confidence"), cr["gather_rho"])
             enacted.append((probe, last_sensors, changed))
             applied = list(dict.fromkeys([*applied, probe]))
