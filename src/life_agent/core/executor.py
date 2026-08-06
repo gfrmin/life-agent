@@ -108,9 +108,10 @@ def extract_edge(model: str) -> str:
 
 def menu_transforms(curves: Curves) -> list[dict[str, Any]]:
     """The full voi menu with every row's rho re-priced through the same per-edge curve
-    the body will condition at. Without curves the tiers keep their declared rho
-    (legacy parity) and the deliberate row prices at the conservative cap — never the
-    0.92 seed by fiat. Priced-vs-enacted divergence is the C2 failure: the daemon buys
+    the body will condition at. Without curves — or for any edge the fold has no rows
+    for (the regime is per-edge, `_conditioned_rho`) — the tiers keep their declared
+    rho (legacy parity) and the deliberate row prices at the conservative cap — never
+    the 0.92 seed by fiat. Priced-vs-enacted divergence is the C2 failure: the daemon buys
     a probe, the body folds it at a fraction of the priced reliability, and the spend
     converts nothing. HONESTY BOUND: with a FITTED (non-flat) curve this pricing is an
     UPPER-BOUND rule — the offer prices at curve(declared prior) while enactment folds
@@ -155,14 +156,17 @@ _RESCUE_RHO = 0.5
 def _conditioned_rho(curves: Curves, edge: str, confidence: Any, fallback: float) -> float:
     """Fold a read's self-stated confidence through the per-edge reliability curve
     (``edge`` is the attribution's one spelling — ``extract@<model>`` for the joint
-    re-reads, ``deliberate.instrument(<model>)`` for the promoted arm). ``curves=None``
-    (every legacy call site) returns the declared fallback — bit-identical to the
-    constants. In the calibrated regime an ABSENT confidence folds at the curve's most
-    pessimistic bin: no signal must never be trusted more than a stated one (a stated
-    0.95 cold-starts at 0.25; letting silence keep the declared prior would invert the
-    pessimism). The cold-start curve (edge unseen) is Beta(1,3) — stricter than every
-    legacy constant, so a mis-supplied curves dict can only withhold harder."""
-    if curves is None:
+    re-reads, ``deliberate.instrument(<model>)`` for the promoted arm). The regime
+    boundary is PER-EDGE (§2: each edge declares its own error model, never pooled —
+    evidence about deliberate@opus is not evidence about extract@haiku): ``curves=None``
+    (every legacy call site) or an edge with no attributed rows returns the declared
+    fallback — bit-identical to the constants; a global switch would have collapsed
+    the whole corroborate ladder to the cold start the moment the first deliberate
+    outcome landed, prod-wide and permanently (no extract@ writer exists to earn them
+    out). Within a MEASURED edge an ABSENT confidence folds at the curve's most
+    pessimistic bin: no signal must never be trusted more than a stated one (letting
+    silence keep the declared prior would invert the pessimism)."""
+    if curves is None or edge not in curves:
         return float(fallback)
     c = 0.0 if confidence is None else max(0.0, float(confidence))
     return CAL.curve_for(curves, edge).calibrate(c)
@@ -235,7 +239,9 @@ def decide_via_loop(question: str, k: int, *, bridge: str, daemon: str, post: Po
         return {"effector": nv["action"], "asserted": nv["asserted"], "candidates": [],
                 "credences": [], "p_none": None, "eu": None, "n_obs": 0,
                 "hits": nv.get("hits", []), "route": None, "rendered": nv.get("rendered"),
-                "instrument": "", "cost_usd": None, "latency_s": None}
+                "instrument": "", "cost_usd": None, "latency_s": None,
+                "instrument_value": None, "instrument_confidence": None,
+                "instrument_lineage": None}
     if grow_lane:
         return run_pass(question, k, route, bridge=bridge, daemon=daemon, post=post, get=get,
                         rerank=False, expand=False, transforms=transforms, grow_lane=True,
@@ -359,7 +365,9 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
         _log_outcomes("miss")
         return {"effector": "miss", "asserted": [], "candidates": [], "credences": [],
                 "p_none": None, "eu": None, "n_obs": 0, "hits": hits, "route": route,
-                "instrument": "", "cost_usd": None, "latency_s": None}
+                "instrument": "", "cost_usd": None, "latency_s": None,
+                "instrument_value": None, "instrument_confidence": None,
+                "instrument_lineage": None}
     u_bar = get(f"{bridge}/utility")["u_bar"]
     candidates = ext["candidates"]
     owner = owner_scoped(question)
@@ -392,6 +400,11 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
     edge_instrument = ""
     edge_cost: float | None = None
     edge_latency: float | None = None
+    # the edge's RAW proposal + self-report + §18.9 lineage — what the attributed-outcome
+    # writer grades against gold, independent of the committed act.
+    edge_value: str | None = None
+    edge_conf: float | None = None
+    edge_lineage: str | None = None
     # bounded: each registry probe and each grow actuator fires at most once (dedup on the
     # probe name); a grow costs two decides (the priced re-ask + the post-enactment decide).
     for _ in range(2 + sum(t["kind"] == "voi" for t in transforms) + 2 * len(grow_probes)):
@@ -467,6 +480,10 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
                     str(dr.get("model") or _DELIBERATE_MODEL))
                 edge_cost = dr.get("cost_usd")
                 edge_latency = dr.get("latency_s")
+                v = dr.get("value")
+                edge_value = str(v) if v is not None else None
+                edge_conf = dr.get("confidence")
+                edge_lineage = dr.get("cache_key")
             if dr is not None and dr.get("status") == "ok":
                 if dr.get("new_candidate"):
                     candidates = [*candidates, str(dr["new_candidate"])]
@@ -520,7 +537,8 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
             "credences": dec["credences"], "p_none": dec["p_none"], "eu": dec["eu"],
             "n_obs": len(obs), "hits": hits, "route": route,
             "instrument": edge_instrument, "cost_usd": edge_cost,
-            "latency_s": edge_latency}
+            "latency_s": edge_latency, "instrument_value": edge_value,
+            "instrument_confidence": edge_conf, "instrument_lineage": edge_lineage}
 
 
 # --- render (the executor's decision in the shared credence grammar) --------------------

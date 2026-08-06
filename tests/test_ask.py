@@ -323,6 +323,35 @@ def test_answer_via_executor_skips_log_for_miss(monkeypatch) -> None:
     assert ask.EXECUTOR_LAST is None
 
 
+def test_answer_via_executor_tags_run_id_when_set(monkeypatch) -> None:
+    # the gate sets EXECUTOR_RUN_ID so its in-gate decisions are distinguishable from
+    # live traffic in decisions.jsonl; unset (live) posts no run_id — the bridge's
+    # default ("answer-brain") rules
+    monkeypatch.setattr(ask, "_executor_ready", lambda: True)
+    view = {"effector": "report", "asserted": ["P123"], "candidates": ["P123"],
+            "credences": [0.9], "p_none": 0.05, "eu": 0.8, "n_obs": 1,
+            "hits": [{"artifact_cache_key": "d0", "chunk_text": "Passport P123",
+                      "origin": "/data/id.pdf", "score": 9.0}],
+            "route": {"construct": "passport number"}}
+    monkeypatch.setattr(ask.EX, "decide_via_loop", lambda *a, **k: view)
+    posted: list[tuple[str, dict]] = []
+
+    def fake_post(url: str, payload: dict) -> dict | None:
+        posted.append((url, payload))
+        return {"decision_id": "ab-1"} if url.endswith("/log_decision") else None
+
+    monkeypatch.setattr(ask, "_http_post", fake_post)
+    monkeypatch.setattr(ask, "EXECUTOR_RUN_ID", "gate-tagged")
+    ask.answer_via_executor("my passport?", 20)
+    decision = next(p for u, p in posted if u.endswith("/log_decision"))["decision"]
+    assert decision["run_id"] == "gate-tagged"
+    posted.clear()
+    monkeypatch.setattr(ask, "EXECUTOR_RUN_ID", None)
+    ask.answer_via_executor("my passport?", 20)
+    decision = next(p for u, p in posted if u.endswith("/log_decision"))["decision"]
+    assert "run_id" not in decision
+
+
 def test_answer_via_executor_abstains_named_when_daemon_down(monkeypatch) -> None:
     # Never a silent fallback to another path's answer: a down stack is the NAMED abstention.
     monkeypatch.setattr(ask, "_executor_ready", lambda: False)

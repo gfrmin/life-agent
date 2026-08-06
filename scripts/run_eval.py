@@ -347,6 +347,49 @@ def coverage_outcome(q: dict, nv, *, run_id: str):
     )
 
 
+def edge_outcome(q: dict, view: dict, *, run_id: str):
+    """One attributed outcome for the answer-proposing edge's RAW proposal — the
+    per-edge reliability curve's evidence (Δ1). Grades ``instrument_value`` against
+    gold on the shared token-boundary scale, independent of the committed act: an
+    in-gate abstain still yields the edge's observation (the curve is P(edge's answer
+    correct | self-report), not P(the gate asserted)). None when there is nothing to
+    grade — no edge fired, a decline/error left no value, no self-report (rows without
+    probability are never scored), or no gold scale (unanswerable: skipped, the
+    coverage_outcome precedent — a disclosed selection, never a fabricated INCORRECT).
+    Lineage is the §18.9 artifact key, the warm-replay dedup axis."""
+    import life_agent.core.outcomes as O
+
+    edge = view.get("instrument")
+    value, conf = view.get("instrument_value"), view.get("instrument_confidence")
+    if not edge or value is None or conf is None or not q.get("answer"):
+        return None
+    correct = answer_matches(q["answer"], q.get("answer_variants", []), str(value))
+    lineage = view.get("instrument_lineage")
+    return O.OutcomeEvent(
+        tx_time=O.now_iso(), run_id=run_id, question_id=str(q["id"]),
+        claim=str(value)[:200], construct="edge-proposal",
+        grade="CORRECT" if correct else "INCORRECT", grader="eval_edge",
+        instrument_identity={"edge": str(edge)},
+        lineage_keys=(str(lineage),) if lineage else (),
+        probability=float(conf),
+    )
+
+
+def dedup_edge_events(events: list, seen: set) -> list:
+    """Pure: drop edge events whose §18.9 lineage was already graded — a warm replay
+    returns the SAME artifact, and grading it once per run would double-count one
+    observation into the curve fold. ``seen`` (mutated) carries the log's
+    already-written keys in and the batch's keys out; lineage-less rows (caching was
+    off) cannot be identified and are always kept."""
+    out = []
+    for e in events:
+        if e.lineage_keys and any(k in seen for k in e.lineage_keys):
+            continue
+        out.append(e)
+        seen.update(e.lineage_keys)
+    return out
+
+
 # --- the adoption gate (bayesian-foundations §8): typed families vs the monolithic ------
 # The grading model lives here (a driver concern); the math + the stated realised-utility
 # model live in life_agent.core.gate. Each policy is graded on ONE common answer-grounded
@@ -376,6 +419,39 @@ def _typed_response(lk, nv, typed_text: str, q: dict, abstention: str):
     # no family decided: the weak-retrieval abstention (shared with the monolithic) or
     # the family seam disabled — either way the typed path asserted nothing
     return GATE.RealisedResponse(action="abstain", correct=None)
+
+
+def _typed_response_executor(view: dict, q: dict):
+    """The typed policy's realised answer when the typed arm runs through the EXECUTOR
+    surface (ask.answer_via_executor → the daemon/bridge loop — the surface the priced
+    transform menu, incl. the deliberate edge, lives on). Same answer-level scale as
+    every arm. The executor's miss (the local edge declined, nothing asserted) maps to
+    abstain; report_scoped never reaches here today (the executor view populates
+    ``asserted`` for plain report only and renders scoped as a withholding)."""
+    import life_agent.core.gate as GATE
+
+    gold, variants = q.get("answer", ""), q.get("answer_variants", [])
+    eff = str(view["effector"])
+    if eff == "report":
+        return GATE.RealisedResponse(action="report", correct=GATE.realised_report(
+            [str(a) for a in view["asserted"]], gold, variants))
+    if eff == "hedge":
+        return GATE.RealisedResponse(action="hedge", correct=GATE.realised_report(
+            [str(c) for c in view["candidates"]], gold, variants))
+    if eff == "ask_clarify":
+        return GATE.RealisedResponse(action="ask_clarify", correct=None)
+    return GATE.RealisedResponse(action="abstain", correct=None)
+
+
+def executor_run_stats(typed_views: list) -> dict:
+    """Pure: the §10 spend + fired-count summary for one executor-arm gate run — the
+    report publishes what the run actually cost, never leaves it implicit."""
+    fired = [v for _, v in typed_views if v.get("instrument")]
+    return {"n": len(typed_views),
+            "deliberate_fired": len(fired),
+            "warm_hits": sum(1 for v in fired if v.get("cost_usd") == 0.0),
+            "spend_usd": sum(float(v["cost_usd"]) for v in fired
+                             if v.get("cost_usd"))}
 
 
 def _monolithic_response(mono_text: str, q: dict, abstention: str):
@@ -421,14 +497,21 @@ def _replay_response(row: dict, q: dict):
 
 
 def gate_paired_outcomes(conn, questions: list[dict], k: int, ask,
-                         replay: dict[str, dict] | None = None) -> list:
+                         replay: dict[str, dict] | None = None,
+                         typed_arm: str = "family",
+                         typed_views: list | None = None) -> list:
     """Run the typed policy over the corpus and pair it against the baseline arm per
     question. The typed pass is the production answer path with the **gather-augmented**
     lookup loop (gather=True → re-retrieve corroboration on the top candidates, then
-    re-weight by recency + whose-document before deciding). The baseline is the
-    monolithic pass (families=False → raw synthesize prose) — or, with ``replay``, the
-    raw-deliberative outside option replayed from a stored run (Δ2): the join is STRICT,
-    a question the replay lacks is named and refused, never silently dropped."""
+    re-weight by recency + whose-document before deciding) — or, with
+    ``typed_arm="executor"``, the executor surface (ask.answer_via_executor: the
+    daemon/bridge loop the priced transform menu lives on — the ONLY arm that can carry
+    the deliberate edge; a mid-run down stack VOIDS the reading loudly, and
+    ``typed_views`` collects each (question, view) pair for the attributed-outcome
+    writer). The baseline is the monolithic pass (families=False → raw synthesize
+    prose) — or, with ``replay``, the raw-deliberative outside option replayed from a
+    stored run (Δ2): the join is STRICT, a question the replay lacks is named and
+    refused, never silently dropped."""
     import life_agent.core.gate as GATE
 
     if replay is not None:
@@ -440,9 +523,20 @@ def gate_paired_outcomes(conn, questions: list[dict], k: int, ask,
                 "these questions)")
     paired = []
     for q in questions:
-        typed_text, _, _ = ask.answer(conn, q["question"], k, gather=True)
-        lk, nv = ask.LOOKUP_LAST, ask.NARRATIVE_LAST  # capture before the next call resets
-        typed = _typed_response(lk, nv, typed_text, q, ask.ABSTENTION)
+        if typed_arm == "executor":
+            ask.answer_via_executor(q["question"], k)
+            view = ask.EXECUTOR_VIEW_LAST
+            if view is None:
+                raise RuntimeError(
+                    f"executor view missing for {q['id']} — the daemon/bridge went "
+                    "down mid-run; the reading is void (fix the stack and rerun)")
+            typed = _typed_response_executor(view, q)
+            if typed_views is not None:
+                typed_views.append((q, view))
+        else:
+            typed_text, _, _ = ask.answer(conn, q["question"], k, gather=True)
+            lk, nv = ask.LOOKUP_LAST, ask.NARRATIVE_LAST  # capture before the next call
+            typed = _typed_response(lk, nv, typed_text, q, ask.ABSTENTION)
         if replay is not None:
             mono = _replay_response(replay[str(q["id"])], q)
         else:
@@ -776,6 +870,16 @@ def main() -> int:
              "the agent; the join is strict (a missing question refuses, named).",
     )
     parser.add_argument(
+        "--gate-executor", action="store_true",
+        help="run the gate's TYPED arm through the executor surface "
+             "(ask.answer_via_executor — the daemon/bridge loop where the priced "
+             "transform menu, incl. the deliberate edge, lives) instead of the "
+             "in-process family decide. Requires the bridge + daemon up (refuses "
+             "loudly). Buffers eval_edge attributed outcomes during the run and "
+             "appends them AFTER it, lineage-deduped — the in-run curve fold never "
+             "sees its own run's rows.",
+    )
+    parser.add_argument(
         "--no-outcomes", action="store_true",
         help="skip appending graded outcomes to the calibration log "
              "($LIFE_AGENT_KB/calibration/outcomes.jsonl) — dry runs only; the log "
@@ -817,14 +921,63 @@ def main() -> int:
                   if args.gate_replay else None)
         baseline_name = (f"raw-deliberative replay ({args.gate_replay})"
                          if replay is not None else "monolithic (families=False)")
+        typed_name = ("executor surface (answer_via_executor)" if args.gate_executor
+                      else "the production family path")
         print(f"Running the adoption gate (k={args.k}) over {len(questions)} questions "
-              f"(typed = the production path; baseline = {baseline_name}) …")
+              f"(typed = {typed_name}; baseline = {baseline_name}) …")
         sys.path.insert(0, str(Path(__file__).resolve().parent))
         import ask
 
+        if args.gate_executor and not ask._executor_ready():
+            # a partial-stack run would read as policy behaviour — refuse, never degrade
+            print(f"REFUSED: --gate-executor needs the bridge + daemon up "
+                  f"({ask.EXECUTOR_BRIDGE}, {ask.EXECUTOR_DAEMON}) — start them "
+                  f"(bin/answer-brain) and rerun.")
+            return 2
+
         t0 = time.monotonic()
         run_id = f"gate-{datetime.now().strftime('%Y%m%dT%H%M%S')}"
-        paired = gate_paired_outcomes(conn, questions, args.k, ask, replay=replay)
+        typed_views: list = []
+        if args.gate_executor:
+            # in-gate executor decisions carry the run_id — never masquerading as live
+            ask.EXECUTOR_RUN_ID = run_id
+        try:
+            paired = gate_paired_outcomes(
+                conn, questions, args.k, ask, replay=replay,
+                typed_arm="executor" if args.gate_executor else "family",
+                typed_views=typed_views if args.gate_executor else None)
+        finally:
+            ask.EXECUTOR_RUN_ID = None
+
+        exec_note = ""
+        if args.gate_executor:
+            import life_agent.core.outcomes as O
+            from life_agent.core import OUTCOMES_LOG
+
+            # the writer: grade every edge proposal the run produced, dedup against the
+            # log's already-graded §18.9 lineage, and append AFTER the run — the in-run
+            # curve fold (ask._edge_curves per question) never saw its own run's rows
+            stats = executor_run_stats(typed_views)
+            edge_events = [e for e in (edge_outcome(q, v, run_id=run_id)
+                                       for q, v in typed_views) if e is not None]
+            seen = {key for ev in O.read(OUTCOMES_LOG) if ev.grader == "eval_edge"
+                    for key in ev.lineage_keys}
+            fresh = dedup_edge_events(edge_events, seen)
+            n_dup = len(edge_events) - len(fresh)
+            if args.no_outcomes:
+                print(f"  (edge outcomes NOT written — --no-outcomes; would have "
+                      f"written {len(fresh)}, deduped {n_dup})")
+            elif fresh:
+                _append_outcomes(fresh)
+            n_written = 0 if args.no_outcomes else len(fresh)
+            print(f"  deliberate: fired {stats['deliberate_fired']}/{stats['n']} "
+                  f"(warm {stats['warm_hits']}) · spend ${stats['spend_usd']:.2f} · "
+                  f"edge outcomes written {n_written} (deduped {n_dup})")
+            exec_note = (f"> **Typed arm:** executor surface (answer_via_executor) — "
+                         f"deliberate fired {stats['deliberate_fired']}/{stats['n']} "
+                         f"(warm {stats['warm_hits']}), spend "
+                         f"${stats['spend_usd']:.2f}, edge outcomes written "
+                         f"{n_written} (deduped {n_dup})\n\n")
 
         # the FULL utility posterior (marginals, not just Ū — the gate samples P(U)),
         # folded from the FROZEN model + elicitations (blind discipline: untouched here)
@@ -849,7 +1002,7 @@ def main() -> int:
                         else "monolithic")
         gate_dir.mkdir(parents=True, exist_ok=True)
         preamble = (f"> **Baseline arm:** {baseline_name}\n\n"
-                    if replay is not None else "")
+                    if replay is not None else "") + exec_note
         (gate_dir / "report.md").write_text(
             preamble + GATE.render_report(result, run_id=run_id, elapsed=elapsed),
             encoding="utf-8")

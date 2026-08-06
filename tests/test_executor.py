@@ -639,9 +639,12 @@ def test_rescue_folds_confidence_through_the_edge_curve() -> None:
     assert fake.posted("/decide")[0]["rho"] == expected
 
 
-def test_rescue_cold_start_curve_is_more_conservative_than_the_cap() -> None:
-    # curves supplied but the edge unseen: Beta(1,3) cold start (0.25) — stricter than the
-    # 0.5 cap, never looser (§16 safe-before-calibrated).
+def test_rescue_unmeasured_edge_keeps_the_declared_cap() -> None:
+    # curves supplied but the edge has no attributed rows: the PER-EDGE regime keeps
+    # the declared fallback (min(cap, confidence) = 0.5 here) — another edge's
+    # evidence must never regime-switch this one to the cold start (§2, never
+    # pooled). [Supersedes the global-switch pin: "curves={} ⇒ 0.25" was an artifact
+    # of treating the fold's non-emptiness as one regime for ALL edges.]
     fake = FakeServices(
         route={"construct": "mortgage", "time_indexed": False},
         extracts=[_EMPTY_EXTRACT, _EMPTY_EXTRACT, _EMPTY_EXTRACT],
@@ -651,7 +654,25 @@ def test_rescue_cold_start_curve_is_more_conservative_than_the_cap() -> None:
                      "confidence": 0.9},
         decides=[{"effector": "hedge", "credences": [0.6], "p_none": 0.4, "eu": 0.1}])
     _loop(fake, grow_lane=True, curves={})
-    assert fake.posted("/decide")[0]["rho"] == 0.25
+    assert fake.posted("/decide")[0]["rho"] == 0.5
+
+
+def test_rescue_measured_edge_folds_through_its_curve_cold_bins() -> None:
+    # the §16 pessimism survives per-edge: once the rescue edge IS measured, its curve
+    # rules — a confidence landing in an unobserved bin folds at the Beta(1,3) cold
+    # start (0.25), stricter than the 0.5 cap, never looser.
+    curves = _fitted_curves("extract@claude-opus-4-8", 0.95)
+    fake = FakeServices(
+        route={"construct": "mortgage", "time_indexed": False},
+        extracts=[_EMPTY_EXTRACT, _EMPTY_EXTRACT, _EMPTY_EXTRACT],
+        corroborate={"observations": [{"reports": 0, "group": 0, "authority": 1.0,
+                                       "subject_factor": 1.0, "time_factor": 1.0}],
+                     "gather_rho": 0.95, "value": "NEW-7", "new_candidate": "NEW-7",
+                     "confidence": 0.9},
+        decides=[{"effector": "hedge", "credences": [0.6], "p_none": 0.4, "eu": 0.1}])
+    _loop(fake, grow_lane=True, curves=curves)
+    assert (fake.posted("/decide")[0]["rho"]
+            == curves["extract@claude-opus-4-8"].calibrate(0.9))
 
 
 def test_corroborate_tier_folds_confidence_through_the_edge_curve() -> None:
@@ -733,6 +754,85 @@ def test_view_without_a_deliberate_tick_is_unpriced() -> None:
     assert view["cost_usd"] is None
 
 
+def test_deliberate_tick_carries_the_raw_proposal_on_the_view() -> None:
+    # The attributed-outcome writer grades the edge's RAW proposal against gold,
+    # independent of the committed act — the view must surface what the edge SAID
+    # (value), its self-report (the curve's signal axis), and the §18.9 lineage
+    # (the warm-replay dedup key). The committed act here is abstain: the proposal
+    # must survive on the view regardless.
+    fake = FakeServices(
+        route={"construct": "rent", "time_indexed": False},
+        extract={**_EXTRACT, "candidates": ["NIS 4,200"]},
+        deliberate={"observations": [{"reports": 0, "group": 0, "authority": 1.0,
+                                      "subject_factor": 1.0, "time_factor": 1.0}],
+                    "confidence": 0.85, "model": "claude-opus-4-8",
+                    "value": "NIS 4,200", "status": "ok", "declined": False,
+                    "cost_usd": 0.42, "latency_s": 23.0, "cache": "miss",
+                    "cache_key": "dk-42"},
+        decides=[{"effector": "gather", "probe": "deliberate",
+                  "credences": [0.5], "p_none": 0.3, "eu": 0.1},
+                 {"effector": "abstain", "credences": [0.4], "p_none": 0.6,
+                  "eu": 0.0}])
+    view = _loop(fake, grow=False, curves={})
+    assert view["effector"] == "abstain"
+    assert view["instrument_value"] == "NIS 4,200"
+    assert view["instrument_confidence"] == 0.85
+    assert view["instrument_lineage"] == "dk-42"
+
+
+def test_view_without_a_deliberate_tick_has_no_raw_proposal() -> None:
+    # All consumers INDEX these keys (never .get) — the defaults must exist on the
+    # plain typed path.
+    fake = FakeServices(
+        route={"construct": "tax id", "time_indexed": False},
+        decides=[{"effector": "report", "value": "P123", "credences": [0.95],
+                  "p_none": 0.02, "eu": 0.9}])
+    view = _loop(fake, grow=False)
+    assert view["instrument_value"] is None
+    assert view["instrument_confidence"] is None
+    assert view["instrument_lineage"] is None
+
+
+def test_miss_and_narrative_views_default_the_raw_proposal_fields() -> None:
+    # The other two View return sites (extract-miss short circuit, narrative family)
+    # carry the same keys with the same defaults.
+    miss = _loop(FakeServices(
+        route={"construct": "passport number", "time_indexed": False},
+        extract={"candidates": [], "observations": [], "rho": 0.7,
+                 "era_split": False, "indeterminate": 3, "half_life_years": 5.0}),
+        grow=False)
+    assert miss["effector"] == "miss"
+    assert miss["instrument_value"] is None
+    assert miss["instrument_lineage"] is None
+    narr = _loop(FakeServices(route=None, narrative={
+        "action": "report", "asserted": ["you travelled in May"],
+        "rendered": "you travelled in May [1]\n\nnarrative footer",
+        "hits": [{"artifact_cache_key": "d0", "chunk_text": "x"}]}),
+        "tell me about my week")
+    assert narr["instrument_value"] is None
+    assert narr["instrument_lineage"] is None
+
+
+def test_deliberate_decline_leaves_no_gradeable_proposal() -> None:
+    # NOT_IN_CORPUS: no value proposed — nothing for the writer to grade (declines
+    # are not graded rows, a stated v0 coarsening) — but the lineage still names the
+    # §18.9 artifact (a decline IS recorded).
+    fake = FakeServices(
+        route={"construct": "rent", "time_indexed": False},
+        extract={**_EXTRACT, "candidates": ["NIS 9,999"]},
+        deliberate={"observations": [], "confidence": None, "model": "claude-opus-4-8",
+                    "value": None, "status": "ok", "declined": True, "cache": "miss",
+                    "cache_key": "dk-declined"},
+        decides=[{"effector": "gather", "probe": "deliberate",
+                  "credences": [0.4], "p_none": 0.5, "eu": 0.0},
+                 {"effector": "abstain", "credences": [0.1], "p_none": 0.9,
+                  "eu": 0.0}])
+    view = _loop(fake, grow=False, curves={})
+    assert view["instrument_value"] is None
+    assert view["instrument_confidence"] is None
+    assert view["instrument_lineage"] == "dk-declined"
+
+
 def test_deliberate_new_candidate_enlarges_k() -> None:
     fake = FakeServices(
         route={"construct": "rent", "time_indexed": False},
@@ -805,10 +905,12 @@ def test_corroborate_no_confidence_without_curves_keeps_the_tier_rho() -> None:
     assert fake.posted("/decide")[1]["rho"] == 0.80
 
 
-def test_corroborate_no_confidence_with_curves_folds_at_the_floor() -> None:
-    # Calibrated regime: NO signal must never be trusted more than a stated one (a
-    # stated 0.95 cold-starts at 0.25) — an absent confidence maps at the curve's most
-    # pessimistic bin, never at the declared tier prior.
+def test_corroborate_no_confidence_on_a_measured_edge_folds_at_the_floor() -> None:
+    # Within a MEASURED edge, NO signal must never be trusted more than a stated one —
+    # an absent confidence maps at the curve's most pessimistic bin, never back at the
+    # declared tier prior. (An UNMEASURED edge keeps its declared prior instead — the
+    # per-edge regime; see test_one_measured_edge_never_regime_switches….)
+    curves = _fitted_curves("extract@claude-haiku-4-5", 0.7)
     fake = FakeServices(
         route={"construct": "tax id", "time_indexed": False},
         extract={**_EXTRACT, "candidates": ["P123", "Q999"]},
@@ -819,8 +921,9 @@ def test_corroborate_no_confidence_with_curves_folds_at_the_floor() -> None:
                   "credences": [0.5, 0.5], "p_none": 0.1, "eu": 0.2},
                  {"effector": "report", "value": "P123", "credences": [0.9, 0.1],
                   "p_none": 0.05, "eu": 0.8}])
-    _loop(fake, grow=False, curves={})
-    assert fake.posted("/decide")[1]["rho"] == 0.25
+    _loop(fake, grow=False, curves=curves)
+    assert (fake.posted("/decide")[1]["rho"]
+            == curves["extract@claude-haiku-4-5"].calibrate(0.0))
 
 
 def test_deliberate_error_reply_keeps_the_grounded_channel() -> None:
@@ -905,4 +1008,35 @@ def test_menu_transforms_prices_what_enactment_can_deliver() -> None:
     fitted = {t["name"]: t for t in EX.menu_transforms(curves)}
     expected = curves["extract@claude-opus-4-8"].calibrate(0.95)
     assert fitted["corroborate_opus"]["rho"] == expected
-    assert fitted["corroborate_haiku"]["rho"] == 0.25     # unseen edge: cold start
+    # an UNMEASURED sibling keeps its declared prior (per-edge regime — see below)
+    assert fitted["corroborate_haiku"]["rho"] == 0.8
+
+
+def test_one_measured_edge_never_regime_switches_the_unmeasured_tiers() -> None:
+    # §2: each edge is its own error model, never pooled — evidence about
+    # deliberate@opus is NOT evidence about extract@haiku. The first writer covers
+    # only the deliberate edge, so a GLOBAL calibrated-regime switch would collapse
+    # the whole corroborate ladder to the 0.25 cold start (prod-wide, permanently —
+    # nothing writes extract@ outcomes to earn them out) the moment the first
+    # deliberate outcome row lands. The regime is per-edge: measured edges fold
+    # through their curve, unmeasured edges keep their declared fallback.
+    curves = _fitted_curves("deliberate@claude-opus-4-8", 0.85)
+    fitted = {t["name"]: t for t in EX.menu_transforms(curves)}
+    assert fitted["corroborate_haiku"]["rho"] == 0.8
+    assert fitted["corroborate_sonnet"]["rho"] == 0.9
+    assert fitted["corroborate_opus"]["rho"] == 0.95
+    assert (fitted["deliberate"]["rho"]
+            == curves["deliberate@claude-opus-4-8"].calibrate(0.92))
+    # conditioning takes the same per-edge fork as pricing
+    assert EX._conditioned_rho(curves, "extract@claude-haiku-4-5", 0.7, 0.80) == 0.80
+    assert (EX._conditioned_rho(curves, "deliberate@claude-opus-4-8", 0.85, 0.5)
+            == curves["deliberate@claude-opus-4-8"].calibrate(0.85))
+
+
+def test_measured_edge_absent_confidence_still_folds_at_the_floor() -> None:
+    # within a MEASURED edge the pessimism stands: an absent confidence folds at the
+    # curve's most pessimistic bin, never back at the declared prior
+    curves = _fitted_curves("extract@claude-haiku-4-5", 0.7)
+    edge = "extract@claude-haiku-4-5"
+    assert (EX._conditioned_rho(curves, edge, None, 0.80)
+            == curves[edge].calibrate(0.0))
