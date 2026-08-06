@@ -108,9 +108,10 @@ def extract_edge(model: str) -> str:
 
 def menu_transforms(curves: Curves) -> list[dict[str, Any]]:
     """The full voi menu with every row's rho re-priced through the same per-edge curve
-    the body will condition at. Without curves the tiers keep their declared rho
-    (legacy parity) and the deliberate row prices at the conservative cap — never the
-    0.92 seed by fiat. Priced-vs-enacted divergence is the C2 failure: the daemon buys
+    the body will condition at. Without curves — or for any edge the fold has no rows
+    for (the regime is per-edge, `_conditioned_rho`) — the tiers keep their declared
+    rho (legacy parity) and the deliberate row prices at the conservative cap — never
+    the 0.92 seed by fiat. Priced-vs-enacted divergence is the C2 failure: the daemon buys
     a probe, the body folds it at a fraction of the priced reliability, and the spend
     converts nothing. HONESTY BOUND: with a FITTED (non-flat) curve this pricing is an
     UPPER-BOUND rule — the offer prices at curve(declared prior) while enactment folds
@@ -155,14 +156,17 @@ _RESCUE_RHO = 0.5
 def _conditioned_rho(curves: Curves, edge: str, confidence: Any, fallback: float) -> float:
     """Fold a read's self-stated confidence through the per-edge reliability curve
     (``edge`` is the attribution's one spelling — ``extract@<model>`` for the joint
-    re-reads, ``deliberate.instrument(<model>)`` for the promoted arm). ``curves=None``
-    (every legacy call site) returns the declared fallback — bit-identical to the
-    constants. In the calibrated regime an ABSENT confidence folds at the curve's most
-    pessimistic bin: no signal must never be trusted more than a stated one (a stated
-    0.95 cold-starts at 0.25; letting silence keep the declared prior would invert the
-    pessimism). The cold-start curve (edge unseen) is Beta(1,3) — stricter than every
-    legacy constant, so a mis-supplied curves dict can only withhold harder."""
-    if curves is None:
+    re-reads, ``deliberate.instrument(<model>)`` for the promoted arm). The regime
+    boundary is PER-EDGE (§2: each edge declares its own error model, never pooled —
+    evidence about deliberate@opus is not evidence about extract@haiku): ``curves=None``
+    (every legacy call site) or an edge with no attributed rows returns the declared
+    fallback — bit-identical to the constants; a global switch would have collapsed
+    the whole corroborate ladder to the cold start the moment the first deliberate
+    outcome landed, prod-wide and permanently (no extract@ writer exists to earn them
+    out). Within a MEASURED edge an ABSENT confidence folds at the curve's most
+    pessimistic bin: no signal must never be trusted more than a stated one (letting
+    silence keep the declared prior would invert the pessimism)."""
+    if curves is None or edge not in curves:
         return float(fallback)
     c = 0.0 if confidence is None else max(0.0, float(confidence))
     return CAL.curve_for(curves, edge).calibrate(c)

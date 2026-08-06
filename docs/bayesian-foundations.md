@@ -1380,7 +1380,17 @@ on this list. Answers land here by amendment, citing their evidence.
   Evidence hygiene, stated: outcomes buffer during the run and append after it (the
   in-run curve fold never conditions on its own run's rows); warm replays dedup on
   §18.9 lineage (one artifact, one observation); declines/errors write nothing (no
-  value to grade — a disclosed v0 coarsening). **Planned next, in order:** run 3 = the
+  value to grade — a disclosed v0 coarsening). **Review Critical, caught pre-merge and
+  fixed (verified by execution):** the regime boundary was GLOBAL — the first
+  deliberate outcome row would have made the fold non-None and collapsed the three
+  corroborate tiers (no writer of their own) from 0.80/0.90/0.95 to the 0.25 cold
+  start, prod-wide and permanently, the moment run 3 wrote its first row. The fix
+  makes the boundary PER-EDGE (§2: each edge declares its own error model, never
+  pooled): an edge with no attributed rows keeps its declared fallback; within a
+  measured edge the §16 pessimism stands (absent confidence folds at the most
+  pessimistic bin; unobserved bins cold-start at Beta(1,3)). Two earlier pins of the
+  global switch ("curves supplied but edge unseen ⇒ 0.25") were artifacts and are
+  superseded by the per-edge tests. **Planned next, in order:** run 3 = the
   cold harvest (`--gate --gate-replay … --gate-executor`, flag on: ~90 typed-abstain
   questions × ~$0.31–0.37 ≈ $30–35, ~40 min — its value is the outcome rows; decisions
   won't flip at the 0.5 cold cap), then run 4 = the first Δ2-with-the-edge READING on

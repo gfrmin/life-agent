@@ -639,9 +639,12 @@ def test_rescue_folds_confidence_through_the_edge_curve() -> None:
     assert fake.posted("/decide")[0]["rho"] == expected
 
 
-def test_rescue_cold_start_curve_is_more_conservative_than_the_cap() -> None:
-    # curves supplied but the edge unseen: Beta(1,3) cold start (0.25) — stricter than the
-    # 0.5 cap, never looser (§16 safe-before-calibrated).
+def test_rescue_unmeasured_edge_keeps_the_declared_cap() -> None:
+    # curves supplied but the edge has no attributed rows: the PER-EDGE regime keeps
+    # the declared fallback (min(cap, confidence) = 0.5 here) — another edge's
+    # evidence must never regime-switch this one to the cold start (§2, never
+    # pooled). [Supersedes the global-switch pin: "curves={} ⇒ 0.25" was an artifact
+    # of treating the fold's non-emptiness as one regime for ALL edges.]
     fake = FakeServices(
         route={"construct": "mortgage", "time_indexed": False},
         extracts=[_EMPTY_EXTRACT, _EMPTY_EXTRACT, _EMPTY_EXTRACT],
@@ -651,7 +654,25 @@ def test_rescue_cold_start_curve_is_more_conservative_than_the_cap() -> None:
                      "confidence": 0.9},
         decides=[{"effector": "hedge", "credences": [0.6], "p_none": 0.4, "eu": 0.1}])
     _loop(fake, grow_lane=True, curves={})
-    assert fake.posted("/decide")[0]["rho"] == 0.25
+    assert fake.posted("/decide")[0]["rho"] == 0.5
+
+
+def test_rescue_measured_edge_folds_through_its_curve_cold_bins() -> None:
+    # the §16 pessimism survives per-edge: once the rescue edge IS measured, its curve
+    # rules — a confidence landing in an unobserved bin folds at the Beta(1,3) cold
+    # start (0.25), stricter than the 0.5 cap, never looser.
+    curves = _fitted_curves("extract@claude-opus-4-8", 0.95)
+    fake = FakeServices(
+        route={"construct": "mortgage", "time_indexed": False},
+        extracts=[_EMPTY_EXTRACT, _EMPTY_EXTRACT, _EMPTY_EXTRACT],
+        corroborate={"observations": [{"reports": 0, "group": 0, "authority": 1.0,
+                                       "subject_factor": 1.0, "time_factor": 1.0}],
+                     "gather_rho": 0.95, "value": "NEW-7", "new_candidate": "NEW-7",
+                     "confidence": 0.9},
+        decides=[{"effector": "hedge", "credences": [0.6], "p_none": 0.4, "eu": 0.1}])
+    _loop(fake, grow_lane=True, curves=curves)
+    assert (fake.posted("/decide")[0]["rho"]
+            == curves["extract@claude-opus-4-8"].calibrate(0.9))
 
 
 def test_corroborate_tier_folds_confidence_through_the_edge_curve() -> None:
@@ -884,10 +905,12 @@ def test_corroborate_no_confidence_without_curves_keeps_the_tier_rho() -> None:
     assert fake.posted("/decide")[1]["rho"] == 0.80
 
 
-def test_corroborate_no_confidence_with_curves_folds_at_the_floor() -> None:
-    # Calibrated regime: NO signal must never be trusted more than a stated one (a
-    # stated 0.95 cold-starts at 0.25) — an absent confidence maps at the curve's most
-    # pessimistic bin, never at the declared tier prior.
+def test_corroborate_no_confidence_on_a_measured_edge_folds_at_the_floor() -> None:
+    # Within a MEASURED edge, NO signal must never be trusted more than a stated one —
+    # an absent confidence maps at the curve's most pessimistic bin, never back at the
+    # declared tier prior. (An UNMEASURED edge keeps its declared prior instead — the
+    # per-edge regime; see test_one_measured_edge_never_regime_switches….)
+    curves = _fitted_curves("extract@claude-haiku-4-5", 0.7)
     fake = FakeServices(
         route={"construct": "tax id", "time_indexed": False},
         extract={**_EXTRACT, "candidates": ["P123", "Q999"]},
@@ -898,8 +921,9 @@ def test_corroborate_no_confidence_with_curves_folds_at_the_floor() -> None:
                   "credences": [0.5, 0.5], "p_none": 0.1, "eu": 0.2},
                  {"effector": "report", "value": "P123", "credences": [0.9, 0.1],
                   "p_none": 0.05, "eu": 0.8}])
-    _loop(fake, grow=False, curves={})
-    assert fake.posted("/decide")[1]["rho"] == 0.25
+    _loop(fake, grow=False, curves=curves)
+    assert (fake.posted("/decide")[1]["rho"]
+            == curves["extract@claude-haiku-4-5"].calibrate(0.0))
 
 
 def test_deliberate_error_reply_keeps_the_grounded_channel() -> None:
@@ -984,4 +1008,35 @@ def test_menu_transforms_prices_what_enactment_can_deliver() -> None:
     fitted = {t["name"]: t for t in EX.menu_transforms(curves)}
     expected = curves["extract@claude-opus-4-8"].calibrate(0.95)
     assert fitted["corroborate_opus"]["rho"] == expected
-    assert fitted["corroborate_haiku"]["rho"] == 0.25     # unseen edge: cold start
+    # an UNMEASURED sibling keeps its declared prior (per-edge regime — see below)
+    assert fitted["corroborate_haiku"]["rho"] == 0.8
+
+
+def test_one_measured_edge_never_regime_switches_the_unmeasured_tiers() -> None:
+    # §2: each edge is its own error model, never pooled — evidence about
+    # deliberate@opus is NOT evidence about extract@haiku. The first writer covers
+    # only the deliberate edge, so a GLOBAL calibrated-regime switch would collapse
+    # the whole corroborate ladder to the 0.25 cold start (prod-wide, permanently —
+    # nothing writes extract@ outcomes to earn them out) the moment the first
+    # deliberate outcome row lands. The regime is per-edge: measured edges fold
+    # through their curve, unmeasured edges keep their declared fallback.
+    curves = _fitted_curves("deliberate@claude-opus-4-8", 0.85)
+    fitted = {t["name"]: t for t in EX.menu_transforms(curves)}
+    assert fitted["corroborate_haiku"]["rho"] == 0.8
+    assert fitted["corroborate_sonnet"]["rho"] == 0.9
+    assert fitted["corroborate_opus"]["rho"] == 0.95
+    assert (fitted["deliberate"]["rho"]
+            == curves["deliberate@claude-opus-4-8"].calibrate(0.92))
+    # conditioning takes the same per-edge fork as pricing
+    assert EX._conditioned_rho(curves, "extract@claude-haiku-4-5", 0.7, 0.80) == 0.80
+    assert (EX._conditioned_rho(curves, "deliberate@claude-opus-4-8", 0.85, 0.5)
+            == curves["deliberate@claude-opus-4-8"].calibrate(0.85))
+
+
+def test_measured_edge_absent_confidence_still_folds_at_the_floor() -> None:
+    # within a MEASURED edge the pessimism stands: an absent confidence folds at the
+    # curve's most pessimistic bin, never back at the declared prior
+    curves = _fitted_curves("extract@claude-haiku-4-5", 0.7)
+    edge = "extract@claude-haiku-4-5"
+    assert (EX._conditioned_rho(curves, edge, None, 0.80)
+            == curves[edge].calibrate(0.0))
