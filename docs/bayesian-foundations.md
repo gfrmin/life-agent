@@ -1403,12 +1403,26 @@ on this list. Answers land here by amendment, citing their evidence.
   that question's own rows at the one admission point
   (`edge_outcomes_from_log(exclude_question_ids=…)`, keyed on the log's own
   `question_id` attribution — exact for the `eval_edge` stream, which only gate runs
-  write: live traffic has no gold to grade against, so there is no cross-surface
-  leakage axis). Preconditions loud: `--gate-loo` refuses without `--gate-executor`
-  (the only arm that folds curves); the family arm raises rather than wearing the
-  held-out label over a no-op; the hold-out clears even on a voided run. The report
-  names the discipline and its evidence base (pre-run attributed row count), and a
-  vacuous LOO (zero rows — run 3 not yet harvested) is disclosed, never read as a
-  held-out result. Run 4 = rerun the run-3 command + `--gate-loo` (deliberate edges
-  §18.9-warm ⇒ ~$0; fresh rows dedup to zero on lineage, so the reading adds no
+  write: live traffic has no gold to grade against, so that stream has no
+  cross-surface leakage axis today; a future edge-attributed writer must stamp the
+  eval id spelling or the exclusion cannot see its rows, named at the admission
+  point). Scope, stated honestly (review findings, PR #58): the held-out discipline
+  covers the **edge-curve channel** — the bridge-process extractor-rho
+  (`/extract`'s pooled reliability mean, folded from audit/eval_lookup rows) is a
+  second log→decision channel out of the hold-out's reach (today a pooled scalar
+  over v1-id rows only: nil exposure for run 4, disclosed not defended), and the
+  reading presupposes `LIFE_AGENT_MEMBRANE_LIVE` stays unset (a live membrane's
+  verdict world is per-question in-sample evidence LOO cannot reach — currently
+  contained). Preconditions loud: `--gate-loo` refuses without `--gate-executor`
+  (the only arm that folds curves) AND without `LIFE_AGENT_DELIBERATE=1` in the
+  gate's own process (flag-off the executor folds no curves at all — the run would
+  have published the held-out label over a total no-op; review Major, refused
+  mechanically); the family arm raises rather than wearing the held-out label over
+  a no-op; the hold-out clears even on a voided run. The report names the
+  discipline and its evidence base (pre-run attributed row count), and a vacuous
+  LOO (zero rows — run 3 not yet harvested) is disclosed in the report itself,
+  never read as a held-out result. Run 4 = rerun the run-3 command + `--gate-loo`
+  (deliberate edges §18.9-warm ⇒ ~$0 **if the corpus digest hasn't moved** — the
+  mail timers move it; a moved digest makes run 4 cold-priced, still a valid
+  reading, just paid; fresh rows dedup to zero on lineage, so the reading adds no
   double-counted evidence).

@@ -294,6 +294,20 @@ def test_gate_loo_without_executor_flag_refuses(monkeypatch, capsys) -> None:
     assert "--gate-executor" in capsys.readouterr().out
 
 
+def test_gate_loo_without_deliberate_flag_refuses(monkeypatch, capsys) -> None:
+    # PR #58 review Major: with LIFE_AGENT_DELIBERATE unset, answer_via_executor never
+    # folds curves at all (ask.py: transforms, curves = None, None) — a --gate-loo run
+    # would complete and publish the held-out label over a TOTAL no-op, the §17.4
+    # label-outruns-mechanics shape. Refused before any state is touched.
+    monkeypatch.delenv("LIFE_AGENT_DELIBERATE", raising=False)
+    monkeypatch.setattr(sys, "argv",
+                        ["run_eval.py", "--gate", "--gate-executor", "--gate-loo"])
+    monkeypatch.setattr(RE, "load_questions",
+                        lambda p: (_ for _ in ()).throw(AssertionError("state touched")))
+    assert RE.main() == 2
+    assert "LIFE_AGENT_DELIBERATE" in capsys.readouterr().out
+
+
 def test_executor_run_stats_summarise_spend_and_fired() -> None:
     views = [
         ({"id": "a"}, _exec_view(instrument="deliberate@claude-opus-4-8",

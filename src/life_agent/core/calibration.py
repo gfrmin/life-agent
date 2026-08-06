@@ -136,7 +136,12 @@ def edge_outcomes_from_log(path: Path, *,
     gate's grouped leave-one-question-out discipline (a question's decide never
     conditions on its own graded outcome; in-sample curves are §17.4's leakage
     re-enacted). Exclusion happens here, the one admission point, keyed on the log's
-    own question_id attribution."""
+    own question_id attribution. That keying is exact for today's one edge-attributed
+    writer (run_eval.edge_outcome, which stamps the eval corpus id); a future
+    edge-attributed writer that stamps a different question_id spelling (e.g. the
+    decisions.question_id hash — the owner-verdict/reaction channels' shape) would
+    put the same question's evidence out of the exclusion's reach: stamp the eval id
+    or extend the exclusion axis (lineage) before writing."""
     from life_agent.core import outcomes as O
 
     rows: list[EdgeOutcome] = []

@@ -921,6 +921,17 @@ def main() -> int:
         print("REFUSED: --gate-loo holds curves out of the EXECUTOR arm's per-question "
               "fold — pass --gate-executor (the only arm that folds curves).")
         return 2
+    if args.gate_loo:
+        # PR #58 review Major: flag-off, answer_via_executor folds no curves at ALL
+        # (ask.py: transforms, curves = None, None) — the run would complete and
+        # publish the held-out label over a total no-op (§17.4's shape: the label
+        # outrunning the mechanics)
+        import life_agent.core.config as _LCFG
+        if not _LCFG.deliberate_enabled():
+            print("REFUSED: --gate-loo needs LIFE_AGENT_DELIBERATE=1 in this process "
+                  "— without it the executor arm folds no curves and the held-out "
+                  "label would be vacuous.")
+            return 2
 
     import duckdb
     import yaml
@@ -1016,16 +1027,19 @@ def main() -> int:
                          f"{n_written} (deduped {n_dup})\n\n")
             if args.gate_loo:
                 # the held-out reading names its evidence base — and a vacuous LOO
-                # (no attributed rows yet) is disclosed, never read as a held-out PASS
+                # (no attributed rows yet) is disclosed IN THE REPORT, never read as
+                # a held-out result (stdout alone is not disclosure)
                 if not prior:
                     print("  ⚠ --gate-loo is VACUOUS: the log has no eval_edge rows "
                           "yet — every fold is empty either way; run the cold "
                           "harvest (run 3) first")
+                vac = (" **(VACUOUS — no attributed rows existed; every fold was "
+                       "empty either way)**" if not prior else "")
                 exec_note += (
                     f"> **Curves:** held-out (grouped leave-one-question-out) over "
                     f"{len(prior)} pre-run attributed edge outcome row(s) — each "
                     f"question's decide conditioned on curves folded without its own "
-                    f"rows\n\n")
+                    f"rows{vac}\n\n")
 
         # the FULL utility posterior (marginals, not just Ū — the gate samples P(U)),
         # folded from the FROZEN model + elicitations (blind discipline: untouched here)
