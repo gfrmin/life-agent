@@ -462,6 +462,19 @@ def test_log_decision_carries_instrument_and_price(deps: BridgeDeps) -> None:
     assert unpriced.cost_usd is None
 
 
+def test_log_decision_run_id_passthrough(deps: BridgeDeps) -> None:
+    # in-gate executor decisions must not masquerade as live traffic: the body may tag
+    # the run; absent → the live default stands
+    _call(deps, "POST", "/log_decision",
+          {"question": "q", "retrieval_keys": ["d0"],
+           "decision": {**_decision(), "run_id": "gate-20260806T999999"}})
+    _call(deps, "POST", "/log_decision",
+          {"question": "q2", "retrieval_keys": ["d0"], "decision": _decision()})
+    tagged, untagged = DEC.read(deps.decisions_path)
+    assert tagged.run_id == "gate-20260806T999999"
+    assert untagged.run_id == "answer-brain"
+
+
 def test_log_decision_sorts_credences_leader_first(deps: BridgeDeps) -> None:
     # The load-bearing parity: the daemon returns credences in CANDIDATE order (server.jl
     # `w[1:k]`), but the fold reads credences[0] as the LEADER. The bridge must sort desc, or an
@@ -1258,6 +1271,55 @@ def test_deliberate_warm_hit_replays_without_a_model_call(
     assert payload["observations"] == [{"reports": 0, "group": 0, "authority": 1.0,
                                         "subject_factor": 1.0, "time_factor": 1.0}]
     assert deliberate_seams["answers"] == []          # the CLI was never invoked
+
+
+def test_deliberate_miss_reply_carries_the_cache_key(
+        deps: BridgeDeps, deliberate_seams: dict[str, Any]) -> None:
+    # The reply names the §18.9 identity of the (question × corpus) cell so the caller
+    # can dedup warm replays in the outcomes stream — one artifact, one observation.
+    status, payload = _call(deps, "POST", "/probe/deliberate",
+                            {"question": "what is my rent?",
+                             "candidates": ["NIS 4,200"]})
+    assert status == 200
+    assert payload["cache"] == "miss"
+    assert payload["cache_key"] == deliberate_seams["records"][0]
+
+
+def test_deliberate_warm_hit_carries_the_same_cache_key(
+        deps: BridgeDeps, deliberate_seams: dict[str, Any],
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    # A warm replay is the SAME artifact — its reply must carry the same identity the
+    # ledger was consulted with, so downstream dedup sees one observation, not two.
+    recorded = json.dumps({
+        "format_version": 1, "question": "what is my rent?",
+        "model": "claude-opus-4-8", "text": "NIS 4,200 [lease.pdf]",
+        "value": "NIS 4,200", "credence": 0.85, "declined": False,
+        "cost_usd": 0.42, "session_id": "sess-0", "tool_calls": 5,
+        "gather_rounds": 3}).encode("utf-8")
+    seen_keys: list[str] = []
+    monkeypatch.setattr(bridge_server.D, "lookup",
+                        lambda root, key: (seen_keys.append(key), recorded)[1])
+    status, payload = _call(deps, "POST", "/probe/deliberate",
+                            {"question": "what is my rent?", "candidates": ["NIS 4,200"]})
+    assert status == 200
+    assert payload["cache"] == "hit"
+    assert payload["cache_key"] == seen_keys[0]
+
+
+def test_deliberate_cache_off_reply_has_no_cache_key(
+        deps: BridgeDeps, deliberate_seams: dict[str, Any],
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    # Digest failure ⇒ no key was ever computed ⇒ nothing to dedup on — the field is
+    # absent, never fabricated.
+    def boom(conn: Any) -> str:
+        raise RuntimeError("catalogue locked")
+
+    monkeypatch.setattr(bridge_server.CORPUS, "corpus_digest", boom)
+    status, payload = _call(deps, "POST", "/probe/deliberate",
+                            {"question": "what is my rent?", "candidates": ["NIS 4,200"]})
+    assert status == 200
+    assert payload["cache"] == "off"
+    assert "cache_key" not in payload
 
 
 def test_deliberate_time_indexed_observation_decays_not_hand_set(
