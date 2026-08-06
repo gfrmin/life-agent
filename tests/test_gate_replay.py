@@ -75,6 +75,28 @@ def test_replay_error_row_is_an_abstention() -> None:
     assert r.action == "abstain"
 
 
+def test_replay_blank_ok_row_is_an_abstention_not_a_confident_wrong() -> None:
+    # rc=0 with an empty result is a degenerate run, not an assertion — grading it as a
+    # report would mint a spurious confident-wrong (the A3 sign rested on 3 of those).
+    q = {"id": "q2-001", "answer": "P123", "answer_variants": [], "fuzzy": False}
+    assert RE._replay_response(_row("q2-001", ""), q).action == "abstain"
+    assert RE._replay_response(_row("q2-001", "   "), q).action == "abstain"
+    none_text = dict(_row("q2-001", ""), text=None)
+    assert RE._replay_response(none_text, q).action == "abstain"
+
+
+def test_paired_dict_names_its_baseline_arm() -> None:
+    import life_agent.core.gate as GATE
+
+    p = GATE.PairedOutcome(
+        question_id="q2-001", answerable=True,
+        typed=GATE.RealisedResponse(action="abstain", correct=None),
+        mono=GATE.RealisedResponse(action="report", correct=True))
+    d = RE._paired_to_dict(p, baseline="raw-deliberative-replay")
+    assert d["baseline"] == "raw-deliberative-replay"
+    assert RE._paired_to_dict(p)["baseline"] == "monolithic"
+
+
 # --- gate_paired_outcomes with the replay baseline ----------------------------------------
 
 class _FakeAsk:

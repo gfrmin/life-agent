@@ -268,25 +268,29 @@ def _competing_value_shape(value: str, candidate: str) -> bool:
                if t not in cand_tokens and digit_count(t))
 
 
-def _corroborate_time_factor(jr: JE.JointResult, hits: list[Payload], p: Payload) -> float:
-    """The recency covariate for the corroborate re-read's observation — the construct's
+def _source_time_factor(value: str | None, as_of: str | None, hits: list[Payload],
+                        p: Payload) -> float:
+    """The recency covariate for a re-read/whole-question observation — the construct's
     volatility decay, the same projection `/extract` applies (`LK.time_factor`). Recency is a
-    document property, independent of WHOSE value it is, so the re-read value is as current as its
+    document property, independent of WHOSE value it is, so the value is as current as its
     freshest SOURCE attestation: take the max doc_date among the hits whose text actually contains
-    the value (the shared date-aware matcher), falling back to the model's self-reported `as_of`,
-    then to None (undated time-indexed ⇒ the stated `_A_TIME_UNKNOWN` attenuation). A non
+    the value (the shared date-aware matcher), falling back to the instrument's self-reported
+    `as_of`, then to None (undated time-indexed ⇒ the stated `_A_TIME_UNKNOWN` attenuation). A non
     time-indexed construct passes through at 1.0 (no decay)."""
     if not bool(p.get("time_indexed", False)):
         return 1.0
     hl = VOL.half_life(p.get("construct"))
     doc_date = dict((p.get("covariates") or {}).get("doc_date") or {})
-    value = jr.value or ""
     src_dates = [doc_date.get(h["artifact_cache_key"]) for h in hits
-                 if MATCH.answer_matches(value, [], str(h.get("chunk_text", "")))]
+                 if MATCH.answer_matches(value or "", [], str(h.get("chunk_text", "")))]
     dated = sorted(d for d in src_dates if d)
-    date_iso = dated[-1] if dated else jr.as_of
+    date_iso = dated[-1] if dated else as_of
     return LK.time_factor(date_iso, time_indexed=True, today=_opt_date(p.get("today")),
                           half_life_years=hl)
+
+
+def _corroborate_time_factor(jr: JE.JointResult, hits: list[Payload], p: Payload) -> float:
+    return _source_time_factor(jr.value, jr.as_of, hits, p)
 
 
 def _probe_corroborate(deps: BridgeDeps, p: Payload) -> Payload:
@@ -380,16 +384,17 @@ def _deliberate_cfg() -> DL.DeliberateConfig:
     )
 
 
-def _join_deliberate_value(value: str | None, candidates: list[str],
-                           allow_new: bool) -> tuple[list[Payload], str | None]:
+def _join_deliberate_value(value: str | None, candidates: list[str], allow_new: bool,
+                           *, time_factor: float = 1.0) -> tuple[list[Payload], str | None]:
     """Map the edge's bare ANSWER value onto the candidate lattice — the corroborate
     join's contract verbatim: exact normalised match, else unique containment without a
     competing same-shaped token, else (``allow_new``) a minted candidate indexed at
     ``len(candidates)``, else NO observation (ambiguity keeps the conservative
-    no-observation contract). ``time_factor`` is 1.0 by declaration: the edge's error
-    model is the monolithic class — its currency discipline is the prompt's CURRENCY
-    contract, and currency misses fold into the edge's MEASURED calibration, not a
-    separate volatility projection (a stated coarsening of this instrument)."""
+    no-observation contract). ``time_factor`` is the caller-computed
+    :func:`_source_time_factor` — the keystone holds here too: on a time-indexed
+    construct no transform may hand-set 1.0 and report a stale value as current
+    (the q-006 class); the deliberate observation is as current as its freshest
+    retrieved source attestation."""
     if value is None:
         return [], None
     vn = LK._norm_value(value)
@@ -406,7 +411,7 @@ def _join_deliberate_value(value: str | None, candidates: list[str],
     if idx is None:
         return [], None
     return [{"reports": idx, "group": 0, "authority": 1.0,
-             "subject_factor": 1.0, "time_factor": 1.0}], new_candidate
+             "subject_factor": 1.0, "time_factor": time_factor}], new_candidate
 
 
 def _probe_deliberate(deps: BridgeDeps, p: Payload) -> Payload:
@@ -419,6 +424,7 @@ def _probe_deliberate(deps: BridgeDeps, p: Payload) -> Payload:
     question = _req_str(p, "question")
     candidates = [str(c) for c in (p.get("candidates") or [])]
     allow_new = bool(p.get("allow_new"))
+    hits = list(p.get("hits") or [])
     cfg = _deliberate_cfg()
 
     try:
@@ -434,7 +440,8 @@ def _probe_deliberate(deps: BridgeDeps, p: Payload) -> Payload:
     if cached is not None:
         c = loads(cached.decode("utf-8"))
         obs, new_candidate = _join_deliberate_value(
-            c.get("value"), candidates, allow_new)
+            c.get("value"), candidates, allow_new,
+            time_factor=_source_time_factor(c.get("value"), None, hits, p))
         out: Payload = {"observations": obs, "value": c.get("value"),
                         "confidence": c.get("credence"), "declined": c.get("declined"),
                         "status": "ok", "text": c.get("text"), "model": c.get("model"),
@@ -450,7 +457,9 @@ def _probe_deliberate(deps: BridgeDeps, p: Payload) -> Payload:
             DL.record_answer(deps.root, key, r)
         except Exception as e:  # a ledger write must never break an answered question
             print(f"  (deliberate answer not recorded: {e})")
-    obs, new_candidate = _join_deliberate_value(r.value, candidates, allow_new)
+    obs, new_candidate = _join_deliberate_value(
+        r.value, candidates, allow_new,
+        time_factor=_source_time_factor(r.value, None, hits, p))
     if r.status != "ok":
         obs, new_candidate = [], None
     out = {"observations": obs, "value": r.value, "confidence": r.credence,

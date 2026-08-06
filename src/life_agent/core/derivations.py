@@ -317,7 +317,11 @@ def deliberate_key(question: str, corpus_digest: str, *, model: str,
     retrieval-set hash (the edge chooses its own evidence; retrieve-then-key would not
     cover it). Keyed pre-call (system-design §3). ``model`` is the configured CLI alias;
     the CLI binary version is recorded in metadata for audit, same provenance caveat as
-    the eval arm."""
+    the eval arm. NAMED EXCLUSION: the machine's ambient Claude Code config (user/KB
+    CLAUDE.md) is part of the instrument but not part of this key — editing it changes
+    behaviour without invalidating the cache. Deliberate: the reference measurement ran
+    under the same ambient, and hashing a live config would orphan the cache on every
+    unrelated edit; the exclusion is declared rather than silent."""
     inputs = {"corpus": corpus_digest, "question": question}
     input_hash = _sha256(canonical_json(inputs))
     cache_key = compute_cache_key(

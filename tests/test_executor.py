@@ -788,9 +788,27 @@ def test_deliberate_decline_collapses_the_channel() -> None:
     assert fake.posted("/decide")[1]["observations"] == []
 
 
-def test_corroborate_without_stated_confidence_keeps_the_tier_rho() -> None:
-    # A reply with no confidence carries no signal to map — the tier's declared rho holds
-    # even with curves supplied (fallback is the declared prior, never a guess).
+def test_corroborate_no_confidence_without_curves_keeps_the_tier_rho() -> None:
+    # Legacy regime (curves=None): a reply with no stated confidence conditions at the
+    # tier's declared rho — bit-identical to master.
+    fake = FakeServices(
+        route={"construct": "tax id", "time_indexed": False},
+        extract={**_EXTRACT, "candidates": ["P123", "Q999"]},
+        corroborate={"observations": [{"reports": 0, "group": 0, "authority": 1.0,
+                                       "subject_factor": 1.0, "time_factor": 1.0}],
+                     "gather_rho": 0.80, "value": "P123"},
+        decides=[{"effector": "gather", "probe": "corroborate_haiku",
+                  "credences": [0.5, 0.5], "p_none": 0.1, "eu": 0.2},
+                 {"effector": "report", "value": "P123", "credences": [0.9, 0.1],
+                  "p_none": 0.05, "eu": 0.8}])
+    _loop(fake, grow=False)
+    assert fake.posted("/decide")[1]["rho"] == 0.80
+
+
+def test_corroborate_no_confidence_with_curves_folds_at_the_floor() -> None:
+    # Calibrated regime: NO signal must never be trusted more than a stated one (a
+    # stated 0.95 cold-starts at 0.25) — an absent confidence maps at the curve's most
+    # pessimistic bin, never at the declared tier prior.
     fake = FakeServices(
         route={"construct": "tax id", "time_indexed": False},
         extract={**_EXTRACT, "candidates": ["P123", "Q999"]},
@@ -802,4 +820,62 @@ def test_corroborate_without_stated_confidence_keeps_the_tier_rho() -> None:
                  {"effector": "report", "value": "P123", "credences": [0.9, 0.1],
                   "p_none": 0.05, "eu": 0.8}])
     _loop(fake, grow=False, curves={})
-    assert fake.posted("/decide")[1]["rho"] == 0.80
+    assert fake.posted("/decide")[1]["rho"] == 0.25
+
+
+def test_deliberate_error_reply_keeps_the_grounded_channel() -> None:
+    # A CLI failure is an INFRASTRUCTURE event, not evidence for NONE: the grounded
+    # local observations must survive it (the fail-open invariant — an instrumentation
+    # failure never breaks an already-grounded answer).
+    fake = FakeServices(
+        route={"construct": "tax id", "time_indexed": False},
+        extract={**_EXTRACT, "candidates": ["P123"]},
+        deliberate={"observations": [], "confidence": None, "model": "claude-opus-4-8",
+                    "value": None, "status": "error", "declined": False,
+                    "cache": "miss"},
+        decides=[{"effector": "gather", "probe": "deliberate",
+                  "credences": [0.6], "p_none": 0.3, "eu": 0.1},
+                 {"effector": "report", "value": "P123", "credences": [0.85],
+                  "p_none": 0.1, "eu": 0.6}])
+    view = _loop(fake, grow=False, curves={})
+    assert view["effector"] == "report"
+    second = fake.posted("/decide")[1]
+    assert len(second["observations"]) == 1      # the local channel survived
+    assert second["rho"] == 0.7                  # at its own rho, untouched
+
+
+def test_deliberate_transport_failure_is_fail_open() -> None:
+    # The probe post raising (client timeout, bridge hiccup) must degrade exactly like a
+    # status=error reply — channel kept, probe retired, the loop re-decides.
+    class _Fake(FakeServices):
+        def post(self, url: str, payload: dict[str, Any]) -> dict[str, Any] | None:
+            if url.endswith("/probe/deliberate"):
+                self.calls.append((url, payload))
+                raise OSError("timed out")
+            return super().post(url, payload)
+
+    fake = _Fake(
+        route={"construct": "tax id", "time_indexed": False},
+        extract={**_EXTRACT, "candidates": ["P123"]},
+        decides=[{"effector": "gather", "probe": "deliberate",
+                  "credences": [0.6], "p_none": 0.3, "eu": 0.1},
+                 {"effector": "report", "value": "P123", "credences": [0.85],
+                  "p_none": 0.1, "eu": 0.6}])
+    view = _loop(fake, grow=False, curves={})
+    assert view["effector"] == "report"
+    assert len(fake.posted("/decide")[1]["observations"]) == 1
+
+
+def test_menu_transforms_prices_what_enactment_can_deliver() -> None:
+    # C2: the daemon must never buy a probe at a rho the body cannot cash. Without
+    # curves the tiers keep their declared priors (parity) and the deliberate row
+    # prices at the conservative cap; with fitted curves every voi row re-prices at
+    # the SAME fold the enactment will use.
+    rows = {t["name"]: t for t in EX.menu_transforms(None)}
+    assert rows["corroborate_opus"]["rho"] == 0.95        # parity without curves
+    assert rows["deliberate"]["rho"] == 0.5               # the cap, never 0.92 fiat
+    curves = _fitted_curves("extract@claude-opus-4-8", 0.95)
+    fitted = {t["name"]: t for t in EX.menu_transforms(curves)}
+    expected = curves["extract@claude-opus-4-8"].calibrate(0.95)
+    assert fitted["corroborate_opus"]["rho"] == expected
+    assert fitted["corroborate_haiku"]["rho"] == 0.25     # unseen edge: cold start
