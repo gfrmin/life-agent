@@ -1319,7 +1319,16 @@ on this list. Answers land here by amendment, citing their evidence.
   passes `curves=None`, so every declared constant stands and the calibrated regime is
   dormant, not silently degraded), and the Δ2 gate reading. *First evidence:* the
   attributed-outcome writer + the first Δ2 gate run + the first flag-on live decisions
-  (`LIFE_AGENT_DELIBERATE=1`; flag-off at merge). Priors frozen blind and cited: menu
+  (`LIFE_AGENT_DELIBERATE=1`; flag-off at merge). **First Δ2 reading (2026-08-06,
+  run gate-20260806T072244, flag OFF — today's typed policy vs the replay): FAIL at
+  P(Δ>0.05) = 0.002, Δ̄ = −1.058 [−1.678, −0.529] — the shipped policy is ≈1
+  correct-answer-equivalent per question WORSE than the owner's outside option.** Answer
+  rate 0.21 vs 0.97; the loss is both legs: 80 abstain×report pairs at −0.375/q (reach
+  the outside option has and the policy hands back) and 19 report×report pairs at
+  −3.684/q (typed asserting wrong where the reference asserts right — u_wrong doing the
+  arithmetic). This is the quantified motivation for the flag: the MVP passes when the
+  calibrated shell keeps ~the reference's reach while cutting its confident-wrongs, and
+  cannot pass from the typed-only basin. Priors frozen blind and cited: menu
   seed rho 0.92 (= ff-v2's 96/104 correct over all questions; conditional on asserting,
   96/101 = 0.950) **re-priced at offer time
   to what the enactment fold can deliver** (the daemon must never buy a probe at a rho
