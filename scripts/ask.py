@@ -45,6 +45,7 @@ import yaml
 # Shared infra (metered LLM call, secret lookup, source rendering, the resolved KB /
 # PKM_CONFIG paths) lives in the installed life_agent package (see life-agent's pyproject).
 import life_agent.core as C
+import life_agent.core.calibration as CAL
 import life_agent.core.config as CFG
 import life_agent.core.decisions as DEC
 import life_agent.core.derivations as D
@@ -911,6 +912,24 @@ def _executor_ready() -> bool:
     return True
 
 
+def _edge_curves() -> dict[str, CAL.ReliabilityCurve] | None:
+    """The per-edge reliability curves folded from the outcomes log. **None when the
+    fold yields nothing** — today's log has no edge-attributed rows yet (the writers
+    land with the first Δ2 gate run), and an empty curves dict is NOT a no-op: it
+    would flatten every corroborate tier to the 0.25 cold start and information-free
+    the ladder. No attributed evidence ⇒ the declared constants stand; the calibrated
+    regime begins when the first attributed outcome exists. Fail-open the same way,
+    named."""
+    try:
+        rows = CAL.edge_outcomes_from_log(CFG.OUTCOMES_LOG)
+        if not rows:
+            return None
+        return CAL.fit_edge_curves(rows)
+    except Exception as e:
+        print(f"  (edge curves unavailable — declared constants stand: {e})")
+        return None
+
+
 def _log_executor_decision(question: str, view: dict[str, Any]) -> None:
     """Post a terminal LOOKUP decision to the calibration log so the owner's g/b verdict folds
     into u(wrong) through the EXISTING reaction loop. The bridge's /log_decision owns the write,
@@ -931,7 +950,11 @@ def _log_executor_decision(question: str, view: dict[str, Any]) -> None:
                          "candidates": view["candidates"],
                          "p_none": view["p_none"] if view["p_none"] is not None else 0.0,
                          "eu": view["eu"] if view["eu"] is not None else 0.0,
-                         "n_obs": view.get("n_obs", 0)}})
+                         "n_obs": view.get("n_obs", 0),
+                         # decisions v2 (§10): the answer-proposing edge + realised price
+                         "instrument": view.get("instrument") or "",
+                         "cost_usd": view.get("cost_usd"),
+                         "latency_s": view.get("latency_s")}})
         EXECUTOR_LAST = (resp or {}).get("decision_id")
     except Exception as e:  # fail-open by contract, reason printed — never breaks the answer
         print(f"  (decision not logged: {e})")
@@ -982,9 +1005,19 @@ def answer_via_executor(question: str, k: int
     else:
         live = None
         post = SM.shadow_wrapped_post(_http_post, EXECUTOR_BRIDGE, question_id)
+    # LIFE_AGENT_DELIBERATE=1 (absence = today's menu, byte-for-byte): the promoted A1b
+    # edge joins the priced transform menu — the daemon schedules it by EU, never a
+    # body fork — and every read's stated confidence folds through the per-edge
+    # calibration curves instead of the flat constants.
+    if CFG.deliberate_enabled():
+        curves = _edge_curves()
+        transforms = EX.menu_transforms(curves)  # every row priced at what enactment delivers
+    else:
+        transforms, curves = None, None
     view = EX.decide_via_loop(question, k, bridge=EXECUTOR_BRIDGE, daemon=EXECUTOR_DAEMON,
                               post=post, get=_http_get,
-                              grow_lane=EXECUTOR_GROW_LANE, live=live)
+                              grow_lane=EXECUTOR_GROW_LANE, live=live,
+                              transforms=transforms, curves=curves)
     EXECUTOR_VIEW_LAST = view
     _log_executor_decision(question, view)
     pairs = _cards_from_set(view["hits"])

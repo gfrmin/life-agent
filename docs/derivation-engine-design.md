@@ -63,7 +63,11 @@ operators — most of them deterministic:
 
 The pattern: the LLM appears only in per-document (or per-thread) *projections* that are
 cached forever; everything question-shaped downstream of them is deterministic. That is what
-makes the answers auditable and the cache slots reusable across questions.
+makes the answers auditable and the cache slots reusable across questions. *(Scope note,
+2026-08-06: this is the typed families' pattern, not a global answer-path invariant —
+bayesian-foundations §7 supersedes it there; the deliberative instrument
+(`core/deliberate.py`) is a whole-question LLM edge, on-ledger and per-edge-calibrated,
+scheduled by the same EU pricing as every other transform.)*
 
 ## 2. Prior art in-tree (what this design generalises)
 
