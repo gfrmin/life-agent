@@ -32,11 +32,12 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import os
+import re
 import signal
 import sys
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
-from datetime import date
+from datetime import date, datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from json import JSONDecodeError, dumps, loads
 from pathlib import Path
@@ -268,6 +269,32 @@ def _competing_value_shape(value: str, candidate: str) -> bool:
                if t not in cand_tokens and digit_count(t))
 
 
+_PARTIAL_DATE = re.compile(r"^(\d{4})(?:-(\d{2}))?(?:-(\d{2}))?$")
+
+
+def _normalize_date_iso(v: str | None) -> str | None:
+    """The instrument's self-reported ``as_of`` arrives as free text: a partial date
+    ('2012', '2012-07') normalizes to the EARLIEST point of its stated period (maximal
+    age ⇒ maximal decay — the keystone: a re-read value must never enter fresher than
+    stated); a datetime-shaped or compact-ISO report keeps its full date (degrading it
+    to the flat unknown attenuation would let an OLD stated date enter fresher than its
+    true decay — the same keystone, from the other side); anything unparseable is None
+    (the stated unknown-date attenuation), never a crash."""
+    if v is None:
+        return None
+    s = v.strip()
+    m = _PARTIAL_DATE.match(s)
+    if m is None:
+        try:
+            return datetime.fromisoformat(s).date().isoformat()
+        except ValueError:
+            return None
+    try:
+        return date(int(m.group(1)), int(m.group(2) or 1), int(m.group(3) or 1)).isoformat()
+    except ValueError:
+        return None
+
+
 def _source_time_factor(value: str | None, as_of: str | None, hits: list[Payload],
                         p: Payload) -> float:
     """The recency covariate for a re-read/whole-question observation — the construct's
@@ -275,7 +302,8 @@ def _source_time_factor(value: str | None, as_of: str | None, hits: list[Payload
     document property, independent of WHOSE value it is, so the value is as current as its
     freshest SOURCE attestation: take the max doc_date among the hits whose text actually contains
     the value (the shared date-aware matcher), falling back to the instrument's self-reported
-    `as_of`, then to None (undated time-indexed ⇒ the stated `_A_TIME_UNKNOWN` attenuation). A non
+    `as_of` (normalized via `_normalize_date_iso` — free text, never trusted as clean ISO), then
+    to None (undated time-indexed ⇒ the stated `_A_TIME_UNKNOWN` attenuation). A non
     time-indexed construct passes through at 1.0 (no decay)."""
     if not bool(p.get("time_indexed", False)):
         return 1.0
@@ -284,7 +312,7 @@ def _source_time_factor(value: str | None, as_of: str | None, hits: list[Payload
     src_dates = [doc_date.get(h["artifact_cache_key"]) for h in hits
                  if MATCH.answer_matches(value or "", [], str(h.get("chunk_text", "")))]
     dated = sorted(d for d in src_dates if d)
-    date_iso = dated[-1] if dated else as_of
+    date_iso = dated[-1] if dated else _normalize_date_iso(as_of)
     return LK.time_factor(date_iso, time_indexed=True, today=_opt_date(p.get("today")),
                           half_life_years=hl)
 
