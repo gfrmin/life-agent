@@ -1426,3 +1426,41 @@ on this list. Answers land here by amendment, citing their evidence.
   mail timers move it; a moved digest makes run 4 cold-priced, still a valid
   reading, just paid; fresh rows dedup to zero on lineage, so the reading adds no
   double-counted evidence).
+  **Run 3 — the cold harvest (2026-08-07, run gate-20260807T125917, flag ON, pin
+  held): FAIL at P(Δ>0.05) = 0.065, Δ̄ = −0.297 [−0.592, +0.095] — the interval
+  crosses zero for the first time.** Answer rate 0.19 vs 0.97 (executor arm; the
+  earlier 0.13 was the family arm, so only executor-arm readings compare
+  like-for-like from here). The harvest surprise: at the 0.5 cold cap the priced
+  menu scheduled deliberate on **14/104, not the ~90 estimated** — $5.27, not
+  $30–35; the cap doesn't just keep a bought signal from flipping a decide, it
+  prices most purchases below abstain in the first place. The 14 attributed rows
+  (13 correct / 1 incorrect; mean Brier 0.0184) are the first curve food for
+  `deliberate@claude-opus-4-8`.
+  **Run 4 — the first Δ2-with-the-edge reading, held-out (2026-08-07, run
+  gate-20260807T202838, grouped-LOO curves over the 14 pre-run rows): FAIL at
+  P(Δ>0.05) = 0.092, Δ̄ = −0.239 [−0.533, +0.154].** The signature finding: **typed
+  answer rate = correct-report rate = 0.25 — all 26 asserts correct, zero wrongs.**
+  The report×report cell prices at 0.000, so the whole deficit is the 75
+  abstain×report pairs at −0.333/q (the replay there: 70 correct + 5
+  confident-wrong = +0.333/q under Ū's u_wrong ≈ −9 — abstaining past the replay's
+  5 wrongs saves 45 gauge points and forfeits 70 corrects). With 14 rows of food
+  the menu fired 45/104 (24 warm; $8.93 ≈ $0.43/cold call), and the run-3→run-4
+  movement (rate 0.19→0.25, Δ̄ −0.297→−0.239, P 0.065→0.092) is the calibration
+  flywheel turning — leakage-proof by construction this time, since each question's
+  decide conditioned on curves folded without its own rows (§17.4/§17.5's lesson
+  applied before the claim, not after). 30 new rows appended (28 correct / 2
+  incorrect, Brier 0.0464) → 44 for the next fold. The road to PASS, priced at
+  current precision: one converted abstain (typed joins the replay's correct
+  report) is worth +1/104 ≈ +0.010 Δ̄; one new confident-wrong costs ≈ −9/104 ≈
+  −0.087 — nine conversions erased. Lifting the MEAN to parity-plus-δ needs ≈30
+  net conversions (typed rate ≈0.54) at held zero-wrong precision — and the gate
+  is a 0.90 mass bar, not a mean bar, so the true count sits further out by the
+  interval's width. The levers remain this entry's two, with the flywheel now the
+  mechanism for the second. Evidence hygiene, disclosed:
+  run 4's first firing was killed externally pre-flush — the buffered append held
+  (zero rows from the dead run), but its cold §18.9 artifacts survived it and
+  account for run 4's warm hits beyond run 3's 14 replays (demand-led cache
+  warming, the q2-014 pattern; its spend is unrecorded-but-real, ≈$4 inferred at
+  the mean cold price). The corpus digest held across all three firings — the 24
+  warm replays were genuine $0 re-reads, 14 of them deduped on lineage to zero new
+  evidence.
