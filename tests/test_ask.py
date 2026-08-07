@@ -371,6 +371,27 @@ def test_edge_curves_honor_the_held_out_question(monkeypatch, tmp_path) -> None:
     assert ask._edge_curves() is None
 
 
+def test_http_post_surfaces_the_500_body(monkeypatch) -> None:
+    # The bridge RETURNS a seam failure's name in the 500 body ({"error": "KeyError: …"},
+    # server.py: "visible to the caller, never swallowed") — the transport must carry it
+    # into the raised error, not discard it: a bare "HTTP Error 500: Internal Server
+    # Error" is a diagnosis with the diagnosis removed.
+    import io
+    import urllib.error
+    import urllib.request
+
+    import pytest
+
+    def fake_urlopen(req, timeout=0):
+        raise urllib.error.HTTPError(
+            "http://b/probe/corroborate", 500, "Internal Server Error", None,
+            io.BytesIO(b'{"error": "KeyError: \'artifact_cache_key\'"}'))
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    with pytest.raises(urllib.error.HTTPError, match="artifact_cache_key"):
+        ask._http_post("http://b/probe/corroborate", {"question": "q"})
+
+
 def test_answer_via_executor_abstains_named_when_daemon_down(monkeypatch) -> None:
     # Never a silent fallback to another path's answer: a down stack is the NAMED abstention.
     monkeypatch.setattr(ask, "_executor_ready", lambda: False)
