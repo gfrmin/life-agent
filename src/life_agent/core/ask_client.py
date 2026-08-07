@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import os
+import urllib.error
 import urllib.request
 from typing import Any
 
@@ -36,12 +37,28 @@ FATE_FOLDS = "folds into the utility posterior on the next gate run"
 FATE_RECORDED = "recorded — not folded (only abstain verdicts move the fold)"
 
 
-def _post(url: str, payload: dict[str, Any]) -> dict[str, Any] | None:
+def post_json(url: str, payload: dict[str, Any], *,
+              timeout: int = 300) -> dict[str, Any] | None:
+    """The ONE bridge/daemon POST transport (every client delegates here — three
+    near-identical copies once hid the same defect). The bridge RETURNS a seam
+    failure's name in the error body (server.py: "visible to the caller, never
+    swallowed"); carry it in the raised error — the exception type stays HTTPError,
+    so the fail-open transport contract is untouched."""
     req = urllib.request.Request(url, data=json.dumps(payload).encode(),
                                  headers={"Content-Type": "application/json"}, method="POST")
-    with urllib.request.urlopen(req, timeout=300) as r:
-        out: dict[str, Any] | None = json.loads(r.read())
-        return out
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            out: dict[str, Any] | None = json.loads(r.read())
+            return out
+    except urllib.error.HTTPError as e:
+        detail = e.read().decode("utf-8", errors="replace") if e.fp else ""
+        raise urllib.error.HTTPError(
+            req.full_url, e.code, f"{e.reason} — {detail}" if detail else str(e.reason),
+            e.hdrs, None) from e
+
+
+def _post(url: str, payload: dict[str, Any]) -> dict[str, Any] | None:
+    return post_json(url, payload)
 
 
 def _get(url: str) -> dict[str, Any]:

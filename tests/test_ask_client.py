@@ -92,6 +92,27 @@ def test_answer_names_a_down_stack(monkeypatch: Any) -> None:
     assert "unavailable" in reply and decision_id is None
 
 
+def test_post_surfaces_the_500_body(monkeypatch: Any) -> None:
+    # The bridge RETURNS a seam failure's name in the 500 body (server.py: "visible to
+    # the caller, never swallowed") — the PRODUCTION transport (jarvis → ask_client)
+    # must carry it into the raised error, exactly like scripts/ask.py's _http_post
+    # (review Major: the fix landed on one of three near-identical transports).
+    import io
+    import urllib.error
+    import urllib.request
+
+    import pytest
+
+    def fake_urlopen(req: Any, timeout: int = 0) -> Any:
+        raise urllib.error.HTTPError(
+            "http://b/probe/corroborate", 500, "Internal Server Error", None,
+            io.BytesIO(b'{"error": "ValueError: Invalid isoformat string"}'))
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    with pytest.raises(urllib.error.HTTPError, match="isoformat"):
+        AC._post("http://b/probe/corroborate", {"question": "q"})
+
+
 def test_react_names_the_fold_fate() -> None:
     def post_folds(url: str, payload: dict[str, Any]) -> dict[str, Any]:
         assert payload == {"decision_id": "ab-1", "valence": "good"}
