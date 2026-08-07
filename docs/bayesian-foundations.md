@@ -1445,11 +1445,14 @@ on this list. Answers land here by amendment, citing their evidence.
   confident-wrong = +0.333/q under Ū's u_wrong ≈ −9 — abstaining past the replay's
   5 wrongs saves 45 gauge points and forfeits 70 corrects). With 14 rows of food
   the menu fired 45/104 (24 warm; $8.93 ≈ $0.43/cold call), and the run-3→run-4
-  movement (rate 0.19→0.25, Δ̄ −0.297→−0.239, P 0.065→0.092) is the calibration
-  flywheel turning — leakage-proof by construction this time, since each question's
-  decide conditioned on curves folded without its own rows (§17.4/§17.5's lesson
-  applied before the claim, not after). 30 new rows appended (28 correct / 2
-  incorrect, Brier 0.0464) → 44 for the next fold. The road to PASS, priced at
+  movement (rate 0.19→0.25 — net +6 asserts, 8 gained and 2 lost, churn not
+  monotone growth — Δ̄ −0.297→−0.239, P 0.065→0.092) is the calibration flywheel
+  turning — held-out by construction (the edge-curve channel) this time, since each
+  question's decide conditioned on curves folded without its own rows
+  (§17.4/§17.5's lesson applied before the claim, not after). 30 new rows appended
+  (28 correct / 2 incorrect, Brier 0.0464) → 44 for the next fold; 45 fires but 44
+  evidence-accounted — q2-024's cold fire, the run's costliest single call at
+  $0.76, declined and wrote nothing (the disclosed v0 coarsening, priced here). The road to PASS, priced at
   current precision: one converted abstain (typed joins the replay's correct
   report) is worth +1/104 ≈ +0.010 Δ̄; one new confident-wrong costs ≈ −9/104 ≈
   −0.087 — nine conversions erased. Lifting the MEAN to parity-plus-δ needs ≈30
@@ -1463,8 +1466,8 @@ on this list. Answers land here by amendment, citing their evidence.
   gate-20260807T132948 — 5 warm replays + 3 cold calls, $1.20), so no spend went
   unrecorded. Run 4's 24 warm hits reconcile exactly on that ledger: run 3's 14
   (deduped on lineage to zero new evidence) + the killed firing's 3 + 7
-  pre-harvest artifacts (1 rides the live smoke's answer-brain row; 6 left no
-  decision row — created through surfaces that post no /log_decision by design,
-  eval_executor's isolation-by-not-writing — each $0 at re-read and graded fresh
+  pre-harvest artifacts (1 rides the live smoke's answer-brain row; 6 whose
+  creating call left no decision row — surfaces that post no /log_decision by
+  design, eval_executor's isolation-by-not-writing — each $0 at re-read and graded fresh
   on lineage, so double-counted evidence is excluded either way). The corpus
   digest held across all firings.
