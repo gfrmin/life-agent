@@ -32,6 +32,7 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import os
+import re
 import signal
 import sys
 from collections.abc import Callable
@@ -268,6 +269,25 @@ def _competing_value_shape(value: str, candidate: str) -> bool:
                if t not in cand_tokens and digit_count(t))
 
 
+_PARTIAL_DATE = re.compile(r"^(\d{4})(?:-(\d{2}))?(?:-(\d{2}))?$")
+
+
+def _normalize_date_iso(v: str | None) -> str | None:
+    """The instrument's self-reported ``as_of`` arrives as free text ('2012', '2012-07'):
+    a partial date normalizes to the EARLIEST point of its stated period (maximal age ⇒
+    maximal decay — the keystone: a re-read value must never enter fresher than stated);
+    anything unparseable is None (the stated unknown-date attenuation), never a crash."""
+    if v is None:
+        return None
+    m = _PARTIAL_DATE.match(v.strip())
+    if m is None:
+        return None
+    try:
+        return date(int(m.group(1)), int(m.group(2) or 1), int(m.group(3) or 1)).isoformat()
+    except ValueError:
+        return None
+
+
 def _source_time_factor(value: str | None, as_of: str | None, hits: list[Payload],
                         p: Payload) -> float:
     """The recency covariate for a re-read/whole-question observation — the construct's
@@ -284,7 +304,7 @@ def _source_time_factor(value: str | None, as_of: str | None, hits: list[Payload
     src_dates = [doc_date.get(h["artifact_cache_key"]) for h in hits
                  if MATCH.answer_matches(value or "", [], str(h.get("chunk_text", "")))]
     dated = sorted(d for d in src_dates if d)
-    date_iso = dated[-1] if dated else as_of
+    date_iso = dated[-1] if dated else _normalize_date_iso(as_of)
     return LK.time_factor(date_iso, time_indexed=True, today=_opt_date(p.get("today")),
                           half_life_years=hl)
 
