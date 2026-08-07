@@ -1458,9 +1458,13 @@ on this list. Answers land here by amendment, citing their evidence.
   interval's width. The levers remain this entry's two, with the flywheel now the
   mechanism for the second. Evidence hygiene, disclosed:
   run 4's first firing was killed externally pre-flush — the buffered append held
-  (zero rows from the dead run), but its cold §18.9 artifacts survived it and
-  account for run 4's warm hits beyond run 3's 14 replays (demand-led cache
-  warming, the q2-014 pattern; its spend is unrecorded-but-real, ≈$4 inferred at
-  the mean cold price). The corpus digest held across all three firings — the 24
-  warm replays were genuine $0 re-reads, 14 of them deduped on lineage to zero new
-  evidence.
+  (zero outcome rows from the dead run) while the v2 per-decision accounting rode
+  through the kill: its 8 fires sit on the decisions ledger (run_id
+  gate-20260807T132948 — 5 warm replays + 3 cold calls, $1.20), so no spend went
+  unrecorded. Run 4's 24 warm hits reconcile exactly on that ledger: run 3's 14
+  (deduped on lineage to zero new evidence) + the killed firing's 3 + 7
+  pre-harvest artifacts (1 rides the live smoke's answer-brain row; 6 left no
+  decision row — created through surfaces that post no /log_decision by design,
+  eval_executor's isolation-by-not-writing — each $0 at re-read and graded fresh
+  on lineage, so double-counted evidence is excluded either way). The corpus
+  digest held across all firings.
