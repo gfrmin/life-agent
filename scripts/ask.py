@@ -30,7 +30,6 @@ import os
 import re
 import readline  # noqa: F401  -- enables line editing / history at the input() prompts
 import sys
-import urllib.error
 import urllib.request
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -46,6 +45,7 @@ import yaml
 # Shared infra (metered LLM call, secret lookup, source rendering, the resolved KB /
 # PKM_CONFIG paths) lives in the installed life_agent package (see life-agent's pyproject).
 import life_agent.core as C
+import life_agent.core.ask_client as AC
 import life_agent.core.calibration as CAL
 import life_agent.core.config as CFG
 import life_agent.core.decisions as DEC
@@ -900,18 +900,9 @@ EXECUTOR_HOLD_OUT_QUESTION_ID: str | None = None
 
 
 def _http_post(url: str, payload: dict[str, Any]) -> dict[str, Any] | None:
-    req = urllib.request.Request(url, data=json.dumps(payload).encode(),
-                                 headers={"Content-Type": "application/json"}, method="POST")
-    try:
-        with urllib.request.urlopen(req, timeout=300) as r:
-            return cast("dict[str, Any] | None", json.loads(r.read()))
-    except urllib.error.HTTPError as e:
-        # the bridge RETURNS a seam failure's name in the error body (server.py:
-        # "visible to the caller, never swallowed") — carry it in the raised error
-        detail = e.read().decode("utf-8", errors="replace") if e.fp else ""
-        raise urllib.error.HTTPError(
-            req.full_url, e.code, f"{e.reason} — {detail}" if detail else str(e.reason),
-            e.hdrs, None) from e
+    # delegates to the ONE transport (ask_client.post_json), which carries the
+    # bridge's error body in the raised HTTPError instead of discarding it
+    return AC.post_json(url, payload)
 
 
 def _http_get(url: str) -> dict[str, Any]:

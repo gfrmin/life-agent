@@ -419,6 +419,14 @@ def test_source_time_factor_tolerates_partial_self_reported_as_of() -> None:
     assert bridge_server._source_time_factor("v", "2012-07", [], p) == full_month
     unknown = bridge_server._source_time_factor("v", None, [], p)
     assert bridge_server._source_time_factor("v", "mid-2012", [], p) == unknown
+    # a datetime-shaped self-report carries a FULL date — degrading it to the flat
+    # unknown attenuation (0.6) would let an old value enter FRESHER than stated
+    # (review Major: for a 2012 date under a 10y half-life the true decay is ≈0.36);
+    # the compact ISO form restores what date.fromisoformat accepted pre-normalizer.
+    full_day = bridge_server._source_time_factor("v", "2012-05-01", [], p)
+    assert bridge_server._source_time_factor(
+        "v", "2012-05-01T00:00:00Z", [], p) == full_day
+    assert bridge_server._source_time_factor("v", "20120501", [], p) == full_day
 
 
 # --- /utility (GET): the utility posterior's u_bar, computed server-side ----------------
