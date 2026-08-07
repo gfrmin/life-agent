@@ -30,6 +30,7 @@ import os
 import re
 import readline  # noqa: F401  -- enables line editing / history at the input() prompts
 import sys
+import urllib.error
 import urllib.request
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -901,8 +902,16 @@ EXECUTOR_HOLD_OUT_QUESTION_ID: str | None = None
 def _http_post(url: str, payload: dict[str, Any]) -> dict[str, Any] | None:
     req = urllib.request.Request(url, data=json.dumps(payload).encode(),
                                  headers={"Content-Type": "application/json"}, method="POST")
-    with urllib.request.urlopen(req, timeout=300) as r:
-        return cast("dict[str, Any] | None", json.loads(r.read()))
+    try:
+        with urllib.request.urlopen(req, timeout=300) as r:
+            return cast("dict[str, Any] | None", json.loads(r.read()))
+    except urllib.error.HTTPError as e:
+        # the bridge RETURNS a seam failure's name in the error body (server.py:
+        # "visible to the caller, never swallowed") — carry it in the raised error
+        detail = e.read().decode("utf-8", errors="replace") if e.fp else ""
+        raise urllib.error.HTTPError(
+            req.full_url, e.code, f"{e.reason} — {detail}" if detail else str(e.reason),
+            e.hdrs, None) from e
 
 
 def _http_get(url: str) -> dict[str, Any]:
