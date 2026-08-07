@@ -404,6 +404,31 @@ def test_reextract_returns_the_reads_own_confidence(
     assert payload["new_candidate"] == "NEW-7"
 
 
+def test_source_time_factor_tolerates_partial_self_reported_as_of() -> None:
+    # run 3's q2-009: the joint read SELF-REPORTED as_of='2012' (a bare year, cached
+    # content-addressed ⇒ deterministic) and the volatility projector crashed the
+    # corroborate probe (HTTP 500) on fromisoformat. A partial date normalizes to the
+    # EARLIEST point of its stated period (maximal age ⇒ maximal decay — the keystone:
+    # never fresher than stated); an unparseable one falls to None (the stated
+    # unknown-date attenuation). hits=[] ⇒ the self-report is the operative branch.
+    p = {"time_indexed": True, "construct": "passport_number",
+         "covariates": {}, "today": "2026-08-07"}
+    full_year = bridge_server._source_time_factor("v", "2012-01-01", [], p)
+    assert bridge_server._source_time_factor("v", "2012", [], p) == full_year
+    full_month = bridge_server._source_time_factor("v", "2012-07-01", [], p)
+    assert bridge_server._source_time_factor("v", "2012-07", [], p) == full_month
+    unknown = bridge_server._source_time_factor("v", None, [], p)
+    assert bridge_server._source_time_factor("v", "mid-2012", [], p) == unknown
+    # a datetime-shaped self-report carries a FULL date — degrading it to the flat
+    # unknown attenuation (0.6) would let an old value enter FRESHER than stated
+    # (review Major: for a 2012 date under a 10y half-life the true decay is ≈0.36);
+    # the compact ISO form restores what date.fromisoformat accepted pre-normalizer.
+    full_day = bridge_server._source_time_factor("v", "2012-05-01", [], p)
+    assert bridge_server._source_time_factor(
+        "v", "2012-05-01T00:00:00Z", [], p) == full_day
+    assert bridge_server._source_time_factor("v", "20120501", [], p) == full_day
+
+
 # --- /utility (GET): the utility posterior's u_bar, computed server-side ----------------
 
 def test_utility_returns_u_bar(deps: BridgeDeps) -> None:

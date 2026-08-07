@@ -29,6 +29,7 @@ from collections import Counter
 from datetime import datetime
 from pathlib import Path
 
+from life_agent.core import ask_client as AC
 from life_agent.core import config as CFG
 from life_agent.core import decisions as DEC
 from life_agent.core import executor as EX
@@ -54,10 +55,9 @@ _GROW_LANE = os.environ.get("LIFE_AGENT_GROW_LANE", "") == "1"
 
 
 def _post(url: str, payload: dict) -> dict | None:
-    req = urllib.request.Request(url, data=json.dumps(payload).encode(),
-                                 headers={"Content-Type": "application/json"}, method="POST")
-    with urllib.request.urlopen(req, timeout=300) as r:
-        return json.loads(r.read())
+    # delegates to the ONE transport (ask_client.post_json), which carries the
+    # bridge's error body in the raised HTTPError instead of discarding it
+    return AC.post_json(url, payload)
 
 
 def _get(url: str) -> dict:
