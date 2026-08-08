@@ -833,6 +833,151 @@ def test_deliberate_decline_leaves_no_gradeable_proposal() -> None:
     assert view["instrument_lineage"] == "dk-declined"
 
 
+# --- edge_events: the attribution stream for the extract-tier writers --------------------
+# Every answer-proposing firing (corroborate tiers, the k=0 rescue, re_extract_strong,
+# deliberate) appends ONE event {edge, value, confidence, lineage} in firing order — the
+# gate's writer grades each event's OWN raw proposal against gold, so the cheap tiers'
+# curves finally accrue evidence. Edges key on the REQUESTED model: decide-time
+# conditioning looks up extract_edge(requested), and served_model is "" on §18.9 warm
+# replays — stamping it would split the curve namespace.
+
+def test_corroborate_tier_appends_an_edge_event() -> None:
+    fake = FakeServices(
+        route={"construct": "tax id", "time_indexed": False},
+        extract={**_EXTRACT, "candidates": ["P123", "Q999"]},
+        corroborate={"observations": [{"reports": 0, "group": 0, "authority": 1.0,
+                                       "subject_factor": 1.0, "time_factor": 1.0}],
+                     "gather_rho": 0.80, "value": "P123", "confidence": 0.7,
+                     "cache_key": "jk-1"},
+        decides=[{"effector": "gather", "probe": "corroborate_haiku",
+                  "credences": [0.5, 0.5], "p_none": 0.1, "eu": 0.2},
+                 {"effector": "report", "value": "P123", "credences": [0.9, 0.1],
+                  "p_none": 0.05, "eu": 0.8}])
+    view = _loop(fake, grow=False)
+    assert view["edge_events"] == [{"edge": "extract@claude-haiku-4-5", "value": "P123",
+                                    "confidence": 0.7, "lineage": "jk-1"}]
+
+
+def test_escalating_tiers_append_one_event_each() -> None:
+    # haiku then opus both fire (each tier at most once); two events, firing order.
+    fake = FakeServices(
+        route={"construct": "tax id", "time_indexed": False},
+        extract={**_EXTRACT, "candidates": ["P123", "Q999"]},
+        corroborate={"observations": [{"reports": 0, "group": 0, "authority": 1.0,
+                                       "subject_factor": 1.0, "time_factor": 1.0}],
+                     "gather_rho": 0.80, "value": "P123", "confidence": 0.7,
+                     "cache_key": "jk-1"},
+        decides=[{"effector": "gather", "probe": "corroborate_haiku",
+                  "credences": [0.5, 0.5], "p_none": 0.1, "eu": 0.2},
+                 {"effector": "gather", "probe": "corroborate_opus",
+                  "credences": [0.6, 0.4], "p_none": 0.1, "eu": 0.3},
+                 {"effector": "report", "value": "P123", "credences": [0.9, 0.1],
+                  "p_none": 0.05, "eu": 0.8}])
+    view = _loop(fake, grow=False)
+    assert [e["edge"] for e in view["edge_events"]] == [
+        "extract@claude-haiku-4-5", "extract@claude-opus-4-8"]
+
+
+def test_rescue_walk_appends_an_edge_event() -> None:
+    # the k=0 strong rescue fires the opus re-read; its proposal is a gradeable firing
+    # whether or not the committed act later reports.
+    fake = FakeServices(
+        route={"construct": "mortgage", "time_indexed": False},
+        extracts=[_EMPTY_EXTRACT, _EMPTY_EXTRACT, _EMPTY_EXTRACT],
+        corroborate={"observations": [{"reports": 0, "group": 0, "authority": 1.0,
+                                       "subject_factor": 1.0, "time_factor": 1.0}],
+                     "gather_rho": 0.95, "value": "NEW-7", "new_candidate": "NEW-7",
+                     "confidence": 0.9, "cache_key": "jk-r"},
+        decides=[{"effector": "report", "value": "NEW-7", "credences": [0.93],
+                  "p_none": 0.07, "eu": 0.8}])
+    view = _loop(fake, grow_lane=True)
+    assert view["edge_events"] == [{"edge": "extract@claude-opus-4-8", "value": "NEW-7",
+                                    "confidence": 0.9, "lineage": "jk-r"}]
+
+
+def test_non_minting_rescue_event_survives_on_the_miss_view() -> None:
+    # a declining strong read (value None) still fired and still names its §18.9
+    # artifact — the event rides the MISS view with its lineage (nothing to grade,
+    # but the dedup axis is preserved for any future decline-aware fold).
+    fake = FakeServices(
+        route={"construct": "visa expiry", "time_indexed": False},
+        extracts=[_EMPTY_EXTRACT, _EMPTY_EXTRACT, _EMPTY_EXTRACT],
+        corroborate={"observations": [], "gather_rho": 0.95, "value": None,
+                     "confidence": None, "cache_key": "jk-d"})
+    view = _loop(fake, grow_lane=True)
+    assert view["effector"] == "miss"
+    assert view["edge_events"] == [{"edge": "extract@claude-opus-4-8", "value": None,
+                                    "confidence": None, "lineage": "jk-d"}]
+
+
+def test_re_extract_strong_appends_an_edge_event() -> None:
+    fake = FakeServices(
+        route={"construct": "tax id", "time_indexed": False},
+        extract={**_EXTRACT, "candidates": ["P123"]},
+        corroborate={"observations": [{"reports": 0, "group": 0, "authority": 1.0,
+                                       "subject_factor": 1.0, "time_factor": 1.0}],
+                     "gather_rho": 0.95, "value": "P123", "confidence": 0.8,
+                     "cache_key": "jk-s"},
+        decides=[{"effector": "gather", "probe": "re_extract_strong",
+                  "credences": [0.5], "p_none": 0.2, "eu": 0.2},
+                 {"effector": "report", "value": "P123", "credences": [0.9],
+                  "p_none": 0.05, "eu": 0.8}])
+    view = _loop(fake, grow=False)
+    assert view["edge_events"] == [{"edge": "extract@claude-opus-4-8", "value": "P123",
+                                    "confidence": 0.8, "lineage": "jk-s"}]
+
+
+def test_deliberate_appends_an_edge_event_and_keeps_the_legacy_slot() -> None:
+    # deliberate appears in the event stream like every other firing, AND the six
+    # decisions-v2 single-slot fields stay byte-identical (their consumers: the
+    # /log_decision accounting and executor_run_stats — requirement-2 pin).
+    fake = FakeServices(
+        route={"construct": "rent", "time_indexed": False},
+        extract={**_EXTRACT, "candidates": ["NIS 4,200"]},
+        deliberate={"observations": [{"reports": 0, "group": 0, "authority": 1.0,
+                                      "subject_factor": 1.0, "time_factor": 1.0}],
+                    "confidence": 0.85, "model": "claude-opus-4-8",
+                    "value": "NIS 4,200", "status": "ok", "declined": False,
+                    "cost_usd": 0.42, "latency_s": 23.0, "cache": "miss",
+                    "cache_key": "dk-42"},
+        decides=[{"effector": "gather", "probe": "deliberate",
+                  "credences": [0.5], "p_none": 0.3, "eu": 0.1},
+                 {"effector": "abstain", "credences": [0.4], "p_none": 0.6,
+                  "eu": 0.0}])
+    view = _loop(fake, grow=False, curves={})
+    assert view["edge_events"] == [{"edge": "deliberate@claude-opus-4-8",
+                                    "value": "NIS 4,200", "confidence": 0.85,
+                                    "lineage": "dk-42"}]
+    assert view["instrument"] == "deliberate@claude-opus-4-8"
+    assert view["cost_usd"] == 0.42
+    assert view["latency_s"] == 23.0
+    assert view["instrument_value"] == "NIS 4,200"
+    assert view["instrument_confidence"] == 0.85
+    assert view["instrument_lineage"] == "dk-42"
+
+
+def test_all_view_shapes_carry_edge_events() -> None:
+    # consumers INDEX the key (never .get) — the default must exist on every return
+    # site: plain typed, extract-miss short circuit, and the narrative family.
+    plain = _loop(FakeServices(
+        route={"construct": "tax id", "time_indexed": False},
+        decides=[{"effector": "report", "value": "P123", "credences": [0.95],
+                  "p_none": 0.02, "eu": 0.9}]), grow=False)
+    assert plain["edge_events"] == []
+    miss = _loop(FakeServices(
+        route={"construct": "passport number", "time_indexed": False},
+        extract={"candidates": [], "observations": [], "rho": 0.7,
+                 "era_split": False, "indeterminate": 3, "half_life_years": 5.0}),
+        grow=False)
+    assert miss["edge_events"] == []
+    narr = _loop(FakeServices(route=None, narrative={
+        "action": "report", "asserted": ["you travelled in May"],
+        "rendered": "you travelled in May [1]\n\nnarrative footer",
+        "hits": [{"artifact_cache_key": "d0", "chunk_text": "x"}]}),
+        "tell me about my week")
+    assert narr["edge_events"] == []
+
+
 def test_deliberate_new_candidate_enlarges_k() -> None:
     fake = FakeServices(
         route={"construct": "rent", "time_indexed": False},

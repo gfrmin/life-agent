@@ -116,9 +116,11 @@ def menu_transforms(curves: Curves) -> list[dict[str, Any]]:
     converts nothing. HONESTY BOUND: with a FITTED (non-flat) curve this pricing is an
     UPPER-BOUND rule — the offer prices at curve(declared prior) while enactment folds
     at curve(actual self-report), which can be lower; exact pre-call identity is
-    structurally impossible for a self-reporting instrument. Unreachable today (no
-    attributed outcomes ⇒ curves=None); when the writer lands, re-price at the curve's
-    mean over the edge's observed confidence distribution instead."""
+    structurally impossible for a self-reporting instrument. The extract-tier writer
+    now feeds these curves (every firing lands an eval_edge row via the view's
+    edge_events stream); re-pricing at the curve's mean over the edge's observed
+    confidence distribution — instead of curve(declared prior) — remains the named
+    future refinement."""
     rows: list[dict[str, Any]] = []
     for t in DEFAULT_TRANSFORMS:
         if t["kind"] == "voi" and t["probe"] in _TIER_MODEL:
@@ -241,7 +243,7 @@ def decide_via_loop(question: str, k: int, *, bridge: str, daemon: str, post: Po
                 "hits": nv.get("hits", []), "route": None, "rendered": nv.get("rendered"),
                 "instrument": "", "cost_usd": None, "latency_s": None,
                 "instrument_value": None, "instrument_confidence": None,
-                "instrument_lineage": None}
+                "instrument_lineage": None, "edge_events": []}
     if grow_lane:
         return run_pass(question, k, route, bridge=bridge, daemon=daemon, post=post, get=get,
                         rerank=False, expand=False, transforms=transforms, grow_lane=True,
@@ -315,6 +317,19 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
             except Exception as e:
                 print(f"  (gather outcome not logged: {e})")
 
+    # the attribution stream — one event per answer-proposing firing, in firing order.
+    # The gate's writer grades each event's OWN raw proposal against gold, so the extract
+    # tiers' curves accrue evidence too (not just deliberate's). Edges key on the
+    # REQUESTED model: decide-time conditioning looks up extract_edge(requested), and
+    # served_model is "" on §18.9 warm replays — stamping it would split the namespace.
+    edge_events: list[dict[str, Any]] = []
+
+    def _edge_event(edge: str, reply: dict[str, Any]) -> None:
+        v = reply.get("value")
+        edge_events.append({"edge": edge, "value": str(v) if v is not None else None,
+                            "confidence": reply.get("confidence"),
+                            "lineage": reply.get("cache_key")})
+
     applied: list[str] = []
     if grow_lane and not ext["candidates"] and menu is not None:
         # The k=0 degenerate case: nothing extracted ⇒ there is no candidate posterior to price
@@ -347,6 +362,7 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
                            "time_indexed": route["time_indexed"],
                            "construct": route["construct"],
                            "covariates": {"doc_date": recency}})
+                _edge_event(extract_edge(_RE_EXTRACT_MODEL), cr)
                 minted = bool(cr.get("new_candidate"))
                 enacted.append((g_probe, sensors0, minted))
                 applied.append(g_probe)
@@ -367,7 +383,7 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
                 "p_none": None, "eu": None, "n_obs": 0, "hits": hits, "route": route,
                 "instrument": "", "cost_usd": None, "latency_s": None,
                 "instrument_value": None, "instrument_confidence": None,
-                "instrument_lineage": None}
+                "instrument_lineage": None, "edge_events": edge_events}
     u_bar = get(f"{bridge}/utility")["u_bar"]
     candidates = ext["candidates"]
     owner = owner_scoped(question)
@@ -426,6 +442,7 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
                        # pass time_indexed + construct + doc_date so a stale re-read decays.
                        "time_indexed": route["time_indexed"], "construct": route["construct"],
                        "covariates": {"doc_date": recency}})
+            _edge_event(extract_edge(model), cr)
             # with curves, the read's own stated confidence conditions through the edge's
             # calibration curve — the instrument's uncertainty is no longer discarded on
             # the regular tiers (rescue-path parity); without curves the tier rho echoes.
@@ -484,6 +501,7 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
                 edge_value = str(v) if v is not None else None
                 edge_conf = dr.get("confidence")
                 edge_lineage = dr.get("cache_key")
+                _edge_event(edge_instrument, dr)
             if dr is not None and dr.get("status") == "ok":
                 if dr.get("new_candidate"):
                     candidates = [*candidates, str(dr["new_candidate"])]
@@ -505,6 +523,7 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
                        "rho": _GATHER_RHO,
                        "time_indexed": route["time_indexed"], "construct": route["construct"],
                        "covariates": {"doc_date": recency}})
+            _edge_event(extract_edge(_RE_EXTRACT_MODEL), cr)
             changed = bool(cr.get("new_candidate")) or bool(cr["observations"])
             if cr.get("new_candidate"):
                 candidates = [*candidates, str(cr["new_candidate"])]
@@ -538,7 +557,8 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
             "n_obs": len(obs), "hits": hits, "route": route,
             "instrument": edge_instrument, "cost_usd": edge_cost,
             "latency_s": edge_latency, "instrument_value": edge_value,
-            "instrument_confidence": edge_conf, "instrument_lineage": edge_lineage}
+            "instrument_confidence": edge_conf, "instrument_lineage": edge_lineage,
+            "edge_events": edge_events}
 
 
 # --- render (the executor's decision in the shared credence grammar) --------------------
