@@ -377,6 +377,53 @@ def edge_outcome(q: dict, event: dict, *, run_id: str):
     )
 
 
+def judge_shadow_items(questions: list[dict], typed_views: list, replay: dict | None) -> list[dict]:
+    """Every (arm, candidate) pair the matcher graded this run, WITH the matcher's own
+    granularity (PR #65 review): the typed arm one item PER asserted value (the gate's
+    realised_report is any-per-value — a joined string drifts in both directions), a
+    hedge one item per candidate (the gate grades hedge over ``view["candidates"]``),
+    each gradeable edge firing, and the replay arm's report text. The ``arm`` label
+    exists for the REPORT table only; the judge prompt never sees it (eval_judge builds
+    the prompt from question/gold/variants/candidate alone). Skips mirror the matcher's
+    own: abstains, declined/blank replay rows, rows whose status is not exactly "ok"
+    (a MISSING status is an abstain in _replay_response — never graded), gold-less
+    questions, valueless/self-report-less/edge-less events. A LIVE monolithic baseline
+    is not covered (its text is not captured) — the report section discloses that."""
+    items: list[dict] = []
+    for q, view in typed_views:
+        gold = str(q.get("answer") or "")
+        if not gold:
+            continue
+        base = {"question_id": str(q["id"]), "question": str(q["question"]),
+                "gold": gold, "variants": list(q.get("answer_variants", []))}
+        items += [{**base, "arm": "typed", "candidate": str(a)}
+                  for a in view["asserted"]]
+        if view["effector"] == "hedge":
+            items += [{**base, "arm": "typed-hedge", "candidate": str(c)}
+                      for c in view["candidates"]]
+        items += [{**base, "arm": f"edge:{ev['edge']}", "candidate": str(ev["value"])}
+                  for ev in view["edge_events"]
+                  if ev.get("edge") and ev.get("value") is not None
+                  and ev.get("confidence") is not None]
+    if replay:
+        by_id = {str(q["id"]): q for q in questions}
+        for qid, row in replay.items():
+            q = by_id.get(str(qid))
+            if q is None:
+                continue
+            gold = str(q.get("answer") or "")
+            if not gold:
+                continue
+            text = row.get("text")
+            if row.get("declined") or row.get("status") != "ok" \
+                    or not str(text or "").strip():
+                continue
+            items.append({"question_id": str(qid), "question": str(q["question"]),
+                          "gold": gold, "variants": list(q.get("answer_variants", [])),
+                          "arm": "mono", "candidate": str(text)})
+    return items
+
+
 def _fresh_edge_rows(typed_views: list, *, run_id: str, log=None) -> tuple:
     """Grade every collected firing and dedup against the log's already-written §18.9
     lineage — the ONE writer body, shared by the normal post-run path and the
@@ -949,6 +996,16 @@ def main() -> int:
              "($LIFE_AGENT_KB/calibration/outcomes.jsonl) — dry runs only; the log "
              "is append-only evidence and cannot be backfilled",
     )
+    parser.add_argument(
+        "--judge-shadow", action="store_true",
+        help="SHADOW-grade every matcher-graded candidate (typed assert, replay text, "
+             "edge firings) with the cross-provider modal-of-3 correctness judge and "
+             "publish the disagreement table in the gate report. Grading is UNCHANGED "
+             "(the verdict and all outcome rows stay matcher-graded — run 5 remains "
+             "comparable to runs 3/4); adoption is pre-registered for run 6 iff the "
+             "disagreement audit clears. Live cross-provider calls (cached append-only "
+             "in $LIFE_AGENT_KB/eval/judge-verdicts.jsonl; ~$1/run cold).",
+    )
     args = parser.parse_args()
 
     if args.gate_loo and not args.gate_executor:
@@ -1114,6 +1171,39 @@ def main() -> int:
             "".join(json.dumps(_paired_to_dict(p, baseline=baseline_tag),
                                sort_keys=True) + "\n"
                     for p in paired), encoding="utf-8")
+
+        # the judge SHADOW (opt-in) runs AFTER the gate artifacts are on disk and
+        # APPENDS its section — a kill or judge failure mid-shadow can no longer void
+        # the paid reading (PR #65 review; the run-3 external-kill precedent). Grading
+        # is unchanged: the verdict above and every outcome row stay matcher-graded
+        # (comparability; adoption pre-registered for the run after next). Fail-open
+        # incl. SystemExit — core/llm's missing-key/provider-error convention.
+        if args.judge_shadow:
+            try:
+                sys.path.insert(0, str(Path(__file__).resolve().parent / "comparison"))
+                import _common as JC
+                import eval_judge as EJ
+                cache_path = _kb_root() / "eval" / "judge-verdicts.jsonl"
+                jcache = EJ.load_verdicts(cache_path)
+                items = judge_shadow_items(questions, typed_views, replay)
+
+                def _judge(it: dict) -> bool | None:
+                    return EJ.judge_with_cache(
+                        jcache, cache_path, it["question"], it["gold"], it["variants"],
+                        it["candidate"], complete=JC.judge_complete,
+                        judge=JC.JUDGE_MODEL)
+                sh_rows, sh_stats = EJ.shadow_disagreements(items, judge=_judge)
+                judge_note = EJ.format_judge_shadow(sh_rows, sh_stats,
+                                                    mono_covered=replay is not None)
+                with (gate_dir / "report.md").open("a", encoding="utf-8") as f:
+                    f.write(judge_note)
+                print(f"  judge shadow: {sh_stats['n_judged']}/{sh_stats['n_items']} "
+                      f"judged · agree {sh_stats['n_agree']} · "
+                      f"disagree {len(sh_rows)} · unjudged {sh_stats['n_unjudged']} "
+                      f"(grading unchanged)")
+            except (Exception, SystemExit) as e:
+                print(f"  (judge shadow failed, grading unchanged and the gate "
+                      f"artifacts already written: {e})")
         print(f"\nGate report → {gate_dir / 'report.md'}")
         verdict = "PASS" if result.passed else "FAIL"
         print(f"  verdict {verdict} · P(Δ>{result.materiality_delta})="
