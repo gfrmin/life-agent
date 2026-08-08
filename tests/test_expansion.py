@@ -62,6 +62,11 @@ REFUSAL_SHAPES = (
     "I haven't found any relevant keywords for this.",
     "You'd need to consult a professional for this request.",
     "I wasn't able to generate keywords for this request.",
+    # PR #64 review: the CLARIFICATION register is Haiku's DOMINANT real refusal shape
+    # (measured over the 222 cached expansions) — and one more contraction rung (you've)
+    "Please clarify your specific request before I generate search terms",
+    "Could you rephrase your request with specific personal document details",
+    "You've asked something I can't help with",
 )
 
 KEYWORD_SHAPES = (
@@ -76,9 +81,16 @@ KEYWORD_SHAPES = (
     "apology letter sorry regret complaint מכתב התנצלות",
     "cannot unable sorry apology complaint letter",  # exactly ½ density — held OUT (strict >)
     # a hedged preamble around real keywords keeps its keywords, never nuked wholesale
+    # (the measured ceiling: exactly ½ density, held out by the STRICT inequality)
     "I don't have specific context, but likely keywords: arnona property-tax ארנונה עירייה",
-    # the round-2 prose additions (need/able/id/…) never fire inside a keyword list
+    # the prose-word widening must never fire inside a keyword list (PR #64 review's two
+    # VERIFIED false positives, pinned): hyphenated compounds are single content tokens,
+    # short lists sit below the token floor, dual-use words never fire without a
+    # first/second-person or politeness marker
     "need-to-know clearance authorization form security-id badge",
+    "need-to-know security-id",
+    "question answer id form",
+    "security question answer password hint",
 )
 
 
@@ -140,32 +152,29 @@ def test_fresh_refusal_is_gated_and_still_recorded(tmp_path, monkeypatch) -> Non
     assert D.lookup(tmp_path, key.cache_key) == OBSERVED_REFUSAL.encode("utf-8")
 
 
-def test_ask_wrapper_counts_a_cached_refusal(tmp_path, monkeypatch) -> None:
+def test_ask_wrapper_counts_and_names_a_cached_refusal(
+        tmp_path, monkeypatch, capsys) -> None:
     # the v0 signal (issue #56 second ask): a refusal is logged, not silently discarded —
-    # surfaced as expand_refusal.hit/.miss in CACHE_STATS (run_eval's cache line reads it).
-    import sys
-    from pathlib import Path
-    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
-    import ask
+    # expand_refusal.hit/.miss in CACHE_STATS (run_eval's cache line) AND the fallback
+    # note on the REPL's stdout (the shared gate prints on every PROCESS surface; the
+    # owner's reply payload is a named future refinement, not a claim made here).
+    import ask  # conftest's autouse fixture already put scripts/ on sys.path
     _no_model(monkeypatch)
     question = _seed_cached_refusal(tmp_path)
     ask.reset_cache_stats()
     assert ask._expand_terms(question, root=tmp_path) == ""
     assert ask.cache_stats()["expand_refusal.hit"] == 1
+    assert "raw-question fallback" in capsys.readouterr().out
 
 
-def test_ask_wrapper_gates_through_the_shared_seam_never_silently(
-        tmp_path, monkeypatch, capsys) -> None:
-    # PR #63 review: the gate must not be hand-mirrored in ask.py — both surfaces run
-    # ONE usable_terms (single source, no drift), and the fallback is NAMED on the
-    # REPL surface too (the interaction contract's never-silent rule), not only in
-    # the bridge journal.
-    import sys
-    from pathlib import Path
-    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+def test_ask_wrapper_routes_through_the_shared_seam(tmp_path, monkeypatch) -> None:
+    # PR #64 review: pin the SEAM, not the printed string — a reintroduced hand-mirrored
+    # gate in ask.py printing the same note (the drift that already happened between
+    # PR #61 and #63) must fail THIS test. The sentinel can only come back through
+    # EXP.usable_terms itself.
     import ask
     _no_model(monkeypatch)
     question = _seed_cached_refusal(tmp_path)
-    ask.reset_cache_stats()
-    assert ask._expand_terms(question, root=tmp_path) == ""
-    assert "raw-question fallback" in capsys.readouterr().out
+    monkeypatch.setattr(EXP, "usable_terms",
+                        lambda raw, on_refusal=None: "SEAM-SENTINEL")
+    assert ask._expand_terms(question, root=tmp_path) == "SEAM-SENTINEL"
