@@ -564,9 +564,10 @@ def _expand_terms(question: str, *, model: str = EXPAND_MODEL,
         _count("expand", hit=False)
         D.record(root, key, r.text.encode("utf-8"), lineage=[],
                  metadata={"in_tokens": r.in_tokens, "out_tokens": r.out_tokens})
-        return EXP.usable_terms(
-            r.text, on_refusal=lambda: _count("expand_refusal", hit=False))
-    return EXP.usable_terms(r.text)
+    return EXP.usable_terms(  # one call site; the counter rides only when counted at all
+        r.text,
+        on_refusal=((lambda: _count("expand_refusal", hit=False))
+                    if root is not None else None))
 
 
 def _rerank_hits(question: str, pool: list[dict[str, Any]], k: int, *,

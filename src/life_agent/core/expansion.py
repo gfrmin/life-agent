@@ -57,27 +57,51 @@ EXPAND_SYSTEM = (
 _APOSTROPHES = str.maketrans("", "", "'’‘ʼ")  # noqa: RUF001
 _PROSE_TEXT = """
     a an the and or but nor so to of in on at by for with without from as about into over
-    under outside inside beyond within is are am was were be been being do does did not no
-    can cannot could will would should shall may might must have has had having this that
-    these those there here it its i im ive id me my mine we our us you your yours youd
-    youre they them their he she his her what which who whom how when where why if then
-    than just more only also however instead rather such any some need able sorry
-    unfortunately unable apologize apologise apologies please question answer cant dont
-    wont didnt doesnt isnt arent couldnt wouldnt shouldnt havent hasnt wasnt werent
+    under outside inside beyond within before is are am was were be been being do does did
+    not no can cannot could will would should shall may might must have has had having
+    this that these those there here it its i im ive id me my mine we our us you your
+    yours youd youre youve youll they them their theyre he she his her what whats which
+    who whom how when where why if then than just more only also however instead rather
+    such any some need able sorry unfortunately unable apologize apologise apologies
+    please clarify rephrase provide specify specific context generate thats theres ill
+    wed cant dont wont didnt doesnt isnt arent couldnt wouldnt shouldnt havent hasnt
+    wasnt werent hadnt
 """
 _PROSE_WORDS = frozenset(_PROSE_TEXT.split())
-_MIN_PROSE_TOKENS = 4  # below one sentence's length density is meaningless — keep the reply
+# refusal/clarification prose is ADDRESSED — first/second person or a politeness/apology
+# adverb. Keyword lists have none, so dual-use vocabulary (need/able/specific/…) can
+# never fire a list on density alone (PR #64 review's false-positive class).
+_PERSON_TEXT = """
+    i im ive id me my mine we us you your yours youd youre youve youll
+    please sorry unfortunately
+"""
+_PERSON_MARKERS = frozenset(_PERSON_TEXT.split())
+_MIN_PROSE_TOKENS = 5  # refusals are sentences; short lists are below the fire floor
+
+
+def _detector_tokens(raw: str) -> list[str]:
+    """Detector tokenization: apostrophes fuse (don't → dont) and hyphenated compounds
+    stay ONE content token (need-to-know, security-id) — splitting them would count
+    their fragments as prose and fire on keyword lists (PR #64 review, verified)."""
+    parts = re.sub(r"[^\w-]+", " ", raw.translate(_APOSTROPHES).lower()).split()
+    return [t for t in (p.strip("-") for p in parts) if t]
 
 
 def refusal(raw: str) -> bool:
-    """Pure: is an expansion reply prose (a refusal / hedge) rather than a keyword list?
-    Fires iff STRICTLY more than half of its tokens (and at least 4) are English function
-    words or refusal hedge vocabulary. Measured boundaries (pinned in tests): every
-    observed refusal shape ≥ 0.53 density; a hedged preamble carrying real keywords
-    ≤ 0.33; marker words inside a keyword list ('sorry', 'unable', 'id' …) top out at
-    exactly ½ and never fire alone."""
-    toks = re.sub(r"[^\w]+", " ", raw.translate(_APOSTROPHES).lower()).split()
+    """Pure: is an expansion reply prose (a refusal / clarification / hedge) rather than
+    a keyword list? Three conjunctive guards, each carrying one failure class:
+    at least 5 tokens (short dual-use lists never fire), an addressed-prose marker
+    present (unaddressed keyword lists never fire on density alone), and STRICTLY more
+    than half the tokens in the prose vocabulary. Measured boundaries (pinned in
+    tests): every pinned refusal shape ≥ 0.53 density; the hedged-preamble-with-
+    keywords ceiling is EXACTLY ½, held out by the strict inequality. Named residual
+    (accepted, keep-biased): impersonal registers ("This request cannot be processed")
+    and sub-floor shorts pass — a kept refusal adds bounded noise, build_query always
+    retains the raw question."""
+    toks = _detector_tokens(raw)
     if len(toks) < _MIN_PROSE_TOKENS:
+        return False
+    if not any(t in _PERSON_MARKERS for t in toks):
         return False
     return sum(t in _PROSE_WORDS for t in toks) / len(toks) > 0.5
 
@@ -92,17 +116,21 @@ def clean_terms(raw: str) -> str:
 
 
 def usable_terms(raw: str, on_refusal: Callable[[], None] | None = None) -> str:
-    """Post-cache finishing — the ONE refusal gate every surface shares (PR #63 review:
-    a hand-mirrored copy in ask.py had already drifted silent on the REPL). Gates
-    refusal prose to '' (the callers' fail-open contract falls back to the raw-question
-    query) and NAMES the fallback on every surface (bridge journal and REPL alike —
-    the interaction contract's never-silent rule); ``on_refusal`` lets a caller attach
-    its own accounting (ask.py's CACHE_STATS counter). Applied post-cache, so
-    already-recorded refusal replies are re-gated on read — no EXPAND_VERSION bump.
-    Known, accepted: a detector FALSE POSITIVE on a cached reply silences that
-    question's expansion until --no-cache or a detector change (the cache hit
-    short-circuits the model) — the strict >½ bar and the pinned keyword-shape table
-    bound the risk, and the printed note is the trace."""
+    """Post-cache finishing — the ONE refusal gate every caller shares (PR #63 review:
+    a hand-mirrored copy in ask.py had already drifted silent; the seam is now pinned
+    by test). Gates refusal prose to '' (the callers' fail-open contract falls back to
+    the raw-question query) and NAMES the fallback on every PROCESS surface — the
+    bridge daemon's journal and the REPL's stdout. Honest scope (PR #64 review): the
+    note does NOT yet reach the owner's reply payload (Telegram / rendered answer);
+    that user-facing disclosure is a named future refinement, and this print is
+    observability until it lands. ``on_refusal`` lets a caller attach its own
+    accounting (ask.py's CACHE_STATS counter). Applied post-cache, so already-recorded
+    refusal replies are re-gated on read — no EXPAND_VERSION bump. Known, accepted: a
+    detector FALSE POSITIVE on a cached reply silences that question's expansion until
+    --no-cache or a detector change (the cache hit short-circuits the model) — bounded
+    by refusal()'s three conjunctive guards and the pinned keyword-shape table (any
+    vocabulary widening is a detector change: re-verify that table's boundary cases),
+    and the printed note is the trace."""
     if refusal(raw):
         print("  (expansion refused → raw-question fallback)")
         if on_refusal is not None:
