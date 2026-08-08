@@ -758,7 +758,7 @@ def _cache_line(cache: dict[str, int]) -> str:
     if not cache:
         return ""
     parts = []
-    for stage in ("expand", "retrieve", "synthesize"):
+    for stage in ("expand", "expand_refusal", "retrieve", "synthesize"):
         hits = cache.get(f"{stage}.hit", 0)
         total = hits + cache.get(f"{stage}.miss", 0)
         if total:

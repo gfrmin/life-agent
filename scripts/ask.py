@@ -552,8 +552,9 @@ def _expand_terms(question: str, *, model: str = EXPAND_MODEL,
         if cached is not None:
             _count("expand", hit=True)
             raw = cached.decode("utf-8")
-            if EXP.refusal(raw):  # issue #56: the out-of-domain signal, logged not discarded
+            if EXP.refusal(raw):  # issue #56: the out-of-domain signal, logged then gated
                 _count("expand_refusal", hit=True)
+                return ""
             return _clean_terms(raw)
     try:
         r = C.anthropic_complete(EXPAND_SYSTEM, question, model=model, max_tokens=120)
@@ -564,7 +565,9 @@ def _expand_terms(question: str, *, model: str = EXPAND_MODEL,
         D.record(root, key, r.text.encode("utf-8"), lineage=[],
                  metadata={"in_tokens": r.in_tokens, "out_tokens": r.out_tokens})
     if EXP.refusal(r.text):
-        _count("expand_refusal", hit=False)
+        if root is not None:  # count beside expand.miss — the refusal/attempt ratio must hold
+            _count("expand_refusal", hit=False)
+        return ""
     return _clean_terms(r.text)
 
 
