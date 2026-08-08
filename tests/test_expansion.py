@@ -50,7 +50,7 @@ OBSERVED_REFUSAL = ("I cannot help with this query. I'm a language model without
 REFUSAL_SHAPES = (
     OBSERVED_REFUSAL,
     "I don't have access to personal information about individuals.",
-    "I don’t have access to personal information about individuals.",  # U+2019 apostrophe
+    "I don’t have access to personal information about individuals.",  # noqa: RUF001
     "I do not have access to personal documents or files.",            # uncontracted
     "I'm an AI assistant without access to your files.",
     "Sorry, this is beyond my capabilities.",                          # possessive, no 'I'
