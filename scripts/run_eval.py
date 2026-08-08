@@ -377,6 +377,46 @@ def edge_outcome(q: dict, event: dict, *, run_id: str):
     )
 
 
+def judge_shadow_items(questions: list[dict], typed_views: list, replay: dict | None) -> list[dict]:
+    """Every (arm, candidate) pair the matcher graded this run — the typed arm's assert,
+    each gradeable edge firing, and the replay arm's report text — as blind judge items.
+    The ``arm`` label exists for the REPORT table only; the judge prompt never sees it
+    (eval_judge builds the prompt from question/gold/variants/candidate alone). Skips
+    mirror the matcher's own: abstains, declined/error/blank replay rows, gold-less
+    questions, valueless or self-report-less events."""
+    items: list[dict] = []
+    for q, view in typed_views:
+        gold = str(q.get("answer") or "")
+        if not gold:
+            continue
+        base = {"question_id": str(q["id"]), "question": str(q["question"]),
+                "gold": gold, "variants": list(q.get("answer_variants", []))}
+        if view["asserted"]:
+            items.append({**base, "arm": "typed",
+                          "candidate": " ".join(str(a) for a in view["asserted"])})
+        for ev in view["edge_events"]:
+            if ev.get("value") is not None and ev.get("confidence") is not None:
+                items.append({**base, "arm": f"edge:{ev['edge']}",
+                              "candidate": str(ev["value"])})
+    if replay:
+        by_id = {str(q["id"]): q for q in questions}
+        for qid, row in replay.items():
+            q = by_id.get(str(qid))
+            if q is None:
+                continue
+            gold = str(q.get("answer") or "")
+            if not gold:
+                continue
+            text = row.get("text")
+            if row.get("declined") or row.get("status", "ok") != "ok" \
+                    or not str(text or "").strip():
+                continue
+            items.append({"question_id": str(qid), "question": str(q["question"]),
+                          "gold": gold, "variants": list(q.get("answer_variants", [])),
+                          "arm": "mono", "candidate": str(text)})
+    return items
+
+
 def _fresh_edge_rows(typed_views: list, *, run_id: str, log=None) -> tuple:
     """Grade every collected firing and dedup against the log's already-written §18.9
     lineage — the ONE writer body, shared by the normal post-run path and the
@@ -949,6 +989,16 @@ def main() -> int:
              "($LIFE_AGENT_KB/calibration/outcomes.jsonl) — dry runs only; the log "
              "is append-only evidence and cannot be backfilled",
     )
+    parser.add_argument(
+        "--judge-shadow", action="store_true",
+        help="SHADOW-grade every matcher-graded candidate (typed assert, replay text, "
+             "edge firings) with the cross-provider modal-of-3 correctness judge and "
+             "publish the disagreement table in the gate report. Grading is UNCHANGED "
+             "(the verdict and all outcome rows stay matcher-graded — run 5 remains "
+             "comparable to runs 3/4); adoption is pre-registered for run 6 iff the "
+             "disagreement audit clears. Live cross-provider calls (cached append-only "
+             "in $LIFE_AGENT_KB/eval/judge-verdicts.jsonl; ~$1/run cold).",
+    )
     args = parser.parse_args()
 
     if args.gate_loo and not args.gate_executor:
@@ -1098,6 +1148,33 @@ def main() -> int:
         result = GATE.delta_posterior(paired, post, oracle_p=LK._ORACLE_P)
         elapsed = time.monotonic() - t0
 
+        # the judge SHADOW (opt-in): grade every matcher-graded candidate a second way
+        # and publish the disagreement table — the verdict above and every outcome row
+        # stay matcher-graded (comparability; adoption pre-registered for the run after
+        # next). Fail-open end to end: instrumentation never voids a computed reading.
+        judge_note = ""
+        if args.judge_shadow:
+            try:
+                sys.path.insert(0, str(Path(__file__).resolve().parent / "comparison"))
+                import _common as JC
+                import eval_judge as EJ
+                cache_path = _kb_root() / "eval" / "judge-verdicts.jsonl"
+                jcache = EJ.load_verdicts(cache_path)
+                items = judge_shadow_items(questions, typed_views, replay)
+
+                def _judge(it: dict) -> bool | None:
+                    return EJ.judge_with_cache(
+                        jcache, cache_path, it["question"], it["gold"], it["variants"],
+                        it["candidate"], complete=JC.judge_complete)
+                sh_rows, sh_stats = EJ.shadow_disagreements(items, judge=_judge)
+                judge_note = EJ.format_judge_shadow(sh_rows, sh_stats)
+                print(f"  judge shadow: {sh_stats['n_judged']}/{sh_stats['n_items']} "
+                      f"judged · agree {sh_stats['n_agree']} · "
+                      f"disagree {len(sh_rows)} · unjudged {sh_stats['n_unjudged']} "
+                      f"(grading unchanged)")
+            except Exception as e:
+                print(f"  (judge shadow failed, grading unchanged: {e})")
+
         # a Δ2 run writes to its OWN directory — it must never overwrite the frozen §8
         # monolithic gate artifacts, and every paired row names its baseline arm
         gate_dir = _kb_root() / "eval" / ("gate-outside-option" if replay is not None
@@ -1108,7 +1185,8 @@ def main() -> int:
         preamble = (f"> **Baseline arm:** {baseline_name}\n\n"
                     if replay is not None else "") + exec_note
         (gate_dir / "report.md").write_text(
-            preamble + GATE.render_report(result, run_id=run_id, elapsed=elapsed),
+            preamble + GATE.render_report(result, run_id=run_id, elapsed=elapsed)
+            + judge_note,
             encoding="utf-8")
         (gate_dir / "paired.jsonl").write_text(
             "".join(json.dumps(_paired_to_dict(p, baseline=baseline_tag),
