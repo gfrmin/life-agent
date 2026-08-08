@@ -56,6 +56,12 @@ REFUSAL_SHAPES = (
     "Sorry, this is beyond my capabilities.",                          # possessive, no 'I'
     "This falls outside my area of expertise, sorry.",
     "Unfortunately this request is outside my scope as a language model.",
+    # PR #63 review: verified evaders one contraction/hedge-word away from the pinned
+    # shapes (I'd/you'd/haven't/wasn't were missing from the fused-contraction set)
+    "I'd need more information to answer that question.",
+    "I haven't found any relevant keywords for this.",
+    "You'd need to consult a professional for this request.",
+    "I wasn't able to generate keywords for this request.",
 )
 
 KEYWORD_SHAPES = (
@@ -71,6 +77,8 @@ KEYWORD_SHAPES = (
     "cannot unable sorry apology complaint letter",  # exactly ½ density — held OUT (strict >)
     # a hedged preamble around real keywords keeps its keywords, never nuked wholesale
     "I don't have specific context, but likely keywords: arnona property-tax ארנונה עירייה",
+    # the round-2 prose additions (need/able/id/…) never fire inside a keyword list
+    "need-to-know clearance authorization form security-id badge",
 )
 
 
@@ -144,3 +152,20 @@ def test_ask_wrapper_counts_a_cached_refusal(tmp_path, monkeypatch) -> None:
     ask.reset_cache_stats()
     assert ask._expand_terms(question, root=tmp_path) == ""
     assert ask.cache_stats()["expand_refusal.hit"] == 1
+
+
+def test_ask_wrapper_gates_through_the_shared_seam_never_silently(
+        tmp_path, monkeypatch, capsys) -> None:
+    # PR #63 review: the gate must not be hand-mirrored in ask.py — both surfaces run
+    # ONE usable_terms (single source, no drift), and the fallback is NAMED on the
+    # REPL surface too (the interaction contract's never-silent rule), not only in
+    # the bridge journal.
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+    import ask
+    _no_model(monkeypatch)
+    question = _seed_cached_refusal(tmp_path)
+    ask.reset_cache_stats()
+    assert ask._expand_terms(question, root=tmp_path) == ""
+    assert "raw-question fallback" in capsys.readouterr().out

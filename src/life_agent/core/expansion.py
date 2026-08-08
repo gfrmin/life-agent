@@ -16,6 +16,7 @@ it belongs as a :grow mode — raw retrieval first, expansion only when the chea
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from pathlib import Path
 
 import life_agent.core as C
@@ -58,10 +59,11 @@ _PROSE_TEXT = """
     a an the and or but nor so to of in on at by for with without from as about into over
     under outside inside beyond within is are am was were be been being do does did not no
     can cannot could will would should shall may might must have has had having this that
-    these those there here it its i im ive me my mine we our us you your yours they them
-    their he she his her what which who whom how when where why if then than just only also
-    however instead rather such any some sorry unfortunately unable apologize apologise
-    apologies please cant dont wont didnt doesnt isnt arent couldnt wouldnt shouldnt
+    these those there here it its i im ive id me my mine we our us you your yours youd
+    youre they them their he she his her what which who whom how when where why if then
+    than just more only also however instead rather such any some need able sorry
+    unfortunately unable apologize apologise apologies please question answer cant dont
+    wont didnt doesnt isnt arent couldnt wouldnt shouldnt havent hasnt wasnt werent
 """
 _PROSE_WORDS = frozenset(_PROSE_TEXT.split())
 _MIN_PROSE_TOKENS = 4  # below one sentence's length density is meaningless — keep the reply
@@ -84,18 +86,27 @@ def clean_terms(raw: str) -> str:
     """Pure: flatten an LLM expansion reply to a clean space-separated term string.
     Drops bullets/commas/quotes/newlines; keeps Unicode word chars (so Hebrew survives).
     Lossless by contract — the refusal gate (issue #56) lives at the expand_terms seam
-    (:func:`_usable`), never here: a gate inside the flattener would silently discard a
-    hedged reply's keywords for every caller."""
+    (:func:`usable_terms`), never here: a gate inside the flattener would silently
+    discard a hedged reply's keywords for every caller."""
     return " ".join(re.sub(r"[^\w]+", " ", raw, flags=re.UNICODE).split())
 
 
-def _usable(raw: str) -> str:
-    """Post-cache finishing: gate refusal prose to '' (issue #56 — the callers' fail-open
-    contract falls back to the raw-question query) with a journal-visible note (the bridge
-    callers' v0 out-of-domain signal), else the pure flatten. Applied post-cache, so
-    already-recorded refusal replies are re-gated on read — no EXPAND_VERSION bump."""
+def usable_terms(raw: str, on_refusal: Callable[[], None] | None = None) -> str:
+    """Post-cache finishing — the ONE refusal gate every surface shares (PR #63 review:
+    a hand-mirrored copy in ask.py had already drifted silent on the REPL). Gates
+    refusal prose to '' (the callers' fail-open contract falls back to the raw-question
+    query) and NAMES the fallback on every surface (bridge journal and REPL alike —
+    the interaction contract's never-silent rule); ``on_refusal`` lets a caller attach
+    its own accounting (ask.py's CACHE_STATS counter). Applied post-cache, so
+    already-recorded refusal replies are re-gated on read — no EXPAND_VERSION bump.
+    Known, accepted: a detector FALSE POSITIVE on a cached reply silences that
+    question's expansion until --no-cache or a detector change (the cache hit
+    short-circuits the model) — the strict >½ bar and the pinned keyword-shape table
+    bound the risk, and the printed note is the trace."""
     if refusal(raw):
         print("  (expansion refused → raw-question fallback)")
+        if on_refusal is not None:
+            on_refusal()
         return ""
     return clean_terms(raw)
 
@@ -106,15 +117,15 @@ def expand_terms(question: str, *, model: str = EXPAND_MODEL,
     string, or '' on any failure OR refusal (the caller falls back to the raw question —
     expansion must never break retrieval; issue #56). Cached, corpus-independent (keyed on
     question + model + prompt). The RAW reply is recorded — refusals included, they are the
-    out-of-domain audit trail; ``_usable`` (the refusal gate + ``clean_terms``) is applied
-    post-cache so a detector tweak does not orphan recorded expansions. Failures are never
-    recorded."""
+    out-of-domain audit trail; ``usable_terms`` (the refusal gate + ``clean_terms``) is
+    applied post-cache so a detector tweak does not orphan recorded expansions. Failures
+    are never recorded."""
     key = D.expand_key(question, model=model, prompt_template=EXPAND_SYSTEM,
                        temperature=C.TEMPERATURE, max_tokens=120)
     if root is not None and not no_cache:
         cached = D.lookup(root, key.cache_key)
         if cached is not None:
-            return _usable(cached.decode("utf-8"))
+            return usable_terms(cached.decode("utf-8"))
     try:
         r = C.anthropic_complete(EXPAND_SYSTEM, question, model=model, max_tokens=120)
     except SystemExit:
@@ -122,4 +133,4 @@ def expand_terms(question: str, *, model: str = EXPAND_MODEL,
     if root is not None:
         D.record(root, key, r.text.encode("utf-8"), lineage=[],
                  metadata={"in_tokens": r.in_tokens, "out_tokens": r.out_tokens})
-    return _usable(r.text)
+    return usable_terms(r.text)
