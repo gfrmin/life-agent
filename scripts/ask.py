@@ -564,8 +564,8 @@ def _expand_terms(question: str, *, model: str = EXPAND_MODEL,
         _count("expand", hit=False)
         D.record(root, key, r.text.encode("utf-8"), lineage=[],
                  metadata={"in_tokens": r.in_tokens, "out_tokens": r.out_tokens})
-    return EXP.usable_terms(  # one call site; the counter rides only when counted at all
-        r.text,
+    return EXP.usable_terms(  # the fresh path's single gate call (the cached branch has
+        r.text,               # its own — different raw, different hit-bucket counter)
         on_refusal=((lambda: _count("expand_refusal", hit=False))
                     if root is not None else None))
 

@@ -55,28 +55,36 @@ EXPAND_SYSTEM = (
 # fuse contractions before tokenizing (don't -> dont): ASCII ' plus the typographic
 # apostrophes U+2019 / U+2018 / U+02BC — the forms models actually emit in prose.
 _APOSTROPHES = str.maketrans("", "", "'’‘ʼ")  # noqa: RUF001
+# The vocabulary is deliberately LEAN — pure function words, fused contractions, and
+# words that are refusal/politeness prose and essentially never BM25 keywords. Three
+# review rounds proved every dual-use addition (need/able/specific/context/provide/
+# generate/question/answer) mints VERIFIED false positives on real keyword lists, and
+# an FP permanently silences a question's cached expansion — the costlier direction by
+# far (a kept refusal only adds bounded noise; build_query retains the raw question).
 _PROSE_TEXT = """
     a an the and or but nor so to of in on at by for with without from as about into over
     under outside inside beyond within before is are am was were be been being do does did
     not no can cannot could will would should shall may might must have has had having
     this that these those there here it its i im ive id me my mine we our us you your
     yours youd youre youve youll they them their theyre he she his her what whats which
-    who whom how when where why if then than just more only also however instead rather
-    such any some need able sorry unfortunately unable apologize apologise apologies
-    please clarify rephrase provide specify specific context generate thats theres ill
-    wed cant dont wont didnt doesnt isnt arent couldnt wouldnt shouldnt havent hasnt
-    wasnt werent hadnt
+    who whom how when where why if then than just only also however instead rather
+    such any some sorry unfortunately unable apologize apologise apologies please
+    clarify rephrase thats theres ill wed cant dont wont didnt doesnt isnt arent
+    couldnt wouldnt shouldnt havent hasnt wasnt werent hadnt
 """
 _PROSE_WORDS = frozenset(_PROSE_TEXT.split())
 # refusal/clarification prose is ADDRESSED — first/second person or a politeness/apology
-# adverb. Keyword lists have none, so dual-use vocabulary (need/able/specific/…) can
-# never fire a list on density alone (PR #64 review's false-positive class).
+# adverb. Keyword lists have none, so the prose vocabulary can never fire a list on
+# density alone. 'us' and 'id' are deliberately ABSENT (US tax / ID card — verified
+# domain-token collisions); the addressed shapes they would have marked are in the
+# pinned RESIDUAL table instead.
 _PERSON_TEXT = """
-    i im ive id me my mine we us you your yours youd youre youve youll
+    i im ive me my mine we you your yours youd youre youve youll
     please sorry unfortunately
 """
 _PERSON_MARKERS = frozenset(_PERSON_TEXT.split())
-_MIN_PROSE_TOKENS = 5  # refusals are sentences; short lists are below the fire floor
+_MIN_PROSE_TOKENS = 4  # "Please rephrase the question" / "Sorry, I can't help" — real
+#                        4-token refusals; the other two guards keep 4-token lists safe
 
 
 def _detector_tokens(raw: str) -> list[str]:
@@ -88,16 +96,17 @@ def _detector_tokens(raw: str) -> list[str]:
 
 
 def refusal(raw: str) -> bool:
-    """Pure: is an expansion reply prose (a refusal / clarification / hedge) rather than
-    a keyword list? Three conjunctive guards, each carrying one failure class:
-    at least 5 tokens (short dual-use lists never fire), an addressed-prose marker
-    present (unaddressed keyword lists never fire on density alone), and STRICTLY more
-    than half the tokens in the prose vocabulary. Measured boundaries (pinned in
-    tests): every pinned refusal shape ≥ 0.53 density; the hedged-preamble-with-
-    keywords ceiling is EXACTLY ½, held out by the strict inequality. Named residual
-    (accepted, keep-biased): impersonal registers ("This request cannot be processed")
-    and sub-floor shorts pass — a kept refusal adds bounded noise, build_query always
-    retains the raw question."""
+    """Pure: is an expansion reply prose (a refusal / clarification) rather than a
+    keyword list? Three conjunctive guards, tuned FP-averse (the settled trade of
+    review rounds 2-4 — a false positive permanently silences a cached expansion, a
+    false negative adds bounded query noise): at least 4 tokens, an addressed-prose
+    marker present, and STRICTLY more than half the tokens in the lean prose
+    vocabulary. Measured boundaries, pinned in tests both ways: every pinned refusal
+    shape > 0.52 density; the pinned hedge/keyword class tops out ≈ 0.4 — real margin,
+    not a knife edge. The KNOWN misses are pinned too (tests' RESIDUAL_SHAPES:
+    impersonal registers, dual-use-worded clarifications) — catching them costs
+    verified keyword-list false positives; measuring their live rate is the offline
+    audit issue, not more vocabulary."""
     toks = _detector_tokens(raw)
     if len(toks) < _MIN_PROSE_TOKENS:
         return False
