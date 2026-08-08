@@ -538,24 +538,24 @@ def _apply_subject_to_hits(
 def _expand_terms(question: str, *, model: str = EXPAND_MODEL,
                   root: Path | None = None, no_cache: bool = False) -> str:
     """Impure edge: ask a cheap model for extra BM25 keywords. Returns a space-joined
-    term string, or '' on any failure (caller falls back to the raw question — expansion
-    must never break the REPL).
+    term string, or '' on any failure OR refusal (caller falls back to the raw question —
+    expansion must never break the REPL; issue #56).
 
     Cached derivation (corpus-independent: keyed on question + model + prompt template
     only, so corpus growth never invalidates it). The RAW model reply is what is recorded;
-    ``_clean_terms`` is applied post-cache, so a cleanup tweak changes behaviour without
-    orphaning recorded expansions. Failures are never recorded."""
+    ``EXP.usable_terms`` (the ONE shared refusal gate + ``_clean_terms``) is applied
+    post-cache, so a cleanup/detector tweak changes behaviour without orphaning recorded
+    expansions; the counter callback keeps expand_refusal beside expand.miss (the
+    refusal/attempt ratio must hold). Failures are never recorded."""
     key = D.expand_key(question, model=model, prompt_template=EXPAND_SYSTEM,
                        temperature=C.TEMPERATURE, max_tokens=120)
     if root is not None and not no_cache:
         cached = D.lookup(root, key.cache_key)
         if cached is not None:
             _count("expand", hit=True)
-            raw = cached.decode("utf-8")
-            if EXP.refusal(raw):  # issue #56: the out-of-domain signal, logged then gated
-                _count("expand_refusal", hit=True)
-                return ""
-            return _clean_terms(raw)
+            return EXP.usable_terms(
+                cached.decode("utf-8"),
+                on_refusal=lambda: _count("expand_refusal", hit=True))
     try:
         r = C.anthropic_complete(EXPAND_SYSTEM, question, model=model, max_tokens=120)
     except SystemExit:
@@ -564,11 +564,10 @@ def _expand_terms(question: str, *, model: str = EXPAND_MODEL,
         _count("expand", hit=False)
         D.record(root, key, r.text.encode("utf-8"), lineage=[],
                  metadata={"in_tokens": r.in_tokens, "out_tokens": r.out_tokens})
-    if EXP.refusal(r.text):
-        if root is not None:  # count beside expand.miss — the refusal/attempt ratio must hold
-            _count("expand_refusal", hit=False)
-        return ""
-    return _clean_terms(r.text)
+    return EXP.usable_terms(  # the fresh path's single gate call (the cached branch has
+        r.text,               # its own — different raw, different hit-bucket counter)
+        on_refusal=((lambda: _count("expand_refusal", hit=False))
+                    if root is not None else None))
 
 
 def _rerank_hits(question: str, pool: list[dict[str, Any]], k: int, *,

@@ -24,11 +24,8 @@ def test_clean_terms_is_idempotent_on_clean_input() -> None:
 
 def test_expander_is_single_source_shared_with_ask() -> None:
     # ask.py aliases the core constants, so the cache key (= the prompt template) is identical
-    # and the
-    # two read paths reuse one cache. A copy-paste divergence would break this.
-    import sys
-    from pathlib import Path
-    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+    # and the two read paths reuse one cache. A copy-paste divergence would break this.
+    # (conftest's autouse fixture already puts scripts/ on sys.path.)
     import ask
     assert ask.EXPAND_SYSTEM is EXP.EXPAND_SYSTEM
     assert ask.EXPAND_MODEL == EXP.EXPAND_MODEL
@@ -56,6 +53,30 @@ REFUSAL_SHAPES = (
     "Sorry, this is beyond my capabilities.",                          # possessive, no 'I'
     "This falls outside my area of expertise, sorry.",
     "Unfortunately this request is outside my scope as a language model.",
+    # PR #63 review: verified evaders one contraction rung away from the pinned shapes
+    "I haven't found any relevant keywords for this.",
+    "You'd need to consult a professional for this request.",
+    "I wasn't able to generate keywords for this request.",
+    "You've asked something I can't help with",
+    # short clarification/apology registers (caught at the 4-token floor)
+    "Please rephrase the question",
+    "Sorry, I can't help",
+)
+
+# The HONEST boundary (three review rounds settled it): shapes the detector KNOWINGLY
+# does not catch, pinned as known-pass so no future edit can silently claim them and
+# no doc can overstate coverage. Catching these requires dual-use vocabulary
+# (need/specific/context/question/answer) or dropping the addressed-prose guard —
+# both VERIFIED false-positive sources on real keyword lists (rounds 2-3). The
+# fail-open cost of a kept refusal is bounded (build_query always retains the raw
+# question); the cost of a nuked keyword list is permanent recall loss via the cache.
+# Measuring this residual is the follow-up issue's offline audit, not more vocabulary.
+RESIDUAL_SHAPES = (
+    "I'd need more information to answer that question.",
+    "Please clarify your specific request before I generate search terms",
+    "Could you rephrase your request with specific personal document details",
+    "This request cannot be processed",
+    "I cannot answer this question about personal documents",
 )
 
 KEYWORD_SHAPES = (
@@ -70,8 +91,30 @@ KEYWORD_SHAPES = (
     "apology letter sorry regret complaint מכתב התנצלות",
     "cannot unable sorry apology complaint letter",  # exactly ½ density — held OUT (strict >)
     # a hedged preamble around real keywords keeps its keywords, never nuked wholesale
+    # (the measured ceiling: exactly ½ density, held out by the STRICT inequality)
     "I don't have specific context, but likely keywords: arnona property-tax ארנונה עירייה",
+    # every VERIFIED false positive from review rounds 2-3, pinned dead: hyphenated
+    # compounds are single content tokens; short lists sit below the floor; dual-use
+    # domain tokens ('us', 'id', 'need', 'specific', 'context'…) are NOT prose
+    # vocabulary and NOT markers, so no keyword list can reach the bar
+    "need-to-know clearance authorization form security-id badge",
+    "need-to-know security-id",
+    "question answer id form",
+    "security question answer password hint",
+    "us tax id number specific forms context",
+    "provide id specific context form details",
+    # near-neighbours of the pinned hedge (one keyword fewer / one function word more)
+    # must pass with real margin, not sit on the boundary
+    "I don't have specific context, but likely keywords: arnona property-tax ארנונה",
 )
+
+
+def test_residual_shapes_are_pinned_as_known_pass() -> None:
+    # the boundary is DOCUMENTED, not silently claimed: these must NOT fire today; a
+    # future detector that catches them must move this pin deliberately (and re-verify
+    # the KEYWORD_SHAPES table — that trade is the whole history of rounds 2-3).
+    for raw in RESIDUAL_SHAPES:
+        assert not EXP.refusal(raw), raw
 
 
 def test_refusal_detects_every_observed_shape() -> None:
@@ -132,15 +175,35 @@ def test_fresh_refusal_is_gated_and_still_recorded(tmp_path, monkeypatch) -> Non
     assert D.lookup(tmp_path, key.cache_key) == OBSERVED_REFUSAL.encode("utf-8")
 
 
-def test_ask_wrapper_counts_a_cached_refusal(tmp_path, monkeypatch) -> None:
+def test_ask_wrapper_counts_and_names_a_cached_refusal(
+        tmp_path, monkeypatch, capsys) -> None:
     # the v0 signal (issue #56 second ask): a refusal is logged, not silently discarded —
-    # surfaced as expand_refusal.hit/.miss in CACHE_STATS (run_eval's cache line reads it).
-    import sys
-    from pathlib import Path
-    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
-    import ask
+    # expand_refusal.hit/.miss in CACHE_STATS (run_eval's cache line) AND the fallback
+    # note on the REPL's stdout (the shared gate prints on every PROCESS surface; the
+    # owner's reply payload is a named future refinement, not a claim made here).
+    import ask  # conftest's autouse fixture already put scripts/ on sys.path
     _no_model(monkeypatch)
     question = _seed_cached_refusal(tmp_path)
     ask.reset_cache_stats()
     assert ask._expand_terms(question, root=tmp_path) == ""
     assert ask.cache_stats()["expand_refusal.hit"] == 1
+    assert "raw-question fallback" in capsys.readouterr().out
+
+
+def test_ask_wrapper_routes_through_the_shared_seam_on_both_paths(
+        tmp_path, monkeypatch) -> None:
+    # PR #64 review (both rounds): pin the SEAM, not the printed string, and pin BOTH
+    # call sites — cached and fresh — since the PR#61→#63 drift happened on exactly one
+    # of them. The sentinel can only come back through EXP.usable_terms itself.
+    import ask
+    monkeypatch.setattr(EXP, "usable_terms",
+                        lambda raw, on_refusal=None: "SEAM-SENTINEL")
+    _no_model(monkeypatch)
+    cached_q = _seed_cached_refusal(tmp_path)
+    assert ask._expand_terms(cached_q, root=tmp_path) == "SEAM-SENTINEL"  # cached path
+    import life_agent.core as C
+    from life_agent.core.llm import LLMResult
+    monkeypatch.setattr(C, "anthropic_complete", lambda *a, **k: LLMResult(
+        text="income salary invoice", in_tokens=1, out_tokens=1, seconds=0.0))
+    fresh = ask._expand_terms("a brand new question", root=tmp_path)
+    assert fresh == "SEAM-SENTINEL"                                       # fresh path
