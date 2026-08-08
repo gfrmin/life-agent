@@ -377,6 +377,22 @@ def edge_outcome(q: dict, event: dict, *, run_id: str):
     )
 
 
+def _fresh_edge_rows(typed_views: list, *, run_id: str, log=None) -> tuple:
+    """Grade every collected firing and dedup against the log's already-written §18.9
+    lineage — the ONE writer body, shared by the normal post-run path and the
+    crash-salvage path (a mid-run failure must not discard the completed questions'
+    paid curve food). Returns ``(fresh, n_dup, prior)``."""
+    import life_agent.core.outcomes as O
+    from life_agent.core import OUTCOMES_LOG
+
+    rows = [e for q, v in typed_views for e in edge_outcomes(q, v, run_id=run_id)]
+    prior = [ev for ev in O.read(OUTCOMES_LOG if log is None else log)
+             if ev.grader == "eval_edge"]
+    seen = {key for ev in prior for key in ev.lineage_keys}
+    fresh = dedup_edge_events(rows, seen)
+    return fresh, len(rows) - len(fresh), prior
+
+
 def edge_outcomes(q: dict, view: dict, *, run_id: str) -> list:
     """Every gradeable firing on the view's attribution stream, in firing order —
     the extract tiers (corroborate haiku/sonnet/opus, the k=0 rescue,
@@ -772,11 +788,18 @@ def _cache_line(cache: dict[str, int]) -> str:
     if not cache:
         return ""
     parts = []
-    for stage in ("expand", "expand_refusal", "retrieve", "synthesize"):
+    for stage in ("expand", "retrieve", "synthesize"):
         hits = cache.get(f"{stage}.hit", 0)
         total = hits + cache.get(f"{stage}.miss", 0)
         if total:
             parts.append(f"{stage} {hits}/{total}")
+    # the issue-#56 refusal signal is its own part, NOT a cache stage: refusals over
+    # expand ATTEMPTS (a rate the owner can read directly), cached count named.
+    n_ref = cache.get("expand_refusal.hit", 0) + cache.get("expand_refusal.miss", 0)
+    if n_ref:
+        n_att = cache.get("expand.hit", 0) + cache.get("expand.miss", 0)
+        parts.append(f"expand refusals {n_ref}/{n_att} "
+                     f"({cache.get('expand_refusal.hit', 0)} cached)")
     return f"Derivation cache hits: {' · '.join(parts)}" if parts else ""
 
 
@@ -1007,25 +1030,29 @@ def main() -> int:
                 typed_arm="executor" if args.gate_executor else "family",
                 typed_views=typed_views if args.gate_executor else None,
                 loo=args.gate_loo)
+        except BaseException:
+            # crash salvage: a mid-run failure voids the READING, never the completed
+            # questions' paid curve food (the run-3 external-kill precedent) — grade
+            # and append whatever accrued, say so, and re-raise.
+            if args.gate_executor and typed_views and not args.no_outcomes:
+                s_fresh, s_dup, _ = _fresh_edge_rows(typed_views, run_id=run_id)
+                if s_fresh:
+                    _append_outcomes(s_fresh)
+                print(f"  (mid-run failure — salvaged {len(s_fresh)} edge outcome "
+                      f"row(s) from {len(typed_views)} completed question(s), deduped "
+                      f"{s_dup}; the gate reading is VOID)")
+            raise
         finally:
             ask.EXECUTOR_RUN_ID = None
 
         exec_note = ""
         if args.gate_executor:
-            import life_agent.core.outcomes as O
-            from life_agent.core import OUTCOMES_LOG
-
             # the writer: grade every firing the run produced (extract tiers AND
             # deliberate — the view's edge_events stream), dedup against the log's
             # already-graded §18.9 lineage, and append AFTER the run — the in-run
             # curve fold (ask._edge_curves per question) never saw its own run's rows
             stats = executor_run_stats(typed_views)
-            edge_events = [e for q, v in typed_views
-                           for e in edge_outcomes(q, v, run_id=run_id)]
-            prior = [ev for ev in O.read(OUTCOMES_LOG) if ev.grader == "eval_edge"]
-            seen = {key for ev in prior for key in ev.lineage_keys}
-            fresh = dedup_edge_events(edge_events, seen)
-            n_dup = len(edge_events) - len(fresh)
+            fresh, n_dup, prior = _fresh_edge_rows(typed_views, run_id=run_id)
             if args.no_outcomes:
                 print(f"  (edge outcomes NOT written — --no-outcomes; would have "
                       f"written {len(fresh)}, deduped {n_dup})")
