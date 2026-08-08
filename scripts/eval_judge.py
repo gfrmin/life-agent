@@ -47,10 +47,14 @@ JUDGE_SYSTEM = (
 _N = 3  # modal-of-N (matches the synthesis grader's convention)
 
 
-def judge_key(question: str, gold: str, variants: list[str], candidate: str) -> str:
-    """Content-addressed verdict identity: prompt version + the exact judged inputs."""
+def judge_key(question: str, gold: str, variants: list[str], candidate: str, *,
+              judge: str) -> str:
+    """Content-addressed verdict identity: prompt version + the JUDGE MODEL PIN + the
+    exact judged inputs. The judge is part of the identity (PR #65 review): without it,
+    bumping the JUDGE_MODEL pin silently replays the old model's cached verdicts — the
+    exact silent-grader-swap this module forbids."""
     payload = json.dumps(
-        {"v": JUDGE_PROMPT_VERSION, "question": question, "gold": gold,
+        {"v": JUDGE_PROMPT_VERSION, "judge": judge, "question": question, "gold": gold,
          "variants": list(variants), "candidate": candidate},
         sort_keys=True, ensure_ascii=False)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
@@ -79,14 +83,23 @@ def _parse_vote(text: str) -> bool | None:
 def judge_correct(question: str, gold: str, variants: list[str], candidate: str, *,
                   complete: Callable[[str, str], Any], n: int = _N) -> bool | None:
     """Modal-of-n verdict over VALID votes; None (unjudged) on thin or tied votes.
-    Each vote is fail-open: a raising judge is a None vote, never a crashed run."""
+    Each vote is fail-open — including SystemExit, which core/llm raises for a missing
+    key or provider error and which would sail through ``except Exception`` and void a
+    PAID gate run (PR #65 review; the run_fairfight precedent). Early-exits the moment
+    the remaining votes cannot change the majority-of-valid outcome (byte-identical
+    verdicts at ~2/3 the calls on agreeing judges)."""
     user = _user_prompt(question, gold, variants, candidate)
     votes: list[bool | None] = []
-    for _ in range(n):
+    for i in range(n):
         try:
             votes.append(_parse_vote(complete(JUDGE_SYSTEM, user).text))
-        except Exception:
+        except (Exception, SystemExit):
             votes.append(None)
+        t = sum(v is True for v in votes)
+        f = sum(v is False for v in votes)
+        remaining = n - i - 1
+        if t > f + remaining or f > t + remaining:
+            break
     valid = [v for v in votes if v is not None]
     if len(valid) < 2 or sum(valid) * 2 == len(valid):
         return None
@@ -106,10 +119,12 @@ def load_verdicts(path: Path) -> dict[str, bool]:
 
 def judge_with_cache(cache: dict[str, bool], path: Path | None, question: str,
                      gold: str, variants: list[str], candidate: str, *,
-                     complete: Callable[[str, str], Any], n: int = _N) -> bool | None:
+                     complete: Callable[[str, str], Any], judge: str,
+                     n: int = _N) -> bool | None:
     """Cache-first verdict; a live verdict is appended (None never cached — a transient
-    failure must not freeze into future replays)."""
-    key = judge_key(question, gold, variants, candidate)
+    failure must not freeze into future replays). ``judge`` is the model pin, part of
+    the verdict identity and recorded beside it."""
+    key = judge_key(question, gold, variants, candidate, judge=judge)
     if key in cache:
         return cache[key]
     verdict = judge_correct(question, gold, variants, candidate, complete=complete, n=n)
@@ -119,7 +134,7 @@ def judge_with_cache(cache: dict[str, bool], path: Path | None, question: str,
     if path is not None:
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("a", encoding="utf-8") as f:
-            f.write(json.dumps({"key": key, "correct": verdict,
+            f.write(json.dumps({"key": key, "correct": verdict, "judge": judge,
                                 "prompt_version": JUDGE_PROMPT_VERSION},
                                sort_keys=True) + "\n")
     return verdict
@@ -148,8 +163,17 @@ def shadow_disagreements(items: list[dict], *,
     return rows, stats
 
 
-def format_judge_shadow(rows: list[dict], stats: dict) -> str:
-    """The report section — SHADOW framing first, disagreements as the audit table."""
+def _cell(s: object) -> str:
+    """Markdown-table-safe cell: the disagreement table IS the pre-registered audit
+    artifact — a newline or pipe in a candidate must not shift verdicts onto wrong
+    questions (PR #65 review)."""
+    return str(s).replace("\n", " ")[:80].replace("|", "\\|")
+
+
+def format_judge_shadow(rows: list[dict], stats: dict,
+                        mono_covered: bool = True) -> str:
+    """The report section — SHADOW framing first, disagreements as the audit table,
+    coverage gaps disclosed (no silent caps)."""
     lines = [
         "",
         "## Judge shadow (SHADOW only — grading unchanged)",
@@ -162,6 +186,9 @@ def format_judge_shadow(rows: list[dict], stats: dict) -> str:
         f"- items judged: {stats['n_judged']}/{stats['n_items']} "
         f"(unjudged {stats['n_unjudged']} — thin/tied votes, disclosed never guessed)",
     ]
+    if not mono_covered:
+        lines.append("- mono arm NOT shadowed — the live monolithic baseline's text is "
+                     "not captured; only a replay baseline is covered")
     if stats["n_judged"]:
         lines.append(f"- agreement: {stats['n_agree']}/{stats['n_judged']}")
     if not rows:
@@ -170,6 +197,7 @@ def format_judge_shadow(rows: list[dict], stats: dict) -> str:
     else:
         lines += ["", "| question | arm | matcher | judge | candidate |",
                   "| --- | --- | --- | --- | --- |"]
-        lines += [f"| {r['question_id']} | {r['arm']} | {r['matcher']} | {r['judge']} "
-                  f"| {str(r['candidate'])[:80]} |" for r in rows]
+        lines += [f"| {_cell(r['question_id'])} | {_cell(r['arm'])} "
+                  f"| {r['matcher']} | {r['judge']} | {_cell(r['candidate'])} |"
+                  for r in rows]
     return "\n".join(lines) + "\n"

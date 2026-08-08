@@ -33,14 +33,18 @@ def _seq_complete(texts: list[str]):
     return complete
 
 
-# --- judge_key: content-addressed, version-bound ------------------------------------------
+# --- judge_key: content-addressed, version- AND judge-bound -------------------------------
 
-def test_judge_key_is_stable_and_content_bound() -> None:
-    k1 = EJ.judge_key("q?", "P123", ["p-123"], "the number is P123")
-    k2 = EJ.judge_key("q?", "P123", ["p-123"], "the number is P123")
-    k3 = EJ.judge_key("q?", "P123", ["p-123"], "the number is Q999")
+def test_judge_key_is_stable_content_and_judge_bound() -> None:
+    k1 = EJ.judge_key("q?", "P123", ["p-123"], "the number is P123", judge="gpt-x")
+    k2 = EJ.judge_key("q?", "P123", ["p-123"], "the number is P123", judge="gpt-x")
+    k3 = EJ.judge_key("q?", "P123", ["p-123"], "the number is Q999", judge="gpt-x")
+    # PR #65 review: a JUDGE_MODEL pin bump must NOT silently replay the old model's
+    # cached verdicts — the silent-grader-swap this module exists to forbid
+    k4 = EJ.judge_key("q?", "P123", ["p-123"], "the number is P123", judge="gpt-y")
     assert k1 == k2
     assert k1 != k3
+    assert k1 != k4
     assert len(k1) == 64  # sha256 hex
 
 
@@ -92,6 +96,36 @@ def test_judge_correct_survives_a_raising_judge() -> None:
     assert EJ.judge_correct("q?", "P123", [], "x", complete=boom) is None
 
 
+def test_judge_correct_swallows_system_exit() -> None:
+    # PR #65 review: core/llm converts a missing key / provider error to SystemExit —
+    # a BaseException that sails through `except Exception` and would void a PAID gate
+    # reading. The per-vote fail-open must catch it (the run_fairfight precedent).
+    def keyless(system: str, user: str) -> SimpleNamespace:
+        raise SystemExit("OPENAI_API_KEY not found")
+    assert EJ.judge_correct("q?", "P123", [], "x", complete=keyless) is None
+
+
+def test_judge_correct_early_exits_on_two_agreeing_valid_votes() -> None:
+    # byte-identical verdicts at ~2/3 the calls: once two VALID votes agree, no third
+    # vote (True/False/None) can change the majority-of-valid outcome
+    calls: list[int] = []
+
+    def counting(system: str, user: str) -> SimpleNamespace:
+        calls.append(1)
+        return _reply('{"correct": true}')
+    assert EJ.judge_correct("q?", "P123", [], "P123!", complete=counting) is True
+    assert len(calls) == 2
+    # but a (valid, None) prefix is NOT decided — the third vote still fires
+    calls2: list[int] = []
+    replies = iter(['{"correct": true}', "garbled", '{"correct": true}'])
+
+    def mixed(system: str, user: str) -> SimpleNamespace:
+        calls2.append(1)
+        return _reply(next(replies))
+    assert EJ.judge_correct("q?", "P123", [], "P123!", complete=mixed) is True
+    assert len(calls2) == 3
+
+
 def test_judge_prompt_is_blind_to_arm_identity() -> None:
     # the user prompt carries question/gold/variants/candidate ONLY — never which arm
     # produced the candidate (the citation-shape-leak lesson, applied forward)
@@ -117,15 +151,21 @@ def test_verdict_cache_round_trip_and_zero_recalls(tmp_path: Path) -> None:
         calls.append(1)
         return _reply('{"correct": true}')
     cache: dict = {}
-    v1 = EJ.judge_with_cache(cache, path, "q?", "P123", [], "P123!", complete=counting)
-    assert v1 is True and len(calls) == 3  # modal-of-3, live
+    v1 = EJ.judge_with_cache(cache, path, "q?", "P123", [], "P123!",
+                             complete=counting, judge="gpt-x")
+    assert v1 is True and len(calls) == 2  # two agreeing valid votes decide the modal
     # a FRESH process (cache reloaded from disk) replays with ZERO judge calls
     reloaded = EJ.load_verdicts(path)
 
     def boom(system: str, user: str) -> SimpleNamespace:
         raise AssertionError("cached verdict must not re-consult the judge")
-    v2 = EJ.judge_with_cache(reloaded, path, "q?", "P123", [], "P123!", complete=boom)
+    v2 = EJ.judge_with_cache(reloaded, path, "q?", "P123", [], "P123!",
+                             complete=boom, judge="gpt-x")
     assert v2 is True
+    # a DIFFERENT judge pin is a different verdict identity — no silent grader swap
+    v3 = EJ.judge_with_cache(reloaded, path, "q?", "P123", [], "P123!",
+                             complete=counting, judge="gpt-y")
+    assert v3 is True and len(calls) == 4  # judged live again under the new pin
 
 
 def test_unjudged_verdicts_are_never_cached(tmp_path: Path) -> None:
@@ -136,7 +176,7 @@ def test_unjudged_verdicts_are_never_cached(tmp_path: Path) -> None:
     def garbled(system: str, user: str) -> SimpleNamespace:
         return _reply("no json here")
     assert EJ.judge_with_cache(cache, path, "q?", "P123", [], "x",
-                               complete=garbled) is None
+                               complete=garbled, judge="gpt-x") is None
     assert not path.exists() and cache == {}
 
 
@@ -178,3 +218,24 @@ def test_format_judge_shadow_section() -> None:
     text2 = EJ.format_judge_shadow(rows2, stats2)
     assert "q2-001" in text2 and "typed" in text2
     assert "INCORRECT" in text2 and "CORRECT" in text2
+
+
+def test_format_escapes_markdown_table_cells() -> None:
+    # the disagreement table IS the pre-registered hand-audit artifact — a newline or
+    # pipe inside the candidate must not shift verdict columns onto wrong questions
+    rows, stats = EJ.shadow_disagreements(
+        [_item("Q999 is|the\nreal number, honest")], judge=lambda it: True)
+    text = EJ.format_judge_shadow(rows, stats)
+    (row_line,) = [ln for ln in text.splitlines() if ln.startswith("| q2-001")]
+    assert "\n" not in row_line
+    assert row_line.count(" | ") == 4  # five cells, pipes inside the cell escaped
+
+
+def test_format_discloses_an_unshadowed_mono_arm() -> None:
+    # live-baseline mode captures no mono text — the section must SAY the mono arm is
+    # not covered, never imply complete coverage (no silent caps)
+    rows, stats = EJ.shadow_disagreements([_item("the number is P123")],
+                                          judge=lambda it: True)
+    text = EJ.format_judge_shadow(rows, stats, mono_covered=False)
+    assert "mono arm NOT shadowed" in text
+    assert "mono arm NOT shadowed" not in EJ.format_judge_shadow(rows, stats)
