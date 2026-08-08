@@ -241,7 +241,7 @@ def test_gate_executor_arm_mid_run_down_is_loud() -> None:
 # --- --gate-loo: the run-4 held-out discipline (grouped leave-one-question-out) ----------
 
 def _two_questions() -> list[dict[str, Any]]:
-    return _questions() + [{"id": "q2-002", "question": "other?", "answer": "X9",
+    return [*_questions(), {"id": "q2-002", "question": "other?", "answer": "X9",
                             "answer_variants": [], "fuzzy": False, "answerable": True}]
 
 
