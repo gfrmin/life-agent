@@ -231,6 +231,52 @@ def test_gate_executor_arm_collects_views_for_the_writer() -> None:
     assert e.grade == "CORRECT" and e.probability == 0.85
 
 
+def test_judge_shadow_items_cover_every_graded_candidate_and_skip_ungradeable() -> None:
+    # the shadow judge grades exactly what the matcher grades, WITH the matcher's own
+    # semantics (PR #65 review): typed asserts one item PER VALUE (the gate's
+    # realised_report is any-per-value — a joined string drifts both directions),
+    # hedges one item per candidate (the gate grades hedge over view["candidates"]),
+    # the replay arm's report text, and every gradeable edge firing. Skips mirror the
+    # matcher's own: abstains, declined/blank replay rows, rows whose status is not
+    # exactly "ok" (a MISSING status is an abstain in _replay_response, never graded),
+    # gold-less questions, valueless or edge-less events.
+    questions = [*_two_questions(),
+                 {"id": "q2-003", "question": "no gold?", "answer": "",
+                  "answer_variants": [], "fuzzy": False, "answerable": False},
+                 {"id": "q2-004", "question": "hedged?", "answer": "X9",
+                  "answer_variants": [], "fuzzy": False, "answerable": True},
+                 {"id": "q2-005", "question": "no status?", "answer": "X9",
+                  "answer_variants": [], "fuzzy": False, "answerable": True}]
+    typed_views = [
+        (questions[0], _exec_view(
+            effector="report", asserted=["P123", "second claim"],
+            edge_events=[{"edge": "extract@claude-haiku-4-5", "value": "P123",
+                          "confidence": 0.7, "lineage": "jk-1"},
+                         {"edge": "deliberate@claude-opus-4-8", "value": None,
+                          "confidence": None, "lineage": "dk-d"},
+                         {"value": "orphan", "confidence": 0.5}])),  # edge-less: skip
+        (questions[1], _exec_view(effector="abstain")),  # no assert → no typed item
+        (questions[2], _exec_view(effector="report", asserted=["whatever"])),  # no gold
+        (questions[3], _exec_view(effector="hedge", candidates=["X9", "Q1"])),
+        (questions[4], _exec_view(effector="abstain")),
+    ]
+    no_status = {"question_id": "q2-005", "text": "X9"}  # missing status ⇒ abstain
+    replay = {"q2-001": _row("q2-001", "the number is P123 [doc.pdf]"),
+              "q2-002": _row("q2-002", "NOT_IN_CORPUS", declined=True),
+              "q2-003": _row("q2-003", "x"),
+              "q2-004": _row("q2-004", "", status="error"),
+              "q2-005": no_status}
+    items = RE.judge_shadow_items(questions, typed_views, replay)
+    assert [(i["question_id"], i["arm"], i["candidate"]) for i in items] == [
+        ("q2-001", "typed", "P123"),
+        ("q2-001", "typed", "second claim"),
+        ("q2-001", "edge:extract@claude-haiku-4-5", "P123"),
+        ("q2-004", "typed-hedge", "X9"),
+        ("q2-004", "typed-hedge", "Q1"),
+        ("q2-001", "mono", "the number is P123 [doc.pdf]")]
+    assert items[0]["gold"] == "P123" and items[0]["question"] == "value?"
+
+
 def test_gate_writer_flatmaps_tier_rows() -> None:
     # two questions, 1 + 2 firings → 3 rows: the writer walks every view's whole
     # attribution stream, so a run harvests the extract tiers alongside deliberate
