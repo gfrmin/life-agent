@@ -51,8 +51,10 @@ EXPAND_SYSTEM = (
 # majority sentence furniture. No single token can fire it, and Hebrew/domain tokens only
 # pull the density DOWN — the failure mode is biased toward keeping recall (a kept short
 # refusal adds mild noise; build_query always retains the raw question either way).
-_APOSTROPHES = str.maketrans("", "", "'’‘ʼ")  # fuse contractions: don't / don’t → dont
-_PROSE_WORDS = frozenset("""
+# fuse contractions before tokenizing (don't -> dont): ASCII ' plus the typographic
+# apostrophes U+2019 / U+2018 / U+02BC — the forms models actually emit in prose.
+_APOSTROPHES = str.maketrans("", "", "'’‘ʼ")  # noqa: RUF001
+_PROSE_TEXT = """
     a an the and or but nor so to of in on at by for with without from as about into over
     under outside inside beyond within is are am was were be been being do does did not no
     can cannot could will would should shall may might must have has had having this that
@@ -60,7 +62,8 @@ _PROSE_WORDS = frozenset("""
     their he she his her what which who whom how when where why if then than just only also
     however instead rather such any some sorry unfortunately unable apologize apologise
     apologies please cant dont wont didnt doesnt isnt arent couldnt wouldnt shouldnt
-""".split())
+"""
+_PROSE_WORDS = frozenset(_PROSE_TEXT.split())
 _MIN_PROSE_TOKENS = 4  # below one sentence's length density is meaningless — keep the reply
 
 

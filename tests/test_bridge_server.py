@@ -1300,7 +1300,7 @@ def test_deliberate_warm_hit_replays_without_a_model_call(
 
 def test_deliberate_miss_reply_carries_the_cache_key(
         deps: BridgeDeps, deliberate_seams: dict[str, Any]) -> None:
-    # The reply names the §18.9 identity of the (question × corpus) cell so the caller
+    # The reply names the §18.9 identity of the (question x corpus) cell so the caller
     # can dedup warm replays in the outcomes stream — one artifact, one observation.
     status, payload = _call(deps, "POST", "/probe/deliberate",
                             {"question": "what is my rent?",
