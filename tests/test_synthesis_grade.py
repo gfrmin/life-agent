@@ -80,11 +80,12 @@ def test_cache_line_formats_per_stage_hit_rates() -> None:
 def test_cache_line_surfaces_expander_refusals() -> None:
     # issue #56's second ask: the refusal signal is REPORTED, not write-only — and
     # zero-noise when absent (the previous test's line carries no refusal part).
-    # x/y reads cached-refusals/total-refusals, the hit/miss convention verbatim.
+    # Rendered as its own part (refusals/attempts, cached count named), NOT through
+    # the stage loop: a refusal count is not a cache-stage hit rate (PR #63 review).
     cache = {"expand.hit": 9, "expand.miss": 1,
              "expand_refusal.hit": 2, "expand_refusal.miss": 1}
     assert re_._cache_line(cache) == (
-        "Derivation cache hits: expand 9/10 · expand_refusal 2/3")
+        "Derivation cache hits: expand 9/10 · expand refusals 3/10 (2 cached)")
 
 
 def test_synthesis_report_carries_the_cache_line() -> None:

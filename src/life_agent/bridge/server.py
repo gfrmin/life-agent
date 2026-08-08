@@ -390,7 +390,7 @@ def _probe_corroborate(deps: BridgeDeps, p: Payload) -> Payload:
         # conditions at min(tier, confidence), so the wire never discards the instrument's
         # uncertainty (a lone unsupported read must not enter at the tier's flat prior).
         out: Payload = {"observations": obs, "gather_rho": tier_rho, "value": jr.value,
-                        "confidence": jr.confidence,
+                        "confidence": jr.confidence, "cache_key": jr.cache_key,
                         "served_model": jr.served_model, "tokens": jr.in_tokens + jr.out_tokens}
         if new_candidate is not None:
             out["new_candidate"] = new_candidate

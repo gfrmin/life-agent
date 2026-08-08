@@ -347,24 +347,26 @@ def coverage_outcome(q: dict, nv, *, run_id: str):
     )
 
 
-def edge_outcome(q: dict, view: dict, *, run_id: str):
-    """One attributed outcome for the answer-proposing edge's RAW proposal — the
-    per-edge reliability curve's evidence (Δ1). Grades ``instrument_value`` against
+def edge_outcome(q: dict, event: dict, *, run_id: str):
+    """One attributed outcome for ONE answer-proposing firing's RAW proposal — the
+    per-edge reliability curve's evidence (Δ1). Grades the event's ``value`` against
     gold on the shared token-boundary scale, independent of the committed act: an
-    in-gate abstain still yields the edge's observation (the curve is P(edge's answer
-    correct | self-report), not P(the gate asserted)). None when there is nothing to
-    grade — no edge fired, a decline/error left no value, no self-report (rows without
+    in-gate abstain still yields the firing's observation (the curve is P(edge's
+    answer correct | self-report), not P(the gate asserted)). None when there is
+    nothing to grade — a decline/error left no value, no self-report (rows without
     probability are never scored), or no gold scale (unanswerable: skipped, the
     coverage_outcome precedent — a disclosed selection, never a fabricated INCORRECT).
-    Lineage is the §18.9 artifact key, the warm-replay dedup axis."""
+    Lineage is the §18.9 artifact key, the warm-replay dedup axis. The row shape is
+    byte-identical to the pre-tier writer's deliberate rows — logged rows keep folding
+    identically."""
     import life_agent.core.outcomes as O
 
-    edge = view.get("instrument")
-    value, conf = view.get("instrument_value"), view.get("instrument_confidence")
+    edge = event.get("edge")
+    value, conf = event.get("value"), event.get("confidence")
     if not edge or value is None or conf is None or not q.get("answer"):
         return None
     correct = answer_matches(q["answer"], q.get("answer_variants", []), str(value))
-    lineage = view.get("instrument_lineage")
+    lineage = event.get("lineage")
     return O.OutcomeEvent(
         tx_time=O.now_iso(), run_id=run_id, question_id=str(q["id"]),
         claim=str(value)[:200], construct="edge-proposal",
@@ -373,6 +375,34 @@ def edge_outcome(q: dict, view: dict, *, run_id: str):
         lineage_keys=(str(lineage),) if lineage else (),
         probability=float(conf),
     )
+
+
+def _fresh_edge_rows(typed_views: list, *, run_id: str, log=None) -> tuple:
+    """Grade every collected firing and dedup against the log's already-written §18.9
+    lineage — the ONE writer body, shared by the normal post-run path and the
+    crash-salvage path (a mid-run failure must not discard the completed questions'
+    paid curve food). Returns ``(fresh, n_dup, prior)``."""
+    import life_agent.core.outcomes as O
+    from life_agent.core import OUTCOMES_LOG
+
+    rows = [e for q, v in typed_views for e in edge_outcomes(q, v, run_id=run_id)]
+    prior = [ev for ev in O.read(OUTCOMES_LOG if log is None else log)
+             if ev.grader == "eval_edge"]
+    seen = {key for ev in prior for key in ev.lineage_keys}
+    fresh = dedup_edge_events(rows, seen)
+    return fresh, len(rows) - len(fresh), prior
+
+
+def edge_outcomes(q: dict, view: dict, *, run_id: str) -> list:
+    """Every gradeable firing on the view's attribution stream, in firing order —
+    the extract tiers (corroborate haiku/sonnet/opus, the k=0 rescue,
+    re_extract_strong) alongside deliberate. Reads ONLY ``edge_events``: the
+    deliberate firing appears there too, so also reading the legacy single slot
+    would double-count (a lineage-less duplicate always survives dedup). The
+    question id stamped is the EVAL-CORPUS id — the --gate-loo hold-out's exclusion
+    key (calibration.edge_outcomes_from_log's stated hazard for any other spelling)."""
+    return [e for ev in view["edge_events"]
+            if (e := edge_outcome(q, ev, run_id=run_id)) is not None]
 
 
 def dedup_edge_events(events: list, seen: set) -> list:
@@ -758,11 +788,18 @@ def _cache_line(cache: dict[str, int]) -> str:
     if not cache:
         return ""
     parts = []
-    for stage in ("expand", "expand_refusal", "retrieve", "synthesize"):
+    for stage in ("expand", "retrieve", "synthesize"):
         hits = cache.get(f"{stage}.hit", 0)
         total = hits + cache.get(f"{stage}.miss", 0)
         if total:
             parts.append(f"{stage} {hits}/{total}")
+    # the issue-#56 refusal signal is its own part, NOT a cache stage: refusals over
+    # expand ATTEMPTS (a rate the owner can read directly), cached count named.
+    n_ref = cache.get("expand_refusal.hit", 0) + cache.get("expand_refusal.miss", 0)
+    if n_ref:
+        n_att = cache.get("expand.hit", 0) + cache.get("expand.miss", 0)
+        parts.append(f"expand refusals {n_ref}/{n_att} "
+                     f"({cache.get('expand_refusal.hit', 0)} cached)")
     return f"Derivation cache hits: {' · '.join(parts)}" if parts else ""
 
 
@@ -993,24 +1030,29 @@ def main() -> int:
                 typed_arm="executor" if args.gate_executor else "family",
                 typed_views=typed_views if args.gate_executor else None,
                 loo=args.gate_loo)
+        except BaseException:
+            # crash salvage: a mid-run failure voids the READING, never the completed
+            # questions' paid curve food (the run-3 external-kill precedent) — grade
+            # and append whatever accrued, say so, and re-raise.
+            if args.gate_executor and typed_views and not args.no_outcomes:
+                s_fresh, s_dup, _ = _fresh_edge_rows(typed_views, run_id=run_id)
+                if s_fresh:
+                    _append_outcomes(s_fresh)
+                print(f"  (mid-run failure — salvaged {len(s_fresh)} edge outcome "
+                      f"row(s) from {len(typed_views)} completed question(s), deduped "
+                      f"{s_dup}; the gate reading is VOID)")
+            raise
         finally:
             ask.EXECUTOR_RUN_ID = None
 
         exec_note = ""
         if args.gate_executor:
-            import life_agent.core.outcomes as O
-            from life_agent.core import OUTCOMES_LOG
-
-            # the writer: grade every edge proposal the run produced, dedup against the
-            # log's already-graded §18.9 lineage, and append AFTER the run — the in-run
+            # the writer: grade every firing the run produced (extract tiers AND
+            # deliberate — the view's edge_events stream), dedup against the log's
+            # already-graded §18.9 lineage, and append AFTER the run — the in-run
             # curve fold (ask._edge_curves per question) never saw its own run's rows
             stats = executor_run_stats(typed_views)
-            edge_events = [e for e in (edge_outcome(q, v, run_id=run_id)
-                                       for q, v in typed_views) if e is not None]
-            prior = [ev for ev in O.read(OUTCOMES_LOG) if ev.grader == "eval_edge"]
-            seen = {key for ev in prior for key in ev.lineage_keys}
-            fresh = dedup_edge_events(edge_events, seen)
-            n_dup = len(edge_events) - len(fresh)
+            fresh, n_dup, prior = _fresh_edge_rows(typed_views, run_id=run_id)
             if args.no_outcomes:
                 print(f"  (edge outcomes NOT written — --no-outcomes; would have "
                       f"written {len(fresh)}, deduped {n_dup})")
