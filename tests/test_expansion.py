@@ -33,3 +33,76 @@ def test_expander_is_single_source_shared_with_ask() -> None:
     assert ask.EXPAND_SYSTEM is EXP.EXPAND_SYSTEM
     assert ask.EXPAND_MODEL == EXP.EXPAND_MODEL
     assert ask._clean_terms is EXP.clean_terms
+
+
+# --- issue #56: expander refusals must not become the BM25 query --------------------- #
+# Observed live (Δ2 gate runs, 2026-08-06): on out-of-domain questions the expand model
+# REFUSES, and the refusal prose flowed through clean_terms into the BM25 query. The fix
+# is a pure refusal gate applied post-cache (the clean_terms seam), so cached refusal
+# replies are re-gated on read and every caller falls back to the raw-question query.
+
+OBSERVED_REFUSAL = ("I cannot help with this query. I'm a language model without access "
+                    "to personal documents or files.")
+REFUSAL_VARIANT = "I don't have access to personal information about individuals."
+
+
+def test_refusal_detects_the_observed_boilerplate() -> None:
+    assert EXP.refusal(OBSERVED_REFUSAL)
+
+
+def test_refusal_detects_first_person_no_access_prose() -> None:
+    assert EXP.refusal(REFUSAL_VARIANT)
+
+
+def test_refusal_passes_keyword_expansions_through() -> None:
+    # the prompt's own example outputs (incl. native-script Hebrew) and a bulleted reply
+    for raw in (
+        "income salary invoice contractor self-employed freelance fee earnings employer "
+        "עוסק מורשה משכורת חשבונית",
+        "arnona property-tax municipal rates bill ארנונה עירייה חשבון תשלום",
+        "income, salary;\n- 'invoice'  עוסק מורשה\nמשכורת.",  # noqa: RUF001
+    ):
+        assert not EXP.refusal(raw)
+
+
+def test_refusal_requires_first_person_not_just_markers() -> None:
+    # a (contrived) keyword list sharing marker words is NOT a refusal — the detector is
+    # conservative: first-person prose is the diagnostic, markers alone never fire.
+    assert not EXP.refusal("cannot unable sorry apology complaint letter")
+
+
+def test_clean_terms_flattens_a_refusal_to_empty() -> None:
+    # '' is the existing fail-open contract: the caller falls back to the raw-question query.
+    assert EXP.clean_terms(OBSERVED_REFUSAL) == ""
+
+
+def test_cached_refusal_is_regated_on_read(tmp_path) -> None:
+    # A refusal recorded BEFORE the gate existed must be re-gated on read (clean_terms is
+    # post-cache by design) — no EXPAND_VERSION bump, no orphaned recordings, zero model calls
+    # (the cache hit returns before anthropic_complete).
+    import life_agent.core as C
+    from life_agent.core import derivations as D
+    question = "what colour is the number seven"
+    key = D.expand_key(question, model=EXP.EXPAND_MODEL, prompt_template=EXP.EXPAND_SYSTEM,
+                       temperature=C.TEMPERATURE, max_tokens=120)
+    D.record(tmp_path, key, OBSERVED_REFUSAL.encode("utf-8"), lineage=[], metadata={})
+    assert EXP.expand_terms(question, root=tmp_path) == ""
+
+
+def test_ask_wrapper_counts_a_cached_refusal(tmp_path) -> None:
+    # the v0 signal (issue #56 second ask): a refusal is logged, not silently discarded —
+    # surfaced as expand_refusal.hit/.miss in CACHE_STATS (run_eval's report reads these).
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+    import ask
+
+    import life_agent.core as C
+    from life_agent.core import derivations as D
+    question = "what colour is the number seven"
+    key = D.expand_key(question, model=EXP.EXPAND_MODEL, prompt_template=EXP.EXPAND_SYSTEM,
+                       temperature=C.TEMPERATURE, max_tokens=120)
+    D.record(tmp_path, key, OBSERVED_REFUSAL.encode("utf-8"), lineage=[], metadata={})
+    ask.reset_cache_stats()
+    assert ask._expand_terms(question, root=tmp_path) == ""
+    assert ask.cache_stats()["expand_refusal.hit"] == 1
