@@ -41,19 +41,45 @@ EXPAND_SYSTEM = (
 )
 
 
+# Refusal detection (issue #56): on out-of-domain questions the expand model refuses in
+# first-person prose ("I cannot help with this query… I'm a language model without access
+# to…") and that prose must never become the BM25 query. The detector is conservative by
+# conjunction: a keyword list never contains a first-person token, and marker words alone
+# ("cannot", "sorry" as domain keywords) never fire without one.
+_FIRST_PERSON = frozenset({"i", "im", "ive", "id"})
+_REFUSAL_MARKERS = frozenset({"cannot", "cant", "wont", "dont", "unable", "sorry",
+                              "apologize", "apologise", "apologies"})
+
+
+def refusal(raw: str) -> bool:
+    """Pure: is an expansion reply a refusal (first-person prose instead of keywords)?
+    True when a first-person token co-occurs with a refusal marker or with 'language model'
+    self-description — the observed out-of-domain failure mode (issue #56)."""
+    toks = frozenset(re.sub(r"[^\w]+", " ", raw.lower().replace("'", "")).split())
+    if not (_FIRST_PERSON & toks):
+        return False
+    return bool(_REFUSAL_MARKERS & toks) or {"language", "model"} <= toks
+
+
 def clean_terms(raw: str) -> str:
     """Pure: flatten an LLM expansion reply to a clean space-separated term string.
-    Drops bullets/commas/quotes/newlines; keeps Unicode word chars (so Hebrew survives)."""
+    Drops bullets/commas/quotes/newlines; keeps Unicode word chars (so Hebrew survives).
+    A refusal (:func:`refusal`, issue #56) flattens to '' — the callers' existing fail-open
+    contract falls back to the raw-question query. Applied post-cache, so already-recorded
+    refusal replies are re-gated on read (no EXPAND_VERSION bump, nothing orphaned)."""
+    if refusal(raw):
+        return ""
     return " ".join(re.sub(r"[^\w]+", " ", raw, flags=re.UNICODE).split())
 
 
 def expand_terms(question: str, *, model: str = EXPAND_MODEL,
                  root: Path | None = None, no_cache: bool = False) -> str:
     """Impure edge: ask a cheap model for extra BM25 keywords. Returns a space-joined term
-    string, or '' on any failure (the caller falls back to the raw question — expansion must
-    never break retrieval). Cached, corpus-independent (keyed on question + model + prompt). The
-    RAW reply is recorded; ``clean_terms`` is applied post-cache so a cleanup tweak does not orphan
-    recorded expansions. Failures are never recorded."""
+    string, or '' on any failure OR refusal (the caller falls back to the raw question —
+    expansion must never break retrieval; issue #56). Cached, corpus-independent (keyed on
+    question + model + prompt). The RAW reply is recorded — refusals included, they are the
+    out-of-domain audit trail; ``clean_terms`` is applied post-cache so a cleanup tweak (or the
+    refusal gate) does not orphan recorded expansions. Failures are never recorded."""
     key = D.expand_key(question, model=model, prompt_template=EXPAND_SYSTEM,
                        temperature=C.TEMPERATURE, max_tokens=120)
     if root is not None and not no_cache:
