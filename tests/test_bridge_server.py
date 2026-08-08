@@ -404,6 +404,26 @@ def test_reextract_returns_the_reads_own_confidence(
     assert payload["new_candidate"] == "NEW-7"
 
 
+def test_reextract_returns_the_joint_cache_key(
+        deps: BridgeDeps, monkeypatch: pytest.MonkeyPatch) -> None:
+    # The §18.9 lineage must ride the wire: without it, an extract-tier outcome row is
+    # lineage-less and a warm replay double-counts one observation into the curve fold
+    # (dedup_edge_events keeps lineage-less rows by design). extract_joint computes the
+    # key unconditionally, so the reply field is always present — mirroring the
+    # deliberate reply's cache_key.
+    import life_agent.core.joint_extract as JE
+
+    monkeypatch.setattr(JE, "extract_joint",
+                        lambda root, q, hits, *, model, k: JE.JointResult(
+                            value="NEW-7", confidence=0.9, as_of=None, cache_key="jk-1"))
+    status, payload = _call(deps, "POST", "/probe/corroborate", {
+        "reextract": True, "allow_new": True, "question": "id?",
+        "hits": [{"artifact_cache_key": "d0", "chunk_text": "…"}],
+        "candidates": [], "model": "claude-opus-4-8", "rho": 0.95})
+    assert status == 200
+    assert payload["cache_key"] == "jk-1"
+
+
 def test_source_time_factor_tolerates_partial_self_reported_as_of() -> None:
     # run 3's q2-009: the joint read SELF-REPORTED as_of='2012' (a bare year, cached
     # content-addressed ⇒ deterministic) and the volatility projector crashed the
