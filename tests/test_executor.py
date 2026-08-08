@@ -956,6 +956,72 @@ def test_deliberate_appends_an_edge_event_and_keeps_the_legacy_slot() -> None:
     assert view["instrument_lineage"] == "dk-42"
 
 
+def test_grow_escalation_keeps_the_abandoned_passes_events() -> None:
+    # PR #63 review (survivorship bias): the legacy grow path replaced the whole view,
+    # discarding the withheld pass's firings — exactly the wrong-leaning proposals the
+    # curve fold most needs. Every pass's firings must ride the RETURNED view,
+    # whichever pass wins. Adopted direction: pass 1 fires haiku then abstains
+    # (NONE is MAP → escalate); the grown pass fires opus and reports.
+    fake = FakeServices(
+        route={"construct": "passport number", "time_indexed": False},
+        corroborate={"observations": [{"reports": 0, "group": 0, "authority": 1.0,
+                                       "subject_factor": 1.0, "time_factor": 1.0}],
+                     "gather_rho": 0.80, "value": "P123", "confidence": 0.7,
+                     "cache_key": "jk-1"},
+        decides=[{"effector": "gather", "probe": "corroborate_haiku",
+                  "credences": [0.2], "p_none": 0.6, "eu": 0.0},
+                 {"effector": "abstain", "credences": [0.2], "p_none": 0.7, "eu": -0.1},
+                 {"effector": "gather", "probe": "corroborate_opus",
+                  "credences": [0.5], "p_none": 0.2, "eu": 0.3},
+                 {"effector": "report", "value": "P123", "credences": [0.9],
+                  "p_none": 0.05, "eu": 0.8}])
+    view = _loop(fake, grow=True)
+    assert view["effector"] == "report"
+    assert [e["edge"] for e in view["edge_events"]] == [
+        "extract@claude-haiku-4-5", "extract@claude-opus-4-8"]
+
+
+def test_grow_escalation_keeps_the_grown_passes_events_when_not_adopted() -> None:
+    # Kept direction: the grown passes also fire (opus on tier 1) but stay withheld —
+    # their firings must survive on the ORIGINAL view the loop returns.
+    fake = FakeServices(
+        route={"construct": "passport number", "time_indexed": False},
+        corroborate={"observations": [{"reports": 0, "group": 0, "authority": 1.0,
+                                       "subject_factor": 1.0, "time_factor": 1.0}],
+                     "gather_rho": 0.80, "value": "P123", "confidence": 0.7,
+                     "cache_key": "jk-1"},
+        decides=[{"effector": "gather", "probe": "corroborate_haiku",
+                  "credences": [0.2], "p_none": 0.6, "eu": 0.0},
+                 {"effector": "abstain", "credences": [0.2], "p_none": 0.7, "eu": -0.1},
+                 {"effector": "gather", "probe": "corroborate_opus",
+                  "credences": [0.3], "p_none": 0.5, "eu": 0.0},
+                 {"effector": "abstain", "credences": [0.3], "p_none": 0.6, "eu": -0.1},
+                 {"effector": "abstain", "credences": [0.3], "p_none": 0.6, "eu": -0.1}])
+    view = _loop(fake, grow=True)
+    assert view["effector"] == "abstain"
+    assert [e["edge"] for e in view["edge_events"]] == [
+        "extract@claude-haiku-4-5", "extract@claude-opus-4-8"]
+
+
+def test_tier_reply_without_cache_key_warns_of_bridge_skew(capsys) -> None:
+    # PR #63 review: a version-skewed bridge (predating the cache_key wire field)
+    # yields lineage-less rows that dedup keeps by design — warm replays would then
+    # double-count into the curves on every gate run, silently. The skew must be LOUD.
+    fake = FakeServices(
+        route={"construct": "tax id", "time_indexed": False},
+        extract={**_EXTRACT, "candidates": ["P123", "Q999"]},
+        corroborate={"observations": [{"reports": 0, "group": 0, "authority": 1.0,
+                                       "subject_factor": 1.0, "time_factor": 1.0}],
+                     "gather_rho": 0.80, "value": "P123", "confidence": 0.7},
+        decides=[{"effector": "gather", "probe": "corroborate_haiku",
+                  "credences": [0.5, 0.5], "p_none": 0.1, "eu": 0.2},
+                 {"effector": "report", "value": "P123", "credences": [0.9, 0.1],
+                  "p_none": 0.05, "eu": 0.8}])
+    view = _loop(fake, grow=False)
+    assert view["edge_events"][0]["lineage"] is None
+    assert "cache_key" in capsys.readouterr().out  # the skew is named, never silent
+
+
 def test_all_view_shapes_carry_edge_events() -> None:
     # consumers INDEX the key (never .get) — the default must exist on every return
     # site: plain typed, extract-miss short circuit, and the narrative family.

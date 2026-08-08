@@ -324,12 +324,14 @@ def test_dedup_edge_events_drops_replayed_lineage() -> None:
     assert re_.dedup_edge_events([e2], seen) == []
 
 
-def test_dedup_collapses_cross_edge_shared_artifacts() -> None:
-    # corroborate_opus and re_extract_strong over the same hits share ONE §18.9
-    # artifact (same question, chunk-set, model, prompt ⇒ same cache_key): one
-    # artifact, one observation — whichever fired first writes the row.
+def test_dedup_is_lineage_keyed_not_edge_keyed() -> None:
+    # one §18.9 artifact = one observation, REGARDLESS of which edge name recorded it
+    # — dedup keys on lineage alone, never (edge, lineage). The production case is
+    # corroborate_opus vs re_extract_strong: same hits ⇒ same cache_key AND the same
+    # edge string (both extract@claude-opus-4-8), so a same-edge pair can't
+    # distinguish the keying; the cross-edge pair here pins it.
     tier = re_.edge_outcome(
         _QE, _event(edge="extract@claude-opus-4-8", lineage="jk-9"), run_id="r")
-    strong = re_.edge_outcome(
-        _QE, _event(edge="extract@claude-opus-4-8", lineage="jk-9"), run_id="r")
-    assert re_.dedup_edge_events([tier, strong], set()) == [tier]
+    other_edge = re_.edge_outcome(
+        _QE, _event(edge="deliberate@claude-opus-4-8", lineage="jk-9"), run_id="r")
+    assert re_.dedup_edge_events([tier, other_edge], set()) == [tier]

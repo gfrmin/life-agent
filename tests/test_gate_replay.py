@@ -265,6 +265,46 @@ def test_gate_executor_arm_mid_run_down_is_loud() -> None:
                                 typed_arm="executor")
 
 
+def test_typed_views_accumulate_before_a_mid_run_failure() -> None:
+    # the crash-salvage writer's load-bearing property (PR #63 review; the run-3 kill
+    # precedent): completed questions' views are already on the out-param when a later
+    # question voids the reading — their paid firings can still be graded and written.
+    view = _exec_view(edge_events=[{"edge": "extract@claude-haiku-4-5", "value": "P123",
+                                    "confidence": 0.7, "lineage": "jk-1"}])
+    fake = _FakeExecutorAsk([view, None])
+    out: list = []
+    with pytest.raises(RuntimeError, match="q2-002"):
+        RE.gate_paired_outcomes(None, _two_questions(), 20, fake,
+                                replay={"q2-001": _row("q2-001", "P123"),
+                                        "q2-002": _row("q2-002", "X9")},
+                                typed_arm="executor", typed_views=out)
+    ((q, v),) = out
+    assert q["id"] == "q2-001" and v is view
+
+
+def test_fresh_edge_rows_grades_collected_views_and_dedups_against_the_log(
+        tmp_path: Path) -> None:
+    # the one writer body shared by the normal post-run path and the crash-salvage
+    # path: grade every collected firing, dedup against the log's already-written
+    # §18.9 lineage, return (fresh, n_dup, prior).
+    import life_agent.core.outcomes as O
+
+    log = tmp_path / "outcomes.jsonl"
+    q = _questions()[0]
+    view = _exec_view(edge_events=[{"edge": "extract@claude-haiku-4-5", "value": "P123",
+                                    "confidence": 0.7, "lineage": "jk-1"}])
+    (row,) = RE.edge_outcomes(q, view, run_id="r0")
+    O.append(log, row)  # a prior run already graded this artifact
+    fresh, n_dup, prior = RE._fresh_edge_rows(
+        [(q, view),
+         (q, _exec_view(edge_events=[{"edge": "extract@claude-opus-4-8", "value": "P123",
+                                      "confidence": 0.8, "lineage": "jk-2"}]))],
+        run_id="r1", log=log)
+    assert [r.instrument_identity["edge"] for r in fresh] == ["extract@claude-opus-4-8"]
+    assert n_dup == 1
+    assert len(prior) == 1
+
+
 # --- --gate-loo: the run-4 held-out discipline (grouped leave-one-question-out) ----------
 
 def _two_questions() -> list[dict[str, Any]]:

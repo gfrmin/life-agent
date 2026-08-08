@@ -138,6 +138,14 @@ def menu_transforms(curves: Curves) -> list[dict[str, Any]]:
 # but only when the agent's belief says the answer is MISSING (see _truth_likely_missing).
 _WITHHOLD = frozenset({"miss", "abstain", "hedge", "ask_clarify"})
 
+# The unpriced attribution defaults every no-edge View return site spreads — consumers
+# INDEX these keys (never .get), so a new attribution key is ONE edit here plus the
+# value-bearing terminal return, not N synchronized dict literals.
+_UNPRICED_ATTRIBUTION: dict[str, Any] = {
+    "instrument": "", "cost_usd": None, "latency_s": None,
+    "instrument_value": None, "instrument_confidence": None,
+    "instrument_lineage": None}
+
 # The grow lane's retrieval actuators: probe name → the /retrieve recall flags its enactment
 # re-runs the evidence build at. `re_extract_strong` is the third menu row (a whole-doc opus
 # re-read with allow_new — the K-enlarging strong extractor); the menu itself is data
@@ -164,10 +172,15 @@ def _conditioned_rho(curves: Curves, edge: str, confidence: Any, fallback: float
     (every legacy call site) or an edge with no attributed rows returns the declared
     fallback — bit-identical to the constants; a global switch would have collapsed
     the whole corroborate ladder to the cold start the moment the first deliberate
-    outcome landed, prod-wide and permanently (no extract@ writer exists to earn them
-    out). Within a MEASURED edge an ABSENT confidence folds at the curve's most
-    pessimistic bin: no signal must never be trusted more than a stated one (letting
-    silence keep the declared prior would invert the pessimism)."""
+    outcome landed, prod-wide and permanently. The extract-tier writer now earns the
+    extract@ edges out: once rows accrue, the measured branch replaces the declared
+    caps for EVERY call site sharing that edge string — including the k=0 rescue's
+    blind-declared min(0.5, conf), earned out by corroborate-context evidence (a
+    stated coarsening: edges pool per MODEL, not per calling context; split the
+    namespace if rescue-context reliability measurably diverges). Within a MEASURED
+    edge an ABSENT confidence folds at the curve's most pessimistic bin: no signal
+    must never be trusted more than a stated one (letting silence keep the declared
+    prior would invert the pessimism)."""
     if curves is None or edge not in curves:
         return float(fallback)
     c = 0.0 if confidence is None else max(0.0, float(confidence))
@@ -241,9 +254,7 @@ def decide_via_loop(question: str, k: int, *, bridge: str, daemon: str, post: Po
         return {"effector": nv["action"], "asserted": nv["asserted"], "candidates": [],
                 "credences": [], "p_none": None, "eu": None, "n_obs": 0,
                 "hits": nv.get("hits", []), "route": None, "rendered": nv.get("rendered"),
-                "instrument": "", "cost_usd": None, "latency_s": None,
-                "instrument_value": None, "instrument_confidence": None,
-                "instrument_lineage": None, "edge_events": []}
+                **_UNPRICED_ATTRIBUTION, "edge_events": []}
     if grow_lane:
         return run_pass(question, k, route, bridge=bridge, daemon=daemon, post=post, get=get,
                         rerank=False, expand=False, transforms=transforms, grow_lane=True,
@@ -269,8 +280,15 @@ def decide_via_loop(question: str, k: int, *, bridge: str, daemon: str, post: Po
             grown = run_pass(question, k, route, bridge=bridge, daemon=daemon, post=post, get=get,
                              rerank=rr, expand=ex, transforms=transforms, live=live,
                              curves=curves)
+            # every pass's firings ride the RETURNED view whichever pass wins — the
+            # gate writer grades FIRINGS, not surviving passes (dropping the withheld
+            # pass's events is survivorship bias: its wrong-leaning proposals are
+            # exactly the curve food the fold most needs); same-artifact repeats
+            # across passes dedup on lineage at the writer.
+            merged = [*view["edge_events"], *grown["edge_events"]]
             if grown["effector"] == "report" or not view["candidates"]:
                 view = grown
+            view["edge_events"] = merged
     return view
 
 
@@ -325,6 +343,12 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
     edge_events: list[dict[str, Any]] = []
 
     def _edge_event(edge: str, reply: dict[str, Any]) -> None:
+        if "cache_key" not in reply:
+            # a version-skewed bridge (predating the cache_key wire field) yields
+            # lineage-less rows that dedup KEEPS by design — warm replays would then
+            # double-count into the curves on every gate run. Loud, never silent.
+            print(f"  ({edge} reply carried no cache_key — bridge version skew? "
+                  "lineage-less rows re-grade on every warm replay)")
         v = reply.get("value")
         edge_events.append({"edge": edge, "value": str(v) if v is not None else None,
                             "confidence": reply.get("confidence"),
@@ -381,9 +405,7 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
         _log_outcomes("miss")
         return {"effector": "miss", "asserted": [], "candidates": [], "credences": [],
                 "p_none": None, "eu": None, "n_obs": 0, "hits": hits, "route": route,
-                "instrument": "", "cost_usd": None, "latency_s": None,
-                "instrument_value": None, "instrument_confidence": None,
-                "instrument_lineage": None, "edge_events": edge_events}
+                **_UNPRICED_ATTRIBUTION, "edge_events": edge_events}
     u_bar = get(f"{bridge}/utility")["u_bar"]
     candidates = ext["candidates"]
     owner = owner_scoped(question)
@@ -501,7 +523,11 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
                 edge_value = str(v) if v is not None else None
                 edge_conf = dr.get("confidence")
                 edge_lineage = dr.get("cache_key")
-                _edge_event(edge_instrument, dr)
+                # ONE derivation: the event mirrors the legacy slot from the same
+                # bound values — two coercion paths over one reply could drift and
+                # split the decisions-v2 accounting from the gate writer's stream.
+                edge_events.append({"edge": edge_instrument, "value": edge_value,
+                                    "confidence": edge_conf, "lineage": edge_lineage})
             if dr is not None and dr.get("status") == "ok":
                 if dr.get("new_candidate"):
                     candidates = [*candidates, str(dr["new_candidate"])]
