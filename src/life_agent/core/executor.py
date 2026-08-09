@@ -84,11 +84,11 @@ _DELIBERATE_MODEL = "claude-opus-4-8"
 # The SEED template — never offered to the daemon as-is: menu_transforms() re-prices its
 # rho to what the enactment fold can actually deliver (the daemon must never buy a probe
 # at a rho the body cannot cash). rho_seed 0.92 = the arm's measured 92.3% correct and
-# cost 0.38 = the run's mean $/question (both ff-v2-delib-20260719, frozen blind). The
-# cost rides in the tier rows' convention — approximate dollars read as gauge utility
-# ($1 ≈ 1·u_correct, the convention the 0.004/0.012/0.020 tier costs established); the
-# real $↔utility exchange rate is an owner elicitation, named in bayes §14, not a
-# constant to invent here.
+# cost 0.38 = the run's mean $/question (both ff-v2-delib-20260719, frozen blind). Costs
+# here are AUTHORED IN USD (as are the 0.004/0.012/0.020 tier costs); run_pass converts
+# them to gauge utility at u_bar's elicited lambda_usd exchange rate before the daemon
+# reads them (plan item C) — a u_bar without the latent keeps the legacy $1 ≈ 1-gauge
+# convention.
 DELIBERATE_TRANSFORM: dict[str, Any] = {
     "name": "deliberate", "probe": "deliberate", "kind": "voi",
     "trigger": "below_bar", "rho": 0.92, "cost": 0.38,
@@ -407,6 +407,17 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
                 "p_none": None, "eu": None, "n_obs": 0, "hits": hits, "route": route,
                 **_UNPRICED_ATTRIBUTION, "edge_events": edge_events}
     u_bar = get(f"{bridge}/utility")["u_bar"]
+    # price the menu in the OWNER'S utility (plan item C): transform rows and grow
+    # actuators are AUTHORED in USD; the elicited exchange rate (lambda_usd, gauge
+    # units per dollar — a learned latent, never a constant invented here) converts
+    # them at the one place the daemon reads prices. A u_bar lacking the latent
+    # (pre-elicitation prod) prices at the legacy $1 ≈ 1-gauge convention, unchanged.
+    rate = float(u_bar.get("lambda_usd", 1.0))
+    transforms = [dict(t, cost=float(t["cost"]) * rate) if "cost" in t else t
+                  for t in transforms]
+    if menu is not None:
+        menu = {**menu, "actuators": [dict(a, cost=float(a["cost"]) * rate)
+                                      for a in menu["actuators"]]}
     candidates = ext["candidates"]
     owner = owner_scoped(question)
     obs, rho, era = ext["observations"], ext["rho"], ext["era_split"]

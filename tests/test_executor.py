@@ -833,6 +833,52 @@ def test_deliberate_decline_leaves_no_gradeable_proposal() -> None:
     assert view["instrument_lineage"] == "dk-declined"
 
 
+def test_run_pass_prices_the_menu_in_owner_utility_via_lambda_usd() -> None:
+    # plan item C: transform rows are AUTHORED in USD; the decide payload prices them in
+    # gauge utility at u_bar's elicited exchange rate — the rate is a learned latent,
+    # never a constant invented in a menu row.
+    fake = FakeServices(
+        route={"construct": "tax id", "time_indexed": False},
+        utility={**_U, "lambda_usd": 2.0},
+        decides=[{"effector": "report", "value": "P123", "credences": [0.95],
+                  "p_none": 0.02, "eu": 0.9}])
+    _loop(fake, grow=False)
+    sent = fake.posted("/decide")[0]["transforms"]
+    authored = {t["probe"]: t["cost"] for t in EX.DEFAULT_TRANSFORMS if "cost" in t}
+    priced = {t["probe"]: t["cost"] for t in sent if "cost" in t}
+    assert priced["corroborate_haiku"] == 2.0 * authored["corroborate_haiku"]
+    assert priced["corroborate_opus"] == 2.0 * authored["corroborate_opus"]
+
+
+def test_run_pass_without_the_rate_latent_keeps_legacy_costs() -> None:
+    # legacy parity: a u_bar lacking lambda_usd (pre-elicitation prod) prices at the
+    # old $1 ≈ 1-gauge convention — costs ride through unchanged.
+    fake = FakeServices(
+        route={"construct": "tax id", "time_indexed": False},
+        decides=[{"effector": "report", "value": "P123", "credences": [0.95],
+                  "p_none": 0.02, "eu": 0.9}])
+    _loop(fake, grow=False)
+    sent = {t["probe"]: t["cost"]
+            for t in fake.posted("/decide")[0]["transforms"] if "cost" in t}
+    assert sent["corroborate_haiku"] == next(
+        t["cost"] for t in EX.DEFAULT_TRANSFORMS if t["probe"] == "corroborate_haiku")
+
+
+def test_run_pass_prices_the_grow_block_at_the_same_rate() -> None:
+    # the grow actuators' costs are the same authored-USD convention — one rate, one
+    # place (the decide payload), bridge untouched.
+    fake = FakeServices(
+        route={"construct": "passport number", "time_indexed": False},
+        utility={**_U, "lambda_usd": 2.0},
+        decides=[{"effector": "abstain", "credences": [0.2], "p_none": 0.7, "eu": -0.1},
+                 {"effector": "abstain", "credences": [0.2], "p_none": 0.7, "eu": -0.1}])
+    _loop(fake, grow_lane=True)
+    with_grow = [p for p in fake.posted("/decide") if "grow" in p]
+    assert with_grow, "the withhold re-ask must carry the grow block"
+    costs = {a["probe"]: a["cost"] for a in with_grow[0]["grow"]["actuators"]}
+    assert costs["re_extract_strong"] == 2.0 * 0.020
+
+
 # --- edge_events: the attribution stream for the extract-tier writers --------------------
 # Every answer-proposing firing (corroborate tiers, the k=0 rescue, re_extract_strong,
 # deliberate) appends ONE event {edge, value, confidence, lineage} in firing order — the

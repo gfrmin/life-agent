@@ -35,6 +35,7 @@ latents:
   u_hedged:   {grid: {lo: -1.0, hi: 1.0, n: 5},  prior: {type: gaussian, mu: 0.4, sigma: 0.4}}
   lambda_int: {grid: {lo: -0.5, hi: 4.0, n: 10}, prior: {type: gaussian, mu: 1.0, sigma: 1.0}}
   kappa_att:  {grid: {lo: -0.2, hi: 1.0, n: 7},  prior: {type: gaussian, mu: 0.05, sigma: 0.1}}
+  lambda_usd: {grid: {lo: 0.0, hi: 8.0, n: 9},   prior: {type: gaussian, mu: 1.0, sigma: 1.0}}
 tau:
   grid: {lo: 0.5, hi: 2.0, n: 4}
   prior: {type: gaussian, mu: 1.0, sigma: 0.5}
@@ -56,6 +57,15 @@ def test_load_model_parses_gauge_latents_and_tau(model: U.UtilityModel) -> None:
     assert set(model.latents) == set(U.REQUIRED_LATENTS)
     assert model.latents["u_wrong"].grid.n == 11
     assert model.tau.grid.values()[0] == pytest.approx(0.5)
+
+
+def test_lambda_usd_is_a_required_latent_with_a_positive_domain(
+        model: U.UtilityModel) -> None:
+    # the $↔utility exchange rate (plan item C): gauge units per USD, a LATENT the
+    # owner elicits — never a constant invented in a menu row. Positive by domain
+    # (a rate, like tau): the grid floor is a constraint, not a preference.
+    assert "lambda_usd" in U.REQUIRED_LATENTS
+    assert model.latents["lambda_usd"].grid.lo >= 0.0
 
 
 def test_load_model_missing_latent_is_loud(tmp_path: Path) -> None:
@@ -317,7 +327,7 @@ def test_margin_reaction_folds_on_one_joint_grid(model: U.UtilityModel) -> None:
     # (u_wrong_scoped, u_hedged, lambda_int) are 1-D `truncated_gaussian`s. NO host grid anywhere.
     mv = [c for c in creates if c["params"]["type"] == "truncated_mv_gaussian"]
     trunc = [c for c in creates if c["params"]["type"] == "truncated_gaussian"]
-    assert len(creates) == 4 and len(mv) == 1 and len(trunc) == 3
+    assert len(creates) == 5 and len(mv) == 1 and len(trunc) == 4  # +lambda_usd (uncoupled)
     assert len(mv[0]["params"]["mu"]) == 2  # exactly the two coupled latents, no others
     # the margin couples them via a `margin_reaction` kernel carrying a length-2 coefficient vector
     jk = conditions[0]["params"]["kernel"]
@@ -346,7 +356,7 @@ def test_lookup_and_narrative_u_wrong_share_one_joint(model: U.UtilityModel) -> 
     # (the 2 coupled latents) + 3 one-dimensional truncated_gaussians (the uncoupled latents).
     mv = [c for c in creates if c["params"]["type"] == "truncated_mv_gaussian"]
     trunc = [c for c in creates if c["params"]["type"] == "truncated_gaussian"]
-    assert len(mv) == 1 and len(mv[0]["params"]["mu"]) == 2 and len(trunc) == 3
+    assert len(mv) == 1 and len(mv[0]["params"]["mu"]) == 2 and len(trunc) == 4
     joint_idx = next(i for i, c in enumerate(creates)
                      if c["params"]["type"] == "truncated_mv_gaussian")
     joint_id = f"s_{joint_idx + 1}"  # SeqTransport assigns create-state ids in create order

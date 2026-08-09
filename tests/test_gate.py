@@ -46,6 +46,29 @@ def _pair(qid: str, typed: G.RealisedResponse, mono: G.RealisedResponse,
 
 # --- the realised-utility model (stated) -------------------------------------------------
 
+def test_realised_utility_prices_realised_spend_under_lambda_usd() -> None:
+    # run-6 semantics (pre-registered in the run-5 §14 addendum): each arm's REALISED
+    # per-question spend enters Δ as -lambda_usd*cost_usd, on every action — money
+    # spent is spent whether the act reported or abstained.
+    u = {"u_correct": 1.0, "u_wrong": -2.0, "u_abstain": 0.0, "u_hedged": 0.3,
+         "u_wrong_scoped": -1.0, "lambda_int": 0.5, "lambda_usd": 2.0}
+    ok = G.RealisedResponse(action="report", correct=True, cost_usd=0.4)
+    assert G.realised_utility(ok, u, oracle_p=0.9) == 1.0 - 0.8
+    ab = G.RealisedResponse(action="abstain", cost_usd=0.1)
+    assert G.realised_utility(ab, u, oracle_p=0.9) == 0.0 - 0.2
+
+
+def test_realised_utility_without_the_rate_latent_is_byte_identical() -> None:
+    # the run-5-comparability pin: a utility sample from a model that lacks lambda_usd
+    # (every run before the elicitation channel) prices spend at exactly zero — the old
+    # Δ, byte for byte, cost fields present or not.
+    u = {"u_correct": 1.0, "u_wrong": -2.0, "u_abstain": 0.0, "u_hedged": 0.3,
+         "u_wrong_scoped": -1.0, "lambda_int": 0.5}
+    priced = G.RealisedResponse(action="report", correct=True, cost_usd=0.4)
+    assert G.realised_utility(priced, u, oracle_p=0.9) == 1.0
+    assert G.RealisedResponse(action="report", correct=True).cost_usd == 0.0
+
+
 def test_realised_utility_recovers_the_gauge_and_latents() -> None:
     u = {"u_correct": 1.0, "u_abstain": 0.0, "u_wrong": -2.0, "u_hedged": 0.3,
          "lambda_int": 0.5}

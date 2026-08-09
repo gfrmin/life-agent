@@ -156,6 +156,7 @@ latents:
   u_hedged:   {grid: {lo: -1.0, hi: 1.0, n: 5},  prior: {type: gaussian, mu: 0.4, sigma: 0.4}}
   lambda_int: {grid: {lo: -0.5, hi: 4.0, n: 10}, prior: {type: gaussian, mu: 1.0, sigma: 1.0}}
   kappa_att:  {grid: {lo: -0.2, hi: 1.0, n: 7},  prior: {type: gaussian, mu: 0.05, sigma: 0.1}}
+  lambda_usd: {grid: {lo: 0.0, hi: 8.0, n: 9},   prior: {type: gaussian, mu: 1.0, sigma: 1.0}}
 tau: {grid: {lo: 0.5, hi: 2.0, n: 4}, prior: {type: gaussian, mu: 1.0, sigma: 0.5}}
 endpoint_mass_warn: 0.01
 """

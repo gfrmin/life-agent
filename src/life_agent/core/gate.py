@@ -84,10 +84,15 @@ _ALL_ACTIONS = ASSERT_ACTIONS | WITHHOLD_ACTIONS
 @dataclass(frozen=True)
 class RealisedResponse:
     """One policy's realised answer on one question: the action it took and, for an
-    assertion, whether it landed the gold fact (``None`` for a withholding)."""
+    assertion, whether it landed the gold fact (``None`` for a withholding).
+    ``cost_usd`` is the arm's REALISED per-question spend (the typed view's
+    decisions-v2 field; the replay row's recorded usage cost) — priced into Δ by
+    ``realised_utility`` iff the utility sample carries the ``lambda_usd`` latent
+    (run-6 semantics, pre-registered; absent latent ⇒ the old Δ byte-for-byte)."""
 
     action: str
     correct: bool | None = None
+    cost_usd: float = 0.0
 
     def __post_init__(self) -> None:
         if self.action not in _ALL_ACTIONS:
@@ -121,20 +126,25 @@ def realised_report(asserted: list[str], gold: str, variants: list[str]) -> bool
 def realised_utility(resp: RealisedResponse, u: dict[str, float], *,
                      oracle_p: float) -> float:
     """The realised answer's utility under one sampled (or mean) ``u`` — the stated
-    answer-level model (module docstring)."""
+    answer-level model (module docstring), minus the arm's realised spend priced at
+    the sampled ``lambda_usd`` exchange rate. Spend is spent whatever the act was
+    (an abstain that burned a deliberate call still paid for it). A ``u`` lacking
+    the latent (every pre-elicitation model) prices spend at exactly zero — the
+    pre-run-6 Δ byte-for-byte, which is the comparability pin, not a fallback."""
+    spend = u.get("lambda_usd", 0.0) * resp.cost_usd
     a = resp.action
     if a == "abstain":
-        return u["u_abstain"]
+        return u["u_abstain"] - spend
     if a == "ask_clarify":
-        return oracle_p * u["u_correct"] - u["lambda_int"]
+        return oracle_p * u["u_correct"] - u["lambda_int"] - spend
     if a == "report":
-        return u["u_correct"] if resp.correct else u["u_wrong"]
+        return (u["u_correct"] if resp.correct else u["u_wrong"]) - spend
     if a == "hedge":
-        return u["u_hedged"] if resp.correct else u["u_wrong"]
+        return (u["u_hedged"] if resp.correct else u["u_wrong"]) - spend
     if a == "report_scoped":
         # a true scoped claim: lands the gold → u_hedged; a miss is a citable misread, not the
         # catastrophic current-value wrong, so it costs only u_wrong_scoped (scoped-claims §3.1)
-        return u["u_hedged"] if resp.correct else u["u_wrong_scoped"]
+        return (u["u_hedged"] if resp.correct else u["u_wrong_scoped"]) - spend
     raise ValueError(f"unhandled action {a!r}")  # pragma: no cover (guarded at construction)
 
 

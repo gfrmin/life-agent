@@ -52,9 +52,14 @@ FORMAT_VERSION = 1
 GAUGE: dict[str, float] = {"u_correct": 1.0, "u_abstain": 0.0}
 
 # The v0 latents (lookup-family scope). Growing this set is a model.yaml + code change,
-# never a silent addition.
+# never a silent addition. lambda_usd (plan item C, 2026-08-08) is the $↔utility
+# exchange rate — gauge units per USD, positive by domain (a rate, like tau: the grid
+# floor is a constraint, not a preference). Its prior is frozen at the old authoring
+# convention ($1 ≈ 1·u_correct) BEFORE any elicitation; the owner's elicitations.jsonl
+# line narrows it. Consumers: executor menu/grow pricing (usd x rate at the decide
+# payload) and gate.realised_utility's -rate*cost_usd term (run-6 pre-registered).
 REQUIRED_LATENTS: tuple[str, ...] = ("u_wrong", "u_wrong_scoped", "u_hedged",
-                                     "lambda_int", "kappa_att")
+                                     "lambda_int", "kappa_att", "lambda_usd")
 
 @dataclass(frozen=True)
 class Grid:

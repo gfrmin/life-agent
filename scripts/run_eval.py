@@ -508,16 +508,19 @@ def _typed_response_executor(view: dict, q: dict):
     import life_agent.core.gate as GATE
 
     gold, variants = q.get("answer", ""), q.get("answer_variants", [])
+    # the arm's realised spend (decisions-v2) rides every action — an abstain that
+    # burned a deliberate call still paid for it (the run-6 spend term's data feed)
+    cost = float(view.get("cost_usd") or 0.0)
     eff = str(view["effector"])
     if eff == "report":
         return GATE.RealisedResponse(action="report", correct=GATE.realised_report(
-            [str(a) for a in view["asserted"]], gold, variants))
+            [str(a) for a in view["asserted"]], gold, variants), cost_usd=cost)
     if eff == "hedge":
         return GATE.RealisedResponse(action="hedge", correct=GATE.realised_report(
-            [str(c) for c in view["candidates"]], gold, variants))
+            [str(c) for c in view["candidates"]], gold, variants), cost_usd=cost)
     if eff == "ask_clarify":
-        return GATE.RealisedResponse(action="ask_clarify", correct=None)
-    return GATE.RealisedResponse(action="abstain", correct=None)
+        return GATE.RealisedResponse(action="ask_clarify", correct=None, cost_usd=cost)
+    return GATE.RealisedResponse(action="abstain", correct=None, cost_usd=cost)
 
 
 def executor_run_stats(typed_views: list) -> dict:
@@ -564,13 +567,17 @@ def _replay_response(row: dict, q: dict):
     import life_agent.core.gate as GATE
 
     text = str(row.get("text") or "").strip()
+    # the outside option's realised spend is recorded per row (usage.estimated_cost_usd
+    # in the ff run) — priced into Δ from run 6 exactly like the typed arm's spend;
+    # spent whether the row asserted or declined
+    cost = float((row.get("usage") or {}).get("estimated_cost_usd") or 0.0)
     if row.get("status") != "ok" or row.get("declined") or not text:
         # a blank-but-ok row is a degenerate run, not an assertion — grading it as a
         # report would mint a spurious confident-wrong (the A3 sign rested on 3 CWs)
-        return GATE.RealisedResponse(action="abstain", correct=None)
+        return GATE.RealisedResponse(action="abstain", correct=None, cost_usd=cost)
     correct = GATE.realised_report([text], q.get("answer", ""),
                                    q.get("answer_variants", []))
-    return GATE.RealisedResponse(action="report", correct=correct)
+    return GATE.RealisedResponse(action="report", correct=correct, cost_usd=cost)
 
 
 def gate_paired_outcomes(conn, questions: list[dict], k: int, ask,
