@@ -85,6 +85,21 @@ def test_replay_blank_ok_row_is_an_abstention_not_a_confident_wrong() -> None:
     assert RE._replay_response(none_text, q).action == "abstain"
 
 
+def test_typed_and_replay_responses_carry_realised_cost() -> None:
+    # the run-6 spend term's data feed (plan item C): the typed arm's cost rides the
+    # view's decisions-v2 field; the replay arm's rides the ff run's recorded
+    # usage.estimated_cost_usd; absent either way ⇒ 0.0, never None arithmetic.
+    q = {"id": "q2-001", "answer": "P123", "answer_variants": [], "fuzzy": False}
+    typed = RE._typed_response_executor(
+        _exec_view(effector="report", asserted=["P123"], cost_usd=0.42), q)
+    assert typed.cost_usd == 0.42
+    assert RE._typed_response_executor(_exec_view(), q).cost_usd == 0.0
+    priced_row = dict(_row("q2-001", "the number is P123"),
+                      usage={"estimated_cost_usd": 0.36})
+    assert RE._replay_response(priced_row, q).cost_usd == 0.36
+    assert RE._replay_response(_row("q2-001", "P123"), q).cost_usd == 0.0
+
+
 def test_paired_dict_names_its_baseline_arm() -> None:
     import life_agent.core.gate as GATE
 

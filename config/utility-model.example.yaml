@@ -31,6 +31,12 @@ latents:
   u_hedged:        {grid: {lo: -2.0, hi: 1.5, n: 36},  prior: {type: gaussian, mu: 0.4, sigma: 0.4}}
   lambda_int:      {grid: {lo: -2.5, hi: 6.0, n: 35},  prior: {type: gaussian, mu: 1.0, sigma: 1.0}}
   kappa_att:       {grid: {lo: -0.2, hi: 1.0, n: 25},  prior: {type: gaussian, mu: 0.05, sigma: 0.1}}
+  # lambda_usd: the $↔utility exchange rate — gauge units (correct-answers-worth) per US
+  # dollar. Positive by domain (a rate, like tau — the floor is a constraint, not a
+  # preference). Prior frozen 2026-08-08 at the old authoring convention ($1 ≈ 1·u_correct),
+  # wide, BEFORE any elicitation; the owner's one line ("how many correct answers is a
+  # dollar worth to me?") in elicitations.jsonl narrows it and dominates at small sigma.
+  lambda_usd:      {grid: {lo: 0.0, hi: 8.0, n: 33},   prior: {type: gaussian, mu: 1.0, sigma: 1.0}}
 tau:
   grid: {lo: 0.2, hi: 5.0, n: 8}
   prior: {type: gaussian, mu: 1.0, sigma: 1.0}
