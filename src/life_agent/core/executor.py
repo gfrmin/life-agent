@@ -84,11 +84,11 @@ _DELIBERATE_MODEL = "claude-opus-4-8"
 # The SEED template — never offered to the daemon as-is: menu_transforms() re-prices its
 # rho to what the enactment fold can actually deliver (the daemon must never buy a probe
 # at a rho the body cannot cash). rho_seed 0.92 = the arm's measured 92.3% correct and
-# cost 0.38 = the run's mean $/question (both ff-v2-delib-20260719, frozen blind). The
-# cost rides in the tier rows' convention — approximate dollars read as gauge utility
-# ($1 ≈ 1·u_correct, the convention the 0.004/0.012/0.020 tier costs established); the
-# real $↔utility exchange rate is an owner elicitation, named in bayes §14, not a
-# constant to invent here.
+# cost 0.38 = the run's mean $/question (both ff-v2-delib-20260719, frozen blind). Costs
+# here are AUTHORED IN USD (as are the 0.004/0.012/0.020 tier costs); run_pass converts
+# them to gauge utility at u_bar's elicited lambda_usd exchange rate before the daemon
+# reads them (plan item C) — a u_bar without the latent keeps the legacy $1 ≈ 1-gauge
+# convention.
 DELIBERATE_TRANSFORM: dict[str, Any] = {
     "name": "deliberate", "probe": "deliberate", "kind": "voi",
     "trigger": "below_bar", "rho": 0.92, "cost": 0.38,
@@ -254,7 +254,7 @@ def decide_via_loop(question: str, k: int, *, bridge: str, daemon: str, post: Po
         return {"effector": nv["action"], "asserted": nv["asserted"], "candidates": [],
                 "credences": [], "p_none": None, "eu": None, "n_obs": 0,
                 "hits": nv.get("hits", []), "route": None, "rendered": nv.get("rendered"),
-                **_UNPRICED_ATTRIBUTION, "edge_events": []}
+                **_UNPRICED_ATTRIBUTION, "edge_events": [], "spend_usd": 0.0}
     if grow_lane:
         return run_pass(question, k, route, bridge=bridge, daemon=daemon, post=post, get=get,
                         rerank=False, expand=False, transforms=transforms, grow_lane=True,
@@ -286,9 +286,11 @@ def decide_via_loop(question: str, k: int, *, bridge: str, daemon: str, post: Po
             # exactly the curve food the fold most needs); same-artifact repeats
             # across passes dedup on lineage at the writer.
             merged = [*view["edge_events"], *grown["edge_events"]]
-            if grown["effector"] == "report" or not view["candidates"]:
+            merged_spend = view["spend_usd"] + grown["spend_usd"]  # burned is burned,
+            if grown["effector"] == "report" or not view["candidates"]:  # both passes
                 view = grown
             view["edge_events"] = merged
+            view["spend_usd"] = merged_spend
     return view
 
 
@@ -341,14 +343,21 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
     # REQUESTED model: decide-time conditioning looks up extract_edge(requested), and
     # served_model is "" on §18.9 warm replays — stamping it would split the namespace.
     edge_events: list[dict[str, Any]] = []
+    # the question's TOTAL metered spend — every firing, tiers AND deliberate (the
+    # decisions-v2 single slot below stays deliberate-only; the gate's run-6 spend
+    # term reads THIS, or typed tier spend would ride at $0 while the replay arm is
+    # fully priced — PR #67 review).
+    spend_usd = 0.0
 
     def _edge_event(edge: str, reply: dict[str, Any]) -> None:
+        nonlocal spend_usd
         if "cache_key" not in reply:
             # a version-skewed bridge (predating the cache_key wire field) yields
             # lineage-less rows that dedup KEEPS by design — warm replays would then
             # double-count into the curves on every gate run. Loud, never silent.
             print(f"  ({edge} reply carried no cache_key — bridge version skew? "
                   "lineage-less rows re-grade on every warm replay)")
+        spend_usd += float(reply.get("cost_usd") or 0.0)
         v = reply.get("value")
         edge_events.append({"edge": edge, "value": str(v) if v is not None else None,
                             "confidence": reply.get("confidence"),
@@ -405,8 +414,21 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
         _log_outcomes("miss")
         return {"effector": "miss", "asserted": [], "candidates": [], "credences": [],
                 "p_none": None, "eu": None, "n_obs": 0, "hits": hits, "route": route,
-                **_UNPRICED_ATTRIBUTION, "edge_events": edge_events}
+                **_UNPRICED_ATTRIBUTION, "edge_events": edge_events,
+                "spend_usd": spend_usd}
     u_bar = get(f"{bridge}/utility")["u_bar"]
+    # price the menu in the OWNER'S utility (plan item C): transform rows and grow
+    # actuators are AUTHORED in USD; the elicited exchange rate (lambda_usd, gauge
+    # units per dollar — a learned latent, never a constant invented here) converts
+    # them at the one place the daemon reads prices. A u_bar lacking the latent
+    # (pre-elicitation prod) prices at the legacy $1 ≈ 1-gauge convention, unchanged.
+    rate = float(u_bar.get("lambda_usd", 1.0))
+    transforms = [dict(t, cost=float(t["cost"]) * rate) if "cost" in t else t
+                  for t in transforms]
+    if menu is not None:
+        menu = {**menu, "actuators": [dict(a, cost=float(a["cost"]) * rate)
+                                      if "cost" in a else a
+                                      for a in menu["actuators"]]}
     candidates = ext["candidates"]
     owner = owner_scoped(question)
     obs, rho, era = ext["observations"], ext["rho"], ext["era_split"]
@@ -528,6 +550,7 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
                 # split the decisions-v2 accounting from the gate writer's stream.
                 edge_events.append({"edge": edge_instrument, "value": edge_value,
                                     "confidence": edge_conf, "lineage": edge_lineage})
+                spend_usd += float(edge_cost or 0.0)
             if dr is not None and dr.get("status") == "ok":
                 if dr.get("new_candidate"):
                     candidates = [*candidates, str(dr["new_candidate"])]
@@ -584,7 +607,7 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
             "instrument": edge_instrument, "cost_usd": edge_cost,
             "latency_s": edge_latency, "instrument_value": edge_value,
             "instrument_confidence": edge_conf, "instrument_lineage": edge_lineage,
-            "edge_events": edge_events}
+            "edge_events": edge_events, "spend_usd": spend_usd}
 
 
 # --- render (the executor's decision in the shared credence grammar) --------------------

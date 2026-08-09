@@ -1471,3 +1471,38 @@ on this list. Answers land here by amendment, citing their evidence.
   design, eval_executor's isolation-by-not-writing — each $0 at re-read and graded fresh
   on lineage, so double-counted evidence is excluded either way). The corpus
   digest held across all firings.
+
+  **Run-6 Δ semantics — PRE-REGISTERED 2026-08-09, blind (before run 5 fired;
+  owner ratified the split 2026-08-08: run 5 keeps the runs-3/4 Δ definition,
+  the changes below bind from run 6).** Two changes, frozen here:
+  (1) **The spend term.** Δ's per-question utility gains −λ_usd·cost_usd on BOTH
+  arms and every action (money burned is burned whether the act reported or
+  abstained): the typed arm's cost is the view's TOTAL metered spend (`spend_usd`
+  — the deliberate edge AND the corroborate/rescue/re-extract tiers, each priced
+  from its actual tokens bridge-side; §18.9 warm replays are $0 by construction),
+  the replay arm's is the ff run's recorded per-question `usage.estimated_cost_usd`
+  (the outside option pays for its calls too — pricing only the typed arm's spend
+  would bias Δ pro-baseline, and only deliberate's would bias it pro-typed, the
+  #67 review's finding). λ_usd (gauge units per USD) is a REQUIRED latent with
+  prior N(1.0, 0.35) truncated to [0, 8] — truncated mean ≈ 1.002, the
+  months-operating $1 ≈ 1·u_correct authoring convention within 0.2% (computed,
+  not assumed: an N(1,1) draft's truncated mean was 1.288, a silent 29%
+  re-pricing the review caught; the example-yaml prior is drift-gated in tests) —
+  frozen before any elicitation; the owner's elicitation line narrows it and the
+  gate samples its marginal like every latent. Disclosed side effects: the sixth
+  latent shifts the seeded MC RNG stream, so post-merge gates are a NEW
+  seed-stream — cross-merge comparability runs through the published artifacts
+  (paired.jsonl now carries cost_usd per arm precisely so the fold stays
+  replayable), never seed-replay; and a paired row lacking the latent in its
+  utility sample prices spend at exactly zero, which is how pre-run-6 artifacts
+  replay unchanged. The decide-path twin lands with the same merge: menu rows and
+  grow actuators stay authored in USD and convert at u_bar's λ_usd at the decide
+  payload (legacy $1 ≈ 1-gauge when the latent is absent).
+  (2) **Judge grading, conditional.** Run 5 carries the cross-provider modal-of-3
+  correctness judge SHADOW-ONLY (§ the judge-verdicts cache; grading unchanged,
+  the disagreement table published in the gate report). Iff the hand audit of
+  that table clears — the judge rescues real matcher misses without minting
+  false credits — run 6 adopts judge grading for the gate arms (the eval_edge
+  curve rows adopt LAST, separately, they move live behaviour); if the audit
+  does not clear, run 6 stays matcher-graded and says so. Either way the run-5
+  addendum records the audit verbatim.
