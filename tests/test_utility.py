@@ -68,6 +68,35 @@ def test_lambda_usd_is_a_required_latent_with_a_positive_domain(
     assert model.latents["lambda_usd"].grid.lo >= 0.0
 
 
+def test_example_lambda_usd_prior_encodes_the_convention() -> None:
+    # PR #67 review: N(1,1) truncated to [0,8] has mean ≈1.288 — NOT the $1≈1-gauge
+    # convention the comments claimed, a silent ~29% re-pricing on deploy with zero
+    # elicitations. Drift gate: the shipped example prior's TRUNCATED mean must sit
+    # within 1% of the convention (the truncation shift is computed, not assumed).
+    import yaml as _yaml
+
+    example = Path(__file__).resolve().parent.parent / "config/utility-model.example.yaml"
+    spec = _yaml.safe_load(example.read_text(encoding="utf-8"))["latents"]["lambda_usd"]
+    mu, sigma = float(spec["prior"]["mu"]), float(spec["prior"]["sigma"])
+    lo, hi = float(spec["grid"]["lo"]), float(spec["grid"]["hi"])
+    phi = lambda z: math.exp(-z * z / 2) / math.sqrt(2 * math.pi)  # noqa: E731
+    cdf = lambda z: 0.5 * (1 + math.erf(z / math.sqrt(2)))  # noqa: E731
+    a, b = (lo - mu) / sigma, (hi - mu) / sigma
+    trunc_mean = mu + sigma * (phi(a) - phi(b)) / (cdf(b) - cdf(a))
+    assert abs(trunc_mean - 1.0) < 0.01, trunc_mean
+
+
+def test_missing_latent_error_names_the_remedy(tmp_path: Path) -> None:
+    # PR #67 review: a pre-lambda_usd model.yaml (second machine, backup restore) must
+    # fail LOUDLY — but the error names the one-line fix, never just the lack.
+    p = tmp_path / "model.yaml"
+    p.write_text(MODEL_YAML.replace(
+        "  lambda_usd: {grid: {lo: 0.0, hi: 8.0, n: 9},   "
+        "prior: {type: gaussian, mu: 1.0, sigma: 1.0}}\n", ""), encoding="utf-8")
+    with pytest.raises(ValueError, match=r"utility-model\.example\.yaml"):
+        U.load_model(p)
+
+
 def test_load_model_missing_latent_is_loud(tmp_path: Path) -> None:
     p = tmp_path / "model.yaml"
     p.write_text(MODEL_YAML.replace("u_hedged", "u_hedge_typo"), encoding="utf-8")

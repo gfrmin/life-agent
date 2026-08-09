@@ -86,18 +86,35 @@ def test_replay_blank_ok_row_is_an_abstention_not_a_confident_wrong() -> None:
 
 
 def test_typed_and_replay_responses_carry_realised_cost() -> None:
-    # the run-6 spend term's data feed (plan item C): the typed arm's cost rides the
-    # view's decisions-v2 field; the replay arm's rides the ff run's recorded
-    # usage.estimated_cost_usd; absent either way ⇒ 0.0, never None arithmetic.
+    # the run-6 spend term's data feed (plan item C, per the #67 review): the typed
+    # arm's cost is the view's TOTAL metered spend (spend_usd — deliberate AND tiers,
+    # never the deliberate-only decisions-v2 slot); the replay arm's is the ff run's
+    # recorded usage.estimated_cost_usd; absent either way ⇒ 0.0.
     q = {"id": "q2-001", "answer": "P123", "answer_variants": [], "fuzzy": False}
     typed = RE._typed_response_executor(
-        _exec_view(effector="report", asserted=["P123"], cost_usd=0.42), q)
-    assert typed.cost_usd == 0.42
+        _exec_view(effector="report", asserted=["P123"], cost_usd=0.42,
+                   spend_usd=0.432), q)
+    assert typed.cost_usd == 0.432
     assert RE._typed_response_executor(_exec_view(), q).cost_usd == 0.0
     priced_row = dict(_row("q2-001", "the number is P123"),
                       usage={"estimated_cost_usd": 0.36})
     assert RE._replay_response(priced_row, q).cost_usd == 0.36
     assert RE._replay_response(_row("q2-001", "P123"), q).cost_usd == 0.0
+
+
+def test_paired_dict_carries_the_cost_fields() -> None:
+    # PR #67 review: paired.jsonl is the gate's replayable artifact — dropping cost_usd
+    # would make every offline reanalysis silently recompute Δ with the spend term
+    # zeroed (the §17.4/§17.5 replays were built from exactly this file).
+    import life_agent.core.gate as GATE
+
+    p = GATE.PairedOutcome(
+        question_id="q2-001", answerable=True,
+        typed=GATE.RealisedResponse(action="abstain", correct=None, cost_usd=0.31),
+        mono=GATE.RealisedResponse(action="report", correct=True, cost_usd=0.36))
+    d = RE._paired_to_dict(p, baseline="raw-deliberative-replay")
+    assert d["typed"]["cost_usd"] == 0.31
+    assert d["mono"]["cost_usd"] == 0.36
 
 
 def test_paired_dict_names_its_baseline_arm() -> None:
@@ -166,7 +183,7 @@ def _exec_view(**overrides: Any) -> dict[str, Any]:
         "hits": [], "route": {"construct": "passport number"},
         "instrument": "", "cost_usd": None, "latency_s": None,
         "instrument_value": None, "instrument_confidence": None,
-        "instrument_lineage": None, "edge_events": []}
+        "instrument_lineage": None, "edge_events": [], "spend_usd": 0.0}
     base.update(overrides)
     return base
 
@@ -439,13 +456,15 @@ def test_gate_loo_without_deliberate_flag_refuses(monkeypatch, capsys) -> None:
 def test_executor_run_stats_summarise_spend_and_fired() -> None:
     views = [
         ({"id": "a"}, _exec_view(instrument="deliberate@claude-opus-4-8",
-                                 cost_usd=0.31)),
+                                 cost_usd=0.31, spend_usd=0.322)),
         ({"id": "b"}, _exec_view(instrument="deliberate@claude-opus-4-8",
-                                 cost_usd=0.0)),          # warm §18.9 replay
-        ({"id": "c"}, _exec_view()),                      # edge never fired
+                                 cost_usd=0.0, spend_usd=0.0)),  # warm §18.9 replay
+        ({"id": "c"}, _exec_view(spend_usd=0.004)),  # a tier fired; deliberate didn't
     ]
     s = RE.executor_run_stats(views)
     assert s["n"] == 3
     assert s["deliberate_fired"] == 2
     assert s["warm_hits"] == 1
-    assert s["spend_usd"] == pytest.approx(0.31)
+    # spend is the TOTAL metered spend (tiers included, #67 review) — not the
+    # deliberate slot's sum; question c pays without the deliberate edge ever firing
+    assert s["spend_usd"] == pytest.approx(0.322 + 0.004)
