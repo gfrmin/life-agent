@@ -508,16 +508,21 @@ def _typed_response_executor(view: dict, q: dict):
     import life_agent.core.gate as GATE
 
     gold, variants = q.get("answer", ""), q.get("answer_variants", [])
+    # the arm's TOTAL realised spend (spend_usd: deliberate AND metered tiers — the
+    # deliberate-only decisions-v2 slot would price typed tier spend at $0 while the
+    # replay arm is fully priced, #67 review) rides every action: an abstain that
+    # burned calls still paid for them
+    cost = float(view["spend_usd"] or 0.0)
     eff = str(view["effector"])
     if eff == "report":
         return GATE.RealisedResponse(action="report", correct=GATE.realised_report(
-            [str(a) for a in view["asserted"]], gold, variants))
+            [str(a) for a in view["asserted"]], gold, variants), cost_usd=cost)
     if eff == "hedge":
         return GATE.RealisedResponse(action="hedge", correct=GATE.realised_report(
-            [str(c) for c in view["candidates"]], gold, variants))
+            [str(c) for c in view["candidates"]], gold, variants), cost_usd=cost)
     if eff == "ask_clarify":
-        return GATE.RealisedResponse(action="ask_clarify", correct=None)
-    return GATE.RealisedResponse(action="abstain", correct=None)
+        return GATE.RealisedResponse(action="ask_clarify", correct=None, cost_usd=cost)
+    return GATE.RealisedResponse(action="abstain", correct=None, cost_usd=cost)
 
 
 def executor_run_stats(typed_views: list) -> dict:
@@ -527,8 +532,10 @@ def executor_run_stats(typed_views: list) -> dict:
     return {"n": len(typed_views),
             "deliberate_fired": len(fired),
             "warm_hits": sum(1 for v in fired if v.get("cost_usd") == 0.0),
-            "spend_usd": sum(float(v["cost_usd"]) for v in fired
-                             if v.get("cost_usd"))}
+            # TOTAL metered spend (tiers included since #67) — not the deliberate
+            # slot's sum; a question can pay without the deliberate edge ever firing
+            "spend_usd": sum(float(v.get("spend_usd") or 0.0)
+                             for _, v in typed_views)}
 
 
 def _monolithic_response(mono_text: str, q: dict, abstention: str):
@@ -564,13 +571,17 @@ def _replay_response(row: dict, q: dict):
     import life_agent.core.gate as GATE
 
     text = str(row.get("text") or "").strip()
+    # the outside option's realised spend is recorded per row (usage.estimated_cost_usd
+    # in the ff run) — priced into Δ from run 6 exactly like the typed arm's spend;
+    # spent whether the row asserted or declined
+    cost = float((row.get("usage") or {}).get("estimated_cost_usd") or 0.0)
     if row.get("status") != "ok" or row.get("declined") or not text:
         # a blank-but-ok row is a degenerate run, not an assertion — grading it as a
         # report would mint a spurious confident-wrong (the A3 sign rested on 3 CWs)
-        return GATE.RealisedResponse(action="abstain", correct=None)
+        return GATE.RealisedResponse(action="abstain", correct=None, cost_usd=cost)
     correct = GATE.realised_report([text], q.get("answer", ""),
                                    q.get("answer_variants", []))
-    return GATE.RealisedResponse(action="report", correct=correct)
+    return GATE.RealisedResponse(action="report", correct=correct, cost_usd=cost)
 
 
 def gate_paired_outcomes(conn, questions: list[dict], k: int, ask,
@@ -650,10 +661,14 @@ def gate_paired_outcomes(conn, questions: list[dict], k: int, ask,
 
 
 def _paired_to_dict(p, baseline: str = "monolithic") -> dict:
-    # every row names its baseline arm — a Δ2 paired.jsonl must never read as the §8 one
+    # every row names its baseline arm — a Δ2 paired.jsonl must never read as the §8 one.
+    # cost_usd rides both arms (#67 review): the artifact must DETERMINE the Δ the report
+    # computed, or every offline reanalysis silently zeroes the run-6 spend term.
     return {"question_id": p.question_id, "answerable": p.answerable, "baseline": baseline,
-            "typed": {"action": p.typed.action, "correct": p.typed.correct},
-            "mono": {"action": p.mono.action, "correct": p.mono.correct}}
+            "typed": {"action": p.typed.action, "correct": p.typed.correct,
+                      "cost_usd": p.typed.cost_usd},
+            "mono": {"action": p.mono.action, "correct": p.mono.correct,
+                     "cost_usd": p.mono.cost_usd}}
 
 
 def format_lookup_report(rows: list[dict], k: int, elapsed: float) -> str:

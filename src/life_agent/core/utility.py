@@ -52,9 +52,17 @@ FORMAT_VERSION = 1
 GAUGE: dict[str, float] = {"u_correct": 1.0, "u_abstain": 0.0}
 
 # The v0 latents (lookup-family scope). Growing this set is a model.yaml + code change,
-# never a silent addition.
+# never a silent addition. lambda_usd (plan item C, 2026-08-08) is the $↔utility
+# exchange rate — gauge units per USD, positive by domain (a rate, like tau: the grid
+# floor is a constraint, not a preference). Its prior — N(1.0, 0.35) on [0, 8],
+# TRUNCATED MEAN ≈ 1.002 (computed, not assumed; drift-gated in tests — the #67 review
+# caught an N(1,1) draft whose truncated mean was 1.288, a silent 29% re-pricing) —
+# encodes the months-operating $1 ≈ 1·u_correct convention within 0.2%, frozen BEFORE
+# any elicitation; the owner's elicitations.jsonl line narrows it. Consumers: executor
+# menu/grow pricing (usd x rate at the decide payload) and gate.realised_utility's
+# -rate*cost_usd spend term (run-6, pre-registered in bayesian-foundations §14).
 REQUIRED_LATENTS: tuple[str, ...] = ("u_wrong", "u_wrong_scoped", "u_hedged",
-                                     "lambda_int", "kappa_att")
+                                     "lambda_int", "kappa_att", "lambda_usd")
 
 @dataclass(frozen=True)
 class Grid:
@@ -115,7 +123,11 @@ def load_model(path: Path) -> UtilityModel:
     latents_raw = raw["latents"]
     missing = [name for name in REQUIRED_LATENTS if name not in latents_raw]
     if missing:
-        raise ValueError(f"model is missing required latent(s): {missing}")
+        raise ValueError(
+            f"model is missing required latent(s): {missing} — copy the line(s) from "
+            "config/utility-model.example.yaml into $LIFE_AGENT_KB/utility/model.yaml "
+            "(additive and deploy-order-safe; a file without lambda_usd predates plan "
+            "item C, 2026-08-08)")
     latents = {name: _latent_spec(name, latents_raw[name]) for name in REQUIRED_LATENTS}
     tau = _latent_spec("tau", raw["tau"])
     tau_narrative = (_latent_spec("tau_narrative", raw["tau_narrative"])

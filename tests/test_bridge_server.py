@@ -424,6 +424,44 @@ def test_reextract_returns_the_joint_cache_key(
     assert payload["cache_key"] == "jk-1"
 
 
+def test_reextract_prices_its_tokens(
+        deps: BridgeDeps, monkeypatch: pytest.MonkeyPatch) -> None:
+    # PR #67 review: the typed arm's spend feed counted ONLY deliberate — tier re-reads
+    # are real billed calls and must be metered on the wire, or the run-6 spend term
+    # prices the typed arm's tier spend at $0 while the replay arm is fully priced
+    # (a Δ biased pro-typed on exactly the semantics the term introduces).
+    import life_agent.core.joint_extract as JE
+
+    monkeypatch.setattr(JE, "extract_joint",
+                        lambda root, q, hits, *, model, k: JE.JointResult(
+                            value="NEW-7", confidence=0.9, as_of=None, cache_key="jk-1",
+                            in_tokens=1_000_000, out_tokens=0,
+                            served_model="claude-haiku-4-5"))
+    status, payload = _call(deps, "POST", "/probe/corroborate", {
+        "reextract": True, "allow_new": True, "question": "id?",
+        "hits": [{"artifact_cache_key": "d0", "chunk_text": "…"}],
+        "candidates": [], "model": "claude-haiku-4-5", "rho": 0.80})
+    assert status == 200
+    assert payload["cost_usd"] == 1.00  # 1 Mtok input at haiku's $1/Mtok
+
+
+def test_reextract_warm_replay_prices_at_zero(
+        deps: BridgeDeps, monkeypatch: pytest.MonkeyPatch) -> None:
+    # a §18.9 warm replay restores value/confidence with zero tokens and no served
+    # model — its realised spend is exactly $0, priced via the REQUESTED model pin
+    import life_agent.core.joint_extract as JE
+
+    monkeypatch.setattr(JE, "extract_joint",
+                        lambda root, q, hits, *, model, k: JE.JointResult(
+                            value="NEW-7", confidence=0.9, as_of=None, cache_key="jk-1"))
+    status, payload = _call(deps, "POST", "/probe/corroborate", {
+        "reextract": True, "allow_new": True, "question": "id?",
+        "hits": [{"artifact_cache_key": "d0", "chunk_text": "…"}],
+        "candidates": [], "model": "claude-opus-4-8", "rho": 0.95})
+    assert status == 200
+    assert payload["cost_usd"] == 0.0
+
+
 def test_source_time_factor_tolerates_partial_self_reported_as_of() -> None:
     # run 3's q2-009: the joint read SELF-REPORTED as_of='2012' (a bare year, cached
     # content-addressed ⇒ deterministic) and the volatility projector crashed the
