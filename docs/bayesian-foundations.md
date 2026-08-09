@@ -1621,9 +1621,12 @@ on this list. Answers land here by amendment, citing their evidence.
   realised actions, mono costs exact per replay row ($39.01 total), typed
   costs the console total ($1.71) allocated uniformly (per-question split not
   persisted pre-#67; second-order). Artifact + deterministic script:
-  `$LIFE_AGENT_KB/eval/gate-outside-option/lambda-sensitivity-20260809{.md,-sweep.py}`;
-  the cost=0 sanity pin reproduces the published run-5 reading (0.097/−0.232;
-  the new latent shifts only the MC draw stream). Landmarks on those frozen
+  `$LIFE_AGENT_KB/eval/gate-outside-option/lambda-sensitivity-20260809{.md,-sweep.py}`
+  (replay requires the repo at the #68 merge `4b11bce` plus the 2026-08-09 KB
+  posterior state — the script pins these and takes `LIFE_AGENT_REPO` from the
+  environment); the cost=0 sanity pin lands at 0.097/−0.232 vs the published
+  run-5 reading 0.098/−0.230 — draw-stream jitter only (the new latent shifts
+  the MC sample stream, not any utility at cost 0). Landmarks on those frozen
   actions: Δ̄ slope +0.3587 per unit λ (the $39.01-vs-$1.71 asymmetry), sign
   flip at λ≈0.65, the outside option's own EU/q negative beyond λ≈1.3, the
   0.90-mass bar at λ≈1.5 pinned. **Disclosure: the elicitation was therefore
@@ -1638,11 +1641,19 @@ on this list. Answers land here by amendment, citing their evidence.
   (re-freezing the prior after seeing readings would be tuning). Counterfactual
   at his folded posterior (not a reading): run 5's frozen actions price to
   Δ̄ = +0.245 [−0.076, +0.646], P(Δ>0.05) = 0.808 — still FAIL, just under the
-  bar — with the outside option's EU/q at −0.009: at the owner's stated rate,
-  "ask Claude everything" prices to break-even per question. Ledger mechanics:
-  the elicitation line appends to `$LIFE_AGENT_KB/utility/elicitations.jsonl`
-  only once prod is at ≥ #67 — the pre-#67 `load_elicitations` raises on an
-  unknown latent, so appending before the owner's ff-pull would crash every
-  prod utility fold (sequencing enforced by a watcher: append + bridge restart
-  fire on the pull). Run-6 pre-registrations stand unchanged; the spend term
-  now runs on an elicited rate, not the bare prior.
+  bar — with the outside option's EU/q at −0.009 **at the folded rate 1.331**,
+  effectively break-even; at his literal stated 1.5 (pinned) the artifact's
+  table reads −0.072/q, distinctly negative. Ledger mechanics: the elicitation
+  line appends to `$LIFE_AGENT_KB/utility/elicitations.jsonl` only once the
+  **deployed prod code** carries the latent — the pre-#67 `load_elicitations`
+  raises on an unknown latent, so a premature append crashes every prod
+  utility fold. The session's pull-watcher is detect-only and session-scoped
+  (it polls the prod master ref, which can move for reasons short of a #67
+  deploy); the append step re-verifies `lambda_usd` in the deployed
+  `utility.py` before writing, and a dead session just leaves the append
+  outstanding. Run 6 cannot silently absorb that: **added guard, registered
+  blind before any priced reading — run 6's report must name the lambda_usd
+  posterior it folded; a prior-only fold (1.002 ± 0.347, the line never
+  landed) VOIDS the priced reading** rather than passing it off as elicited.
+  All other run-6 pre-registrations stand unchanged; once the line lands, the
+  spend term runs on the elicited fold (1.331 ± 0.203), not the bare prior.
