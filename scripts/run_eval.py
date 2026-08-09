@@ -845,6 +845,25 @@ def synthesis_grade(conn, q: dict, k: int, *, fresh: bool = False) -> dict:
     }
 
 
+def archive_gate_artifacts(gate_dir: Path, *, run_id: str) -> list[Path]:
+    """Copy the fixed-path gate artifacts to run-id-suffixed names, mechanically.
+
+    The run-6 pre-registration (bayesian-foundations §14) routes cross-merge
+    comparability THROUGH the published artifacts — and the manual archive ritual was
+    missed on runs 3 and 4 (their paired.jsonl/report.md were clobbered by the next
+    run; PR #68 review). Names match the pre-existing manual archives
+    (report-<run_id>.md / paired-<run_id>.jsonl) so one glob spans both eras. A
+    missing source is skipped, never raised — a voided run archives what it wrote."""
+    archived: list[Path] = []
+    for name, suffix in (("report.md", ".md"), ("paired.jsonl", ".jsonl")):
+        src = gate_dir / name
+        if src.exists():
+            dst = gate_dir / f"{name.split('.')[0]}-{run_id}{suffix}"
+            dst.write_bytes(src.read_bytes())
+            archived.append(dst)
+    return archived
+
+
 def _cache_line(cache: dict[str, int]) -> str:
     """One line of per-stage derivation-cache hit rates for the report ('' when empty)."""
     if not cache:
@@ -1219,6 +1238,10 @@ def main() -> int:
             except (Exception, SystemExit) as e:
                 print(f"  (judge shadow failed, grading unchanged and the gate "
                       f"artifacts already written: {e})")
+        # mechanical, after the judge append so the archive carries the full report —
+        # the fixed paths are the NEXT run's clobber victims (runs 3/4 were lost to
+        # the manual ritual; the §14 replayability invariant runs through these files)
+        archive_gate_artifacts(gate_dir, run_id=run_id)
         print(f"\nGate report → {gate_dir / 'report.md'}")
         verdict = "PASS" if result.passed else "FAIL"
         print(f"  verdict {verdict} · P(Δ>{result.materiality_delta})="
