@@ -1511,24 +1511,29 @@ on this list. Answers land here by amendment, citing their evidence.
   the judge shadow aboard; runs-3/4 Δ definition, per the split above): FAIL at
   P(Δ>0.05) = 0.098, Δ̄ = −0.230 [−0.525, +0.163].** Typed answer rate =
   correct-report rate = 0.26 (27/104) — zero wrongs, third consecutive executor
-  reading. The disagreement region is 76/104: 75 abstain×report at −0.333/q, 26
-  report×report at 0.000, and — new — **1 report×abstain at +1.000: q2-083, the
-  first typed reach past the outside option** (the replay abstains there). The
-  run-4→run-5 console diff is exactly that one action — no churn — and Δ̄ moved
-  +0.009, almost exactly run 4's priced +0.010/conversion. Attribution, honest:
-  q2-083 has no deliberate rows in any run — its conversion rode the three
-  corroborate tiers agreeing on the same claim (self-reports 0.55–0.85), which
-  the LOO curve bank (44 pre-run rows, all deliberate@claude-opus-4-8) could not
-  have touched; between the runs both the master code (#61–#65) and the corpus
-  digest moved, so the lever is not isolated. **The curve-channel flywheel
-  produced no measured conversion this round.** The #56 refusal gate earns no
-  reach credit either — q2-093/q2-096 (the named refusal class) were already
-  correct-reports in pre-fix run 4; the fix ran live on the executor arm (the
-  shared `usable_terms` seam sits inside `expand_query_terms`, both the cached
-  and fresh paths) but the printed refusal counter instruments only the
-  family-arm ask path, which gate-executor runs never exercise — hygiene
-  verified present, effect on this corpus nil. Deliberate fired 50/104 (46
-  warm) at $1.71 total (run 4: 45 fires, 24 warm, $8.93) — the §18.9 cache
+  reading. The disagreement region is 76/104 (75 abstain×report at −0.333/q + 1
+  report×abstain at +1.000); the agreement set (26 report×report, 2
+  abstain×abstain) prices at 0.000. The report×abstain is **q2-083 — a re-gain,
+  not novel reach**: run 3 converted it, run 4 lost it (one of run 4's own "2
+  lost" churn), run 5 wins it back (the replay abstains there). The
+  run-4→run-5 console diff is exactly that one action — no other churn — and Δ̄
+  moved +0.009, almost exactly run 4's priced +0.010/conversion. Attribution,
+  honest: q2-083 has no deliberate rows in any run — its conversion rode the
+  three corroborate tiers agreeing on the same claim (self-reports 0.55–0.85),
+  which the LOO curve bank (44 pre-run rows, all deliberate@claude-opus-4-8)
+  could not have touched; between the runs both the master code (#61–#65) and
+  the corpus digest moved, so the lever is not isolated — and a question that
+  flips run 3 → run 4 → run 5 on unchanged gate semantics is boundary churn,
+  not a channel win. **The curve-channel flywheel produced no measured
+  conversion this round.** The #56 refusal gate earns no reach credit either —
+  q2-093/q2-096 (the named refusal class) were already correct-reports in
+  pre-fix run 4; the fix ran live on the executor arm (the shared
+  `usable_terms` gate sits inside `core/expansion.expand_terms`, applied on
+  both the cached and fresh paths, with `ask.py`'s `_expand_terms` the
+  counter-instrumented wrapper) but the printed refusal counter instruments
+  only the family-arm ask path, which gate-executor runs never exercise —
+  hygiene verified present, effect on this corpus nil. Deliberate fired 50/104
+  (46 warm) at $1.71 total (run 4: 45 fires, 24 warm, $8.93) — the §18.9 cache
   amortizing exactly as designed. **The harvest: 217 rows appended (82
   extract@claude-opus-4-8 + 67 extract@claude-sonnet-4-6 + 60
   extract@claude-haiku-4-5 + 8 deliberate; 67 warm dupes deduped on lineage) —
@@ -1538,42 +1543,71 @@ on this list. Answers land here by amendment, citing their evidence.
   52 rows, 46 correct); batch proper scores mean_log −0.390, Brier 0.120. The
   bank for run 6's LOO folds is 261 rows across four edges — run 6 is the first
   reading where the tiers' declared 0.80/0.90/0.95 constants earn out into
-  measured per-edge curves. Artifact hygiene: run 5's paired.jsonl and report
-  are archived under the run id (the flagoff precedent); run 4's paired.jsonl
-  was clobbered by run 5 before archiving (its console and the ledgers survive)
-  — disclosed, and per-run archiving is now part of the ritual.
+  measured per-edge curves. Artifact hygiene, the full loss disclosed: the
+  fixed-path report.md/paired.jsonl are the NEXT run's clobber victims, and the
+  manual archive ritual was missed twice — **runs 3 AND 4 both lost their
+  report and paired.jsonl** (only the flagoff run 1 and run 5 are archived;
+  runs 3/4 survive in the outcomes/decisions ledgers and their consoles, now
+  copied durably to `eval/gate-outside-option/console-gate-<run_id>.log` for
+  runs 2–5 — they previously lived only on tmpfs, one reboot from gone, and
+  they are the sole per-question action record for runs 3/4, so the
+  one-action-diff claim above is checkable against them). Archiving is now
+  MECHANICAL, not a ritual: `run_eval.archive_gate_artifacts` copies both
+  artifacts to run-id-suffixed names inside the gate run itself (after the
+  judge append, so the archive carries the full report; landed with this
+  reading's PR, tested) — the run-6 replayability invariant no longer hangs on
+  an operator remembering a step missed 2 of 3 times.
   **The judge-shadow audit (registration (2) above, resolved): 412/412 judged
   (judge pin gpt-5.1, modal-of-3, verdicts cached under judge-bound keys), 0
   unjudged, 405 agree, 7 disagreements — all seven on the mono arm; zero on
   typed asserts, typed hedges, or edge rows** (the zero-wrong typed claim now
-  has cross-provider corroboration). The seven, hand-audited: (a) **matcher
-  false credits, judge right — 3:** q2-018 and q2-105 assert the WRONG fax
-  number while quoting the gold digits as the adjacent phone/tel field
-  (mention-not-asserting, the exact predicted matcher failure — and the two
-  answers read the same government-contact table family with mutually
-  contradictory column orders, so at least one is structurally confabulated);
-  q2-021 asserts page 120 against gold 119, matched only on "page-119 footer"
-  in its own citation prose. (b) **real rescues, matcher false negatives — 2:**
-  q2-026 ("Thursday 23rd March 2017", a variant gap) and q2-048 ("West, D. B.
-  (2001)" vs "West, 2001", a citation-format gap). (c) **judge false negatives
+  has cross-provider corroboration). The seven, hand-audited: (a) **suspected
+  GOLD errors — 2:** q2-018 and q2-105 each assert a fax number that
+  contradicts gold while quoting the gold digits as the adjacent tel field —
+  but checked against the primary sources, **each candidate is faithful to its
+  cited file**: `pdm_accessgovhk.csv`'s header runs fax-BEFORE-tel and its
+  Mong Kok row carries 5550 0199 in the fax column; the q2-105 CSV
+  (`accessgovhk_1749223971.csv`) runs tel-before-fax and its Audit Commission
+  row carries 5550 0187 in the fax column. Both golds equal the row's TEL value — the
+  factory gold looks tel/fax-swapped on both. Verdicts on these two are
+  gold-conditional: the matcher's CORRECT is right-for-the-wrong-reason (a
+  token match on the tel digits), the judge's INCORRECT is right against
+  frozen gold and wrong against the source. **Named pre-run-6 action:
+  re-verify and correct these two golds via a disclosed corpus change** —
+  under corrected gold both graders pass these candidates and the items leave
+  the table. (b) **matcher false credit, judge right — 1:** q2-021 asserts
+  page 120 against gold 119, matched only on "page-119 footer" in its own
+  citation prose (gold-conditional too — the source PDF was not at its
+  declared path to re-verify — but no source-level refutation exists, so gold
+  stands). (c) **real rescues, matcher false negatives — 2:** q2-026
+  ("Thursday 23rd March 2017", a variant gap) and q2-048 ("West, D. B.
+  (2001)" vs "West, 2001", a citation-format gap). (d) **judge false negatives
   — 2:** q2-035, where the candidate asserts gold 718348 verbatim then adds
-  "corroborated as 0718348" — re-judged out-of-band three fresh times (no cache
-  read or write): False/True/False, a stable near-boundary failure on
+  "corroborated as 0718348" — re-judged out-of-band three fresh times (no
+  cache read or write): False/True/False, a stable near-boundary failure on
   corroboration-shaped candidates, not vote noise; and q2-028, where gold is
   the deictic "yesterday" and the candidate quotes it faithfully while
   resolving both dates — the judge's strict reading is defensible, the audit
   grades the candidate correct. **Ruling under the frozen criterion — the
   rescues are real (2/2) and no false credits were minted (0): the audit
   CLEARS. Run 6 adopts judge grading for the gate arms; eval_edge curve rows
-  stay matcher-graded (adopt last, separately, as registered).** Named
-  residual, priced: the judge's conservative mode (q2-035-class) removes true
-  credits at measured incidence 1/412 ≈ 0.2%, and on the mono arm that
-  direction is gate-FAVOURABLE — one matcher-correct mono report judged wrong
-  hands typed a spurious ≈ +10/104 Δ̄ swing at Ū — so run 6 keeps publishing
-  the judge-vs-matcher disagreement table and its reading must name any
-  judge-flipped mono rows before the Δ is trusted. Counterfactual (not a
-  reading): had judge grading governed run 5, mono flips −3 real false credits
-  +2 rescues = net −1 correct; typed is untouched. Road to PASS unchanged
-  (≈30 net conversions at held zero-wrong precision), but the reach lever now
-  has two measured channels: the deliberate curve food and, from run 6, the
-  corroborate tiers running calibrated.
+  stay matcher-graded (adopt last, separately, as registered).** The table's
+  chief yield was (a): two suspected gold errors the matcher alone could never
+  have surfaced. Named residual, priced: the judge's conservative mode removes
+  true credits at measured incidence **2/412 ≈ 0.5%** (q2-035 and q2-028 —
+  both on the mono arm, and that direction is gate-FAVOURABLE: one
+  matcher-correct mono report judged wrong hands typed a spurious ≈ +10/104 Δ̄
+  swing at Ū). So run 6 keeps publishing the judge-vs-matcher disagreement
+  table and **its reading must name any judge-flipped rows on EITHER arm
+  before the Δ is trusted** — typed asserts are corroboration-shaped, exactly
+  the judge's measured false-negative shape, and a spurious first typed
+  confident-wrong would cost ≈ −10/104 Δ̄ plus the zero-wrong record.
+  Counterfactual (not a reading): had judge grading governed run 5 against
+  frozen gold, mono flips down 5 (q2-018/021/028/035/105) and up 2 (the
+  rescues) = **96→93, net −3** — of which only q2-021's removal is an audited
+  true correction; q2-018/q2-105 are the suspected gold errors and
+  q2-035/q2-028 the judge's own false negatives. Typed is untouched either
+  way. Road to PASS unchanged (≈30 net conversions at held zero-wrong
+  precision), but the reach lever now has two measured channels: the
+  deliberate curve food and, from run 6, the corroborate tiers running
+  calibrated.
