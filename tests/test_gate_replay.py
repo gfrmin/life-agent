@@ -468,3 +468,29 @@ def test_executor_run_stats_summarise_spend_and_fired() -> None:
     # spend is the TOTAL metered spend (tiers included, #67 review) — not the
     # deliberate slot's sum; question c pays without the deliberate edge ever firing
     assert s["spend_usd"] == pytest.approx(0.322 + 0.004)
+
+
+# --- archive_gate_artifacts --------------------------------------------------------------
+
+def test_archive_gate_artifacts_writes_run_id_suffixed_copies(tmp_path: Path) -> None:
+    # the run-6 replayability invariant runs THROUGH the published artifacts (§14
+    # pre-registration) — archiving is mechanical, not a manual ritual (missed on
+    # runs 3 and 4; the PR #68 review's finding)
+    (tmp_path / "report.md").write_text("# report body", encoding="utf-8")
+    (tmp_path / "paired.jsonl").write_text('{"q": 1}\n', encoding="utf-8")
+    archived = RE.archive_gate_artifacts(tmp_path, run_id="gate-20260809T102018")
+    assert (tmp_path / "report-gate-20260809T102018.md").read_text(
+        encoding="utf-8") == "# report body"
+    assert (tmp_path / "paired-gate-20260809T102018.jsonl").read_text(
+        encoding="utf-8") == '{"q": 1}\n'
+    # the naming matches the pre-existing manual archives (report-gate-...md) so one
+    # glob finds every run's artifacts regardless of which era archived them
+    assert sorted(p.name for p in archived) == [
+        "paired-gate-20260809T102018.jsonl", "report-gate-20260809T102018.md"]
+
+
+def test_archive_gate_artifacts_skips_missing_files(tmp_path: Path) -> None:
+    # a voided run may have written only one artifact — archive what exists, never raise
+    (tmp_path / "report.md").write_text("partial", encoding="utf-8")
+    archived = RE.archive_gate_artifacts(tmp_path, run_id="gate-x")
+    assert [p.name for p in archived] == ["report-gate-x.md"]
