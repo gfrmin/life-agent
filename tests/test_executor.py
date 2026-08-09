@@ -1002,6 +1002,69 @@ def test_deliberate_appends_an_edge_event_and_keeps_the_legacy_slot() -> None:
     assert view["instrument_lineage"] == "dk-42"
 
 
+def test_view_spend_accumulates_every_metered_firing() -> None:
+    # PR #67 review: view["cost_usd"] is the deliberate slot (decisions-v2) — the gate's
+    # spend feed needs the TOTAL realised spend, tiers included, or the run-6 term
+    # prices typed tier spend at $0 while the replay arm is fully priced.
+    fake = FakeServices(
+        route={"construct": "rent", "time_indexed": False},
+        extract={**_EXTRACT, "candidates": ["NIS 4,200", "NIS 9,999"]},
+        corroborate={"observations": [{"reports": 0, "group": 0, "authority": 1.0,
+                                       "subject_factor": 1.0, "time_factor": 1.0}],
+                     "gather_rho": 0.80, "value": "NIS 4,200", "confidence": 0.7,
+                     "cache_key": "jk-1", "cost_usd": 0.012},
+        deliberate={"observations": [{"reports": 0, "group": 0, "authority": 1.0,
+                                      "subject_factor": 1.0, "time_factor": 1.0}],
+                    "confidence": 0.85, "model": "claude-opus-4-8",
+                    "value": "NIS 4,200", "status": "ok", "declined": False,
+                    "cost_usd": 0.42, "latency_s": 23.0, "cache": "miss",
+                    "cache_key": "dk-42"},
+        decides=[{"effector": "gather", "probe": "corroborate_haiku",
+                  "credences": [0.5, 0.5], "p_none": 0.1, "eu": 0.2},
+                 {"effector": "gather", "probe": "deliberate",
+                  "credences": [0.6, 0.4], "p_none": 0.1, "eu": 0.3},
+                 {"effector": "report", "value": "NIS 4,200", "credences": [0.9, 0.1],
+                  "p_none": 0.05, "eu": 0.8}])
+    view = _loop(fake, grow=False, curves={},
+                 transforms=[*EX.DEFAULT_TRANSFORMS, EX.DELIBERATE_TRANSFORM])
+    assert view["spend_usd"] == 0.012 + 0.42
+    assert view["cost_usd"] == 0.42  # the decisions-v2 deliberate slot, untouched
+
+
+def test_all_view_shapes_carry_spend() -> None:
+    plain = _loop(FakeServices(
+        route={"construct": "tax id", "time_indexed": False},
+        decides=[{"effector": "report", "value": "P123", "credences": [0.95],
+                  "p_none": 0.02, "eu": 0.9}]), grow=False)
+    assert plain["spend_usd"] == 0.0
+    narr = _loop(FakeServices(route=None, narrative={
+        "action": "report", "asserted": ["you travelled in May"],
+        "rendered": "you travelled in May [1]\n\nnarrative footer",
+        "hits": [{"artifact_cache_key": "d0", "chunk_text": "x"}]}),
+        "tell me about my week")
+    assert narr["spend_usd"] == 0.0
+
+
+def test_grow_menu_actuator_without_cost_rides_through() -> None:
+    # PR #67 review: a version-skewed bridge serving a cost-less actuator row must not
+    # KeyError the whole question inside the re-pricing map — guard like the transforms.
+    class _CostlessGrow(FakeServices):
+        def get(self, url: str) -> dict[str, Any]:
+            if url.endswith("/grow_menu"):
+                self.calls.append((url, None))
+                return {"grow": {**_GROW_MENU,
+                                 "actuators": [*_GROW_MENU["actuators"],
+                                               {"probe": "guard_row"}]}}
+            return super().get(url)
+    fake = _CostlessGrow(
+        route={"construct": "passport number", "time_indexed": False},
+        utility={**_U, "lambda_usd": 2.0},
+        decides=[{"effector": "abstain", "credences": [0.2], "p_none": 0.7, "eu": -0.1},
+                 {"effector": "abstain", "credences": [0.2], "p_none": 0.7, "eu": -0.1}])
+    view = _loop(fake, grow_lane=True)
+    assert view["effector"] == "abstain"  # survived; no KeyError on the guard row
+
+
 def test_grow_escalation_keeps_the_abandoned_passes_events() -> None:
     # PR #63 review (survivorship bias): the legacy grow path replaced the whole view,
     # discarding the withheld pass's firings — exactly the wrong-leaning proposals the
@@ -1013,7 +1076,7 @@ def test_grow_escalation_keeps_the_abandoned_passes_events() -> None:
         corroborate={"observations": [{"reports": 0, "group": 0, "authority": 1.0,
                                        "subject_factor": 1.0, "time_factor": 1.0}],
                      "gather_rho": 0.80, "value": "P123", "confidence": 0.7,
-                     "cache_key": "jk-1"},
+                     "cache_key": "jk-1", "cost_usd": 0.012},
         decides=[{"effector": "gather", "probe": "corroborate_haiku",
                   "credences": [0.2], "p_none": 0.6, "eu": 0.0},
                  {"effector": "abstain", "credences": [0.2], "p_none": 0.7, "eu": -0.1},
@@ -1025,6 +1088,9 @@ def test_grow_escalation_keeps_the_abandoned_passes_events() -> None:
     assert view["effector"] == "report"
     assert [e["edge"] for e in view["edge_events"]] == [
         "extract@claude-haiku-4-5", "extract@claude-opus-4-8"]
+    # PR #67 review: the abandoned pass's SPEND survives the swap like its events do —
+    # money burned on a discarded pass was still burned
+    assert view["spend_usd"] == 0.012 + 0.012
 
 
 def test_grow_escalation_keeps_the_grown_passes_events_when_not_adopted() -> None:
@@ -1035,7 +1101,7 @@ def test_grow_escalation_keeps_the_grown_passes_events_when_not_adopted() -> Non
         corroborate={"observations": [{"reports": 0, "group": 0, "authority": 1.0,
                                        "subject_factor": 1.0, "time_factor": 1.0}],
                      "gather_rho": 0.80, "value": "P123", "confidence": 0.7,
-                     "cache_key": "jk-1"},
+                     "cache_key": "jk-1", "cost_usd": 0.012},
         decides=[{"effector": "gather", "probe": "corroborate_haiku",
                   "credences": [0.2], "p_none": 0.6, "eu": 0.0},
                  {"effector": "abstain", "credences": [0.2], "p_none": 0.7, "eu": -0.1},
@@ -1047,6 +1113,7 @@ def test_grow_escalation_keeps_the_grown_passes_events_when_not_adopted() -> Non
     assert view["effector"] == "abstain"
     assert [e["edge"] for e in view["edge_events"]] == [
         "extract@claude-haiku-4-5", "extract@claude-opus-4-8"]
+    assert view["spend_usd"] == 0.012 + 0.012  # the grown pass's spend kept too
 
 
 def test_tier_reply_without_cache_key_warns_of_bridge_skew(capsys) -> None:

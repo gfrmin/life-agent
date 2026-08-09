@@ -59,12 +59,14 @@ from life_agent.core import lookup as LK
 from life_agent.core import matching as MATCH
 from life_agent.core import narrative as NARR
 from life_agent.core import outcomes as O
+from life_agent.core import pricing as PRICING
 from life_agent.core import probes as P
 from life_agent.core import reactions as RX
 from life_agent.core import rerank as RR
 from life_agent.core import retrieval as RET
 from life_agent.core import synthesis as SYN
 from life_agent.core import volatility as VOL
+from life_agent.core.llm import LLMResult
 from life_agent.membrane import shadow as MEM
 
 HOST = os.environ.get("LIFE_AGENT_BRIDGE_HOST", "127.0.0.1")
@@ -389,8 +391,16 @@ def _probe_corroborate(deps: BridgeDeps, p: Payload) -> Payload:
         # the read's own stated confidence rides beside the tier rho: the k=0 strong rescue
         # conditions at min(tier, confidence), so the wire never discards the instrument's
         # uncertainty (a lone unsupported read must not enter at the tier's flat prior).
+        # meter the re-read (PR #67 review): tier firings are real billed calls — the
+        # gate's spend term must price them, or the typed arm's tier spend rides at $0
+        # while the replay arm is fully priced. A §18.9 warm replay has zero tokens ⇒
+        # $0 exactly; served_model falls back to the requested pin for pricing.
+        priced = PRICING.cost_usd(LLMResult(
+            text="", in_tokens=jr.in_tokens, out_tokens=jr.out_tokens, seconds=0.0,
+            served_model=jr.served_model or model))
         out: Payload = {"observations": obs, "gather_rho": tier_rho, "value": jr.value,
                         "confidence": jr.confidence, "cache_key": jr.cache_key,
+                        "cost_usd": 0.0 if priced is None else priced,
                         "served_model": jr.served_model, "tokens": jr.in_tokens + jr.out_tokens}
         if new_candidate is not None:
             out["new_candidate"] = new_candidate

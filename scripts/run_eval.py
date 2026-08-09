@@ -508,9 +508,11 @@ def _typed_response_executor(view: dict, q: dict):
     import life_agent.core.gate as GATE
 
     gold, variants = q.get("answer", ""), q.get("answer_variants", [])
-    # the arm's realised spend (decisions-v2) rides every action — an abstain that
-    # burned a deliberate call still paid for it (the run-6 spend term's data feed)
-    cost = float(view.get("cost_usd") or 0.0)
+    # the arm's TOTAL realised spend (spend_usd: deliberate AND metered tiers — the
+    # deliberate-only decisions-v2 slot would price typed tier spend at $0 while the
+    # replay arm is fully priced, #67 review) rides every action: an abstain that
+    # burned calls still paid for them
+    cost = float(view["spend_usd"] or 0.0)
     eff = str(view["effector"])
     if eff == "report":
         return GATE.RealisedResponse(action="report", correct=GATE.realised_report(
@@ -530,8 +532,10 @@ def executor_run_stats(typed_views: list) -> dict:
     return {"n": len(typed_views),
             "deliberate_fired": len(fired),
             "warm_hits": sum(1 for v in fired if v.get("cost_usd") == 0.0),
-            "spend_usd": sum(float(v["cost_usd"]) for v in fired
-                             if v.get("cost_usd"))}
+            # TOTAL metered spend (tiers included since #67) — not the deliberate
+            # slot's sum; a question can pay without the deliberate edge ever firing
+            "spend_usd": sum(float(v.get("spend_usd") or 0.0)
+                             for _, v in typed_views)}
 
 
 def _monolithic_response(mono_text: str, q: dict, abstention: str):
@@ -657,10 +661,14 @@ def gate_paired_outcomes(conn, questions: list[dict], k: int, ask,
 
 
 def _paired_to_dict(p, baseline: str = "monolithic") -> dict:
-    # every row names its baseline arm — a Δ2 paired.jsonl must never read as the §8 one
+    # every row names its baseline arm — a Δ2 paired.jsonl must never read as the §8 one.
+    # cost_usd rides both arms (#67 review): the artifact must DETERMINE the Δ the report
+    # computed, or every offline reanalysis silently zeroes the run-6 spend term.
     return {"question_id": p.question_id, "answerable": p.answerable, "baseline": baseline,
-            "typed": {"action": p.typed.action, "correct": p.typed.correct},
-            "mono": {"action": p.mono.action, "correct": p.mono.correct}}
+            "typed": {"action": p.typed.action, "correct": p.typed.correct,
+                      "cost_usd": p.typed.cost_usd},
+            "mono": {"action": p.mono.action, "correct": p.mono.correct,
+                     "cost_usd": p.mono.cost_usd}}
 
 
 def format_lookup_report(rows: list[dict], k: int, elapsed: float) -> str:

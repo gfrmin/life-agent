@@ -38,7 +38,12 @@ answer* on one common answer-level scale, so typed and monolithic are valued ide
 * ``hedge`` → ``u_hedged`` if the gold is among the hedged candidates, else ``u_wrong``;
 * ``ask_clarify`` → ``oracle_p · u_correct - λ_int`` (the owner-oracle price the family
   itself used — not graded against gold);
-* ``abstain`` → ``u_abstain`` (the gauge zero).
+* ``abstain`` → ``u_abstain`` (the gauge zero);
+* every action additionally pays its arm's REALISED spend, ``-lambda_usd * cost_usd``
+  (run-6 semantics, §14-registered: both arms — the typed view's total metered spend
+  and the replay row's recorded usage cost; money burned is burned whatever the act).
+  A utility sample without the ``lambda_usd`` latent prices spend at exactly zero, so
+  pre-run-6 artifacts replay to the old Δ unchanged.
 
 An unanswerable question (empty gold) makes every report ``u_wrong`` and abstention the
 gauge zero — the honest-abstention reward falls out, no special case.
