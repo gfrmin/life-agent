@@ -61,12 +61,15 @@ cells, population-calibrated per-cell from the eval_claim stream, per-claim EU i
 under Ū, the proposal-coverage tail named); and the **§8 decision-weighted adoption
 gate** (`core/gate.py`, `run_eval --gate` → `$LIFE_AGENT_KB/eval/gate/`: a posterior
 over Δ = EU(typed) − EU(monolithic) by MC over P(U) × the Bayesian bootstrap, P(Δ>δ)≥
-level with δ/level frozen blind; the disagreement region + answer rates published). It
-ran (2026-06-13): **FAIL** at P(Δ>0.05)=0.848 (gate 0.90) — Δ̄=+2.23 but the interval
-crosses zero on the wide u_wrong prior + the 21-question corpus; typed answer rate 0.11
-vs monolithic 1.00. The two named levers (§14 ledger): narrow P(U) (elicit/reveal
-wrong-answer cost) or raise the typed answer rate (retrieval coverage). Next: retrieval
-coverage for point facts (q-002/q-014 class), then old D3–D4 re-scoped as Ask's
+level with δ/level frozen blind; the disagreement region + answer rates published). Six
+runs so far (§14 ledger has each): the executor series read 0.002 → 0.010 → 0.065 →
+0.092 → 0.098, then **run 6 (2026-08-17: judge-graded arms, λ_usd spend on both arms,
+the post-Ollama cloud instruments): FAIL at P(Δ>0.05)=0.678, Δ̄=+0.180 [−0.244, +0.661]
+— the first positive mean;** typed answer rate 0.47 (47 ✓ / 2 ✗) vs monolithic 0.97,
+withholdings split miss 18 · dispersed 37 (the reach lever's first *direction*). Named
+next: the run-5 re-pricing counterfactual that isolates the instrument change from the
+grading/spend changes (deterministic, from archived artifacts), the two confident-wrongs'
+audit (q2-053, q2-105), then reach for the 18 misses. Old D3–D4 stay re-scoped as Ask's
 aggregate/thread families. The doc's §14 open questions are a **live empirical ledger**
 (owner's adoption rider): each entry names the evidence that decides it — keep it
 current. Sequencing is continuous and eval-gated, not dogfood-gated (PRINCIPLES §9 as

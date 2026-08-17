@@ -165,8 +165,12 @@ Bayesian Ask rather than deterministic pipelines. Remaining program, in dependen
    (`p3_gate.py --gate-variants`, suffixed artifacts, ledger-window guards) so the
    coarsened leader-credence-only lattice — the one EU-positive held-out variant — gets
    its own A3 against the credence baseline, the named-but-unrun measurement that blocks
-   any re-flip (`docs/membrane/p3b-coarsened-pre-registration.md`, `docs/membrane-shadow.md`
-   §17.6 when read). Engine rebuilt at the `1a0cea7` pin.
+   any re-flip. **Read 2026-08-17 (`docs/membrane-shadow.md` §17.6): FAIL by total
+   abstention** — under the owner's current utility (u_wrong −8.83, commit bar 0.899) the
+   coarsened lattice commits 0/190 held-out ticks; its §17.5 +0.284 lived in a 0.04-wide
+   p1 window that the u_wrong elicitation closed. The coarsening is closed as a re-earn
+   route; the path is E1 (a sharper engine posterior), not lattice surgery. First execution
+   voided on Ū drift and caught by the freeze; the engine reproduced §17.5 to four decimals.
 4. **The aggregate family** (subsumes D3): recall term + completeness priors,
    missing-mass posterior, dedup-as-inference — the spending question answered as a
    posterior with both coverage readouts.

@@ -1802,3 +1802,48 @@ on this list. Answers land here by amendment, citing their evidence.
   ask-surface display, not on the gate path.
   (e) The corpus and retrieval are untouched (FTS only; the embedding column was
   never populated — see the ROADMAP correction of the same date).
+
+- **Run 6 — the first positive Δ̄ (2026-08-17, run `gate-20260817T132417`, branch
+  `feat/fallback-lane` @ `881d652`; every run-6 pre-registration in force: judge grading
+  for the arms, the λ_usd spend term on both arms, availability censoring, corpus pin
+  `full-2026-06-11` MATCHED, the NEW cloud instruments per the migration entry above):
+  FAIL at P(Δ>0.05) = 0.678, Δ̄ = +0.180 [−0.244, +0.661].** Guards: λ_usd folded at
+  **1.3311** (the elicited fold — the prior-only void guard passes); censored **0**; the
+  judge flipped **5 rows, all on the mono arm** (q2-021/028/035 CORRECT→INCORRECT, q2-026/048
+  INCORRECT→CORRECT — exactly the five the run-5 shadow audit named, no new flips, none on
+  the typed arm), so Δ is trusted per the registration. Series: 0.002 → 0.010 → 0.065 →
+  0.092 → 0.098 → **0.678**; Δ̄ −1.058 → −0.644 → −0.297 → −0.239 → −0.230 → **+0.180**.
+  **Typed answer rate 0.47 (49/104: 47 correct reports + 2 wrong)** vs 0.26 in run 5;
+  monolithic 0.97 (95 ✓ / 6 ✗ / 3 abstain). Withheld: **miss 18 · dispersed 37** — the
+  first differentiated reach reading (run 5's 70 were one bucket): a third of the
+  withholdings never had a posterior (retrieval reach), two thirds had one and lost the
+  argmax (threshold/evidence). Disagreement 54/104: `abstain × report` **53** at −0.056/q
+  (down from 75 at −0.333/q — the spend term now prices the baseline's $39.01 against
+  typed's $16.03, so an abstain against a costly correct report is nearly break-even),
+  `report × report` 48 at +0.401, `report × abstain` 1 at +1.576.
+  **The two wrongs end the zero-wrong streak: q2-053 and q2-105.** q2-105 is one of the two
+  golds *corrected* on 2026-08-14 (fax vs tel column order) — the typed arm asserted the
+  pre-correction value, which the corrected gold now grades wrong; whether that is a true
+  instrument error or a stale cached observation from the local-Ollama era is the first
+  thing the run-7 attribution must settle (its extract cache is post-migration by
+  construction, so the value came from the *new* instrument — a real miss). q2-053 is a
+  fresh confident-wrong to audit.
+  **Attribution — honest and split three ways.** Run 6 changed three things at once against
+  the run 3–5 series (owner's call: migrate-first): (i) the instrument (haiku for qwen — the
+  answer-rate jump 0.26→0.47 is the largest single move and is the instrument's), (ii) judge
+  grading (net −3 on the mono arm, as the run-5 counterfactual computed: 96→93), (iii) the
+  spend term (prices the baseline's outside-option cost for the first time; the
+  `abstain × report` cell's per-question cost fell from −0.333 to −0.056). Which of the
+  three carried the sign change is NOT separable from this run; the run-5 replay under (ii)+
+  (iii) alone (its frozen actions, re-priced) is the deterministic counterfactual that
+  isolates (i), and it is the named next computation — from the archived artifacts, no
+  spend. **What survives without attribution:** the interval still crosses zero, so the gate
+  is not passed; the reach lever now has a *direction* (18 miss vs 37 dispersed); the
+  typed policy asserted twice wrongly on the new instrument, so its calibration on the base
+  extract edge is the second thing to read (the eval_edge rows landed: 124 written).
+  Spend: typed $16.03 (deliberate fired 43/104, warm 33; base instruments now metered),
+  mono $39.01 replay-recorded. Elapsed 5397 s. **The first execution voided at question 27
+  on a bridge wedge** (a hung-up client mid-`/narrative`, the single-threaded server stuck
+  writing to a dead socket); its 39 salvaged edge rows were kept, the bridge hardened
+  (`_respond` survives a broken pipe; the narrative path has its own 900 s budget), and the
+  re-fire replayed the first 26 questions warm. The reading is the re-fire.
