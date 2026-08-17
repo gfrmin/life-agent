@@ -322,7 +322,7 @@ def render(rows: list[Row], matrix: list[dict[str, Any]], caps: list[int],
         tempered = " | ".join(f"{r.tempered(d, c):.3f}" + ("←flip" if r.would_flip(d, c)
                                                            else "")
                               for d in DETECTORS for c in caps)
-        ok = {True: "✓", False: "✗"}.get(r.correct, "·")
+        ok = {True: "✓", False: "✗", None: "·"}[r.correct]
         lines.append(f"| {r.qid} | {r.action} | {ok} | {r.leader[:28]} | {r.leader_p:.3f} "
                      f"| {r.n_candidates} | {r.n_obs} | {r.evidence_source} "
                      f"| {r.temper_mode} | "
@@ -379,7 +379,7 @@ def main(argv: list[str] | None = None) -> int:
     conn = duckdb.connect(str(root / "catalogue.duckdb"), read_only=True)
     ev = _engine_version()
 
-    def recover(qid: str, question: str, leader: str) -> tuple[list[str], str]:
+    def recover(qid: str, question: str, leader: str) -> tuple[list[Evidence], str]:
         chunks = extract_cache_chunks(root, conn, question, leader, ev)
         if chunks:
             return chunks, "extract-cache"

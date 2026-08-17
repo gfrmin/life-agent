@@ -109,8 +109,8 @@ def main(argv: list[str] | None = None) -> int:
           f"{len(unfixable)} moved-but-unfixable (no lineage)")
     for ev in to_append:
         print(f"  {ev.question_id} {ev.instrument_identity.get('edge')} "
-              f"{ev.signals['superseded_grade']}→{ev.grade} p={ev.probability} "
-              f"claim={ev.claim[:40]!r} (of {ev.signals['regrade_of']})")
+              f"{(ev.signals or {})['superseded_grade']}→{ev.grade} p={ev.probability} "
+              f"claim={ev.claim[:40]!r} (of {(ev.signals or {})['regrade_of']})")
     for ev in unfixable:
         print(f"  UNFIXABLE {ev.question_id} {ev.instrument_identity.get('edge')} "
               f"{ev.grade} p={ev.probability} claim={ev.claim[:40]!r} — no lineage")

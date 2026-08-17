@@ -35,7 +35,7 @@ from life_agent.core import config as LCFG
 from life_agent.core import lookup as LK
 
 
-def verdict(root: Path, question: str, prompt: str, client) -> dict:  # type: ignore[no-untyped-def]
+def verdict(root: Path, question: str, prompt: str, client) -> dict:
     """route_question's body with the prompt injected — same key family (prompt hash in
     the key), same record shape, so a candidate that lands replays these verdicts."""
     key = D.lookup_route_key(question, model=LK.LOOKUP_MODEL, prompt_template=prompt,
