@@ -146,17 +146,16 @@ credence):
 | withheld claims | inclusion is a decision (foundations §3): withheld claims are counted with their EU reason — `n claims withheld: low relevance` |
 | indeterminates | carried and named, as in the temporal/subject footers — the §18.12/§18.13 contract generalised |
 
-**The uncalibrated lane (MVP dual-lane fallback — adopted 2026-08-17, flag-gated,
-`LIFE_AGENT_FALLBACK_LANE=1`).** While the §8 adoption gate is pending, a typed
-WITHHOLDING (abstain / ask-clarify / miss — never a hedge, which already surfaces its
-candidates) may additionally render the monolithic prose synthesized over the *same*
-retrieved sources, under the explicit `uncalibrated lane` label
-(`lookup.GRAMMAR["fallback_lane"]`). The typed decision still renders first with its
-named reason and held-back candidates; the lane is **presentation only** — the logged
-decision, and any `g`/`b` verdict bound to its `decision_id`, remains the typed one. A
-failed lane is named (`fallback_lane_failed`), never silent; the flag's absence is
-byte-for-byte the pre-lane render, and the lane is removed when the gate passes and
-typed becomes the silent default.
+**Honest withhold only (the §13 adoption, 2026-08-17).** The §8 gate passed (runs 7 and
+9, run 9 with zero wrong commits) and the owner adopted typed as the silent default with
+the rider *honest withhold only*: a typed WITHHOLDING renders its named reason and its
+held-back candidates with credences — and nothing else. The interim uncalibrated
+dual-lane fallback (`LIFE_AGENT_FALLBACK_LANE`, flag-gated while the gate was pending)
+was **removed on adoption**, per its own registered destiny in the paragraph this one
+replaces; a stale flag in an `.env` is ignored. The deliberate edge is on by default on
+the same rider (`LIFE_AGENT_DELIBERATE=0` is the rollback) — the adopted path is the
+measured path. The evidence and the rejected alternatives are recorded in
+[`bayesian-foundations.md`](./bayesian-foundations.md) §14 (the adoption entry).
 
 Rendering order is posterior order, not rhetorical order; LLM paraphrase stays within
 claim boundaries; the conformance audit (the citation guard extended to claim coverage)

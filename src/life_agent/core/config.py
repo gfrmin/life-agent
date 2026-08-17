@@ -120,7 +120,9 @@ MEMBRANE_WARM_VECTORS_ENV = "LIFE_AGENT_MEMBRANE_WARM_VECTORS"
 MEMBRANE_LIVE_ENV = "LIFE_AGENT_MEMBRANE_LIVE"
 MEMBRANE_CAT_ENV = "LIFE_AGENT_MEMBRANE_CAT"
 DELIBERATE_ENV = "LIFE_AGENT_DELIBERATE"
-FALLBACK_LANE_ENV = "LIFE_AGENT_FALLBACK_LANE"
+# LIFE_AGENT_FALLBACK_LANE is retired: the uncalibrated dual-lane render was removed at
+# §13 adoption (2026-08-17) per its own registered destiny in the interaction contract —
+# the owner chose honest-withhold-only, so a set flag is simply ignored.
 
 MEMBRANE_DEFAULT_UTILITY_FORMS = "said@1"
 MEMBRANE_DEFAULT_READ_TIMEOUT_S = 300.0
@@ -170,23 +172,15 @@ def membrane_live() -> bool:
 
 
 def deliberate_enabled() -> bool:
-    """The deliberative edge on the live menu: ``"1"`` opts DELIBERATE_TRANSFORM into
-    the ask path's transform menu and folds observations through the per-edge
-    calibration curves. Anything else — including absence, the default — is
-    byte-for-byte today's menu (a rollout gate on an unmeasured-in-production edge
-    until the §8 gate passes; the daemon still prices every scheduled fire).
-    Rollback is unsetting this."""
-    return os.environ.get(DELIBERATE_ENV) == "1"
-
-
-def fallback_lane_enabled() -> bool:
-    """The MVP dual-lane fallback (interaction contract, *know*): ``"1"`` makes a typed
-    WITHHOLDING additionally render the monolithic prose over the same retrieved hits,
-    under an explicit uncalibrated label — presentation only, the logged decision is
-    unchanged. Anything else — including absence, the default — is byte-for-byte
-    today's render. Rollback is unsetting this. Removed when the §8 gate passes and
-    typed becomes the silent default."""
-    return os.environ.get(FALLBACK_LANE_ENV) == "1"
+    """The deliberative edge on the live menu — ON by default since the §13 adoption
+    (2026-08-17, owner's rider on the run-7/run-9 §8 PASSes): the arm the gate measured
+    and the owner adopted IS the deliberate-on arm, so the daily path runs the measured
+    configuration. DELIBERATE_TRANSFORM joins the priced transform menu and observations
+    fold through the per-edge calibration curves; the daemon still prices every scheduled
+    fire, so an unaffordable deliberate simply never schedules. Rollback is
+    ``LIFE_AGENT_DELIBERATE=0`` — the only value that disables; absence and ``"1"``
+    are both on."""
+    return os.environ.get(DELIBERATE_ENV, "1") != "0"
 
 
 def pkm_root() -> Path | None:

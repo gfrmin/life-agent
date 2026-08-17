@@ -150,7 +150,8 @@ Bayesian Ask rather than deterministic pipelines. Remaining program, in dependen
    elicitation sprint** (u_hedged/lambda_int/u_wrong_scoped, disclosed blind); the
    **uncalibrated lane** (`LIFE_AGENT_FALLBACK_LANE=1` — a typed withholding additionally
    renders the monolithic prose over the same hits, labeled; typed-first, presentation
-   only, one seam for terminal + Telegram; removed when the §8 gate passes); the **daily
+   only, one seam for terminal + Telegram; **removed 2026-08-17 when the §8 gate passed
+   and the owner adopted honest-withhold-only** — §14's adoption entry); the **daily
    briefing** as a real timer (`bin/daily-digest`, `packaging/daily-digest.{service,timer}`,
    owner-targeted, invariant-3 truncation naming, drift-gated section table); and the
    **local-Ollama deprecation** (owner directive — instruments, transforms, NLU on the

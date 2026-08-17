@@ -2187,3 +2187,32 @@ on this list. Answers land here by amendment, citing their evidence.
   is the price of the wrong-commit class) and spend growth; fallback — a tempered question
   lands withheld, never wrong-committed, and the narrative lane exists behind the typed
   path.
+
+- **§13 adoption rider — RESOLVED (2026-08-17, owner interviewed, master @ the commit
+  carrying this entry).** On the evidence of two PASSes at the frozen bar (run 7 0.945,
+  run 9 0.938) with run 9's arm never wrong-committing, the owner adopted, with three
+  explicit choices: **(1) typed is the default** answer path (it already was the
+  read-path default with a named down-stack fallback; the adoption makes it the *silent*
+  default in the contract's sense — no pending-gate caveats). **(2) Honest withhold
+  only:** the uncalibrated dual-lane fallback is **removed**, not just left off — its own
+  registration (interaction contract, *know*) named removal-on-adoption as its destiny.
+  A typed withholding renders the named reason and held-back candidates, nothing else;
+  `LIFE_AGENT_FALLBACK_LANE`, `config.fallback_lane_enabled`, the two GRAMMAR templates,
+  the executor lane render, and the gate's disarm machinery are all deleted (a stale flag
+  in someone's `.env` is ignored). **(3) The deliberate edge is always-on:** the arm the
+  gate measured and the owner adopted IS the deliberate-on arm, so running the daily path
+  without it would be an unmeasured configuration wearing the gate's evidence.
+  `config.deliberate_enabled()` now defaults on; `LIFE_AGENT_DELIBERATE=0` is the
+  rollback lever (the only disabling value); the daemon's EU pricing remains the spend
+  governor, and the run-6 PKM_CONFIG guards (bridge per-call + gate preflight) hold
+  unchanged. Rejected alternatives, for the record: a labeled mono fallback and
+  fallback-on-request (both offered; the owner chose the pure contract), a replication
+  run 10 before adoption, and a spend-capped deliberate. Sequencing decided in the same
+  interview: two $0 ceiling audits before the next build — (a) rescuability of the 67
+  dispersed (does an independent second document carrying the gold value exist per
+  question?), (b) the 19-question n_obs=0 cluster (query-building failure vs corpus
+  absence) — then MVP M-0 (the Telegram ask intent) as the next build, because it makes
+  the adopted arm reach the owner and starts accruing *live* decision/outcome rows (the
+  distribution that matters post-adoption is the owner's real questions, not the q2
+  benchmark's); the eval lever between (a) and (b) is picked afterwards on the audited
+  ceilings.

@@ -607,8 +607,8 @@ def test_grammar_templates_all_render() -> None:
     LK.GRAMMAR["footer"].format(n_hits=1, n_obs=1, n_ind=0, p_none=0.1,
                                 action="report", eu=0.5)
     LK.GRAMMAR["fallthrough"].format(reason="r")
-    LK.GRAMMAR["fallback_lane"].format(text="t")
-    LK.GRAMMAR["fallback_lane_failed"].format(err="e")
+    # the fallback_lane templates were removed at §13 adoption (honest-withhold-only)
+    assert "fallback_lane" not in LK.GRAMMAR and "fallback_lane_failed" not in LK.GRAMMAR
 
 
 # --- the family end to end (scripted brain) -----------------------------------------------

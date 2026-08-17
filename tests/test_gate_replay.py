@@ -639,12 +639,13 @@ def test_gate_loo_without_executor_flag_refuses(monkeypatch, capsys) -> None:
     assert "--gate-executor" in capsys.readouterr().out
 
 
-def test_gate_loo_without_deliberate_flag_refuses(monkeypatch, capsys) -> None:
-    # PR #58 review Major: with LIFE_AGENT_DELIBERATE unset, answer_via_executor never
-    # folds curves at all (ask.py: transforms, curves = None, None) — a --gate-loo run
-    # would complete and publish the held-out label over a TOTAL no-op, the §17.4
-    # label-outruns-mechanics shape. Refused before any state is touched.
-    monkeypatch.delenv("LIFE_AGENT_DELIBERATE", raising=False)
+def test_gate_loo_with_deliberate_disabled_refuses(monkeypatch, capsys) -> None:
+    # PR #58 review Major: with the deliberate edge off (LIFE_AGENT_DELIBERATE=0 — since
+    # the §13 adoption absence means ON), answer_via_executor never folds curves at all
+    # (ask.py: transforms, curves = None, None) — a --gate-loo run would complete and
+    # publish the held-out label over a TOTAL no-op, the §17.4 label-outruns-mechanics
+    # shape. Refused before any state is touched.
+    monkeypatch.setenv("LIFE_AGENT_DELIBERATE", "0")
     monkeypatch.setattr(sys, "argv",
                         ["run_eval.py", "--gate", "--gate-executor", "--gate-loo"])
     monkeypatch.setattr(RE, "load_questions",
@@ -841,21 +842,10 @@ def test_judge_grade_and_judge_shadow_are_mutually_exclusive(monkeypatch,
     assert "--judge-shadow" in capsys.readouterr().out
 
 
-def test_gate_disarms_the_fallback_lane_and_records_it() -> None:
-    # the uncalibrated lane is an OWNER-surface presentation (its render is discarded by
-    # the gate, its spend unmetered) — a leaked LIFE_AGENT_FALLBACK_LANE=1 in a gate run
-    # would burn a hidden synthesize per typed abstain; the gate disarms it and the
-    # run_meta names that it was set (self-identifying, PR-review blocker)
-    import os
-
-    os.environ["LIFE_AGENT_FALLBACK_LANE"] = "1"
-    try:
-        was_set = RE.disarm_fallback_lane()
-        assert was_set is True
-        assert "LIFE_AGENT_FALLBACK_LANE" not in os.environ
-        assert RE.disarm_fallback_lane() is False
-    finally:
-        os.environ.pop("LIFE_AGENT_FALLBACK_LANE", None)
+def test_fallback_lane_disarm_is_retired() -> None:
+    # the lane itself was removed at §13 adoption (2026-08-17) — there is nothing left
+    # for a gate run to disarm, so the disarm helper and its run_meta field are gone too
+    assert not hasattr(RE, "disarm_fallback_lane")
 
 
 def test_apply_judge_verdicts_flip_names_the_hedge_arm() -> None:

@@ -80,8 +80,7 @@ unset in the launcher) and blind declines were cached as evidence (voided; guard
 `gate-20260817T160244`: the run-6 recipe with a working deliberate, corrected golds,
 regraded curves) — the series' first PASS: P(Δ>0.05)=0.945, Δ̄=+0.429 [+0.040,
 +0.884]**, typed 50 ✓ / 1 ✗ / 53 withheld (miss 18 · dispersed 35) at $5.56 vs mono
-0.97 at $39.01. Adoption is the owner's rider (§13) — the fallback lane, the deliberate
-env-gate and typed-as-default move on his say, not on the line. **Run 8 (router v2,
+0.97 at $39.01. **Run 8 (router v2,
 `gate-20260817T164427`): FAIL 0.857, Δ̄ +0.344 [−0.109, +0.841]** — the router worked
 (16 newly admitted: 6 ✓ / 10 dispersed / 0 wrong; miss 18→2; answer rate 0.57; $3.25)
 but two curve-evolution wrong-leader commits on multi-value chunks (q2-053, q2-090)
@@ -92,8 +91,13 @@ the observation's r on both commit sites (`matching.quote_scoped_competitors` �
 `competition_factor`, join channel inherits it — §2 lineage), registered blind off-gate
 (`scripts/temper_audit.py`, counterfactual floor 0.945/+0.401 — the live run matched it
 almost exactly and the sweep predicted the assert set perfectly). The wrong-commit class
-is closed at the price of reach; the named next lever is independent-document
-corroboration on the 67 dispersed. Old D3–D4 stay re-scoped as Ask's
+is closed at the price of reach. **§13 adoption RESOLVED (2026-08-17, on runs 7+9):
+typed is the silent default, honest-withhold-only (the uncalibrated fallback lane is
+REMOVED — `LIFE_AGENT_FALLBACK_LANE` is ignored), and the deliberate edge is ON by
+default (`LIFE_AGENT_DELIBERATE=0` is the rollback)** — §14's adoption entry has the
+evidence and rejected alternatives. The named next lever is independent-document
+corroboration on the 67 dispersed (ceiling audited at $0 first, alongside the
+19-question n_obs=0 cluster). Old D3–D4 stay re-scoped as Ask's
 aggregate/thread families. The doc's §14 open questions are a **live empirical ledger**
 (owner's adoption rider): each entry names the evidence that decides it — keep it
 current. Sequencing is continuous and eval-gated, not dogfood-gated (PRINCIPLES §9 as

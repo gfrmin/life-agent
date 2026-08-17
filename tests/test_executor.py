@@ -1420,88 +1420,16 @@ def _withhold_view(**overrides: Any) -> dict[str, Any]:
     return base
 
 
-def test_render_view_fallback_lane_off_is_byte_identical(monkeypatch) -> None:
-    # absence of the flag is byte-for-byte today's render — rollback is unsetting it
-    import life_agent.core.config as CFG
-    monkeypatch.delenv(CFG.FALLBACK_LANE_ENV, raising=False)
+def test_render_view_withhold_is_honest_only_lane_retired(monkeypatch) -> None:
+    # §13 adoption (2026-08-17): honest-withhold-only. The uncalibrated dual-lane render
+    # is REMOVED, not flag-gated — a stale LIFE_AGENT_FALLBACK_LANE=1 in the env changes
+    # nothing, and no synthesize call can fire from a withholding render.
+    import life_agent.core.synthesis as SYN
+    monkeypatch.setenv("LIFE_AGENT_FALLBACK_LANE", "1")
+    monkeypatch.setattr(SYN, "synthesize",
+                        lambda *a, **k: (_ for _ in ()).throw(AssertionError("called")))
     out = EX.render_view(_withhold_view())
     assert "No answer asserted" in out and "uncalibrated" not in out
-
-
-def test_render_view_fallback_lane_appends_labeled_prose_on_typed_withhold(
-        monkeypatch) -> None:
-    # flag on + typed route + withholding + hits ⇒ the abstention STILL renders first
-    # (named reason, held-back candidates), then the monolithic prose under an explicit
-    # uncalibrated label — typed-first, labeled fallback, nothing silent
-    import life_agent.core.config as CFG
-    import life_agent.core.synthesis as SYN
-    monkeypatch.setenv(CFG.FALLBACK_LANE_ENV, "1")
-    calls: list[tuple] = []
-
-    def fake_synthesize(root, question, hits, profile, **kw):
-        calls.append((root, question, hits, profile))
-        return "your lease ends 2027-03-01 [1]", "ck-1", True
-
-    monkeypatch.setattr(SYN, "synthesize", fake_synthesize)
-    view = _withhold_view()
-    out = EX.render_view(view)
-    assert "No answer asserted" in out                       # the typed decision leads
-    assert "uncalibrated" in out                             # the lane is labeled
-    assert "your lease ends 2027-03-01 [1]" in out
-    ((_, q, hits, _),) = calls
-    assert q == "when does my lease end?" and hits is view["hits"]
-
-
-def test_render_view_fallback_lane_skips_asserting_and_narrative_views(
-        monkeypatch) -> None:
-    import life_agent.core.config as CFG
-    import life_agent.core.synthesis as SYN
-    monkeypatch.setenv(CFG.FALLBACK_LANE_ENV, "1")
-    monkeypatch.setattr(SYN, "synthesize",
-                        lambda *a, **k: (_ for _ in ()).throw(AssertionError("called")))
-    # a report asserts — no lane
-    report = _withhold_view(effector="report", asserted=["2027-03-01"],
-                            candidates=["2027-03-01"], credences=[0.95])
-    assert "uncalibrated" not in EX.render_view(report)
-    # a hedge already surfaces candidates — no lane
-    hedge = _withhold_view(effector="hedge", candidates=["a", "b"],
-                           credences=[0.5, 0.4])
-    assert "uncalibrated" not in EX.render_view(hedge)
-    # a narrative view IS the prose lane already — passes through verbatim, untouched
-    nv = {"effector": "report", "asserted": ["x"], "candidates": [], "credences": [],
-          "p_none": None, "eu": None, "n_obs": 0, "hits": [], "route": None,
-          "rendered": "prose [1]\n\nnarrative footer", "question": "q?"}
-    assert EX.render_view(nv) == "prose [1]\n\nnarrative footer"
-
-
-def test_render_view_fallback_lane_needs_hits_and_question(monkeypatch) -> None:
-    # nothing retrieved ⇒ nothing to synthesize over; a pre-lane View (no question key,
-    # the membrane/report harnesses) degrades to today's render — never a crash
-    import life_agent.core.config as CFG
-    import life_agent.core.synthesis as SYN
-    monkeypatch.setenv(CFG.FALLBACK_LANE_ENV, "1")
-    monkeypatch.setattr(SYN, "synthesize",
-                        lambda *a, **k: (_ for _ in ()).throw(AssertionError("called")))
-    assert "uncalibrated" not in EX.render_view(_withhold_view(hits=[]))
-    no_q = _withhold_view()
-    del no_q["question"]
-    assert "uncalibrated" not in EX.render_view(no_q)
-
-
-def test_render_view_fallback_lane_failure_is_named_not_silent(monkeypatch) -> None:
-    # a failed lane (missing key raises SystemExit via core/llm) must not kill the typed
-    # render NOR vanish silently — the notice names the unavailability (invariant 3)
-    import life_agent.core.config as CFG
-    import life_agent.core.synthesis as SYN
-    monkeypatch.setenv(CFG.FALLBACK_LANE_ENV, "1")
-
-    def boom(*a, **k):
-        raise SystemExit("ANTHROPIC_API_KEY not found in env or gnome-keyring")
-
-    monkeypatch.setattr(SYN, "synthesize", boom)
-    out = EX.render_view(_withhold_view())
-    assert "No answer asserted" in out
-    assert "uncalibrated lane unavailable" in out
 
 
 def test_loop_views_carry_the_question(monkeypatch) -> None:

@@ -1027,10 +1027,10 @@ def answer_via_executor(question: str, k: int
     else:
         live = None
         post = SM.shadow_wrapped_post(_http_post, EXECUTOR_BRIDGE, question_id)
-    # LIFE_AGENT_DELIBERATE=1 (absence = today's menu, byte-for-byte): the promoted A1b
-    # edge joins the priced transform menu — the daemon schedules it by EU, never a
-    # body fork — and every read's stated confidence folds through the per-edge
-    # calibration curves instead of the flat constants.
+    # The deliberate edge is ON by default (§13 adoption 2026-08-17; LIFE_AGENT_DELIBERATE=0
+    # is the rollback): the promoted A1b edge joins the priced transform menu — the daemon
+    # schedules it by EU, never a body fork — and every read's stated confidence folds
+    # through the per-edge calibration curves instead of the flat constants.
     if CFG.deliberate_enabled():
         curves = _edge_curves()
         transforms = EX.menu_transforms(curves)  # every row priced at what enactment delivers

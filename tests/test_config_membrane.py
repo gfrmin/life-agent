@@ -111,16 +111,25 @@ def test_membrane_live_other_values_stay_off(monkeypatch) -> None:
         assert config.membrane_live() is False, v
 
 
-# --- the deliberative edge's rollout flag -------------------------------------------------
+# --- the deliberative edge: ON by default since the §13 adoption (2026-08-17) ------------
 
-def test_deliberate_default_off(monkeypatch) -> None:
+def test_deliberate_default_on(monkeypatch) -> None:
     monkeypatch.delenv(config.DELIBERATE_ENV, raising=False)
-    assert config.deliberate_enabled() is False
+    assert config.deliberate_enabled() is True
 
 
-def test_deliberate_on(monkeypatch) -> None:
+def test_deliberate_explicit_on(monkeypatch) -> None:
     monkeypatch.setenv(config.DELIBERATE_ENV, "1")
     assert config.deliberate_enabled() is True
+
+
+def test_deliberate_rollback_is_zero(monkeypatch) -> None:
+    # "0" is the ONLY disabling value — the rollback lever named in the adoption record
+    monkeypatch.setenv(config.DELIBERATE_ENV, "0")
+    assert config.deliberate_enabled() is False
+    for v in ("true", "yes", ""):
+        monkeypatch.setenv(config.DELIBERATE_ENV, v)
+        assert config.deliberate_enabled() is True, v
 
 
 # --- E1 stage 1: the categorical mirror's enable switch ----------------------------------
@@ -143,19 +152,10 @@ def test_membrane_categorical_other_values_stay_off(monkeypatch) -> None:
     assert config.membrane_categorical() is False
 
 
-# --- the MVP dual-lane fallback's rollout flag -------------------------------------------
+# --- the MVP dual-lane fallback: retired at §13 adoption (2026-08-17) --------------------
 
-def test_fallback_lane_default_off(monkeypatch) -> None:
-    monkeypatch.delenv(config.FALLBACK_LANE_ENV, raising=False)
-    assert config.fallback_lane_enabled() is False
-
-
-def test_fallback_lane_on(monkeypatch) -> None:
-    monkeypatch.setenv(config.FALLBACK_LANE_ENV, "1")
-    assert config.fallback_lane_enabled() is True
-
-
-def test_fallback_lane_other_values_off(monkeypatch) -> None:
-    for v in ("0", "true", "yes", ""):
-        monkeypatch.setenv(config.FALLBACK_LANE_ENV, v)
-        assert config.fallback_lane_enabled() is False, v
+def test_fallback_lane_is_retired() -> None:
+    # honest-withhold-only was the owner's rider; the flag and its accessor are gone,
+    # so a stale LIFE_AGENT_FALLBACK_LANE=1 in someone's .env is simply ignored
+    assert not hasattr(config, "fallback_lane_enabled")
+    assert not hasattr(config, "FALLBACK_LANE_ENV")
