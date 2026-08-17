@@ -258,23 +258,19 @@ def _probe_authority(_deps: BridgeDeps, p: Payload) -> Payload:
 
 
 def _competing_value_shape(value: str, candidate: str) -> bool:
-    """True when the re-read text carries a digit-bearing token OUTSIDE the contained
-    candidate whose digit-count matches one of the candidate's own — the signature of a
-    correction-shaped read ("…PL-900001 was renewed; the new number is PL-800002") that
-    mentions the stale value while naming a same-shaped successor. Containment alone would
-    confirm the superseded value at the tier's trusted rho (a manufactured confident-wrong,
-    the review's reproduced case). Adjacent facts of a DIFFERENT shape (an expiry date's
-    2- and 4-digit tokens beside a 6-digit id) stay confirmable — the q-011 confirming
+    """True when the re-read text carries a numeric span OUTSIDE the contained candidate
+    whose shape matches one of the candidate's own — the signature of a correction-shaped
+    read ("…PL-900001 was renewed; the new number is PL-800002") that mentions the stale
+    value while naming a same-shaped successor. Containment alone would confirm the
+    superseded value at the tier's trusted rho (a manufactured confident-wrong, the
+    review's reproduced case). Adjacent facts of a DIFFERENT shape (an expiry date's
+    2- and 4-digit spans beside a 6-digit id) stay confirmable — the q-011 confirming
     sentence keeps its fix. Digit-free values have no shape signature and never trip this
-    (a prose correction of a word answer is out of this heuristic's reach — accepted)."""
-    def digit_count(t: str) -> int:
-        return sum(ch.isdigit() for ch in t)
-
-    cand_tokens = set(MATCH.tokenize(candidate))
-    cand_shapes = {digit_count(t) for t in cand_tokens if digit_count(t)}
-    return any(digit_count(t) in cand_shapes
-               for t in MATCH.tokenize(value)
-               if t not in cand_tokens and digit_count(t))
+    (a prose correction of a word answer is out of this heuristic's reach — accepted).
+    Delegates to the shared span detector (``matching.competing_value_count``, the §4.2
+    competition term): spans keep comma-grouped figures whole, so "$1,234,567" is one
+    7-digit shape here instead of three comma-split fragments."""
+    return MATCH.competing_value_count(candidate, value) > 0
 
 
 _PARTIAL_DATE = re.compile(r"^(\d{4})(?:-(\d{2}))?(?:-(\d{2}))?$")

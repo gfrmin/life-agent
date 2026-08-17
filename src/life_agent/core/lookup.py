@@ -164,6 +164,19 @@ _PROB_EPS = 1e-12
 # significant digits (leading zeros stripped) so OCR/format variants of ONE number collapse
 # instead of splitting posterior mass. Below it, identity stays the whitespace+case norm.
 _CANON_MIN_DIGITS = 5
+# The §4.2 competition term at the source (foundations §14, registered 2026-08-17): a
+# chunk carrying n distinct same-shape values besides the extracted one halves-or-worse
+# the probability the extractor PICKED the true one — an r-shaped (report-correctness)
+# covariate, never an A-shaped one (the competitor concentrates the miss, it does not
+# grow the wrong-value universe). Saturating so a dense spreadsheet chunk stays a live
+# sub-bar lead the VOI ladder can rescue instead of being erased to prior.
+_COMPETITION_CAP = 3
+
+
+def competition_factor(n_competing: int) -> float:
+    """Per-observation reliability multiplier for ``n_competing`` same-shape in-chunk
+    competitors (``matching.competing_value_count``): 1, 1/2, 1/3, 1/4 (floor)."""
+    return 1.0 / (1.0 + min(max(n_competing, 0), _COMPETITION_CAP))
 
 # §4.1's v0 source-authority lattice: P(document's assertion = W's value | doc class),
 # a declared prior keyed on what is observable (origin path), calibrated later from

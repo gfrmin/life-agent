@@ -55,3 +55,52 @@ def answer_matches(answer: str, variants: list[str], chunk_text: str) -> bool:
 def chunk_matches_any(answer: str, variants: list[str], chunks: list[str]) -> bool:
     """True if any chunk in ``chunks`` contains the answer (token-boundary)."""
     return any(answer_matches(answer, variants, c) for c in chunks)
+
+
+# ── The competing-values detector (§4.2's competition term, measured at the source) ──────
+# A maximal digit run with commas/dots joining digits: "$1,234,567" is ONE 7-digit span,
+# never three comma-split fragments (the FTS tokenizer above splits on commas — that rule
+# is for containment matching, not for shape). Spaces break spans, so adjacent spreadsheet
+# columns never merge into one shape.
+_NUM_SPAN_RE = re.compile(r"\d(?:[\d,.]*\d)?")
+
+
+def numeric_spans(text: str) -> list[str]:
+    """Maximal numeric spans of ``text``, in order (digits joined by ``,``/``.`` only)."""
+    return _NUM_SPAN_RE.findall(text)
+
+
+def _span_canon(span: str) -> str:
+    """Identity of a span: its digits, leading zeros stripped (mirrors the §4.2 candidate
+    canon) — format variants of one number never read as two values."""
+    digits = "".join(ch for ch in span if ch.isdigit())
+    return digits.lstrip("0") or "0"
+
+
+def _span_classes(text: str) -> dict[str, set[str]]:
+    """Map span canon → its shape classes in ``text``. A span immediately followed by
+    ``%`` is class ``"percent"`` (percents compete across digit counts — 74.2% vs 97%);
+    otherwise its class is its digit count."""
+    classes: dict[str, set[str]] = {}
+    for m in _NUM_SPAN_RE.finditer(text):
+        span = m.group(0)
+        end = m.end()
+        cls = "percent" if end < len(text) and text[end] == "%" else str(
+            sum(ch.isdigit() for ch in span))
+        classes.setdefault(_span_canon(span), set()).add(cls)
+    return classes
+
+
+def competing_value_count(value: str, chunk_text: str) -> int:
+    """Distinct values in ``chunk_text`` that COMPETE with ``value``: same shape class
+    (digit count, or the percent class), different canon. Repeats and format variants of
+    the value itself never compete; a digit-free value has no shape and never trips.
+    Pure and model-free — the count feeds ``lookup.competition_factor``, the §4.2
+    competition term the terminal was under-weighting (foundations §14, 2026-08-17)."""
+    value_classes = _span_classes(value)
+    if not value_classes:
+        return 0
+    own_canons = set(value_classes)
+    own_shapes = set().union(*value_classes.values())
+    return sum(1 for canon, shapes in _span_classes(chunk_text).items()
+               if canon not in own_canons and shapes & own_shapes)
