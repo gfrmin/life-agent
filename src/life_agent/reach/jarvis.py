@@ -1,6 +1,7 @@
 """Jarvis — the agent's GTD Telegram face: the loop, the NLU, the persona.
 
-This is *reach*, not truth: it parses a human message into an intent (local Ollama), routes
+This is *reach*, not truth: it parses a human message into an intent (one small
+model call), routes
 the intent to ``life_agent.tasks`` (the event-sourced commands + read-model), and sends the
 reply back over the ``telegram`` transport. "Jarvis" is the persona/voice; the GTD lives in
 the brain. Run as the systemd service: ``python -m life_agent.reach.jarvis``.
@@ -17,7 +18,6 @@ import time
 from datetime import date
 from typing import Any
 from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
 
 from life_agent.core import ask_client, secret
 from life_agent.reach import telegram
@@ -29,8 +29,10 @@ logging.basicConfig(
 )
 log = logging.getLogger("jarvis")
 
-OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434")
-OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "qwen3.5:9b")
+# The NLU model (local Ollama deprecated 2026-08-17 — owner directive): one small
+# cloud call per Telegram message, keyring-authed via core.llm. Env-overridable for
+# an A/B, defaulting to the repo's dated haiku pin.
+NLU_MODEL = os.environ.get("JARVIS_NLU_MODEL", "claude-haiku-4-5-20251001")
 POLL_TIMEOUT = 30
 
 # The canonical intent vocabulary (docs/interaction-contract.md): one table, three
@@ -136,27 +138,20 @@ def _user_id() -> int:
     return int(secret("JARVIS_USER_ID"))
 
 
-def parse_with_ollama(message: str) -> dict[str, Any]:
+def parse_intent(message: str) -> dict[str, Any]:
+    """One NLU call: the message against the INTENTS prompt → the intent JSON.
+    A non-JSON reply raises (the caller's error path names it — invariant 3,
+    never a silently guessed intent). Code-fence wrappers are stripped: prompt
+    steering asks for bare JSON, but a fenced reply is still an unambiguous one."""
+    from life_agent.core.llm import anthropic_complete
+
     prompt = render_prompt(date.today().isoformat())
-    body = {
-        "model": OLLAMA_MODEL,
-        "messages": [
-            {"role": "system", "content": prompt},
-            {"role": "user", "content": message},
-        ],
-        "stream": False,
-        "format": "json",
-    }
-    data = json.dumps(body).encode()
-    req = Request(
-        f"{OLLAMA_URL}/api/chat",  # PII-OK: HTTP endpoint, not a filesystem path
-        data=data,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    with urlopen(req, timeout=120) as resp:
-        result = json.loads(resp.read())
-    content = result["message"]["content"]
+    reply = anthropic_complete(
+        prompt + "\nReply with the JSON object only — no prose, no code fences.",
+        message, model=NLU_MODEL, max_tokens=300, temperature=0.0)
+    content = reply.text.strip()
+    if content.startswith("```"):
+        content = content.strip("`").removeprefix("json").strip()
     parsed: dict[str, Any] = json.loads(content)
     return parsed
 
@@ -275,7 +270,7 @@ def poll_loop() -> None:
                         telegram.send_message(chat_id, reply)
                         continue
                     telegram.send_chat_action(chat_id, "typing")
-                    parsed = parse_with_ollama(text)
+                    parsed = parse_intent(text)
                     log.info("Parsed: %s", parsed.get("action", "unknown"))
                     telegram.send_message(chat_id, handle_action(parsed, user_id))
                 except Exception:
@@ -292,7 +287,7 @@ def poll_loop() -> None:
 
 def main() -> None:
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
-    log.info("Jarvis GTD bot starting (model=%s)", OLLAMA_MODEL)
+    log.info("Jarvis GTD bot starting (model=%s)", NLU_MODEL)
     poll_loop()
 
 

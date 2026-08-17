@@ -1768,3 +1768,37 @@ on this list. Answers land here by amendment, citing their evidence.
   after-map risk the lambda_usd entry names does not arise here. Run 6's report names the
   elicitations file hash via `run_meta.json`, so the reading self-identifies which P(U)
   it integrated.
+
+- **Instrument migration — local Ollama deprecated (2026-08-17, owner directive;
+  REGISTERED BLIND before any run-6 reading; owner chose migrate-first over
+  run-6-first, knowing the comparability cost).** The four cached ask instruments
+  (`lookup_route`, `lookup_extract`, `owner_match`, `temporal_intent`) and the eight
+  LLM transform declarations (`email_triage`, `action_items`, `doc_date_*`,
+  `doc_subject_*`) move from `ollama/qwen2.5:7b-instruct` (local) to
+  `anthropic/claude-haiku-4-5-20251001`, through the same `make_model_client` seam
+  `entity_extraction` already uses; jarvis's NLU moves with them. One identity builder
+  now owns the four keys (`derivations.instrument_identity`) so the change is one
+  deliberate edit. Consequences, priced and disclosed:
+  (a) **Run 6 measures a NEW typed instrument.** Runs 3–5 (one frozen corpus, one
+  instrument) end as a controlled series; run 6's Δ movement confounds the reach work
+  with the instrument change, and its reading must attribute accordingly. The
+  registered run-6 semantics (judge grading, spend, censoring) are unchanged.
+  (b) **Cold caches.** ~7,891 local-keyed cached artifacts (6,879 `lookup_extract` +
+  route/subject/intent/transform verdicts) are orphaned by the identity change —
+  deliberate: pointing the old identity at a different runtime would have replayed
+  them silently as if the instrument had not changed. §18.9 warm-replay economics
+  restart from zero; the answer-stage artifacts (schema-1, model-free) survive.
+  (c) **Curves.** The tier edges (`extract@claude-*`, deliberate) were already cloud
+  and keep their 261-row bank; the BASE extract instrument changes under an unchanged
+  declared reliability — conservative under a strictly stronger model, recalibrated
+  from the outcomes stream as before.
+  (d) **Spend.** Base instrument calls are now cloud-priced, so NEW metering lands
+  with the migration: `/extract` and `/probe/subject` replies carry the cache-miss
+  `cost_usd`, folded into the view's `spend_usd` — the §8 spend term prices them on
+  the typed arm from run 6 on (an unmetered base call would ride at $0 while the
+  replay arm is fully priced — the #67 asymmetry re-created). `/route`'s cost is not
+  wire-carried (its null reply cannot carry a field): one small cached call per
+  question, de minimis, named here rather than silently absent. `temporal_intent` is
+  ask-surface display, not on the gate path.
+  (e) The corpus and retrieval are untouched (FTS only; the embedding column was
+  never populated — see the ROADMAP correction of the same date).

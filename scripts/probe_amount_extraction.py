@@ -25,9 +25,10 @@ import duckdb
 import yaml
 
 import life_agent.core.config as C
+from life_agent.core.instrument import INSTRUMENT_MODEL, instrument_client
 from pkm.cache import content_file
 from pkm.chunking import extract_text
-from pkm.transforms._shared import OllamaClient, quote_is_grounded
+from pkm.transforms._shared import quote_is_grounded
 
 
 def _live_root() -> Path:
@@ -40,7 +41,7 @@ def _live_root() -> Path:
 LIVE_ROOT = _live_root()
 CATALOGUE = LIVE_ROOT / "catalogue.duckdb"
 OUT_DIR = C.KB / "eval" / "d3-amount-probe"
-MODEL = "qwen2.5:7b-instruct"
+MODEL = INSTRUMENT_MODEL  # local Ollama deprecated 2026-08-17
 MAX_INPUT_CHARS = 9000  # head-cap; financial figures lead these documents
 
 # Candidate grammar — the faithful-observation list. `amount`/`dimension`/`label`/`quote`
@@ -182,7 +183,7 @@ def main() -> int:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     conn = duckdb.connect(str(CATALOGUE), read_only=True)
     targets = select_targets(conn)
-    client = OllamaClient(MODEL, {"temperature": 0.0})
+    client = instrument_client(MODEL)
     print(f"probing {len(targets)} documents with {MODEL}\n", flush=True)
 
     report: list[dict] = []

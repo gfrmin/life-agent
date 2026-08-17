@@ -20,7 +20,7 @@ view** — what each faculty is and where it stands.
 |---|---|---|
 | **Memory** — recall + retrieval | **PKM** (`src/pkm`, Python) + **`life_agent`** (this repo, Python) | **Live.** PKM: content-addressed extraction + DuckDB `fts`/`vss` + **composable transforms** (chained, cited perspectives — SPEC §18.7). `life_agent` adds the retrieval/synthesis read path (`scripts/ask.py`, dogfooded via `bin/ask-live`). |
 | **Brain** — beliefs under uncertainty; value-of-information → ask/proceed/block | **credence** (`../credence`, Julia; the skin's JSON-RPC-over-stdio seam) | **Adopted, being wired (Phase 1.6 / Ask v0):** [`docs/bayesian-foundations.md`](./docs/bayesian-foundations.md) — answers become claim sets with posteriors; responses are EU decisions through `src/life_agent/core/brain.py` (slice 1). The VOI governor stays last. |
-| **Hands** — capabilities/actions | **GTD** (`life_agent.tasks`, event-sourced) reached via **`life_agent.reach`** (Telegram transport + persona); email (`msmtp`/JMAP), calendar (CalDAV/Google), chat (matrix) | GTD live, ledger-as-truth (PRINCIPLES §7); **email→GTD shipped (M2)** — the `action_items` transform (local model, grounded quotes) **auto-files** cited tasks to the inbox; you triage in Telegram. Rest not wired. |
+| **Hands** — capabilities/actions | **GTD** (`life_agent.tasks`, event-sourced) reached via **`life_agent.reach`** (Telegram transport + persona); email (`msmtp`/JMAP), calendar (CalDAV/Google), chat (matrix) | GTD live, ledger-as-truth (PRINCIPLES §7); **email→GTD shipped (M2)** — the `action_items` transform (haiku, grounded quotes) **auto-files** cited tasks to the inbox; you triage in Telegram. Rest not wired. |
 | **Goals / Utility** — what the owner values | *(new, unbuilt)* | **The hardest missing piece.** EU-maximisation presupposes it; owed a design before any autonomous *action* (PRINCIPLES §3). |
 | **Spine** — the agent loop + routing | **TBD — open decision** | Deferred to Phase 2 (PRINCIPLES §15). Candidates: pi-mono (TS), a Python loop, or Claude Code as an interim loop. |
 
@@ -59,9 +59,16 @@ OCR+grep needle-finder (`scripts/needle.sh`) survives as a standalone tool.
 1. **(done)** Bump PKM **SPEC → v0.3.0** authorising retrieval/embeddings/extensions/local MCP server (governance-first).
 2. **(done)** **`TesseractProducer`** (`src/pkm/producers/tesseract.py`, heb+eng) wired into `routing.py` +
    `extract.py` + `cli.py`; migration `0004` (`chunks`, `embeddings FLOAT[768]`, `source_origin`).
-3. **(done)** Local embeddings via Ollama `nomic-embed-text` (stdlib `urllib`, no new dep).
-4. **(done)** DuckDB `fts` + `vss` hybrid query (over-fetch k·10); `pkm search` CLI; `pkm-memory` MCP
-   (FastMCP) — **later retired**; retrieval now via `bin/ask-live`.
+3. ~~(done) Local embeddings via Ollama `nomic-embed-text`~~ **CORRECTED 2026-08-17: never
+   implemented.** No embedding call site exists in `src/`; the live catalogue's 529,788
+   chunks carry zero non-NULL embeddings; retrieval is BM25/FTS only. The "(done)" was
+   aspiration recorded as fact (SPEC v0.3.0 §31's identity rules for embeddings stand,
+   unexercised). Greenfield when picked up — and per the 2026-08-17 Ollama deprecation
+   (owner directive), on a **local non-Ollama runtime** (same-model weights via
+   llama.cpp/ONNX-class serving), keeping the 768-dim schema.
+4. **(done)** DuckDB `fts` hybrid query scaffolding (over-fetch k·10); `pkm search` CLI;
+   `pkm-memory` MCP (FastMCP) — **later retired**; retrieval now via `bin/ask-live`. The
+   `vss` leg was never populated (see 3).
 5. **(done) Source adapters — a declarative registry, not ad-hoc scripts.** Sources are declared
    in a **`data-sources.yaml`** registry (real one under `$LIFE_AGENT_KB`, fake schema in
    `config/data-sources.example.yaml`) and enumerated from **plocate**. Two pieces:

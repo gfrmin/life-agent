@@ -156,18 +156,21 @@ def _subject_covariate(subs: list[S.SubjectedHit],
 
 def probe_subject(conn: duckdb.DuckDBPyConnection, root: Path, hit_keys: list[str], *,
                   profile: str, client: Any | None = None,
-                  caller: str = "probe.subject") -> dict[str, str]:
+                  caller: str = "probe.subject",
+                  meter: list[float] | None = None) -> dict[str, str]:
     """Project the current ``doc_subject`` over each hit and classify its subject against
-    the owner ``profile`` (cached local verdict, bounded by distinct subjects) → the
+    the owner ``profile`` (cached verdict, bounded by distinct subjects) → the
     ``subject_state`` covariate. WEIGHTS, never filters — the deselect-for-contact-facts
     finding (module docstring). Read-only; reuses
-    :func:`life_agent.core.subject.project_subjects` + ``owner_verdict``."""
+    :func:`life_agent.core.subject.project_subjects` + ``owner_verdict``. ``meter``
+    accumulates cache-miss model spend (warm replays append nothing)."""
     subs = S.project_subjects(conn, root, hit_keys, caller=caller)
     verdict_of: dict[str, str] = {}
     for h in subs:
         subj = h.subject if h.state == "named" else None
         if subj and subj not in verdict_of:
-            verdict_of[subj] = S.owner_verdict(root, subj, profile, client=client)
+            verdict_of[subj] = S.owner_verdict(root, subj, profile, client=client,
+                                               meter=meter)
     return _subject_covariate(subs, verdict_of)
 
 

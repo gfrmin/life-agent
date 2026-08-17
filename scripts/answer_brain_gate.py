@@ -21,8 +21,9 @@ per (question x policy) under `$LIFE_AGENT_KB/eval/answer_brain_gate/`, plus a r
 recommendation** (named gates `parity_holds` / `zero_new_confident_wrong`, each pass/review;
 certified only if both pass), mirroring the `bayesian-orchestrator` auto-gating discipline.
 
-No cloud model is in the loop (extraction is local Ollama, via the same reads `gather.py` uses), so
-this runs fully on-machine over the owner's real PII corpus. Start the daemon first:
+Extraction runs on the cloud instrument seam (`core.instrument` — local Ollama deprecated
+2026-08-17), via the same reads `gather.py` uses, over the owner's real PII corpus
+(PRINCIPLES §12: venue is engineering, not privacy). Start the daemon first:
     julia --project=$HOME/git/credence $HOME/git/credence/apps/answer-brain/daemon/main.jl
 """
 from __future__ import annotations

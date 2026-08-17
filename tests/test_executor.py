@@ -1476,3 +1476,24 @@ def test_loop_views_carry_the_question(monkeypatch) -> None:
         "action": "report", "asserted": ["x"], "rendered": "prose", "hits": []})
     nview = _loop(nfake)
     assert nview["question"] == "what is my passport number?"
+
+
+def test_base_instrument_spend_enters_the_view_spend(monkeypatch) -> None:
+    # base extract + subject-probe cache-miss spend is cloud-priced since the Ollama
+    # deprecation and must ride spend_usd — the gate's run-6 spend term reads it; an
+    # unmetered base call would price the typed arm's real cost at $0
+    class _CostedServices(FakeServices):
+        def post(self, url: str, payload: dict[str, Any]) -> dict[str, Any] | None:
+            r = super().post(url, payload)
+            if url.endswith("/extract") and r is not None:
+                return {**r, "cost_usd": 0.004}
+            if url.endswith("/probe/subject") and r is not None:
+                return {**r, "cost_usd": 0.001}
+            return r
+
+    fake = _CostedServices(
+        route={"construct": "passport number", "time_indexed": False},
+        decides=[{"effector": "report", "value": "P123", "credences": [0.9],
+                  "p_none": 0.05, "eu": 0.8}])
+    view = _loop(fake)
+    assert abs(view["spend_usd"] - 0.005) < 1e-9

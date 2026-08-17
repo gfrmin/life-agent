@@ -30,8 +30,9 @@ are read via `secret-tool`, never from `.env`.
 
 ## Prerequisites (verify, don't assume)
 
-- Ollama is up: `curl -s localhost:11434/api/tags | jq '.models[].name'` should list
-  `nomic-embed-text` and a chat model.
+- ANTHROPIC_API_KEY resolves (`secret-tool lookup service env key ANTHROPIC_API_KEY`) —
+  the instruments, transforms, and NLU run on the Anthropic seam (local Ollama
+  deprecated 2026-08-17; nothing checks `localhost:11434` any more).
 - OCR ready: `tesseract --list-langs` includes `heb` and `eng`.
 - `rga --version` works (ripgrep-all; searches inside PDFs).
 - Secrets, if needed, come from gnome-keyring (`secret-tool lookup service env key VARNAME`);

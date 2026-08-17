@@ -1,6 +1,6 @@
 """Tests for the Telegram reach (`life_agent.reach`).
 
-Hermetic: the GTD dispatch runs against a temp event-sourced store; the Ollama NLU and the
+Hermetic: the GTD dispatch runs against a temp event-sourced store; the NLU model call and the
 Telegram transport are exercised with a fake ``urlopen`` (no network, no model). Confirms the
 loop's logic — intent → command/projection → reply — without any live I/O.
 """
@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -178,14 +179,31 @@ def test_prompt_today_substitution_survives_literal_braces() -> None:
     assert '{"action": "add"' in rendered  # literal braces intact
 
 
-# --- NLU (mocked Ollama) ------------------------------------------------------
+# --- NLU (mocked model call) --------------------------------------------------
 
 
-def test_parse_with_ollama(monkeypatch: pytest.MonkeyPatch) -> None:
-    inner = json.dumps({"action": "add", "text": "Buy milk"})
-    payload = json.dumps({"message": {"content": inner}}).encode()
-    monkeypatch.setattr(jarvis, "urlopen", lambda *a, **k: _FakeResp(payload))
-    assert jarvis.parse_with_ollama("buy milk") == {"action": "add", "text": "Buy milk"}
+def test_parse_intent(monkeypatch: pytest.MonkeyPatch) -> None:
+    import life_agent.core.llm as llm
+
+    seen: dict[str, Any] = {}
+
+    def fake_complete(system: str, user: str, **kw: Any) -> Any:
+        seen["system"], seen["user"], seen["model"] = system, user, kw.get("model")
+        return type("R", (), {"text": json.dumps({"action": "add", "text": "Buy milk"})})()
+
+    monkeypatch.setattr(llm, "anthropic_complete", fake_complete)
+    assert jarvis.parse_intent("buy milk") == {"action": "add", "text": "Buy milk"}
+    assert seen["user"] == "buy milk" and seen["model"] == jarvis.NLU_MODEL
+    assert "add" in seen["system"]  # the INTENTS vocabulary rides the system prompt
+
+
+def test_parse_intent_strips_code_fences(monkeypatch: pytest.MonkeyPatch) -> None:
+    import life_agent.core.llm as llm
+
+    fenced = "```json\n" + json.dumps({"action": "counts"}) + "\n```"
+    monkeypatch.setattr(llm, "anthropic_complete",
+                        lambda *a, **k: type("R", (), {"text": fenced})())
+    assert jarvis.parse_intent("stats") == {"action": "counts"}
 
 
 # --- transport (mocked HTTP) --------------------------------------------------

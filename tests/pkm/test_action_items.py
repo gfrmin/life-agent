@@ -416,3 +416,21 @@ def test_run_transform_records_lineage_to_email(migrated_root: Path) -> None:
             "SELECT COUNT(*) FROM artifact_lineage WHERE role = 'source_text'",
         ).fetchone()
     assert row is not None and row[0] == 1
+
+
+def test_strict_objects_closes_every_object_node_without_mutating_the_input() -> None:
+    # The Anthropic Structured Outputs API requires additionalProperties: false on
+    # every object; declarations authored for grammar backends omit it. Wire-dialect
+    # adaptation only — the authored schema (the cache-key identity) must not mutate.
+    from pkm.transforms._shared import _strict_objects
+
+    schema = {"type": "object",
+              "properties": {"items": {"type": "array",
+                                       "items": {"type": "object",
+                                                 "properties": {"v": {"type": "string"}}}},
+                             "open": {"type": "object", "additionalProperties": True}}}
+    out = _strict_objects(schema)
+    assert out["additionalProperties"] is False
+    assert out["properties"]["items"]["items"]["additionalProperties"] is False
+    assert out["properties"]["open"]["additionalProperties"] is True  # explicit wins
+    assert "additionalProperties" not in schema  # the input is untouched

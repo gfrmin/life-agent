@@ -184,6 +184,16 @@ def synthesize_key(question: str, retrieval_set_hash: str, profile_hash: str, *,
                     schema_version=3, inputs=inputs, content_type=CONTENT_TYPE_ANSWER)
 
 
+def instrument_identity(model: str) -> dict[str, Any]:
+    """The one model-identity dict for the cached ask instruments (owner_match,
+    lookup_route, temporal_intent, lookup_extract). Local Ollama was deprecated
+    2026-08-17 (owner directive, §14-registered): the instruments run on the same
+    Anthropic seam the entity_extraction transform uses. One builder so the four
+    keys cannot drift — and so the identity change is one deliberate edit, not four."""
+    return {"provider": "anthropic", "model": model,
+            "inference_params": {"temperature": 0.0}}
+
+
 def owner_match_key(subject: str, profile_hash: str, *, model: str,
                     prompt_template: str, engine_version: str,
                     output_schema: dict[str, Any]) -> StageKey:
@@ -197,8 +207,7 @@ def owner_match_key(subject: str, profile_hash: str, *, model: str,
     cache_key = compute_cache_key(
         input_hash, "life_agent.ask.owner_match", OWNER_MATCH_VERSION, {},
         schema_version=3,
-        model_identity={"provider": "ollama", "model": model,
-                        "inference_params": {"temperature": 0.0}},
+        model_identity=instrument_identity(model),
         engine_version=engine_version,
         prompt_template_hash=_sha256(prompt_template),
         output_schema=output_schema,
@@ -220,8 +229,7 @@ def lookup_route_key(question: str, *, model: str, prompt_template: str,
     cache_key = compute_cache_key(
         input_hash, "life_agent.ask.lookup_route", LOOKUP_ROUTE_VERSION, {},
         schema_version=3,
-        model_identity={"provider": "ollama", "model": model,
-                        "inference_params": {"temperature": 0.0}},
+        model_identity=instrument_identity(model),
         engine_version=engine_version,
         prompt_template_hash=_sha256(prompt_template),
         output_schema=output_schema,
@@ -244,8 +252,7 @@ def temporal_intent_key(question: str, *, model: str, prompt_template: str,
     cache_key = compute_cache_key(
         input_hash, "life_agent.ask.temporal_intent", TEMPORAL_INTENT_VERSION, {},
         schema_version=3,
-        model_identity={"provider": "ollama", "model": model,
-                        "inference_params": {"temperature": 0.0}},
+        model_identity=instrument_identity(model),
         engine_version=engine_version,
         prompt_template_hash=_sha256(prompt_template),
         output_schema=output_schema,
@@ -269,8 +276,7 @@ def lookup_extract_key(question: str, chunk_sha: str, *, model: str,
     cache_key = compute_cache_key(
         input_hash, "life_agent.ask.lookup_extract", LOOKUP_EXTRACT_VERSION, {},
         schema_version=3,
-        model_identity={"provider": "ollama", "model": model,
-                        "inference_params": {"temperature": 0.0}},
+        model_identity=instrument_identity(model),
         engine_version=engine_version,
         prompt_template_hash=_sha256(prompt_template),
         output_schema=output_schema,

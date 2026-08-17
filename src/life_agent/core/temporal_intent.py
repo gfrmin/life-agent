@@ -22,10 +22,12 @@ from pathlib import Path
 from typing import Any, Literal
 
 from life_agent.core import derivations as D
+from life_agent.core.instrument import INSTRUMENT_MODEL, instrument_client
 
-# Same local model as the route/subject verdicts (the 8 GB card's working model); cached, so the
-# call count is bounded by distinct questions, not by askings.
-INTENT_MODEL = "qwen2.5:7b-instruct"
+# Same instrument model as the route/subject verdicts (local Ollama deprecated
+# 2026-08-17 — owner directive, §14-registered); cached, so the call count is
+# bounded by distinct questions, not by askings.
+INTENT_MODEL = INSTRUMENT_MODEL
 
 INTENT_PROMPT = """\
 You classify the TEMPORAL SCOPE of a question the owner asks about their own life.
@@ -64,16 +66,11 @@ def _as_scope(value: object) -> Scope:
 
 
 def intent_verdict(root: Path, question: str, *, client: Any | None = None) -> Scope:
-    """Classify the question's temporal scope — cached, local, loud. A replayed verdict is
+    """Classify the question's temporal scope — cached, loud. A replayed verdict is
     deterministic per question; only a cache miss calls the model. A scope outside the enum
     raises and is NEVER recorded (§18.11 miss-path parity: junk must not be frozen)."""
     if client is None:
-        from pkm.transforms._shared import make_model_client
-
-        client = make_model_client({
-            "provider": "ollama", "model": INTENT_MODEL,
-            "inference_params": {"temperature": 0.0},
-        })
+        client = instrument_client(INTENT_MODEL)
     key = D.temporal_intent_key(
         question, model=INTENT_MODEL, prompt_template=INTENT_PROMPT,
         engine_version=str(client.engine_version), output_schema=INTENT_SCHEMA,

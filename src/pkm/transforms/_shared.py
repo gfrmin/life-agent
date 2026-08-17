@@ -208,6 +208,26 @@ class OllamaClient:
         )
 
 
+def _strict_objects(schema: dict[str, Any]) -> dict[str, Any]:
+    """Deep-copy ``schema`` with ``additionalProperties: false`` on every ``object``
+    node that does not set it. The Anthropic Structured Outputs API *requires* closed
+    objects; declarations authored for grammar-constrained backends omit the field.
+    Wire-dialect adaptation only: the DECLARED schema stays the cache-key identity
+    (``output_schema_hash`` hashes what was authored), and closing objects is strictly
+    tighter than what every declaration already intends."""
+    def walk(node: Any) -> Any:
+        if isinstance(node, dict):
+            out = {k: walk(v) for k, v in node.items()}
+            if out.get("type") == "object" and "additionalProperties" not in out:
+                out["additionalProperties"] = False
+            return out
+        if isinstance(node, list):
+            return [walk(v) for v in node]
+        return node
+
+    return walk(schema)
+
+
 class AnthropicClient:
     """Cloud model via the Anthropic API with Structured Outputs (metered)."""
 
@@ -232,7 +252,8 @@ class AnthropicClient:
             max_tokens=self._params.get("max_tokens", 4096),
             temperature=self._params.get("temperature", 0.0),
             messages=[{"role": "user", "content": prompt}],
-            output_config={"format": {"type": "json_schema", "schema": schema}},
+            output_config={"format": {"type": "json_schema",
+                                      "schema": _strict_objects(schema)}},
         )
         latency_ms = int((time.monotonic() - t0) * 1000)
         raw_text: str = response.content[0].text  # type: ignore[union-attr]

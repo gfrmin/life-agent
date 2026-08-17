@@ -25,14 +25,14 @@ a **derive → project → reach** shape (PRINCIPLES §6):
 
 The GTD is event-sourced: an append-only ledger is truth, the SQLite read-model is a fold of it
 (PRINCIPLES §7; `docs/act-layer-events.md`). **email→GTD runs off a `systemd --user` timer**
-(`bin/mail-to-tasks` is the timer/debug entrypoint): the `action_items` transform (local
-Ollama, grounded quotes) auto-files cited tasks; the grounding gate is the safety; triage
+(`bin/mail-to-tasks` is the timer/debug entrypoint): the `action_items` transform (haiku,
+grounded quotes) auto-files cited tasks; the grounding gate is the safety; triage
 happens in Telegram. The ask-anything read path is `scripts/ask.py`, dogfooded via
 `bin/ask-live`; its temporal mode (`/recent`, `/since`, `/until`, `/derive` — one line
 grammar, identical in the REPL and one-shot argv) filters by the `doc_date` projection
 (SPEC §18.12) read-side, naming undated and not-yet-derived hits instead of dropping them.
 Its subject mode (engine D2) owner-filters "my X" questions by the `doc_subject`
-projection (SPEC §18.13) matched against the owner profile via cached local-model
+projection (SPEC §18.13) matched against the owner profile via cached model
 verdicts (`life_agent.core.subject`; the profile never enters pkm) — determinate
 non-owner and template hits are excluded by name, indeterminates kept and named.
 **The GTD ledger projects into knowledge** (`tasks/knowledge.py` →
@@ -129,7 +129,7 @@ projection. See `docs/act-layer-events.md`.
 ## `life_agent.reach` — the Telegram channel + persona (transport only, no truth)
 
 - **Transport:** `src/life_agent/reach/telegram.py` (poll/send; knows only Telegram).
-- **Loop + NLU + persona:** `src/life_agent/reach/jarvis.py` — Ollama parses a message →
+- **Loop + NLU + persona:** `src/life_agent/reach/jarvis.py` — a haiku call parses a message →
   intent → routes to `tasks.commands`/`tasks.store`. Runs as `systemd --user jarvis.service`
   via `python -m life_agent.reach.jarvis`.
 - **Digest:** `src/life_agent/reach/digest.py` (`python -m life_agent.reach.digest`).
@@ -150,8 +150,10 @@ dogfood) live in [`PRINCIPLES.md`](./PRINCIPLES.md) — they are not restated he
 
 ## Environment (Arch Linux, this machine)
 
-- **GPU:** RTX 4060 (8 GB). **Ollama** running with: `qwen2.5:7b-instruct`, `qwen3.5:9b`,
-  `llama3.1`, **`nomic-embed-text`** (768-dim embeddings), 2 vision models. API at `localhost:11434`.
+- **GPU:** RTX 4060 (8 GB). **Local Ollama is DEPRECATED (2026-08-17, owner directive)** —
+  the cached ask instruments, the pkm LLM transforms, and jarvis's NLU all run on the
+  Anthropic seam (`core/instrument.py`, haiku); local inference returns only via a
+  non-Ollama runtime (e.g. for embeddings, unbuilt). Do not assume `localhost:11434`.
 - **OCR/docs:** `tesseract 5.5.2` (langs incl. **`heb`** + `eng`), `pdftotext`, `exiftool`,
   ImageMagick 7, ghostscript, libreoffice.
 - **Search:** `rg 15.1`, **`rga 0.10.10`** (ripgrep-all, searches inside PDFs), `sqlite3 3.53`

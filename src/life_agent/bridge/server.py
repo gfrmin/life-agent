@@ -102,7 +102,7 @@ class BridgeDeps:
 
     root: Path
     conn: duckdb.DuckDBPyConnection      # read-only catalogue (FTS loaded) — retrieval + probes
-    client: Any                          # extraction client (Ollama) — route / observe / subject
+    client: Any                          # instrument client — route / observe / subject
     profile: str                         # owner profile, loaded server-side (never over the wire)
     u_bar: Callable[[], dict[str, float]]  # the utility posterior's u_bar (lazy brain)
     decisions_path: Path                 # calibration decision log — /log_decision appends here
@@ -217,11 +217,12 @@ def _extract(deps: BridgeDeps, p: Payload) -> Payload:
     # attribute's stale attestation decays in time_factor, a permanent one (DOB/id) does not.
     # The brain never sees it — it is folded into each observation's already-multiplied time_factor.
     hl = VOL.half_life(p.get("construct"))
+    meter: list[float] = []
     obs, indeterminate = LK.observe_hits(
         deps.root, _req_str(p, "question"), _req_list(p, "hits"),
         client=deps.client, covariates=cov,
         time_indexed=bool(p.get("time_indexed", False)), today=_opt_date(p.get("today")),
-        half_life_years=hl)
+        half_life_years=hl, meter=meter)
     candidates, abstract = to_abstract_observations(obs)
     # era_split is the evidence shape the string-blind body cannot compute (the abstract obs
     # carry no value/date); the bridge projects it from the RAW obs + the doc_date covariate at
@@ -233,7 +234,10 @@ def _extract(deps: BridgeDeps, p: Payload) -> Payload:
             # alpha/(alpha+β); the full Beta drives the in-process lookup rho-latent, see
             # extractor_reliability).
             "rho": LK.extractor_reliability_mean(),
-            "indeterminate": indeterminate, "era_split": es, "half_life_years": hl}
+            "indeterminate": indeterminate, "era_split": es, "half_life_years": hl,
+            # realised cache-miss model spend (the instruments are cloud-priced since the
+            # Ollama deprecation — the gate's spend term must see it; warm replays are $0)
+            "cost_usd": sum(meter)}
 
 
 def _probe_recency(deps: BridgeDeps, p: Payload) -> Payload:
@@ -241,9 +245,11 @@ def _probe_recency(deps: BridgeDeps, p: Payload) -> Payload:
 
 
 def _probe_subject(deps: BridgeDeps, p: Payload) -> Payload:
-    return {"subject_state": P.probe_subject(
+    meter: list[float] = []
+    state = P.probe_subject(
         deps.conn, deps.root, _req_list(p, "hit_keys"),
-        profile=deps.profile, client=deps.client)}
+        profile=deps.profile, client=deps.client, meter=meter)
+    return {"subject_state": state, "cost_usd": sum(meter)}
 
 
 def _probe_authority(_deps: BridgeDeps, p: Payload) -> Payload:

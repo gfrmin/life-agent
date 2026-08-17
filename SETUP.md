@@ -28,8 +28,9 @@ shows how to point it at your own data. (The why behind the design:
 
 **Optional (improve coverage of your *own* data later — not needed for the sample)**
 
-- **Ollama** + `nomic-embed-text` — local embeddings for semantic recall. The
-  live `bin/ask-live` path is BM25 keyword search and needs neither.
+- ~~Ollama + `nomic-embed-text`~~ — local Ollama is deprecated (2026-08-17), and
+  embeddings were never implemented; the live `bin/ask-live` path is BM25 keyword
+  search and needs neither. A future embeddings leg uses a non-Ollama local runtime.
 - **tesseract** (`-l heb+eng` etc.) — OCR for scanned images / image-only PDFs.
 - **docling** / **unstructured** — already installed as Python deps; only run
   when you ingest PDFs / office / spreadsheet formats and declare them in config.
@@ -106,9 +107,9 @@ which your email can auto-file into. It is optional and layers on separately.
 export TELEGRAM_TOKEN=123456:ABC...
 export JARVIS_USER_ID=<your numeric id>      # the bot answers only this user
 
-# b) a local chat model for the language→intent step (no cloud call)
-ollama pull qwen2.5:7b-instruct              # any small instruct model works
-export OLLAMA_MODEL=qwen2.5:7b-instruct      # default: qwen3.5:9b
+# b) the language→intent step runs on Anthropic haiku (local Ollama deprecated
+#    2026-08-17); ANTHROPIC_API_KEY resolves env-then-keyring, and
+#    JARVIS_NLU_MODEL overrides the default dated haiku pin if needed
 
 # c) run the bot (a long-running poller — supervise it however you like:
 #    a systemd --user service, tmux, whatever you already use)

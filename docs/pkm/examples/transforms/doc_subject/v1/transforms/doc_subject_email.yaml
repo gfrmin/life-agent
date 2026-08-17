@@ -2,8 +2,8 @@ name: doc_subject_email
 version: "0.1.0"
 producer_class: pkm.transforms.doc_subject.DocSubjectProducer
 model:
-  provider: ollama
-  model: qwen2.5:7b-instruct
+  provider: anthropic
+  model: "claude-haiku-4-5-20251001"
   inference_params: {temperature: 0}
 prompt:
   name: doc_subject_v1

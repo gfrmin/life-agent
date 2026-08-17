@@ -152,9 +152,12 @@ def test_extract_threads_covariates_and_time_indexed_into_observe(
 
     def fake_observe(root: Any, q: str, hits: list[dict[str, Any]], *, client: Any,
                      covariates: LK.HitCovariates, time_indexed: bool, today: Any,
-                     half_life_years: float = 5.0) -> tuple[list[Observation], int]:
+                     half_life_years: float = 5.0,
+                     meter: list[float] | None = None) -> tuple[list[Observation], int]:
         seen["cov"], seen["time_indexed"], seen["today"] = covariates, time_indexed, today
         seen["half_life_years"] = half_life_years
+        if meter is not None:
+            meter.append(0.002)  # a cache-miss call's realised spend
         return [], 0
 
     monkeypatch.setattr(LK, "observe_hits", fake_observe)
@@ -168,6 +171,23 @@ def test_extract_threads_covariates_and_time_indexed_into_observe(
     assert seen["cov"].doc_date == {"d0": "2015-06-02"}
     assert seen["cov"].subject_state == {"d0": "owner"}
     assert seen["today"].isoformat() == "2026-06-17"
+
+
+def test_extract_reply_carries_the_metered_base_spend(
+        deps: BridgeDeps, monkeypatch: pytest.MonkeyPatch) -> None:
+    # base extract calls are cloud-priced since the Ollama deprecation — the reply must
+    # carry the cache-miss spend so the executor's spend_usd (the gate's run-6 spend
+    # term) sees it; warm replays appended nothing and ride at $0
+    def fake_observe(*a: Any, meter: list[float] | None = None,
+                     **k: Any) -> tuple[list, int]:
+        if meter is not None:
+            meter.extend([0.002, 0.003])
+        return [], 0
+
+    monkeypatch.setattr(LK, "observe_hits", fake_observe)
+    monkeypatch.setattr(LK, "extractor_reliability_mean", lambda *a, **k: 0.5)
+    _, payload = _call(deps, "POST", "/extract", {"question": "q", "hits": []})
+    assert payload["cost_usd"] == pytest.approx(0.005)
 
 
 def test_extract_projects_era_split_from_doc_date(
@@ -219,7 +239,7 @@ def test_probe_subject_loads_profile_server_side(
     monkeypatch.setattr(P, "probe_subject", fake_subject)
     status, payload = _call(deps, "POST", "/probe/subject", {"hit_keys": ["d0"]})
     assert status == 200
-    assert payload == {"subject_state": {"d0": "owner"}}
+    assert payload == {"subject_state": {"d0": "owner"}, "cost_usd": 0.0}
     # the profile is the bridge's server-side datum; it is NEVER carried in the request (§3).
     assert seen["profile"] == deps.profile
 

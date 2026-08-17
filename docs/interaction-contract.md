@@ -107,7 +107,7 @@ never silent. When fresh: nothing printed, nothing written. The strings are one 
 **The owner filter (subject mode).** A plain `QUESTION` with an *unchained* first-person
 possessive — "what is **my** Israeli ID?", "the **owner's** mortgage" — filters hits by
 each document's projected subject (pkm SPEC §18.13 `doc_subject`) matched against the
-owner profile. The match is consumer-side (the profile never enters pkm): a cached local-
+owner profile. The match is consumer-side (the profile never enters pkm): a cached
 model verdict per distinct subject string, so the per-question filter is deterministic. A
 *relational* possessive — "my **partner's** ID" — does NOT trigger it (filtering for the
 owner there would exclude exactly the right answer). Only documents *determinately* about
@@ -168,7 +168,7 @@ posterior is named in every footer — "this may be incomplete" is a number, not
 
 ## act — Jarvis
 
-Free-text Telegram messages, parsed by a local model into one of these intents
+Free-text Telegram messages, parsed by a small model call into one of these intents
 (`jarvis.INTENTS`, the single source for the NLU prompt and the help reply):
 
 | intent | canonical phrasing | reply shape |

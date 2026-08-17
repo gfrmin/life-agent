@@ -309,18 +309,29 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
     the normalized view ``{effector, asserted, candidates, credences, p_none, eu, hits, route}``."""
     transforms = DEFAULT_TRANSFORMS if transforms is None else transforms
 
+    # the question's TOTAL metered spend — base instruments (subject/extract cache
+    # misses, cloud-priced since the Ollama deprecation), tiers AND deliberate. The
+    # gate's run-6 spend term reads THIS; an unmetered base call would ride at $0
+    # while the replay arm is fully priced. (/route's cost is not wire-carried — its
+    # null reply cannot carry a field; de minimis and cached, §14-disclosed.)
+    spend_usd = 0.0
+
     def _evidence(rr: bool, ex: bool) -> tuple[list[dict[str, Any]], dict[str, Any],
                                                dict[str, Any]]:
+        nonlocal spend_usd
         hits = _obj(post, f"{bridge}/retrieve",
                     {"question": question, "k": k, "rerank": rr, "expand": ex})["hits"]
         hit_keys = list(dict.fromkeys(h["artifact_cache_key"] for h in hits))
-        subj = _obj(post, f"{bridge}/probe/subject", {"hit_keys": hit_keys})["subject_state"]
+        subj_reply = _obj(post, f"{bridge}/probe/subject", {"hit_keys": hit_keys})
+        subj = subj_reply["subject_state"]
+        spend_usd += float(subj_reply.get("cost_usd") or 0.0)
         recency = _obj(post, f"{bridge}/probe/recency", {"hit_keys": hit_keys})["doc_date"]
         # construct ⇒ the bridge decays time_factor at its volatility half-life
         ext = _obj(post, f"{bridge}/extract", {
             "question": question, "hits": hits, "time_indexed": route["time_indexed"],
             "construct": route["construct"],
             "covariates": {"subject_state": subj, "doc_date": recency}})
+        spend_usd += float(ext.get("cost_usd") or 0.0)
         return hits, recency, ext
 
     hits, recency, ext = _evidence(rerank, expand)
@@ -347,11 +358,6 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
     # REQUESTED model: decide-time conditioning looks up extract_edge(requested), and
     # served_model is "" on §18.9 warm replays — stamping it would split the namespace.
     edge_events: list[dict[str, Any]] = []
-    # the question's TOTAL metered spend — every firing, tiers AND deliberate (the
-    # decisions-v2 single slot below stays deliberate-only; the gate's run-6 spend
-    # term reads THIS, or typed tier spend would ride at $0 while the replay arm is
-    # fully priced — PR #67 review).
-    spend_usd = 0.0
 
     def _edge_event(edge: str, reply: dict[str, Any]) -> None:
         nonlocal spend_usd
