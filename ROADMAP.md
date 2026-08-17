@@ -171,6 +171,18 @@ Bayesian Ask rather than deterministic pipelines. Remaining program, in dependen
    p1 window that the u_wrong elicitation closed. The coarsening is closed as a re-earn
    route; the path is E1 (a sharper engine posterior), not lattice surgery. First execution
    voided on Ū drift and caught by the freeze; the engine reproduced §17.5 to four decimals.
+3e. **Gate run 6 + its attribution (2026-08-17; foundations §14).** Run 6 — judge-graded
+   arms, λ_usd spend on both arms, the post-Ollama cloud instruments — read **FAIL at
+   P(Δ>0.05) = 0.678, Δ̄ +0.180 [−0.244, +0.661]**, the series' first positive mean, typed
+   answer rate 0.47 (47 ✓ / 2 ✗) vs monolithic 0.97, withholdings miss 18 · dispersed 37.
+   Three things changed at once, so the same day's **arm-splice counterfactual**
+   (`scripts/gate_splice.py`, deterministic on archived artifacts, pinned to reproduce run
+   6 first; not a reading) attributed it: run 5's cautious typed arm, judge-graded and
+   priced, reads **0.905 / +0.343** — grading and pricing carried the sign; the new
+   instrument's live arm gave back Δ̄ −0.163 (corrects +0.192, two confident-wrongs −0.173,
+   spend −0.183 — nine cold deliberate probes are $10.87 of it, and 13/13 cold deliberates
+   across runs 5–6 converted nothing). Next, re-ordered: audit q2-053/q2-105 (−0.087/q
+   each), re-price deliberate at cold (cost and rho), then reach for the 18 misses.
 4. **The aggregate family** (subsumes D3): recall term + completeness priors,
    missing-mass posterior, dedup-as-inference — the spending question answered as a
    posterior with both coverage readouts.

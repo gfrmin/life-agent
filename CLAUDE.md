@@ -66,10 +66,14 @@ runs so far (§14 ledger has each): the executor series read 0.002 → 0.010 →
 0.092 → 0.098, then **run 6 (2026-08-17: judge-graded arms, λ_usd spend on both arms,
 the post-Ollama cloud instruments): FAIL at P(Δ>0.05)=0.678, Δ̄=+0.180 [−0.244, +0.661]
 — the first positive mean;** typed answer rate 0.47 (47 ✓ / 2 ✗) vs monolithic 0.97,
-withholdings split miss 18 · dispersed 37 (the reach lever's first *direction*). Named
-next: the run-5 re-pricing counterfactual that isolates the instrument change from the
-grading/spend changes (deterministic, from archived artifacts), the two confident-wrongs'
-audit (q2-053, q2-105), then reach for the 18 misses. Old D3–D4 stay re-scoped as Ask's
+withholdings split miss 18 · dispersed 37 (the reach lever's first *direction*). The
+run-5 attribution counterfactual (`scripts/gate_splice.py`, same day, not a reading)
+settled what carried the sign: run 5's cautious typed arm, judge-graded and priced, reads
+**0.905 / +0.343** — grading + spend did it; the new instrument's live arm gave back
+Δ̄ −0.163 (corrects +0.192, two wrongs −0.173, spend −0.183 — $10.87 of it nine cold
+deliberate probes, 13/13 cold deliberates across runs 5–6 converted nothing). Named
+next, re-ordered: the two confident-wrongs' audit (q2-053, q2-105 — −0.087/q each),
+deliberate's cold-call pricing, then reach for the 18 misses. Old D3–D4 stay re-scoped as Ask's
 aggregate/thread families. The doc's §14 open questions are a **live empirical ledger**
 (owner's adoption rider): each entry names the evidence that decides it — keep it
 current. Sequencing is continuous and eval-gated, not dogfood-gated (PRINCIPLES §9 as

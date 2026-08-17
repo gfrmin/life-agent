@@ -1847,3 +1847,33 @@ on this list. Answers land here by amendment, citing their evidence.
   writing to a dead socket); its 39 salvaged edge rows were kept, the bridge hardened
   (`_respond` survives a broken pipe; the narrative path has its own 900 s budget), and the
   re-fire replayed the first 26 questions warm. The reading is the re-fire.
+
+- **Run-5 attribution counterfactual — DONE (2026-08-17, the run-6 entry's named next
+  computation; `scripts/gate_splice.py`, archived report
+  `$LIFE_AGENT_KB/eval/gate-outside-option/counterfactual-run5-judged-priced-20260817.md`).
+  Not a reading:** deterministic arithmetic on archived artifacts under the run-6 posterior
+  (the harness first reproduces run 6 byte-for-byte from its own paired rows — the pin —
+  then splices arms). Run 5's frozen typed actions (27 ✓ / 0 ✗ / 77 abstain, realised
+  spend $1.71 exact from the decisions log) against run 6's mono grades (the identical
+  replay, judge-graded, corrected golds) with both arms priced at the folded λ = 1.3311:
+  **P(Δ>0.05) = 0.905, Δ̄ = +0.343 [−0.009, +0.786]** — the frozen bar, cleared, by the
+  qwen-era arm. The ladder: 0.097/−0.232 (matcher, cost 0 — run 5 as published) →
+  +judge 0.196/−0.135 (mono 96 → 95 net under the corrected golds; the run-6 entry's
+  "96 → 93" was pre-correction arithmetic) → +spend 0.812/+0.245 → +both 0.905/+0.343.
+  Run 6's live arm read 0.678/+0.180: **the typed-arm changes cost Δ̄ −0.163**, decomposed
+  exactly at Ū — corrects 27 → 47 **+0.192**, two confident-wrongs (q2-053, q2-105) at
+  u_wrong −9 **−0.173**, spend $1.71 → $16.03 **−0.183**. So run 6's sign change was
+  carried by grading and pricing, not by the instrument; the instrument bought reach
+  (0.26 → 0.47) and returned two thirds of it in wrongs and spend. **Spend anatomy:** $10.87
+  of run 6's $16.03 is nine COLD deliberate probes (opus, $0.90–$1.43 each), and **every
+  cold deliberate in runs 5 and 6 (13/13, $12.58) ended in abstain at p_none 0.50** — its
+  conversions are all warm replays; the daemon buys it at the menu's declared USD 0.38 (the
+  ff-v2 mean $/question) against a realised ~$1.21 at cold: the C2 priced-vs-enacted
+  divergence, on the cost side. $13.10 of the typed spend fell on questions that still
+  abstained. **Caveat, stated:** the typed-arm delta bundles instrument + live menu
+  re-pricing (#67) + the 300-row curves; these artifacts cannot split it further, and the
+  run-5 arm cannot be re-fired (local Ollama deprecated) — the counterfactual re-orders
+  work, it does not pass anything. **Re-ordered next:** (1) the two confident-wrongs'
+  audit — each is −0.087/q of Δ̄, the largest per-question lever on the board; (2)
+  deliberate's cold-call pricing (cost AND rho — a $10.87 line that converted nothing);
+  (3) reach for the 18 misses.
