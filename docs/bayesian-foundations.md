@@ -2216,3 +2216,24 @@ on this list. Answers land here by amendment, citing their evidence.
   distribution that matters post-adoption is the owner's real questions, not the q2
   benchmark's); the eval lever between (a) and (b) is picked afterwards on the audited
   ceilings.
+
+- **Reach-audit reading (same day, `scripts/reach_audit.py`, $0 deterministic, criteria
+  frozen in its docstring before results):** over run 9's 69 withheld questions —
+  **rescuable-retrieved 40 · rescuable-unretrieved 17 · single-doc 12 · gold-absent 0**
+  (classes in the gate's own grading currency, `matching.answer_matches`; the counts are
+  optimistic ceilings — token containment of a common gold value inflates `docs`, e.g.
+  3,438 artifacts "carry" one gold — but the *class* only needs one true independent
+  carrier, and the buildable class additionally requires it inside the deterministic
+  top-20). The n_obs=0 cluster (19 rows incl. the 2 unlogged misses) read
+  **retrieved-not-extracted 19 / not-retrieved 0 / absent 0** — so the "retrieval-failure
+  cluster" name was WRONG and is retired: every one of the 19 already had a gold-bearing
+  chunk inside the top-k; the loss is extraction/observation-side (the one-value-per-chunk
+  extractor and the grounding gates), not query-side. Under the frozen rule the lever
+  choice is decided, not judged: **independent-document corroboration, buildable ceiling
+  40/69** (retrieval lever ceiling 0; a retrieval change would add at most 17 more
+  rescuables later). single-doc 12 stays the temper's standing price; gold-absent 0 means
+  nothing withheld is unanswerable on this corpus. Artifacts:
+  `$LIFE_AGENT_KB/eval/reach-audit-20260817.{md,yaml}`. First pass of the audit shipped a
+  broken decisions join (qid vs content-addressed hash — every row read as unlogged) and
+  was corrected and re-run before any reading; disclosed here because the class counts
+  happened to be join-independent and identical across both runs.

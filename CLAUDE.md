@@ -95,9 +95,12 @@ is closed at the price of reach. **§13 adoption RESOLVED (2026-08-17, on runs 7
 typed is the silent default, honest-withhold-only (the uncalibrated fallback lane is
 REMOVED — `LIFE_AGENT_FALLBACK_LANE` is ignored), and the deliberate edge is ON by
 default (`LIFE_AGENT_DELIBERATE=0` is the rollback)** — §14's adoption entry has the
-evidence and rejected alternatives. The named next lever is independent-document
-corroboration on the 67 dispersed (ceiling audited at $0 first, alongside the
-19-question n_obs=0 cluster). Old D3–D4 stay re-scoped as Ask's
+evidence and rejected alternatives. The reach audit (`scripts/reach_audit.py`, $0)
+priced the levers: **independent-document corroboration is the decided next build
+(buildable ceiling 40/69 withheld — an independent gold-bearing chunk already in the
+top-20)**; the n_obs=0 cluster is extraction-side (19/19 retrieved-not-extracted,
+0 not-retrieved — "retrieval failure" retired as a name); single-doc 12 is the
+temper's standing price. Old D3–D4 stay re-scoped as Ask's
 aggregate/thread families. The doc's §14 open questions are a **live empirical ledger**
 (owner's adoption rider): each entry names the evidence that decides it — keep it
 current. Sequencing is continuous and eval-gated, not dogfood-gated (PRINCIPLES §9 as
