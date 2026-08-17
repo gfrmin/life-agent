@@ -1877,3 +1877,42 @@ on this list. Answers land here by amendment, citing their evidence.
   audit — each is −0.087/q of Δ̄, the largest per-question lever on the board; (2)
   deliberate's cold-call pricing (cost AND rho — a $10.87 line that converted nothing);
   (3) reach for the 18 misses.
+
+- **The two confident-wrongs, audited (2026-08-17) — neither is what the run-6 entry
+  guessed.** **q2-053 was a stale gold, not an instrument miss.** The corpus holds Jim's
+  report (29 Mar 2026: "Partial coverage in Sep 2025 (74.2%)") AND Guy's reply in the same
+  thread the next day ("Sep 2025 is now at 97%"). The question is a current-value question;
+  the typed arm asserted the newest attestation at 0.945 — exactly the SPEC §15.4 currency
+  rule the `doc_date`/`era_split` covariates exist for. Runs 3–5 "got it right" only because
+  the qwen-era extractor garbled the competitor into `go97%`, so 74.2% never had a rival.
+  Corrected 2026-08-17 (the third disclosed gold change; `questions_v2.yaml.bak-20260817`):
+  gold 97%, provenance moved to the superseding chunk (`e192b6ca…`, chunk 0). Run 6 stands
+  as read; under the corrected gold it re-grades to typed 48 ✓ / 1 ✗ and **0.811 / +0.275
+  [−0.111, +0.733]** (`counterfactual-run6-q053-corrected-20260817.md`, a footnote, not a
+  reading). **q2-105 is a real coin flip stated at 0.93** — the chunk lists two unlabeled
+  numbers ("Ms A. EXAMPLE (852) 5550 0187 (852) 5550 0143"; the header is 113
+  chunks away) and a CACHED opus deliberate read (from `gate-20260807T202838`; the deliberate
+  key is (corpus, question, model) — independent of the base instrument, so the run-6 entry's
+  "the value came from the new instrument" was wrong) picked the tel; run 5 abstained on the
+  same read only because its thinner deliberate curve (44 rows) trusted the 0.93 less than
+  run 6's (300 rows) did. The right behaviour on that chunk is hedge/corroborate; the
+  reliability curve is the mechanism that learns it — **and it could not**: the 08-14 gold
+  correction left that deliberate row, and four extract rows for q2-105 plus three for
+  q2-018, graded CORRECT in the outcomes log (the writer dedups on §18.9 lineage, so a firing
+  is never re-graded), all high-confidence "hits" the curves' top bins were fed. **Fix,
+  append-only:** `calibration.edge_outcomes_from_log` now folds the LATEST row per (edge,
+  lineage) — supersession, in the superseded row's place; lineage-less rows keep folding as
+  before — and `scripts/regrade_edge_rows.py` re-grades the named questions' rows against
+  the current gold with the writer's own matcher and appends superseding rows
+  (`signals.regrade_of` / `superseded_grade` / `reason`; dry-run by default; idempotent).
+  Applied 2026-08-17 (`outcomes.jsonl.bak-20260817`): **10 rows superseded** — 8
+  CORRECT→INCORRECT (q2-018 ×3, q2-105 ×5: deliberate@opus 0.97 ×2, extract@haiku 0.92–0.95
+  ×3, sonnet 0.85, opus 0.83–0.90) and q2-053's pair swapped (opus "97%" 0.95 → CORRECT,
+  sonnet "74.2%" 0.85 → INCORRECT). Curve food in force: deliberate@opus 44/52 (was 46),
+  extract@haiku 75/95 (78), sonnet 115/144 (117), opus 113/133 (114). The gate report now
+  names rows *in force* beside rows logged. Run 7's LOO curves condition on this — the
+  top-bin pessimism these eight rows buy is the calibration doing what §8 says it should.
+  **Net for the reach reading:** of run 6's two wrongs, one dissolves (gold), one stands as an
+  instrument-overconfidence the curves now see; the −0.173 wrongs term of the attribution is
+  really −0.087, and the counterfactual's "run 6 minus the instrument" gap narrows from
+  −0.163 to −0.076 (still negative: spend).

@@ -163,3 +163,51 @@ def test_edge_outcomes_from_log_holds_out_a_question(tmp_path) -> None:
                                  probability=0.8))
     assert edge_outcomes_from_log(log, exclude_question_ids=frozenset({"q-1"})) == [
         EdgeOutcome("deliberate@opus", 0.8, False)]
+
+
+def test_edge_outcomes_from_log_latest_row_per_lineage_supersedes(tmp_path) -> None:
+    # A gold correction re-grades an already-logged firing by APPENDING a row with the
+    # same lineage (the log is append-only; the writer's lineage dedup means the
+    # original can never be re-written). The fold must take the LATEST row per
+    # (edge, lineage key) — else the stale grade stays curve food forever (the
+    # q2-105 precedent: five CORRECT rows under a since-corrected gold).
+    from life_agent.core import outcomes as O
+    from life_agent.core.calibration import EdgeOutcome, edge_outcomes_from_log
+
+    log = tmp_path / "outcomes.jsonl"
+    base = {**_outcome_base(), "lineage_keys": ("L1",)}
+    O.append(log, O.OutcomeEvent(**base, grade="CORRECT", grader="eval_edge",
+                                 instrument_identity={"edge": "deliberate@opus"},
+                                 probability=0.97))
+    # an unrelated row on the same edge with its own lineage — untouched
+    O.append(log, O.OutcomeEvent(**{**_outcome_base(), "lineage_keys": ("L2",)},
+                                 grade="CORRECT", grader="eval_edge",
+                                 instrument_identity={"edge": "deliberate@opus"},
+                                 probability=0.6))
+    # the regrade: same lineage, same probability, corrected grade, later in the log
+    O.append(log, O.OutcomeEvent(**{**base, "tx_time": "t2", "run_id": "regrade"},
+                                 grade="INCORRECT", grader="eval_edge",
+                                 instrument_identity={"edge": "deliberate@opus"},
+                                 probability=0.97,
+                                 signals={"regrade_of": "t"}))
+    # the same lineage on a DIFFERENT edge is a different observation, not a supersession
+    O.append(log, O.OutcomeEvent(**base, grade="CORRECT", grader="eval_edge",
+                                 instrument_identity={"edge": "extract@haiku"},
+                                 probability=0.5))
+    assert edge_outcomes_from_log(log) == [
+        EdgeOutcome("deliberate@opus", 0.97, False),   # superseded in place (order kept)
+        EdgeOutcome("deliberate@opus", 0.6, True),
+        EdgeOutcome("extract@haiku", 0.5, True)]
+
+
+def test_edge_outcomes_from_log_lineage_less_rows_never_supersede(tmp_path) -> None:
+    from life_agent.core import outcomes as O
+    from life_agent.core.calibration import EdgeOutcome, edge_outcomes_from_log
+
+    log = tmp_path / "outcomes.jsonl"
+    for grade in ("CORRECT", "INCORRECT"):
+        O.append(log, O.OutcomeEvent(**_outcome_base(), grade=grade, grader="eval_edge",
+                                     instrument_identity={"edge": "deliberate@opus"},
+                                     probability=0.9))
+    assert edge_outcomes_from_log(log) == [EdgeOutcome("deliberate@opus", 0.9, True),
+                                           EdgeOutcome("deliberate@opus", 0.9, False)]

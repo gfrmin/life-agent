@@ -1617,11 +1617,16 @@ def main() -> int:
                           "harvest (run 3) first")
                 vac = (" **(VACUOUS — no attributed rows existed; every fold was "
                        "empty either way)**" if not prior else "")
+                # the evidence base is the rows IN FORCE (latest per edge+lineage —
+                # a regrade's superseding row replaces, never adds; calibration's fold)
+                from life_agent.core import OUTCOMES_LOG as _OL
+                from life_agent.core.calibration import edge_outcomes_from_log as _eofl
+                n_in_force = len(_eofl(_OL))
                 exec_note += (
                     f"> **Curves:** held-out (grouped leave-one-question-out) over "
-                    f"{len(prior)} pre-run attributed edge outcome row(s) — each "
-                    f"question's decide conditioned on curves folded without its own "
-                    f"rows{vac}\n\n")
+                    f"{n_in_force} pre-run attributed edge outcome row(s) in force "
+                    f"({len(prior)} logged) — each question's decide conditioned on "
+                    f"curves folded without its own rows{vac}\n\n")
 
         # judge ADOPTION (§14 run-6 registration (2)): the arms' correctness is
         # re-graded by the cross-provider modal judge BEFORE Δ — after the edge append,

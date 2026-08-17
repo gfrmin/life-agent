@@ -141,14 +141,33 @@ def edge_outcomes_from_log(path: Path, *,
     edge-attributed writer that stamps a different question_id spelling (e.g. the
     decisions.question_id hash — the owner-verdict/reaction channels' shape) would
     put the same question's evidence out of the exclusion's reach: stamp the eval id
-    or extend the exclusion axis (lineage) before writing."""
+    or extend the exclusion axis (lineage) before writing.
+
+    **Supersession by lineage.** The log is append-only and the writer dedups on §18.9
+    lineage, so a firing graded once can never be re-written — yet a later gold
+    correction can change its truth (2026-08-14/17: q2-018, q2-105, q2-053). A regrade
+    therefore APPENDS a row with the same edge + lineage and the corrected grade
+    (``scripts/regrade_edge_rows.py``), and this fold takes the LATEST row per
+    (edge, lineage key), in the superseded row's position. Lineage-less rows (caching
+    off) can neither supersede nor be superseded — every one is kept, as before."""
     from life_agent.core import outcomes as O
 
     rows: list[EdgeOutcome] = []
+    slot: dict[tuple[str, str], int] = {}  # (edge, lineage key) → index in rows
     for ev in O.read(path):
         edge = ev.instrument_identity.get("edge")
         if not edge or ev.probability is None or ev.question_id in exclude_question_ids:
             continue
-        rows.append(EdgeOutcome(str(edge), float(ev.probability),
-                                ev.grade in O.CORRECT_GRADES[ev.grader]))
+        row = EdgeOutcome(str(edge), float(ev.probability),
+                          ev.grade in O.CORRECT_GRADES[ev.grader])
+        keys = [(str(edge), k) for k in ev.lineage_keys]
+        hit = next((slot[k] for k in keys if k in slot), None)
+        if hit is None:
+            rows.append(row)
+            for k in keys:
+                slot[k] = len(rows) - 1
+        else:
+            rows[hit] = row
+            for k in keys:
+                slot[k] = hit
     return rows
