@@ -1753,3 +1753,18 @@ on this list. Answers land here by amendment, citing their evidence.
   provenance-only across all 104 questions, mechanically checked, and adds exactly
   `{artifact_cache_key, chunk_index}`.
   §12's stage order is unchanged by this entry; it is gate-instrument work under stage 1.
+
+- **P(U) elicitation sprint (2026-08-17, DISCLOSED BLIND — before any run-6 reading; the
+  §8 "narrow P(U)" lever, exercised).** Asked the three remaining first-order latents'
+  registered questions with their gauge stated (correct = +1, abstain = 0, the owner's own
+  u_wrong = −9); the owner stated: **u_hedged = 0.4 · lambda_int = 1.0 ·
+  u_wrong_scoped = −2.0** — each the frozen prior's mean, i.e. the statements *confirm*
+  the priors rather than move them, and their effect is pure narrowing. `noise_sigma = 0.5`
+  on all three is the u_wrong precedent's default, not owner-stated — disclosed as such,
+  owner-revisable by a superseding line. `kappa_att` remains prior-only (second-order;
+  not asked). Lines appended to `elicitations.jsonl` (`.bak-20260817` retained) after
+  verifying the deployed `load_elicitations` accepts all three latents; fold loads clean.
+  Blindness: stated before run 6 fired and without any per-question λ↔verdict map — the
+  after-map risk the lambda_usd entry names does not arise here. Run 6's report names the
+  elicitations file hash via `run_meta.json`, so the reading self-identifies which P(U)
+  it integrated.
