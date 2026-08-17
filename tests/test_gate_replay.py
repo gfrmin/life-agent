@@ -839,3 +839,36 @@ def test_judge_grade_and_judge_shadow_are_mutually_exclusive(monkeypatch,
                         lambda p: (_ for _ in ()).throw(AssertionError("state touched")))
     assert RE.main() == 2
     assert "--judge-shadow" in capsys.readouterr().out
+
+
+def test_gate_disarms_the_fallback_lane_and_records_it() -> None:
+    # the uncalibrated lane is an OWNER-surface presentation (its render is discarded by
+    # the gate, its spend unmetered) — a leaked LIFE_AGENT_FALLBACK_LANE=1 in a gate run
+    # would burn a hidden synthesize per typed abstain; the gate disarms it and the
+    # run_meta names that it was set (self-identifying, PR-review blocker)
+    import os
+
+    os.environ["LIFE_AGENT_FALLBACK_LANE"] = "1"
+    try:
+        was_set = RE.disarm_fallback_lane()
+        assert was_set is True
+        assert "LIFE_AGENT_FALLBACK_LANE" not in os.environ
+        assert RE.disarm_fallback_lane() is False
+    finally:
+        os.environ.pop("LIFE_AGENT_FALLBACK_LANE", None)
+
+
+def test_apply_judge_verdicts_flip_names_the_hedge_arm() -> None:
+    # a hedge flip must be distinguishable from a single-value report flip in the
+    # published table (§14: the reading names WHAT the judge moved) — the flip row
+    # carries the item arm (typed-hedge), not the coarse side label
+    import life_agent.core.gate as GATE
+
+    typed = GATE.RealisedResponse(action="hedge", correct=False)
+    mono = GATE.RealisedResponse(action="abstain", correct=None)
+    paired = [_paired("q2-004", typed, mono)]
+    items = [{"question_id": "q2-004", "arm": "typed-hedge", "candidate": "X9",
+              "verdict": True}]
+    _regraded, flips, unjudged = RE.apply_judge_verdicts(paired, items)
+    assert unjudged == []
+    assert [(f["question_id"], f["arm"]) for f in flips] == [("q2-004", "typed-hedge")]

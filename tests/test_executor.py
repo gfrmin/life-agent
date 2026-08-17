@@ -1497,3 +1497,23 @@ def test_base_instrument_spend_enters_the_view_spend(monkeypatch) -> None:
                   "p_none": 0.05, "eu": 0.8}])
     view = _loop(fake)
     assert abs(view["spend_usd"] - 0.005) < 1e-9
+
+
+def test_instrument_client_is_lazy_on_secrets(monkeypatch) -> None:
+    # a locked keyring at boot must not kill the whole bridge (fail-open contract):
+    # construction and engine_version (cache-key identity → warm replays) need no
+    # secret; only a cache-miss .complete() resolves the key and may raise
+    import life_agent.core.instrument as INSTR
+    import life_agent.core.llm as llm
+
+    def no_secret(name: str) -> str:
+        raise SystemExit(f"{name} not found")
+
+    monkeypatch.setattr(llm, "secret", no_secret)
+    client = INSTR.instrument_client()          # must NOT raise
+    assert isinstance(client.engine_version, str) and client.engine_version
+    try:
+        client.complete("p", {"type": "object", "properties": {}})
+        raise AssertionError("complete() should have raised on the missing key")
+    except SystemExit:
+        pass

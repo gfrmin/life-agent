@@ -472,7 +472,9 @@ def apply_judge_verdicts(paired: list, items: list[dict]) -> tuple[list, list[di
             return resp
         correct = any(bool(it["verdict"]) for it in row_items)
         if correct != bool(resp.correct):
-            flips.append({"question_id": qid, "arm": side,
+            # the ITEM arm (typed-hedge vs typed vs mono) — the §14 table must name
+            # WHAT the judge moved, and a hedge-candidate flip is not a report flip
+            flips.append({"question_id": qid, "arm": arm,
                           "matcher": bool(resp.correct), "judge": correct,
                           "candidates": [it["candidate"] for it in row_items]})
         return dataclasses.replace(resp, correct=correct)
@@ -840,9 +842,17 @@ def _sha256_file(path: Path) -> str | None:
         return None
 
 
+def disarm_fallback_lane() -> bool:
+    """Pop ``LIFE_AGENT_FALLBACK_LANE`` from the gate process's environment; True iff it
+    was set. The uncalibrated lane is OWNER-surface presentation — the gate discards the
+    render and its synthesize spend is unmetered, so a leaked flag would burn a hidden
+    cloud call per typed abstain (PR-review blocker). Disarmed, and named in run_meta."""
+    return os.environ.pop("LIFE_AGENT_FALLBACK_LANE", None) is not None
+
+
 def build_gate_run_meta(*, run_id: str, args, questions: list[dict], questions_path,
                         corpus: dict, availability: dict[str, bool],
-                        baseline: str) -> dict:
+                        baseline: str, fallback_lane_disarmed: bool = False) -> dict:
     """The gate's identity sidecar — the fairfight `run_meta.json` pattern (§14).
 
     §8's blind discipline claims the question set, the utility model and the elicitations
@@ -894,6 +904,9 @@ def build_gate_run_meta(*, run_id: str, args, questions: list[dict], questions_p
             "elicitations_sha256": _sha256_file(LCFG.UTILITY_ELICITATIONS),
         },
         "env_flags": {
+            # "disarmed" = the flag WAS set and the gate popped it before any question
+            # ran — a run where it leaked is self-identifying (PR-review blocker)
+            "LIFE_AGENT_FALLBACK_LANE": ("disarmed" if fallback_lane_disarmed else ""),
             "LIFE_AGENT_GROW_LANE": os.environ.get("LIFE_AGENT_GROW_LANE", ""),
             "LIFE_AGENT_BRIDGE_URL": os.environ.get("LIFE_AGENT_BRIDGE_URL"),
             "ANSWER_BRAIN_URL": os.environ.get("ANSWER_BRAIN_URL"),
@@ -1530,12 +1543,20 @@ def main() -> int:
                         else "monolithic")
         gate_dir.mkdir(parents=True, exist_ok=True)
 
+        # the owner-surface lane must never fire inside a gate run (discarded render,
+        # unmetered spend) — disarm a leaked flag and make the run say so
+        lane_was_set = disarm_fallback_lane()
+        if lane_was_set:
+            print("  ! LIFE_AGENT_FALLBACK_LANE was set — disarmed for this gate run "
+                  "(named in run_meta.env_flags)")
+
         # Provenance lands BEFORE the first question, so a killed or voided run still has
         # its identity on disk — runs 3 and 4 lost theirs to the next run's clobber.
         run_meta = build_gate_run_meta(
             run_id=run_id, args=args, questions=questions,
             questions_path=args.questions, corpus=corpus,
-            availability=gold_available(conn, questions), baseline=baseline_tag)
+            availability=gold_available(conn, questions), baseline=baseline_tag,
+            fallback_lane_disarmed=lane_was_set)
         (gate_dir / "run_meta.json").write_text(
             json.dumps(run_meta, indent=2, sort_keys=True), encoding="utf-8")
 

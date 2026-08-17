@@ -22,14 +22,37 @@ from life_agent.core import derivations as D
 INSTRUMENT_MODEL = "claude-haiku-4-5-20251001"
 
 
+class _LazyInstrumentClient:
+    """Constructs the real Anthropic-backed client on the FIRST cache-miss call.
+
+    ``engine_version`` (part of the cache-key identity, so warm replays need it) is the
+    SDK version and needs no secret — a locked keyring at process boot therefore
+    degrades to replay-only instead of killing the whole bridge/service (the fail-open
+    contract; PR-review finding). Only a cache miss resolves the key, and only there
+    can the missing-key SystemExit surface — where the caller's miss path names it."""
+
+    def __init__(self, model: str) -> None:
+        import anthropic
+
+        self._model = model
+        self._inner: Any | None = None
+        self.engine_version: str = anthropic.__version__
+
+    def complete(self, prompt: str, schema: dict[str, Any]) -> Any:
+        if self._inner is None:
+            import anthropic
+
+            from life_agent.core import llm
+            from pkm.transforms._shared import make_model_client
+
+            self._inner = make_model_client(
+                D.instrument_identity(self._model),
+                anthropic_client=anthropic.Anthropic(
+                    api_key=llm.secret("ANTHROPIC_API_KEY")),
+            )
+        return self._inner.complete(prompt, schema)
+
+
 def instrument_client(model: str = INSTRUMENT_MODEL) -> Any:
     """A schema-constrained client for the cached instruments (cache-miss path only)."""
-    import anthropic
-
-    from life_agent.core import llm
-    from pkm.transforms._shared import make_model_client
-
-    return make_model_client(
-        D.instrument_identity(model),
-        anthropic_client=anthropic.Anthropic(api_key=llm.secret("ANTHROPIC_API_KEY")),
-    )
+    return _LazyInstrumentClient(model)
