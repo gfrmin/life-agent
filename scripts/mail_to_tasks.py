@@ -22,8 +22,6 @@ grounded candidates without extracting or writing anything.
 from __future__ import annotations
 
 import argparse
-import os
-import sqlite3
 import subprocess
 import sys
 from datetime import datetime
@@ -35,24 +33,10 @@ from life_agent.tasks.read import pkm_root
 
 
 def _resolve_user_id(db_path: Path) -> int:
-    """The GTD user id: JARVIS_USER_ID (env/keyring), else the store's sole user."""
-    env = os.environ.get("JARVIS_USER_ID")
-    if env:
-        return int(env)
-    try:
-        return int(C.secret("JARVIS_USER_ID"))
-    except SystemExit:
-        pass
-    if db_path.exists():
-        rows = sqlite3.connect(db_path).execute(
-            "SELECT DISTINCT user_id FROM tasks"
-        ).fetchall()
-        if len(rows) == 1:
-            return int(rows[0][0])
-    raise SystemExit(
-        "set JARVIS_USER_ID (env or keyring) — could not infer a single user from "
-        f"{db_path}"
-    )
+    """The GTD user id — delegates to the store's one owner-resolution convention."""
+    from life_agent.tasks.store import owner_user_id
+
+    return owner_user_id(db_path)
 
 
 def _run_extract(limit: int | None) -> None:

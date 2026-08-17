@@ -225,7 +225,8 @@ def _strict_objects(schema: dict[str, Any]) -> dict[str, Any]:
             return [walk(v) for v in node]
         return node
 
-    return walk(schema)
+    strict: dict[str, Any] = walk(schema)
+    return strict
 
 
 class AnthropicClient:

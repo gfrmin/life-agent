@@ -127,9 +127,11 @@ once into the GTD inbox, cited `[src:email <Message-ID>]`; you triage in
 Telegram. `--dry-run` previews without writing anything. Meant to run from a
 timer after your mail sync.
 
-**Morning digest (optional).** `uv run --project . python -m
-life_agent.reach.digest` sends a today / overdue / inbox summary through the
-same bot — timer material.
+**Morning digest (optional).** `bin/daily-digest` sends the today / overdue /
+due-today / up-next / inbox summary through the same bot. Install the timer:
+`ln -s "$PWD"/packaging/daily-digest.{service,timer} ~/.config/systemd/user/ &&
+systemctl --user daemon-reload && systemctl --user enable --now daily-digest.timer`
+(07:00 daily, `Persistent=true` catches up a missed morning).
 
 Internals (the event ledger, why the SQLite is safe to delete):
 [`docs/act-layer-events.md`](./docs/act-layer-events.md).

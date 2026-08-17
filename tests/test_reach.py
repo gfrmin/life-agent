@@ -237,3 +237,69 @@ def test_digest_summarises_today_and_inbox() -> None:
 
 def test_digest_is_none_when_empty() -> None:
     assert reach_digest.build_digest(USER) is None
+
+
+# --- M-2 daily briefing: contract sections, truncation naming, owner targeting ----------
+
+
+def test_digest_renders_overdue_and_due_today(monkeypatch: pytest.MonkeyPatch) -> None:
+    import datetime as _dt
+
+    yesterday = (_dt.date.today() - _dt.timedelta(days=1)).isoformat()
+    today = _dt.date.today().isoformat()
+    commands.add(USER, "File the appeal", list_name="scheduled", due_date=yesterday)
+    commands.add(USER, "Pay the deposit", list_name="scheduled", due_date=today)
+    out = reach_digest.build_digest(USER)
+    assert out is not None
+    assert reach_digest.SECTIONS["overdue"] in out and "File the appeal" in out
+    assert reach_digest.SECTIONS["due_today"] in out and "Pay the deposit" in out
+
+
+def test_digest_names_the_up_next_truncation() -> None:
+    # invariant 3 (interaction contract): nothing vanishes silently — the sixth and
+    # seventh #next tasks are not shown, so the digest must SAY they exist
+    for i in range(7):
+        commands.add(USER, f"Next thing {i}", list_name="next")
+    out = reach_digest.build_digest(USER)
+    assert out is not None
+    assert "Next thing 4" in out and "Next thing 5" not in out
+    assert reach_digest.SECTIONS["next_more"].format(n=2) in out
+
+
+def test_digest_shows_all_next_without_truncation_line() -> None:
+    commands.add(USER, "Only next", list_name="next")
+    out = reach_digest.build_digest(USER)
+    assert out is not None and "more in #next" not in out
+
+
+def test_digest_main_targets_the_owner(monkeypatch: pytest.MonkeyPatch) -> None:
+    # the owner convention (JARVIS_USER_ID env/keyring, else the store's sole user) —
+    # not a 30-day distinct-user scan
+    commands.add(USER, "A task", is_today=True)
+    sent: list[tuple[int, str]] = []
+    monkeypatch.setattr(reach_digest.telegram, "send_message",
+                        lambda uid, text: sent.append((uid, text)))
+    monkeypatch.setenv("JARVIS_USER_ID", str(USER))
+    reach_digest.main()
+    assert [uid for uid, _ in sent] == [USER]
+    assert "A task" in sent[0][1]
+
+
+def test_digest_sections_drift_gate() -> None:
+    # every push-mode section in the table renders in a fully-populated digest —
+    # the contract's §push enumeration, enforced (its only conformance test)
+    import datetime as _dt
+
+    yesterday = (_dt.date.today() - _dt.timedelta(days=1)).isoformat()
+    today = _dt.date.today().isoformat()
+    commands.add(USER, "Focus", is_today=True)
+    commands.add(USER, "Late", list_name="scheduled", due_date=yesterday)
+    commands.add(USER, "Due", list_name="scheduled", due_date=today)
+    for i in range(6):
+        commands.add(USER, f"N{i}", list_name="next")
+    commands.add(USER, "Inbox thing")
+    out = reach_digest.build_digest(USER)
+    assert out is not None
+    for key, template in reach_digest.SECTIONS.items():
+        head = template.split("{")[0].strip()
+        assert head and head in out, key

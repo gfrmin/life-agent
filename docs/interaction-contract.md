@@ -209,7 +209,10 @@ Truth is the append-only event ledger; every reply reflects the fold
 The morning **digest** (today's focus, overdue, due today, up-next, inbox count) and the
 **mail nudge** ("Added N task(s) to your GTD inbox from email") are broadcasts. They parse
 nothing; acting on them is an ordinary *act* message. One inbox state, two cadences —
-arrival nudge and morning summary — not two sources of truth.
+arrival nudge and morning summary — not two sources of truth. Invariant 3 applies to
+push too: the up-next section shows a bounded list and **names** the remainder
+(`(+N more in #next)`) rather than dropping it. The digest's section strings are one
+table (`digest.SECTIONS`), drift-gated like the other vocabularies (§Conformance).
 
 ## plumbing and porcelain
 
