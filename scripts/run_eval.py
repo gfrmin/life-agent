@@ -1605,6 +1605,12 @@ def main() -> int:
             # curve fold (ask._edge_curves per question) never saw its own run's rows
             stats = executor_run_stats(typed_views)
             fresh, n_dup, prior = _fresh_edge_rows(typed_views, run_id=run_id)
+            # the pre-run evidence base IN FORCE (latest row per edge+lineage — a
+            # regrade's superseding row replaces, never adds; calibration's fold), read
+            # BEFORE this run's rows are appended (run 7's note counted post-append)
+            from life_agent.core import OUTCOMES_LOG as _OL
+            from life_agent.core.calibration import edge_outcomes_from_log as _eofl
+            n_in_force = len(_eofl(_OL))
             if args.no_outcomes:
                 print(f"  (edge outcomes NOT written — --no-outcomes; would have "
                       f"written {len(fresh)}, deduped {n_dup})")
@@ -1629,11 +1635,6 @@ def main() -> int:
                           "harvest (run 3) first")
                 vac = (" **(VACUOUS — no attributed rows existed; every fold was "
                        "empty either way)**" if not prior else "")
-                # the evidence base is the rows IN FORCE (latest per edge+lineage —
-                # a regrade's superseding row replaces, never adds; calibration's fold)
-                from life_agent.core import OUTCOMES_LOG as _OL
-                from life_agent.core.calibration import edge_outcomes_from_log as _eofl
-                n_in_force = len(_eofl(_OL))
                 exec_note += (
                     f"> **Curves:** held-out (grouped leave-one-question-out) over "
                     f"{n_in_force} pre-run attributed edge outcome row(s) in force "

@@ -76,9 +76,15 @@ opus coin-flip at 0.93 whose stale CORRECT curve rows the append-only regrade
 (`scripts/regrade_edge_rows.py`) now supersedes; and run 6's nine cold deliberates
 ($10.87) never reached the corpus — the pkm MCP server failed to register (PKM_CONFIG
 unset in the launcher) and blind declines were cached as evidence (voided; guarded at
-`deliberate.answer`, the bridge cfg, and the gate preflight). Named next: **run 7** (the
-first reading with judge grading + spend + a working deliberate rescue + corrected
-golds), then reach for the 18 misses. Old D3–D4 stay re-scoped as Ask's
+`deliberate.answer`, the bridge cfg, and the gate preflight). **Run 7 (same day,
+`gate-20260817T160244`: the run-6 recipe with a working deliberate, corrected golds,
+regraded curves) — the series' first PASS: P(Δ>0.05)=0.945, Δ̄=+0.429 [+0.040,
++0.884]**, typed 50 ✓ / 1 ✗ / 53 withheld (miss 18 · dispersed 35) at $5.56 vs mono
+0.97 at $39.01. Adoption is the owner's rider (§13) — the fallback lane, the deliberate
+env-gate and typed-as-default move on his say, not on the line. Named next: **run 8**
+(router v2 — run 6's 18 misses were 17 `lookup:false` refusals on plainly single-value
+questions; `scripts/route_audit.py`, factory FN 17→1), then corroboration on sub-bar
+leaders (26 of the dispersed had the gold leading at 0.76–0.86). Old D3–D4 stay re-scoped as Ask's
 aggregate/thread families. The doc's §14 open questions are a **live empirical ledger**
 (owner's adoption rider): each entry names the evidence that decides it — keep it
 current. Sequencing is continuous and eval-gated, not dogfood-gated (PRINCIPLES §9 as

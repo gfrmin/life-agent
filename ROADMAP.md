@@ -181,8 +181,14 @@ Bayesian Ask rather than deterministic pipelines. Remaining program, in dependen
    priced, reads **0.905 / +0.343** — grading and pricing carried the sign; the new
    instrument's live arm gave back Δ̄ −0.163 (corrects +0.192, two confident-wrongs −0.173,
    spend −0.183 — nine cold deliberate probes are $10.87 of it, and 13/13 cold deliberates
-   across runs 5–6 converted nothing). Next, re-ordered: audit q2-053/q2-105 (−0.087/q
-   each), re-price deliberate at cold (cost and rho), then reach for the 18 misses.
+   across runs 5–6 converted nothing). The audits landed the same day (q2-053 stale gold
+   corrected; q2-105 a cached coin-flip; 10 stale curve rows regraded append-only; the
+   nine cold deliberates were MCP failures cached as declines — voided, guarded) and
+   **run 7 (`gate-20260817T160244`, the run-6 recipe repaired) read the series' first
+   PASS: P(Δ>0.05) = 0.945, Δ̄ +0.429 [+0.040, +0.884]**, typed 50 ✓ / 1 ✗ at $5.56.
+   Adoption is the owner's rider. Registered next: run 8 with router v2 (the 18 misses
+   were 17 route refusals; `scripts/route_audit.py`), then corroboration on sub-bar
+   leaders.
 4. **The aggregate family** (subsumes D3): recall term + completeness priors,
    missing-mass posterior, dedup-as-inference — the spending question answered as a
    posterior with both coverage readouts.

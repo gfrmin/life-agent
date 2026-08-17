@@ -1948,3 +1948,36 @@ on this list. Answers land here by amendment, citing their evidence.
   first reading with judge grading + the spend term + a working deliberate rescue + the
   three corrected golds + the regraded curve food, all at once — pre-registered here as
   the same recipe (`fire-run6.sh` with `PKM_CONFIG` exported), no other change.**
+
+- **Run 7 — the first PASS (2026-08-17, run `gate-20260817T160244`, master @ `cc9a79d`,
+  clean; the run-6 recipe verbatim with `PKM_CONFIG` exported — judge grading, λ_usd spend
+  on both arms, availability censoring, corpus pin `full-2026-06-11` MATCHED, LOO curves,
+  the three corrected golds and the regraded curve food in force): P(Δ>0.05) = 0.945,
+  Δ̄ = +0.429 [+0.040, +0.884].** Guards: λ_usd folded 1.3311 (elicited); censored 0; the
+  judge flipped **5 rows, all mono, the same five as run 6** (q2-021/028/035 C→I,
+  q2-026/048 I→C), none typed — Δ trusted per the registration. Series: 0.002 → 0.010 →
+  0.065 → 0.092 → 0.098 → 0.678 → **0.945**; Δ̄ −1.058 → … → +0.180 → **+0.429**. Typed
+  **50 ✓ / 1 ✗ / 53 withheld** (answer rate 0.49; the one wrong is q2-105 — the cached opus
+  coin-flip audited above, still asserting at 0.93 because its regraded curve row folds
+  held-out for its own question, as LOO must) vs mono 95 ✓ / 6 ✗ / 3 abstain (0.97).
+  Withheld **miss 18 · dispersed 35**. Spend typed **$5.56** (deliberate fired 39/104,
+  warm 30, nine real cold reads) vs mono $39.01. Disagreement 52/104: `abstain × report`
+  51 at **+0.200/q** (run 6: −0.056 — the failed deliberates' spend is gone from these
+  rows), `report × report` 50 at +0.636, `report × abstain` 1 at +1.619. Elapsed 2007 s.
+  **Against run 6, only what the audits fixed moved:** typed 47 ✓/2 ✗ → 50 ✓/1 ✗ (q2-053
+  ✗→✓ by the corrected gold; two `dispersed`→✓ conversions from a deliberate that now
+  reads; 53 abstains unchanged), spend −$10.47; mono identical. The counterfactual chain
+  predicts it: run 6 under the corrected gold read 0.811/+0.275; removing the $10.87 of
+  blind-decline spend is worth ≈ +0.14/q at the folded λ. **Not a new instrument, a
+  repaired one.** (Report note: "495 in force (434 logged)" counted in-force rows after
+  this run's 71 were appended — pre-run it was 424 in force of 434 logged; fixed in
+  `run_eval` for the next run.) **What a PASS is and is not.** §8's bar is cleared at
+  the frozen δ/level, on the pre-registered recipe, with every guard named above holding.
+  It is one reading with the interval's lower end at +0.040 — just under δ — on the same
+  104 questions the whole series has read; the reach diagnostics stand as they are (18
+  route refusals, 35 dispersed with the gold leading under the bar in most). Adoption is
+  the owner's rider (§13, §14 header): the consequences the code names — the uncalibrated
+  fallback lane retired, the deliberate row un-gated at `ask.py`, typed as the silent
+  default — are applied on the owner's adoption, not on this line. **Run 8 stays
+  registered** (router v2 — the 17 route refusals) as the first reading past the bar
+  with a materially different arm; a pass that survives it is worth more than this one.
