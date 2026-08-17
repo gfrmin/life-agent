@@ -6,7 +6,8 @@ that resolves in the email under §18.5 whitespace-normalised containment. An
 ungrounded quote fails the whole source (no partial output, §14.3), so a weaker
 local model loses recall but cannot emit a hallucinated action.
 
-Runs on a **local Ollama model** by default (free, private, offline); the
+Runs on the declaration-pinned model (Anthropic haiku since the 2026-08-17
+local-Ollama deprecation); the
 provider/model is a one-line knob in the declaration (`model:`). The model-facing
 schema and the LLM call are supplied by the provider seam in ``_shared``.
 """

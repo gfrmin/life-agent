@@ -12,7 +12,8 @@ not here — pkm classifies, the consumer decides). This is the deliberate split
 the owner asked for: the weak local model only does the part it is good at
 (categorise into a closed set), and the actionability judgement is deterministic.
 
-Runs on the same local Ollama model as ``action_items`` by default (free, private).
+Runs on the same declaration-pinned model as ``action_items`` (Anthropic haiku
+since the 2026-08-17 local-Ollama deprecation).
 """
 
 from __future__ import annotations
