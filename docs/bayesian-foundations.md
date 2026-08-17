@@ -2074,3 +2074,70 @@ on this list. Answers land here by amendment, citing their evidence.
   first, run 8 does not revoke it (different arm), and the owner's rider decides — but the
   honest summary for that decision is "the system straddles the bar; the wrong-commit class
   is identified and unfixed."
+
+- **The wrong-commit class is in-chunk competition the record cannot see — competing-values
+  temper registered for run 9 (2026-08-17; the sweep saw the golds, disclosed below; the
+  (detector, factor) choice frozen on criteria stated before results were read).** Run 8's
+  three ✗ are one shape and two of them were INVISIBLE to the archive: q2-053 committed the
+  superseded 74.2% at 0.8997 (runner-up, the corrected gold 97%, at 0.033); q2-090 asserted
+  $1,234,567 at 0.926 SINGLE-CANDIDATE — the gold $7,654,321 sits in the same chunk and
+  `posterior_summary` carries only the candidate list, so the record says nothing; q2-105
+  asserted the tel (852) 5550 0143 at 0.927, single-candidate, the gold fax in the same
+  row. Root cause is structural: `EXTRACT_SCHEMA` returns ONE value per chunk, so in-chunk
+  competition never leaves the extractor — no downstream term can see it. **The mechanism**
+  (doctrine-constrained: §4.4's collapse theorem forbids caution via utility width, and
+  `decide`'s no-host-argmax contract forbids a veto, so the temper is observation-likelihood
+  side): a pure host-side detector (`matching.quote_scoped_competitors` — a distinct
+  same-shape numeric span, percent class included, within ±120 chars of the extractor's own
+  grounded quote) sets a per-observation `competition_factor = 1/2` (cap FROZEN at 1),
+  multiplied into r exactly where authority is, on BOTH commit sites (host
+  `lookup_posterior` group covariate; daemon `observation_densities`, credence `f474e70`,
+  wire default 1.0 = temper off for a version-skewed pair; parity-by-identity test:
+  factor 0.5 ≡ authority halved). Post-extraction and consumer-side over the raw cached
+  record — the §18.9 extraction cache and the rho evidence pool are untouched; warm
+  replays re-detect. A tempered leader lands below the emergent bar, and the daemon's
+  `below_bar` trigger re-opens the VOI ladder — run 7's q2-090 abstain-via-deliberate is
+  the precedent that the flip is a floor, not a ceiling. **New instrument:**
+  `scripts/temper_audit.py` — all 104 run-8 rows (59 commits + 45 withheld) joined back to
+  their evidence chunks at $0 and zero model calls (extract-cache proof 97 — a warm §18.9
+  hit for (question, chunk) is deterministic proof run 8 extracted that chunk; deliberate
+  tool-calls 3, catalogue containment 1, both flagged; unrecovered q2-047 + no-decision
+  q2-007/q2-094, named). Detector sweep D1 whole-chunk / D2 ±400-window / D3 quote-scoped
+  (D3 added AFTER D1/D2's collateral was read — a post-look candidate, disclosed) × caps
+  1–3, tempered p by exact k=1 single-obs channel inversion (the analytic odds scaling
+  under-tempers; exact flips ⊇ analytic). All candidates flip 3/3 wrongs; collateral among
+  the 56 ✓ is the discriminator: D1 33–34, D2 28, **D3 21 — frozen (minimal collateral,
+  weakest sufficient temper)**. The empirical population check supports the mechanism:
+  commits with competition fired read ~24✓/27 ≈ 0.89 realised accuracy at stated ~0.92 —
+  under the 0.899 bar, so the temper is roughly the calibration correction, not a blunt
+  penalty. **Counterfactual** (`gate_splice`, run-8 pin 0.857/+0.344 reproduced;
+  `counterfactual-run8-temper-20260817.md`): floor (24 flips → dispersed, spend kept)
+  **0.945 PASS, Δ̄ +0.401 [+0.043, +0.851]**, answer rate 0.57 → 0.34; no-recovery stress
+  (+$0.45/flip, nothing recovered) 0.799/+0.262. The true run-9 reading sits between: live
+  flips re-open the ladder and deliberate recovers some collateral as corrects (at spend).
+  **Blindness:** the golds for all 104 questions are known to the sweep and D3 was added
+  post-look; the choice is frozen on the pre-stated criteria and run 9's fresh firing is
+  the test. **Honesty on q2-053:** its competition is CROSS-document (74.2% and 97% a day
+  apart in one thread) — the in-chunk detector fires on it incidentally (other percents in
+  the report chunk), but the class is supersession, not in-chunk competition; the
+  within-days case is structurally outside `era_split`'s half-life test and stays OPEN
+  (remedy: a supersession signal, e.g. reply-quotes-original). **Also landed with this
+  change (replayability fix):** both `posterior_summary` writers now record
+  `n_indeterminate` + `n_competing` (the bridge path dropped the former; run 8's
+  single-candidate blindness is what forced this sweep to re-join chunks), and corroborate/
+  deliberate join observations stay implicitly factor-1.0 — they are already
+  competition-screened by the join's correction-shape guard, which now delegates to the
+  same shared span detector (comma-grouped figures are one shape, not three fragments).
+  **Pre-registration for run 9:** the run-8 recipe verbatim (`fire-run9.sh` — with a
+  stale-stack kill: fire-run8.sh reuses a listening daemon via the `/ready` short-circuit,
+  which would silently run the un-tempered code) + the temper as the only decision-path
+  change (life-agent `55a9239`+`9bb8b2f`, credence `f474e70`). Expected effect: the
+  in-chunk wrong-commit class stops committing (floor: → dispersed; ceiling: deliberate
+  recovers the gold); predicted floor reading 0.945/+0.401. Diagnostics to watch: typed
+  wrong count (the headline), the competition field's fire count vs the sweep's 27
+  competed commits, dispersed count (45 + collateral − recoveries), spend (re-opened
+  ladders; envelope $5–8 vs run 8's $3.25). Named risk: collateral tempering of
+  legitimately-committed multi-number answers (21/56 in the sweep — the answer-rate cost
+  is the price of the wrong-commit class) and spend growth; fallback — a tempered question
+  lands withheld, never wrong-committed, and the narrative lane exists behind the typed
+  path.
