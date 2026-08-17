@@ -21,6 +21,7 @@ import urllib.error
 import urllib.request
 from typing import Any
 
+from life_agent.core import calibration as CAL
 from life_agent.core import config as CFG
 from life_agent.core import decisions as DEC
 from life_agent.core import executor as EX
@@ -87,6 +88,25 @@ def _ready() -> bool:
     return True
 
 
+def _menu() -> tuple[list[dict[str, Any]] | None, Any]:
+    """The priced transform menu for this surface — the SAME configuration ask.py's
+    read-path runs (§13 adoption: the deliberate edge is on by default, and the surface
+    the owner talks to must be the measured arm, not an unmeasured cousin). Returns
+    ``(None, None)`` only when the edge is explicitly rolled back
+    (``LIFE_AGENT_DELIBERATE=0``). Curve-fold failure degrades fail-open and NAMED to
+    the declared constants (``menu_transforms(None)``) — mirroring ask.py's
+    ``_edge_curves`` contract, never a silent behaviour fork."""
+    if not CFG.deliberate_enabled():
+        return None, None
+    try:
+        rows = CAL.edge_outcomes_from_log(CFG.OUTCOMES_LOG)
+        curves = CAL.fit_edge_curves(rows) if rows else None
+    except Exception as e:
+        print(f"  (edge curves unavailable — declared constants stand: {e})")
+        curves = None
+    return EX.menu_transforms(curves), curves
+
+
 def answer(question: str, k: int = 20, *, post: Any = None, get: Any = None,
            check_ready: bool = True) -> tuple[str, str | None]:
     """Answer one question through the executor read-path; return
@@ -108,9 +128,11 @@ def answer(question: str, k: int = 20, *, post: Any = None, get: Any = None,
         live, wrapped = CRS.live_decide(BRIDGE, question_id), post
     else:
         live, wrapped = None, SM.shadow_wrapped_post(post, BRIDGE, question_id)
+    transforms, curves = _menu()
     view = EX.decide_via_loop(question, k, bridge=BRIDGE, daemon=DAEMON,
                               post=wrapped, get=get,
-                              grow_lane=GROW_LANE, live=live)
+                              grow_lane=GROW_LANE, live=live,
+                              transforms=transforms, curves=curves)
     decision_id: str | None = None
     if (view["route"] is not None and view["effector"] in DEC.LOOKUP_ACTION_ORDER
             and view["credences"]):

@@ -204,3 +204,34 @@ def test_post_json_gives_the_narrative_path_more_headroom(monkeypatch) -> None:
     assert seen["http://b/narrative"] == AC._SLOW_TIMEOUT > 300
     assert seen["http://b/route"] == 300
     assert seen["http://b/extract"] == 42
+
+
+def test_answer_offers_the_deliberate_menu_by_default(monkeypatch: Any) -> None:
+    # §13 adoption: the surface the owner talks to runs the MEASURED arm — the priced
+    # menu (deliberate row included) rides every decide_via_loop call by default
+    captured: dict[str, Any] = {}
+
+    def fake_loop(question: str, k: int, **kw: Any) -> dict[str, Any]:
+        captured.update(kw)
+        return _fake_view()
+
+    monkeypatch.setattr(EX, "decide_via_loop", fake_loop)
+    monkeypatch.delenv("LIFE_AGENT_DELIBERATE", raising=False)
+    AC.answer("q?", post=lambda u, p: {}, get=lambda u: {}, check_ready=False)
+    names = [t["name"] for t in captured["transforms"]]
+    assert "deliberate" in names and "corroborate_opus" in names
+
+
+def test_answer_deliberate_rollback_reverts_to_the_bare_menu(monkeypatch: Any) -> None:
+    # LIFE_AGENT_DELIBERATE=0 is the named rollback: no transforms, no curve fold —
+    # byte-for-byte the pre-adoption call
+    captured: dict[str, Any] = {}
+
+    def fake_loop(question: str, k: int, **kw: Any) -> dict[str, Any]:
+        captured.update(kw)
+        return _fake_view()
+
+    monkeypatch.setattr(EX, "decide_via_loop", fake_loop)
+    monkeypatch.setenv("LIFE_AGENT_DELIBERATE", "0")
+    AC.answer("q?", post=lambda u, p: {}, get=lambda u: {}, check_ready=False)
+    assert captured["transforms"] is None and captured["curves"] is None
