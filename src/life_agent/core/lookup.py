@@ -62,16 +62,34 @@ from life_agent.core.decide import u_assert
 LOOKUP_MODEL = INSTR.INSTRUMENT_MODEL
 
 ROUTE_PROMPT = """\
-Classify this question. A LOOKUP asks for exactly ONE specific factual value that could
-be read off a personal document: a number, ID, date, name, address, amount, or similar
-point fact. NOT a lookup: anything needing summarising, listing, aggregating, comparing,
-or explaining — and any question asking for MULTIPLE values at once (e.g. "lender,
-amount, and end date" asks three).
+Classify this question in two steps.
+
+STEP 1 — is it NOT a lookup? Answer {"lookup": false} if the question asks for ANY of:
+- a list or set (plural asks: "which banks", "what are my balances", "who are all", "what's
+  next on my list", "list every ...");
+- an aggregate the READER must compute over several documents ("in total across all my
+  X", "how much did I spend last year") — but a total that is itself a listed figure in
+  one document ("total prize money listed for horse X", "total number of issued shares
+  for company Y") is a single value, NOT an aggregate;
+- a summary, overview, comparison, or explanation ("summarise", "overview", "compare",
+  "why", "explain", "what did X ask and what did I answer");
+- MULTIPLE separate values at once ("lender, amount, and end date"; "when and where";
+  "what is X and what is its number") — two asks joined by "and" are two values.
+
+STEP 2 — otherwise it IS a lookup: exactly ONE specific value that could be read off a
+document in the corpus — personal records and emails, but equally papers, theses, books,
+lecture notes, spreadsheets, code, and data files: a number, ID, date, name, place,
+address, amount, term, an abbreviation's expansion, a citation, a formula, a notation, a
+statistic, or similar point fact. "What does X stand for", "what is the formula for X",
+"which text is cited for X", "how many X in year Y", "what city/company/technique is
+described as ..." are lookups. A value conventionally written as one unit — a year range
+(1924-2000), a volume(issue) like 358(14), "N units at price P" — is ONE value.
 
 If it IS a lookup, also classify the value's persistence. TIME-INDEXED means the value
 is a current state that can change over a life: an address, phone number, employer,
-salary, balance, status, expiry. NOT time-indexed means the value is permanent or
-historical once set: a birth date, a national ID, the date an event happened.
+salary, balance, status, expiry, coverage figure. NOT time-indexed means the value is
+permanent or historical once set: a birth date, a national ID, the date an event
+happened, a published figure, a definition.
 
 QUESTION: {question}
 

@@ -1949,6 +1949,60 @@ on this list. Answers land here by amendment, citing their evidence.
   three corrected golds + the regraded curve food, all at once — pre-registered here as
   the same recipe (`fire-run6.sh` with `PKM_CONFIG` exported), no other change.**
 
+- **The 18 misses were the router, not retrieval — ROUTE_PROMPT v2 registered for run 8
+  (2026-08-17, blind: run 7 was in flight on the old prompt when this was measured and
+  written; run 7 is unaffected).** Audit of run 6's 18 `miss` withholdings: the gold chunk
+  is in the FTS top-20 for **all 18** (rank 1 for 9, ≤ 4 for 15; the answer text verbatim
+  in the gold chunk for 16) — retrieval reach is not the problem. **17 of the 18 never
+  reached extraction: the haiku router answered `lookup: false`** ("What does GERT stand
+  for?", "How many boys were named Eliran in 1990?", "Who appoints the external
+  adjudicator?", "What is the prize amount per STA voucher?"), so the executor took the
+  route-None narrative path and withheld; the 18th (q2-094) was routed and extracted
+  `found:false` on the gold chunk. New instrument: `scripts/route_audit.py` — the router's
+  confusion matrix on two labelled sets, the factory corpus (104, all positive by
+  construction) and a separately hand-labelled mixed set (`$KB/eval/route-audit.yaml`: 40
+  items, 19 positive NOT from the factory, 21 negative in the shapes the owner types —
+  lists, aggregates, summaries, comparisons, multi-value asks — labelled by the prompt's
+  own rule). **Current prompt: factory FN 17/104 (0.163), mixed FN 1/19, FP 0/21** — the
+  router is fine on personal-record shapes and fails on document-content point facts
+  (papers, theses, statistics, code); the "read off a *personal* document" wording is the
+  defect. Iterated blind to the gate (four candidates, each measured on both sets, cents):
+  v2 (broadened document kinds) FN 3 / FP 5 — over-admits lists and aggregates; v3
+  (exclusions first, then inclusion) FN 10 / FP 1 — "total" over-triggers the aggregate
+  rule on listed totals; **v4 (a listed total is one value): factory FN 1/104 (0.010 —
+  q2-007, "how many … and at what price", two values by the rule), mixed FN 0/19, FP 1/21
+  ("when did my father die and where" — admitted despite the rule naming it; not tuned
+  away, over-fitting the labelled sample is the bias to avoid).** Landed as
+  `lookup.ROUTE_PROMPT` (drift-gated on its document-kind vocabulary); the landed string
+  re-audited as itself (`route-audit-20260817{,-landed}.md`) — same matrices — and its
+  verdicts are already cached under the live key family, so run 8 re-routes at $0.
+  **Pre-registration for run 8:** the run-7 recipe + this router; expected effect: up to
+  16 more questions typed-eligible with the gold chunk at rank ≤ 4 for 13 — the answer
+  rate is the diagnostic to watch, and any new confident-wrong on the newly-admitted
+  questions is the first thing to audit (a route FP that asserts is exactly the u_wrong
+  the router's narrowness was buying). The FP side is the named risk: a list/aggregate
+  question admitted to the typed path extracts one value from many; the mixed set says
+  1/21, and the `report_scoped`/hedge acts and the narrative fallback lane still exist
+  behind it.
+
+- **OPEN — the base extractor's ρ pools across models (found 2026-08-17).**
+  `lookup.extract_instrument_hash()` is the prompt hash only, so `_extractor_outcomes`
+  (the Beta(4,4) the bridge's `/extract` returns as the base ρ) conditions the HAIKU base
+  extractor on the 23 `eval_lookup` rows graded on the qwen-era instrument (7/23 correct;
+  posterior mean ≈ 0.36) — §2 says per-instrument, and the migration entry above says the
+  model changed. Meanwhile the base firings write no `eval_edge` rows (only the tiers,
+  rescue, re-extract and deliberate do), so nothing about the haiku base extractor is ever
+  measured. Two ways out, both live-behaviour changes, so registered here and NOT bundled
+  into run 8: (a) fold the model identity into the hash — the base ρ falls back to the
+  Beta(4,4) prior mean 0.5 until haiku `eval_lookup` rows exist (only `run_eval --lookup`
+  writes them), i.e. LESS pessimistic than today at first; (b) the cleaner design — the
+  base extract firing becomes an attributed edge (`extract@<model>` per hit, the same
+  namespace the corroborate tier already earns; the extract schema would need a
+  self-report to condition on) and the base ρ reads through the per-edge curve like every
+  other firing. Decide after run 7/8: if the newly-admitted questions (router v2) produce
+  base-only confident-wrongs, (b) is the fix; if they abstain at the base and pay for
+  tiers, (a)'s prior mean is not the risk it looks like.
+
 - **Run 7 — the first PASS (2026-08-17, run `gate-20260817T160244`, master @ `cc9a79d`,
   clean; the run-6 recipe verbatim with `PKM_CONFIG` exported — judge grading, λ_usd spend
   on both arms, availability censoring, corpus pin `full-2026-06-11` MATCHED, LOO curves,
