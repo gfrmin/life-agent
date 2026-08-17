@@ -186,9 +186,11 @@ Bayesian Ask rather than deterministic pipelines. Remaining program, in dependen
    nine cold deliberates were MCP failures cached as declines — voided, guarded) and
    **run 7 (`gate-20260817T160244`, the run-6 recipe repaired) read the series' first
    PASS: P(Δ>0.05) = 0.945, Δ̄ +0.429 [+0.040, +0.884]**, typed 50 ✓ / 1 ✗ at $5.56.
-   Adoption is the owner's rider. Registered next: run 8 with router v2 (the 18 misses
-   were 17 route refusals; `scripts/route_audit.py`), then corroboration on sub-bar
-   leaders.
+   Adoption is the owner's rider. **Run 8 (router v2, same day): FAIL 0.857 / +0.344**
+   — the router delivered (miss 18→2, answer rate 0.57, 0 wrongs among the admitted)
+   but two wrong-leader commits on multi-value chunks (curve-evolution variance, not
+   the router) pulled the reading under. Next: the competing-values temper at the
+   terminal, then corroboration on sub-bar leaders.
 4. **The aggregate family** (subsumes D3): recall term + completeness priors,
    missing-mass posterior, dedup-as-inference — the spending question answered as a
    posterior with both coverage readouts.

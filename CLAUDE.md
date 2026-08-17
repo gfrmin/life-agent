@@ -81,10 +81,13 @@ unset in the launcher) and blind declines were cached as evidence (voided; guard
 regraded curves) — the series' first PASS: P(Δ>0.05)=0.945, Δ̄=+0.429 [+0.040,
 +0.884]**, typed 50 ✓ / 1 ✗ / 53 withheld (miss 18 · dispersed 35) at $5.56 vs mono
 0.97 at $39.01. Adoption is the owner's rider (§13) — the fallback lane, the deliberate
-env-gate and typed-as-default move on his say, not on the line. Named next: **run 8**
-(router v2 — run 6's 18 misses were 17 `lookup:false` refusals on plainly single-value
-questions; `scripts/route_audit.py`, factory FN 17→1), then corroboration on sub-bar
-leaders (26 of the dispersed had the gold leading at 0.76–0.86). Old D3–D4 stay re-scoped as Ask's
+env-gate and typed-as-default move on his say, not on the line. **Run 8 (router v2,
+`gate-20260817T164427`): FAIL 0.857, Δ̄ +0.344 [−0.109, +0.841]** — the router worked
+(16 newly admitted: 6 ✓ / 10 dispersed / 0 wrong; miss 18→2; answer rate 0.57; $3.25)
+but two curve-evolution wrong-leader commits on multi-value chunks (q2-053, q2-090)
+pulled it back under. The pair reads as one system straddling the bar; the named next
+lever is the **competing-values temper** (a second plausible in-chunk value must move
+the commit bar), then corroboration on the 43 sub-bar dispersed. Old D3–D4 stay re-scoped as Ask's
 aggregate/thread families. The doc's §14 open questions are a **live empirical ledger**
 (owner's adoption rider): each entry names the evidence that decides it — keep it
 current. Sequencing is continuous and eval-gated, not dogfood-gated (PRINCIPLES §9 as

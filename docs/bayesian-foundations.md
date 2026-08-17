@@ -2035,3 +2035,42 @@ on this list. Answers land here by amendment, citing their evidence.
   default — are applied on the owner's adoption, not on this line. **Run 8 stays
   registered** (router v2 — the 17 route refusals) as the first reading past the bar
   with a materially different arm; a pass that survives it is worth more than this one.
+
+- **Run 8 — router v2's reading: FAIL at P(Δ>0.05) = 0.857, Δ̄ = +0.344 [−0.109, +0.841]
+  (2026-08-17, run `gate-20260817T164427`, master @ `a488902`, clean; the run-7 recipe
+  verbatim, the ONLY code change ROUTE_PROMPT v2 as registered).** Guards all hold: pin
+  MATCHED, λ folded 1.3311, censored 0, judge flipped the same five mono rows, none typed.
+  Series: … → 0.678 → 0.945 → **0.857**. Typed **56 ✓ / 3 ✗ / 45 withheld** (answer rate
+  0.49 → **0.57**, the series' highest), withheld **miss 18 → 2 · dispersed 43**, spend
+  **$3.25** (deliberate 47/104, warm 43). **The router did exactly what was registered:**
+  the 16 newly-admitted questions read 6 ✓ (q2-032/038/046/048/074/082) · 10 dispersed ·
+  **0 wrong** — the named FP risk did not materialize on the admitted population; the two
+  residual misses are q2-007 (v4's one known FN, two values by the rule) and q2-094
+  (routed, extraction `found:false` on the gold chunk). **What failed the reading is two
+  NEW confident-wrongs on questions routed identically in runs 6–7:** q2-053 flipped ✓→✗
+  (the posterior now leads with the superseded 74.2% at 0.90 where run 7 led with the
+  corrected-gold 97% at 0.94) and q2-090 flipped dispersed→✗ (asserted $1,234,567 at 0.93
+  from a chunk carrying BOTH figures — the tiers graded the gold $7,654,321 C at 0.72–0.85
+  and the competitor too; run 7's disagreeing deliberate forced the abstain, run 8's decide
+  settled on the wrong leader). Their route verdicts are byte-identical under v2 and the
+  construct wording maps to the same half-life — the only moving part is the **LOO curve
+  fold, which grew by run 7's 71 edge rows** and re-priced the menu/conditioning, changing
+  which transforms fired. **Named finding: the gate arm is not run-to-run deterministic,
+  because the curve food grows between runs** — a same-recipe rerun of run 7 would also
+  have differed. That is the §8 loop working as designed (decisions condition on
+  accumulated evidence), but it means single-question flips near the bar are partly
+  evidence-path variance, and it makes the pass/fail oscillation 0.945/0.857 read as ONE
+  system straddling the bar, not a regression introduced by the router. With three wrongs
+  at u_wrong −9, each is −0.087/q: remove the two new ones and this run reads above run 7.
+  **What the pair of readings says together:** the reach levers work (miss 18 → 2, answer
+  rate 0.57, spend $3.25) and the binding constraint is now **wrong-leader commits on
+  multi-value/two-era chunks** — q2-090's two-figure chunk and q2-053's two-era pair are
+  the same shape as q2-105's two-number row: the posterior trusts a single confident read
+  over in-chunk competition. Named next lever, in order: (1) the **competing-values
+  temper** — when the evidence set itself contains a second value graded plausible (or a
+  two-figure chunk), the commit bar should feel it (this is §4.2's indeterminacy/competition
+  term, under-weighted at the terminal); (2) then corroboration on sub-bar leaders (the 43
+  dispersed, gold leading in most). Adoption stance unchanged: run 7's PASS stands as the
+  first, run 8 does not revoke it (different arm), and the owner's rider decides — but the
+  honest summary for that decision is "the system straddles the bar; the wrong-commit class
+  is identified and unfixed."
