@@ -141,6 +141,32 @@ Bayesian Ask rather than deterministic pipelines. Remaining program, in dependen
    corpus + pin status) plus `run_id`/`corpus_digest`/`corpus_snapshot` on every paired
    row, with `--corpus-pin` **refusing before spending** on a mismatch. Run 5's archived
    rows replay bit-identically, so none of it re-prices anything.
+3c. **The MVP fast path — re-sequenced 2026-08-17 (owner directive: "MVP sooner, vision
+   intact")**. Nothing in the daily-driver surface depends on the proplang ladder: the
+   spine is transport (PRINCIPLES §16) and there is one act-committing seam, so the
+   read-only assistant surface (Phase 2's item, pulled forward) ships underneath the
+   ladders and *feeds* the evidence they gate on. Landed the same day: **judge grading
+   adopted** for the gate arms (`run_eval --judge-grade`, §14 run-6 reg. (2)); the **P(U)
+   elicitation sprint** (u_hedged/lambda_int/u_wrong_scoped, disclosed blind); the
+   **uncalibrated lane** (`LIFE_AGENT_FALLBACK_LANE=1` — a typed withholding additionally
+   renders the monolithic prose over the same hits, labeled; typed-first, presentation
+   only, one seam for terminal + Telegram; removed when the §8 gate passes); the **daily
+   briefing** as a real timer (`bin/daily-digest`, `packaging/daily-digest.{service,timer}`,
+   owner-targeted, invariant-3 truncation naming, drift-gated section table); and the
+   **local-Ollama deprecation** (owner directive — instruments, transforms, NLU on the
+   Anthropic seam via `core/instrument.py`; §14 registered the instrument change blind
+   before run 6; ~7.9k local-keyed cache artifacts deliberately orphaned; base instrument
+   spend now metered into Δ). The Telegram `question` intent and one-bit `g`/`b`
+   reactions were already built. **MVP exit test:** a week of the owner asking Jarvis
+   instead of the incumbent harnesses for life-data questions + morning triage, misses
+   logged to FAILURES.md.
+3d. **Proplang re-earn, rung 2 — P3b (harness + blind pre-registration landed 2026-08-17;
+   measurement running).** The held-out differential gate (A3) is variant-parameterized
+   (`p3_gate.py --gate-variants`, suffixed artifacts, ledger-window guards) so the
+   coarsened leader-credence-only lattice — the one EU-positive held-out variant — gets
+   its own A3 against the credence baseline, the named-but-unrun measurement that blocks
+   any re-flip (`docs/membrane/p3b-coarsened-pre-registration.md`, `docs/membrane-shadow.md`
+   §17.6 when read). Engine rebuilt at the `1a0cea7` pin.
 4. **The aggregate family** (subsumes D3): recall term + completeness priors,
    missing-mass posterior, dedup-as-inference — the spending question answered as a
    posterior with both coverage readouts.
