@@ -37,13 +37,23 @@ FATE_FOLDS = "folds into the utility posterior on the next gate run"
 FATE_RECORDED = "recorded — not folded (only abstain verdicts move the fold)"
 
 
+# The narrative path (cold expand + 150-chunk rerank + synthesize, all cloud) can
+# legitimately outrun the default read timeout; a client that hangs up mid-read
+# leaves the single-threaded bridge writing to a dead socket (run-6 void).
+_SLOW_ENDPOINTS = ("/narrative",)
+_SLOW_TIMEOUT = 900
+
+
 def post_json(url: str, payload: dict[str, Any], *,
-              timeout: int = 300) -> dict[str, Any] | None:
+              timeout: int | None = None) -> dict[str, Any] | None:
     """The ONE bridge/daemon POST transport (every client delegates here — three
     near-identical copies once hid the same defect). The bridge RETURNS a seam
     failure's name in the error body (server.py: "visible to the caller, never
     swallowed"); carry it in the raised error — the exception type stays HTTPError,
-    so the fail-open transport contract is untouched."""
+    so the fail-open transport contract is untouched. ``timeout=None`` picks the
+    endpoint's budget (the slow narrative path gets more headroom)."""
+    if timeout is None:
+        timeout = _SLOW_TIMEOUT if url.endswith(_SLOW_ENDPOINTS) else 300
     req = urllib.request.Request(url, data=json.dumps(payload).encode(),
                                  headers={"Content-Type": "application/json"}, method="POST")
     try:

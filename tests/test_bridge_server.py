@@ -1465,3 +1465,24 @@ def test_deliberate_digest_failure_answers_with_cache_off(
     assert payload["cache"] == "off"                  # named, never silent
     assert payload["observations"] != []
     assert deliberate_seams["records"] == []          # unkeyed ⇒ never recorded
+
+
+def test_respond_survives_a_client_that_hung_up(deps: BridgeDeps) -> None:
+    # a caller that timed out mid-read leaves a dead socket; writing to it must not
+    # raise out of the handler (which wedged the single-threaded server — run-6 void)
+    import io
+
+    from life_agent.bridge import server as S
+
+    class _DeadFile(io.BytesIO):
+        def write(self, *_a):
+            raise BrokenPipeError(32, "Broken pipe")
+
+    h = S._Handler.__new__(S._Handler)
+    h.wfile = _DeadFile()
+    h.close_connection = False
+    h.send_response = lambda *a, **k: None
+    h.send_header = lambda *a, **k: None
+    h.end_headers = lambda: None
+    h._respond(200, {"ok": True})          # must NOT raise
+    assert h.close_connection is True

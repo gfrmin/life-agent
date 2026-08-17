@@ -821,11 +821,19 @@ class _Handler(BaseHTTPRequestHandler):
 
     def _respond(self, status: int, payload: Payload | None) -> None:
         data = dumps(payload).encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(data)))
-        self.end_headers()
-        self.wfile.write(data)
+        try:
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+        except (BrokenPipeError, ConnectionResetError):
+            # the caller timed out and hung up while a slow read (a /narrative
+            # rerank+synthesize) was in flight — there is no one to answer, and an
+            # exception escaping here on a keep-alive connection wedged the whole
+            # single-threaded server (run-6 void, 2026-08-17). Drop the connection;
+            # the next accept() must still be served.
+            self.close_connection = True
 
     def _handle(self, method: str) -> None:
         length = int(self.headers.get("Content-Length") or 0)
