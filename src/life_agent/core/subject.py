@@ -31,15 +31,18 @@ from typing import Any, Literal
 import duckdb
 
 from life_agent.core import derivations as D
+from life_agent.core.instrument import INSTRUMENT_MODEL, instrument_client
 from pkm.cache import content_file
 from pkm.telemetry import DemandLogEntry, log_demand
 
 SUBJECT_PRODUCER = "doc_subject"
 
-# The local model that judges subject-vs-profile. Same tag as the pkm
-# transforms (the 8 GB card's working model); the verdict is cached, so the
-# call count is bounded by distinct subjects, not by questions.
-OWNER_MATCH_MODEL = "qwen2.5:7b-instruct"
+# The subject-vs-profile instrument model (local Ollama deprecated 2026-08-17 —
+# owner directive, §14-registered). The verdict is cached, so the call count is
+# bounded by distinct subjects, not by questions. PRINCIPLES §12: local/cloud is
+# engineering, not privacy — the synthesize stage already sends the profile to the
+# same provider.
+OWNER_MATCH_MODEL = INSTRUMENT_MODEL
 
 OWNER_MATCH_PROMPT = """\
 You are matching a document subject against the owner profile below.
@@ -176,20 +179,16 @@ def owner_verdict(
     profile: str,
     *,
     client: Any | None = None,
+    meter: list[float] | None = None,
 ) -> Verdict:
-    """Judge one subject string against the profile — cached, local, loud.
+    """Judge one subject string against the profile — cached, loud.
 
     A replayed verdict makes the filter deterministic per (subject, profile);
     only a cache miss calls the model. A verdict outside the enum raises and
     is NEVER recorded (§18.11 miss-path parity: junk must not be frozen)."""
     profile_hash = hashlib.sha256(profile.encode("utf-8")).hexdigest()
     if client is None:
-        from pkm.transforms._shared import make_model_client
-
-        client = make_model_client({
-            "provider": "ollama", "model": OWNER_MATCH_MODEL,
-            "inference_params": {"temperature": 0.0},
-        })
+        client = instrument_client(OWNER_MATCH_MODEL)
     key = D.owner_match_key(
         subject, profile_hash, model=OWNER_MATCH_MODEL,
         prompt_template=OWNER_MATCH_PROMPT,
@@ -203,6 +202,8 @@ def owner_verdict(
     prompt = OWNER_MATCH_PROMPT.replace("{profile}", profile).replace(
         "{subject}", subject)
     response = client.complete(prompt, VERDICT_SCHEMA)
+    if meter is not None:
+        meter.append(float(getattr(response, "cost_usd", 0.0) or 0.0))
     verdict = _as_verdict(json.loads(response.raw_text).get("verdict"))
     D.record(
         root, key,

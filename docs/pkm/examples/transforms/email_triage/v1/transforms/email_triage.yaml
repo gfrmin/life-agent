@@ -2,8 +2,8 @@ name: email_triage
 version: "0.1.0"
 producer_class: pkm.transforms.email_triage.EmailTriageProducer
 model:
-  provider: ollama
-  model: "qwen2.5:7b-instruct"
+  provider: anthropic
+  model: "claude-haiku-4-5-20251001"
   inference_params:
     temperature: 0.0
 prompt:

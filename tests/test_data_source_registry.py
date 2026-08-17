@@ -390,3 +390,56 @@ def test_forbidden_zones_derived_from_env(monkeypatch, tmp_path: Path) -> None:
     store.mkdir()
     zones = forbidden_ingest_zones(pkm_config=_pkm_cfg(tmp_path, store))
     assert set(zones) == {str(kb), str(store)}
+
+
+# --- availability: what a root's ABSENCE means (foundations §14) ------------------------
+
+
+def test_availability_defaults_preserve_pre_field_behaviour(tmp_path: Path) -> None:
+    # A registry written before the field must load exactly as it did: an enabled root is
+    # `required` (its absence was always an error) and a disabled one is `deferred` (that
+    # is what `enabled: false` already meant). Nothing about an existing file changes.
+    reg = tmp_path / "r.yaml"
+    reg.write_text(
+        "version: 1\nroots:\n"
+        "  - {id: a, kind: filetree, path: /tmp/a}\n"
+        "  - {id: b, kind: filetree, path: /tmp/b, enabled: false}\n",
+        encoding="utf-8")
+    roots = {r.id: r for r in load_registry(reg).roots}
+    assert roots["a"].availability == "required" and roots["a"].enabled
+    assert roots["b"].availability == "deferred" and not roots["b"].enabled
+
+
+def test_availability_splits_what_enabled_false_used_to_conflate(tmp_path: Path) -> None:
+    # `optional` is the case that had no way to be said: a root that genuinely belongs to
+    # the corpus but is not on THIS machine. Before, it could only be spelled as
+    # `enabled: false` (which also means "never ingest anywhere") or left to crash.
+    reg = tmp_path / "r.yaml"
+    reg.write_text(
+        "version: 1\nroots:\n"
+        "  - {id: downloads, kind: filetree, path: /tmp/dl, availability: optional}\n",
+        encoding="utf-8")
+    root = load_registry(reg).roots[0]
+    assert root.enabled and root.availability == "optional"
+
+
+def test_unknown_availability_is_refused(tmp_path: Path) -> None:
+    # a typo must not silently degrade to "required" and abort an ingest at the far end
+    reg = tmp_path / "r.yaml"
+    reg.write_text(
+        "version: 1\nroots:\n"
+        "  - {id: a, kind: filetree, path: /tmp/a, availability: maybe}\n",
+        encoding="utf-8")
+    with pytest.raises(RegistryError, match="availability"):
+        load_registry(reg)
+
+
+def test_resolves_reports_presence_not_equivalence(tmp_path: Path) -> None:
+    # `resolves` answers "is the path here", which is NOT "is this the same corpus" —
+    # `downloads` is a real directory on both machines holding different files. The census
+    # relies on this distinction to stop reporting an absent root as an index problem.
+    present = _root("here", str(tmp_path))
+    absent = _root("gone", str(tmp_path / "nope"))
+    assert present.resolves() and not absent.resolves()
+    assert aggregate(absent, []).resolves is False
+    assert aggregate(present, []).resolves is True

@@ -59,7 +59,7 @@ from __future__ import annotations
 
 import math
 import random
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from life_agent.core.matching import answer_matches
@@ -85,6 +85,19 @@ ASSERT_ACTIONS: frozenset[str] = frozenset({"report", "report_scoped", "hedge"})
 WITHHOLD_ACTIONS: frozenset[str] = frozenset({"abstain", "ask_clarify"})
 _ALL_ACTIONS = ASSERT_ACTIONS | WITHHOLD_ACTIONS
 
+# Why a withholding withheld (foundations §14, the availability registration). The action
+# space is unchanged — these annotate an existing `abstain`, they are not new actions, so a
+# reading that ignores them is byte-identical to the pre-run-6 Δ. The three are causally
+# distinct and want opposite fixes: MISS is reach (nothing was grounded), DISPERSED is
+# threshold/evidence-strength (a posterior existed and lost the argmax), UNAVAILABLE is
+# neither — the corpus on the running machine cannot answer the question, so the row
+# measures the corpus, not the policy, and is censored from Δ (see `delta_posterior`).
+WITHHELD_MISS = "miss"
+WITHHELD_DISPERSED = "dispersed"
+WITHHELD_UNAVAILABLE = "unavailable"
+WITHHELD_REASONS: frozenset[str] = frozenset(
+    {WITHHELD_MISS, WITHHELD_DISPERSED, WITHHELD_UNAVAILABLE})
+
 
 @dataclass(frozen=True)
 class RealisedResponse:
@@ -93,15 +106,27 @@ class RealisedResponse:
     ``cost_usd`` is the arm's REALISED per-question spend (the typed view's
     decisions-v2 field; the replay row's recorded usage cost) — priced into Δ by
     ``realised_utility`` iff the utility sample carries the ``lambda_usd`` latent
-    (run-6 semantics, pre-registered; absent latent ⇒ the old Δ byte-for-byte)."""
+    (run-6 semantics, pre-registered; absent latent ⇒ the old Δ byte-for-byte).
+    ``withheld`` names WHY a withholding withheld (``WITHHELD_REASONS``); ``None`` on
+    assertions and on any arm that does not report a reason. It is appended last and
+    defaults to ``None`` deliberately — ``RealisedResponse`` is constructed positionally
+    in the fairfight and membrane harnesses, and a default of ``None`` reproduces every
+    pre-run-6 reading unchanged."""
 
     action: str
     correct: bool | None = None
     cost_usd: float = 0.0
+    withheld: str | None = None
 
     def __post_init__(self) -> None:
         if self.action not in _ALL_ACTIONS:
             raise ValueError(f"unknown action {self.action!r} (declared: {sorted(_ALL_ACTIONS)})")
+        if self.withheld is not None and self.withheld not in WITHHELD_REASONS:
+            raise ValueError(f"unknown withheld reason {self.withheld!r} "
+                             f"(declared: {sorted(WITHHELD_REASONS)})")
+        if self.withheld is not None and self.asserts():
+            raise ValueError(f"action {self.action!r} asserts; it cannot carry a "
+                             f"withheld reason ({self.withheld!r})")
 
     def asserts(self) -> bool:
         return self.action in ASSERT_ACTIONS
@@ -115,6 +140,13 @@ class PairedOutcome:
     answerable: bool
     typed: RealisedResponse
     mono: RealisedResponse
+
+    def censored(self) -> bool:
+        """Is this row excluded from Δ? True iff the TYPED arm withheld because this
+        machine's catalogue cannot answer the question. Deliberately one-sided: the
+        replay arm is a frozen full-corpus recording, so it never suffers availability,
+        and a rule keyed on it would censor nothing while looking symmetric."""
+        return self.typed.withheld == WITHHELD_UNAVAILABLE
 
 
 # --- grading + realised utility (pure) ---------------------------------------------------
@@ -194,6 +226,13 @@ class Diagnostics:
     disagreement_mean_d: float | None
     agreement_mean_d: float | None
     action_pairs: dict[tuple[str, str], ActionPairCell]
+    # Availability censoring (foundations §14). Diagnostics fold ALL rows — a censored
+    # question stays visible here precisely because it is invisible to Δ. ``n_censored``
+    # defaults to 0 and ``withheld_reasons`` to empty, so every pre-run-6 construction of
+    # this dataclass is unchanged.
+    n_censored: int = 0
+    censored_mean_d: float | None = None
+    withheld_reasons: dict[str, int] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -233,6 +272,12 @@ def _diagnostics(paired: list[PairedOutcome], u_bar: dict[str, float],
     for p in paired:
         pairs.setdefault((p.typed.action, p.mono.action), []).append(d_at_bar[p.question_id])
 
+    censored = [p for p in paired if p.censored()]
+    reasons: dict[str, int] = {}
+    for p in paired:
+        if p.typed.withheld is not None:
+            reasons[p.typed.withheld] = reasons.get(p.typed.withheld, 0) + 1
+
     return Diagnostics(
         n=len(paired),
         n_answerable=len(answerable),
@@ -252,6 +297,11 @@ def _diagnostics(paired: list[PairedOutcome], u_bar: dict[str, float],
         agreement_mean_d=_mean([d_at_bar[p.question_id] for p in agree]),
         action_pairs={k: ActionPairCell(n=len(v), mean_d=sum(v) / len(v))
                       for k, v in sorted(pairs.items())},
+        n_censored=len(censored),
+        # what Δ would have paid for the censored rows had they not been censored — the
+        # size of the bias being removed, published so the removal is auditable
+        censored_mean_d=_mean([d_at_bar[p.question_id] for p in censored]),
+        withheld_reasons=reasons,
     )
 
 
@@ -264,21 +314,32 @@ def delta_posterior(paired: list[PairedOutcome], posterior: UtilityPosterior, *,
 
     Deterministic given (paired, posterior, oracle_p, seed) — the gate is a replayable
     fold, like every other edge. An empty corpus yields no evidence: it does not pass.
+
+    Availability censoring (foundations §14, registered blind before run 6): rows whose
+    typed arm withheld because THIS machine's catalogue cannot answer the question are
+    excluded from both the gap vector and the bootstrap's weights. Such a row measures the
+    corpus, not the policy — and because the replay arm is a frozen full-corpus recording,
+    leaving it in would bias Δ pro-baseline by a per-machine amount. Censored rows stay in
+    ``diagnostics`` (which folds every row), so the exclusion is published, never silent.
+    With no censored rows the arithmetic below is byte-identical to the pre-run-6 Δ.
     """
     u_bar = posterior.u_bar()
     diagnostics = _diagnostics(paired, u_bar, oracle_p=oracle_p)
-    if not paired:
+    included = [p for p in paired if not p.censored()]
+    # the guard tests INCLUDED, not paired: a corpus that censors every row has no
+    # evidence either, and must fail loudly rather than return a normal-looking result
+    if not included:
         return GateResult(passed=False, p_delta_gt=0.0, delta_mean=0.0,
                           delta_lo=0.0, delta_hi=0.0, materiality_delta=delta,
                           level=level, n_draws=0, u_bar=u_bar, diagnostics=diagnostics)
 
     rng = random.Random(seed)
-    n = len(paired)
+    n = len(included)
     deltas: list[float] = []
     for _ in range(n_draws):
         u = _sample_u(posterior, rng)
         d = [realised_utility(p.typed, u, oracle_p=oracle_p)
-             - realised_utility(p.mono, u, oracle_p=oracle_p) for p in paired]
+             - realised_utility(p.mono, u, oracle_p=oracle_p) for p in included]
         w = _dirichlet_ones(n, rng)
         deltas.append(sum(wi * di for wi, di in zip(w, d, strict=True)))
 
@@ -302,6 +363,32 @@ def delta_posterior(paired: list[PairedOutcome], posterior: UtilityPosterior, *,
 
 def _fmt(x: float | None, places: int = 3) -> str:
     return "n/a" if x is None else f"{x:.{places}f}"
+
+
+def _censoring_lines(d: Diagnostics) -> list[str]:
+    """The availability block (foundations §14). ALWAYS emitted when the typed arm
+    reported withholding reasons — including the zero-censored case, because "0 censored"
+    is the disclosure the registration demands, and a block that appears only when
+    censoring bit would make its absence ambiguous."""
+    if not d.withheld_reasons:
+        return []
+    order = [WITHHELD_MISS, WITHHELD_DISPERSED, WITHHELD_UNAVAILABLE]
+    breakdown = " · ".join(f"{r} {d.withheld_reasons.get(r, 0)}" for r in order)
+    lines = [
+        "## Withholdings, and what Δ was computed over",
+        "",
+        f"- typed withholding reasons: {breakdown}",
+        f"- **censored from Δ: {d.n_censored}** of {d.n} "
+        f"(unavailable — this machine's catalogue cannot answer them)",
+        f"- Δ was computed over {d.n - d.n_censored} question(s); "
+        f"diagnostics above fold all {d.n}",
+    ]
+    if d.n_censored:
+        lines.append(
+            f"- the censored rows' mean gap at Ū was {_fmt(d.censored_mean_d)} — "
+            "the per-question bias removed, published so the removal is auditable")
+    lines.append("")
+    return lines
 
 
 def render_report(result: GateResult, *, run_id: str, elapsed: float) -> str:
@@ -334,6 +421,7 @@ def render_report(result: GateResult, *, run_id: str, elapsed: float) -> str:
         f"monolithic {_fmt(d.mono_correct_rate, 2)}",
         f"- mean per-question gap at Ū: {_fmt(d.overall_mean_d)}",
         "",
+        *_censoring_lines(d),
         "## The disagreement region (where the action changes)",
         "",
         f"- {d.disagreement_n} of {d.n} questions; mean gap there "

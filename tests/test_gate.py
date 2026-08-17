@@ -10,6 +10,8 @@ Run: uv run --project . python -m pytest tests/test_gate.py
 """
 from __future__ import annotations
 
+import pytest
+
 from life_agent.core import gate as G
 from life_agent.core import utility as UT
 
@@ -35,8 +37,9 @@ def _posterior(*, u_wrong: float, u_hedged: float = 0.3, lambda_int: float = 0.5
     )
 
 
-def _resp(action: str, correct: bool | None = None) -> G.RealisedResponse:
-    return G.RealisedResponse(action=action, correct=correct)
+def _resp(action: str, correct: bool | None = None,
+          withheld: str | None = None) -> G.RealisedResponse:
+    return G.RealisedResponse(action=action, correct=correct, withheld=withheld)
 
 
 def _pair(qid: str, typed: G.RealisedResponse, mono: G.RealisedResponse,
@@ -189,6 +192,93 @@ def test_empty_corpus_is_honest() -> None:
                             n_draws=100, seed=1)
     assert res.diagnostics.n == 0 and not res.passed
     assert res.diagnostics.typed_answer_rate is None
+
+
+# --- availability censoring (foundations §14, registered blind before run 6) --------------
+
+def test_no_censored_rows_is_byte_identical_to_the_uncensored_delta() -> None:
+    # THE comparability pin, the lambda_usd precedent applied to this registration: the
+    # censoring machinery must be provably inert on a corpus that censors nothing —
+    # otherwise landing it silently re-prices run 6 against runs 3-5.
+    post = _posterior(u_wrong=-2.0)
+    bare = [_pair("a", _resp("abstain"), _resp("report", True)),
+            _pair("b", _resp("report", True), _resp("report", False)),
+            _pair("c", _resp("abstain"), _resp("abstain"))]
+    # the same rows, now carrying withholding reasons — annotation only, nothing censored
+    tagged = [_pair("a", _resp("abstain", withheld=G.WITHHELD_MISS), _resp("report", True)),
+              _pair("b", _resp("report", True), _resp("report", False)),
+              _pair("c", _resp("abstain", withheld=G.WITHHELD_DISPERSED), _resp("abstain"))]
+    a = G.delta_posterior(bare, post, oracle_p=0.9, n_draws=2000, seed=11)
+    b = G.delta_posterior(tagged, post, oracle_p=0.9, n_draws=2000, seed=11)
+    assert (a.delta_mean, a.delta_lo, a.delta_hi, a.p_delta_gt) == \
+           (b.delta_mean, b.delta_lo, b.delta_hi, b.p_delta_gt)
+    assert b.diagnostics.n_censored == 0
+    assert b.diagnostics.withheld_reasons == {G.WITHHELD_MISS: 1, G.WITHHELD_DISPERSED: 1}
+
+
+def test_censored_rows_leave_delta_but_stay_in_diagnostics() -> None:
+    # an unavailable row measures the CORPUS, not the policy: it must not weigh on Δ, and
+    # it must still be visible — censoring that hid the row would be indistinguishable
+    # from a corpus that never had the question.
+    post = _posterior(u_wrong=-2.0)
+    keep = [_pair("a", _resp("report", True), _resp("report", True)),
+            _pair("b", _resp("report", True), _resp("report", True))]
+    plus_censored = [
+        *keep,
+        _pair("z", _resp("abstain", withheld=G.WITHHELD_UNAVAILABLE), _resp("report", True))]
+    a = G.delta_posterior(keep, post, oracle_p=0.9, n_draws=2000, seed=7)
+    b = G.delta_posterior(plus_censored, post, oracle_p=0.9, n_draws=2000, seed=7)
+    # Δ is computed over the SAME two rows, so the whole posterior is identical
+    assert (a.delta_mean, a.delta_lo, a.delta_hi) == (b.delta_mean, b.delta_lo, b.delta_hi)
+    # ...while the diagnostics still see all three, and name the removed bias
+    assert b.diagnostics.n == 3 and b.diagnostics.n_censored == 1
+    assert b.diagnostics.censored_mean_d is not None and b.diagnostics.censored_mean_d < 0
+    assert ("abstain", "report") in b.diagnostics.action_pairs
+
+
+def test_a_fully_censored_corpus_fails_rather_than_looking_normal() -> None:
+    # the guard tests the INCLUDED rows: a box that can answer nothing has no evidence,
+    # and must say so — silently returning a well-formed zero-Δ result would read as a
+    # measured tie between the arms.
+    post = _posterior(u_wrong=-2.0)
+    paired = [_pair("a", _resp("abstain", withheld=G.WITHHELD_UNAVAILABLE),
+                    _resp("report", True))]
+    res = G.delta_posterior(paired, post, oracle_p=0.9, n_draws=100, seed=1)
+    assert not res.passed and res.n_draws == 0
+    assert res.diagnostics.n == 1 and res.diagnostics.n_censored == 1
+
+
+def test_withheld_reason_is_a_closed_set_and_assertions_cannot_carry_one() -> None:
+    # the reason is a claim about the decision; an unknown one is a typo that would
+    # silently never censor, and an asserting action has nothing to withhold.
+    with pytest.raises(ValueError):
+        G.RealisedResponse(action="abstain", withheld="unavailble")  # typo
+    with pytest.raises(ValueError):
+        G.RealisedResponse(action="report", correct=True, withheld=G.WITHHELD_MISS)
+
+
+def test_report_publishes_what_delta_was_computed_over() -> None:
+    # the disclosure the §14 registration demands: if the published n and the published Δ
+    # disagree about which rows counted, the reading is not auditable.
+    post = _posterior(u_wrong=-2.0)
+    paired = [_pair("a", _resp("report", True), _resp("report", True)),
+              _pair("z", _resp("abstain", withheld=G.WITHHELD_UNAVAILABLE),
+                    _resp("report", True))]
+    md = G.render_report(G.delta_posterior(paired, post, oracle_p=0.9, n_draws=500, seed=3),
+                         run_id="gate-test", elapsed=1.0)
+    assert "censored from Δ: 1" in md
+    assert "Δ was computed over 1 question(s)" in md
+
+
+def test_report_discloses_zero_censoring_when_reasons_are_recorded() -> None:
+    # "0 censored" is itself the disclosure — a block that appeared only when censoring
+    # bit would make its absence ambiguous (nothing censored? or not checked?).
+    post = _posterior(u_wrong=-2.0)
+    paired = [_pair("a", _resp("abstain", withheld=G.WITHHELD_MISS), _resp("report", True)),
+              _pair("b", _resp("report", True), _resp("report", True))]
+    md = G.render_report(G.delta_posterior(paired, post, oracle_p=0.9, n_draws=500, seed=3),
+                         run_id="gate-test", elapsed=1.0)
+    assert "censored from Δ: 0" in md and "miss 1" in md
 
 
 # --- the frozen-blind constants (drift gate) --------------------------------------------

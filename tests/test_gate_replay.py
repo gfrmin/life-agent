@@ -207,6 +207,206 @@ def test_typed_response_executor_grades_each_effector() -> None:
     assert r.action == "abstain" and r.correct is None
 
 
+def _chunk_conn(chunk_ids: list[int]):
+    """A minimal stand-in for the catalogue: the availability probe only ever reads
+    ``artifact_chunks``, because retrieval itself is pure SQL over the catalogue (pkm SPEC
+    §15.2) — it never opens a source file, so present CHUNKS, not present files, are what
+    decide whether a question is answerable here."""
+    import duckdb
+    conn = duckdb.connect(":memory:")
+    # artifact_cache_key + chunk_index ride too: they are the artifact_chunks PRIMARY KEY
+    # and what corpus_digest hashes, so the note and both probe predicates read the same
+    # table the real catalogue exposes.
+    conn.execute(
+        "CREATE TABLE artifact_chunks "
+        "(chunk_id BIGINT, artifact_cache_key VARCHAR, chunk_index INTEGER)"
+    )
+    for cid in chunk_ids:
+        conn.execute("INSERT INTO artifact_chunks VALUES (?, ?, ?)", [cid, f"key-{cid}", 0])
+    return conn
+
+
+def test_gold_available_reads_the_catalogue_not_the_filesystem() -> None:
+    conn = _chunk_conn([100, 200])
+    questions = [
+        {"id": "here", "provenance": {"chunk_id": 100, "source_path": "/gone/x.pdf"}},
+        {"id": "absent", "provenance": {"chunk_id": 999, "source_path": "/mnt/yo/y.pdf"}},
+    ]
+    avail = RE.gold_available(conn, questions)
+    # the source file's path is irrelevant — "here" has no file yet answers fine, which is
+    # exactly today's thinkpad (full catalogue, 0 of 16 Downloads sources on disk)
+    assert avail == {"here": True, "absent": False}
+
+
+def test_gold_available_prefers_the_content_addressed_pair_over_the_surrogate() -> None:
+    """``chunk_id`` does not survive ``pkm rebuild-catalogue`` (it is a sequence surrogate,
+    migration 0005); the ``(artifact_cache_key, chunk_index)`` PK does. When a corpus carries
+    both, the pair decides — otherwise a rebuilt catalogue silently resolves the gold to a
+    *different* chunk and the censoring rule reads as available on the wrong evidence."""
+    conn = _chunk_conn([100])
+    # the surrogate is stale (999 is absent) but the content-addressed pair is present:
+    # available, because the chunk genuinely IS here under a re-issued id.
+    q = [{"id": "rechunked",
+          "provenance": {"chunk_id": 999, "artifact_cache_key": "key-100", "chunk_index": 0}}]
+    assert RE.gold_available(conn, q) == {"rechunked": True}
+    # and the converse: a live surrogate must not rescue a genuinely absent chunk.
+    q = [{"id": "gone",
+          "provenance": {"chunk_id": 100, "artifact_cache_key": "key-absent", "chunk_index": 0}}]
+    assert RE.gold_available(conn, q) == {"gone": False}
+
+
+def test_gold_available_falls_back_per_question_not_per_corpus() -> None:
+    """A partly-backfilled corpus must degrade one question at a time, not wholesale."""
+    conn = _chunk_conn([100, 200])
+    questions = [
+        {"id": "new", "provenance": {"chunk_id": 1, "artifact_cache_key": "key-200",
+                                     "chunk_index": 0}},
+        {"id": "old", "provenance": {"chunk_id": 100}},          # v1 shape, still works
+        {"id": "old-absent", "provenance": {"chunk_id": 777}},
+    ]
+    assert RE.gold_available(conn, questions) == \
+        {"new": True, "old": True, "old-absent": False}
+
+
+def test_gold_available_fails_open_so_a_probe_error_never_censors() -> None:
+    # censoring REMOVES evidence. A question we cannot check must stay in Δ — a broken
+    # probe silently shrinking the corpus the gate is judged on is the failure mode that
+    # would be hardest to notice and worst to have.
+    conn = _chunk_conn([1])
+    assert RE.gold_available(conn, [{"id": "no-prov"}]) == {"no-prov": True}
+    assert RE.gold_available(conn, [{"id": "empty-prov", "provenance": {}}]) == \
+        {"empty-prov": True}
+
+    class _Broken:
+        def execute(self, *a: Any, **kw: Any):
+            raise RuntimeError("catalogue is gone")
+
+    assert RE.gold_available(_Broken(), [{"id": "q", "provenance": {"chunk_id": 5}}]) == \
+        {"q": True}
+
+
+def test_corpus_note_records_which_corpus_the_reading_used() -> None:
+    # no gate report has ever carried its corpus: "the digest held across all firings" was
+    # an operator check, not a property of the artifact. This makes it one.
+    conn = _chunk_conn([100])
+    note = RE.corpus_note(conn, [{"id": "a", "provenance": {"chunk_id": 100}},
+                                 {"id": "b", "provenance": {"chunk_id": 777}}])
+    assert note.startswith("> **Corpus:** digest `")
+    assert "1 of 2 question(s) unavailable here" in note
+
+
+def test_corpus_note_degrades_rather_than_voiding_a_paid_reading() -> None:
+    class _Broken:
+        def execute(self, *a: Any, **kw: Any):
+            raise RuntimeError("no catalogue")
+
+    note = RE.corpus_note(_Broken(), [{"id": "a"}])
+    assert "digest unavailable" in note
+
+
+def test_corpus_identity_reports_unpinned_without_a_pin() -> None:
+    """The digest is recorded whether or not a pin was demanded — recording never depends
+    on checking, or an unpinned run would publish nothing."""
+    c = RE.corpus_identity(_chunk_conn([100, 200]), pin=None)
+    assert c["pin_status"] == "unpinned"
+    assert len(c["digest"]) == 64
+    assert (c["n_artifacts"], c["n_chunks"]) == (2, 2)
+
+
+def test_corpus_identity_matches_and_mismatches_a_pin(tmp_path: Path,
+                                                      monkeypatch: pytest.MonkeyPatch) -> None:
+    """The pin is what turns 'the corpus held' from a claim into a checked property."""
+    monkeypatch.setenv("LIFE_AGENT_KB", str(tmp_path))
+    conn = _chunk_conn([100, 200])
+    live = RE.corpus_identity(conn, pin=None)["digest"]
+
+    pins = tmp_path / "eval" / "corpus"
+    pins.mkdir(parents=True)
+    (pins / "good.json").write_text(json.dumps(
+        {"corpus_digest": live, "artifacts": ["key-100", "key-200"], "n_chunks": 2}))
+    (pins / "stale.json").write_text(json.dumps(
+        {"corpus_digest": "0" * 64, "artifacts": ["key-100"], "n_chunks": 1}))
+
+    assert RE.corpus_identity(conn, pin="good")["pin_status"] == "matched"
+    bad = RE.corpus_identity(conn, pin="stale")
+    assert bad["pin_status"] == "mismatched"
+    # the payoff a manifest buys over a bare digest: not just THAT it moved, but what moved
+    assert bad["diff_vs_pin"]["n_added"] == 1
+    assert bad["diff_vs_pin"]["added_sample"] == ["key-200"]
+
+
+def test_corpus_identity_names_a_missing_pin_instead_of_claiming_a_match() -> None:
+    c = RE.corpus_identity(_chunk_conn([100]), pin="does-not-exist")
+    assert c["pin_status"] == "error" and c["digest"]  # digest still recorded
+
+
+def test_corpus_note_publishes_a_mismatch_loudly() -> None:
+    """A knowingly off-corpus reading must be unmissable in the artifact a human reads."""
+    conn = _chunk_conn([100])
+    corpus = {"digest": "d" * 64, "snapshot": "full-2026-06-11",
+              "pin_status": "mismatched", "n_artifacts": 1, "n_chunks": 1,
+              "diff_vs_pin": {"n_added": 7, "n_removed": 0}, "note": None}
+    note = RE.corpus_note(conn, [{"id": "a", "provenance": {"chunk_id": 100}}],
+                          corpus=corpus)
+    assert "CORPUS MISMATCH" in note and "+7/-0" in note
+    assert "NOT comparable to the pinned series" in note
+
+
+def test_paired_row_carries_run_and_corpus_identity() -> None:
+    """§14 routes cross-run comparability THROUGH these artifacts. run_id was recoverable
+    only from the filename and the corpus not at all, so a Δ series claiming one universe
+    could not show it — `jq -s 'group_by(.corpus_digest)'` is now that check."""
+    import life_agent.core.gate as GATE
+
+    p = GATE.PairedOutcome(
+        question_id="q2-001", answerable=True,
+        typed=GATE.RealisedResponse(action="abstain", correct=None),
+        mono=GATE.RealisedResponse(action="report", correct=True))
+    row = RE._paired_to_dict(p, run_id="gate-20260817T000000",
+                             corpus_digest="d" * 64, corpus_snapshot="full-2026-06-11")
+    assert row["run_id"] == "gate-20260817T000000"
+    assert row["corpus_digest"] == "d" * 64
+    assert row["corpus_snapshot"] == "full-2026-06-11"
+
+
+def test_withheld_reason_separates_the_three_causes() -> None:
+    # foundations §14: the gate used to flatten every withholding into one `abstain`, which
+    # is why run 5's 70 of them gave no direction. The three causes want opposite fixes —
+    # reach (miss), threshold (dispersed), corpus (unavailable) — so the reading must be
+    # able to tell them apart.
+    import life_agent.core.gate as G
+    q = {"id": "q1", "answer": "P123", "answer_variants": []}
+
+    # no posterior ever existed: /extract grounded nothing, the daemon was never consulted
+    r = RE._typed_response_executor(_exec_view(effector="miss", candidates=[]), q)
+    assert r.withheld == G.WITHHELD_MISS
+    # a posterior existed and lost the EU argmax
+    r = RE._typed_response_executor(_exec_view(effector="abstain", candidates=["P9"]), q)
+    assert r.withheld == G.WITHHELD_DISPERSED
+    # unavailability DOMINATES: whatever the executor did, a corpus that cannot answer the
+    # question says nothing about the policy
+    r = RE._typed_response_executor(
+        _exec_view(effector="abstain", candidates=["P9"]), q, available=False)
+    assert r.withheld == G.WITHHELD_UNAVAILABLE
+    # assertions carry no reason (there was no withholding to explain)
+    r = RE._typed_response_executor(_exec_view(effector="report", asserted=["P123"]), q)
+    assert r.withheld is None
+
+
+def test_paired_row_carries_what_delta_was_computed_over() -> None:
+    # the artifact must DETERMINE the published Δ (the cost_usd precedent): `withheld`
+    # decides which rows counted, so a row without it cannot reproduce the number.
+    import life_agent.core.gate as G
+    p = G.PairedOutcome(
+        question_id="q1", answerable=True,
+        typed=G.RealisedResponse(action="abstain", withheld=G.WITHHELD_UNAVAILABLE),
+        mono=G.RealisedResponse(action="report", correct=True))
+    row = RE._paired_to_dict(p, baseline="raw-deliberative-replay")
+    assert row["censored"] is True
+    assert row["typed"]["withheld"] == G.WITHHELD_UNAVAILABLE
+    assert row["mono"]["withheld"] is None
+
+
 class _FakeExecutorAsk:
     """ask with the executor surface stubbed: answer_via_executor pops the scripted view
     into EXECUTOR_VIEW_LAST; the family path must never run under the executor arm."""
@@ -478,15 +678,22 @@ def test_archive_gate_artifacts_writes_run_id_suffixed_copies(tmp_path: Path) ->
     # runs 3 and 4; the PR #68 review's finding)
     (tmp_path / "report.md").write_text("# report body", encoding="utf-8")
     (tmp_path / "paired.jsonl").write_text('{"q": 1}\n', encoding="utf-8")
+    (tmp_path / "run_meta.json").write_text('{"run_id": "x"}', encoding="utf-8")
     archived = RE.archive_gate_artifacts(tmp_path, run_id="gate-20260809T102018")
     assert (tmp_path / "report-gate-20260809T102018.md").read_text(
         encoding="utf-8") == "# report body"
     assert (tmp_path / "paired-gate-20260809T102018.jsonl").read_text(
         encoding="utf-8") == '{"q": 1}\n'
+    # the identity sidecar archives with the reading it identifies — a run_meta left at the
+    # fixed path would be clobbered by the next run, which is exactly how runs 3 and 4 lost
+    # their artifacts
+    assert (tmp_path / "run_meta-gate-20260809T102018.json").read_text(
+        encoding="utf-8") == '{"run_id": "x"}'
     # the naming matches the pre-existing manual archives (report-gate-...md) so one
     # glob finds every run's artifacts regardless of which era archived them
     assert sorted(p.name for p in archived) == [
-        "paired-gate-20260809T102018.jsonl", "report-gate-20260809T102018.md"]
+        "paired-gate-20260809T102018.jsonl", "report-gate-20260809T102018.md",
+        "run_meta-gate-20260809T102018.json"]
 
 
 def test_archive_gate_artifacts_skips_missing_files(tmp_path: Path) -> None:
@@ -494,3 +701,174 @@ def test_archive_gate_artifacts_skips_missing_files(tmp_path: Path) -> None:
     (tmp_path / "report.md").write_text("partial", encoding="utf-8")
     archived = RE.archive_gate_artifacts(tmp_path, run_id="gate-x")
     assert [p.name for p in archived] == ["report-gate-x.md"]
+
+
+# --- judge grading, ADOPTED (§14 run-6 registration (2): the audit cleared) -------------
+# The gate arms' correctness comes from the cross-provider modal judge; the eval_edge
+# curve rows adopt LAST, separately (they move live behaviour) and stay matcher-graded.
+
+
+def _paired(qid: str, typed: Any, mono: Any) -> Any:
+    import life_agent.core.gate as GATE
+
+    return GATE.PairedOutcome(question_id=qid, answerable=True, typed=typed, mono=mono)
+
+
+def test_judge_grade_items_are_the_shadow_items_minus_the_curve_rows() -> None:
+    # adoption grades exactly what the matcher graded on the GATE ARMS — the edge
+    # firings are curve food, registered to adopt last, so they never appear here
+    questions = _two_questions()
+    typed_views = [
+        (questions[0], _exec_view(
+            effector="report", asserted=["P123"],
+            edge_events=[{"edge": "extract@claude-haiku-4-5", "value": "P123",
+                          "confidence": 0.7, "lineage": "jk-1"}])),
+        (questions[1], _exec_view(effector="abstain")),
+    ]
+    replay = {"q2-001": _row("q2-001", "P123 [doc.pdf]"),
+              "q2-002": _row("q2-002", "NOT_IN_CORPUS", declined=True)}
+    items = RE.judge_grade_items(questions, typed_views, replay)
+    assert [(i["question_id"], i["arm"]) for i in items] == [
+        ("q2-001", "typed"), ("q2-001", "mono")]
+
+
+def test_apply_judge_verdicts_regrades_both_arms_and_names_the_flips() -> None:
+    import life_agent.core.gate as GATE
+
+    # typed asserted a value the matcher missed but the judge rescues (the q2-026
+    # variant-gap shape); mono asserted one the matcher credited and the judge refutes
+    # (the q2-018 gold-conditional shape)
+    typed = GATE.RealisedResponse(action="report", correct=False, cost_usd=0.02)
+    mono = GATE.RealisedResponse(action="report", correct=True, cost_usd=0.4)
+    paired = [_paired("q2-001", typed, mono)]
+    items = [{"question_id": "q2-001", "arm": "typed", "candidate": "23rd March 2017",
+              "verdict": True},
+             {"question_id": "q2-001", "arm": "mono", "candidate": "the tel value",
+              "verdict": False}]
+    regraded, flips, unjudged = RE.apply_judge_verdicts(paired, items)
+    assert unjudged == []
+    (p,) = regraded
+    assert p.typed.correct is True and p.mono.correct is False
+    # spend and identity survive the regrade — the artifact must still determine Δ
+    assert p.typed.cost_usd == 0.02 and p.mono.cost_usd == 0.4
+    assert {(f["question_id"], f["arm"], f["matcher"], f["judge"]) for f in flips} == {
+        ("q2-001", "typed", False, True), ("q2-001", "mono", True, False)}
+
+
+def test_apply_judge_verdicts_is_any_per_value_like_the_matcher() -> None:
+    import life_agent.core.gate as GATE
+
+    # the matcher's realised_report is any-per-value; the judge mirror must be too —
+    # one rescued value out of two asserted grades the report correct
+    typed = GATE.RealisedResponse(action="report", correct=False)
+    mono = GATE.RealisedResponse(action="abstain", correct=None)
+    paired = [_paired("q2-001", typed, mono)]
+    items = [{"question_id": "q2-001", "arm": "typed", "candidate": "a", "verdict": False},
+             {"question_id": "q2-001", "arm": "typed", "candidate": "b", "verdict": True}]
+    regraded, _flips, unjudged = RE.apply_judge_verdicts(paired, items)
+    assert regraded[0].typed.correct is True and unjudged == []
+
+
+def test_apply_judge_verdicts_grades_hedge_over_the_hedge_items() -> None:
+    import life_agent.core.gate as GATE
+
+    typed = GATE.RealisedResponse(action="hedge", correct=False)
+    mono = GATE.RealisedResponse(action="abstain", correct=None)
+    paired = [_paired("q2-004", typed, mono)]
+    items = [{"question_id": "q2-004", "arm": "typed-hedge", "candidate": "X9",
+              "verdict": True},
+             {"question_id": "q2-004", "arm": "typed-hedge", "candidate": "Q1",
+              "verdict": False}]
+    regraded, _, unjudged = RE.apply_judge_verdicts(paired, items)
+    assert regraded[0].typed.correct is True and unjudged == []
+
+
+def test_apply_judge_verdicts_leaves_withholdings_and_itemless_rows_alone() -> None:
+    import life_agent.core.gate as GATE
+
+    # a withholding has no correctness to regrade; an asserting row with NO items (the
+    # gold-less question the shadow skips) keeps the matcher's False — the judge cannot
+    # dispute a verdict it was never asked for, and silence must not read as unjudged
+    typed = GATE.RealisedResponse(action="abstain", correct=None,
+                                  withheld=GATE.WITHHELD_MISS)
+    mono = GATE.RealisedResponse(action="report", correct=False)
+    paired = [_paired("q2-003", typed, mono)]
+    regraded, flips, unjudged = RE.apply_judge_verdicts(paired, [])
+    assert regraded[0].typed.withheld == GATE.WITHHELD_MISS
+    assert regraded[0].typed.correct is None
+    assert regraded[0].mono.correct is False
+    assert flips == [] and unjudged == []
+
+
+def test_apply_judge_verdicts_fails_closed_on_an_unjudged_item() -> None:
+    import life_agent.core.gate as GATE
+
+    # a None verdict (provider failure, tied votes) cannot silently fall back to the
+    # matcher — mixed grading inside one Δ is exactly what the registration forbids;
+    # the row is NAMED and the caller refuses the priced reading
+    typed = GATE.RealisedResponse(action="report", correct=True)
+    mono = GATE.RealisedResponse(action="abstain", correct=None)
+    paired = [_paired("q2-001", typed, mono)]
+    items = [{"question_id": "q2-001", "arm": "typed", "candidate": "P123",
+              "verdict": None}]
+    _regraded, _, unjudged = RE.apply_judge_verdicts(paired, items)
+    assert [(u["question_id"], u["arm"]) for u in unjudged] == [("q2-001", "typed")]
+
+
+def test_judge_grade_without_the_executor_replay_shape_refuses(monkeypatch,
+                                                               capsys) -> None:
+    # adoption grades the arms' captured text: the family arm captures no per-value
+    # asserts and a LIVE mono baseline's prose is never captured — a --judge-grade run
+    # without --gate-executor AND --gate-replay would silently grade any([]) == False
+    # on every asserting row; refused before any state is touched
+    monkeypatch.setattr(sys, "argv", ["run_eval.py", "--gate", "--judge-grade"])
+    monkeypatch.setattr(RE, "load_questions",
+                        lambda p: (_ for _ in ()).throw(AssertionError("state touched")))
+    assert RE.main() == 2
+    assert "--gate-executor" in capsys.readouterr().out
+
+
+def test_judge_grade_and_judge_shadow_are_mutually_exclusive(monkeypatch,
+                                                             capsys) -> None:
+    # under adoption the matcher IS the shadow (the flip table is the disagreement
+    # table) — running both would publish two judge sections with different roles
+    monkeypatch.setattr(sys, "argv",
+                        ["run_eval.py", "--gate", "--gate-executor",
+                         "--gate-replay", "x", "--judge-grade", "--judge-shadow"])
+    monkeypatch.setattr(RE, "load_questions",
+                        lambda p: (_ for _ in ()).throw(AssertionError("state touched")))
+    assert RE.main() == 2
+    assert "--judge-shadow" in capsys.readouterr().out
+
+
+def test_gate_disarms_the_fallback_lane_and_records_it() -> None:
+    # the uncalibrated lane is an OWNER-surface presentation (its render is discarded by
+    # the gate, its spend unmetered) — a leaked LIFE_AGENT_FALLBACK_LANE=1 in a gate run
+    # would burn a hidden synthesize per typed abstain; the gate disarms it and the
+    # run_meta names that it was set (self-identifying, PR-review blocker)
+    import os
+
+    os.environ["LIFE_AGENT_FALLBACK_LANE"] = "1"
+    try:
+        was_set = RE.disarm_fallback_lane()
+        assert was_set is True
+        assert "LIFE_AGENT_FALLBACK_LANE" not in os.environ
+        assert RE.disarm_fallback_lane() is False
+    finally:
+        os.environ.pop("LIFE_AGENT_FALLBACK_LANE", None)
+
+
+def test_apply_judge_verdicts_flip_names_the_hedge_arm() -> None:
+    # a hedge flip must be distinguishable from a single-value report flip in the
+    # published table (§14: the reading names WHAT the judge moved) — the flip row
+    # carries the item arm (typed-hedge), not the coarse side label
+    import life_agent.core.gate as GATE
+
+    typed = GATE.RealisedResponse(action="hedge", correct=False)
+    mono = GATE.RealisedResponse(action="abstain", correct=None)
+    paired = [_paired("q2-004", typed, mono)]
+    items = [{"question_id": "q2-004", "arm": "typed-hedge", "candidate": "X9",
+              "verdict": True}]
+    _regraded, flips, unjudged = RE.apply_judge_verdicts(paired, items)
+    assert unjudged == []
+    assert [(f["question_id"], f["arm"]) for f in flips] == [("q2-004", "typed-hedge")]

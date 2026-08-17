@@ -36,6 +36,36 @@ def get_db() -> sqlite3.Connection:
     return conn
 
 
+def owner_user_id(db_path: Path | None = None) -> int:
+    """The GTD user id: JARVIS_USER_ID (env/keyring), else the store's sole user.
+
+    THE owner-resolution convention (jarvis, mail_to_tasks, the digest, the webapps
+    all resolve through here — one convention, not per-surface scans). Loud when it
+    cannot resolve: a digest sent to a guessed user is worse than none."""
+    import os
+
+    env = os.environ.get("JARVIS_USER_ID")
+    if env:
+        return int(env)
+    from life_agent.core import secret
+
+    try:
+        return int(secret("JARVIS_USER_ID"))
+    except SystemExit:
+        pass
+    path = db_path if db_path is not None else DB_PATH
+    if path.exists():
+        rows = sqlite3.connect(path).execute(
+            "SELECT DISTINCT user_id FROM tasks"
+        ).fetchall()
+        if len(rows) == 1:
+            return int(rows[0][0])
+    raise SystemExit(
+        "set JARVIS_USER_ID (env or keyring) — could not infer a single user from "
+        f"{path}"
+    )
+
+
 def create_schema(conn: sqlite3.Connection) -> None:
     """Create the ``tasks`` projection schema on any connection.
 

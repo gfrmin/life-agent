@@ -1,0 +1,11 @@
+# Fires the morning digest (daily-digest.service). Persistent=true catches up a
+# missed 07:00 (laptop asleep) on the next boot rather than skipping the day.
+[Unit]
+Description=life-agent daily GTD digest at 07:00
+
+[Timer]
+OnCalendar=*-*-* 07:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

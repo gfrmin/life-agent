@@ -1182,3 +1182,65 @@ differential gate is the named next measurement, not run here. One pre-reg count
 estimated 10 non-v2 questions; the run shows **8 membrane-only + 2 that produced no act** (no
 leader-credence-bearing probe tick) = 10, with the load-bearing **74 joined** matching the pre-reg
 exactly.
+
+### 17.6 P3b — the coarsened-lattice differential gate: under the owner's CURRENT utility, the coarsening cannot respond at all (2026-08-17)
+
+**Question → resolution → why.** *Does the coarsened (leader-credence-only) lattice — the one
+EU-positive held-out variant of §17.5 — clear its own differential gate against the credence
+baseline?* → **No: FAIL, P(Δ>0.05)=0.205, Δ̄=−0.078 [−0.312, +0.276] — and it FAILS BY TOTAL
+ABSTENTION: 0/190 held-out ticks commit, 74/74 joined questions abstain.** → *Because the
+owner's utility moved under it.* Pre-registered blind in
+`docs/membrane/p3b-coarsened-pre-registration.md` (+ Amendment 1, also blind), harness
+`scripts/membrane/p3_gate.py --gate-variants`, artifacts under `$LIFE_AGENT_KB/eval/p3b/`
+(variant-suffixed; §17.5's FULL record untouched).
+
+**The reversal this time was in Ū, and it was caught by the freeze.** The first execution's
+FULL variant did **not** reproduce §17.5 (6/190 committed vs 90/190) and was **voided
+mid-variant before any coarsened Δ existed** (`eval/p3b-VOID-ubar-drift-20260817/`, console
+only). Diagnosis: §17.5 ran under the boot Ū then in force, **u_wrong = −5.94 (commit bar
+p1 ≥ 0.856)**; the owner's 2026-08-06 u_wrong elicitation (stated −9) moved the boot Ū to
+**u_wrong = −8.83 (bar 0.899)**. Same engine, same 193-tick ledger. The engine byte-compat
+check that the amendment then froze — FULL under §17.5's *exact* Ū via the harness's
+reproduction-only `--u-bar-override` — **reproduced §17.5 to four decimals** on the rebuilt
+`1a0cea7` binary: FULL −0.2203 / 90 of 190, leader-credence-only +0.2842 / 54, +p-none −0.3834 /
+59, A3-FULL P=0.001 Δ̄=−0.337 (`eval/p3b-engine-repro-20260817/`; §17.5's 0.003 / −0.338 —
+the residual is the narrower P(U) from the three 2026-08-17 elicitation lines, disclosed). So
+the binary is not the confound, and every §17.5 number stands as the 2026-07-30 reading.
+
+**The reading, both arms under the CURRENT Ū (one bar, so they compare):**
+
+| held-out arm (bar 0.899) | committed | policy EU/q @Ū | A3 vs baseline (74 joined) |
+|---|---:|---:|---|
+| FULL (17 indicators) | 6/190 | −0.279 | **FAIL** P=0.056, Δ̄=−0.201 [−0.366, +0.063]; typed 73 abstain + **1 wrong report** |
+| leader-credence-only | **0/190** | 0.000 | **FAIL** P=0.205, Δ̄=−0.078 [−0.312, +0.276]; typed 74 abstain |
+
+Baseline on the same 74: 24 correct reports, 2 wrong, 48 abstains (answer rate 0.35).
+
+**Why the coarsening cannot respond now — the finding.** Under §17.5's Ū the coarsened arm
+committed 54 `ge90` ticks at empirical correctness **1.00**; under the current Ū it commits
+**none**. Those same ticks' engine posteriors sit **between 0.856 and 0.899** — the engine's
+`ge90` belief is shrunk below the bucket's empirical rate by its guard prior, and the owner's
+stated −9 wrong-cost puts the commit bar exactly above it. Two honest readings of one fact:
+(a) the coarsened lattice's +0.284 was never *robustly* positive — it lived in a 0.04-wide
+window of p1 that one elicitation line closed; (b) the engine is *conservative* relative to
+the ledger — a policy that could have asserted 54 correct answers asserts zero because its
+belief (not the world) says 0.87. That is a **belief-shrinkage** question for the engine
+(E1's per-candidate posterior; a prior the guards can update faster), not a utility question:
+the owner's utility is right by construction, and the fix is to earn a sharper p1, never to
+loosen the bar. Both predictions the pre-registration recorded blind held: FAIL on both arms,
+**by abstention** (a different mode from §17.5's FAIL-by-over-assertion), on a small
+disagreement set (25–26/74).
+
+**Verdict.** **The coarsening is closed as a re-earn route on this ledger under the owner's
+current utility.** No flip; P0 containment stands. Note the FULL arm's own picture changed
+too: at the corrected bar its over-assertion largely vanished (1 wrong report, not §17.5's
+pattern) — the guard lattice's failure mode is now *reach*, the same lever the §8 gate names.
+The re-earn path is therefore **not lattice surgery**: it is E1 (a per-candidate posterior the
+engine can sharpen from the same evidence) and, in the meantime, the credence-daemon typed
+policy — which on the same day cleared to Δ̄=+0.180 on the §8 gate (foundations §14, run 6) —
+is the decider that is actually improving.
+
+**Limits.** One ledger (193/84, unchanged since 2026-07-30); 74 joined; the `ge90 = 1.00` fact
+is that ledger's; the p1 window is read from the harness's per-tick rows, not from a
+sensitivity sweep over u_wrong (which would be a *reading of a Ū the owner did not state* —
+declined, named).

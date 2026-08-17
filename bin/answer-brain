@@ -42,9 +42,11 @@ wait_ready() {  # url label timeout_s
   return 1
 }
 
-# Ollama is a user service; check (don't start) and warn so a model failure is legible.
+# Local Ollama is DEPRECATED (2026-08-17): the daemon+bridge decision path no longer
+# needs it — only the foreground REPL app below still drives an OpenAI-compatible
+# endpoint at OLLAMA_BASE_URL. Warn (don't start, don't fail) so that's legible.
 curl -fsS --max-time 2 "$ollama_base/api/tags" >/dev/null 2>&1 \
-  || echo "answer-brain: WARNING — Ollama not reachable at $ollama_base (start it: 'ollama serve')" >&2
+  || echo "answer-brain: WARNING — no model server at $ollama_base; the daemon+bridge run fine without it, but the REPL app needs OLLAMA_BASE_URL pointed at an OpenAI-compatible endpoint" >&2
 
 echo "answer-brain: starting the decision daemon (:$daemon_port) — logs in $logdir/daemon.log"
 ( cd "$credence" && exec julia --project=. apps/answer-brain/daemon/main.jl ) >"$logdir/daemon.log" 2>&1 &

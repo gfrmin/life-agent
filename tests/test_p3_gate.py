@@ -18,6 +18,7 @@ from life_agent.core import claude_verdicts as CV
 from life_agent.core import decisions as DEC
 from life_agent.core import gate as GATE
 from life_agent.core import reactions as RX
+from life_agent.core import utility as UT
 from life_agent.membrane import shadow as SH
 from life_agent.membrane import world as W
 
@@ -175,3 +176,99 @@ def test_build_paired_joins_by_hash_and_names_the_unjoined() -> None:
     assert paired[0].typed.action == "report" and paired[0].mono.action == "report"
     assert only_m == [h_only]        # the non-corpus membrane question, named
     assert only_b == ["q2-099"]      # the baseline question with no membrane act, named
+
+
+# --- p3b: the variant-parameterized differential (coarsened-lattice A3) -------------------
+
+def _point(name: str, value: float) -> UT.LatentPosterior:
+    return UT.LatentPosterior(name=name, mean=value, variance=0.0, lo=value, hi=value)
+
+
+def _posterior() -> UT.UtilityPosterior:
+    return UT.UtilityPosterior(
+        gauge={"u_correct": 1.0, "u_abstain": 0.0},
+        latents={"u_wrong": _point("u_wrong", -2.0),
+                 "u_hedged": _point("u_hedged", 0.3),
+                 "lambda_int": _point("lambda_int", 0.5),
+                 "kappa_att": _point("kappa_att", 0.05)},
+        n_events=0, fold_version="test")
+
+
+def _p3b_fixture() -> tuple[list[P3.HeldoutTick], dict[str, str], list[dict]]:
+    q = "joined question text?"
+    h = DEC.question_id(q)
+    rows = [P3.HeldoutTick(question_id=h, leader_credence=0.95, p1=0.97, y=1,
+                           respond=True)]
+    h2q = {h: "q2-005"}
+    baseline_rows = [{"question_id": "q2-005", "answerable": True, "asserted": True,
+                      "asserted_correct": True, "bucket": "CONFIDENT_RIGHT"}]
+    return rows, h2q, baseline_rows
+
+
+def test_run_differential_writes_variant_suffixed_artifacts(tmp_path: Path) -> None:
+    # two variants over the same rows land as two DISTINCT artifact sets — the FULL P3
+    # record and the p3b coarsened arm can never clobber each other (the runs-3/4 lesson)
+    rows, h2q, baseline_rows = _p3b_fixture()
+    for variant, fams in (("FULL", tuple(P3.LR.ALL_FAMILIES)),
+                          ("leader-credence-only", ("leader-credence",))):
+        P3.run_differential(rows, variant=variant, families=fams, h2q=h2q,
+                            baseline_rows=baseline_rows, posterior=_posterior(),
+                            oracle_p=0.9, out=tmp_path, draws=400, seed=7,
+                            log=lambda _m: None)
+    names = sorted(p.name for p in tmp_path.iterdir())
+    assert names == ["a3_gate-FULL.md", "a3_gate-leader-credence-only.md",
+                     "a3_meta-FULL.json", "a3_meta-leader-credence-only.json",
+                     "a3_paired-FULL.jsonl", "a3_paired-leader-credence-only.jsonl"]
+
+
+def test_run_differential_matches_the_inline_gate_it_replaced(tmp_path: Path) -> None:
+    # refactor guard: the extracted function computes the SAME GateResult the old
+    # inline A3 path did — acts → hash join → delta_posterior at the frozen δ/level
+    import life_agent.core.gate as GATE
+
+    rows, h2q, baseline_rows = _p3b_fixture()
+    gate = P3.run_differential(rows, variant="FULL",
+                               families=tuple(P3.LR.ALL_FAMILIES), h2q=h2q,
+                               baseline_rows=baseline_rows, posterior=_posterior(),
+                               oracle_p=0.9, out=tmp_path, draws=400, seed=7,
+                               log=lambda _m: None)
+    acts = P3.question_acts(rows)
+    paired, _, _ = P3.build_paired(acts, h2q, baseline_rows)
+    ref = GATE.delta_posterior(paired, _posterior(), oracle_p=0.9,
+                               n_draws=400, seed=7)
+    assert gate.p_delta_gt == ref.p_delta_gt
+    assert gate.delta_mean == ref.delta_mean
+    assert gate.materiality_delta == ref.materiality_delta == 0.05
+    assert gate.level == ref.level == 0.90
+
+
+def test_run_differential_meta_names_the_lattice_under_test(tmp_path: Path) -> None:
+    # the coarsened lattice IS the object under test — its families and resolved
+    # indicator vocabulary are provenance in the artifact, not a comment
+    import json as _json
+
+    rows, h2q, baseline_rows = _p3b_fixture()
+    P3.run_differential(rows, variant="leader-credence-only",
+                        families=("leader-credence",), h2q=h2q,
+                        baseline_rows=baseline_rows, posterior=_posterior(),
+                        oracle_p=0.9, out=tmp_path, draws=400, seed=7,
+                        log=lambda _m: None)
+    meta = _json.loads((tmp_path / "a3_meta-leader-credence-only.json").read_text())
+    assert meta["families"] == ["leader-credence"]
+    assert meta["indicators"] == P3.LR.FAMILY_NAMES["leader-credence"]
+    assert meta["seed"] == 7 and meta["n_joined"] == 1
+    assert meta["verdict"] in ("PASS", "FAIL") and "p_delta_gt" in meta
+
+
+def test_coarsened_shaped_rows_aggregate_to_an_abstain_heavy_typed_arm() -> None:
+    # the p3b power caveat, pinned: a lattice that responds only at ge90 yields mostly
+    # abstains at the question level — a FAIL there is FAIL-by-abstention, a different
+    # failure mode than FULL's over-assertion, and the pre-registration names it
+    rows = [
+        _tick("q-hi", p1=0.96, y=1, respond=True, leader=0.95),
+        _tick("q-mid", p1=0.6, y=1, respond=False, leader=0.75),
+        _tick("q-low", p1=0.2, y=0, respond=False, leader=0.4),
+    ]
+    acts = P3.question_acts(rows)
+    assert acts["q-hi"].action == "report" and acts["q-hi"].correct is True
+    assert acts["q-mid"].action == "abstain" and acts["q-low"].action == "abstain"

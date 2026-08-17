@@ -2,7 +2,7 @@
 """Answer baseline + miss-triage over the PRODUCTION path (owner directive, 2026-06-18).
 
 Runs the production answer path (``ask.answer`` — real expansion, real retrieval, the
-local-Qwen route/extract/posterior/decide) over the PII eval corpus, and for every
+route/extract/posterior/decide) over the PII eval corpus, and for every
 question crosses the RETRIEVAL channel (was the truth retrievable?) with the DECISION
 channel (did the agent assert, and was it right?) to bucket the outcome by the lever
 that would fix it:

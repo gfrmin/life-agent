@@ -1,0 +1,16 @@
+# life-agent daily digest — a systemd --user oneshot (a reach channel, fired by
+# daily-digest.timer).
+# Install:
+#   mkdir -p ~/.config/systemd/user
+#   ln -s "$PWD/packaging/daily-digest.service" ~/.config/systemd/user/daily-digest.service   # run from the repo root
+#   ln -s "$PWD/packaging/daily-digest.timer"   ~/.config/systemd/user/daily-digest.timer
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now daily-digest.timer
+# The owner id + transport token resolve from gnome-keyring at runtime (bin/daily-digest);
+# nothing sensitive lives in this file. ExecStart assumes the repo is at %h/git/life-agent.
+[Unit]
+Description=life-agent daily GTD digest
+
+[Service]
+Type=oneshot
+ExecStart=%h/git/life-agent/bin/daily-digest

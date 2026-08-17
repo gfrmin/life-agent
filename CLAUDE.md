@@ -25,14 +25,14 @@ a **derive → project → reach** shape (PRINCIPLES §6):
 
 The GTD is event-sourced: an append-only ledger is truth, the SQLite read-model is a fold of it
 (PRINCIPLES §7; `docs/act-layer-events.md`). **email→GTD runs off a `systemd --user` timer**
-(`bin/mail-to-tasks` is the timer/debug entrypoint): the `action_items` transform (local
-Ollama, grounded quotes) auto-files cited tasks; the grounding gate is the safety; triage
+(`bin/mail-to-tasks` is the timer/debug entrypoint): the `action_items` transform (haiku,
+grounded quotes) auto-files cited tasks; the grounding gate is the safety; triage
 happens in Telegram. The ask-anything read path is `scripts/ask.py`, dogfooded via
 `bin/ask-live`; its temporal mode (`/recent`, `/since`, `/until`, `/derive` — one line
 grammar, identical in the REPL and one-shot argv) filters by the `doc_date` projection
 (SPEC §18.12) read-side, naming undated and not-yet-derived hits instead of dropping them.
 Its subject mode (engine D2) owner-filters "my X" questions by the `doc_subject`
-projection (SPEC §18.13) matched against the owner profile via cached local-model
+projection (SPEC §18.13) matched against the owner profile via cached model
 verdicts (`life_agent.core.subject`; the profile never enters pkm) — determinate
 non-owner and template hits are excluded by name, indeterminates kept and named.
 **The GTD ledger projects into knowledge** (`tasks/knowledge.py` →
@@ -61,12 +61,15 @@ cells, population-calibrated per-cell from the eval_claim stream, per-claim EU i
 under Ū, the proposal-coverage tail named); and the **§8 decision-weighted adoption
 gate** (`core/gate.py`, `run_eval --gate` → `$LIFE_AGENT_KB/eval/gate/`: a posterior
 over Δ = EU(typed) − EU(monolithic) by MC over P(U) × the Bayesian bootstrap, P(Δ>δ)≥
-level with δ/level frozen blind; the disagreement region + answer rates published). It
-ran (2026-06-13): **FAIL** at P(Δ>0.05)=0.848 (gate 0.90) — Δ̄=+2.23 but the interval
-crosses zero on the wide u_wrong prior + the 21-question corpus; typed answer rate 0.11
-vs monolithic 1.00. The two named levers (§14 ledger): narrow P(U) (elicit/reveal
-wrong-answer cost) or raise the typed answer rate (retrieval coverage). Next: retrieval
-coverage for point facts (q-002/q-014 class), then old D3–D4 re-scoped as Ask's
+level with δ/level frozen blind; the disagreement region + answer rates published). Six
+runs so far (§14 ledger has each): the executor series read 0.002 → 0.010 → 0.065 →
+0.092 → 0.098, then **run 6 (2026-08-17: judge-graded arms, λ_usd spend on both arms,
+the post-Ollama cloud instruments): FAIL at P(Δ>0.05)=0.678, Δ̄=+0.180 [−0.244, +0.661]
+— the first positive mean;** typed answer rate 0.47 (47 ✓ / 2 ✗) vs monolithic 0.97,
+withholdings split miss 18 · dispersed 37 (the reach lever's first *direction*). Named
+next: the run-5 re-pricing counterfactual that isolates the instrument change from the
+grading/spend changes (deterministic, from archived artifacts), the two confident-wrongs'
+audit (q2-053, q2-105), then reach for the 18 misses. Old D3–D4 stay re-scoped as Ask's
 aggregate/thread families. The doc's §14 open questions are a **live empirical ledger**
 (owner's adoption rider): each entry names the evidence that decides it — keep it
 current. Sequencing is continuous and eval-gated, not dogfood-gated (PRINCIPLES §9 as
@@ -129,7 +132,7 @@ projection. See `docs/act-layer-events.md`.
 ## `life_agent.reach` — the Telegram channel + persona (transport only, no truth)
 
 - **Transport:** `src/life_agent/reach/telegram.py` (poll/send; knows only Telegram).
-- **Loop + NLU + persona:** `src/life_agent/reach/jarvis.py` — Ollama parses a message →
+- **Loop + NLU + persona:** `src/life_agent/reach/jarvis.py` — a haiku call parses a message →
   intent → routes to `tasks.commands`/`tasks.store`. Runs as `systemd --user jarvis.service`
   via `python -m life_agent.reach.jarvis`.
 - **Digest:** `src/life_agent/reach/digest.py` (`python -m life_agent.reach.digest`).
@@ -150,8 +153,10 @@ dogfood) live in [`PRINCIPLES.md`](./PRINCIPLES.md) — they are not restated he
 
 ## Environment (Arch Linux, this machine)
 
-- **GPU:** RTX 4060 (8 GB). **Ollama** running with: `qwen2.5:7b-instruct`, `qwen3.5:9b`,
-  `llama3.1`, **`nomic-embed-text`** (768-dim embeddings), 2 vision models. API at `localhost:11434`.
+- **GPU:** RTX 4060 (8 GB). **Local Ollama is DEPRECATED (2026-08-17, owner directive)** —
+  the cached ask instruments, the pkm LLM transforms, and jarvis's NLU all run on the
+  Anthropic seam (`core/instrument.py`, haiku); local inference returns only via a
+  non-Ollama runtime (e.g. for embeddings, unbuilt). Do not assume `localhost:11434`.
 - **OCR/docs:** `tesseract 5.5.2` (langs incl. **`heb`** + `eng`), `pdftotext`, `exiftool`,
   ImageMagick 7, ghostscript, libreoffice.
 - **Search:** `rg 15.1`, **`rga 0.10.10`** (ripgrep-all, searches inside PDFs), `sqlite3 3.53`

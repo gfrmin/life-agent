@@ -120,6 +120,7 @@ MEMBRANE_WARM_VECTORS_ENV = "LIFE_AGENT_MEMBRANE_WARM_VECTORS"
 MEMBRANE_LIVE_ENV = "LIFE_AGENT_MEMBRANE_LIVE"
 MEMBRANE_CAT_ENV = "LIFE_AGENT_MEMBRANE_CAT"
 DELIBERATE_ENV = "LIFE_AGENT_DELIBERATE"
+FALLBACK_LANE_ENV = "LIFE_AGENT_FALLBACK_LANE"
 
 MEMBRANE_DEFAULT_UTILITY_FORMS = "said@1"
 MEMBRANE_DEFAULT_READ_TIMEOUT_S = 300.0
@@ -176,6 +177,29 @@ def deliberate_enabled() -> bool:
     until the §8 gate passes; the daemon still prices every scheduled fire).
     Rollback is unsetting this."""
     return os.environ.get(DELIBERATE_ENV) == "1"
+
+
+def fallback_lane_enabled() -> bool:
+    """The MVP dual-lane fallback (interaction contract, *know*): ``"1"`` makes a typed
+    WITHHOLDING additionally render the monolithic prose over the same retrieved hits,
+    under an explicit uncalibrated label — presentation only, the logged decision is
+    unchanged. Anything else — including absence, the default — is byte-for-byte
+    today's render. Rollback is unsetting this. Removed when the §8 gate passes and
+    typed becomes the silent default."""
+    return os.environ.get(FALLBACK_LANE_ENV) == "1"
+
+
+def pkm_root() -> Path | None:
+    """The pkm knowledge root from ``PKM_CONFIG``, or ``None`` when unresolvable.
+    ``None`` disables derivation caching only (fail open) — hoisted from
+    scripts/ask.py's ``_pkm_root`` so core consumers (the render seam's fallback lane)
+    share one resolution."""
+    try:
+        import yaml
+        cfg = yaml.safe_load(PKM_CONFIG.read_text(encoding="utf-8"))
+        return Path(cfg["root_dir"]).expanduser()
+    except Exception:
+        return None
 
 
 def membrane_categorical() -> bool:

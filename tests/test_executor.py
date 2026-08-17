@@ -1364,3 +1364,156 @@ def test_measured_edge_absent_confidence_still_folds_at_the_floor() -> None:
     edge = "extract@claude-haiku-4-5"
     assert (EX._conditioned_rho(curves, edge, None, 0.80)
             == curves[edge].calibrate(0.0))
+
+
+# --- the MVP dual-lane fallback (interaction contract: know — the uncalibrated lane) ----
+
+def _withhold_view(**overrides: Any) -> dict[str, Any]:
+    base: dict[str, Any] = {
+        "effector": "abstain", "asserted": [], "candidates": [], "credences": [],
+        "p_none": 0.9, "eu": 0.0, "n_obs": 0,
+        "hits": [{"artifact_cache_key": "d0", "chunk_text": "lease ends 2027-03-01",
+                  "score": 4.2, "origin": "file:///lease.pdf"}],
+        "route": {"construct": "lease end date"}, "question": "when does my lease end?"}
+    base.update(overrides)
+    return base
+
+
+def test_render_view_fallback_lane_off_is_byte_identical(monkeypatch) -> None:
+    # absence of the flag is byte-for-byte today's render — rollback is unsetting it
+    import life_agent.core.config as CFG
+    monkeypatch.delenv(CFG.FALLBACK_LANE_ENV, raising=False)
+    out = EX.render_view(_withhold_view())
+    assert "No answer asserted" in out and "uncalibrated" not in out
+
+
+def test_render_view_fallback_lane_appends_labeled_prose_on_typed_withhold(
+        monkeypatch) -> None:
+    # flag on + typed route + withholding + hits ⇒ the abstention STILL renders first
+    # (named reason, held-back candidates), then the monolithic prose under an explicit
+    # uncalibrated label — typed-first, labeled fallback, nothing silent
+    import life_agent.core.config as CFG
+    import life_agent.core.synthesis as SYN
+    monkeypatch.setenv(CFG.FALLBACK_LANE_ENV, "1")
+    calls: list[tuple] = []
+
+    def fake_synthesize(root, question, hits, profile, **kw):
+        calls.append((root, question, hits, profile))
+        return "your lease ends 2027-03-01 [1]", "ck-1", True
+
+    monkeypatch.setattr(SYN, "synthesize", fake_synthesize)
+    view = _withhold_view()
+    out = EX.render_view(view)
+    assert "No answer asserted" in out                       # the typed decision leads
+    assert "uncalibrated" in out                             # the lane is labeled
+    assert "your lease ends 2027-03-01 [1]" in out
+    ((_, q, hits, _),) = calls
+    assert q == "when does my lease end?" and hits is view["hits"]
+
+
+def test_render_view_fallback_lane_skips_asserting_and_narrative_views(
+        monkeypatch) -> None:
+    import life_agent.core.config as CFG
+    import life_agent.core.synthesis as SYN
+    monkeypatch.setenv(CFG.FALLBACK_LANE_ENV, "1")
+    monkeypatch.setattr(SYN, "synthesize",
+                        lambda *a, **k: (_ for _ in ()).throw(AssertionError("called")))
+    # a report asserts — no lane
+    report = _withhold_view(effector="report", asserted=["2027-03-01"],
+                            candidates=["2027-03-01"], credences=[0.95])
+    assert "uncalibrated" not in EX.render_view(report)
+    # a hedge already surfaces candidates — no lane
+    hedge = _withhold_view(effector="hedge", candidates=["a", "b"],
+                           credences=[0.5, 0.4])
+    assert "uncalibrated" not in EX.render_view(hedge)
+    # a narrative view IS the prose lane already — passes through verbatim, untouched
+    nv = {"effector": "report", "asserted": ["x"], "candidates": [], "credences": [],
+          "p_none": None, "eu": None, "n_obs": 0, "hits": [], "route": None,
+          "rendered": "prose [1]\n\nnarrative footer", "question": "q?"}
+    assert EX.render_view(nv) == "prose [1]\n\nnarrative footer"
+
+
+def test_render_view_fallback_lane_needs_hits_and_question(monkeypatch) -> None:
+    # nothing retrieved ⇒ nothing to synthesize over; a pre-lane View (no question key,
+    # the membrane/report harnesses) degrades to today's render — never a crash
+    import life_agent.core.config as CFG
+    import life_agent.core.synthesis as SYN
+    monkeypatch.setenv(CFG.FALLBACK_LANE_ENV, "1")
+    monkeypatch.setattr(SYN, "synthesize",
+                        lambda *a, **k: (_ for _ in ()).throw(AssertionError("called")))
+    assert "uncalibrated" not in EX.render_view(_withhold_view(hits=[]))
+    no_q = _withhold_view()
+    del no_q["question"]
+    assert "uncalibrated" not in EX.render_view(no_q)
+
+
+def test_render_view_fallback_lane_failure_is_named_not_silent(monkeypatch) -> None:
+    # a failed lane (missing key raises SystemExit via core/llm) must not kill the typed
+    # render NOR vanish silently — the notice names the unavailability (invariant 3)
+    import life_agent.core.config as CFG
+    import life_agent.core.synthesis as SYN
+    monkeypatch.setenv(CFG.FALLBACK_LANE_ENV, "1")
+
+    def boom(*a, **k):
+        raise SystemExit("ANTHROPIC_API_KEY not found in env or gnome-keyring")
+
+    monkeypatch.setattr(SYN, "synthesize", boom)
+    out = EX.render_view(_withhold_view())
+    assert "No answer asserted" in out
+    assert "uncalibrated lane unavailable" in out
+
+
+def test_loop_views_carry_the_question(monkeypatch) -> None:
+    # both View producers thread the question — the render seam's lane needs it and a
+    # View without it silently disables the lane (the back-compat degrade above)
+    fake = FakeServices(
+        route={"construct": "passport number", "time_indexed": False},
+        decides=[{"effector": "report", "value": "P123", "credences": [0.9],
+                  "p_none": 0.05, "eu": 0.8}])
+    view = _loop(fake)
+    assert view["question"] == "what is my passport number?"
+    nfake = FakeServices(route=None, narrative={
+        "action": "report", "asserted": ["x"], "rendered": "prose", "hits": []})
+    nview = _loop(nfake)
+    assert nview["question"] == "what is my passport number?"
+
+
+def test_base_instrument_spend_enters_the_view_spend(monkeypatch) -> None:
+    # base extract + subject-probe cache-miss spend is cloud-priced since the Ollama
+    # deprecation and must ride spend_usd — the gate's run-6 spend term reads it; an
+    # unmetered base call would price the typed arm's real cost at $0
+    class _CostedServices(FakeServices):
+        def post(self, url: str, payload: dict[str, Any]) -> dict[str, Any] | None:
+            r = super().post(url, payload)
+            if url.endswith("/extract") and r is not None:
+                return {**r, "cost_usd": 0.004}
+            if url.endswith("/probe/subject") and r is not None:
+                return {**r, "cost_usd": 0.001}
+            return r
+
+    fake = _CostedServices(
+        route={"construct": "passport number", "time_indexed": False},
+        decides=[{"effector": "report", "value": "P123", "credences": [0.9],
+                  "p_none": 0.05, "eu": 0.8}])
+    view = _loop(fake)
+    assert abs(view["spend_usd"] - 0.005) < 1e-9
+
+
+def test_instrument_client_is_lazy_on_secrets(monkeypatch) -> None:
+    # a locked keyring at boot must not kill the whole bridge (fail-open contract):
+    # construction and engine_version (cache-key identity → warm replays) need no
+    # secret; only a cache-miss .complete() resolves the key and may raise
+    import life_agent.core.instrument as INSTR
+    import life_agent.core.llm as llm
+
+    def no_secret(name: str) -> str:
+        raise SystemExit(f"{name} not found")
+
+    monkeypatch.setattr(llm, "secret", no_secret)
+    client = INSTR.instrument_client()          # must NOT raise
+    assert isinstance(client.engine_version, str) and client.engine_version
+    try:
+        client.complete("p", {"type": "object", "properties": {}})
+        raise AssertionError("complete() should have raised on the missing key")
+    except SystemExit:
+        pass

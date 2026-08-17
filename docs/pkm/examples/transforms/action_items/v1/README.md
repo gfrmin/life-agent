@@ -6,7 +6,9 @@ producer fails the whole source unless every quote resolves in the email under
 §18.5 whitespace-normalised containment (so a weaker model loses recall but
 cannot hallucinate an action).
 
-Runs on a **local Ollama model** by default — free, private, offline.
+Runs on an **Anthropic haiku model** by default (local Ollama deprecated
+2026-08-17), metered under the cost gate; the grounding gate above is what keeps
+a model swap safe.
 
 ## Install into a knowledge root
 
@@ -36,7 +38,7 @@ append-only event ledger (so a prompt bump re-files nothing it already has).
 
 `model:` in `action_items.yaml` selects the backend (SPEC §18.3):
 
-- `provider: ollama`, `model: qwen2.5:7b-instruct` (default) — local, `cost 0`.
+- `provider: anthropic`, `model: "claude-haiku-4-5-20251001"` (default) — local, `cost 0`.
   Pin the tag (never `:latest`); the tag is part of the cache key.
 - `provider: anthropic`, `model: claude-haiku-4-5` — cloud fallback (metered);
   add `cost_gate` back to `policies` and ship `policies/cost_gate.py` if you use it.

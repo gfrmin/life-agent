@@ -47,6 +47,7 @@ from typing import Any
 from life_agent.core import config
 from life_agent.core import decisions as DEC
 from life_agent.core import derivations as D
+from life_agent.core import instrument as INSTR
 from life_agent.core import outcomes as O
 from life_agent.core import reactions as R
 from life_agent.core import seam as SEAM
@@ -55,9 +56,10 @@ from life_agent.core.brain import Brain
 from life_agent.core.dates import parse_date as _parse_date
 from life_agent.core.decide import u_assert
 
-# The local model for route + extract (the 8 GB card's working model; both verdicts are
-# cached, so call counts are bounded by distinct questions x distinct chunks).
-LOOKUP_MODEL = "qwen2.5:7b-instruct"
+# The route + extract instrument model (local Ollama deprecated 2026-08-17 — owner
+# directive, §14-registered; both verdicts are cached, so call counts are bounded by
+# distinct questions x distinct chunks, and warm replays cost $0).
+LOOKUP_MODEL = INSTR.INSTRUMENT_MODEL
 
 ROUTE_PROMPT = """\
 Classify this question. A LOOKUP asks for exactly ONE specific factual value that could
@@ -170,7 +172,14 @@ _A_TIME_UNKNOWN = 0.6        # undated/underived doc date under a time-indexed c
 _ACTION_ORDER: tuple[str, ...] = DEC.LOOKUP_ACTION_ORDER
 
 # Closed abstention reasons (the credence grammar — interaction contract).
+# The reason must be the TRUE one. These are not interchangeable labels: DISPERSED is a
+# statement about a posterior that existed and lost the EU argmax; NO_OBSERVATIONS is the
+# absence of any posterior at all (nothing was grounded, so nothing was dispersed);
+# UNAVAILABLE is a statement about the corpus, not about belief — the evidence is not in
+# this machine's catalogue, so no amount of thinking here would have found it.
 REASON_DISPERSED = "dispersed posterior"
+REASON_NO_OBSERVATIONS = "no admitted evidence"
+REASON_UNAVAILABLE = "corpus unavailable"
 
 # One grammar table for every rendered string (drift-gated; interaction contract).
 # Credences render at three decimals: two rounded 0.997 up to "1.00" on the first live
@@ -193,6 +202,13 @@ GRAMMAR: dict[str, str] = {
                " · {n_ind} indeterminate · none-of-retrieved {p_none:.3f}"
                " · decision {action} (EU {eu:.2f})"),
     "fallthrough": "(lookup: {reason} — narrative path)",
+    # the MVP dual-lane fallback (interaction contract, know): a typed withholding may
+    # additionally carry the monolithic prose over the same retrieved sources, explicitly
+    # labeled — presentation only, never the logged decision. Removed when the §8 gate
+    # passes and typed becomes the silent default.
+    "fallback_lane": ("uncalibrated lane — prose over the same retrieved sources, "
+                      "not a calibrated decision (§8 gate pending):\n{text}"),
+    "fallback_lane_failed": "uncalibrated lane unavailable ({err})",
 }
 
 
@@ -451,19 +467,16 @@ def extractor_reliability_mean(brain: Brain | None = None,
 # --- route + observe (cached local-model instruments, the subject.py pattern) ----------
 
 def _client() -> Any:
-    from pkm.transforms._shared import make_model_client
-
-    return make_model_client({
-        "provider": "ollama", "model": LOOKUP_MODEL,
-        "inference_params": {"temperature": 0.0},
-    })
+    return INSTR.instrument_client(LOOKUP_MODEL)
 
 
 def route_question(root: Path, question: str, *,
-                   client: Any | None = None) -> Route | None:
+                   client: Any | None = None,
+                   meter: list[float] | None = None) -> Route | None:
     """The cached route verdict: the Route (construct + time-indexedness) if this is
     a typed lookup, else None. A verdict outside the schema raises and is never
-    recorded."""
+    recorded. ``meter``, when given, accumulates the realised USD cost of cache-miss
+    model calls (warm replays append nothing — $0 by construction, §18.9)."""
     if client is None:
         client = _client()
     key = D.lookup_route_key(question, model=LOOKUP_MODEL,
@@ -476,6 +489,8 @@ def route_question(root: Path, question: str, *,
     else:
         response = client.complete(ROUTE_PROMPT.replace("{question}", question),
                                    ROUTE_SCHEMA)
+        if meter is not None:
+            meter.append(float(getattr(response, "cost_usd", 0.0) or 0.0))
         parsed = json.loads(response.raw_text)
         if not isinstance(parsed.get("lookup"), bool):
             raise ValueError(f"lookup_route emitted junk: {parsed!r}")
@@ -496,12 +511,14 @@ def observe_hits(root: Path, question: str, hits: list[dict[str, Any]], *,
                  time_indexed: bool = False,
                  today: date | None = None,
                  half_life_years: float = _TIME_HALF_LIFE_YEARS,
+                 meter: list[float] | None = None,
                  ) -> tuple[list[Observation], int]:
     """One grounded extraction per hit (cached). Returns (grounded observations,
     indeterminate count). Indeterminate = the instrument returned ⊥ (not found) or its
     quote failed the grounding gate — recorded either way, counted, never silently
     dropped (§4.2's indeterminacy term). ``covariates`` carries the §4.1 doc_subject /
-    doc_date factors into each observation's a_i."""
+    doc_date factors into each observation's a_i. ``meter``, when given, accumulates
+    the realised USD cost of cache-miss model calls (warm replays append nothing)."""
     if client is None:
         client = _client()
     cov = covariates if covariates is not None else HitCovariates()
@@ -520,6 +537,8 @@ def observe_hits(root: Path, question: str, hits: list[dict[str, Any]], *,
             prompt = EXTRACT_PROMPT.replace("{question}", question).replace(
                 "{chunk}", chunk)
             response = client.complete(prompt, EXTRACT_SCHEMA)
+            if meter is not None:
+                meter.append(float(getattr(response, "cost_usd", 0.0) or 0.0))
             raw = json.loads(response.raw_text)
             found = bool(raw.get("found")) and bool(str(raw.get("value") or "").strip())
             parsed = {"format_version": 1, "found": found,
@@ -756,7 +775,9 @@ def render(result: LookupResult) -> str:
     elif result.action == "abstain" and result.candidates:
         body = GRAMMAR["abstain_withheld"].format(reason=REASON_DISPERSED, alts=alts)
     else:
-        body = GRAMMAR["abstain"].format(reason=REASON_DISPERSED)
+        # zero candidates ⇒ no posterior existed, so "dispersed" would be a false reason
+        # (interaction contract: the named reason must be the true one).
+        body = GRAMMAR["abstain"].format(reason=REASON_NO_OBSERVATIONS)
     footer = GRAMMAR["footer"].format(
         n_hits=result.n_hits, n_obs=len(result.observations),
         n_ind=result.n_indeterminate, p_none=result.p_none,

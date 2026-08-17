@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# daily-digest — the timer entrypoint for the morning GTD briefing (M-2).
+# Renders the digest over the GTD read-model and sends it to the owner via
+# Telegram (interaction contract §push: outbound only, parses nothing). Meant to
+# run from a systemd --user timer (packaging/daily-digest.timer); by hand it's a
+# dry run of your morning message.
+set -euo pipefail
+root="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+set -a; [ -f "$root/.env" ] && source "$root/.env"; set +a
+# A systemd --user timer has no shell env — resolve the transport token and the
+# owner id from the keyring, without ever printing them.
+if [ -z "${TELEGRAM_TOKEN:-}" ]; then
+  TELEGRAM_TOKEN="$(secret-tool lookup service env key TELEGRAM_TOKEN || true)"
+  export TELEGRAM_TOKEN
+fi
+if [ -z "${JARVIS_USER_ID:-}" ]; then
+  JARVIS_USER_ID="$(secret-tool lookup service env key JARVIS_USER_ID || true)"
+  export JARVIS_USER_ID
+fi
+exec uv run --project "$root" python -m life_agent.reach.digest

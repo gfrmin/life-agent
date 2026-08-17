@@ -171,3 +171,33 @@ def test_answer_flag_on_wires_the_live_consult_and_skips_the_mirror(monkeypatch:
                            hashlib.sha256(b"what is my passport number?").hexdigest()[:16])]
     assert captured["live"] is sentinel_consult
     assert captured["post"] is bare_post
+
+
+def test_post_json_gives_the_narrative_path_more_headroom(monkeypatch) -> None:
+    # the slow endpoint (cold expand + rerank + synthesize) outran the flat 300s
+    # budget and the hung-up client wedged the bridge (run-6 void, 2026-08-17)
+    import io
+    import json as _json
+
+    from life_agent.core import ask_client as AC
+
+    seen: dict = {}
+
+    class _R(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    def fake_urlopen(req, timeout=None):
+        seen[req.full_url] = timeout
+        return _R(_json.dumps({"ok": True}).encode())
+
+    monkeypatch.setattr(AC.urllib.request, "urlopen", fake_urlopen)
+    AC.post_json("http://b/narrative", {})
+    AC.post_json("http://b/route", {})
+    AC.post_json("http://b/extract", {}, timeout=42)
+    assert seen["http://b/narrative"] == AC._SLOW_TIMEOUT > 300
+    assert seen["http://b/route"] == 300
+    assert seen["http://b/extract"] == 42

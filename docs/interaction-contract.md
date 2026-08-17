@@ -107,7 +107,7 @@ never silent. When fresh: nothing printed, nothing written. The strings are one 
 **The owner filter (subject mode).** A plain `QUESTION` with an *unchained* first-person
 possessive — "what is **my** Israeli ID?", "the **owner's** mortgage" — filters hits by
 each document's projected subject (pkm SPEC §18.13 `doc_subject`) matched against the
-owner profile. The match is consumer-side (the profile never enters pkm): a cached local-
+owner profile. The match is consumer-side (the profile never enters pkm): a cached
 model verdict per distinct subject string, so the per-question filter is deterministic. A
 *relational* possessive — "my **partner's** ID" — does NOT trigger it (filtering for the
 owner there would exclude exactly the right answer). Only documents *determinately* about
@@ -141,10 +141,22 @@ credence):
 | claim credence | every rendered claim carries its credence in one vocabulary across surfaces — never per-surface prose inventions |
 | claim as-of | a claim whose cited evidence is dated carries `, as of <date>` (the freshest cited doc_date) so a *stale* grounding is visible, not silently asserted as current; an undated claim omits it (no fabricated date) — the temporal-scope keystone (`narrative.GRAMMAR["as_of"]`) |
 | hedge | when no value dominates, the mixture is reported as alternatives with credences — never a silent pick of the leader |
-| abstention | a named reason from a closed set (dispersed posterior · no admitted evidence · below the relevance floor) — never an empty or evasive reply; and when the posterior held candidates below the assert threshold, it names them with credences (`Held back: …`) — the withheld "thinking" the owner verdicts the abstain *decision* against, never a blind "should you have answered?" |
+| abstention | a named reason from a closed set (dispersed posterior · no admitted evidence · corpus unavailable · below the relevance floor) — never an empty or evasive reply; and when the posterior held candidates below the assert threshold, it names them with credences (`Held back: …`) — the withheld "thinking" the owner verdicts the abstain *decision* against, never a blind "should you have answered?". The reason must be the *true* one: an abstention with zero grounded observations is **no admitted evidence**, never "dispersed posterior" — nothing was dispersed because no posterior existed. **corpus unavailable** is the reason when the evidence a question needs is not in this machine's catalogue: a coverage statement about the corpus, not a belief about the answer, and it is what distinguishes "I looked and found nothing" from "I could not look here" (foundations §14, the availability registration). |
 | clarifying ask | asked only when `voi` prices it above the interruption belief×cost; the question names what it would resolve |
 | withheld claims | inclusion is a decision (foundations §3): withheld claims are counted with their EU reason — `n claims withheld: low relevance` |
 | indeterminates | carried and named, as in the temporal/subject footers — the §18.12/§18.13 contract generalised |
+
+**The uncalibrated lane (MVP dual-lane fallback — adopted 2026-08-17, flag-gated,
+`LIFE_AGENT_FALLBACK_LANE=1`).** While the §8 adoption gate is pending, a typed
+WITHHOLDING (abstain / ask-clarify / miss — never a hedge, which already surfaces its
+candidates) may additionally render the monolithic prose synthesized over the *same*
+retrieved sources, under the explicit `uncalibrated lane` label
+(`lookup.GRAMMAR["fallback_lane"]`). The typed decision still renders first with its
+named reason and held-back candidates; the lane is **presentation only** — the logged
+decision, and any `g`/`b` verdict bound to its `decision_id`, remains the typed one. A
+failed lane is named (`fallback_lane_failed`), never silent; the flag's absence is
+byte-for-byte the pre-lane render, and the lane is removed when the gate passes and
+typed becomes the silent default.
 
 Rendering order is posterior order, not rhetorical order; LLM paraphrase stays within
 claim boundaries; the conformance audit (the citation guard extended to claim coverage)
@@ -156,7 +168,7 @@ posterior is named in every footer — "this may be incomplete" is a number, not
 
 ## act — Jarvis
 
-Free-text Telegram messages, parsed by a local model into one of these intents
+Free-text Telegram messages, parsed by a small model call into one of these intents
 (`jarvis.INTENTS`, the single source for the NLU prompt and the help reply):
 
 | intent | canonical phrasing | reply shape |
@@ -197,7 +209,10 @@ Truth is the append-only event ledger; every reply reflects the fold
 The morning **digest** (today's focus, overdue, due today, up-next, inbox count) and the
 **mail nudge** ("Added N task(s) to your GTD inbox from email") are broadcasts. They parse
 nothing; acting on them is an ordinary *act* message. One inbox state, two cadences —
-arrival nudge and morning summary — not two sources of truth.
+arrival nudge and morning summary — not two sources of truth. Invariant 3 applies to
+push too: the up-next section shows a bounded list and **names** the remainder
+(`(+N more in #next)`) rather than dropping it. The digest's section strings are one
+table (`digest.SECTIONS`), drift-gated like the other vocabularies (§Conformance).
 
 ## plumbing and porcelain
 

@@ -1,15 +1,32 @@
 """Daily digest — a morning summary over the GTD projection, sent via Telegram.
 
 Reads the read-model (``tasks.store``) and speaks in the digest voice; runs from a
-``systemd --user`` timer: ``python -m life_agent.reach.digest``. Reach, not truth.
+``systemd --user`` timer (``packaging/daily-digest.timer`` → ``bin/daily-digest``).
+Reach, not truth — outbound only, parses nothing (interaction contract §push).
 """
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import date
 
 from life_agent.reach import telegram
-from life_agent.tasks.store import get_db
+from life_agent.tasks.store import get_db, owner_user_id
+
+# How many #next tasks the digest shows before naming the remainder.
+NEXT_LIMIT = 5
+
+# The push-mode vocabulary (interaction contract §push): one table, rendered by
+# build_digest and drift-gated in tests/test_reach.py — the contract's enumerated
+# sections by name, plus the invariant-3 truncation line (nothing vanishes silently:
+# a #next task past the limit is counted, never dropped without a word).
+SECTIONS = {
+    "focus": "TODAY'S FOCUS:",
+    "overdue": "OVERDUE:",
+    "due_today": "DUE TODAY:",
+    "next": "UP NEXT:",
+    "next_more": "  (+{n} more in #next)",
+    "inbox": "You have {n} item(s) in your inbox to process.",
+}
 
 
 def build_digest(user_id: int) -> str | None:
@@ -31,7 +48,7 @@ def build_digest(user_id: int) -> str | None:
         (user_id, today),
     ).fetchall()
     next_tasks = conn.execute(
-        "SELECT * FROM tasks WHERE user_id = ? AND list = 'next' AND completed_at IS NULL ORDER BY id LIMIT 5",
+        "SELECT * FROM tasks WHERE user_id = ? AND list = 'next' AND completed_at IS NULL ORDER BY id",
         (user_id,),
     ).fetchall()
     inbox_count = conn.execute(
@@ -45,43 +62,38 @@ def build_digest(user_id: int) -> str | None:
 
     lines = ["Good morning! Here's your daily digest:\n"]
     if today_tasks:
-        lines.append("TODAY'S FOCUS:")
+        lines.append(SECTIONS["focus"])
         lines += [f"  [{t['id']}] {t['text']}" for t in today_tasks]
         lines.append("")
     if overdue:
-        lines.append("OVERDUE:")
+        lines.append(SECTIONS["overdue"])
         lines += [f"  [{t['id']}] {t['text']} (due {t['due_date']})" for t in overdue]
         lines.append("")
     if due_today:
-        lines.append("DUE TODAY:")
+        lines.append(SECTIONS["due_today"])
         lines += [f"  [{t['id']}] {t['text']}" for t in due_today]
         lines.append("")
     if next_tasks:
-        lines.append("UP NEXT:")
-        lines += [f"  [{t['id']}] {t['text']}" for t in next_tasks]
+        lines.append(SECTIONS["next"])
+        lines += [f"  [{t['id']}] {t['text']}" for t in next_tasks[:NEXT_LIMIT]]
+        if len(next_tasks) > NEXT_LIMIT:
+            lines.append(SECTIONS["next_more"].format(n=len(next_tasks) - NEXT_LIMIT))
         lines.append("")
     if inbox_count > 0:
-        lines.append(f"You have {inbox_count} item(s) in your inbox to process.")
+        lines.append(SECTIONS["inbox"].format(n=inbox_count))
     return "\n".join(lines)
 
 
 def main() -> None:
-    conn = get_db()
-    thirty_days_ago = (datetime.now() - timedelta(days=30)).isoformat()
-    users = conn.execute(
-        "SELECT DISTINCT user_id FROM tasks WHERE completed_at IS NULL AND created_at >= ?",
-        (thirty_days_ago,),
-    ).fetchall()
-    conn.close()
-
-    for row in users:
-        user_id = row["user_id"]
-        digest = build_digest(user_id)
-        if digest:
-            try:
-                telegram.send_message(user_id, digest)
-            except Exception as e:
-                print(f"Failed to send digest to {user_id}: {e}")
+    # the owner convention (JARVIS_USER_ID env/keyring, else the store's sole user) —
+    # the same resolution every other surface uses, not a distinct-user scan
+    user_id = owner_user_id()
+    digest = build_digest(user_id)
+    if digest:
+        try:
+            telegram.send_message(user_id, digest)
+        except Exception as e:
+            print(f"Failed to send digest to {user_id}: {e}")
 
 
 if __name__ == "__main__":

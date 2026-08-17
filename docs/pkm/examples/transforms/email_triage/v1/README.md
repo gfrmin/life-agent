@@ -16,5 +16,6 @@ Install into a live root by copying the three files under
 
     pkm --config <config> transform run email_triage --limit 50
 
-Local Ollama model (`qwen2.5:7b-instruct`), `cost_usd = 0`. Pin the model tag
-(never `:latest`); it is part of the cache key.
+Anthropic model (`claude-haiku-4-5-20251001` — local Ollama deprecated 2026-08-17),
+metered `cost_usd` under the cost gate. Pin a dated model id (never an alias);
+it is part of the cache key.

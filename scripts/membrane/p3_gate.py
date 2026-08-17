@@ -306,29 +306,108 @@ def _load_v2_questions(path: Path) -> list[dict[str, Any]]:
     return doc["questions"] if isinstance(doc, dict) and "questions" in doc else doc
 
 
+def run_differential(rows: Sequence[HeldoutTick], *, variant: str,
+                     families: Sequence[str], h2q: Mapping[str, str],
+                     baseline_rows: Sequence[dict[str, Any]], posterior: Any,
+                     oracle_p: float, out: Path, draws: int, seed: int,
+                     log: Callable[[str], None] = print) -> Any:
+    """One A3 differential gate (membrane held-out acts vs the credence baseline) for one
+    lattice variant, with VARIANT-SUFFIXED artifacts — a second variant (or a re-run)
+    must never clobber another's record (the runs-3/4 clobber lesson). The lattice under
+    test is provenance: ``a3_meta-{variant}.json`` names its families and their resolved
+    indicator vocabulary (read from ``LR.FAMILY_NAMES``, never re-spelled)."""
+    import life_agent.core.gate as GATE
+
+    acts = question_acts(list(rows))
+    paired, only_m, only_b = build_paired(acts, h2q, baseline_rows)
+    log(f"  joined {len(paired)} questions  ·  membrane-only (non-v2/live) {len(only_m)}  "
+        f"·  baseline-only {len(only_b)}")
+    gate = GATE.delta_posterior(paired, posterior, oracle_p=oracle_p,
+                                n_draws=draws, seed=seed)
+    verdict = "PASS" if gate.passed else "FAIL"
+    log(f"  verdict {verdict} · P(Δ>{gate.materiality_delta})={gate.p_delta_gt:.3f} "
+        f"(gate ≥ {gate.level:.2f}) · Δ̄={gate.delta_mean:+.3f} "
+        f"[{gate.delta_lo:+.3f}, {gate.delta_hi:+.3f}]")
+    d = gate.diagnostics
+    ar = lambda x: "n/a" if x is None else f"{x:.2f}"  # noqa: E731
+    log(f"  answer rate: membrane {ar(d.typed_answer_rate)} · baseline "
+        f"{ar(d.mono_answer_rate)} · disagreement {d.disagreement_n}/{d.n}")
+
+    out.mkdir(parents=True, exist_ok=True)
+    (out / f"a3_gate-{variant}.md").write_text(
+        GATE.render_report(gate, run_id=f"p3-heldout-{variant}", elapsed=0.0),
+        encoding="utf-8")
+    (out / f"a3_paired-{variant}.jsonl").write_text(
+        # `withheld`/`censored` ride here too (§14 availability registration): the A3 gate
+        # shares gate.PairedOutcome, so its artifact must determine its Δ as run_eval's does.
+        "".join(json.dumps({"question_id": p.question_id, "answerable": p.answerable,
+                            "censored": p.censored(),
+                            "typed": {"action": p.typed.action, "correct": p.typed.correct,
+                                      "withheld": p.typed.withheld},
+                            "mono": {"action": p.mono.action, "correct": p.mono.correct,
+                                     "withheld": p.mono.withheld}},
+                           sort_keys=True) + "\n" for p in paired), encoding="utf-8")
+    (out / f"a3_meta-{variant}.json").write_text(json.dumps({
+        "variant": variant,
+        "families": list(families),
+        "indicators": [n for f in families for n in LR.FAMILY_NAMES[f]],
+        "n_joined": len(paired),
+        "membrane_only": only_m, "baseline_only": only_b,
+        "verdict": verdict, "p_delta_gt": gate.p_delta_gt,
+        "delta_mean": gate.delta_mean,
+        "delta_lo": gate.delta_lo, "delta_hi": gate.delta_hi,
+        "draws": draws, "seed": seed,
+    }, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return gate
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--engine", default=LR.DEFAULT_ENGINE)
     parser.add_argument("--baseline-run", type=Path,
-                        default=Path.home() / ".local/share/life-agent/eval/fairfight/"
-                        "ff-v2-baseline-m3off")
+                        default=C.KB / "eval/fairfight/ff-v2-baseline-m3off")
     parser.add_argument("--baseline-arm", default="baseline")
     parser.add_argument("--questions-v2", type=Path,
-                        default=Path.home() / ".local/share/life-agent/eval/questions_v2.yaml")
+                        default=C.KB / "eval/questions_v2.yaml")
     parser.add_argument("--draws", type=int, default=20000)
     parser.add_argument("--seed", type=int, default=8675309)
-    parser.add_argument("--out", type=Path,
-                        default=Path.home() / ".local/share/life-agent/eval/p3")
+    parser.add_argument("--out", type=Path, default=C.KB / "eval/p3")
+    parser.add_argument(
+        "--gate-variants", default="FULL",
+        help="comma-separated lattice variants to run the A3 differential over "
+             "(default: FULL — the P3 record's arm; p3b adds leader-credence-only, "
+             "pre-registered in docs/membrane/p3b-coarsened-pre-registration.md)")
+    parser.add_argument(
+        "--expect-ticks", type=int, default=None,
+        help="refuse before any engine work if the keyed replay's tick count differs "
+             "— the pre-registration pins the ledger window by its counts, and a "
+             "drifted ledger is a different corpus, not a comparable reading")
+    parser.add_argument("--expect-questions", type=int, default=None)
+    parser.add_argument(
+        "--u-bar-override", default=None, metavar="JSON",
+        help="pin the boot Ū to this JSON dict (e.g. P3's Ū, for the engine byte-compat "
+             "reproduction). The record names it; NEVER used for a reading — the reading's "
+             "Ū is the boot row, and the p3b pre-registration disclosed why the two differ")
     args = parser.parse_args(argv)
 
-    import life_agent.core.gate as GATE
     import life_agent.core.lookup as LK
     import life_agent.core.utility as UT
     from life_agent.core import config as LCFG
 
     keyed = load_keyed_replay()
     groups = group_by_question(keyed)
+    if ((args.expect_ticks is not None and len(keyed) != args.expect_ticks)
+            or (args.expect_questions is not None
+                and len(groups) != args.expect_questions)):
+        print(f"REFUSED: keyed replay is {len(keyed)} ticks / {len(groups)} questions; "
+              f"the pre-registered window expects {args.expect_ticks} / "
+              f"{args.expect_questions}. The ledger moved — re-cut the "
+              f"pre-registration for the new window rather than reading over it.")
+        return 2
     u_bar = R.latest_boot_u_bar(R.load_shadow_records(C.membrane_shadow_log()), "said@1")
+    if args.u_bar_override:
+        u_bar = {str(k): float(v) for k, v in json.loads(args.u_bar_override).items()}
+        print(f"Ū OVERRIDDEN (reproduction mode, not a reading): {u_bar}")
     if u_bar is None:
         print("no boot u_bar on the shadow log; cannot run.")
         return 1
@@ -355,8 +434,14 @@ def main(argv: list[str] | None = None) -> int:
     evidence: list[UT.Evidence] = list(UT.load_elicitations(LCFG.UTILITY_ELICITATIONS, model))
     posterior = UT.posterior(brain, model, evidence)
 
+    gate_variants = [v.strip() for v in str(args.gate_variants).split(",") if v.strip()]
+    unknown = [v for v in gate_variants if v not in variants]
+    if unknown:
+        print(f"REFUSED: unknown --gate-variants {unknown} (declared: {list(variants)})")
+        return 2
+
     results: dict[str, Any] = {"variants": {}}
-    full_rows: list[HeldoutTick] = []
+    rows_by_variant: dict[str, list[HeldoutTick]] = {}
     for name, fams in variants.items():
         print(f"\n=== A1/A2 held-out variant: {name} (families={list(fams)}) ===")
         rows = probe_heldout(keyed, u_bar, args.engine, fams, log=print)
@@ -365,8 +450,7 @@ def main(argv: list[str] | None = None) -> int:
                                         n_draws=args.draws, seed=args.seed)
         at_bar["pu_mean"], at_bar["pu_q05"], at_bar["pu_q95"] = mean, q05, q95
         results["variants"][name] = at_bar
-        if name == "FULL":
-            full_rows = rows
+        rows_by_variant[name] = rows
         print(f"  policy EU/q @Ū: {at_bar['policy_eu_per_q']:+.4f}  "
               f"(respond-all {at_bar['respond_all_eu_per_q']:+.4f}, abstain 0)")
         print(f"  P(U) EU/q: {mean:+.4f} [{q05:+.4f}, {q95:+.4f}]  ·  "
@@ -377,38 +461,21 @@ def main(argv: list[str] | None = None) -> int:
             print(f"    {b['bucket']:>6} n={b['n']:>3} correct={b['correct']:.3f} "
                   f"mean_p1={mp1} respond={b['n_respond']:>3} EU/q={b['policy_eu']:+.3f}")
 
-    # A3: the differential gate (FULL membrane held-out acts vs the credence baseline)
-    print("\n=== A3 differential adoption gate: membrane (held-out, FULL) vs credence baseline ===")
-    acts = question_acts(full_rows)
+    # A3: the differential gate per requested variant (P3's record is FULL; p3b adds
+    # the coarsened arm — each writes its OWN suffixed artifacts, no clobber)
     h2q = hash_to_qid(_load_v2_questions(args.questions_v2))
     baseline_rows = _load_baseline_rows(args.baseline_run, args.baseline_arm)
-    paired, only_m, only_b = build_paired(acts, h2q, baseline_rows)
-    print(f"  joined {len(paired)} questions  ·  membrane-only (non-v2/live) {len(only_m)}  "
-          f"·  baseline-only {len(only_b)}")
-    gate = GATE.delta_posterior(paired, posterior, oracle_p=LK._ORACLE_P,
-                                n_draws=args.draws, seed=args.seed)
-    verdict = "PASS" if gate.passed else "FAIL"
-    print(f"  verdict {verdict} · P(Δ>{gate.materiality_delta})={gate.p_delta_gt:.3f} "
-          f"(gate ≥ {gate.level:.2f}) · Δ̄={gate.delta_mean:+.3f} "
-          f"[{gate.delta_lo:+.3f}, {gate.delta_hi:+.3f}]")
-    d = gate.diagnostics
-    ar = lambda x: "n/a" if x is None else f"{x:.2f}"  # noqa: E731
-    print(f"  answer rate: membrane {ar(d.typed_answer_rate)} · baseline {ar(d.mono_answer_rate)} "
-          f"· disagreement {d.disagreement_n}/{d.n}")
-
     args.out.mkdir(parents=True, exist_ok=True)
     (args.out / "a1_a2.json").write_text(json.dumps(results, indent=2, sort_keys=True) + "\n",
                                          encoding="utf-8")
-    (args.out / "a3_gate.md").write_text(
-        GATE.render_report(gate, run_id="p3-heldout", elapsed=0.0), encoding="utf-8")
-    (args.out / "a3_paired.jsonl").write_text(
-        "".join(json.dumps({"question_id": p.question_id, "answerable": p.answerable,
-                            "typed": {"action": p.typed.action, "correct": p.typed.correct},
-                            "mono": {"action": p.mono.action, "correct": p.mono.correct}},
-                           sort_keys=True) + "\n" for p in paired), encoding="utf-8")
-    (args.out / "unjoined.json").write_text(
-        json.dumps({"membrane_only": only_m, "baseline_only": only_b}, indent=2) + "\n",
-        encoding="utf-8")
+    for name in gate_variants:
+        print(f"\n=== A3 differential adoption gate: membrane (held-out, {name}) "
+              f"vs credence baseline ===")
+        run_differential(rows_by_variant[name], variant=name,
+                         families=variants[name], h2q=h2q,
+                         baseline_rows=baseline_rows, posterior=posterior,
+                         oracle_p=LK._ORACLE_P, out=args.out,
+                         draws=args.draws, seed=args.seed)
     print(f"\nWrote → {args.out}")
     return 0
 

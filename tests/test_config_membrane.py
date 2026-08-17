@@ -141,3 +141,21 @@ def test_membrane_categorical_other_values_stay_off(monkeypatch) -> None:
     assert config.membrane_categorical() is False
     monkeypatch.setenv(config.MEMBRANE_CAT_ENV, "true")
     assert config.membrane_categorical() is False
+
+
+# --- the MVP dual-lane fallback's rollout flag -------------------------------------------
+
+def test_fallback_lane_default_off(monkeypatch) -> None:
+    monkeypatch.delenv(config.FALLBACK_LANE_ENV, raising=False)
+    assert config.fallback_lane_enabled() is False
+
+
+def test_fallback_lane_on(monkeypatch) -> None:
+    monkeypatch.setenv(config.FALLBACK_LANE_ENV, "1")
+    assert config.fallback_lane_enabled() is True
+
+
+def test_fallback_lane_other_values_off(monkeypatch) -> None:
+    for v in ("0", "true", "yes", ""):
+        monkeypatch.setenv(config.FALLBACK_LANE_ENV, v)
+        assert config.fallback_lane_enabled() is False, v

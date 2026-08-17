@@ -49,7 +49,8 @@ Each is a named follow-up, not an accident.
 
 **Outputs (all under the out dir, PII fail-closed — corpus content never leaves
 ``$LIFE_AGENT_KB``):** ``questions_v2.yaml`` (the candidate corpus: id ``q2-NNN``,
-question/subject/answer/answer_variants/notes + ``provenance`` {chunk_id, source_path}
+question/subject/answer/answer_variants/notes + ``provenance`` {chunk_id,
+artifact_cache_key, chunk_index, source_path, source_origin, verifier_answer}
 + ``audit: true`` on a seeded ~10% owner-audit sample), ``factory_meta.json`` (models,
 prompt shas, seeds, counts, cost), ``report.md`` (the human summary + the audit list).
 The canonical ``$LIFE_AGENT_KB/eval/questions_v2.yaml`` is only written under
@@ -79,7 +80,11 @@ from life_agent.core import llm as LLM
 from life_agent.core import pricing as PRICING
 from life_agent.core.matching import answer_matches
 
-FORMAT_VERSION = 1
+# 2: provenance gained ``artifact_cache_key`` + ``chunk_index`` — the content-addressed
+# handle for the gold chunk, alongside the surrogate ``chunk_id`` (which does not survive
+# ``pkm rebuild-catalogue``). Additive: v1 corpora stay readable, and consumers fall back
+# to ``chunk_id`` per-question when the pair is absent.
+FORMAT_VERSION = 2
 
 # Frozen prompt contracts — sha256 of each goes into factory_meta.json; editing wording is
 # a NEW version, never an in-place edit (the arm_hermes PROMPT_V1 discipline).
@@ -201,6 +206,15 @@ class Admitted:
     subject: str
     notes: str
     chunk_id: int
+    # The content-addressed handle for the same chunk. ``chunk_id`` is a surrogate
+    # sequence (pkm migration 0005) and does NOT survive ``pkm rebuild-catalogue``, so on
+    # its own it silently re-points to a different chunk after a recovery. The
+    # ``(artifact_cache_key, chunk_index)`` pair is the table's PRIMARY KEY (migration
+    # 0004) and is what ``corpus_digest`` hashes — it is comparable across independently
+    # chunked catalogues. Both are carried: the pair is the truth, ``chunk_id`` the
+    # convenience.
+    artifact_cache_key: str
+    chunk_index: int
     source_path: str
     source_origin: str | None
     verifier_answer: str
@@ -224,7 +238,8 @@ def sample_chunks(conn: Any, *, min_chars: int, limit: int, seed: int) -> list[d
     rows = conn.execute(
         f"""
         WITH {R._PATH_CURRENT_CTE}
-        SELECT c.chunk_id, c.chunk_text, c.source_origin, s.current_path
+        SELECT c.chunk_id, c.artifact_cache_key, c.chunk_index,
+               c.chunk_text, c.source_origin, s.current_path
         FROM artifact_chunks c
         JOIN artifacts a ON c.artifact_cache_key = a.cache_key
         JOIN sources s ON a.input_hash = s.source_id
@@ -236,9 +251,10 @@ def sample_chunks(conn: Any, *, min_chars: int, limit: int, seed: int) -> list[d
     ).fetchall()
     rng = random.Random(seed)
     strata: dict[str, list[dict[str, Any]]] = {}
-    for chunk_id, chunk_text, origin, path in rows:
+    for chunk_id, cache_key, chunk_index, chunk_text, origin, path in rows:
         strata.setdefault(str(origin), []).append(
-            {"chunk_id": int(chunk_id), "chunk_text": str(chunk_text),
+            {"chunk_id": int(chunk_id), "artifact_cache_key": str(cache_key),
+             "chunk_index": int(chunk_index), "chunk_text": str(chunk_text),
              "source_origin": origin, "source_path": str(path)})
     for members in strata.values():
         rng.shuffle(members)
@@ -371,7 +387,10 @@ def run_factory(conn: Any, propose_complete: Complete, verify_complete: Complete
         result.admitted.append(Admitted(
             question=question, answer=answer, answer_variants=tuple(variants),
             subject=subject, notes=str(obj.get("notes", "")),
-            chunk_id=int(chunk["chunk_id"]), source_path=chunk["source_path"],
+            chunk_id=int(chunk["chunk_id"]),
+            artifact_cache_key=str(chunk["artifact_cache_key"]),
+            chunk_index=int(chunk["chunk_index"]),
+            source_path=chunk["source_path"],
             source_origin=chunk["source_origin"], verifier_answer=verifier_answer))
     return result
 
@@ -394,7 +413,10 @@ def questions_yaml_dict(result: FactoryResult, *, audit_fraction: float,
             "answer": a.answer,
             "answer_variants": list(a.answer_variants),
             "notes": a.notes,
-            "provenance": {"chunk_id": a.chunk_id, "source_path": a.source_path,
+            "provenance": {"chunk_id": a.chunk_id,
+                           "artifact_cache_key": a.artifact_cache_key,
+                           "chunk_index": a.chunk_index,
+                           "source_path": a.source_path,
                            "source_origin": a.source_origin,
                            "verifier_answer": a.verifier_answer},
         }

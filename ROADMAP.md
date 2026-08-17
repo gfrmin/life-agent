@@ -20,7 +20,7 @@ view** — what each faculty is and where it stands.
 |---|---|---|
 | **Memory** — recall + retrieval | **PKM** (`src/pkm`, Python) + **`life_agent`** (this repo, Python) | **Live.** PKM: content-addressed extraction + DuckDB `fts`/`vss` + **composable transforms** (chained, cited perspectives — SPEC §18.7). `life_agent` adds the retrieval/synthesis read path (`scripts/ask.py`, dogfooded via `bin/ask-live`). |
 | **Brain** — beliefs under uncertainty; value-of-information → ask/proceed/block | **credence** (`../credence`, Julia; the skin's JSON-RPC-over-stdio seam) | **Adopted, being wired (Phase 1.6 / Ask v0):** [`docs/bayesian-foundations.md`](./docs/bayesian-foundations.md) — answers become claim sets with posteriors; responses are EU decisions through `src/life_agent/core/brain.py` (slice 1). The VOI governor stays last. |
-| **Hands** — capabilities/actions | **GTD** (`life_agent.tasks`, event-sourced) reached via **`life_agent.reach`** (Telegram transport + persona); email (`msmtp`/JMAP), calendar (CalDAV/Google), chat (matrix) | GTD live, ledger-as-truth (PRINCIPLES §7); **email→GTD shipped (M2)** — the `action_items` transform (local model, grounded quotes) **auto-files** cited tasks to the inbox; you triage in Telegram. Rest not wired. |
+| **Hands** — capabilities/actions | **GTD** (`life_agent.tasks`, event-sourced) reached via **`life_agent.reach`** (Telegram transport + persona); email (`msmtp`/JMAP), calendar (CalDAV/Google), chat (matrix) | GTD live, ledger-as-truth (PRINCIPLES §7); **email→GTD shipped (M2)** — the `action_items` transform (haiku, grounded quotes) **auto-files** cited tasks to the inbox; you triage in Telegram. Rest not wired. |
 | **Goals / Utility** — what the owner values | *(new, unbuilt)* | **The hardest missing piece.** EU-maximisation presupposes it; owed a design before any autonomous *action* (PRINCIPLES §3). |
 | **Spine** — the agent loop + routing | **TBD — open decision** | Deferred to Phase 2 (PRINCIPLES §15). Candidates: pi-mono (TS), a Python loop, or Claude Code as an interim loop. |
 
@@ -59,9 +59,16 @@ OCR+grep needle-finder (`scripts/needle.sh`) survives as a standalone tool.
 1. **(done)** Bump PKM **SPEC → v0.3.0** authorising retrieval/embeddings/extensions/local MCP server (governance-first).
 2. **(done)** **`TesseractProducer`** (`src/pkm/producers/tesseract.py`, heb+eng) wired into `routing.py` +
    `extract.py` + `cli.py`; migration `0004` (`chunks`, `embeddings FLOAT[768]`, `source_origin`).
-3. **(done)** Local embeddings via Ollama `nomic-embed-text` (stdlib `urllib`, no new dep).
-4. **(done)** DuckDB `fts` + `vss` hybrid query (over-fetch k·10); `pkm search` CLI; `pkm-memory` MCP
-   (FastMCP) — **later retired**; retrieval now via `bin/ask-live`.
+3. ~~(done) Local embeddings via Ollama `nomic-embed-text`~~ **CORRECTED 2026-08-17: never
+   implemented.** No embedding call site exists in `src/`; the live catalogue's 529,788
+   chunks carry zero non-NULL embeddings; retrieval is BM25/FTS only. The "(done)" was
+   aspiration recorded as fact (SPEC v0.3.0 §31's identity rules for embeddings stand,
+   unexercised). Greenfield when picked up — and per the 2026-08-17 Ollama deprecation
+   (owner directive), on a **local non-Ollama runtime** (same-model weights via
+   llama.cpp/ONNX-class serving), keeping the 768-dim schema.
+4. **(done)** DuckDB `fts` hybrid query scaffolding (over-fetch k·10); `pkm search` CLI;
+   `pkm-memory` MCP (FastMCP) — **later retired**; retrieval now via `bin/ask-live`. The
+   `vss` leg was never populated (see 3).
 5. **(done) Source adapters — a declarative registry, not ad-hoc scripts.** Sources are declared
    in a **`data-sources.yaml`** registry (real one under `$LIFE_AGENT_KB`, fake schema in
    `config/data-sources.example.yaml`) and enumerated from **plocate**. Two pieces:
@@ -103,6 +110,67 @@ Bayesian Ask rather than deterministic pipelines. Remaining program, in dependen
    decision log (utility is a learned belief about the owner — foundations §4.4/§10 as
    amended 2026-06-12: one utility, the agent has none of its own); slice 3: narrative
    subsumption.
+3a. **Gate-instrument work — corpus availability as a modelled variable** *(landed
+   2026-08-15; foundations §14, registered blind before run 6)*. The corpus differs
+   across machines, and the gate's arms are not symmetric under it: the typed arm runs
+   live against the running box's catalogue while the replay arm is a frozen full-corpus
+   recording, so every availability gap biased Δ **pro-baseline** by a per-machine amount
+   that no artifact recorded. Three changes: every gate report now carries its
+   `corpus_digest` and availability count; the paired row records *why* the typed arm
+   withheld (`miss` / `dispersed` / `unavailable` — run 5's 70 abstains were
+   undifferentiated, which is why the reach lever had no direction); and `unavailable`
+   rows are censored from Δ while staying in the published diagnostics. Disclosed blind:
+   this censors **zero** rows on the run-6 corpus (104/104 gold chunks resolve), and run
+   5's archived rows replay bit-identically — it is a forward guarantee, not a re-pricing.
+   Registry roots gained `availability` (`required`/`optional`/`deferred`), so an absent
+   root no longer aborts every other root's ingest.
+3b. **Corpus identity as an artifact property** *(landed 2026-08-17; foundations §14)*.
+   The corpus is not a fixed thing being measured — files move, get deleted, get added —
+   so the gate needed to record *which* universe each reading used. Forensics first
+   (`scripts/forensics/corpus_timeline.py`): the retrieval universe has been **frozen
+   since 2026-06-11T20:24:55**, so runs 3–5 are one controlled series and §14's run-5
+   claim that "the corpus digest moved" was wrong — corrected with disclosure, which
+   *removes* a confound. Then three landed changes: gold provenance is now
+   **content-addressed** (`artifact_cache_key` + `chunk_index` beside the surrogate
+   `chunk_id`, which `pkm rebuild-catalogue` silently re-issues), backfilled across all
+   104 questions under a guard that aborts on any non-provenance diff; a corpus version
+   is a **self-verifying ~1 MB manifest** whose re-hash *is* `corpus_digest`
+   (`scripts/corpus/pin_corpus.py`, pinned as `full-2026-06-11`), not a 2.8 GB copy —
+   the store is content-addressed and monotone, so version *n+1* is a strict superset;
+   and every gate run publishes a `run_meta.json` (git sha, questions/utility sha256s,
+   corpus + pin status) plus `run_id`/`corpus_digest`/`corpus_snapshot` on every paired
+   row, with `--corpus-pin` **refusing before spending** on a mismatch. Run 5's archived
+   rows replay bit-identically, so none of it re-prices anything.
+3c. **The MVP fast path — re-sequenced 2026-08-17 (owner directive: "MVP sooner, vision
+   intact")**. Nothing in the daily-driver surface depends on the proplang ladder: the
+   spine is transport (PRINCIPLES §16) and there is one act-committing seam, so the
+   read-only assistant surface (Phase 2's item, pulled forward) ships underneath the
+   ladders and *feeds* the evidence they gate on. Landed the same day: **judge grading
+   adopted** for the gate arms (`run_eval --judge-grade`, §14 run-6 reg. (2)); the **P(U)
+   elicitation sprint** (u_hedged/lambda_int/u_wrong_scoped, disclosed blind); the
+   **uncalibrated lane** (`LIFE_AGENT_FALLBACK_LANE=1` — a typed withholding additionally
+   renders the monolithic prose over the same hits, labeled; typed-first, presentation
+   only, one seam for terminal + Telegram; removed when the §8 gate passes); the **daily
+   briefing** as a real timer (`bin/daily-digest`, `packaging/daily-digest.{service,timer}`,
+   owner-targeted, invariant-3 truncation naming, drift-gated section table); and the
+   **local-Ollama deprecation** (owner directive — instruments, transforms, NLU on the
+   Anthropic seam via `core/instrument.py`; §14 registered the instrument change blind
+   before run 6; ~7.9k local-keyed cache artifacts deliberately orphaned; base instrument
+   spend now metered into Δ). The Telegram `question` intent and one-bit `g`/`b`
+   reactions were already built. **MVP exit test:** a week of the owner asking Jarvis
+   instead of the incumbent harnesses for life-data questions + morning triage, misses
+   logged to FAILURES.md.
+3d. **Proplang re-earn, rung 2 — P3b (harness + blind pre-registration landed 2026-08-17;
+   measurement running).** The held-out differential gate (A3) is variant-parameterized
+   (`p3_gate.py --gate-variants`, suffixed artifacts, ledger-window guards) so the
+   coarsened leader-credence-only lattice — the one EU-positive held-out variant — gets
+   its own A3 against the credence baseline, the named-but-unrun measurement that blocks
+   any re-flip. **Read 2026-08-17 (`docs/membrane-shadow.md` §17.6): FAIL by total
+   abstention** — under the owner's current utility (u_wrong −8.83, commit bar 0.899) the
+   coarsened lattice commits 0/190 held-out ticks; its §17.5 +0.284 lived in a 0.04-wide
+   p1 window that the u_wrong elicitation closed. The coarsening is closed as a re-earn
+   route; the path is E1 (a sharper engine posterior), not lattice surgery. First execution
+   voided on Ū drift and caught by the freeze; the engine reproduced §17.5 to four decimals.
 4. **The aggregate family** (subsumes D3): recall term + completeness priors,
    missing-mass posterior, dedup-as-inference — the spending question answered as a
    posterior with both coverage readouts.
