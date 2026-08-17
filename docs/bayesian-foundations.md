@@ -1984,3 +1984,21 @@ on this list. Answers land here by amendment, citing their evidence.
   question admitted to the typed path extracts one value from many; the mixed set says
   1/21, and the `report_scoped`/hedge acts and the narrative fallback lane still exist
   behind it.
+
+- **OPEN — the base extractor's ρ pools across models (found 2026-08-17).**
+  `lookup.extract_instrument_hash()` is the prompt hash only, so `_extractor_outcomes`
+  (the Beta(4,4) the bridge's `/extract` returns as the base ρ) conditions the HAIKU base
+  extractor on the 23 `eval_lookup` rows graded on the qwen-era instrument (7/23 correct;
+  posterior mean ≈ 0.36) — §2 says per-instrument, and the migration entry above says the
+  model changed. Meanwhile the base firings write no `eval_edge` rows (only the tiers,
+  rescue, re-extract and deliberate do), so nothing about the haiku base extractor is ever
+  measured. Two ways out, both live-behaviour changes, so registered here and NOT bundled
+  into run 8: (a) fold the model identity into the hash — the base ρ falls back to the
+  Beta(4,4) prior mean 0.5 until haiku `eval_lookup` rows exist (only `run_eval --lookup`
+  writes them), i.e. LESS pessimistic than today at first; (b) the cleaner design — the
+  base extract firing becomes an attributed edge (`extract@<model>` per hit, the same
+  namespace the corroborate tier already earns; the extract schema would need a
+  self-report to condition on) and the base ρ reads through the per-edge curve like every
+  other firing. Decide after run 7/8: if the newly-admitted questions (router v2) produce
+  base-only confident-wrongs, (b) is the fix; if they abstain at the base and pay for
+  tiers, (a)'s prior mean is not the risk it looks like.
