@@ -2124,14 +2124,28 @@ on this list. Answers land here by amendment, citing their evidence.
   (remedy: a supersession signal, e.g. reply-quotes-original). **Also landed with this
   change (replayability fix):** both `posterior_summary` writers now record
   `n_indeterminate` + `n_competing` (the bridge path dropped the former; run 8's
-  single-candidate blindness is what forced this sweep to re-join chunks), and corroborate/
-  deliberate join observations stay implicitly factor-1.0 — they are already
-  competition-screened by the join's correction-shape guard, which now delegates to the
-  same shared span detector (comma-grouped figures are one shape, not three fragments).
+  single-candidate blindness is what forced this sweep to re-join chunks), and the join's
+  correction-shape guard now delegates to the same shared span detector (comma-grouped
+  figures are one shape, not three fragments). **Amended before firing (same day): the
+  join channel inherits the temper.** The first draft left corroborate/deliberate join
+  observations at implicit factor 1.0; walking the run-9 prediction for q2-105 exposed
+  that as wrong — run 8's q2-105 commit WAS a warm deliberate confirm of the tel from the
+  same fax/tel row (`instrument: deliberate@…`, $0), so an untempered join would re-commit
+  exactly what the temper withheld. §2's lineage rule decides it: competition is a
+  property of the corpus row, not the instrument — a whole-doc re-read of the same
+  competed row shares the pick ambiguity (q2-105's opus deliberate DID pick the wrong
+  column: 1/1 on the only measurement). The body now posts `candidate_competition` (each
+  candidate's base-observation factor) with the join calls and the join observation
+  carries it; a minted new candidate reads 1.0, and run 7's disagree⇒abstain contract is
+  untouched. Consequence, named: same-doc re-reads can no longer rescue a competed
+  leader past the bar alone — rescue needs independent-document corroboration or a
+  disagreeing/new-value read, so run 9's answer rate should sit near the counterfactual
+  floor's 0.34 and q2-105 is predicted dispersed, not wrong.
   **Pre-registration for run 9:** the run-8 recipe verbatim (`fire-run9.sh` — with a
   stale-stack kill: fire-run8.sh reuses a listening daemon via the `/ready` short-circuit,
   which would silently run the un-tempered code) + the temper as the only decision-path
-  change (life-agent `55a9239`+`9bb8b2f`, credence `f474e70`). Expected effect: the
+  change (life-agent `55a9239`+`9bb8b2f` + the join-inheritance amendment commit,
+  credence `f474e70`). Expected effect: the
   in-chunk wrong-commit class stops committing (floor: → dispersed; ceiling: deliberate
   recovers the gold); predicted floor reading 0.945/+0.401. Diagnostics to watch: typed
   wrong count (the headline), the competition field's fire count vs the sweep's 27

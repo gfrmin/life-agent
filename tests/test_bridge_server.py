@@ -352,7 +352,8 @@ def test_reextract_confirming_sentence_maps_to_the_candidate(
         "candidates": ["PL-800002", "PL-900001"], "model": "claude-opus-4-8", "rho": 0.95})
     assert status == 200
     assert payload["observations"] == [{"reports": 1, "group": 0, "authority": 1.0,
-                                        "subject_factor": 1.0, "time_factor": 1.0}]
+                                        "subject_factor": 1.0, "time_factor": 1.0,
+                                        "competition_factor": 1.0}]
     # containment resolves BEFORE allow_new: a confirming sentence must never mint a
     # duplicate candidate and split the posterior mass with the value it confirms.
     status2, payload2 = _call(deps, "POST", "/probe/corroborate", {
@@ -362,6 +363,26 @@ def test_reextract_confirming_sentence_maps_to_the_candidate(
     assert status2 == 200
     assert "new_candidate" not in payload2
     assert payload2["observations"][0]["reports"] == 0
+
+
+def test_reextract_confirm_inherits_the_candidates_competition(
+        deps: BridgeDeps, monkeypatch: pytest.MonkeyPatch) -> None:
+    # corroborate twin of the deliberate inheritance: the tier re-read of the same
+    # competed row shares the pick ambiguity — its observation carries the base factor.
+    import life_agent.core.joint_extract as JE
+
+    monkeypatch.setattr(JE, "extract_joint",
+                        lambda root, q, hits, *, model, k: JE.JointResult(
+                            value="PL-900001", confidence=0.9, as_of=None))
+    status, payload = _call(deps, "POST", "/probe/corroborate", {
+        "reextract": True, "question": "id?", "hits": [
+            {"artifact_cache_key": "d0", "chunk_text": "…"}],
+        "candidates": ["PL-800002", "PL-900001"],
+        "candidate_competition": [1.0, 0.5],
+        "model": "claude-opus-4-8", "rho": 0.95})
+    assert status == 200
+    assert payload["observations"][0]["reports"] == 1
+    assert payload["observations"][0]["competition_factor"] == 0.5
 
 
 def test_reextract_correction_sentence_never_confirms_the_stale_candidate(
@@ -1334,13 +1355,29 @@ def test_deliberate_confirms_an_existing_candidate(
                              "candidates": ["NIS 4,200", "NIS 9,999"]})
     assert status == 200
     assert payload["observations"] == [{"reports": 0, "group": 0, "authority": 1.0,
-                                        "subject_factor": 1.0, "time_factor": 1.0}]
+                                        "subject_factor": 1.0, "time_factor": 1.0,
+                                        "competition_factor": 1.0}]
     assert payload["confidence"] == 0.85
     assert payload["cost_usd"] == 0.42
     assert payload["model"] == "claude-opus-4-8"
     assert payload["declined"] is False
     assert "new_candidate" not in payload
     assert deliberate_seams["records"]          # the §18.9 artifact was recorded
+
+
+def test_deliberate_confirm_inherits_the_candidates_competition(
+        deps: BridgeDeps, deliberate_seams: dict[str, Any]) -> None:
+    # the q2-105 regression (§14, 2026-08-17): run 8's wrong commit was a WARM deliberate
+    # confirm of the tel from the fax/tel row — the join observation must inherit the
+    # confirmed candidate's §4.2 factor (competition is a property of the corpus row, the
+    # §2 lineage rule), or the untempered re-read re-commits what the temper withheld.
+    status, payload = _call(deps, "POST", "/probe/deliberate",
+                            {"question": "what is my rent?",
+                             "candidates": ["NIS 4,200", "NIS 9,999"],
+                             "candidate_competition": [0.5, 1.0]})
+    assert status == 200
+    assert payload["observations"][0]["reports"] == 0
+    assert payload["observations"][0]["competition_factor"] == 0.5
 
 
 def test_deliberate_mints_a_new_candidate_with_allow_new(
@@ -1353,7 +1390,8 @@ def test_deliberate_mints_a_new_candidate_with_allow_new(
     assert status == 200
     assert payload["new_candidate"] == "NIS 5,100"
     assert payload["observations"] == [{"reports": 1, "group": 0, "authority": 1.0,
-                                        "subject_factor": 1.0, "time_factor": 1.0}]
+                                        "subject_factor": 1.0, "time_factor": 1.0,
+                                        "competition_factor": 1.0}]
 
 
 def test_deliberate_outside_set_without_allow_new_yields_no_observation(
@@ -1409,7 +1447,8 @@ def test_deliberate_warm_hit_replays_without_a_model_call(
     assert payload["cache"] == "hit"
     assert payload["cost_usd"] == 0.0                 # a warm chain costs zero model calls
     assert payload["observations"] == [{"reports": 0, "group": 0, "authority": 1.0,
-                                        "subject_factor": 1.0, "time_factor": 1.0}]
+                                        "subject_factor": 1.0, "time_factor": 1.0,
+                                        "competition_factor": 1.0}]
     assert deliberate_seams["answers"] == []          # the CLI was never invoked
 
 

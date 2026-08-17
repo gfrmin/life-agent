@@ -389,10 +389,13 @@ def _probe_corroborate(deps: BridgeDeps, p: Payload) -> Payload:
                 # /extract uses — no transform may hand-set time_factor=1.0 and report a stale
                 # value as current (the q-006 confident-stale bug that gated §2-A off). Recency is
                 # attribution-independent (a document property), so the re-read value is as current
-                # as its freshest SOURCE attestation.
+                # as its freshest SOURCE attestation. Ditto competition (§4.2/§2 lineage): a
+                # re-read of the same competed row inherits the candidate's base factor —
+                # the body posts it; a minted candidate (idx == len) reads 1.0.
                 tf = _corroborate_time_factor(jr, hits, p)
                 obs = [{"reports": idx, "group": 0, "authority": 1.0,
-                        "subject_factor": 1.0, "time_factor": tf}]
+                        "subject_factor": 1.0, "time_factor": tf,
+                        "competition_factor": _candidate_competition(p, idx)}]
         # the read's own stated confidence rides beside the tier rho: the k=0 strong rescue
         # conditions at min(tier, confidence), so the wire never discards the instrument's
         # uncertainty (a lone unsupported read must not enter at the tier's flat prior).
@@ -438,8 +441,20 @@ def _deliberate_cfg() -> DL.DeliberateConfig:
     )
 
 
+def _candidate_competition(p: Payload, idx: int) -> float:
+    """The candidate's inherited §4.2 competition factor, posted by the body as
+    ``candidate_competition`` (aligned with ``candidates``; competition is a property of
+    the corpus evidence, not the instrument — the §2 lineage rule: a whole-doc re-read of
+    the same competed row shares the pick ambiguity). Absent, or a minted candidate
+    beyond the list ⇒ the neutral 1.0."""
+    comp = list(p.get("candidate_competition") or [])
+    return float(comp[idx]) if 0 <= idx < len(comp) else 1.0
+
+
 def _join_deliberate_value(value: str | None, candidates: list[str], allow_new: bool,
-                           *, time_factor: float = 1.0) -> tuple[list[Payload], str | None]:
+                           *, time_factor: float = 1.0,
+                           competition: list[float] | None = None,
+                           ) -> tuple[list[Payload], str | None]:
     """Map the edge's bare ANSWER value onto the candidate lattice — the corroborate
     join's contract verbatim: exact normalised match, else unique containment without a
     competing same-shaped token, else (``allow_new``) a minted candidate indexed at
@@ -464,8 +479,13 @@ def _join_deliberate_value(value: str | None, candidates: list[str], allow_new: 
             idx = len(candidates)
     if idx is None:
         return [], None
+    comp = list(competition or [])
     return [{"reports": idx, "group": 0, "authority": 1.0,
-             "subject_factor": 1.0, "time_factor": time_factor}], new_candidate
+             "subject_factor": 1.0, "time_factor": time_factor,
+             # the confirmed candidate's inherited §4.2 factor (a minted candidate's idx
+             # is beyond the list ⇒ the neutral 1.0)
+             "competition_factor": float(comp[idx]) if idx < len(comp) else 1.0,
+             }], new_candidate
 
 
 def _probe_deliberate(deps: BridgeDeps, p: Payload) -> Payload:
@@ -495,7 +515,8 @@ def _probe_deliberate(deps: BridgeDeps, p: Payload) -> Payload:
         c = loads(cached.decode("utf-8"))
         obs, new_candidate = _join_deliberate_value(
             c.get("value"), candidates, allow_new,
-            time_factor=_source_time_factor(c.get("value"), None, hits, p))
+            time_factor=_source_time_factor(c.get("value"), None, hits, p),
+            competition=list(p.get("candidate_competition") or []))
         out: Payload = {"observations": obs, "value": c.get("value"),
                         "confidence": c.get("credence"), "declined": c.get("declined"),
                         "status": "ok", "text": c.get("text"), "model": c.get("model"),
@@ -513,7 +534,8 @@ def _probe_deliberate(deps: BridgeDeps, p: Payload) -> Payload:
             print(f"  (deliberate answer not recorded: {e})")
     obs, new_candidate = _join_deliberate_value(
         r.value, candidates, allow_new,
-        time_factor=_source_time_factor(r.value, None, hits, p))
+        time_factor=_source_time_factor(r.value, None, hits, p),
+        competition=list(p.get("candidate_competition") or []))
     if r.status != "ok":
         obs, new_candidate = [], None
     out = {"observations": obs, "value": r.value, "confidence": r.credence,

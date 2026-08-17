@@ -710,6 +710,32 @@ def test_corroborate_tier_folds_confidence_through_the_edge_curve() -> None:
     assert fake.posted("/decide")[1]["rho"] == expected
 
 
+def test_join_posts_carry_the_candidates_base_competition() -> None:
+    # §4.2/§2 lineage (§14, 2026-08-17): the body computes each candidate's base
+    # competition factor from the /extract observations and posts it with the join
+    # calls — a re-read of the same competed row must inherit the pick ambiguity
+    # (run 8's q2-105: an untempered warm deliberate confirm re-committed the tel).
+    fake = FakeServices(
+        route={"construct": "fax number", "time_indexed": False},
+        extract={**_EXTRACT, "candidates": ["A", "B"],
+                 "observations": [{"reports": 0, "group": 0, "authority": 0.9,
+                                   "subject_factor": 1.0, "time_factor": 1.0,
+                                   "competition_factor": 0.5},
+                                  {"reports": 1, "group": 1, "authority": 0.9,
+                                   "subject_factor": 1.0, "time_factor": 1.0}]},
+        deliberate={"observations": [], "status": "ok", "value": None,
+                    "confidence": None, "declined": True, "cost_usd": 0.0,
+                    "latency_s": 0.0, "cache": "hit"},
+        decides=[{"effector": "gather", "probe": "deliberate",
+                  "credences": [0.5, 0.5], "p_none": 0.3, "eu": 0.1},
+                 {"effector": "abstain", "credences": [0.4, 0.4],
+                  "p_none": 0.2, "eu": 0.0}])
+    _loop(fake, grow=False,
+          transforms=[*EX.DEFAULT_TRANSFORMS, EX.DELIBERATE_TRANSFORM])
+    delib = fake.posted("/probe/deliberate")
+    assert delib and delib[0]["candidate_competition"] == [0.5, 1.0]
+
+
 def test_deliberate_gather_is_enacted_and_folds_through_its_curve() -> None:
     # The daemon schedules the deliberate transform (the promoted A1b edge); the body
     # enacts it via /probe/deliberate and re-decides at curve(confidence) for the

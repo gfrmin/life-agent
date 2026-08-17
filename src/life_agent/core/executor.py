@@ -445,6 +445,18 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
     owner = owner_scoped(question)
     obs, rho, era = ext["observations"], ext["rho"], ext["era_split"]
 
+    def _cand_comp(extraction: dict[str, Any], cands: list[str]) -> list[float]:
+        # §4.2: competition is a property of the corpus evidence, not the instrument — a
+        # whole-doc re-read of the same competed row inherits the candidate's base factor
+        # (the §2 lineage rule: same evidence ancestry ⇒ correlated pick error). A
+        # candidate with no base observation (minted later) reads 1.0.
+        base = list(extraction.get("observations") or [])
+        return [min([float(o.get("competition_factor", 1.0))
+                     for o in base if int(o.get("reports", -1)) == j] or [1.0])
+                for j in range(len(cands))]
+
+    cand_comp = _cand_comp(ext, candidates)
+
     def _decide(observations: list[Any], r: float, era_split: bool, applied: list[str],
                 sensors: dict[str, str] | None = None) -> View:
         payload: dict[str, Any] = {
@@ -494,6 +506,7 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
             cr = _obj(post, f"{bridge}/probe/corroborate",
                       {"reextract": True, "question": question, "hits": hits,
                        "candidates": candidates, "model": model, "rho": tier_rho,
+                       "candidate_competition": cand_comp,
                        # the re-read obs flows through the construct's volatility (the keystone):
                        # pass time_indexed + construct + doc_date so a stale re-read decays.
                        "time_indexed": route["time_indexed"], "construct": route["construct"],
@@ -517,6 +530,7 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
             if changed:
                 hits, recency, ext = n_hits, n_recency, n_ext
                 candidates = ext["candidates"]
+                cand_comp = _cand_comp(ext, candidates)
                 obs, rho, era = ext["observations"], ext["rho"], ext["era_split"]
             enacted.append((probe, last_sensors, changed))
             applied = list(dict.fromkeys([*applied, probe]))
@@ -540,6 +554,7 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
                 dr: dict[str, Any] | None = _obj(
                     post, f"{bridge}/probe/deliberate",
                     {"question": question, "candidates": candidates, "allow_new": True,
+                     "candidate_competition": cand_comp,
                      "hits": hits, "time_indexed": route["time_indexed"],
                      "construct": route["construct"],
                      "covariates": {"doc_date": recency}})
@@ -566,6 +581,7 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
             if dr is not None and dr.get("status") == "ok":
                 if dr.get("new_candidate"):
                     candidates = [*candidates, str(dr["new_candidate"])]
+                    cand_comp = [*cand_comp, 1.0]
                 conf = dr.get("confidence")
                 legacy = (min(_DELIBERATE_FALLBACK_RHO, max(0.0, float(conf)))
                           if conf is not None else _DELIBERATE_FALLBACK_RHO)
@@ -581,13 +597,14 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
             cr = _obj(post, f"{bridge}/probe/corroborate",
                       {"reextract": True, "allow_new": True, "question": question,
                        "hits": hits, "candidates": candidates, "model": _RE_EXTRACT_MODEL,
-                       "rho": _GATHER_RHO,
+                       "rho": _GATHER_RHO, "candidate_competition": cand_comp,
                        "time_indexed": route["time_indexed"], "construct": route["construct"],
                        "covariates": {"doc_date": recency}})
             _edge_event(extract_edge(_RE_EXTRACT_MODEL), cr)
             changed = bool(cr.get("new_candidate")) or bool(cr["observations"])
             if cr.get("new_candidate"):
                 candidates = [*candidates, str(cr["new_candidate"])]
+                cand_comp = [*cand_comp, 1.0]
             # unconditional — an EMPTY strong re-read also replaces (the strong model failed to
             # confirm any local candidate; the weak evidence must not survive it — disagree ⇒
             # NONE-dominant ⇒ abstain, the corroborate contract verbatim).
