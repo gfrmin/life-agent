@@ -424,6 +424,88 @@ def judge_shadow_items(questions: list[dict], typed_views: list, replay: dict | 
     return items
 
 
+def judge_grade_items(questions: list[dict], typed_views: list,
+                      replay: dict | None) -> list[dict]:
+    """The gate arms' gradeable candidates under judge ADOPTION (§14 run-6
+    registration (2): the shadow audit cleared 2026-08-14). Exactly the shadow's items
+    minus the edge firings — the eval_edge curve rows adopt LAST, separately (they move
+    live behaviour), so they stay matcher-graded and never appear here."""
+    return [it for it in judge_shadow_items(questions, typed_views, replay)
+            if not str(it["arm"]).startswith("edge:")]
+
+
+def apply_judge_verdicts(paired: list, items: list[dict]) -> tuple[list, list[dict],
+                                                                   list[dict]]:
+    """Pure: re-grade the paired rows' assertions with judge verdicts (adoption),
+    mirroring the matcher's own granularity — any-per-value on typed asserts, over the
+    hedge candidates on a hedge, the replay prose on mono. Withholdings carry no
+    correctness and pass through untouched; an asserting row with NO items (the
+    gold-less question the item builder skips) keeps the matcher's verdict — the judge
+    cannot dispute a verdict it was never asked for, and silence must not read as
+    unjudged. Returns ``(regraded, flips, unjudged)``: ``flips`` names every row the
+    judge moved on either arm (the registration's must-name-before-Δ-is-trusted list);
+    a nonzero ``unjudged`` (a None verdict — provider failure, tied votes) means the
+    caller must REFUSE the priced reading — a matcher fallback would mix graders
+    inside one Δ, exactly what the registration forbids."""
+    import dataclasses
+
+    by_row: dict[tuple[str, str], list[dict]] = {}
+    for it in items:
+        by_row.setdefault((str(it["question_id"]), str(it["arm"])), []).append(it)
+
+    regraded: list = []
+    flips: list[dict] = []
+    unjudged: list[dict] = []
+
+    def _regrade(qid: str, side: str, resp):
+        if not resp.asserts():
+            return resp
+        arm = ("mono" if side == "mono"
+               else "typed-hedge" if resp.action == "hedge" else "typed")
+        row_items = by_row.get((qid, arm), [])
+        if not row_items:
+            return resp
+        missing = [it for it in row_items if it.get("verdict") is None]
+        if missing:
+            unjudged.extend({"question_id": qid, "arm": side,
+                             "candidate": it["candidate"]} for it in missing)
+            return resp
+        correct = any(bool(it["verdict"]) for it in row_items)
+        if correct != bool(resp.correct):
+            flips.append({"question_id": qid, "arm": side,
+                          "matcher": bool(resp.correct), "judge": correct,
+                          "candidates": [it["candidate"] for it in row_items]})
+        return dataclasses.replace(resp, correct=correct)
+
+    for p in paired:
+        regraded.append(dataclasses.replace(
+            p, typed=_regrade(p.question_id, "typed", p.typed),
+            mono=_regrade(p.question_id, "mono", p.mono)))
+    return regraded, flips, unjudged
+
+
+def format_judge_grading_note(flips: list[dict], *, n_items: int) -> str:
+    """The report preamble's grading block: adoption is named, and every judge-flipped
+    row on either arm is LISTED — the §14 registration makes naming them a precondition
+    of trusting Δ (typed asserts are corroboration-shaped, the judge's measured
+    false-negative shape at ~0.5%)."""
+    lines = [f"> **Grading:** JUDGE-ADOPTED (cross-provider modal-of-3; §14 run-6 "
+             f"registration (2), audit cleared) — {n_items} candidate(s) judged, "
+             f"{len(flips)} matcher-vs-judge flip(s). The eval_edge curve rows stay "
+             f"matcher-graded (adopt last, as registered).", ""]
+    if flips:
+        lines += ["| ID | arm | matcher | judge | candidate(s) |",
+                  "|---|---|---|---|---|"]
+        for f in flips:
+            cand = " · ".join(str(c) for c in f["candidates"])[:80].replace("|", "\\|")
+            lines.append(
+                f"| {f['question_id']} | {f['arm']} "
+                f"| {'CORRECT' if f['matcher'] else 'INCORRECT'} "
+                f"| {'CORRECT' if f['judge'] else 'INCORRECT'} | {cand} |")
+        lines.append("")
+    return "\n".join(lines) + "\n"
+
+
 def _fresh_edge_rows(typed_views: list, *, run_id: str, log=None) -> tuple:
     """Grade every collected firing and dedup against the log's already-written §18.9
     lineage — the ONE writer body, shared by the normal post-run path and the
@@ -800,6 +882,8 @@ def build_gate_run_meta(*, run_id: str, args, questions: list[dict], questions_p
             "k": getattr(args, "k", None),
             "loo": bool(getattr(args, "gate_loo", False)),
             "judge_shadow": bool(getattr(args, "judge_shadow", False)),
+            # which grader produced the paired rows' correctness (§14 run-6 reg. (2))
+            "grading": ("judge" if getattr(args, "judge_grade", False) else "matcher"),
             "materiality_delta": GATE.MATERIALITY_DELTA,
             "level": GATE.GATE_LEVEL,
         },
@@ -1322,7 +1406,32 @@ def main() -> int:
              "disagreement audit clears. Live cross-provider calls (cached append-only "
              "in $LIFE_AGENT_KB/eval/judge-verdicts.jsonl; ~$1/run cold).",
     )
+    parser.add_argument(
+        "--judge-grade", action="store_true",
+        help="ADOPT judge grading for the gate arms (§14 run-6 registration (2): the "
+             "run-5 shadow audit cleared): the paired rows' correctness comes from the "
+             "cross-provider modal-of-3 judge (cache-first), the matcher becomes the "
+             "shadow, and every flipped row is named in the report. The eval_edge "
+             "curve rows stay matcher-graded (adopt last, separately). An unjudged "
+             "candidate REFUSES the priced reading — mixed grading inside one Δ is "
+             "not a reading. Requires --gate-executor and --gate-replay.",
+    )
     args = parser.parse_args()
+
+    if args.judge_grade and args.judge_shadow:
+        # under adoption the matcher IS the shadow (the flip table is the disagreement
+        # table) — a second, differently-rolled judge section would be two readings
+        print("REFUSED: --judge-grade adopts the judge, so the flip table IS the "
+              "disagreement table — drop --judge-shadow.")
+        return 2
+    if args.judge_grade and not (args.gate_executor and args.gate_replay):
+        # the family arm captures no per-value asserts and a LIVE mono baseline's prose
+        # is never captured — grading would silently read any([]) == False on every
+        # asserting row (the shadow's own coverage note)
+        print("REFUSED: --judge-grade grades the arms' captured text — pass "
+              "--gate-executor (per-value asserts) and --gate-replay (the mono "
+              "prose; a live baseline's text is not captured).")
+        return 2
 
     if args.gate_loo and not args.gate_executor:
         # refused before any state is touched: the family arm folds no curves, so a
@@ -1493,6 +1602,40 @@ def main() -> int:
                     f"question's decide conditioned on curves folded without its own "
                     f"rows{vac}\n\n")
 
+        # judge ADOPTION (§14 run-6 registration (2)): the arms' correctness is
+        # re-graded by the cross-provider modal judge BEFORE Δ — after the edge append,
+        # so a judge failure can refuse the reading without voiding the paid curve
+        # food. Cache-first: a rerun resumes from the verdict cache.
+        grading_note = ""
+        if args.judge_grade:
+            sys.path.insert(0, str(Path(__file__).resolve().parent / "comparison"))
+            import _common as JC
+            import eval_judge as EJ
+            jcache_path = _kb_root() / "eval" / "judge-verdicts.jsonl"
+            jcache = EJ.load_verdicts(jcache_path)
+            gitems = judge_grade_items(questions, typed_views, replay)
+            n_cached = sum(1 for it in gitems if EJ.judge_key(
+                it["question"], it["gold"], it["variants"], it["candidate"],
+                judge=JC.JUDGE_MODEL) in jcache)
+            print(f"  judge grading {len(gitems)} candidate(s) "
+                  f"({n_cached} cached) …")
+            for it in gitems:
+                it["verdict"] = EJ.judge_with_cache(
+                    jcache, jcache_path, it["question"], it["gold"], it["variants"],
+                    it["candidate"], complete=JC.judge_complete, judge=JC.JUDGE_MODEL)
+            paired, jflips, junjudged = apply_judge_verdicts(paired, gitems)
+            if junjudged:
+                names = ", ".join(f"{u['question_id']}/{u['arm']}" for u in junjudged)
+                print(f"REFUSED: {len(junjudged)} candidate(s) unjudged after "
+                      f"modal-of-3 ({names}) — a matcher fallback would mix graders "
+                      f"inside one Δ (§14). Edge outcomes above are already appended "
+                      f"(paid food kept); rerun to resume from the verdict cache.")
+                return 2
+            grading_note = format_judge_grading_note(jflips, n_items=len(gitems))
+            if jflips:
+                print(f"  judge flipped {len(jflips)} row(s): "
+                      + ", ".join(f"{f['question_id']}/{f['arm']}" for f in jflips))
+
         # the FULL utility posterior (marginals, not just Ū — the gate samples P(U)),
         # folded from the FROZEN model + elicitations (blind discipline: untouched here)
         brain = LK.shared_brain()
@@ -1510,7 +1653,8 @@ def main() -> int:
 
         preamble = ((f"> **Baseline arm:** {baseline_name}\n\n"
                      if replay is not None else "")
-                    + exec_note + corpus_note(conn, questions, corpus=corpus))
+                    + exec_note + grading_note
+                    + corpus_note(conn, questions, corpus=corpus))
         (gate_dir / "report.md").write_text(
             preamble + GATE.render_report(result, run_id=run_id, elapsed=elapsed),
             encoding="utf-8")

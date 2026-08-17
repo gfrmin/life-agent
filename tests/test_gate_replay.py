@@ -701,3 +701,141 @@ def test_archive_gate_artifacts_skips_missing_files(tmp_path: Path) -> None:
     (tmp_path / "report.md").write_text("partial", encoding="utf-8")
     archived = RE.archive_gate_artifacts(tmp_path, run_id="gate-x")
     assert [p.name for p in archived] == ["report-gate-x.md"]
+
+
+# --- judge grading, ADOPTED (§14 run-6 registration (2): the audit cleared) -------------
+# The gate arms' correctness comes from the cross-provider modal judge; the eval_edge
+# curve rows adopt LAST, separately (they move live behaviour) and stay matcher-graded.
+
+
+def _paired(qid: str, typed: Any, mono: Any) -> Any:
+    import life_agent.core.gate as GATE
+
+    return GATE.PairedOutcome(question_id=qid, answerable=True, typed=typed, mono=mono)
+
+
+def test_judge_grade_items_are_the_shadow_items_minus_the_curve_rows() -> None:
+    # adoption grades exactly what the matcher graded on the GATE ARMS — the edge
+    # firings are curve food, registered to adopt last, so they never appear here
+    questions = _two_questions()
+    typed_views = [
+        (questions[0], _exec_view(
+            effector="report", asserted=["P123"],
+            edge_events=[{"edge": "extract@claude-haiku-4-5", "value": "P123",
+                          "confidence": 0.7, "lineage": "jk-1"}])),
+        (questions[1], _exec_view(effector="abstain")),
+    ]
+    replay = {"q2-001": _row("q2-001", "P123 [doc.pdf]"),
+              "q2-002": _row("q2-002", "NOT_IN_CORPUS", declined=True)}
+    items = RE.judge_grade_items(questions, typed_views, replay)
+    assert [(i["question_id"], i["arm"]) for i in items] == [
+        ("q2-001", "typed"), ("q2-001", "mono")]
+
+
+def test_apply_judge_verdicts_regrades_both_arms_and_names_the_flips() -> None:
+    import life_agent.core.gate as GATE
+
+    # typed asserted a value the matcher missed but the judge rescues (the q2-026
+    # variant-gap shape); mono asserted one the matcher credited and the judge refutes
+    # (the q2-018 gold-conditional shape)
+    typed = GATE.RealisedResponse(action="report", correct=False, cost_usd=0.02)
+    mono = GATE.RealisedResponse(action="report", correct=True, cost_usd=0.4)
+    paired = [_paired("q2-001", typed, mono)]
+    items = [{"question_id": "q2-001", "arm": "typed", "candidate": "23rd March 2017",
+              "verdict": True},
+             {"question_id": "q2-001", "arm": "mono", "candidate": "the tel value",
+              "verdict": False}]
+    regraded, flips, unjudged = RE.apply_judge_verdicts(paired, items)
+    assert unjudged == []
+    (p,) = regraded
+    assert p.typed.correct is True and p.mono.correct is False
+    # spend and identity survive the regrade — the artifact must still determine Δ
+    assert p.typed.cost_usd == 0.02 and p.mono.cost_usd == 0.4
+    assert {(f["question_id"], f["arm"], f["matcher"], f["judge"]) for f in flips} == {
+        ("q2-001", "typed", False, True), ("q2-001", "mono", True, False)}
+
+
+def test_apply_judge_verdicts_is_any_per_value_like_the_matcher() -> None:
+    import life_agent.core.gate as GATE
+
+    # the matcher's realised_report is any-per-value; the judge mirror must be too —
+    # one rescued value out of two asserted grades the report correct
+    typed = GATE.RealisedResponse(action="report", correct=False)
+    mono = GATE.RealisedResponse(action="abstain", correct=None)
+    paired = [_paired("q2-001", typed, mono)]
+    items = [{"question_id": "q2-001", "arm": "typed", "candidate": "a", "verdict": False},
+             {"question_id": "q2-001", "arm": "typed", "candidate": "b", "verdict": True}]
+    regraded, _flips, unjudged = RE.apply_judge_verdicts(paired, items)
+    assert regraded[0].typed.correct is True and unjudged == []
+
+
+def test_apply_judge_verdicts_grades_hedge_over_the_hedge_items() -> None:
+    import life_agent.core.gate as GATE
+
+    typed = GATE.RealisedResponse(action="hedge", correct=False)
+    mono = GATE.RealisedResponse(action="abstain", correct=None)
+    paired = [_paired("q2-004", typed, mono)]
+    items = [{"question_id": "q2-004", "arm": "typed-hedge", "candidate": "X9",
+              "verdict": True},
+             {"question_id": "q2-004", "arm": "typed-hedge", "candidate": "Q1",
+              "verdict": False}]
+    regraded, _, unjudged = RE.apply_judge_verdicts(paired, items)
+    assert regraded[0].typed.correct is True and unjudged == []
+
+
+def test_apply_judge_verdicts_leaves_withholdings_and_itemless_rows_alone() -> None:
+    import life_agent.core.gate as GATE
+
+    # a withholding has no correctness to regrade; an asserting row with NO items (the
+    # gold-less question the shadow skips) keeps the matcher's False — the judge cannot
+    # dispute a verdict it was never asked for, and silence must not read as unjudged
+    typed = GATE.RealisedResponse(action="abstain", correct=None,
+                                  withheld=GATE.WITHHELD_MISS)
+    mono = GATE.RealisedResponse(action="report", correct=False)
+    paired = [_paired("q2-003", typed, mono)]
+    regraded, flips, unjudged = RE.apply_judge_verdicts(paired, [])
+    assert regraded[0].typed.withheld == GATE.WITHHELD_MISS
+    assert regraded[0].typed.correct is None
+    assert regraded[0].mono.correct is False
+    assert flips == [] and unjudged == []
+
+
+def test_apply_judge_verdicts_fails_closed_on_an_unjudged_item() -> None:
+    import life_agent.core.gate as GATE
+
+    # a None verdict (provider failure, tied votes) cannot silently fall back to the
+    # matcher — mixed grading inside one Δ is exactly what the registration forbids;
+    # the row is NAMED and the caller refuses the priced reading
+    typed = GATE.RealisedResponse(action="report", correct=True)
+    mono = GATE.RealisedResponse(action="abstain", correct=None)
+    paired = [_paired("q2-001", typed, mono)]
+    items = [{"question_id": "q2-001", "arm": "typed", "candidate": "P123",
+              "verdict": None}]
+    _regraded, _, unjudged = RE.apply_judge_verdicts(paired, items)
+    assert [(u["question_id"], u["arm"]) for u in unjudged] == [("q2-001", "typed")]
+
+
+def test_judge_grade_without_the_executor_replay_shape_refuses(monkeypatch,
+                                                               capsys) -> None:
+    # adoption grades the arms' captured text: the family arm captures no per-value
+    # asserts and a LIVE mono baseline's prose is never captured — a --judge-grade run
+    # without --gate-executor AND --gate-replay would silently grade any([]) == False
+    # on every asserting row; refused before any state is touched
+    monkeypatch.setattr(sys, "argv", ["run_eval.py", "--gate", "--judge-grade"])
+    monkeypatch.setattr(RE, "load_questions",
+                        lambda p: (_ for _ in ()).throw(AssertionError("state touched")))
+    assert RE.main() == 2
+    assert "--gate-executor" in capsys.readouterr().out
+
+
+def test_judge_grade_and_judge_shadow_are_mutually_exclusive(monkeypatch,
+                                                             capsys) -> None:
+    # under adoption the matcher IS the shadow (the flip table is the disagreement
+    # table) — running both would publish two judge sections with different roles
+    monkeypatch.setattr(sys, "argv",
+                        ["run_eval.py", "--gate", "--gate-executor",
+                         "--gate-replay", "x", "--judge-grade", "--judge-shadow"])
+    monkeypatch.setattr(RE, "load_questions",
+                        lambda p: (_ for _ in ()).throw(AssertionError("state touched")))
+    assert RE.main() == 2
+    assert "--judge-shadow" in capsys.readouterr().out
