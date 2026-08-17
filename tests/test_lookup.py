@@ -560,6 +560,8 @@ def test_grammar_templates_all_render() -> None:
     LK.GRAMMAR["footer"].format(n_hits=1, n_obs=1, n_ind=0, p_none=0.1,
                                 action="report", eu=0.5)
     LK.GRAMMAR["fallthrough"].format(reason="r")
+    LK.GRAMMAR["fallback_lane"].format(text="t")
+    LK.GRAMMAR["fallback_lane_failed"].format(err="e")
 
 
 # --- the family end to end (scripted brain) -----------------------------------------------

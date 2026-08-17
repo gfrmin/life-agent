@@ -25,12 +25,15 @@ import re
 from collections.abc import Callable
 from typing import Any
 
+from life_agent import owner as OWNER
 from life_agent.core import calibration as CAL
+from life_agent.core import config as CFG
 from life_agent.core import deliberate as DL
 from life_agent.core import gather_outcomes as GO
 from life_agent.core import lookup as LK
 from life_agent.core import matching as MATCH
 from life_agent.core import seam as SEAM
+from life_agent.core import synthesis as SYN
 
 # The per-edge reliability curves (calibration.fit_edge_curves over the outcomes log),
 # injected by the caller. None (every legacy call site) keeps the declared constants —
@@ -254,7 +257,7 @@ def decide_via_loop(question: str, k: int, *, bridge: str, daemon: str, post: Po
         return {"effector": nv["action"], "asserted": nv["asserted"], "candidates": [],
                 "credences": [], "p_none": None, "eu": None, "n_obs": 0,
                 "hits": nv.get("hits", []), "route": None, "rendered": nv.get("rendered"),
-                "n_indeterminate": 0,
+                "n_indeterminate": 0, "question": question,
                 **_UNPRICED_ATTRIBUTION, "edge_events": [], "spend_usd": 0.0}
     if grow_lane:
         return run_pass(question, k, route, bridge=bridge, daemon=daemon, post=post, get=get,
@@ -605,7 +608,7 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
     asserted = [dec["value"]] if dec["effector"] == "report" and dec["value"] else []
     return {"effector": dec["effector"], "asserted": asserted, "candidates": candidates,
             "credences": dec["credences"], "p_none": dec["p_none"], "eu": dec["eu"],
-            "n_obs": len(obs), "hits": hits, "route": route,
+            "n_obs": len(obs), "hits": hits, "route": route, "question": question,
             "n_indeterminate": int(ext.get("indeterminate", 0) or 0),
             "instrument": edge_instrument, "cost_usd": edge_cost,
             "latency_s": edge_latency, "instrument_value": edge_value,
@@ -667,4 +670,31 @@ def render_view(view: View) -> str:
         n_ind=view.get("n_indeterminate", 0),
         p_none=p_none if p_none is not None else 0.0,
         action=eff, eu=eu if eu is not None else 0.0)
-    return f"{body}\n\n{footer}"
+    out = f"{body}\n\n{footer}"
+    if (CFG.fallback_lane_enabled() and view.get("route") is not None
+            and eff in _FALLBACK_WITHHOLD):
+        out += _fallback_lane(view)
+    return out
+
+
+# a hedge already surfaces its candidates; the lane covers only assertion-free withholdings
+_FALLBACK_WITHHOLD = ("abstain", "ask_clarify", "miss")
+
+
+def _fallback_lane(view: View) -> str:
+    """The MVP dual-lane fallback (interaction contract, *know* — the uncalibrated lane):
+    on a typed withholding, the monolithic prose synthesized over the SAME retrieved hits,
+    under an explicit label. Presentation only — the logged decision (and any verdict
+    bound to it) is the typed one. A pre-lane View (no question) or an empty retrieval
+    degrades to today's render; a failed synthesize is named, never silent (invariant 3)
+    and never kills the typed render."""
+    question = str(view.get("question") or "")
+    hits = view.get("hits") or []
+    if not question or not hits:
+        return ""
+    try:
+        text, _key, _cached = SYN.synthesize(CFG.pkm_root(), question, hits,
+                                             OWNER.load_profile())
+        return "\n\n" + LK.GRAMMAR["fallback_lane"].format(text=text)
+    except (Exception, SystemExit) as e:
+        return "\n\n" + LK.GRAMMAR["fallback_lane_failed"].format(err=type(e).__name__)

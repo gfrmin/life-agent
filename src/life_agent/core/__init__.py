@@ -21,6 +21,7 @@ from life_agent.core.config import (
     TRIPS_LEDGER,
     UTILITY_ELICITATIONS,
     UTILITY_MODEL,
+    pkm_root,
 )
 from life_agent.core.llm import (
     DEFAULT_ANSWER_MODEL,
@@ -61,6 +62,7 @@ __all__ = [
     "cost_usd",
     "meter_read",
     "openai_complete",
+    "pkm_root",
     "price_of",
     "render_sources_block",
     "reset_meter",

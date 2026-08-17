@@ -200,6 +200,13 @@ GRAMMAR: dict[str, str] = {
                " · {n_ind} indeterminate · none-of-retrieved {p_none:.3f}"
                " · decision {action} (EU {eu:.2f})"),
     "fallthrough": "(lookup: {reason} — narrative path)",
+    # the MVP dual-lane fallback (interaction contract, know): a typed withholding may
+    # additionally carry the monolithic prose over the same retrieved sources, explicitly
+    # labeled — presentation only, never the logged decision. Removed when the §8 gate
+    # passes and typed becomes the silent default.
+    "fallback_lane": ("uncalibrated lane — prose over the same retrieved sources, "
+                      "not a calibrated decision (§8 gate pending):\n{text}"),
+    "fallback_lane_failed": "uncalibrated lane unavailable ({err})",
 }
 
 

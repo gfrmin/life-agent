@@ -142,12 +142,9 @@ ANSWER_SYSTEM = SYN.ANSWER_SYSTEM
 # --- retrieval over the LIVE corpus --------------------------------------- #
 def _pkm_root() -> Path | None:
     """The pkm knowledge root, or None when unresolvable. None disables derivation
-    caching only (fail open) — answering itself goes through connect(), which raises."""
-    try:
-        cfg = yaml.safe_load(C.PKM_CONFIG.read_text(encoding="utf-8"))
-        return Path(cfg["root_dir"]).expanduser()
-    except (OSError, KeyError, TypeError, yaml.YAMLError):
-        return None
+    caching only (fail open) — answering itself goes through connect(), which raises.
+    Delegates to the hoisted core resolution (shared with the render seam's lane)."""
+    return C.pkm_root()
 
 
 def connect() -> duckdb.DuckDBPyConnection:

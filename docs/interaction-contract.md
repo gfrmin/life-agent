@@ -146,6 +146,18 @@ credence):
 | withheld claims | inclusion is a decision (foundations §3): withheld claims are counted with their EU reason — `n claims withheld: low relevance` |
 | indeterminates | carried and named, as in the temporal/subject footers — the §18.12/§18.13 contract generalised |
 
+**The uncalibrated lane (MVP dual-lane fallback — adopted 2026-08-17, flag-gated,
+`LIFE_AGENT_FALLBACK_LANE=1`).** While the §8 adoption gate is pending, a typed
+WITHHOLDING (abstain / ask-clarify / miss — never a hedge, which already surfaces its
+candidates) may additionally render the monolithic prose synthesized over the *same*
+retrieved sources, under the explicit `uncalibrated lane` label
+(`lookup.GRAMMAR["fallback_lane"]`). The typed decision still renders first with its
+named reason and held-back candidates; the lane is **presentation only** — the logged
+decision, and any `g`/`b` verdict bound to its `decision_id`, remains the typed one. A
+failed lane is named (`fallback_lane_failed`), never silent; the flag's absence is
+byte-for-byte the pre-lane render, and the lane is removed when the gate passes and
+typed becomes the silent default.
+
 Rendering order is posterior order, not rhetorical order; LLM paraphrase stays within
 claim boundaries; the conformance audit (the citation guard extended to claim coverage)
 runs per render, never cached. The strings live in per-family tables
