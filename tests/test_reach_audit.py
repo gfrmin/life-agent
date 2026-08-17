@@ -63,8 +63,10 @@ def test_audit_rows_joins_paired_decisions_and_retrieval(monkeypatch) -> None:
         "q-b": {"typed": {"action": "abstain"}},
         "q-c": {"typed": {"action": "report"}},       # asserted — not audited
     }
+    # the decisions log keys by the content-addressed question HASH, not the qid
     decisions = {
-        "q-a": {"posterior_summary": {"n_obs": 2, "n_competing": 1}},
+        RA._qhash("what is the fee?"): {
+            "posterior_summary": {"n_obs": 2, "n_competing": 1}},
         # q-b has NO decision row — the unlogged-miss shape; still audited, miss-split
     }
     questions = [

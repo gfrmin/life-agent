@@ -66,6 +66,7 @@ from temper_audit import load_decisions
 import life_agent.core.matching as MATCH
 import life_agent.core.retrieval as RET
 from life_agent.core import config as LCFG
+from life_agent.core.decisions import question_id as _qhash
 
 _WITHHELD = ("abstain", "ask_clarify", "miss")
 
@@ -160,7 +161,9 @@ def audit_rows(paired: dict[str, dict], decisions: dict[str, dict],
         retrieved = {str(h["artifact_cache_key"]) for h in hits
                      if MATCH.answer_matches(gold, variants, str(h["chunk_text"]))}
         retrieved &= gold_docs  # the exact matcher decides on both sides
-        dec = decisions.get(qid) or decisions.get(str(q.get("id")))
+        # the decisions log keys by the content-addressed question hash, never the
+        # corpus qid — the same join gate_splice/temper_audit make
+        dec = decisions.get(_qhash(str(q["question"])))
         ps = (dec or {}).get("posterior_summary") or {}
         n_obs = int(ps["n_obs"]) if dec else None
         independent = gold_docs - ({home} if home else set())
