@@ -189,8 +189,11 @@ Bayesian Ask rather than deterministic pipelines. Remaining program, in dependen
    Adoption is the owner's rider. **Run 8 (router v2, same day): FAIL 0.857 / +0.344**
    — the router delivered (miss 18→2, answer rate 0.57, 0 wrongs among the admitted)
    but two wrong-leader commits on multi-value chunks (curve-evolution variance, not
-   the router) pulled the reading under. Next: the competing-values temper at the
-   terminal, then corroboration on sub-bar leaders.
+   the router) pulled the reading under. **Run 9 (the competing-values temper, same
+   day): PASS 0.938 / +0.390 with ZERO wrong commits** (35 ✓ / 0 ✗, answer rate 0.34,
+   $4.10) — the registered off-gate sweep predicted the live assert set perfectly; the
+   wrong-commit class is closed at the price of reach. Next: independent-document
+   corroboration on the 67 dispersed (the only rescue path the temper permits).
 4. **The aggregate family** (subsumes D3): recall term + completeness priors,
    missing-mass posterior, dedup-as-inference — the spending question answered as a
    posterior with both coverage readouts.

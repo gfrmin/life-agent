@@ -85,9 +85,15 @@ env-gate and typed-as-default move on his say, not on the line. **Run 8 (router 
 `gate-20260817T164427`): FAIL 0.857, Δ̄ +0.344 [−0.109, +0.841]** — the router worked
 (16 newly admitted: 6 ✓ / 10 dispersed / 0 wrong; miss 18→2; answer rate 0.57; $3.25)
 but two curve-evolution wrong-leader commits on multi-value chunks (q2-053, q2-090)
-pulled it back under. The pair reads as one system straddling the bar; the named next
-lever is the **competing-values temper** (a second plausible in-chunk value must move
-the commit bar), then corroboration on the 43 sub-bar dispersed. Old D3–D4 stay re-scoped as Ask's
+pulled it back under. **Run 9 (the competing-values temper, `gate-20260817T195737`):
+PASS 0.938, Δ̄ +0.390 [+0.032, +0.841] — zero wrong commits** (35 ✓ / 0 ✗ / 69 withheld,
+answer rate 0.34, $4.10): a same-shape competitor in the extractor's quote window halves
+the observation's r on both commit sites (`matching.quote_scoped_competitors` →
+`competition_factor`, join channel inherits it — §2 lineage), registered blind off-gate
+(`scripts/temper_audit.py`, counterfactual floor 0.945/+0.401 — the live run matched it
+almost exactly and the sweep predicted the assert set perfectly). The wrong-commit class
+is closed at the price of reach; the named next lever is independent-document
+corroboration on the 67 dispersed. Old D3–D4 stay re-scoped as Ask's
 aggregate/thread families. The doc's §14 open questions are a **live empirical ledger**
 (owner's adoption rider): each entry names the evidence that decides it — keep it
 current. Sequencing is continuous and eval-gated, not dogfood-gated (PRINCIPLES §9 as

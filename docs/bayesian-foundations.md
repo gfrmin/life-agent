@@ -2141,6 +2141,38 @@ on this list. Answers land here by amendment, citing their evidence.
   leader past the bar alone — rescue needs independent-document corroboration or a
   disagreeing/new-value read, so run 9's answer rate should sit near the counterfactual
   floor's 0.34 and q2-105 is predicted dispersed, not wrong.
+
+- **Run 9 — the temper's reading: PASS at P(Δ>0.05) = 0.938, Δ̄ = +0.390 [+0.032, +0.841]
+  (2026-08-17, run `gate-20260817T195737`, master @ `d21a104`, credence @ `f474e70`,
+  clean; the run-8 recipe verbatim + the registered temper as the only decision-path
+  change).** Guards all hold: pin MATCHED, λ_usd folded 1.3311, censored 0, judge flipped
+  the SAME five mono rows as run 8 (q2-021/026/028/035/048), none typed; curves held out
+  over 611 pre-run rows in force (621 logged); pin banked (`gate_splice --pin` reproduces
+  0.938/+0.390). Series: 0.002 → 0.010 → 0.065 → 0.092 → 0.098 → 0.678 → 0.945 → 0.857 →
+  **0.938 — the second PASS.** Typed **35 ✓ / 0 ✗ / 69 withheld** (miss 2 · dispersed 67),
+  answer rate 0.57 → 0.34 with correct-report rate = answer rate — **zero wrong commits,
+  the first run in the series where every typed assert is correct.** Spend $4.10
+  (deliberate 60/104, warm 53) vs mono $39.01. **Every registered prediction held, some
+  exactly:** the counterfactual floor said 0.945/+0.401/rate 0.34 — the live run read
+  0.938/+0.390/0.34; q2-053, q2-090, q2-105 all dispersed (the wrong-commit class closed);
+  all 21 predicted collateral corrects dispersed and NONE recovered via same-doc re-reads
+  (the join-inheritance consequence, as amended pre-firing) — the 35 asserts are exactly
+  run 8's 56 ✓ minus the sweep's 21, i.e. the off-gate sweep predicted the live assert
+  set perfectly; the competition field fired on 43/102 decide rows (27 of run 8's commits
+  plus dispersed-set rows, consistent with the sweep). The pre-fire smoke (q2-105
+  off-gate: abstain, `n_competing 9`, $0) is in the decisions log. **What the reading
+  says:** the temper converts the wrong-commit class into withholding at the price of
+  reach — Δ's positive mean is now carried by u_wrong avoidance plus the spend gap, and
+  the honest cost is the answer rate (0.34, floor-shaped, because the only rescue the
+  temper permits is independent-document corroboration or a disagreeing/new-value read —
+  same-doc confirms inherit the ambiguity). Named next lever (unchanged in kind,
+  sharpened in target): reach on the 67 dispersed — (a) corroboration on sub-bar gold
+  leaders across INDEPENDENT documents (the only path the temper leaves open, and the
+  run-8 reading's lever 2), (b) the 19-question n_obs=0 retrieval-failure cluster the
+  sweep separated from the near-miss cluster. Adoption stance: two PASSes (runs 7, 9) of
+  the last three at the frozen bar, and run 9's arm never wrong-commits; the owner's
+  rider (§13) decides — the honest summary is now "passes the bar with zero wrongs at
+  answer rate 0.34; reach is the remaining cost, and it is priced, not hidden."
   **Pre-registration for run 9:** the run-8 recipe verbatim (`fire-run9.sh` — with a
   stale-stack kill: fire-run8.sh reuses a listening daemon via the `/ready` short-circuit,
   which would silently run the un-tempered code) + the temper as the only decision-path
