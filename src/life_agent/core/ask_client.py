@@ -122,7 +122,9 @@ def answer(question: str, k: int = 20, *, post: Any = None, get: Any = None,
                              "candidates": view["candidates"],
                              "p_none": view["p_none"] if view["p_none"] is not None else 0.0,
                              "eu": view["eu"] if view["eu"] is not None else 0.0,
-                             "n_obs": view.get("n_obs", 0)}})
+                             "n_obs": view.get("n_obs", 0),
+                             "n_indeterminate": view.get("n_indeterminate", 0),
+                             "n_competing": view.get("n_competing", 0)}})
             decision_id = (resp or {}).get("decision_id")
         except Exception:
             decision_id = None  # fail-open: the verdict simply has nothing to bind to

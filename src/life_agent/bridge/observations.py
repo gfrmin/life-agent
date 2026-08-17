@@ -27,11 +27,11 @@ def to_abstract_observations(
     ``candidates`` are the distinct values in first-seen order (display form = the first raw form;
     identity is the §4.2 canonical key, so date/number format and OCR variants of one value collapse
     to a single candidate while values with different significant digits never merge). Each abstract
-    observation is pure numbers — ``{reports, group, authority, subject_factor, time_factor}`` —
-    where ``reports`` is the 0-based index of the candidate it asserts and ``group`` is the 0-based
-    first-seen index of its source document (chunks of one document share a group, driving the §4.2
-    ancestry temper). The covariates pass through verbatim; they are projected upstream (the
-    probes), not here.
+    observation is pure numbers — ``{reports, group, authority, subject_factor, time_factor,
+    competition_factor}`` — where ``reports`` is the 0-based index of the candidate it asserts and
+    ``group`` is the 0-based first-seen index of its source document (chunks of one document share
+    a group, driving the §4.2 ancestry temper). The covariates pass through verbatim; they are
+    projected upstream (the probes; the competition factor at ``observe_hits``), not here.
     """
     candidates = candidates_from(observations)
     cand_index = {_candidate_key(c): j for j, c in enumerate(candidates)}
@@ -46,6 +46,7 @@ def to_abstract_observations(
                 "authority": o.authority,
                 "subject_factor": o.subject_factor,
                 "time_factor": o.time_factor,
+                "competition_factor": o.competition_factor,
             }
         )
     return candidates, abstract

@@ -36,9 +36,10 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from gate_splice import load_paired
@@ -95,12 +96,7 @@ def detector_d3(leader: str, chunk: str, quote: str | None = None) -> int:
     — a post-look candidate, measured on the same archived evidence, named in §14.
     Falls back to the D2 window when the quote is absent or not found in the chunk."""
     if quote:
-        pos = chunk.find(quote)
-        if pos >= 0:
-            return MATCH.competing_value_count(
-                leader,
-                chunk[max(0, pos - _QUOTE_MARGIN): pos + len(quote) + _QUOTE_MARGIN])
-        return MATCH.competing_value_count(leader, quote)
+        return MATCH.quote_scoped_competitors(leader, chunk, quote)
     return detector_d2(leader, chunk, quote)
 
 
@@ -123,8 +119,10 @@ class Row:
     counts: dict[str, int] = field(default_factory=dict)   # detector -> n_competing
 
     def tempered(self, det: str, cap: int) -> float:
+        # the sweep owns its factor grid (1/(1+min(n,cap))) — independent of the FROZEN
+        # production cap in lookup.competition_factor, so future sweeps can re-tune
         n = self.counts.get(det, 0)
-        return analytic_temper(self.leader_p, LK.competition_factor(min(n, cap)))
+        return analytic_temper(self.leader_p, 1.0 / (1.0 + min(max(n, 0), cap)))
 
     def would_flip(self, det: str, cap: int) -> bool:
         return (self.action in _ASSERTS and self.counts.get(det, 0) > 0
@@ -251,7 +249,7 @@ def summary_matrix(rows: list[Row], caps: list[int]) -> list[dict[str, Any]]:
         for cap in caps:
             out.append({
                 "detector": det, "cap": cap,
-                "factor_at_1": round(LK.competition_factor(min(1, cap)), 4),
+                "factor_at_1": 0.5,
                 "wrong_flips": sorted(r.qid for r in wrongs if r.would_flip(det, cap)),
                 "n_wrongs": len(wrongs),
                 "collateral": sorted(r.qid for r in rights if r.would_flip(det, cap)),
@@ -270,7 +268,7 @@ def render(rows: list[Row], matrix: list[dict[str, Any]], caps: list[int],
         f"- rows: {len(rows)} ({sum(1 for r in rows if r.action in _ASSERTS)} commits, "
         f"{sum(1 for r in rows if r.withheld)} withheld); commit bar {COMMIT_BAR} "
         f"(the run's own empirical bracket)",
-        f"- evidence recovery: " + ", ".join(
+        "- evidence recovery: " + ", ".join(
             f"{src} {sum(1 for r in rows if r.evidence_source == src)}"
             for src in ("extract-cache", "deliberate-toolcalls", "catalogue-scan",
                         "unrecovered", "no-decision")),

@@ -547,6 +547,39 @@ def test_log_decision_appends_lookup_shaped_event_and_returns_id(deps: BridgeDep
     assert d.utility_fold_version == "fold-test-v1"
 
 
+def test_log_decision_records_indeterminate_and_competition(deps: BridgeDeps) -> None:
+    # the record's replayability fix (§14, 2026-08-17): run 8's single-candidate commits
+    # were blind to in-chunk competition — the bridge writer now discloses both counts,
+    # with honest zero defaults for callers predating the fields.
+    _call(deps, "POST", "/log_decision",
+          {"question": "q", "retrieval_keys": ["d0"],
+           "decision": {**_decision(effector="report"),
+                        "n_indeterminate": 2, "n_competing": 1}})
+    _call(deps, "POST", "/log_decision",
+          {"question": "q2", "retrieval_keys": ["d0"], "decision": _decision()})
+    with_fields, without = DEC.read(deps.decisions_path)
+    assert with_fields.posterior_summary["n_indeterminate"] == 2
+    assert with_fields.posterior_summary["n_competing"] == 1
+    assert without.posterior_summary["n_indeterminate"] == 0
+    assert without.posterior_summary["n_competing"] == 0
+
+
+def test_extract_discloses_the_competed_observation_count(
+        deps: BridgeDeps, monkeypatch: pytest.MonkeyPatch) -> None:
+    import dataclasses as _dc
+    observations = [_dc.replace(_obs("Alpha", "d0"), n_competing=1,
+                                competition_factor=0.5),
+                    _obs("Bravo", "d1")]
+    monkeypatch.setattr(LK, "observe_hits", lambda *a, **k: (observations, 0))
+    monkeypatch.setattr(LK, "extractor_reliability_mean", lambda *a, **k: 0.7)
+    status, payload = _call(deps, "POST", "/extract",
+                            {"question": "q", "hits": [{"chunk_text": "x"}]})
+    assert status == 200
+    assert payload["n_competing"] == 1
+    # the wire carries the factor per observation — the daemon's r product consumes it
+    assert [o["competition_factor"] for o in payload["observations"]] == [0.5, 1.0]
+
+
 def test_log_decision_carries_instrument_and_price(deps: BridgeDeps) -> None:
     # §10 accounting on the ledger (decisions v2): the edge that answered, at what price,
     # passes through when the body posts it — and defaults stay honest when it doesn't.

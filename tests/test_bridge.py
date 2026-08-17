@@ -150,3 +150,15 @@ def test_corroborate_time_factor_passes_through_a_permanent_construct() -> None:
     tf = SRV._corroborate_time_factor(
         jr, hits, _p(False, "date_of_birth", {"d0": "2008-01-01"}, "2024-01-01"))
     assert tf == 1.0
+
+
+def test_competition_factor_rides_the_abstract_observation() -> None:
+    # §4.2's competing-values temper (foundations §14, 2026-08-17): the factor is
+    # projected at observe_hits and passes through the parity boundary verbatim —
+    # the daemon's r product is the only consumer.
+    import dataclasses
+
+    competed = dataclasses.replace(_obs("Alpha", "d0"), n_competing=1,
+                                   competition_factor=0.5)
+    _candidates, abstract = to_abstract_observations([competed, _obs("Bravo", "d1")])
+    assert [a["competition_factor"] for a in abstract] == [0.5, 1.0]

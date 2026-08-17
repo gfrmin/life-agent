@@ -235,6 +235,9 @@ def _extract(deps: BridgeDeps, p: Payload) -> Payload:
             # extractor_reliability).
             "rho": LK.extractor_reliability_mean(),
             "indeterminate": indeterminate, "era_split": es, "half_life_years": hl,
+            # §4.2's competition term, disclosed for the View + decision record: how many
+            # grounded observations carry a same-shape competitor in their quote window
+            "n_competing": sum(1 for o in obs if o.n_competing),
             # realised cache-miss model spend (the instruments are cloud-priced since the
             # Ollama deprecation — the gate's spend term must see it; warm replays are $0)
             "cost_usd": sum(meter)}
@@ -694,8 +697,14 @@ def _log_decision(deps: BridgeDeps, p: Payload) -> Payload:
         tx_time=O.now_iso(), run_id=str(decision.get("run_id") or "answer-brain"),
         question_id=DEC.question_id(question),
         family="lookup", action_set=DEC.LOOKUP_ACTION_ORDER,
+        # n_indeterminate/n_competing: the record's replayability fix (§14, 2026-08-17 —
+        # run 8's single-candidate commits were blind to in-chunk competition; a future
+        # sweep must read it off the archive, not re-join chunks). Defaults stay honest
+        # for callers predating the fields.
         posterior_summary={"candidates": cands_sorted, "credences": creds_sorted,
-                           "p_none": p_none, "n_obs": n_obs},
+                           "p_none": p_none, "n_obs": n_obs,
+                           "n_indeterminate": int(decision.get("n_indeterminate", 0)),
+                           "n_competing": int(decision.get("n_competing", 0))},
         utility_fold_version=deps.fold_version(),
         chosen_action=action, predicted_eu=eu, decision_id=decision_id,
         # decisions v2 (§10 accounting): the answer-proposing edge + its realised price,

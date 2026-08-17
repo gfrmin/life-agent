@@ -145,6 +145,21 @@ def test_extract_miss_short_circuits() -> None:
     assert fake.posted("/decide") == []
 
 
+def test_view_threads_the_competed_observation_count() -> None:
+    # §4.2's competition disclosure (§14, 2026-08-17): /extract's n_competing reaches the
+    # terminal View verbatim, so the logged decision carries it; absent (an older bridge)
+    # reads as the honest 0.
+    dec = {"effector": "report", "value": "P123", "credences": [0.92],
+           "p_none": 0.08, "eu": 0.5}
+    fake = FakeServices(route={"construct": "prize money", "time_indexed": False},
+                        extract={**_EXTRACT, "n_competing": 1}, decides=[dec])
+    view = _loop(fake, grow=False)
+    assert view["n_competing"] == 1
+    fake0 = FakeServices(route={"construct": "prize money", "time_indexed": False},
+                         decides=[dict(dec)])
+    assert _loop(fake0, grow=False)["n_competing"] == 0
+
+
 def test_recency_gather_is_acknowledged_then_report() -> None:
     # The daemon schedules a recency gather; recency is PRE-APPLIED in /extract, so the body
     # acknowledges it (marks applied, re-decides on the same posterior) and the next decide reports.

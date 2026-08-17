@@ -37,6 +37,9 @@ def test_answer_renders_and_binds_the_decision(monkeypatch: Any) -> None:
     assert "P123" in reply                       # the shared credence grammar rendering
     assert decision_id == "ab-cafe"              # the id the in-chat verdict binds to
     assert posted and posted[0][1]["decision"]["effector"] == "report"
+    # the replayability fields (§14, 2026-08-17) ride the posted decision, zero-default
+    assert posted[0][1]["decision"]["n_indeterminate"] == 0
+    assert posted[0][1]["decision"]["n_competing"] == 0
 
 
 def test_answer_narrative_or_miss_binds_nothing(monkeypatch: Any) -> None:

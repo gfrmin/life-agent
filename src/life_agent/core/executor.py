@@ -425,6 +425,7 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
         return {"effector": "miss", "asserted": [], "candidates": [], "credences": [],
                 "p_none": None, "eu": None, "n_obs": 0, "hits": hits, "route": route,
                 "n_indeterminate": int(ext.get("indeterminate", 0) or 0),
+                "n_competing": int(ext.get("n_competing", 0) or 0),
                 **_UNPRICED_ATTRIBUTION, "edge_events": edge_events,
                 "spend_usd": spend_usd}
     u_bar = get(f"{bridge}/utility")["u_bar"]
@@ -616,6 +617,7 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
             "credences": dec["credences"], "p_none": dec["p_none"], "eu": dec["eu"],
             "n_obs": len(obs), "hits": hits, "route": route, "question": question,
             "n_indeterminate": int(ext.get("indeterminate", 0) or 0),
+            "n_competing": int(ext.get("n_competing", 0) or 0),
             "instrument": edge_instrument, "cost_usd": edge_cost,
             "latency_s": edge_latency, "instrument_value": edge_value,
             "instrument_confidence": edge_conf, "instrument_lineage": edge_lineage,

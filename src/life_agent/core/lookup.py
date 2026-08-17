@@ -48,6 +48,7 @@ from life_agent.core import config
 from life_agent.core import decisions as DEC
 from life_agent.core import derivations as D
 from life_agent.core import instrument as INSTR
+from life_agent.core import matching as MATCH
 from life_agent.core import outcomes as O
 from life_agent.core import reactions as R
 from life_agent.core import seam as SEAM
@@ -165,17 +166,19 @@ _PROB_EPS = 1e-12
 # instead of splitting posterior mass. Below it, identity stays the whitespace+case norm.
 _CANON_MIN_DIGITS = 5
 # The §4.2 competition term at the source (foundations §14, registered 2026-08-17): a
-# chunk carrying n distinct same-shape values besides the extracted one halves-or-worse
-# the probability the extractor PICKED the true one — an r-shaped (report-correctness)
+# quote window carrying a distinct same-shape value beside the extracted one halves the
+# probability the extractor PICKED the true one — an r-shaped (report-correctness)
 # covariate, never an A-shaped one (the competitor concentrates the miss, it does not
-# grow the wrong-value universe). Saturating so a dense spreadsheet chunk stays a live
-# sub-bar lead the VOI ladder can rescue instead of being erased to prior.
-_COMPETITION_CAP = 3
+# grow the wrong-value universe). Cap FROZEN at 1 (binary 0.5) by the off-gate sweep
+# (temper-audit-20260817: D3/cap1 — weakest temper that flips the 3/3 run-8 wrongs,
+# minimal collateral 18/56) so a competed observation stays a live sub-bar lead the VOI
+# ladder can rescue instead of being erased toward the prior.
+_COMPETITION_CAP = 1
 
 
 def competition_factor(n_competing: int) -> float:
-    """Per-observation reliability multiplier for ``n_competing`` same-shape in-chunk
-    competitors (``matching.competing_value_count``): 1, 1/2, 1/3, 1/4 (floor)."""
+    """Per-observation reliability multiplier for ``n_competing`` same-shape competitors
+    in the extractor's quote window (``matching.quote_scoped_competitors``): 1 or 1/2."""
     return 1.0 / (1.0 + min(max(n_competing, 0), _COMPETITION_CAP))
 
 # §4.1's v0 source-authority lattice: P(document's assertion = W's value | doc class),
@@ -314,6 +317,10 @@ class Observation:
     #                              as-of; None = undated/underived). Does not enter obs_cache_key
     #                              (that is the extraction key) — a read-side covariate like the
     #                              factors above.
+    n_competing: int = 0         # distinct same-shape values in the quote window (§4.2's
+    #                              competition term, matching.quote_scoped_competitors) —
+    #                              a read-side covariate like doc_date, never in the key
+    competition_factor: float = 1.0  # the frozen n→factor map applied (1 or 1/2)
 
 
 @dataclass(frozen=True)
@@ -597,6 +604,11 @@ def observe_hits(root: Path, question: str, hits: list[dict[str, Any]], *,
                                 time_indexed=time_indexed, today=today,
                                 half_life_years=half_life_years)
                     if artifact_key in cov.doc_date else 1.0)
+        # §4.2's competition term, detected at the source (consumer-side over the RAW
+        # record, like the grounding gate above — warm replays re-detect): a same-shape
+        # value inside the extractor's own quote window halves this observation's r.
+        n_comp = MATCH.quote_scoped_competitors(
+            str(parsed["value"]).strip(), chunk, str(parsed["quote"]))
         observations.append(Observation(
             card_n=i + 1,
             artifact_cache_key=artifact_key,
@@ -609,6 +621,8 @@ def observe_hits(root: Path, question: str, hits: list[dict[str, Any]], *,
             subject_factor=subject_factor(cov.subject_state.get(artifact_key)),
             time_factor=t_factor,
             doc_date=cov.doc_date.get(artifact_key),
+            n_competing=n_comp,
+            competition_factor=competition_factor(n_comp),
         ))
     # §5 dedup-as-inference at the SHARED shaper: collapse correlated duplicate documents
     # (identical-quote forward/reply chains, re-filed copies) to one witness here, BEFORE the
@@ -715,7 +729,10 @@ def lookup_posterior(brain: Brain, observations: list[Observation],
         groups.setdefault(o.artifact_cache_key, []).append(o)
     for group in groups.values():
         o0 = group[0]  # one document's covariates are shared by all its chunks
-        covariate = _covariate(o0)
+        # §4.2's competition term: chunk-level, so the group covariate takes the group's
+        # most-competed observation (min factor — the conservative fold; mirrors the
+        # daemon's per-observation r product on the executor path).
+        covariate = _covariate(o0) * min(o.competition_factor for o in group)
         reports = [keys.index(_candidate_key(o.value_raw)) + 1 for o in group]  # 1-based atom value
         kernel = {"type": "group_noisy_channel", "covariate": covariate,
                   "n_alternatives": _A_ALTERNATIVES}
@@ -944,9 +961,11 @@ def decide_and_record(root: Path, question: str, construct: str,
     # key (via params) and the recorded content (auditability).
     obs_covariates = [
         {"obs": o.obs_cache_key, "subject_factor": o.subject_factor,
-         "time_factor": o.time_factor}
+         "time_factor": o.time_factor, "n_competing": o.n_competing,
+         "competition_factor": o.competition_factor}
         for o in observations]
     params = {"A": _A_ALTERNATIVES, "oracle_p": _ORACLE_P,
+              "competition_cap": _COMPETITION_CAP,
               "p_none_prior": _P_NONE_PRIOR, "rho": list(rho),
               "a_subject_other": _A_SUBJECT_OTHER,
               "p_owner_indet": _P_OWNER_GIVEN_INDET,
@@ -991,6 +1010,7 @@ def decide_and_record(root: Path, question: str, construct: str,
                        "candidates": list(cands), "credences": list(creds),
                        "p_none": p_none, "n_obs": len(observations),
                        "n_indeterminate": indeterminate,
+                       "n_competing": sum(1 for o in observations if o.n_competing),
                    },
                    utility_fold_version=fold_ver,
                    chosen_action=action, predicted_eu=eu,

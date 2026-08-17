@@ -967,6 +967,10 @@ def _log_executor_decision(question: str, view: dict[str, Any]) -> None:
                          "p_none": view["p_none"] if view["p_none"] is not None else 0.0,
                          "eu": view["eu"] if view["eu"] is not None else 0.0,
                          "n_obs": view.get("n_obs", 0),
+                         # the record's replayability fix (§14, 2026-08-17): a
+                         # single-candidate commit must disclose its competition
+                         "n_indeterminate": view.get("n_indeterminate", 0),
+                         "n_competing": view.get("n_competing", 0),
                          # decisions v2 (§10): the answer-proposing edge + realised price
                          "instrument": view.get("instrument") or "",
                          "cost_usd": view.get("cost_usd"),

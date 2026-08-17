@@ -91,6 +91,26 @@ def _span_classes(text: str) -> dict[str, set[str]]:
     return classes
 
 
+_QUOTE_MARGIN = 120
+
+
+def quote_scoped_competitors(value: str, chunk_text: str, quote: str) -> int:
+    """The FROZEN live detector (sweep 2026-08-17, D3/cap1): competitors within the
+    extractor's own grounded quote ±120 chars of its position in the chunk — the anchor
+    the extractor disambiguated by. A same-shape value INSIDE the anchor (the fax beside
+    the tel it was asked for) is the dangerous shape; same-shape values in other rows are
+    what the quote already resolved. Whole-chunk scanning measured 24-32/56 collateral on
+    the run-8 corrects; quote-scoped measured 18/56 with the same 3/3 wrong flips."""
+    if quote:
+        pos = chunk_text.find(quote)
+        if pos >= 0:
+            return competing_value_count(
+                value, chunk_text[max(0, pos - _QUOTE_MARGIN):
+                                  pos + len(quote) + _QUOTE_MARGIN])
+        return competing_value_count(value, quote)
+    return competing_value_count(value, chunk_text)
+
+
 def competing_value_count(value: str, chunk_text: str) -> int:
     """Distinct values in ``chunk_text`` that COMPETE with ``value``: same shape class
     (digit count, or the percent class), different canon. Repeats and format variants of

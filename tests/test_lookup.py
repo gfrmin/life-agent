@@ -9,6 +9,7 @@ Run: uv run --project . python -m pytest tests/test_lookup.py
 """
 from __future__ import annotations
 
+import dataclasses
 import json
 from datetime import date
 from pathlib import Path
@@ -311,6 +312,52 @@ def test_observe_hits_absent_covariates_are_unit(migrated_root: Path) -> None:
     obs, _ = observe_hits(migrated_root, "q?", [_hit("a" * 64, "v here")],
                           client=client, time_indexed=True)
     assert obs[0].subject_factor == 1.0 and obs[0].time_factor == 1.0
+    assert obs[0].n_competing == 0 and obs[0].competition_factor == 1.0
+
+
+# --- §4.2's competition term at the source (foundations §14, 2026-08-17) -------------------
+
+def test_observe_hits_detects_a_quote_window_competitor(migrated_root: Path) -> None:
+    # the q2-105 shape: the extractor's own quote carries the fax AND the tel — the
+    # dangerous competitor is inside the anchor, and the observation's r is halved
+    chunk = "Ms C  Tel: (852) 5550 0143  Fax: (852) 5550 0187  (row 113)"
+    client = FakeClient({"found": True, "value": "(852) 5550 0143",
+                         "quote": "Tel: (852) 5550 0143  Fax: (852) 5550 0187"})
+    obs, _ = observe_hits(migrated_root, "fax number?", [_hit("a" * 64, chunk)],
+                          client=client)
+    assert obs[0].n_competing >= 1
+    assert obs[0].competition_factor == 0.5
+
+
+def test_observe_hits_competition_survives_a_warm_replay(migrated_root: Path) -> None:
+    # detection is consumer-side over the RAW cached record (the grounding-gate
+    # precedent): a warm replay re-detects without any model call, and the extraction
+    # cache key is untouched by the temper (the §18.9 record predates it)
+    chunk = "prize $1,234,567 for the season; career $7,654,321 listed"
+    client = FakeClient({"found": True, "value": "$1,234,567",
+                         "quote": "prize $1,234,567 for the season; career $7,654,321"})
+    obs1, _ = observe_hits(migrated_root, "prize?", [_hit("a" * 64, chunk)], client=client)
+    assert client.calls == 1 and obs1[0].competition_factor == 0.5
+    cold = FakeClient({"found": False, "value": "", "quote": ""})   # must never be asked
+    obs2, _ = observe_hits(migrated_root, "prize?", [_hit("a" * 64, chunk)], client=cold)
+    assert cold.calls == 0
+    assert obs2[0].n_competing == obs1[0].n_competing
+    assert obs2[0].obs_cache_key == obs1[0].obs_cache_key
+
+
+def test_lookup_posterior_folds_the_competition_factor_into_the_group_covariate() -> None:
+    transport = ScriptedTransport()
+    brain = Brain(transport)
+    competed = dataclasses.replace(_obs("k" * 64, "42"), n_competing=1,
+                                   competition_factor=0.5)
+    LK.lookup_posterior(brain, [competed], ["42"], (4.0, 4.0))
+    kernels = [r["params"]["kernel"] for r in transport.sent if r["method"] == "condition"]
+    assert kernels and kernels[0]["covariate"] == pytest.approx(0.95 * 0.5)
+    # uncontested: the covariate is untouched
+    transport2 = ScriptedTransport()
+    LK.lookup_posterior(Brain(transport2), [_obs("k" * 64, "42")], ["42"], (4.0, 4.0))
+    k2 = [r["params"]["kernel"] for r in transport2.sent if r["method"] == "condition"]
+    assert k2 and k2[0]["covariate"] == pytest.approx(0.95)
 
 
 # --- the posterior's pure parts -----------------------------------------------------------
@@ -675,7 +722,8 @@ def test_lookup_answer_end_to_end(migrated_root: Path, tmp_path: Path,
     assert content["time_indexed"] is False
     assert content["covariates"] == [
         {"obs": result.observations[0].obs_cache_key,
-         "subject_factor": 1.0, "time_factor": 1.0}]
+         "subject_factor": 1.0, "time_factor": 1.0,
+         "n_competing": 0, "competition_factor": 1.0}]
 
 
 def test_lookup_answer_none_when_not_routed(migrated_root: Path) -> None:
