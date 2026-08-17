@@ -5,6 +5,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
 import temper_audit as TA
@@ -69,6 +71,15 @@ def _recover(qid: str, question: str, leader: str) -> tuple[list[TA.Evidence], s
 def test_analytic_temper_odds_scaling() -> None:
     assert round(TA.analytic_temper(0.926, 0.5), 3) == 0.862
     assert TA.analytic_temper(0.926, 1.0) == 0.926
+
+
+def test_exact_temper_matches_the_worked_channel_math() -> None:
+    # the run-8 regime: leader 0.926 (effective r ≈ 0.535) tempered at 0.5 lands ≈ 0.823
+    # — the exact channel inversion, harder than the analytic 0.862
+    assert round(TA.exact_temper_single(0.926, 0.5), 3) == 0.823
+    assert TA.exact_temper_single(0.926, 1.0) == pytest.approx(0.926, abs=1e-9)
+    # exact flips ⊇ analytic flips: a 0.955 leader the analytic scaling spares, flips
+    assert TA.exact_temper_single(0.955, 0.5) < TA.COMMIT_BAR < TA.analytic_temper(0.955, 0.5)
 
 
 def test_audit_flips_competed_wrongs_and_spares_the_clean_commit() -> None:

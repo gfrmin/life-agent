@@ -66,6 +66,27 @@ def analytic_temper(p: float, f: float) -> float:
     return (f * p) / (f * p + (1.0 - p)) if 0.0 < p < 1.0 else p
 
 
+_A = 10.0   # the channel's a_alternatives (lookup._A_ALTERNATIVES / CANONICAL_CHANNEL)
+
+
+def exact_temper_single(p: float, f: float) -> float:
+    """The EXACT tempered leader for the k=1, single-observation channel (the run-8
+    wrong-commit regime): invert the leader odds for the effective reliability r
+    (odds = (r + (1-r)/A) / ((1-r)/A) against the ½/½ candidate/NONE prior), scale
+    r' = f·r, and push forward. The analytic odds scaling UNDER-tempers (it scales the
+    whole likelihood ratio, not r), so exact flips ⊇ analytic flips — the honest
+    would-flip set for single-obs rows uses this."""
+    if not 0.0 < p < 1.0:
+        return p
+    odds = p / (1.0 - p)
+    r = (odds - 1.0) / (odds + _A - 1.0)
+    if not 0.0 < r < 1.0:
+        return analytic_temper(p, f)
+    r2 = f * r
+    odds2 = (r2 + (1.0 - r2) / _A) / ((1.0 - r2) / _A)
+    return odds2 / (1.0 + odds2)
+
+
 def detector_d1(leader: str, chunk: str, quote: str | None = None) -> int:
     return MATCH.competing_value_count(leader, chunk)
 
@@ -120,9 +141,18 @@ class Row:
 
     def tempered(self, det: str, cap: int) -> float:
         # the sweep owns its factor grid (1/(1+min(n,cap))) — independent of the FROZEN
-        # production cap in lookup.competition_factor, so future sweeps can re-tune
+        # production cap in lookup.competition_factor, so future sweeps can re-tune.
+        # Exact channel inversion for the k=1 single-obs regime (most rows; the wrongs'
+        # shape); the under-tempering analytic approximation elsewhere, mode disclosed.
         n = self.counts.get(det, 0)
-        return analytic_temper(self.leader_p, 1.0 / (1.0 + min(max(n, 0), cap)))
+        f = 1.0 / (1.0 + min(max(n, 0), cap))
+        if self.n_candidates == 1 and self.n_obs == 1:
+            return exact_temper_single(self.leader_p, f)
+        return analytic_temper(self.leader_p, f)
+
+    @property
+    def temper_mode(self) -> str:
+        return "exact" if (self.n_candidates == 1 and self.n_obs == 1) else "analytic"
 
     def would_flip(self, det: str, cap: int) -> bool:
         return (self.action in _ASSERTS and self.counts.get(det, 0) > 0
@@ -283,10 +313,10 @@ def render(rows: list[Row], matrix: list[dict[str, Any]], caps: list[int],
                      f"| {len(m['wrong_flips'])}/{m['n_wrongs']} {m['wrong_flips']} "
                      f"| {len(m['collateral'])}/{m['n_rights']} {m['collateral']} |")
     lines += ["", "## Per-question detail (commits first)", "",
-              "| qid | action | ok | leader | p | n_cand | n_obs | source | "
+              "| qid | action | ok | leader | p | n_cand | n_obs | source | mode | "
               + " | ".join(DETECTORS) + " | " + " | ".join(
                   f"p'@{d}/cap{c}" for d in DETECTORS for c in caps) + " |",
-              "|" + "---|" * (8 + len(DETECTORS) + len(DETECTORS) * len(caps))]
+              "|" + "---|" * (9 + len(DETECTORS) + len(DETECTORS) * len(caps))]
     for r in sorted(rows, key=lambda r: (r.action not in _ASSERTS, r.correct is not False,
                                          r.qid)):
         tempered = " | ".join(f"{r.tempered(d, c):.3f}" + ("←flip" if r.would_flip(d, c)
@@ -294,7 +324,8 @@ def render(rows: list[Row], matrix: list[dict[str, Any]], caps: list[int],
                               for d in DETECTORS for c in caps)
         ok = {True: "✓", False: "✗"}.get(r.correct, "·")
         lines.append(f"| {r.qid} | {r.action} | {ok} | {r.leader[:28]} | {r.leader_p:.3f} "
-                     f"| {r.n_candidates} | {r.n_obs} | {r.evidence_source} | "
+                     f"| {r.n_candidates} | {r.n_obs} | {r.evidence_source} "
+                     f"| {r.temper_mode} | "
                      + " | ".join(str(r.counts.get(d, 0)) for d in DETECTORS)
                      + " | " + tempered + " |")
     return "\n".join(lines) + "\n"
