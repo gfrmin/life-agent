@@ -383,6 +383,11 @@ def main(argv: list[str] | None = None) -> int:
              "— the pre-registration pins the ledger window by its counts, and a "
              "drifted ledger is a different corpus, not a comparable reading")
     parser.add_argument("--expect-questions", type=int, default=None)
+    parser.add_argument(
+        "--u-bar-override", default=None, metavar="JSON",
+        help="pin the boot Ū to this JSON dict (e.g. P3's Ū, for the engine byte-compat "
+             "reproduction). The record names it; NEVER used for a reading — the reading's "
+             "Ū is the boot row, and the p3b pre-registration disclosed why the two differ")
     args = parser.parse_args(argv)
 
     import life_agent.core.lookup as LK
@@ -400,6 +405,9 @@ def main(argv: list[str] | None = None) -> int:
               f"pre-registration for the new window rather than reading over it.")
         return 2
     u_bar = R.latest_boot_u_bar(R.load_shadow_records(C.membrane_shadow_log()), "said@1")
+    if args.u_bar_override:
+        u_bar = {str(k): float(v) for k, v in json.loads(args.u_bar_override).items()}
+        print(f"Ū OVERRIDDEN (reproduction mode, not a reading): {u_bar}")
     if u_bar is None:
         print("no boot u_bar on the shadow log; cannot run.")
         return 1

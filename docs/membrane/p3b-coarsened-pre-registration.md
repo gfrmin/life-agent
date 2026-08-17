@@ -86,6 +86,47 @@ Byte-compatibility with the §17 record: the FULL variant is re-run in the same 
 and its A1/A2 numbers must reproduce P3's (`a1_a2.json` FULL: policy EU/q, P(U) interval)
 — a mismatch voids the run before the coarsened Δ is read.
 
+## AMENDMENT 1 — 2026-08-17, before any coarsened-Δ number exists
+
+**What happened.** The first execution's FULL variant did **not** reproduce P3: policy EU/q
+−0.2788 with **6/190** ticks committed, against P3's −0.2203 with **90/190**. Per the clause
+above the run was **voided before the coarsened arm finished** — killed mid-variant; no
+coarsened Δ was computed or written (`$LIFE_AGENT_KB/eval/p3b-VOID-ubar-drift-20260817/`
+holds only the console).
+
+**Cause — Ū drift, not engine drift, and my reproduction clause conflated the two.** P3
+ran (2026-07-30) under the boot Ū then in force, **u_wrong = −5.9395** (commit bar p1 ≥
+0.856 — the "≈0.8559" the §17.5 record states). The owner's u_wrong elicitation
+(2026-08-06, stated −9 at σ 0.5) moved the boot Ū to **u_wrong = −8.8301** (commit bar
+0.899). Same engine, same 193-tick ledger, same features — a stricter commit rule commits
+far fewer ticks. The "Data (fixed)" section above already records the current Ū and bar; the
+reproduction clause wrongly assumed P3's numbers were Ū-invariant. The 84 boot Ū rows on
+`shadow.jsonl` are the evidence (u_wrong −5.94 through 2026-08-04; −8.83 from 2026-08-06).
+
+**Amended engine check (frozen now).** The engine byte-compat check is the FULL variant run
+under **P3's exact Ū** (`--u-bar-override`, the harness's reproduction-only flag, output to
+`eval/p3b-engine-repro-20260817/` — never a reading): it must reproduce P3's FULL
+**90/190 committed, policy EU/q −0.2203**. If it does, the rebuilt binary is byte-compatible
+and the reading proceeds; if not, the engine is the confound and the reading stays void.
+
+**The reading's Ū is the current boot Ū (u_wrong −8.83), as "Data (fixed)" states — not
+P3's.** Rationale, stated before the number: the flip would ship under the owner's *current*
+utility; a re-earn measured under a Ū the owner has since revised would be a reading of a
+policy no longer on offer. Consequence, disclosed: A3-coarsened is **not directly comparable
+to A3-FULL** (different commit bar). To restore comparability the amended run also computes
+**A3-FULL under the current Ū** in the same execution (`--gate-variants
+FULL,leader-credence-only`), so both arms are read under one bar; P3's A3-FULL record stands
+as the 2026-07-30 reading and is not overwritten (variant-suffixed artifacts, separate
+directory).
+
+**Predictions, re-stated for the stricter bar (still blind to the coarsened Δ):** under
+u_wrong −8.83 the FULL lattice commits only 6/190 held-out ticks, so **A3-FULL under the
+current Ū will itself be a FAIL-by-abstention** (its P3 over-assertion largely vanishes at
+the corrected bar — a finding in its own right); the coarsened arm commits only `ge90`
+ticks above 0.899 and I expect it to commit *more* than FULL's 6 but still few — FAIL, by
+abstention, on both. A PASS on either would be a genuine surprise and, on ≲ 10 disagreement
+rows, under-powered.
+
 ## Predictions (recorded blind)
 
 - The coarsened arm asserts on **few** questions (only those whose majority tick sits in
