@@ -535,13 +535,17 @@ def test_render_abstain_names_reason_and_shows_held_back_candidates() -> None:
 
 def test_render_abstain_without_candidates_omits_held_back() -> None:
     # genuine nothing-to-show (all observations indeterminate): no "Held back:" dangling.
+    # And the reason must be the TRUE one (interaction contract): with zero candidates no
+    # posterior ever existed, so "dispersed posterior" would assert a dispersion that never
+    # happened — the named reason is a claim about the decision, not a filler string.
     r = LK.LookupResult(
         question="q?", construct="c", action="abstain", eu=0.0,
         candidates=(), credences=(), p_none=1.0, observations=(),
         n_hits=2, n_indeterminate=2, utility_fold_version="f" * 64,
         answer_cache_key="k" * 64, rendered="")
     text = render(r)
-    assert LK.REASON_DISPERSED in text
+    assert LK.REASON_NO_OBSERVATIONS in text
+    assert LK.REASON_DISPERSED not in text
     assert "Held back" not in text
 
 

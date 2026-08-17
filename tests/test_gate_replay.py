@@ -207,6 +207,206 @@ def test_typed_response_executor_grades_each_effector() -> None:
     assert r.action == "abstain" and r.correct is None
 
 
+def _chunk_conn(chunk_ids: list[int]):
+    """A minimal stand-in for the catalogue: the availability probe only ever reads
+    ``artifact_chunks``, because retrieval itself is pure SQL over the catalogue (pkm SPEC
+    §15.2) — it never opens a source file, so present CHUNKS, not present files, are what
+    decide whether a question is answerable here."""
+    import duckdb
+    conn = duckdb.connect(":memory:")
+    # artifact_cache_key + chunk_index ride too: they are the artifact_chunks PRIMARY KEY
+    # and what corpus_digest hashes, so the note and both probe predicates read the same
+    # table the real catalogue exposes.
+    conn.execute(
+        "CREATE TABLE artifact_chunks "
+        "(chunk_id BIGINT, artifact_cache_key VARCHAR, chunk_index INTEGER)"
+    )
+    for cid in chunk_ids:
+        conn.execute("INSERT INTO artifact_chunks VALUES (?, ?, ?)", [cid, f"key-{cid}", 0])
+    return conn
+
+
+def test_gold_available_reads_the_catalogue_not_the_filesystem() -> None:
+    conn = _chunk_conn([100, 200])
+    questions = [
+        {"id": "here", "provenance": {"chunk_id": 100, "source_path": "/gone/x.pdf"}},
+        {"id": "absent", "provenance": {"chunk_id": 999, "source_path": "/mnt/yo/y.pdf"}},
+    ]
+    avail = RE.gold_available(conn, questions)
+    # the source file's path is irrelevant — "here" has no file yet answers fine, which is
+    # exactly today's thinkpad (full catalogue, 0 of 16 Downloads sources on disk)
+    assert avail == {"here": True, "absent": False}
+
+
+def test_gold_available_prefers_the_content_addressed_pair_over_the_surrogate() -> None:
+    """``chunk_id`` does not survive ``pkm rebuild-catalogue`` (it is a sequence surrogate,
+    migration 0005); the ``(artifact_cache_key, chunk_index)`` PK does. When a corpus carries
+    both, the pair decides — otherwise a rebuilt catalogue silently resolves the gold to a
+    *different* chunk and the censoring rule reads as available on the wrong evidence."""
+    conn = _chunk_conn([100])
+    # the surrogate is stale (999 is absent) but the content-addressed pair is present:
+    # available, because the chunk genuinely IS here under a re-issued id.
+    q = [{"id": "rechunked",
+          "provenance": {"chunk_id": 999, "artifact_cache_key": "key-100", "chunk_index": 0}}]
+    assert RE.gold_available(conn, q) == {"rechunked": True}
+    # and the converse: a live surrogate must not rescue a genuinely absent chunk.
+    q = [{"id": "gone",
+          "provenance": {"chunk_id": 100, "artifact_cache_key": "key-absent", "chunk_index": 0}}]
+    assert RE.gold_available(conn, q) == {"gone": False}
+
+
+def test_gold_available_falls_back_per_question_not_per_corpus() -> None:
+    """A partly-backfilled corpus must degrade one question at a time, not wholesale."""
+    conn = _chunk_conn([100, 200])
+    questions = [
+        {"id": "new", "provenance": {"chunk_id": 1, "artifact_cache_key": "key-200",
+                                     "chunk_index": 0}},
+        {"id": "old", "provenance": {"chunk_id": 100}},          # v1 shape, still works
+        {"id": "old-absent", "provenance": {"chunk_id": 777}},
+    ]
+    assert RE.gold_available(conn, questions) == \
+        {"new": True, "old": True, "old-absent": False}
+
+
+def test_gold_available_fails_open_so_a_probe_error_never_censors() -> None:
+    # censoring REMOVES evidence. A question we cannot check must stay in Δ — a broken
+    # probe silently shrinking the corpus the gate is judged on is the failure mode that
+    # would be hardest to notice and worst to have.
+    conn = _chunk_conn([1])
+    assert RE.gold_available(conn, [{"id": "no-prov"}]) == {"no-prov": True}
+    assert RE.gold_available(conn, [{"id": "empty-prov", "provenance": {}}]) == \
+        {"empty-prov": True}
+
+    class _Broken:
+        def execute(self, *a: Any, **kw: Any):
+            raise RuntimeError("catalogue is gone")
+
+    assert RE.gold_available(_Broken(), [{"id": "q", "provenance": {"chunk_id": 5}}]) == \
+        {"q": True}
+
+
+def test_corpus_note_records_which_corpus_the_reading_used() -> None:
+    # no gate report has ever carried its corpus: "the digest held across all firings" was
+    # an operator check, not a property of the artifact. This makes it one.
+    conn = _chunk_conn([100])
+    note = RE.corpus_note(conn, [{"id": "a", "provenance": {"chunk_id": 100}},
+                                 {"id": "b", "provenance": {"chunk_id": 777}}])
+    assert note.startswith("> **Corpus:** digest `")
+    assert "1 of 2 question(s) unavailable here" in note
+
+
+def test_corpus_note_degrades_rather_than_voiding_a_paid_reading() -> None:
+    class _Broken:
+        def execute(self, *a: Any, **kw: Any):
+            raise RuntimeError("no catalogue")
+
+    note = RE.corpus_note(_Broken(), [{"id": "a"}])
+    assert "digest unavailable" in note
+
+
+def test_corpus_identity_reports_unpinned_without_a_pin() -> None:
+    """The digest is recorded whether or not a pin was demanded — recording never depends
+    on checking, or an unpinned run would publish nothing."""
+    c = RE.corpus_identity(_chunk_conn([100, 200]), pin=None)
+    assert c["pin_status"] == "unpinned"
+    assert len(c["digest"]) == 64
+    assert (c["n_artifacts"], c["n_chunks"]) == (2, 2)
+
+
+def test_corpus_identity_matches_and_mismatches_a_pin(tmp_path: Path,
+                                                      monkeypatch: pytest.MonkeyPatch) -> None:
+    """The pin is what turns 'the corpus held' from a claim into a checked property."""
+    monkeypatch.setenv("LIFE_AGENT_KB", str(tmp_path))
+    conn = _chunk_conn([100, 200])
+    live = RE.corpus_identity(conn, pin=None)["digest"]
+
+    pins = tmp_path / "eval" / "corpus"
+    pins.mkdir(parents=True)
+    (pins / "good.json").write_text(json.dumps(
+        {"corpus_digest": live, "artifacts": ["key-100", "key-200"], "n_chunks": 2}))
+    (pins / "stale.json").write_text(json.dumps(
+        {"corpus_digest": "0" * 64, "artifacts": ["key-100"], "n_chunks": 1}))
+
+    assert RE.corpus_identity(conn, pin="good")["pin_status"] == "matched"
+    bad = RE.corpus_identity(conn, pin="stale")
+    assert bad["pin_status"] == "mismatched"
+    # the payoff a manifest buys over a bare digest: not just THAT it moved, but what moved
+    assert bad["diff_vs_pin"]["n_added"] == 1
+    assert bad["diff_vs_pin"]["added_sample"] == ["key-200"]
+
+
+def test_corpus_identity_names_a_missing_pin_instead_of_claiming_a_match() -> None:
+    c = RE.corpus_identity(_chunk_conn([100]), pin="does-not-exist")
+    assert c["pin_status"] == "error" and c["digest"]  # digest still recorded
+
+
+def test_corpus_note_publishes_a_mismatch_loudly() -> None:
+    """A knowingly off-corpus reading must be unmissable in the artifact a human reads."""
+    conn = _chunk_conn([100])
+    corpus = {"digest": "d" * 64, "snapshot": "full-2026-06-11",
+              "pin_status": "mismatched", "n_artifacts": 1, "n_chunks": 1,
+              "diff_vs_pin": {"n_added": 7, "n_removed": 0}, "note": None}
+    note = RE.corpus_note(conn, [{"id": "a", "provenance": {"chunk_id": 100}}],
+                          corpus=corpus)
+    assert "CORPUS MISMATCH" in note and "+7/-0" in note
+    assert "NOT comparable to the pinned series" in note
+
+
+def test_paired_row_carries_run_and_corpus_identity() -> None:
+    """§14 routes cross-run comparability THROUGH these artifacts. run_id was recoverable
+    only from the filename and the corpus not at all, so a Δ series claiming one universe
+    could not show it — `jq -s 'group_by(.corpus_digest)'` is now that check."""
+    import life_agent.core.gate as GATE
+
+    p = GATE.PairedOutcome(
+        question_id="q2-001", answerable=True,
+        typed=GATE.RealisedResponse(action="abstain", correct=None),
+        mono=GATE.RealisedResponse(action="report", correct=True))
+    row = RE._paired_to_dict(p, run_id="gate-20260817T000000",
+                             corpus_digest="d" * 64, corpus_snapshot="full-2026-06-11")
+    assert row["run_id"] == "gate-20260817T000000"
+    assert row["corpus_digest"] == "d" * 64
+    assert row["corpus_snapshot"] == "full-2026-06-11"
+
+
+def test_withheld_reason_separates_the_three_causes() -> None:
+    # foundations §14: the gate used to flatten every withholding into one `abstain`, which
+    # is why run 5's 70 of them gave no direction. The three causes want opposite fixes —
+    # reach (miss), threshold (dispersed), corpus (unavailable) — so the reading must be
+    # able to tell them apart.
+    import life_agent.core.gate as G
+    q = {"id": "q1", "answer": "P123", "answer_variants": []}
+
+    # no posterior ever existed: /extract grounded nothing, the daemon was never consulted
+    r = RE._typed_response_executor(_exec_view(effector="miss", candidates=[]), q)
+    assert r.withheld == G.WITHHELD_MISS
+    # a posterior existed and lost the EU argmax
+    r = RE._typed_response_executor(_exec_view(effector="abstain", candidates=["P9"]), q)
+    assert r.withheld == G.WITHHELD_DISPERSED
+    # unavailability DOMINATES: whatever the executor did, a corpus that cannot answer the
+    # question says nothing about the policy
+    r = RE._typed_response_executor(
+        _exec_view(effector="abstain", candidates=["P9"]), q, available=False)
+    assert r.withheld == G.WITHHELD_UNAVAILABLE
+    # assertions carry no reason (there was no withholding to explain)
+    r = RE._typed_response_executor(_exec_view(effector="report", asserted=["P123"]), q)
+    assert r.withheld is None
+
+
+def test_paired_row_carries_what_delta_was_computed_over() -> None:
+    # the artifact must DETERMINE the published Δ (the cost_usd precedent): `withheld`
+    # decides which rows counted, so a row without it cannot reproduce the number.
+    import life_agent.core.gate as G
+    p = G.PairedOutcome(
+        question_id="q1", answerable=True,
+        typed=G.RealisedResponse(action="abstain", withheld=G.WITHHELD_UNAVAILABLE),
+        mono=G.RealisedResponse(action="report", correct=True))
+    row = RE._paired_to_dict(p, baseline="raw-deliberative-replay")
+    assert row["censored"] is True
+    assert row["typed"]["withheld"] == G.WITHHELD_UNAVAILABLE
+    assert row["mono"]["withheld"] is None
+
+
 class _FakeExecutorAsk:
     """ask with the executor surface stubbed: answer_via_executor pops the scripted view
     into EXECUTOR_VIEW_LAST; the family path must never run under the executor arm."""
@@ -478,15 +678,22 @@ def test_archive_gate_artifacts_writes_run_id_suffixed_copies(tmp_path: Path) ->
     # runs 3 and 4; the PR #68 review's finding)
     (tmp_path / "report.md").write_text("# report body", encoding="utf-8")
     (tmp_path / "paired.jsonl").write_text('{"q": 1}\n', encoding="utf-8")
+    (tmp_path / "run_meta.json").write_text('{"run_id": "x"}', encoding="utf-8")
     archived = RE.archive_gate_artifacts(tmp_path, run_id="gate-20260809T102018")
     assert (tmp_path / "report-gate-20260809T102018.md").read_text(
         encoding="utf-8") == "# report body"
     assert (tmp_path / "paired-gate-20260809T102018.jsonl").read_text(
         encoding="utf-8") == '{"q": 1}\n'
+    # the identity sidecar archives with the reading it identifies — a run_meta left at the
+    # fixed path would be clobbered by the next run, which is exactly how runs 3 and 4 lost
+    # their artifacts
+    assert (tmp_path / "run_meta-gate-20260809T102018.json").read_text(
+        encoding="utf-8") == '{"run_id": "x"}'
     # the naming matches the pre-existing manual archives (report-gate-...md) so one
     # glob finds every run's artifacts regardless of which era archived them
     assert sorted(p.name for p in archived) == [
-        "paired-gate-20260809T102018.jsonl", "report-gate-20260809T102018.md"]
+        "paired-gate-20260809T102018.jsonl", "report-gate-20260809T102018.md",
+        "run_meta-gate-20260809T102018.json"]
 
 
 def test_archive_gate_artifacts_skips_missing_files(tmp_path: Path) -> None:

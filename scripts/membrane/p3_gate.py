@@ -402,9 +402,14 @@ def main(argv: list[str] | None = None) -> int:
     (args.out / "a3_gate.md").write_text(
         GATE.render_report(gate, run_id="p3-heldout", elapsed=0.0), encoding="utf-8")
     (args.out / "a3_paired.jsonl").write_text(
+        # `withheld`/`censored` ride here too (§14 availability registration): the A3 gate
+        # shares gate.PairedOutcome, so its artifact must determine its Δ as run_eval's does.
         "".join(json.dumps({"question_id": p.question_id, "answerable": p.answerable,
-                            "typed": {"action": p.typed.action, "correct": p.typed.correct},
-                            "mono": {"action": p.mono.action, "correct": p.mono.correct}},
+                            "censored": p.censored(),
+                            "typed": {"action": p.typed.action, "correct": p.typed.correct,
+                                      "withheld": p.typed.withheld},
+                            "mono": {"action": p.mono.action, "correct": p.mono.correct,
+                                     "withheld": p.mono.withheld}},
                            sort_keys=True) + "\n" for p in paired), encoding="utf-8")
     (args.out / "unjoined.json").write_text(
         json.dumps({"membrane_only": only_m, "baseline_only": only_b}, indent=2) + "\n",

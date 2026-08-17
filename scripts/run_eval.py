@@ -47,7 +47,7 @@ import os
 import sys
 import time
 from collections import Counter
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -498,13 +498,36 @@ def _typed_response(lk, nv, typed_text: str, q: dict, abstention: str):
     return GATE.RealisedResponse(action="abstain", correct=None)
 
 
-def _typed_response_executor(view: dict, q: dict):
+def withheld_reason(view: dict, *, available: bool):
+    """WHY the typed arm withheld (gate.WITHHELD_REASONS) — foundations §14.
+
+    The executor already separates the causes structurally and the gate used to discard
+    it: ``miss`` means no posterior ever existed (``/extract`` grounded nothing, so the
+    daemon was never consulted), while ``abstain`` means a posterior existed and lost the
+    EU argmax. They want opposite fixes — reach vs threshold — so collapsing them is what
+    left run 5's 70 abstains undirected.
+
+    ``available=False`` dominates: if this machine's catalogue cannot answer the question,
+    the withholding says nothing about the policy and the row is censored from Δ.
+    """
+    import life_agent.core.gate as GATE
+
+    if not available:
+        return GATE.WITHHELD_UNAVAILABLE
+    if str(view.get("effector")) == "miss" or not view.get("candidates"):
+        return GATE.WITHHELD_MISS
+    return GATE.WITHHELD_DISPERSED
+
+
+def _typed_response_executor(view: dict, q: dict, *, available: bool = True):
     """The typed policy's realised answer when the typed arm runs through the EXECUTOR
     surface (ask.answer_via_executor → the daemon/bridge loop — the surface the priced
     transform menu, incl. the deliberate edge, lives on). Same answer-level scale as
     every arm. The executor's miss (the local edge declined, nothing asserted) maps to
-    abstain; report_scoped never reaches here today (the executor view populates
-    ``asserted`` for plain report only and renders scoped as a withholding)."""
+    abstain — but now carries its reason rather than being flattened into one; the gate's
+    action space is unchanged, so a reading that ignores the reason is byte-identical.
+    ``report_scoped`` never reaches here today (the executor view populates ``asserted``
+    for plain report only and renders scoped as a withholding)."""
     import life_agent.core.gate as GATE
 
     gold, variants = q.get("answer", ""), q.get("answer_variants", [])
@@ -520,9 +543,12 @@ def _typed_response_executor(view: dict, q: dict):
     if eff == "hedge":
         return GATE.RealisedResponse(action="hedge", correct=GATE.realised_report(
             [str(c) for c in view["candidates"]], gold, variants), cost_usd=cost)
+    reason = withheld_reason(view, available=available)
     if eff == "ask_clarify":
-        return GATE.RealisedResponse(action="ask_clarify", correct=None, cost_usd=cost)
-    return GATE.RealisedResponse(action="abstain", correct=None, cost_usd=cost)
+        return GATE.RealisedResponse(action="ask_clarify", correct=None, cost_usd=cost,
+                                     withheld=reason)
+    return GATE.RealisedResponse(action="abstain", correct=None, cost_usd=cost,
+                                 withheld=reason)
 
 
 def executor_run_stats(typed_views: list) -> dict:
@@ -584,6 +610,229 @@ def _replay_response(row: dict, q: dict):
     return GATE.RealisedResponse(action="report", correct=correct, cost_usd=cost)
 
 
+def gold_available(conn, questions: list[dict]) -> dict[str, bool]:
+    """Which questions THIS machine's catalogue can answer at all — foundations §14.
+
+    Gold-side and exact: a question is unavailable iff the chunk its gold answer was
+    factored from is absent here. That is the honest reading of "the corpus differs across
+    machines": retrieval is pure SQL over the catalogue (pkm SPEC §15.2 — it never opens a
+    source file), so what decides reach is which chunks are present, not which files are.
+
+    Fail-CLOSED on the wrong side: any question we cannot check (no provenance chunk_id, an
+    unreadable catalogue) is reported AVAILABLE, so it stays in Δ. Censoring is the
+    intervention that removes evidence, and a probe failure must never silently shrink the
+    corpus the gate is judged on.
+
+    **Dual predicate, preferring the content-addressed handle.** ``chunk_id`` is a surrogate
+    sequence (pkm migration 0005) that ``pkm rebuild-catalogue`` re-issues, so on its own it
+    is only meaningful across catalogues sharing a chunking lineage — the limit disclosed in
+    the §14 registration. Corpora at factory ``format_version >= 2`` also carry
+    ``(artifact_cache_key, chunk_index)``, the ``artifact_chunks`` PRIMARY KEY and exactly
+    what ``corpus_digest`` hashes; that pair is used when present and decides availability
+    on an independently re-chunked catalogue. The fallback is per-question, not per-corpus,
+    so a partly-backfilled corpus degrades one question at a time.
+    """
+    out: dict[str, bool] = {}
+    for q in questions:
+        qid = str(q["id"])
+        prov = q.get("provenance") or {}
+        cache_key, chunk_index = prov.get("artifact_cache_key"), prov.get("chunk_index")
+        chunk_id = prov.get("chunk_id")
+        if cache_key is not None and chunk_index is not None:
+            sql = ("SELECT count(*) FROM artifact_chunks "
+                   "WHERE artifact_cache_key = ? AND chunk_index = ?")
+            params: list = [cache_key, chunk_index]
+        elif chunk_id is not None:
+            sql = "SELECT count(*) FROM artifact_chunks WHERE chunk_id = ?"
+            params = [chunk_id]
+        else:
+            out[qid] = True
+            continue
+        try:
+            row = conn.execute(sql, params).fetchone()
+            out[qid] = bool(row and row[0])
+        except Exception as e:
+            print(f"  ! availability probe failed for {qid} ({e}) — counted AVAILABLE")
+            out[qid] = True
+    return out
+
+
+def corpus_note(conn, questions: list[dict], *, corpus: dict | None = None) -> str:
+    """The `> **Corpus:** …` provenance line — foundations §14.
+
+    A reading whose corpus is unrecorded is not replayable, and until now no gate report
+    has ever carried one: "the corpus digest held across all firings" was an out-of-band
+    operator check, not a property of the artifact. This makes it one. Fail-open — a
+    missing digest degrades the header, it never voids a paid reading.
+
+    ``corpus`` is ``corpus_identity()``'s dict when the caller already resolved it (the
+    gate path), so the header, the sidecar and every paired row publish ONE computation
+    rather than three that could disagree."""
+    if corpus is None:
+        corpus = corpus_identity(conn, pin=None)
+    if not corpus.get("digest"):
+        return f"> **Corpus:** digest unavailable ({corpus.get('note')})\n\n"
+
+    size = ""
+    if corpus.get("n_artifacts") is not None:
+        size = f" — {corpus['n_artifacts']} artifacts / {corpus['n_chunks']} chunks"
+    status = {
+        "matched": f" · PINNED `{corpus['snapshot']}` (matches)",
+        "unpinned": " · unpinned",
+        "error": f" · pin unresolved ({corpus.get('note')})",
+    }.get(str(corpus.get("pin_status")), "")
+    if corpus.get("pin_status") == "mismatched":
+        d = corpus.get("diff_vs_pin") or {}
+        status = (f" · **CORPUS MISMATCH vs `{corpus['snapshot']}`"
+                  f" (+{d.get('n_added', '?')}/-{d.get('n_removed', '?')} artifacts)"
+                  f" — NOT comparable to the pinned series**")
+    try:
+        avail = gold_available(conn, questions)
+        n_un = sum(1 for v in avail.values() if not v)
+        unavail = (f"{n_un} of {len(questions)} question(s) unavailable here"
+                   if n_un else "all questions available on this catalogue")
+    except Exception as e:
+        unavail = f"availability unchecked ({e})"
+    return f"> **Corpus:** digest `{corpus['digest']}`{size}{status} — {unavail}\n\n"
+
+
+def corpus_identity(conn, *, pin: str | None) -> dict:
+    """The corpus half of a run's identity, and the pin check — foundations §8/§14.
+
+    Returns ``{digest, snapshot, pin_status, n_artifacts, n_chunks, diff_vs_pin, note}``.
+    ``pin_status`` is one of ``matched`` / ``mismatched`` / ``unpinned`` / ``error``.
+
+    Fail-open on the *recording* (a digest we cannot compute degrades the header, never
+    voids a paid reading — ``corpus_note``'s rule), but the caller treats ``mismatched`` as
+    fail-CLOSED: refusing before the run spends money costs nothing, whereas discovering
+    afterwards that Δ was computed on a different universe than the series it is compared
+    to costs the whole reading."""
+    out: dict = {"digest": None, "snapshot": pin, "pin_status": "unpinned",
+                 "n_artifacts": None, "n_chunks": None, "diff_vs_pin": None, "note": None}
+    try:
+        from life_agent.core.corpus import corpus_digest
+        out["digest"] = corpus_digest(conn)
+        row = conn.execute(
+            "SELECT count(DISTINCT artifact_cache_key), count(*) FROM artifact_chunks"
+        ).fetchone()
+        out["n_artifacts"], out["n_chunks"] = (int(row[0]), int(row[1])) if row else (None, None)
+    except Exception as e:
+        out["pin_status"] = "error"
+        out["note"] = f"{type(e).__name__}: {e}"
+        return out
+
+    if not pin:
+        return out
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent / "corpus"))
+        import pin_corpus as PIN
+        manifest = PIN.load_manifest(pin)
+    except SystemExit as e:
+        out["pin_status"] = "error"
+        out["note"] = str(e)
+        return out
+    if manifest["corpus_digest"] == out["digest"]:
+        out["pin_status"] = "matched"
+        return out
+    out["pin_status"] = "mismatched"
+    live = {"artifacts": [], "n_chunks": out["n_chunks"]}
+    try:
+        live["artifacts"] = [
+            r[0] for r in conn.execute(
+                "SELECT DISTINCT artifact_cache_key FROM artifact_chunks "
+                "ORDER BY artifact_cache_key").fetchall()
+        ]
+        added, removed = PIN.key_diff(manifest, live)
+        out["diff_vs_pin"] = {"n_added": len(added), "n_removed": len(removed),
+                              "added_sample": added[:5], "removed_sample": removed[:5]}
+    except Exception as e:
+        out["note"] = f"diff unavailable: {type(e).__name__}: {e}"
+    return out
+
+
+def _sha256_file(path: Path) -> str | None:
+    import hashlib
+    try:
+        return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+    except OSError:
+        return None
+
+
+def build_gate_run_meta(*, run_id: str, args, questions: list[dict], questions_path,
+                        corpus: dict, availability: dict[str, bool],
+                        baseline: str) -> dict:
+    """The gate's identity sidecar — the fairfight `run_meta.json` pattern (§14).
+
+    §8's blind discipline claims the question set, the utility model and the elicitations
+    were frozen before the result. Nothing recorded that, so the claim had exactly the
+    evidentiary status the corpus claim had — an operator memory. These sha256 pins are as
+    load-bearing as the digest.
+
+    Written BEFORE the first question runs, so a voided or killed run still has its
+    provenance on disk (runs 3 and 4 lost theirs to the next run's clobber)."""
+    import life_agent.core.config as LCFG
+    import life_agent.core.gate as GATE
+    unavailable = sorted(qid for qid, ok in availability.items() if not ok)
+    return {
+        "format_version": 1,
+        "run_id": run_id,
+        "created_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "life_agent_git": _git_info(Path(__file__).resolve().parent.parent),
+        "corpus": corpus,
+        "questions": {
+            "path": str(questions_path) if questions_path else None,
+            "sha256": _sha256_file(questions_path) if questions_path else None,
+            "n": len(questions),
+        },
+        "availability": {
+            # which predicate actually decided: the content-addressed pair when the corpus
+            # carries it, else the surrogate. A reader must not have to guess.
+            "predicate": ("artifact_cache_key" if all(
+                (q.get("provenance") or {}).get("artifact_cache_key") for q in questions
+            ) else "chunk_id"),
+            "n_unavailable": len(unavailable),
+            "unavailable_ids": unavailable,
+        },
+        "gate": {
+            "baseline": baseline,
+            # mirrors the call site's own choice (gate_paired_outcomes typed_arm=…)
+            "typed_arm": "executor" if getattr(args, "gate_executor", False) else "family",
+            "k": getattr(args, "k", None),
+            "loo": bool(getattr(args, "gate_loo", False)),
+            "judge_shadow": bool(getattr(args, "judge_shadow", False)),
+            "materiality_delta": GATE.MATERIALITY_DELTA,
+            "level": GATE.GATE_LEVEL,
+        },
+        "utility": {
+            "model_path": str(LCFG.UTILITY_MODEL),
+            "model_sha256": _sha256_file(LCFG.UTILITY_MODEL),
+            "elicitations_path": str(LCFG.UTILITY_ELICITATIONS),
+            "elicitations_sha256": _sha256_file(LCFG.UTILITY_ELICITATIONS),
+        },
+        "env_flags": {
+            "LIFE_AGENT_GROW_LANE": os.environ.get("LIFE_AGENT_GROW_LANE", ""),
+            "LIFE_AGENT_BRIDGE_URL": os.environ.get("LIFE_AGENT_BRIDGE_URL"),
+            "ANSWER_BRAIN_URL": os.environ.get("ANSWER_BRAIN_URL"),
+        },
+    }
+
+
+def _git_info(repo_dir: Path) -> dict:
+    """Best-effort (sha, dirty). Never raises — a broken git is a note, not a dead run.
+    Same contract as scripts/fairfight/run_fairfight.py:155."""
+    import subprocess
+    try:
+        sha = subprocess.run(["git", "-C", str(repo_dir), "rev-parse", "HEAD"],
+                             capture_output=True, text=True, timeout=10,
+                             check=True).stdout.strip()
+        status = subprocess.run(["git", "-C", str(repo_dir), "status", "--porcelain"],
+                                capture_output=True, text=True, timeout=10,
+                                check=True).stdout
+        return {"sha": sha, "dirty": bool(status.strip()), "note": None}
+    except Exception as e:
+        return {"sha": None, "dirty": None, "note": f"{type(e).__name__}: {e}"}
+
+
 def gate_paired_outcomes(conn, questions: list[dict], k: int, ask,
                          replay: dict[str, dict] | None = None,
                          typed_arm: str = "family",
@@ -622,6 +871,11 @@ def gate_paired_outcomes(conn, questions: list[dict], k: int, ask,
                 f"replay baseline lacks {len(missing)} question(s): {missing} — "
                 "the corpora must match (no silent drop; pass the run that answered "
                 "these questions)")
+    available = gold_available(conn, questions)
+    n_unavailable = sum(1 for v in available.values() if not v)
+    if n_unavailable:
+        print(f"  ! {n_unavailable}/{len(questions)} question(s) unavailable on this "
+              "catalogue — they will be CENSORED from Δ and named in the report")
     paired = []
     try:
         for q in questions:
@@ -634,7 +888,8 @@ def gate_paired_outcomes(conn, questions: list[dict], k: int, ask,
                     raise RuntimeError(
                         f"executor view missing for {q['id']} — the daemon/bridge went "
                         "down mid-run; the reading is void (fix the stack and rerun)")
-                typed = _typed_response_executor(view, q)
+                typed = _typed_response_executor(
+                    view, q, available=available.get(str(q["id"]), True))
                 if typed_views is not None:
                     typed_views.append((q, view))
             else:
@@ -660,15 +915,26 @@ def gate_paired_outcomes(conn, questions: list[dict], k: int, ask,
     return paired
 
 
-def _paired_to_dict(p, baseline: str = "monolithic") -> dict:
+def _paired_to_dict(p, baseline: str = "monolithic", *, run_id: str = "",
+                    corpus_digest: str = "", corpus_snapshot: str = "") -> dict:
     # every row names its baseline arm — a Δ2 paired.jsonl must never read as the §8 one.
     # cost_usd rides both arms (#67 review): the artifact must DETERMINE the Δ the report
-    # computed, or every offline reanalysis silently zeroes the run-6 spend term.
+    # computed, or every offline reanalysis silently zeroes the run-6 spend term. `withheld`
+    # rides for the same reason (§14 availability registration): it decides which rows Δ
+    # was computed over, so an artifact without it cannot reproduce the published number.
+    # run_id + corpus identity ride by the same argument one level up: §14 routes cross-run
+    # comparability THROUGH these artifacts, and a Δ series that claims one universe must be
+    # able to SHOW it. Until now run_id was recoverable only from the filename, and the
+    # corpus not at all — `jq -s 'group_by(.corpus_digest)'` over the archive is the check
+    # that "the digest held across all firings" never had.
     return {"question_id": p.question_id, "answerable": p.answerable, "baseline": baseline,
+            "run_id": run_id, "corpus_digest": corpus_digest,
+            "corpus_snapshot": corpus_snapshot,
+            "censored": p.censored(),
             "typed": {"action": p.typed.action, "correct": p.typed.correct,
-                      "cost_usd": p.typed.cost_usd},
+                      "cost_usd": p.typed.cost_usd, "withheld": p.typed.withheld},
             "mono": {"action": p.mono.action, "correct": p.mono.correct,
-                     "cost_usd": p.mono.cost_usd}}
+                     "cost_usd": p.mono.cost_usd, "withheld": p.mono.withheld}}
 
 
 def format_lookup_report(rows: list[dict], k: int, elapsed: float) -> str:
@@ -855,7 +1121,8 @@ def archive_gate_artifacts(gate_dir: Path, *, run_id: str) -> list[Path]:
     (report-<run_id>.md / paired-<run_id>.jsonl) so one glob spans both eras. A
     missing source is skipped, never raised — a voided run archives what it wrote."""
     archived: list[Path] = []
-    for name, suffix in (("report.md", ".md"), ("paired.jsonl", ".jsonl")):
+    for name, suffix in (("report.md", ".md"), ("paired.jsonl", ".jsonl"),
+                         ("run_meta.json", ".json")):
         src = gate_dir / name
         if src.exists():
             dst = gate_dir / f"{name.split('.')[0]}-{run_id}{suffix}"
@@ -1025,6 +1292,21 @@ def main() -> int:
              "arm that folds curves).",
     )
     parser.add_argument(
+        "--corpus-pin", default=None, metavar="NAME",
+        help="require the live corpus to equal a pinned version "
+             "($LIFE_AGENT_KB/eval/corpus/NAME.json — see scripts/corpus/pin_corpus.py). "
+             "A mismatch REFUSES before the run spends anything, printing what was added "
+             "or removed: a Δ compared against a series it does not share a universe with "
+             "is not a reading (foundations §8/§14). Without this the digest is still "
+             "recorded, just unchecked.",
+    )
+    parser.add_argument(
+        "--corpus-pin-mismatch", choices=("refuse", "allow"), default="refuse",
+        help="what a pin mismatch does (default: refuse). 'allow' proceeds but stamps "
+             "pin_status=mismatched into run_meta.json, the report header, and EVERY "
+             "paired row — a knowingly off-corpus reading must be self-identifying.",
+    )
+    parser.add_argument(
         "--no-outcomes", action="store_true",
         help="skip appending graded outcomes to the calibration log "
              "($LIFE_AGENT_KB/calibration/outcomes.jsonl) — dry runs only; the log "
@@ -1111,6 +1393,43 @@ def main() -> int:
 
         t0 = time.monotonic()
         run_id = f"gate-{datetime.now().strftime('%Y%m%dT%H%M%S')}"
+
+        # Corpus identity is resolved and CHECKED before anything is spent. A mismatch is
+        # cheap to refuse now and impossible to repair later: a Δ computed on a different
+        # universe than the series it is compared against is not a reading (§8/§14).
+        corpus = corpus_identity(conn, pin=args.corpus_pin)
+        if corpus["pin_status"] == "mismatched":
+            d = corpus.get("diff_vs_pin") or {}
+            print(f"CORPUS MISMATCH vs pin '{args.corpus_pin}':\n"
+                  f"  live {corpus['digest']}\n"
+                  f"  +{d.get('n_added', '?')} artifacts added, "
+                  f"-{d.get('n_removed', '?')} removed since the pin")
+            if args.corpus_pin_mismatch == "refuse":
+                print("REFUSED before spending. Re-pin under a new name if the corpus "
+                      "moved deliberately, or pass --corpus-pin-mismatch=allow to "
+                      "publish a self-identified off-corpus reading.")
+                return 2
+            print("  proceeding — every artifact will be stamped pin_status=mismatched")
+        elif corpus["pin_status"] == "matched":
+            print(f"corpus pin '{args.corpus_pin}' MATCHED ({corpus['digest'][:16]}…)")
+
+        # a Δ2 run writes to its OWN directory — it must never overwrite the frozen §8
+        # monolithic gate artifacts, and every paired row names its baseline arm
+        gate_dir = _kb_root() / "eval" / ("gate-outside-option" if replay is not None
+                                          else "gate")
+        baseline_tag = ("raw-deliberative-replay" if replay is not None
+                        else "monolithic")
+        gate_dir.mkdir(parents=True, exist_ok=True)
+
+        # Provenance lands BEFORE the first question, so a killed or voided run still has
+        # its identity on disk — runs 3 and 4 lost theirs to the next run's clobber.
+        run_meta = build_gate_run_meta(
+            run_id=run_id, args=args, questions=questions,
+            questions_path=args.questions, corpus=corpus,
+            availability=gold_available(conn, questions), baseline=baseline_tag)
+        (gate_dir / "run_meta.json").write_text(
+            json.dumps(run_meta, indent=2, sort_keys=True), encoding="utf-8")
+
         typed_views: list = []
         if args.gate_executor:
             # in-gate executor decisions carry the run_id — never masquerading as live
@@ -1189,21 +1508,20 @@ def main() -> int:
         result = GATE.delta_posterior(paired, post, oracle_p=LK._ORACLE_P)
         elapsed = time.monotonic() - t0
 
-        # a Δ2 run writes to its OWN directory — it must never overwrite the frozen §8
-        # monolithic gate artifacts, and every paired row names its baseline arm
-        gate_dir = _kb_root() / "eval" / ("gate-outside-option" if replay is not None
-                                          else "gate")
-        baseline_tag = ("raw-deliberative-replay" if replay is not None
-                        else "monolithic")
-        gate_dir.mkdir(parents=True, exist_ok=True)
-        preamble = (f"> **Baseline arm:** {baseline_name}\n\n"
-                    if replay is not None else "") + exec_note
+        preamble = ((f"> **Baseline arm:** {baseline_name}\n\n"
+                     if replay is not None else "")
+                    + exec_note + corpus_note(conn, questions, corpus=corpus))
         (gate_dir / "report.md").write_text(
             preamble + GATE.render_report(result, run_id=run_id, elapsed=elapsed),
             encoding="utf-8")
         (gate_dir / "paired.jsonl").write_text(
-            "".join(json.dumps(_paired_to_dict(p, baseline=baseline_tag),
-                               sort_keys=True) + "\n"
+            "".join(json.dumps(_paired_to_dict(
+                        p, baseline=baseline_tag, run_id=run_id,
+                        corpus_digest=corpus["digest"] or "",
+                        corpus_snapshot=(f"{corpus['snapshot']}!MISMATCH"
+                                         if corpus["pin_status"] == "mismatched"
+                                         else corpus["snapshot"] or "")),
+                    sort_keys=True) + "\n"
                     for p in paired), encoding="utf-8")
 
         # the judge SHADOW (opt-in) runs AFTER the gate artifacts are on disk and

@@ -254,6 +254,7 @@ def decide_via_loop(question: str, k: int, *, bridge: str, daemon: str, post: Po
         return {"effector": nv["action"], "asserted": nv["asserted"], "candidates": [],
                 "credences": [], "p_none": None, "eu": None, "n_obs": 0,
                 "hits": nv.get("hits", []), "route": None, "rendered": nv.get("rendered"),
+                "n_indeterminate": 0,
                 **_UNPRICED_ATTRIBUTION, "edge_events": [], "spend_usd": 0.0}
     if grow_lane:
         return run_pass(question, k, route, bridge=bridge, daemon=daemon, post=post, get=get,
@@ -414,6 +415,7 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
         _log_outcomes("miss")
         return {"effector": "miss", "asserted": [], "candidates": [], "credences": [],
                 "p_none": None, "eu": None, "n_obs": 0, "hits": hits, "route": route,
+                "n_indeterminate": int(ext.get("indeterminate", 0) or 0),
                 **_UNPRICED_ATTRIBUTION, "edge_events": edge_events,
                 "spend_usd": spend_usd}
     u_bar = get(f"{bridge}/utility")["u_bar"]
@@ -604,6 +606,7 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
     return {"effector": dec["effector"], "asserted": asserted, "candidates": candidates,
             "credences": dec["credences"], "p_none": dec["p_none"], "eu": dec["eu"],
             "n_obs": len(obs), "hits": hits, "route": route,
+            "n_indeterminate": int(ext.get("indeterminate", 0) or 0),
             "instrument": edge_instrument, "cost_usd": edge_cost,
             "latency_s": edge_latency, "instrument_value": edge_value,
             "instrument_confidence": edge_conf, "instrument_lineage": edge_lineage,
@@ -653,10 +656,15 @@ def render_view(view: View) -> str:
     elif eff == "abstain" and cands:
         body = LK.GRAMMAR["abstain_withheld"].format(reason=LK.REASON_DISPERSED, alts=alts)
     else:  # abstain with no candidates, or miss (zero grounded observations)
-        body = LK.GRAMMAR["abstain"].format(reason=LK.REASON_DISPERSED)
+        # No posterior existed, so "dispersed" would be a false reason — the interaction
+        # contract requires the named reason to be the true one. Mirrors lookup.render.
+        body = LK.GRAMMAR["abstain"].format(reason=LK.REASON_NO_OBSERVATIONS)
     p_none, eu = view["p_none"], view["eu"]
     footer = LK.GRAMMAR["footer"].format(
-        n_hits=len(hits), n_obs=view.get("n_obs", 0), n_ind=0,
+        n_hits=len(hits), n_obs=view.get("n_obs", 0),
+        # the extractor's own indeterminate count, carried on the View (was hard-coded 0 —
+        # a footer that claimed "0 indeterminate" on every executor answer)
+        n_ind=view.get("n_indeterminate", 0),
         p_none=p_none if p_none is not None else 0.0,
         action=eff, eu=eu if eu is not None else 0.0)
     return f"{body}\n\n{footer}"

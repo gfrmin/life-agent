@@ -37,11 +37,14 @@ class _FakeConn:
 
 
 def _chunk_rows() -> list[tuple[Any, ...]]:
-    # (chunk_id, chunk_text, source_origin, current_path)
+    # (chunk_id, artifact_cache_key, chunk_index, chunk_text, source_origin, current_path)
     return [
-        (1, "The policy number is P111222 for the fake account.", "docs", "/fake/a.pdf"),
-        (2, "Registered plate P333444 appears on the fake permit.", "mail", "/fake/b.eml"),
-        (3, "Some other fake text mentioning value P555666 today.", "docs", "/fake/c.pdf"),
+        (1, "aaa", 0, "The policy number is P111222 for the fake account.",
+         "docs", "/fake/a.pdf"),
+        (2, "bbb", 0, "Registered plate P333444 appears on the fake permit.",
+         "mail", "/fake/b.eml"),
+        (3, "ccc", 1, "Some other fake text mentioning value P555666 today.",
+         "docs", "/fake/c.pdf"),
     ]
 
 
@@ -102,8 +105,8 @@ def test_grounded_verified_proposal_is_admitted() -> None:
 
 
 def test_duplicate_question_text_is_rejected_once_grounded() -> None:
-    rows = [(1, "The fake value P111222 appears here.", "docs", "/fake/a.pdf"),
-            (2, "Elsewhere the fake value P111222 recurs.", "mail", "/fake/b.eml")]
+    rows = [(1, "aaa", 0, "The fake value P111222 appears here.", "docs", "/fake/a.pdf"),
+            (2, "bbb", 0, "Elsewhere the fake value P111222 recurs.", "mail", "/fake/b.eml")]
     replies = iter([_proposal("what is my fake value?", "P111222")] * 2)
     result = F.run_factory(
         _FakeConn(rows), lambda s, u: next(replies), lambda s, u: "P111222",
@@ -202,7 +205,8 @@ def _admitted_result(n: int = 5) -> F.FactoryResult:
     for i in range(n):
         result.admitted.append(F.Admitted(
             question=f"fake question {i}?", answer=f"P{i}{i}{i}", answer_variants=(),
-            subject="owner", notes="", chunk_id=i, source_path=f"/fake/{i}.pdf",
+            subject="owner", notes="", chunk_id=i,
+            artifact_cache_key=f"key{i}", chunk_index=0, source_path=f"/fake/{i}.pdf",
             source_origin="docs", verifier_answer=f"P{i}{i}{i}"))
     return result
 
@@ -216,6 +220,26 @@ def test_questions_yaml_ids_are_sequential_and_audit_sample_seeded() -> None:
     again = F.questions_yaml_dict(_admitted_result(10), audit_fraction=0.2, seed=3)
     assert [q["id"] for q in again["questions"] if q.get("audit")] == \
         [q["id"] for q in audits]
+
+
+def test_provenance_carries_the_content_addressed_chunk_handle() -> None:
+    """``chunk_id`` alone is a surrogate sequence that ``pkm rebuild-catalogue`` re-issues,
+    after which it silently resolves to a *different* chunk. The gold must also carry the
+    ``(artifact_cache_key, chunk_index)`` pair — the artifact_chunks PRIMARY KEY, and what
+    ``corpus_digest`` hashes — so availability stays decidable on a re-chunked catalogue."""
+    corpus = F.questions_yaml_dict(_admitted_result(2), audit_fraction=0.0, seed=3)
+    assert corpus["format_version"] == 2
+    prov = corpus["questions"][1]["provenance"]
+    assert prov["artifact_cache_key"] == "key1"
+    assert prov["chunk_index"] == 0
+    assert prov["chunk_id"] == 1  # kept: the surrogate stays as the convenience handle
+
+
+def test_sample_chunks_threads_the_content_addressed_pair_from_the_catalogue() -> None:
+    """The pair must come from ``artifact_chunks`` itself, not be reconstructed later."""
+    out = F.sample_chunks(_FakeConn(_chunk_rows()), min_chars=10, limit=3, seed=1)
+    by_id = {c["chunk_id"]: c for c in out}
+    assert (by_id[3]["artifact_cache_key"], by_id[3]["chunk_index"]) == ("ccc", 1)
 
 
 def test_write_outputs_lands_corpus_meta_and_report(tmp_path: Path) -> None:
@@ -373,9 +397,9 @@ def test_source_cap_limits_admissions_per_source_path() -> None:
     """The CSV-trivia class: one dense file must not fill the corpus — cap admissions
     per source_path; the overflow is rejected BEFORE the verifier spend."""
     rows = [
-        (1, "First fake value P111222 sits here.", "docs", "/fake/same.csv"),
-        (2, "Second fake value P111222 sits here too.", "docs", "/fake/same.csv"),
-        (3, "Third fake value P111222 sits here as well.", "docs", "/fake/same.csv"),
+        (1, "same", 0, "First fake value P111222 sits here.", "docs", "/fake/same.csv"),
+        (2, "same", 1, "Second fake value P111222 sits here too.", "docs", "/fake/same.csv"),
+        (3, "same", 2, "Third fake value P111222 sits here as well.", "docs", "/fake/same.csv"),
     ]
     replies = iter([
         _proposal("what is the first fake value?", "P111222"),
@@ -398,7 +422,8 @@ def test_source_cap_limits_admissions_per_source_path() -> None:
 
 def test_source_cap_zero_disables_the_cap() -> None:
     rows = [
-        (i, f"Fake value P111222 row {i}.", "docs", "/fake/same.csv") for i in range(3)
+        (i, "same", i, f"Fake value P111222 row {i}.", "docs", "/fake/same.csv")
+        for i in range(3)
     ]
     replies = iter([
         _proposal(f"what is fake row {i} value?", "P111222") for i in range(3)

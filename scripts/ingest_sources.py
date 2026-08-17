@@ -39,6 +39,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import mail_bridge
 from data_source_registry import (
+    AVAILABILITY_OPTIONAL,
     Registry,
     RegistryError,
     Root,
@@ -253,6 +254,16 @@ def main() -> int:
         sources_yaml = pkm_root / "sources" / "sources.yaml"
 
         enabled = [r for r in registry.roots if r.enabled]
+        # An `optional` root that isn't on this machine is a fact about the machine, not an
+        # error: skip it and SAY SO. Previously one absent root raised out of
+        # enumerate_filetree and aborted every other root's ingest, so a corpus that is
+        # only partly present could not be ingested at all. A `required` root still fails
+        # loudly — the point is to distinguish the two, not to make absence cheap.
+        absent = [r for r in enabled
+                  if r.availability == AVAILABILITY_OPTIONAL and not r.resolves()]
+        for root in absent:
+            print(f"  ! {root.id}: optional root not present here ({root.path}) — SKIPPED")
+        enabled = [r for r in enabled if r not in absent]
         print(f"promoting {len(enabled)} enabled root(s) into {sources_yaml}:")
         new_entries: list[dict] = []
         for root in enabled:

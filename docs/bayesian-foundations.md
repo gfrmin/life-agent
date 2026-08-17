@@ -1470,7 +1470,11 @@ on this list. Answers land here by amendment, citing their evidence.
   creating call left no decision row — surfaces that post no /log_decision by
   design, eval_executor's isolation-by-not-writing — each $0 at re-read and graded fresh
   on lineage, so double-counted evidence is excluded either way). The corpus
-  digest held across all firings.
+  digest held across all firings — **verified 2026-08-17** (it was an
+  out-of-band operator check when written): the newest chunked artifact dates
+  to 2026-06-11T20:24:55, two months before runs 3/4/5, so the retrieval
+  universe was frozen at `03d1b09c498ec912…` throughout. See the correction at
+  the run-5 attribution below, which struck the contradicting claim.
 
   **Run-6 Δ semantics — PRE-REGISTERED 2026-08-09, blind (before run 5 fired;
   owner ratified the split 2026-08-08: run 5 keeps the runs-3/4 Δ definition,
@@ -1521,10 +1525,28 @@ on this list. Answers land here by amendment, citing their evidence.
   honest: q2-083 has no deliberate rows in any run — its conversion rode the
   three corroborate tiers agreeing on the same claim (self-reports 0.55–0.85),
   which the LOO curve bank (44 pre-run rows, all deliberate@claude-opus-4-8)
-  could not have touched; between the runs both the master code (#61–#65) and
-  the corpus digest moved, so the lever is not isolated — and a question that
+  could not have touched; ~~between the runs both the master code (#61–#65) and
+  the corpus digest moved, so the lever is not isolated~~ — and a question that
   flips run 3 → run 4 → run 5 on unchanged gate semantics is boundary churn,
-  not a channel win. **The curve-channel flywheel produced no measured
+  not a channel win. **CORRECTED 2026-08-17 — the corpus did NOT move between
+  the runs; the struck clause was false.** The newest *chunked* artifact in the
+  store was produced **2026-06-11T20:24:55**, while runs 3/4/5 fired
+  2026-08-06/07/09. Everything written to the store since 12 June is
+  `life_agent.ask.*` plus the `doc_subject`/`doc_date` projections, none of
+  which are chunkable by design (`core/corpus.py:11-12`) — which is exactly why
+  the store's mtime kept moving while the retrieval universe stood still. So
+  the master code (#61–#65) was the **only** moving lever across runs 3→5, and
+  this correction *removes* a confound rather than adding one: the three
+  readings are a controlled series on one frozen corpus, digest
+  `03d1b09c498ec912…` throughout. The q2-083 boundary-churn verdict is
+  unaffected — it rests on q2-083 having no deliberate rows in any run, which
+  never depended on the corpus claim. Reproduce with
+  `python scripts/forensics/corpus_timeline.py`. **Evidence class:** forensic
+  reconstruction from the catalogue, *not* an artifact property of runs 3–5 —
+  those published no corpus identity and never will; and while the digest's
+  *identity* is recoverable this way, the *membership set* behind any past
+  digest is not (`artifact_chunks` has no timestamp column). Both gaps close
+  from run 6 on. **The curve-channel flywheel produced no measured
   conversion this round.** The #56 refusal gate earns no reach credit either —
   q2-093/q2-096 (the named refusal class) were already correct-reports in
   pre-fix run 4; the fix ran live on the executor arm (the shared
@@ -1657,3 +1679,77 @@ on this list. Answers land here by amendment, citing their evidence.
   landed) VOIDS the priced reading** rather than passing it off as elicited.
   All other run-6 pre-registrations stand unchanged; once the line lands, the
   spend term runs on the elicited fold (1.331 ± 0.203), not the bare prior.
+
+- **Corpus availability as a Δ confound (§8) — added 2026-08-15, REGISTERED BLIND before
+  any run-6 reading.** Unknown until now: what the gate does when the corpus differs
+  across machines. The arms are **not symmetric** under it — the typed arm runs live
+  against the running box's catalogue while the replay arm is a frozen full-corpus
+  recording (`_replay_response`), so every availability gap lands as `abstain × report ✓`
+  at −0.333/q and biases Δ **pro-baseline** by a per-machine amount. Nothing recorded it:
+  no gate report has ever carried the corpus digest, so "the corpus digest held across all
+  firings" was an out-of-band operator check, not an artifact property. Measured extent on
+  the current corpus: 238 sources / 230 chunked artifacts (~~1.8% of 12 984~~) sit under
+  `/home/g/Downloads`, a root whose *content differs per machine* (139 files on thinkpad,
+  425 on steel), and 16 of the 104 eval questions cite provenance under it. Three changes,
+  frozen here, binding from run 6:
+  **MAGNITUDE CORRECTED 2026-08-17, before any run-6 reading — the registered figure
+  understated the exposure 13×.** "1.8% of 12 984" is the *artifact* share; measured by what
+  retrieval actually ranks over, this root is **126 090 of 529 788 chunks = 23.8%** of the
+  retrieval universe (its CSVs chunk heavily: 86 `.csv` of the 238 sources). The censoring
+  rule below is unaffected — still zero rows on the run-6 corpus, re-verified at the same
+  date — but the sentence as registered misdescribed how much of the corpus rides on a
+  machine-local root, which is the whole point of the entry. Reproduce with
+  `python scripts/forensics/corpus_timeline.py --root /home/g/Downloads`.
+  (1) **Corpus provenance is published.** Every gate report carries the `corpus_digest`,
+  the resolved/absent root list, and the count of chunked artifacts whose root is
+  unresolvable. Pure measurement, no Δ effect — a reading whose corpus is unrecorded is
+  not replayable, which is the same invariant `paired.jsonl`'s per-arm costs already serve.
+  (2) **The withholding taxonomy is published.** The paired row records *why* the typed arm
+  withheld: `miss` (no posterior ever existed — zero grounded observations, the daemon not
+  consulted), `dispersed` (a posterior existed and lost the EU argmax), or `unavailable`
+  (see 3). Run 5's 70 `abstain × report ✓` rows were undifferentiated between these, which
+  is precisely why the reach lever has had no direction; the executor distinguishes them
+  already and the gate discarded the distinction. No Δ effect: the bucket defaults to the
+  value reproducing today's Δ byte-for-byte (the `lambda_usd` precedent).
+  (3) **`unavailable` rows are CENSORED from Δ** — excluded from the per-question gap and
+  from the Bayesian bootstrap's weights, while still folded into the published diagnostics
+  and named in the report. A question whose gold evidence is absent from the running
+  catalogue measures nothing about the typed policy; pricing its abstention as a policy
+  failure is the bias named above. The predicate is gold-side and exact: censor iff the
+  question's `provenance` evidence is absent from this catalogue. **Disclosed blind, before
+  any priced reading: on the run-6 corpus this censors ZERO rows — 104/104 gold provenance
+  chunks resolve** (verified 2026-08-15 against `artifact_chunks`), so run 6's Δ is
+  untouched by (3) and the rule is a forward guarantee, not a re-pricing. **Added guard:
+  run 6's report must name its censored count; a run censoring a nonzero number of rows
+  whose reading does not name them VOIDS the reading.** Distinct from `answerable=False`,
+  which does **not** censor — it is read once (the reported rates) while its rows still
+  carry a gap term and a bootstrap weight; reusing it as the censor would silently
+  re-price every archived run, so the censor is a separate flag.
+  ~~Named residual, priced: the provenance handle today is the **surrogate** `chunk_id`
+  (migration `0005`), comparable across machines only because this catalogue is a byte-copy
+  of steel's. On an independently-chunked box the predicate needs the content-addressed
+  `artifact_cache_key` (the `artifact_chunks` join column, and what `corpus_digest` itself
+  hashes) — named as the fix, not yet landed. Until it is, the censoring rule is sound only
+  on catalogues sharing a chunking lineage, and a run on a re-chunked corpus must say so.~~
+  **RESIDUAL DISCHARGED 2026-08-17 — REGISTERED BLIND, before any run-6 reading.** The
+  content-addressed handle now rides in the gold and decides the predicate. Three parts:
+  (a) the factory emits `artifact_cache_key` + `chunk_index` (the `artifact_chunks` PRIMARY
+  KEY, migration `0004`) alongside `chunk_id`, at `format_version: 2`; (b) the existing
+  corpus was backfilled by a 1:1 catalogue lookup — no model call, no re-verification, no
+  re-sampling — under a guard that **aborts the write on any change outside `provenance`**,
+  and 104/104 resolved; (c) `gold_available` prefers the pair and falls back to `chunk_id`
+  **per question**, so a partly-backfilled corpus degrades one row at a time.
+  *Why now, not later:* `pkm rebuild-catalogue` (SPEC §13.1, the recovery path) re-issues the
+  `chunk_id` sequence, after which every id in the corpus still resolves to *some* chunk —
+  the wrong one. Silent, unbounded corruption of the single field this censoring rule keys
+  on. The surrogate is kept as a convenience handle, never as the decider.
+  **Disclosed blind, before any priced reading: the new predicate censors ZERO rows on the
+  run-6 corpus — 104/104, unchanged from the surrogate predicate** (verified 2026-08-17
+  against `artifact_chunks`). So the switch cannot have moved run 6's Δ. Had it censored a
+  nonzero count, that count would be stated here, before the run, not after.
+  **Question-corpus freeze for run 6** (the rewrite necessarily moved the hash, so it is
+  pinned here rather than assumed): `questions_v2.yaml`
+  sha256 `c57d8c0c43014cad…`, was `7a569a0ba7f6230f…` (`.bak` retained). The diff is
+  provenance-only across all 104 questions, mechanically checked, and adds exactly
+  `{artifact_cache_key, chunk_index}`.
+  §12's stage order is unchanged by this entry; it is gate-instrument work under stage 1.

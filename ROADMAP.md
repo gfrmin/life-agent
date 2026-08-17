@@ -103,6 +103,37 @@ Bayesian Ask rather than deterministic pipelines. Remaining program, in dependen
    decision log (utility is a learned belief about the owner — foundations §4.4/§10 as
    amended 2026-06-12: one utility, the agent has none of its own); slice 3: narrative
    subsumption.
+3a. **Gate-instrument work — corpus availability as a modelled variable** *(landed
+   2026-08-15; foundations §14, registered blind before run 6)*. The corpus differs
+   across machines, and the gate's arms are not symmetric under it: the typed arm runs
+   live against the running box's catalogue while the replay arm is a frozen full-corpus
+   recording, so every availability gap biased Δ **pro-baseline** by a per-machine amount
+   that no artifact recorded. Three changes: every gate report now carries its
+   `corpus_digest` and availability count; the paired row records *why* the typed arm
+   withheld (`miss` / `dispersed` / `unavailable` — run 5's 70 abstains were
+   undifferentiated, which is why the reach lever had no direction); and `unavailable`
+   rows are censored from Δ while staying in the published diagnostics. Disclosed blind:
+   this censors **zero** rows on the run-6 corpus (104/104 gold chunks resolve), and run
+   5's archived rows replay bit-identically — it is a forward guarantee, not a re-pricing.
+   Registry roots gained `availability` (`required`/`optional`/`deferred`), so an absent
+   root no longer aborts every other root's ingest.
+3b. **Corpus identity as an artifact property** *(landed 2026-08-17; foundations §14)*.
+   The corpus is not a fixed thing being measured — files move, get deleted, get added —
+   so the gate needed to record *which* universe each reading used. Forensics first
+   (`scripts/forensics/corpus_timeline.py`): the retrieval universe has been **frozen
+   since 2026-06-11T20:24:55**, so runs 3–5 are one controlled series and §14's run-5
+   claim that "the corpus digest moved" was wrong — corrected with disclosure, which
+   *removes* a confound. Then three landed changes: gold provenance is now
+   **content-addressed** (`artifact_cache_key` + `chunk_index` beside the surrogate
+   `chunk_id`, which `pkm rebuild-catalogue` silently re-issues), backfilled across all
+   104 questions under a guard that aborts on any non-provenance diff; a corpus version
+   is a **self-verifying ~1 MB manifest** whose re-hash *is* `corpus_digest`
+   (`scripts/corpus/pin_corpus.py`, pinned as `full-2026-06-11`), not a 2.8 GB copy —
+   the store is content-addressed and monotone, so version *n+1* is a strict superset;
+   and every gate run publishes a `run_meta.json` (git sha, questions/utility sha256s,
+   corpus + pin status) plus `run_id`/`corpus_digest`/`corpus_snapshot` on every paired
+   row, with `--corpus-pin` **refusing before spending** on a mismatch. Run 5's archived
+   rows replay bit-identically, so none of it re-prices anything.
 4. **The aggregate family** (subsumes D3): recall term + completeness priors,
    missing-mass posterior, dedup-as-inference — the spending question answered as a
    posterior with both coverage readouts.

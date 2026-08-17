@@ -34,6 +34,15 @@ roots:
     exclude: []               # empty include = all files. `*` spans `/`.
     tags: [notes]             # applied to every staged file (pkm source_tags)
     enabled: true             # enabled -> eligible for ingest. false -> census-only.
+    availability: required    # what this root's ABSENCE means on a given machine:
+                              #   required (default when enabled) -> absence is an error
+                              #   optional -> expected to be missing on some machines;
+                              #               ingest skips it and says so, instead of
+                              #               aborting every other root's ingest
+                              #   deferred (default when disabled) -> never ingested
+                              # Use `optional` for a root that belongs to the corpus but
+                              # only lives on one box. Distinct from `enabled: false`,
+                              # which means "never ingest this anywhere".
 
   # A broad doc tree: ingest document types only (images deferred — text-first),
   # and prune junk subtrees. `**/.git/**`-style excludes (ending in `/**`) prune

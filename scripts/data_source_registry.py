@@ -38,6 +38,17 @@ import yaml
 REGISTRY_VERSION = 1
 VALID_KINDS = frozenset({"filetree", "maildir"})
 
+# What a root's absence MEANS. `enabled: false` used to carry this load alone, conflating
+# three unrelated intents — "deliberately deferred corpus", "no producer for these types
+# yet", and "this disk isn't plugged in" — and the third failed as a SystemExit that took
+# every other root's ingest down with it. Splitting them is what lets the same registry
+# describe a corpus that is only partly present on a given machine.
+AVAILABILITY_REQUIRED = "required"   # absence is an error: this machine should have it
+AVAILABILITY_OPTIONAL = "optional"   # absence is expected somewhere: skip it, say so
+AVAILABILITY_DEFERRED = "deferred"   # never ingested anywhere (the census-only intent)
+VALID_AVAILABILITY = frozenset(
+    {AVAILABILITY_REQUIRED, AVAILABILITY_OPTIONAL, AVAILABILITY_DEFERRED})
+
 
 # --------------------------------------------------------------------------- #
 # Registry model + loading (fail-fast, mirroring mail_bridge.load_manifest)
@@ -58,6 +69,16 @@ class Root:
     tags: tuple[str, ...]
     enabled: bool
     staging_dir: Path | None
+    # Declared intent when the path is missing (see the AVAILABILITY_* constants). Defaults
+    # to `required` for an enabled root and `deferred` for a disabled one, so a registry
+    # written before this field behaves exactly as it did.
+    availability: str = AVAILABILITY_REQUIRED
+
+    def resolves(self) -> bool:
+        """Is this root actually present on THIS machine right now? Note a root can
+        resolve and still be a different corpus — `downloads` is a real directory on both
+        boxes holding different files — so this answers presence, never equivalence."""
+        return self.path.is_dir()
 
 
 @dataclass(frozen=True)
@@ -90,6 +111,14 @@ def _coerce_root(i: int, entry: object) -> Root:
             f"expected one of {sorted(VALID_KINDS)}"
         )
     staging = entry.get("staging_dir")
+    enabled = bool(entry.get("enabled", True))
+    availability = entry.get(
+        "availability", AVAILABILITY_REQUIRED if enabled else AVAILABILITY_DEFERRED)
+    if availability not in VALID_AVAILABILITY:
+        raise RegistryError(
+            f"roots[{i}] ({entry['id']}) has unknown availability {availability!r}; "
+            f"expected one of {sorted(VALID_AVAILABILITY)}"
+        )
     return Root(
         id=entry["id"],
         kind=kind,
@@ -97,8 +126,9 @@ def _coerce_root(i: int, entry: object) -> Root:
         include=tuple(entry.get("include") or ()),
         exclude=tuple(entry.get("exclude") or ()),
         tags=tuple(entry.get("tags") or ()),
-        enabled=bool(entry.get("enabled", True)),
+        enabled=enabled,
         staging_dir=Path(staging).expanduser().absolute() if staging else None,
+        availability=availability,
     )
 
 
@@ -310,6 +340,10 @@ class RootSummary:
     ingestable_files: int
     ingestable_bytes: int
     by_ext: dict[str, int]  # ext -> count, descending
+    # presence on THIS machine, so a census can be read without guessing whether a root
+    # reported 0 files because it is empty or because it is not here
+    resolves: bool = True
+    availability: str = AVAILABILITY_REQUIRED
 
 
 def aggregate(root: Root, rows: list[Row]) -> RootSummary:
@@ -326,6 +360,8 @@ def aggregate(root: Root, rows: list[Row]) -> RootSummary:
         ingestable_files=len(ing),
         ingestable_bytes=sum(r.size_bytes for r in ing),
         by_ext=by_ext,
+        resolves=root.resolves(),
+        availability=root.availability,
     )
 
 
@@ -507,6 +543,8 @@ def render_report(summaries: list[tuple[RootSummary, list[Row]]]) -> str:
     lines: list[str] = []
     for summary, rows in summaries:
         flag = "" if summary.enabled else "  (census-only — never ingested)"
+        if not summary.resolves:
+            flag += f"  (NOT PRESENT here — availability={summary.availability})"
         pct = (100 * summary.ingestable_files / summary.files) if summary.files else 0.0
         lines.append(f"## {summary.root_id}{flag}")
         lines.append(
@@ -589,7 +627,9 @@ def main() -> int:
         print(f"loaded {len(registry.roots)} root(s) from {args.registry}:")
         for r in registry.roots:
             state = "enabled" if r.enabled else "census-only"
-            print(f"  {r.id:14} {r.kind:9} {state:11} {r.path}")
+            here = "present" if r.resolves() else "ABSENT"
+            print(f"  {r.id:14} {r.kind:9} {state:11} {r.availability:9} "
+                  f"{here:7} {r.path}")
         print("\nPass --report for an on-disk census.")
         return 0
 
@@ -605,11 +645,22 @@ def main() -> int:
             continue
         rows = rows_for_root(root, fmt_map)
         if not rows:
-            print(
-                f"# {root.id}: 0 files from plocate at {os.path.realpath(root.path)} — "
-                "is /mnt indexed? (see plan Step 0)",
-                file=sys.stderr,
-            )
+            # Distinguish the two zero-file causes. They used to print the same line, so an
+            # unmounted disk read as an indexing problem and a machine missing half the
+            # corpus looked like a machine with a stale plocate database.
+            if not root.resolves():
+                print(
+                    f"# {root.id}: NOT PRESENT on this machine ({root.path}) "
+                    f"[availability={root.availability}] — 0 files, not an index problem",
+                    file=sys.stderr,
+                )
+            else:
+                print(
+                    f"# {root.id}: 0 files from plocate at {os.path.realpath(root.path)} — "
+                    "the path exists, so this is an index question: is /mnt indexed? "
+                    "(see plan Step 0)",
+                    file=sys.stderr,
+                )
         all_rows.extend(rows)
         summaries.append((aggregate(root, rows), rows))
 

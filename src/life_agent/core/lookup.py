@@ -170,7 +170,14 @@ _A_TIME_UNKNOWN = 0.6        # undated/underived doc date under a time-indexed c
 _ACTION_ORDER: tuple[str, ...] = DEC.LOOKUP_ACTION_ORDER
 
 # Closed abstention reasons (the credence grammar — interaction contract).
+# The reason must be the TRUE one. These are not interchangeable labels: DISPERSED is a
+# statement about a posterior that existed and lost the EU argmax; NO_OBSERVATIONS is the
+# absence of any posterior at all (nothing was grounded, so nothing was dispersed);
+# UNAVAILABLE is a statement about the corpus, not about belief — the evidence is not in
+# this machine's catalogue, so no amount of thinking here would have found it.
 REASON_DISPERSED = "dispersed posterior"
+REASON_NO_OBSERVATIONS = "no admitted evidence"
+REASON_UNAVAILABLE = "corpus unavailable"
 
 # One grammar table for every rendered string (drift-gated; interaction contract).
 # Credences render at three decimals: two rounded 0.997 up to "1.00" on the first live
@@ -756,7 +763,9 @@ def render(result: LookupResult) -> str:
     elif result.action == "abstain" and result.candidates:
         body = GRAMMAR["abstain_withheld"].format(reason=REASON_DISPERSED, alts=alts)
     else:
-        body = GRAMMAR["abstain"].format(reason=REASON_DISPERSED)
+        # zero candidates ⇒ no posterior existed, so "dispersed" would be a false reason
+        # (interaction contract: the named reason must be the true one).
+        body = GRAMMAR["abstain"].format(reason=REASON_NO_OBSERVATIONS)
     footer = GRAMMAR["footer"].format(
         n_hits=result.n_hits, n_obs=len(result.observations),
         n_ind=result.n_indeterminate, p_none=result.p_none,
