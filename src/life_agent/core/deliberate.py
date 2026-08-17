@@ -234,6 +234,22 @@ def _minimal_env() -> dict[str, str]:
     return {k: v for k in ("HOME", "PATH") if (v := os.environ.get(k))}
 
 
+def _read_tool_log(path: Path, notes_parts: list[str]) -> list[dict[str, Any]]:
+    """The pkm server's ``--tool-log`` rows for one attempt (the evidence trail);
+    malformed lines are counted in the notes, never raised."""
+    rows: list[dict[str, Any]] = []
+    if not path.exists():
+        return rows
+    for raw_line in path.read_text().splitlines():
+        if not raw_line.strip():
+            continue
+        try:
+            rows.append(json.loads(raw_line))
+        except json.JSONDecodeError:
+            notes_parts.append("tool log: skipped one malformed JSONL line")
+    return rows
+
+
 def _run_claude_once(cmd: list[str], env: dict[str, str], cwd: Path,
                      timeout_s: float) -> tuple[str, str, int | None, bool]:
     """One attempt; process-group kill on timeout (the MCP ``pkm serve`` grandchild must
@@ -302,9 +318,22 @@ def answer(question: str, cfg: DeliberateConfig, *,
             notes_parts.append(
                 f"attempt {attempt}: rc={rc} parsed={obj is not None} "
                 f"subtype={None if obj is None else obj.get('subtype')}")
+            tool_log_rows = _read_tool_log(tool_log_path, notes_parts)
             if rc == 0 and obj is not None and not obj.get("is_error"):
                 raw_text = str(obj.get("result") or "").strip()
                 usage = obj
+                # A BLIND decline — NOT_IN_CORPUS with zero tool calls — is an
+                # instrument failure, never evidence of absence: the contract says
+                # "one empty search is not evidence of absence", so no search at all
+                # cannot be. Run 6 (2026-08-17) cached nine such declines as status=ok
+                # after the pkm MCP server failed to register (PKM_CONFIG unset →
+                # `pkm --config "" serve` crashed); they replayed as frozen absence.
+                if detect_decline(raw_text) and not tool_log_rows:
+                    notes_parts.append(
+                        f"attempt {attempt}: blind decline (0 tool calls) — the pkm "
+                        f"tools were not used; MCP server unavailable? not evidence")
+                    status = "error"
+                    continue
                 status = "ok"
                 break
             if stderr.strip():
@@ -312,15 +341,6 @@ def answer(question: str, cfg: DeliberateConfig, *,
             if obj is not None:  # an is_error result still carries spend — keep it
                 usage = obj
             status = "error"  # overwritten above if the retry succeeds
-
-        if tool_log_path.exists():
-            for raw_line in tool_log_path.read_text().splitlines():
-                if not raw_line.strip():
-                    continue
-                try:
-                    tool_log_rows.append(json.loads(raw_line))
-                except json.JSONDecodeError:
-                    notes_parts.append("tool log: skipped one malformed JSONL line")
     except (Exception, SystemExit) as e:
         status = "error"
         notes_parts.append(f"{type(e).__name__}: {e}")
@@ -357,6 +377,10 @@ def record_answer(root: Path, key: D.StageKey, result: DeliberateResult) -> bool
     downstream (a named gap, not a hidden one)."""
     if result.status != "ok":
         raise ValueError(f"only status='ok' results are recorded, got {result.status!r}")
+    if result.declined and result.tool_calls == 0:
+        # defence in depth at the write seam (answer() already classifies this as an
+        # error): a decline that searched nothing is not evidence of absence
+        raise ValueError("a blind decline (0 tool calls) is never recorded as evidence")
     content = json.dumps({
         "format_version": 1, "question": result.question, "model": result.model,
         "text": result.text, "value": result.value, "credence": result.credence,

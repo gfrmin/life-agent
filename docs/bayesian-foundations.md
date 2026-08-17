@@ -1916,3 +1916,35 @@ on this list. Answers land here by amendment, citing their evidence.
   instrument-overconfidence the curves now see; the −0.173 wrongs term of the attribution is
   really −0.087, and the counterfactual's "run 6 minus the instrument" gap narrows from
   −0.163 to −0.076 (still negative: spend).
+
+- **Run 6's cold deliberates were an instrument failure, cached as evidence (found
+  2026-08-17, same audit).** All nine cold deliberate probes in run 6 (and three more in
+  the voided first execution — twelve records, ~$14) declined NOT_IN_CORPUS with **zero
+  tool calls**: the pkm MCP server never registered in the CLI session. Cause: the run
+  launcher exported `LIFE_AGENT_KB` but not `PKM_CONFIG` (which lives in `.env`); the
+  bridge's `_deliberate_cfg` read the raw env — unlike the rest of the bridge, which
+  resolves `config.PKM_CONFIG` with its `~/.config/life-agent/pkm.yaml` default — and wrote
+  `pkm --config "" serve` into the MCP config, which crashes on start (`IsADirectoryError`).
+  Opus spent 82–183 s and $0.90–1.43 per call explaining it had no tools, and the bridge
+  recorded the declines as `status=ok` ("a warm NOT_IN_CORPUS is valid evidence") — frozen
+  absence for those questions under this corpus digest, replayed at $0 forever. **The
+  contract already said it: "one empty search is not evidence of absence"; no search at
+  all is less.** Fixed at three seams: `deliberate.answer` classifies a decline with zero
+  tool calls as `status="error"` (retried once like any failure, never recorded) and
+  `record_answer` refuses one; the bridge cfg resolves `config.PKM_CONFIG` and refuses an
+  unresolvable one loudly; `run_eval --gate-executor` refuses before spend when deliberate
+  is on and PKM_CONFIG does not resolve. The twelve poisoned records were voided through
+  pkm's own removal path (`scripts/void_deliberate_poison.py`, manifest
+  `deliberate-void-20260817T080054.json`; 67 → 55 deliberate records). **Pricing was never
+  the problem:** across the 55 valid records the realised cost is mean $0.427 / median
+  $0.364 against the menu's 0.38 — the "cost-side C2 divergence" named in the
+  counterfactual entry above is withdrawn (its archived report carries the addendum). Run
+  5's four cold calls ($0.31–0.59) were real reads that abstained. **What this does to the
+  run-6 reading:** its typed arm ran with a broken deliberate rescue on every cold question
+  — $10.87 of its $16.03 bought nothing by construction (−0.139/q of the −0.183 spend term),
+  and nine `dispersed` withholdings never had the read the policy paid for. Run 6 stands as
+  read (a reading is what happened); its interpretation is now: grading + spend carried the
+  sign, the instrument bought reach, and the deliberate edge was absent. **Run 7 is the
+  first reading with judge grading + the spend term + a working deliberate rescue + the
+  three corrected golds + the regraded curve food, all at once — pre-registered here as
+  the same recipe (`fire-run6.sh` with `PKM_CONFIG` exported), no other change.**

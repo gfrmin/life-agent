@@ -421,10 +421,21 @@ def _deliberate_cfg() -> DL.DeliberateConfig:
     """The deliberative edge's server-side config: the claude CLI from the env (the same
     provenance caveat as the eval arm — the machine's Claude Code config is part of the
     reference policy), scratch under the KB (transient, never the ledger)."""
+    # The SAME resolution the rest of the bridge uses (config.PKM_CONFIG: the env, else
+    # ~/.config/life-agent/pkm.yaml) — run 6 (2026-08-17) read the raw env here, got ""
+    # with PKM_CONFIG unset, and handed the claude CLI an MCP server command of
+    # `pkm --config "" serve`, which crashed: nine cold deliberates never touched the
+    # corpus. A config that does not resolve to a file is refused loudly, up front.
+    pkm_cfg = config.PKM_CONFIG
+    if not pkm_cfg.is_file():
+        raise RuntimeError(
+            f"deliberate: PKM_CONFIG does not resolve to a file ({pkm_cfg}) — the pkm "
+            f"MCP server cannot start; set PKM_CONFIG (see .env) before enabling the "
+            f"deliberate edge")
     return DL.DeliberateConfig(
         claude_bin=os.environ.get("LIFE_AGENT_CLAUDE_BIN", "claude"),
         scratch_dir=config.KB / "tmp" / "deliberate",
-        pkm_config=os.environ.get("PKM_CONFIG", ""),
+        pkm_config=str(pkm_cfg),
     )
 
 

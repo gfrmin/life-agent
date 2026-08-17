@@ -1464,6 +1464,18 @@ def main() -> int:
                   "— without it the executor arm folds no curves and the held-out "
                   "label would be vacuous.")
             return 2
+    if args.gate_executor:
+        # run 6 (2026-08-17): PKM_CONFIG unset in the launcher → the bridge's MCP config
+        # said `pkm --config "" serve` → nine cold deliberates declined blind at ~$1.2
+        # each. The bridge now refuses per call; refuse HERE before any spend (the
+        # bridge normally shares this process's env — a remote bridge is its own
+        # preflight, and the per-call refusal still names it).
+        import life_agent.core.config as _LCFG
+        if _LCFG.deliberate_enabled() and not _LCFG.PKM_CONFIG.is_file():
+            print(f"REFUSED: LIFE_AGENT_DELIBERATE=1 but PKM_CONFIG does not resolve "
+                  f"to a file ({_LCFG.PKM_CONFIG}) — the deliberate edge's pkm MCP "
+                  f"server cannot start; set PKM_CONFIG (see .env).")
+            return 2
 
     import duckdb
     import yaml

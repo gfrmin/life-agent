@@ -166,12 +166,59 @@ def test_answer_success_parses_text_value_credence_and_cost(tmp_path: Path) -> N
     assert r.model == "claude-opus-4-8"
 
 
+def _write_tool_log(cmd, rows) -> None:  # type: ignore[no-untyped-def]
+    """The fake server writes the tool log where the real pkm server would: the path
+    named in the mcp config the cmd points at."""
+    import json
+
+    mcp_config = json.loads(Path(cmd[cmd.index("--mcp-config") + 1]).read_text())
+    args = mcp_config["mcpServers"]["pkm"]["args"]
+    Path(args[args.index("--tool-log") + 1]).write_text(
+        "".join(json.dumps(x) + "\n" for x in rows))
+
+
 def test_answer_decline_has_no_value(tmp_path: Path) -> None:
     def runner(cmd, env, cwd, timeout_s):  # type: ignore[no-untyped-def]
+        _write_tool_log(cmd, [{"tool": "search"}, {"tool": "search"}])
         return _cli_json("NOT_IN_CORPUS: nothing decides it"), "", 0, False
 
     r = DL.answer("q", _cfg(tmp_path), run_once=runner)
+    assert r.status == "ok" and r.declined
     assert r.value is None
+
+
+def test_answer_blind_decline_is_an_error_not_evidence(tmp_path: Path) -> None:
+    # Run 6 (2026-08-17): the pkm MCP server failed to register (PKM_CONFIG unset →
+    # `pkm --config "" serve` crashed), opus searched NOTHING, wrote NOT_IN_CORPUS, and
+    # nine such declines were cached as status=ok — frozen "evidence of absence" that
+    # never touched the corpus. A decline with ZERO tool calls is an instrument
+    # failure: status="error" (never recorded), retried once like any failure.
+    calls: list[int] = []
+
+    def runner(cmd, env, cwd, timeout_s):  # type: ignore[no-untyped-def]
+        calls.append(1)
+        return _cli_json("NOT_IN_CORPUS: the pkm search/extract tools are not "
+                         "available in this session"), "", 0, False
+
+    r = DL.answer("q", _cfg(tmp_path), run_once=runner)
+    assert r.status == "error"
+    assert r.value is None and r.credence is None
+    assert r.tool_calls == 0
+    assert "blind decline" in r.notes
+    assert len(calls) == 2  # retried once, then gave up
+
+
+def test_answer_blind_decline_then_evidenced_decline_on_retry(tmp_path: Path) -> None:
+    calls: list[int] = []
+
+    def runner(cmd, env, cwd, timeout_s):  # type: ignore[no-untyped-def]
+        calls.append(1)
+        if len(calls) == 2:
+            _write_tool_log(cmd, [{"tool": "search"}])
+        return _cli_json("NOT_IN_CORPUS: nothing decides it"), "", 0, False
+
+    r = DL.answer("q", _cfg(tmp_path), run_once=runner)
+    assert r.status == "ok" and r.declined and r.tool_calls == 1
 
 
 def test_answer_counts_tool_log_rows(tmp_path: Path) -> None:
@@ -231,6 +278,7 @@ def test_answer_timeout_does_not_retry(tmp_path: Path) -> None:
 
 def test_answer_decline_has_no_credence(tmp_path: Path) -> None:
     def runner(cmd, env, cwd, timeout_s):  # type: ignore[no-untyped-def]
+        _write_tool_log(cmd, [{"tool": "search"}])
         return _cli_json("NOT_IN_CORPUS: no document decides it"), "", 0, False
 
     r = DL.answer("q", _cfg(tmp_path), run_once=runner)
@@ -303,3 +351,15 @@ def test_record_answer_refuses_failures(tmp_path: Path) -> None:
                            prompt_template=DL.PROMPT_DELIB_V2, max_turns=40)
     with pytest.raises(ValueError, match="status"):
         DL.record_answer(tmp_path, key, bad)
+
+
+def test_record_answer_refuses_a_blind_decline(tmp_path: Path) -> None:
+    import pytest
+
+    r = DL.DeliberateResult(
+        question="q", model="m", text="NOT_IN_CORPUS: tools unavailable", value=None,
+        credence=None, declined=True, status="ok", notes="", cost_usd=1.0, latency_s=1.0,
+        input_tokens=1, output_tokens=1, session_id="s", tool_calls=0, gather_rounds=0)
+    key = D.deliberate_key("q", "digest", model="m", prompt_template="p", max_turns=1)
+    with pytest.raises(ValueError, match="blind decline"):
+        DL.record_answer(tmp_path, key, r)

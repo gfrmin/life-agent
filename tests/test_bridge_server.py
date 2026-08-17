@@ -1276,9 +1276,13 @@ def _deliberate_result(**overrides: Any) -> Any:
 
 
 @pytest.fixture
-def deliberate_seams(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
+def deliberate_seams(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str, Any]:
     """Patch the three seams the handler composes: the CLI edge, the §18.9 recorder, and
-    the corpus digest. Returns the seen-calls dict for assertions."""
+    the corpus digest. Returns the seen-calls dict for assertions. Also pins a
+    resolvable PKM_CONFIG (the cfg refuses an absent one) so the suite is hermetic."""
+    pkm_cfg = tmp_path / "pkm.yaml"
+    pkm_cfg.write_text("root_dir: /x\n")
+    monkeypatch.setattr(bridge_server.config, "PKM_CONFIG", pkm_cfg)
     seen: dict[str, Any] = {"answers": [], "records": [], "result": _deliberate_result()}
     monkeypatch.setattr(bridge_server.DL, "answer",
                         lambda q, cfg, **k: (seen["answers"].append(q),
@@ -1486,3 +1490,18 @@ def test_respond_survives_a_client_that_hung_up(deps: BridgeDeps) -> None:
     h.end_headers = lambda: None
     h._respond(200, {"ok": True})          # must NOT raise
     assert h.close_connection is True
+
+
+def test_deliberate_cfg_refuses_an_unresolvable_pkm_config(
+        monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    # run 6 (2026-08-17): the raw env read gave "" with PKM_CONFIG unset and the claude
+    # CLI was told to start `pkm --config "" serve` — the MCP server crashed and nine
+    # cold deliberates declined blind. The cfg resolves like the rest of the bridge
+    # (core.config.PKM_CONFIG) and refuses loudly when that is not a file.
+    monkeypatch.setattr(bridge_server.config, "PKM_CONFIG", tmp_path / "absent.yaml")
+    with pytest.raises(RuntimeError, match="PKM_CONFIG does not resolve"):
+        bridge_server._deliberate_cfg()
+    present = tmp_path / "pkm.yaml"
+    present.write_text("root_dir: /x\n")
+    monkeypatch.setattr(bridge_server.config, "PKM_CONFIG", present)
+    assert bridge_server._deliberate_cfg().pkm_config == str(present)

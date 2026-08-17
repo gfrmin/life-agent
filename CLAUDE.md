@@ -70,10 +70,15 @@ withholdings split miss 18 · dispersed 37 (the reach lever's first *direction*)
 run-5 attribution counterfactual (`scripts/gate_splice.py`, same day, not a reading)
 settled what carried the sign: run 5's cautious typed arm, judge-graded and priced, reads
 **0.905 / +0.343** — grading + spend did it; the new instrument's live arm gave back
-Δ̄ −0.163 (corrects +0.192, two wrongs −0.173, spend −0.183 — $10.87 of it nine cold
-deliberate probes, 13/13 cold deliberates across runs 5–6 converted nothing). Named
-next, re-ordered: the two confident-wrongs' audit (q2-053, q2-105 — −0.087/q each),
-deliberate's cold-call pricing, then reach for the 18 misses. Old D3–D4 stay re-scoped as Ask's
+Δ̄ −0.163 (corrects +0.192, two wrongs −0.173, spend −0.183). Audited the same day:
+q2-053 was a stale gold (superseded in-corpus; corrected, disclosed), q2-105 a cached
+opus coin-flip at 0.93 whose stale CORRECT curve rows the append-only regrade
+(`scripts/regrade_edge_rows.py`) now supersedes; and run 6's nine cold deliberates
+($10.87) never reached the corpus — the pkm MCP server failed to register (PKM_CONFIG
+unset in the launcher) and blind declines were cached as evidence (voided; guarded at
+`deliberate.answer`, the bridge cfg, and the gate preflight). Named next: **run 7** (the
+first reading with judge grading + spend + a working deliberate rescue + corrected
+golds), then reach for the 18 misses. Old D3–D4 stay re-scoped as Ask's
 aggregate/thread families. The doc's §14 open questions are a **live empirical ledger**
 (owner's adoption rider): each entry names the evidence that decides it — keep it
 current. Sequencing is continuous and eval-gated, not dogfood-gated (PRINCIPLES §9 as
