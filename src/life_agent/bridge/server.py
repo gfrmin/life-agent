@@ -419,6 +419,89 @@ def _probe_corroborate(deps: BridgeDeps, p: Payload) -> Payload:
     return {"hits": hits}
 
 
+# The confirm probe's per-question chunk budget (spend bound, first-in-hit-order).
+# Provisional pending the off-gate corroborate audit's frozen m (§14 confirm_indep).
+_CONFIRM_M = 2
+
+
+def _independent_confirms(base: list[LK.Observation],
+                          confirms: list[LK.Observation]) -> list[LK.Observation]:
+    """Keep only confirms that are independent witnesses of the base channel (§5
+    dedup-as-inference at the ONE seam): a confirm whose contextful quote duplicates a
+    base observation's quote is a forwarded/re-filed copy — correlated, dropped — and
+    the check is direction-blind (kept iff ``dedup_correlated`` over base+confirm
+    leaves EVERY observation standing; a confirm that would displace a base witness is
+    equally a copy). The base channel itself is never modified here (one-sided probe).
+    Mutual duplicates among the confirms then collapse the ordinary way."""
+    kept = []
+    for c in confirms:
+        surviving = {id(o) for o in LK.dedup_correlated([*base, c])}
+        if id(c) in surviving and all(id(b) in surviving for b in base):
+            kept.append(c)
+    return LK.dedup_correlated(kept)
+
+
+def _probe_confirm(deps: BridgeDeps, p: Payload) -> Payload:
+    """Value-targeted INDEPENDENT-document confirmation (§14 confirm_indep): unlike the
+    reextract corroborate (a same-hits whole-doc re-read that REPLACES the channel),
+    this asks whether a chunk from an artifact NOT already supporting the target states
+    the target as the current answer — each grounded yes is one more observation the
+    body APPENDS (a genuinely new ancestry group, or the rival artifact's existing
+    one). Independence is computed here, where hits and the raw observations coexist:
+    the base channel is a warm content-addressed ``observe_hits`` replay ($0 when the
+    executor's /extract just ran), which also reproduces the exact wire group order
+    ``to_abstract_observations`` gave the executor. The confirm observation's
+    competition factor is its OWN quote window's (§2: competition is a property of the
+    corpus row) — deliberately NOT ``_candidate_competition`` inheritance, which is for
+    same-ancestry re-reads."""
+    question = _req_str(p, "question")
+    value = _req_str(p, "value").strip()
+    hits = _req_list(p, "hits")
+    candidates = [str(c) for c in (p.get("candidates") or [])]
+    vkey = LK._candidate_key(value)
+    reports = next((j for j, c in enumerate(candidates)
+                    if LK._candidate_key(c) == vkey), None)
+    empty: Payload = {"observations": [], "value": value, "cost_usd": 0.0,
+                      "n_prefilter": 0, "n_grounded": 0, "n_indeterminate": 0,
+                      "n_correlated_dropped": 0, "n_base_groups": 0}
+    if reports is None:
+        # the target must already be on the lattice (the daemon steered at it) — the
+        # confirm probe never mints candidates and never spends on an unknown target
+        return empty
+    cov = _covariates(p.get("covariates") or {})
+    hl = VOL.half_life(p.get("construct"))
+    time_indexed = bool(p.get("time_indexed", False))
+    today = _opt_date(p.get("today"))
+    meter: list[float] = []
+    base_obs, _ = LK.observe_hits(
+        deps.root, question, hits, client=deps.client, covariates=cov,
+        time_indexed=time_indexed, today=today, half_life_years=hl, meter=meter)
+    supporters = {o.artifact_cache_key for o in base_obs
+                  if LK._candidate_key(o.value_raw) == vkey}
+    n_prefilter = len(LK.confirm_prefilter(value, hits, supporters))
+    confirms, indeterminate = LK.confirm_hits(
+        deps.root, question, value, hits, exclude_artifacts=supporters,
+        client=deps.client, covariates=cov, time_indexed=time_indexed, today=today,
+        half_life_years=hl, m=int(p.get("m", _CONFIRM_M)), meter=meter)
+    kept = _independent_confirms(base_obs, confirms)
+    group_order: dict[str, int] = {}
+    for o in base_obs:
+        group_order.setdefault(o.artifact_cache_key, len(group_order))
+    n_base_groups = len(group_order)
+    obs: list[Payload] = []
+    for o in kept:
+        g = group_order.setdefault(o.artifact_cache_key, len(group_order))
+        obs.append({"reports": reports, "group": g, "authority": o.authority,
+                    "subject_factor": o.subject_factor, "time_factor": o.time_factor,
+                    "competition_factor": o.competition_factor})
+    return {"observations": obs, "value": value, "cost_usd": sum(meter),
+            "cache_keys": [o.obs_cache_key for o in kept],
+            "n_prefilter": n_prefilter, "n_grounded": len(confirms),
+            "n_indeterminate": indeterminate,
+            "n_correlated_dropped": len(confirms) - len(kept),
+            "n_base_groups": n_base_groups}
+
+
 def _deliberate_cfg() -> DL.DeliberateConfig:
     """The deliberative edge's server-side config: the claude CLI from the env (the same
     provenance caveat as the eval arm — the machine's Claude Code config is part of the
@@ -805,6 +888,7 @@ _POST: dict[str, Handler] = {
     "/probe/subject": _probe_subject,
     "/probe/authority": _probe_authority,
     "/probe/corroborate": _probe_corroborate,
+    "/probe/confirm": _probe_confirm,
     "/probe/deliberate": _probe_deliberate,
     "/log_decision": _log_decision,
     "/log_reaction": _log_reaction,

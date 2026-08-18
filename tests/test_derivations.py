@@ -213,3 +213,28 @@ def test_reconcile_walk_reaches_sources_via_lineage(migrated: Path) -> None:
             "SELECT input_cache_key FROM artifact_lineage WHERE artifact_cache_key = ?",
             [rs_key.cache_key]).fetchall()}
         assert hop2 == {card}
+
+
+# --- confirm key (value-targeted independent confirmation — §14 confirm_indep) ---------- #
+
+def _confirm_key(question: str = "what is the fee?", chunk: str = "c" * 64,
+                 value: str = "1,234,567") -> D.StageKey:
+    return D.lookup_confirm_key(
+        question, chunk, value, model="claude-haiku-4-5-20251001",
+        prompt_template="P", engine_version="e/1",
+        output_schema={"type": "object"})
+
+
+def test_lookup_confirm_key_sensitivity() -> None:
+    base = _confirm_key().cache_key
+    assert _confirm_key().cache_key == base                      # deterministic
+    assert _confirm_key(question="other?").cache_key != base
+    assert _confirm_key(chunk="d" * 64).cache_key != base
+    # two target values over ONE chunk must never share a cache cell
+    assert _confirm_key(value="7,654,321").cache_key != base
+    # and the confirm namespace is disjoint from the extract namespace over the
+    # same (question, chunk) — different producer + prompt identity
+    ek = D.lookup_extract_key("what is the fee?", "c" * 64,
+                              model="claude-haiku-4-5-20251001", prompt_template="P",
+                              engine_version="e/1", output_schema={"type": "object"})
+    assert ek.cache_key != base

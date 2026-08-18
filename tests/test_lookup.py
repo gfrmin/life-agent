@@ -769,3 +769,92 @@ def test_lookup_answer_scope_modulates_recency(monkeypatch: Any,
     assert captured["time_indexed"] is False
     lookup_answer(tmp_path, "my bank?", [], scope="unscoped")
     assert captured["time_indexed"] is True
+
+
+# --- confirm (value-targeted independent confirmation — §14 confirm_indep) ----------------
+
+def test_confirm_prefilter_is_independence_and_carrier_gated() -> None:
+    hits = [_hit("home", "the fee is 1,234,567 due at signing"),
+            _hit("indep", "schedule total: fee is 1,234,567 confirmed"),
+            _hit("noise", "an unrelated paragraph with no figures")]
+    picked = LK.confirm_prefilter("1,234,567", hits, {"home"})
+    # supporter excluded, non-carrier excluded, original hit index preserved
+    assert [(i, h["artifact_cache_key"]) for i, h in picked] == [(1, "indep")]
+
+
+def test_confirm_hits_grounded_confirm_becomes_observation(migrated_root: Path) -> None:
+    client = FakeClient({"confirms": True, "quote": "fee is 1,234,567 confirmed"})
+    hits = [_hit("home", "the fee is 1,234,567 due at signing"),
+            _hit("indep", "schedule total: fee is 1,234,567 confirmed",
+                 origin="/mail/cur/msg.eml")]
+    obs, indet = LK.confirm_hits(migrated_root, "what is the fee?", "1,234,567", hits,
+                                 exclude_artifacts={"home"}, client=client)
+    assert indet == 0 and client.calls == 1  # the supporter is never even attempted
+    (o,) = obs
+    assert o.artifact_cache_key == "indep"
+    assert o.card_n == 2                      # citation card = original hit position
+    assert o.value_norm == LK._norm_value("1,234,567")
+    assert o.authority_class == "email"       # its OWN covariates, no hand-set 1.0
+    assert o.competition_factor == 1.0
+
+
+def test_confirm_hits_decline_and_ungrounded_are_indeterminate(migrated_root: Path) -> None:
+    # decline honoured: confirms false ⇒ no observation, counted
+    client = FakeClient({"confirms": False})
+    hits = [_hit("indep", "schedule total: fee is 1,234,567 confirmed")]
+    obs, indet = LK.confirm_hits(migrated_root, "what is the fee?", "1,234,567", hits,
+                                 exclude_artifacts=set(), client=client)
+    assert obs == [] and indet == 1
+    # ungrounded: token-boundary prefilter passes ("1 234 567" tokenizes to the value)
+    # but neither the hallucinated quote nor the exact value string is in the chunk
+    client2 = FakeClient({"confirms": True, "quote": "fee is 1,234,567"})
+    hits2 = [_hit("indep2", "totals fee 1 234 567 end")]
+    obs2, indet2 = LK.confirm_hits(migrated_root, "what is the fee?", "1,234,567", hits2,
+                                   exclude_artifacts=set(), client=client2)
+    assert obs2 == [] and indet2 == 1
+
+
+def test_confirm_hits_warm_replay_makes_no_calls(migrated_root: Path) -> None:
+    client = FakeClient({"confirms": True, "quote": "fee is 1,234,567 confirmed"})
+    hits = [_hit("indep", "schedule total: fee is 1,234,567 confirmed")]
+    for _ in range(2):
+        obs, _ = LK.confirm_hits(migrated_root, "what is the fee?", "1,234,567", hits,
+                                 exclude_artifacts=set(), client=client)
+        assert len(obs) == 1
+    assert client.calls == 1  # second pass replays the §18.9 record
+
+
+def test_confirm_hits_own_competition_factor_never_inherited(migrated_root: Path) -> None:
+    # the confirming chunk carries a same-shape competitor beside the quote — the
+    # observation enters tempered by ITS OWN quote window (§2: competition is a
+    # property of the corpus row), regardless of any candidate_competition upstream
+    client = FakeClient({"confirms": True, "quote": "totals: 1,234,567"})
+    hits = [_hit("indep", "totals: 1,234,567 (previous figure 7,654,321)")]
+    obs, _ = LK.confirm_hits(migrated_root, "what is the fee?", "1,234,567", hits,
+                             exclude_artifacts=set(), client=client)
+    (o,) = obs
+    assert o.n_competing >= 1 and o.competition_factor == 0.5
+
+
+def test_confirm_hits_m_bounds_spend(migrated_root: Path) -> None:
+    client = FakeClient({"confirms": True, "quote": "fee is 1,234,567"})
+    hits = [_hit(f"indep{i}", f"copy {i}: fee is 1,234,567 stated") for i in range(4)]
+    obs, _ = LK.confirm_hits(migrated_root, "what is the fee?", "1,234,567", hits,
+                             exclude_artifacts=set(), client=client, m=2)
+    assert client.calls == 2 and len(obs) == 2  # first-in-hit-order, spend bounded
+
+
+def test_confirm_hits_meter_accrues_cold_calls_only(migrated_root: Path) -> None:
+    class PricedClient(FakeClient):
+        def complete(self, prompt: str, schema: dict[str, Any]) -> ModelResponse:
+            r = super().complete(prompt, schema)
+            return dataclasses.replace(r, cost_usd=0.002)
+
+    client = PricedClient({"confirms": True, "quote": "fee is 1,234,567 stated"})
+    hits = [_hit("indep", "copy: fee is 1,234,567 stated")]
+    meter: list[float] = []
+    LK.confirm_hits(migrated_root, "what is the fee?", "1,234,567", hits,
+                    exclude_artifacts=set(), client=client, meter=meter)
+    LK.confirm_hits(migrated_root, "what is the fee?", "1,234,567", hits,
+                    exclude_artifacts=set(), client=client, meter=meter)
+    assert meter == [0.002]  # the warm replay appends nothing
