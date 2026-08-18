@@ -2279,3 +2279,54 @@ on this list. Answers land here by amendment, citing their evidence.
   ceilings are under the build bar). Artifacts:
   `$LIFE_AGENT_KB/eval/corroborate-audit-20260818.{md,yaml}` (+ the synthetic paired
   files, unread — the splice is only licensed by a GO).
+
+- **The n_obs=0 cluster is DECISION-SIDE, not extraction-side — the replace contract
+  erases a grounded channel (2026-08-18, `scripts/extraction_audit.py`, $0, zero model
+  calls). The cluster's name has now been wrong twice; this entry retires the second
+  name and records what the evidence actually shows.** The audit was built to ask which
+  extraction defect lost the 19 (criteria frozen in its docstring: classes
+  declined/picked-other/ungrounded/grounded/no-cache-record; build bar = DELIVERED
+  REACH ≥ 10 questions, counted in questions whose commit would change — the
+  confirm_indep lesson written in as a rule; and, because the run's own median leader
+  credence at n_obs=1, K=1 is **0.861 over 51 rows, below the 0.8997 commit bar**, a
+  rescue counts only with ≥2 independent fixable artifacts). Its literal reading:
+  declined 25 · picked-other 24 · ungrounded 1 · no-cache-record 1 — delivered reach
+  **4** (q2-004, q2-006, q2-083, q2-105), far under the bar, so no extraction lever is
+  a build. **But the frozen `grounded` anomaly class — registered as "an anomaly by
+  construction, NAMED, never silently dropped" — read 69**, and that is what broke the
+  cluster open: 69 gold-bearing chunks across these questions carry a CACHED extraction
+  that found the gold and passes the grounding gate, all written 2026-08-17 12:00–16:00
+  (runs 6–8), i.e. warm and available to run 9. Extraction did not fail. Reading the
+  run-9 decision rows directly settles it: **17 of the 19 carry K ≥ 1 candidates with
+  n_obs = 0 and credences that are EXACTLY uniform at p_none 0.5 — the untouched prior**
+  (q2-083: candidate `$0`, the gold, alone at 0.5; q2-025: four candidates at 0.125,
+  the gold among them). Candidates can only be minted from grounded observations
+  (`candidates_from(observations)` at `/extract`), so observations existed at extract
+  time and were gone at decide time; the only code paths that empty the observation
+  vector while keeping the candidate lattice are the three replace branches
+  (corroborate tier / deliberate / re_extract_strong), and `tests/test_executor.py`
+  already pins that signature exactly — a corroborate reply of `{"observations": [],
+  "value": None}` yields a re-decide whose payload carries the candidates with
+  `observations == []`. **Gold is already among the candidates in 14 of the 19.**
+  Attribution, and an instrumentation gap named: 5 rows record
+  `instrument: deliberate@claude-opus-4-8` (whose contract explicitly collapses the
+  channel on an empty-ok reply); the other 12 record `instrument: ""` because a
+  corroborate TIER firing never sets the decision record's instrument field — from the
+  log alone you cannot tell which probe erased the channel, and run 9's warm tier
+  replays were lineage-deduped out of the fresh edge-outcome rows, so the edge stream
+  does not carry them either. **What this means:** the single largest named cause of
+  lost reach in run 9 is not retrieval (ceiling 0), not extraction (delivered reach 4),
+  and not the temper's single-doc price (12) — it is **17 questions whose grounded
+  evidence a probe discarded**, 14 of them with the gold already on the lattice. The
+  suspected over-strong inference is precise and doctrinally shaped: the code treats
+  "the re-read NAMED NOTHING" identically to "the re-read DISAGREED", but a null read
+  from a lossy whole-document instrument is absence of evidence, not evidence of
+  absence — and the fail-open precedent already exists one branch away (a deliberate
+  INFRASTRUCTURE failure keeps the channel). **Not built, not measured, deliberately:**
+  the counterfactual (warm-replay each of the 17 with the null-read branch retiring
+  fail-open instead of replacing, then re-decide) needs the live stack and must carry
+  its own frozen criteria and pre-registration before any run 10 — run 7's
+  disagree⇒abstain contract stays untouched either way, since a null read is not a
+  disagreement. None of this disturbs run 9's PASS or the §13 adoption: the erasure is
+  conservative (it withholds, never wrong-commits). Artifacts:
+  `$LIFE_AGENT_KB/eval/extraction-audit-20260818.{md,yaml}`.
