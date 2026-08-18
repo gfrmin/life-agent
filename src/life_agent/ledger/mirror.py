@@ -33,15 +33,17 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-from life_agent.ledger import migrate as MIG
-from life_agent.ledger import sources as SRC
+from life_agent.core import config
 from life_agent.ledger.paths import Paths
 from life_agent.ledger.schema import UnifiedEvent
 from life_agent.ledger.store import LedgerStore
 
+# `migrate`/`sources` (and through them pkm) are imported lazily inside the hook: the writers
+# import this module, and the hot path must stay light — a skipped/inert/disabled call never
+# pays for them.
 log = logging.getLogger(__name__)
 
-MIRROR_ENV = MIG.MIRROR_ENV
+MIRROR_ENV = "LIFE_AGENT_LEDGER_MIRROR"     # "0" disables the mirror (+ the sweeps' CLI)
 TAIL_CAP = 512          # delta lines the mirror will parse itself; beyond → full sweep
 
 # The sources a live writer mirrors (design §8 C5). The three swept sources
@@ -64,6 +66,13 @@ class MirrorResult:
 
 def enabled() -> bool:
     return os.environ.get(MIRROR_ENV, "1") != "0"
+
+
+def _default_store_root() -> Path:
+    """The configured stream root. One seam, so the test suite can point every writer's mirror
+    at an uninitialised tmp root (conftest `_hermetic_mirror`) — the owner's stream is never a
+    test's default."""
+    return config.KB / "ledger"
 
 
 # --- once-per-process state ------------------------------------------------------------------
@@ -139,7 +148,7 @@ def after_legacy_append(source_id: str, legacy_path: Path, *, n: int = 1,
         log.warning("ledger mirror: %s failed — %s", source_id, why)
         try:
             if store is None:
-                store = LedgerStore(MIG.stream_root())
+                store = LedgerStore(_default_store_root())
             if store.manifest_path.exists():
                 store.update_source(source_id, add={"mirror_failures": 1},
                                     set={"last_mirror_failure_at": datetime.now(UTC).isoformat()})
@@ -152,17 +161,20 @@ def _mirror(source_id: str, legacy_path: Path, *, n: int, store: LedgerStore | N
             paths: Paths | None) -> MirrorResult:
     if source_id not in MIRRORED:
         raise ValueError(f"{source_id!r} is not a mirrored source (swept sources never mirror)")
-    store = store or LedgerStore(MIG.stream_root())
     paths = paths or Paths.from_config(resolve_pkm=False)
+    configured = paths.legacy_file(source_id)
+    if Path(legacy_path).resolve() != configured.resolve():
+        # decided BEFORE any store contact: a writer at a tmp/ad-hoc path never touches the
+        # owner's stream, not even its manifest note
+        log.debug("ledger mirror: %s append at a non-configured path — skipped", source_id)
+        return MirrorResult(source_id, "skipped", detail="not the configured legacy store")
+    store = store or LedgerStore(_default_store_root())
     on = enabled()
     if not _announce(store, on):
         return MirrorResult(source_id, "inert", detail="stream not initialised")
     if not on:
         return MirrorResult(source_id, "disabled")
-    configured = paths.legacy_file(source_id)
-    if Path(legacy_path).resolve() != configured.resolve():
-        log.debug("ledger mirror: %s append at a non-configured path — skipped", source_id)
-        return MirrorResult(source_id, "skipped", detail="not the configured legacy store")
+    from life_agent.ledger import sources as SRC  # lazy: see the module docstring
 
     row = store.manifest().get("sources", {}).get(source_id, {})
     offset = row.get("legacy_bytes")
@@ -212,6 +224,7 @@ def _full_sync(source_id: str, paths: Paths, store: LedgerStore, *, why: str,
                behind: int = 0) -> MirrorResult:
     """The safety net: the sweep proper (parse the whole legacy store, append what is missing,
     record counts + the new legacy offset). Loud: WARNING with the reason."""
+    from life_agent.ledger import migrate as MIG  # lazy: see the module docstring
     log.warning("ledger mirror: %s falling back to a full sync — %s", source_id, why)
     r = MIG.sync_source(source_id, paths, store, verify_prefix=False, mode="sync")
     add = {"mirror_syncs": 1}

@@ -45,6 +45,18 @@ def _hermetic_narrative(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture(autouse=True)
+def _hermetic_mirror(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """The C5 dual-write hooks fire inside every typed writer. Their default stream root is
+    the configured KB's ``ledger/`` — which, with ``LIFE_AGENT_KB`` exported and a test that
+    monkeypatches a ``config.*_LOG`` constant to a tmp path, would be the OWNER'S LIVE STREAM.
+    Point the default at an uninitialised tmp root (the mirror is then inert); tests that want
+    a stream pass ``store=`` or re-point this seam themselves."""
+    from life_agent.ledger import mirror as _mirror
+    monkeypatch.setattr(_mirror, "_default_store_root", lambda: tmp_path / "hermetic-no-stream")
+    _mirror._reset_process_state()
+
+
+@pytest.fixture(autouse=True)
 def _hermetic_executor(monkeypatch: pytest.MonkeyPatch) -> None:
     """The executor (credence answer-brain daemon) is ask's DEFAULT read-path, but it needs the
     live daemon/bridge; no hermetic test may reach for it. Stub readiness to False so ask

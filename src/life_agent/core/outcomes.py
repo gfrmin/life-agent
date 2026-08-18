@@ -147,8 +147,11 @@ def _from_line(line: str) -> OutcomeEvent:
 
 
 def append(path: Path, event: OutcomeEvent) -> None:
-    """Append one outcome line, durably (the shared append-only mechanics)."""
+    """Append one outcome line, durably (the shared append-only mechanics), then mirror it onto
+    the unified stream (design §8 C5; legacy-append-first, never raises)."""
     jsonl_log.append_line(path, _to_line(event))
+    from life_agent.ledger import mirror as _mirror  # C5 dual-write: after the legacy append
+    _mirror.after_legacy_append("calibration.outcomes", path)
 
 
 def read(path: Path) -> list[OutcomeEvent]:

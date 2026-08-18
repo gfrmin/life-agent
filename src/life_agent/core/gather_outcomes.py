@@ -82,6 +82,8 @@ def append_outcome(path: Path, probe: str, sensors: dict[str, str], *,
            "recovered": bool(recovered)}
     with path.open("a", encoding="utf-8") as f:
         f.write(json.dumps(row, ensure_ascii=False) + "\n")
+    from life_agent.ledger import mirror as _mirror  # C5 dual-write: after the legacy append
+    _mirror.after_legacy_append("calibration.gather_outcomes", path)
 
 
 def warm_counts(path: Path, probe: str) -> dict[str, Any] | None:

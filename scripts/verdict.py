@@ -175,6 +175,8 @@ def run(questions: tuple[str, ...]) -> int:
     for cr in corrections:
         with _CORRECTIONS.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(cr, ensure_ascii=False) + "\n")
+        from life_agent.ledger import mirror as _mirror  # C5 dual-write: after the legacy append
+        _mirror.after_legacy_append("calibration.corrections", _CORRECTIONS)
 
     after = N.population_posteriors(brain, opath)
     _summary(before, after, folded, corrections)

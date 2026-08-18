@@ -124,8 +124,11 @@ def from_line(line: str) -> ClaudeVerdictEvent:
 
 
 def append(path: Path, event: ClaudeVerdictEvent) -> None:
-    """Append one verdict line, durably (the shared append-only mechanics)."""
+    """Append one verdict line, durably (the shared append-only mechanics), then mirror it onto
+    the unified stream (design §8 C5; legacy-append-first, never raises)."""
     jsonl_log.append_line(path, _to_line(event))
+    from life_agent.ledger import mirror as _mirror  # C5 dual-write: after the legacy append
+    _mirror.after_legacy_append("calibration.claude_verdicts", path)
 
 
 def read(path: Path) -> list[ClaudeVerdictEvent]:

@@ -88,3 +88,5 @@ def append_label(path: Path, question_id: str, value: str, verdict: str, note: s
                        "verdict": verdict, "note": note}, ensure_ascii=False)
     with path.open("a", encoding="utf-8") as fh:
         fh.write(line + "\n")
+    from life_agent.ledger import mirror as _mirror  # C5 dual-write: after the legacy append
+    _mirror.after_legacy_append("eval.labels", path)

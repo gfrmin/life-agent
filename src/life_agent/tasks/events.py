@@ -194,6 +194,8 @@ def append(ledger: Path, events: list[Event]) -> None:
     with ledger.open("a", encoding="utf-8") as fh:
         for e in events:
             fh.write(_to_json(e) + "\n")
+    from life_agent.ledger import mirror as _mirror  # C5 dual-write: after the legacy append
+    _mirror.after_legacy_append("act.tasks", ledger, n=len(events))
 
 
 def load(ledger: Path) -> list[Event]:

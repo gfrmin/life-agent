@@ -8,6 +8,9 @@ sweeps and two-route counts (:mod:`.migrate`); the §7 fold adapters — the exi
 the stream's records by materialisation (:mod:`.adapters`); and the golden-replay harness
 (:mod:`.golden`) that snapshots every §9 artefact from the legacy stores with the *existing*
 folds and compares the replay — from the legacy stores or, with ``--from stream``, from the
-unified stream — by the pre-stated criteria. Dual-write hooks (§8 C5) land only after the
-r03a review; until then no live writer touches the stream.
+unified stream — by the pre-stated criteria; and the live mirror (:mod:`.mirror`, §8 C5) — the
+one call each typed writer makes after its legacy append (append-shaped, loud when behind,
+fail-open and counted, ``LIFE_AGENT_LEDGER_MIRROR=0`` the recorded rollback). The three swept
+sources are synced by the manual CLI (``python -m life_agent.ledger.migrate sync all``); no
+reader is cut over and no legacy store is retired in tranche 1.
 """
