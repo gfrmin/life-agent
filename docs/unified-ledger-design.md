@@ -44,6 +44,15 @@
 > is weakened. Same day, on measurement: §10's unmeasured "an fsync per line is within it on this
 > disk" is replaced by the measured mirror cost (~30 ms per call on the stream's volume; the
 > 0.20 ms target is not met, and says so).
+>
+> **Revision 2026-08-18 (r03 close — reviewer rulings on the C6 finding):** §4 names the
+> **dangling-identity class** (occurrence records the stream retains while the pointed-at
+> content is gone — functionally re-derivable, identity-unrecoverable); §9's A11 row carries the
+> **merge-verdict amendment**: *stream ⊇ legacy, with the difference exactly the enumerated
+> swept set, verified by key list, not by count* — a reviewed restatement under the
+> never-silently-weaken rule, cited to the ruling; the RED transcript at T2 stands as the finding
+> of record and is never re-run to green. The tranche's dual-write end-state was reached
+> (r03-merge); the pkm-side fixes the finding calls for are a separate micro-tranche.
 
 ## 0. What this document is (and is not)
 
@@ -301,6 +310,19 @@ with key verification, so the segment's *physical* order may diverge from the §
 invariant is that each fold's ordering key is computable from `record`, not from file order:
 no fold orders `pkm.artifact` by position (recency stays `(produced_at, cache_key)`).
 
+**Dangling identities (r03 C6 finding; reviewer ruling 2026-08-18).** The stream records
+occurrences and *points at* identities; nothing in the design makes the pointed-at content
+durable, and the legacy cache can lose it (r03: pkm's orphan sweep at extract start removed
+2,047 file-first artefacts that a swallowed duplicate-key exception had left uncatalogued for
+two months). The stream then holds occurrence records whose `output` names an identity with no
+content — a **dangling identity**. Named exactly: such content is *functionally* re-derivable
+(the sources persist and derive is a transformation) but *identity*-unrecoverable —
+re-derivation mints a **new occurrence**, and for LLM-produced schema-3 artefacts not
+necessarily equal content (the recorded draw is lost, §5). The two-route count names the class
+per source (`counts` → `legacy_lost_identities` + the key list); a dangling identity is a
+legacy-side loss the append-only stream survived, never a mirror fault, and never a reason to
+delete or rewrite the occurrence record.
+
 **Consequence for replay (SPEC §7.1).** Replaying `pkm.artifact` occurrences reproduces the
 **index** (`artifacts` + `artifact_lineage` rows — exactly what `pkm rebuild-catalogue`
 reproduces, r00 a.3) and the **key set**; it never re-runs a producer. Content is verified by
@@ -465,7 +487,7 @@ live in the KB — there is nowhere else they may live).
 | A8 gather | **byte** | canonical JSON of `grow_block` | `golden compare gather` | — |
 | A9 cells | **byte** | canonical JSON of `_cell_observations` and the coverage row list | `golden compare cells` | — |
 | A10 cached answers | **identity + bytes** | the set of `decision_id`s that are §18.9 keys equals the set of `pkm.artifact` outputs referenced; for each, `content` bytes and `meta.json` equal on disk (read replay; never re-executed, §5) | `golden compare answers` | R5 |
-| A11 pkm index | **semantic** | rowset of `artifacts` and of `artifact_lineage` from the stream's occurrences equals `rebuild_artifacts`'s rowset over the same cache (columns as SPEC §5.1; `produced_at` preserved) | `golden compare pkm-index` | R5 |
+| A11 pkm index | **semantic** | rowset of `artifacts` and of `artifact_lineage` from the stream's occurrences equals `rebuild_artifacts`'s rowset over the same cache (columns as SPEC §5.1; `produced_at` preserved). **Merge-verdict amendment (reviewer ruling on r03, 2026-08-18 — a reviewed restatement, never a silent weakening):** where the legacy cache has *lost* identities the stream retains (§4 dangling identities), the verdict criterion is *stream ⊇ legacy with the difference exactly the enumerated swept set, compared **by key list**, not by count* (r03: 2,047 keys, symmetric difference 0); the RED transcript remains the finding of record | `golden compare pkm-index` · `migrate counts` (`legacy_lost_keys`) | R5 |
 | A12 demand | **byte** | multiset of canonical lines per UTC-day file equals the stream's `pkm.demand` records | `golden compare demand` | R6 |
 | A13 labels | **byte** | canonical JSON of `verdict(labels, q, v)` over every `(question_id, value)` present | `golden compare labels` | — |
 | A14 corrections | **byte** | multiset of canonical lines | `golden compare corrections` | — |

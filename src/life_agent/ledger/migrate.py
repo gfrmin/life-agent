@@ -170,15 +170,30 @@ def counts(paths: Paths, store: LedgerStore, *, order: tuple[str, ...] = SRC.MIG
         base = None if baseline is None else baseline.get("sources", {}).get(sid, {}).get("parsed")
         ok = tally == segment == len(sc.parsed)
         all_ok &= ok
+        # A set-shaped source (R5) can only fall BEHIND its segment by deletion on the legacy
+        # side: identities the stream recorded whose files are gone. Name that class exactly —
+        # it is a legacy loss the append-only stream survived, never a mirror fault.
+        legacy_lost = None
+        lost_keys: list[str] | None = None
+        if not ok and sid == "pkm.artifact":
+            have = {r.output for r in sc.parsed}
+            # by identity, not by cardinality (reviewer ruling on r03): the keys are the claim
+            lost_keys = sorted(o for o in store.outputs(sid) if o not in have)
+            legacy_lost = len(lost_keys)
         rows[sid] = {"writer_tally": tally, "segment_wc_l": seg_lines, "quarantined": quarantined,
                      "segment_parseable": segment, "legacy_parsed": len(sc.parsed),
                      "c0_parsed": base,
                      "growth_since_c0": None if base is None else len(sc.parsed) - base,
+                     "legacy_lost_identities": legacy_lost, "legacy_lost_keys": lost_keys,
                      "ok": ok}
+        verdict = "OK" if ok else "MISMATCH"
+        if legacy_lost:
+            verdict += (f" — legacy lost {legacy_lost} identit{'y' if legacy_lost == 1 else 'ies'} "
+                        f"the segment retains (deletion on the legacy side)")
         print(f"counts   {sid:28s} tally={tally:7d} segment={segment:7d} (wc -l {seg_lines}, "
               f"quarantined {quarantined}) legacy={len(sc.parsed):7d}"
               + (f" c0={base} growth={len(sc.parsed) - base}" if base is not None else "")
-              + f" → {'OK' if ok else 'MISMATCH'}", file=out)
+              + f" → {verdict}", file=out)
     print(f"counts   {'all sources reconcile' if all_ok else 'MISMATCH present'}", file=out)
     return {"ok": all_ok, "sources": rows}
 

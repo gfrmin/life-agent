@@ -208,3 +208,24 @@ def test_paths_state_sha_source_defaults_to_the_ledger(ledger_kb: tuple[Path, G.
     a = G.a2_state_md(p)
     b = G.a2_state_md(replace(p, state_sha_source=p.tasks_ledger))
     assert a == b
+
+
+def test_counts_names_a_legacy_side_deletion_on_the_set_shaped_source(
+        ledger_kb: tuple[Path, G.Paths]) -> None:
+    """pkm.artifact can only fall behind its segment by deletion on the legacy side: the count
+    stays a MISMATCH (loud) and says exactly how many identities the segment retains."""
+    import shutil
+
+    from pkm.cache import artifact_dir
+    root, p = ledger_kb
+    store = LedgerStore(root / "ledger")
+    M.migrate(p, store, out=io.StringIO(), epoch="T")
+    key = next(iter(store.outputs("pkm.artifact")))
+    assert p.pkm_root is not None
+    shutil.rmtree(artifact_dir(p.pkm_root, key))          # the legacy side loses one identity
+    out = io.StringIO()
+    res = M.counts(p, store, out=out)
+    row = res["sources"]["pkm.artifact"]
+    assert not row["ok"] and row["legacy_lost_identities"] == 1
+    assert row["legacy_lost_keys"] == [key]          # by identity, not by count
+    assert "legacy lost 1 identity the segment retains" in out.getvalue()
