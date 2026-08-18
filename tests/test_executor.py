@@ -360,14 +360,15 @@ def test_grow_lane_log_gather_failure_never_breaks_the_answer() -> None:
     assert view["asserted"] == ["P123"]
 
 
-def test_re_extract_strong_empty_reread_collapses_the_channel() -> None:
-    # The strong re-read REPLACES the channel exactly as corroborate does — including when it
-    # comes back EMPTY (the strong model failed to confirm any local candidate): the weaker
-    # local evidence must not survive it (review finding #2). The re-decide then runs on the
+def test_re_extract_strong_disagreeing_reread_collapses_the_channel() -> None:
+    # The strong re-read REPLACES the channel exactly as corroborate does when it
+    # DISAGREES — it named a value that would not join the lattice, so the weaker local
+    # evidence must not survive it (review finding #2). The re-decide then runs on the
     # empty channel (disagree ⇒ NONE-dominant ⇒ abstain), never on the stale weak obs.
     fake = FakeServices(
         route={"construct": "tax id", "time_indexed": False},
-        corroborate={"observations": [], "gather_rho": 0.95, "value": None},
+        corroborate={"observations": [], "gather_rho": 0.95, "value": "Q999",
+                     "read": "disagree"},
         decides=[
             {"effector": "abstain", "credences": [0.2], "p_none": 0.7, "eu": 0.0},
             {"effector": "gather", "probe": "re_extract_strong", "credences": [0.2],
@@ -380,6 +381,72 @@ def test_re_extract_strong_empty_reread_collapses_the_channel() -> None:
     decides = fake.posted("/decide")
     assert decides[2]["observations"] == []      # the channel was replaced, not kept
     assert decides[2]["rho"] == 0.95             # at the strong re-read's reliability
+
+
+def test_re_extract_strong_null_reread_keeps_the_channel() -> None:
+    # §14 (2026-08-18): a re-read that NAMED NOTHING is absence of evidence from a lossy
+    # whole-document instrument — the probe retires fail-open and the grounded per-chunk
+    # channel stands, instead of collapsing the posterior to its flat prior.
+    fake = FakeServices(
+        route={"construct": "tax id", "time_indexed": False},
+        corroborate={"observations": [], "gather_rho": 0.95, "value": None,
+                     "read": "null"},
+        decides=[
+            {"effector": "abstain", "credences": [0.2], "p_none": 0.7, "eu": 0.0},
+            {"effector": "gather", "probe": "re_extract_strong", "credences": [0.2],
+             "p_none": 0.7, "eu": 0.0},
+            {"effector": "abstain", "credences": [0.2], "p_none": 0.7, "eu": 0.0},
+            {"effector": "abstain", "credences": [0.2], "p_none": 0.7, "eu": 0.0},
+        ])
+    _loop(fake, grow_lane=True)
+    decides = fake.posted("/decide")
+    assert decides[2]["observations"] == _EXTRACT["observations"]  # channel KEPT
+    assert decides[2]["rho"] == _EXTRACT["rho"]                    # at its own rho
+    assert "re_extract_strong" in decides[2]["applied_probes"]     # and retired
+
+
+def test_corroborate_tier_null_read_keeps_the_channel_disagree_still_replaces() -> None:
+    # The same split on the daemon-scheduled tier — the branch that cost 12 of run 9's
+    # 69 withholdings. A null read keeps the channel; a disagreeing one still erases it
+    # (run 7's disagree⇒abstain contract, untouched).
+    def _run(corroborate: dict[str, Any]) -> list[dict[str, Any]]:
+        fake = FakeServices(
+            route={"construct": "tax id", "time_indexed": False},
+            corroborate=corroborate,
+            decides=[
+                {"effector": "gather", "probe": "corroborate_haiku",
+                 "credences": [0.5], "p_none": 0.5, "eu": 0.0},
+                {"effector": "abstain", "credences": [0.5], "p_none": 0.5, "eu": 0.0},
+                {"effector": "abstain", "credences": [0.5], "p_none": 0.5, "eu": 0.0},
+            ])
+        _loop(fake, grow=False)
+        return fake.posted("/decide")
+
+    kept = _run({"observations": [], "gather_rho": 0.80, "value": None, "read": "null"})
+    assert kept[1]["observations"] == _EXTRACT["observations"]
+    assert kept[1]["rho"] == _EXTRACT["rho"]
+    assert "corroborate_haiku" in kept[1]["applied_probes"]
+
+    erased = _run({"observations": [], "gather_rho": 0.80, "value": "Q999",
+                   "read": "disagree"})
+    assert erased[1]["observations"] == []
+    assert erased[1]["rho"] == 0.80
+
+
+def test_a_bridge_without_the_read_field_keeps_the_measured_contract() -> None:
+    # Version skew must degrade to the PREVIOUSLY MEASURED behaviour (replace), never to
+    # an unmeasured one: a bridge predating `read` sends no field, and the body erases.
+    fake = FakeServices(
+        route={"construct": "tax id", "time_indexed": False},
+        corroborate={"observations": [], "gather_rho": 0.80, "value": None},
+        decides=[
+            {"effector": "gather", "probe": "corroborate_haiku",
+             "credences": [0.5], "p_none": 0.5, "eu": 0.0},
+            {"effector": "abstain", "credences": [0.5], "p_none": 0.5, "eu": 0.0},
+            {"effector": "abstain", "credences": [0.5], "p_none": 0.5, "eu": 0.0},
+        ])
+    _loop(fake, grow=False)
+    assert fake.posted("/decide")[1]["observations"] == []
 
 
 def test_zero_candidate_walk_retires_its_probes() -> None:

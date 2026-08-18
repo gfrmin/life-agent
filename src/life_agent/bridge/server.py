@@ -350,7 +350,16 @@ def _probe_corroborate(deps: BridgeDeps, p: Payload) -> Payload:
         jr = JE.extract_joint(deps.root, question, hits, model=model, k=len(hits))
         obs: list[Payload] = []
         new_candidate: str | None = None
+        # Why the empty channel came back, so the body can tell absence of evidence from
+        # evidence of absence (§14, 2026-08-18). `null` = the joint named NO value — a
+        # lossy whole-document read over 400-char snippets declining to answer, which
+        # says nothing about the per-chunk observations already grounded. `disagree` =
+        # it named a value that would not join the lattice (outside the set, ambiguous
+        # containment, or correction-shaped) — that IS evidence against the leader and
+        # keeps run 7's disagree⇒abstain contract. `confirm` = it joined.
+        read = "null"
         if jr.value is not None:
+            read = "disagree"
             vn = LK._norm_value(jr.value)
             idx = next((i for i, c in enumerate(candidates) if LK._norm_value(c) == vn), None)
             contained: list[int] = []
@@ -396,6 +405,7 @@ def _probe_corroborate(deps: BridgeDeps, p: Payload) -> Payload:
                 obs = [{"reports": idx, "group": 0, "authority": 1.0,
                         "subject_factor": 1.0, "time_factor": tf,
                         "competition_factor": _candidate_competition(p, idx)}]
+                read = "confirm"
         # the read's own stated confidence rides beside the tier rho: the k=0 strong rescue
         # conditions at min(tier, confidence), so the wire never discards the instrument's
         # uncertainty (a lone unsupported read must not enter at the tier's flat prior).
@@ -408,6 +418,7 @@ def _probe_corroborate(deps: BridgeDeps, p: Payload) -> Payload:
             served_model=jr.served_model or model))
         out: Payload = {"observations": obs, "gather_rho": tier_rho, "value": jr.value,
                         "confidence": jr.confidence, "cache_key": jr.cache_key,
+                        "read": read,
                         "cost_usd": 0.0 if priced is None else priced,
                         "served_model": jr.served_model, "tokens": jr.in_tokens + jr.out_tokens}
         if new_candidate is not None:
