@@ -72,12 +72,12 @@ def test_audit_rows_joins_paired_decisions_and_retrieval(monkeypatch) -> None:
     questions = [
         {"id": "q-a", "question": "what is the fee?", "answer": "1,234,567",
          "answer_variants": [], "provenance": {"artifact_cache_key": "home-a"}},
-        {"id": "q-b", "question": "what is the tel?", "answer": "5550 0143",
+        {"id": "q-b", "question": "what is the tel?", "answer": "5550 0143",  # PII-OK
          "answer_variants": [], "provenance": {"artifact_cache_key": "home-b"}},
         {"id": "q-c", "question": "asserted", "answer": "x", "answer_variants": []},
     ]
     conn = _FakeConn([("home-a", "fee: 1,234,567"), ("indep-a", "fee 1,234,567 again"),
-                      ("home-b", "tel 5550 0143")])
+                      ("home-b", "tel 5550 0143")])  # PII-OK: synthetic phone shape
     monkeypatch.setattr(RA.RET, "retrieve_set", lambda c, q, k: [
         {"artifact_cache_key": "indep-a", "chunk_text": "fee 1,234,567 again"}])
     rows = RA.audit_rows(paired, decisions, questions, conn, k=5)

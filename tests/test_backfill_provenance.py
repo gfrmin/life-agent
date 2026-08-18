@@ -102,7 +102,7 @@ def test_assert_provenance_only_refuses_a_changed_answer() -> None:
 def test_assert_provenance_only_refuses_a_rewritten_existing_provenance_key() -> None:
     corpus = _corpus({"chunk_id": 100, "source_path": "/fake/a.pdf"})
     out, _, _ = B.backfill(corpus, B.resolve_handles(_conn(), [100]))
-    out["questions"][0]["provenance"]["source_path"] = "/somewhere/else.pdf"
+    out["questions"][0]["provenance"]["source_path"] = "/somewhere/else.pdf"  # PII-OK: synthetic
     with pytest.raises(SystemExit, match="may only ADD keys"):
         B.assert_provenance_only(corpus, out)
 

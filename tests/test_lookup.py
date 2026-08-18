@@ -320,9 +320,9 @@ def test_observe_hits_absent_covariates_are_unit(migrated_root: Path) -> None:
 def test_observe_hits_detects_a_quote_window_competitor(migrated_root: Path) -> None:
     # the q2-105 shape: the extractor's own quote carries the fax AND the tel — the
     # dangerous competitor is inside the anchor, and the observation's r is halved
-    chunk = "Ms X  Tel: (852) 5550 0143  Fax: (852) 5550 0187  (row 113)"
-    client = FakeClient({"found": True, "value": "(852) 5550 0143",
-                         "quote": "Tel: (852) 5550 0143  Fax: (852) 5550 0187"})
+    chunk = "Ms X  Tel: (852) 5550 0143  Fax: (852) 5550 0187  (row 113)"  # PII-OK
+    client = FakeClient({"found": True, "value": "(852) 5550 0143",  # PII-OK: synthetic phone shape
+                         "quote": "Tel: (852) 5550 0143  Fax: (852) 5550 0187"})  # PII-OK
     obs, _ = observe_hits(migrated_root, "fax number?", [_hit("a" * 64, chunk)],
                           client=client)
     assert obs[0].n_competing >= 1
@@ -786,7 +786,7 @@ def test_confirm_hits_grounded_confirm_becomes_observation(migrated_root: Path) 
     client = FakeClient({"confirms": True, "quote": "fee is 1,234,567 confirmed"})
     hits = [_hit("home", "the fee is 1,234,567 due at signing"),
             _hit("indep", "schedule total: fee is 1,234,567 confirmed",
-                 origin="/mail/cur/msg.eml")]
+                 origin="/mail/cur/msg.eml")]  # PII-OK: synthetic maildir
     obs, indet = LK.confirm_hits(migrated_root, "what is the fee?", "1,234,567", hits,
                                  exclude_artifacts={"home"}, client=client)
     assert indet == 0 and client.calls == 1  # the supporter is never even attempted

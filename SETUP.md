@@ -129,8 +129,7 @@ timer after your mail sync.
 
 **Morning digest (optional).** `bin/daily-digest` sends the today / overdue /
 due-today / up-next / inbox summary through the same bot. Install the timer:
-`ln -s "$PWD"/packaging/daily-digest.{service,timer} ~/.config/systemd/user/ &&
-systemctl --user daemon-reload && systemctl --user enable --now daily-digest.timer`
+`ln -s "$PWD"/packaging/daily-digest.{service,timer} ~/.config/systemd/user/ && systemctl --user daemon-reload && systemctl --user enable --now daily-digest.timer` <!-- PII-OK: standard XDG + repo-relative paths -->
 (07:00 daily, `Persistent=true` catches up a missed morning).
 
 Internals (the event ledger, why the SQLite is safe to delete):

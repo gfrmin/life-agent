@@ -325,7 +325,7 @@ _C3_LONG_DOC = (
     "CEO Maria Santos reported revenue of $4.2 billion. "
     "CFO James Park presented the quarterly breakdown. "
     "Operations in London, Tokyo, and Sao Paulo expanded. "
-    "The board of directors includes Dr. Helen Wu, Robert Kim, "
+    "The board of directors includes Dr. Helen Wu, Robert Kim, "  # PII-OK: synthetic fixture
     "and Sarah Adams. "
 ) * 50
 
@@ -367,7 +367,7 @@ _C3_AMBIGUOUS = (
 
 _C3_BINARY_PREFIX = (
     "\x00\x01\x02 Binary header followed by text. "
-    "Dr. Robert Johnson presented findings at the Mayo Clinic on 2025-06-01."
+    "Dr. Robert Johnson presented findings at the Mayo Clinic on 2025-06-01."  # PII-OK
 )
 
 _C3_NEAR_DUP_A = "Alice Johnson works at Acme Corp in London."

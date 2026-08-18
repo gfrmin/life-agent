@@ -81,7 +81,7 @@ closes the coarsening as a re-earn route on this ledger.
 ## Engine (fixed)
 
 `proplang-host` built from the pinned commit **`1a0cea7`** (W4 freeze) in a worktree at
-`~/git/worktrees/proplang/pin-1a0cea7`; binary sha256 (first 16) `1d00864383362213`.
+`<worktrees>/proplang/pin-1a0cea7`; binary sha256 (first 16) `1d00864383362213`.
 Byte-compatibility with the §17 record: the FULL variant is re-run in the same execution
 and its A1/A2 numbers must reproduce P3's (`a1_a2.json` FULL: policy EU/q, P(U) interval)
 — a mismatch voids the run before the coarsened Δ is read.

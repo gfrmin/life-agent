@@ -68,6 +68,26 @@ _EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@((?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,})\
 _NINE_DIGITS_RE = re.compile(r"(?<![A-Za-z0-9])\d{9}(?![A-Za-z0-9])")
 _PASSPORT_RE = re.compile(r"\b[A-Z]{2}\d{7}\b")
 _IL_MOBILE_RE = re.compile(r"(?<![A-Za-z0-9])05\d[-\s]?\d{7}(?![A-Za-z0-9])")
+# The corpus is Israel AND Hong Kong; only the Israeli shapes were covered, so an HK
+# tel/fax pair and an honorific-prefixed name reached a public commit before being
+# scrubbed (2026-08-18). These three close that gap, each written for PRECISION — a
+# noisy guard gets disabled, and a disabled guard is what let the leak through.
+# HK subscriber numbers are 8 digits opening 2/3/5/6/9, usually written as two
+# space-separated 4-digit groups with an optional +852 country code; the alnum
+# look-around keeps them out of hashes.
+_HK_PHONE_RE = re.compile(
+    r"(?<![A-Za-z0-9])(?:"
+    r"\+?852[-\s]?[23569]\d{3}[-\s]?\d{4}"      # with country code, separator optional
+    r"|[23569]\d{3}[-\s]\d{4}"                  # bare: a separator is REQUIRED, so an
+    r")(?![A-Za-z0-9])")                        # 8-digit date (20190812) is not a phone
+# HKID: one or two letters, six digits, parenthesised check character.
+_HKID_RE = re.compile(r"\b[A-Z]{1,2}\d{6}\(\s*[0-9A]\s*\)")
+# An honorific followed by capitalised words is a person, named. It cannot catch a bare
+# name (structurally indistinguishable from any capitalised phrase — that is what the
+# private denylist and review are for), but it does catch the form real documents use.
+_HONORIFIC_NAME_RE = re.compile(
+    r"\b(?:Mr|Mrs|Ms|Miss|Dr|Prof)\.?\s+[A-Z][A-Za-z'\u2019-]*"
+    r"(?:[,\s]+[A-Z][A-Za-z'\u2019-]*){0,3}")
 # A filesystem-path literal worth checking. Home-relative (tilde-rooted, >=1 path
 # segment — inherently personal) OR absolute (slash-rooted, >=2 path segments). The
 # 2-segment floor for absolute paths skips the noise of single-name HTTP routes,
@@ -156,6 +176,12 @@ def scan_text(
             out.append(Finding(path, lineno, "passport-shape"))
         if _IL_MOBILE_RE.search(line):
             out.append(Finding(path, lineno, "israeli-mobile-shape"))
+        if _HK_PHONE_RE.search(line):
+            out.append(Finding(path, lineno, "hk-phone-shape"))
+        if _HKID_RE.search(line):
+            out.append(Finding(path, lineno, "hkid-shape"))
+        if _HONORIFIC_NAME_RE.search(line):
+            out.append(Finding(path, lineno, "personal-name (honorific)"))
         for pat in denylist:
             if pat.search(line):
                 out.append(Finding(path, lineno, "private-denylist"))

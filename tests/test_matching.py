@@ -16,7 +16,7 @@ def test_numeric_spans_keep_grouped_numbers_whole() -> None:
     assert numeric_spans("$1,234,567") == ["1,234,567"]
     assert numeric_spans("74.2%") == ["74.2"]
     # spaces break spans (adjacent spreadsheet columns never merge)
-    assert numeric_spans("(852) 5550 0143") == ["852", "5550", "0143"]
+    assert numeric_spans("(852) 5550 0143") == ["852", "5550", "0143"]  # PII-OK
     assert numeric_spans("no digits here") == []
 
 
@@ -26,9 +26,9 @@ def test_q2_090_shape_two_dollar_figures_compete() -> None:
 
 
 def test_q2_105_shape_fax_and_tel_in_one_row_compete() -> None:
-    chunk = "Ms A. EXAMPLE  Tel: (852) 5550 0143  Fax: (852) 5550 0187"
+    chunk = "Ms A. EXAMPLE  Tel: (852) 5550 0143  Fax: (852) 5550 0187"  # PII-OK
     # the fax's two 4-digit spans are distinct competing canons for the tel value
-    assert competing_value_count("(852) 5550 0143", chunk) >= 1
+    assert competing_value_count("(852) 5550 0143", chunk) >= 1  # PII-OK: synthetic phone shape
 
 
 def test_percent_class_competes_across_digit_counts() -> None:

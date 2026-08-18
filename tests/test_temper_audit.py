@@ -47,7 +47,7 @@ DECISIONS = {
     _qhash("total prize money for I CAN?"): {"posterior_summary": {
         "candidates": ["$1,234,567"], "credences": [0.926], "n_obs": 1, "p_none": 0.074}},
     _qhash("fax number for Candy?"): {"posterior_summary": {
-        "candidates": ["(852) 5550 0143"], "credences": [0.927], "n_obs": 1,
+        "candidates": ["(852) 5550 0143"], "credences": [0.927], "n_obs": 1,  # PII-OK
         "p_none": 0.073}},
     _qhash("clean single value?"): {"posterior_summary": {
         "candidates": ["PL-900001"], "credences": [0.926], "n_obs": 1, "p_none": 0.074}},
@@ -56,8 +56,8 @@ DECISIONS = {
 CHUNKS = {
     "q-a": [("prize $1,234,567 for the season; career $7,654,321 listed",
              "prize $1,234,567 for the season; career $7,654,321")],
-    "q-b": [("Tel: (852) 5550 0143  Fax: (852) 5550 0187",
-             "Tel: (852) 5550 0143  Fax: (852) 5550 0187")],
+    "q-b": [("Tel: (852) 5550 0143  Fax: (852) 5550 0187",  # PII-OK: synthetic phone shape
+             "Tel: (852) 5550 0143  Fax: (852) 5550 0187")],  # PII-OK: synthetic phone shape
     "q-c": [("Passport number PL-900001, expires 23 May 2032",
              "Passport number PL-900001")],
 }

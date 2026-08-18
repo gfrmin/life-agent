@@ -26,7 +26,7 @@ evidence-class note. It also cannot recover the *membership set* behind a past d
 contents for past runs are not. Both gaps close from run 6, via the pinned manifest.
 
 Run:  uv run --project . python scripts/forensics/corpus_timeline.py
-      uv run --project . python scripts/forensics/corpus_timeline.py --root /home/g/Downloads
+      uv run --project . python scripts/forensics/corpus_timeline.py --root <downloads>
 """
 from __future__ import annotations
 

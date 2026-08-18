@@ -229,8 +229,10 @@ def _chunk_conn(chunk_ids: list[int]):
 def test_gold_available_reads_the_catalogue_not_the_filesystem() -> None:
     conn = _chunk_conn([100, 200])
     questions = [
-        {"id": "here", "provenance": {"chunk_id": 100, "source_path": "/gone/x.pdf"}},
-        {"id": "absent", "provenance": {"chunk_id": 999, "source_path": "/mnt/yo/y.pdf"}},
+        {"id": "here", "provenance": {"chunk_id": 100,
+                              "source_path": "/gone/x.pdf"}},  # PII-OK: synthetic
+        {"id": "absent", "provenance": {"chunk_id": 999,
+                                "source_path": "/mnt/data/y.pdf"}},  # PII-OK: synthetic
     ]
     avail = RE.gold_available(conn, questions)
     # the source file's path is irrelevant — "here" has no file yet answers fine, which is

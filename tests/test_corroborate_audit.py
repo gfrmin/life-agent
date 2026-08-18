@@ -40,7 +40,7 @@ def _questions() -> list[dict]:
     return [
         {"id": "q-a", "question": "what is the fee?", "answer": "1,234,567",
          "answer_variants": []},
-        {"id": "q-b", "question": "what is the tel?", "answer": "5550 0143",
+        {"id": "q-b", "question": "what is the tel?", "answer": "5550 0143",  # PII-OK
          "answer_variants": []},
         {"id": "q-c", "question": "what is the id?", "answer": "PL-900001",
          "answer_variants": []},
@@ -62,7 +62,7 @@ def test_audit_rows_classes_and_named_exclusion() -> None:
         CA._qhash("what is the fee?"): {"posterior_summary": {
             "candidates": ["1,234,567"], "credences": [0.82]}},
         CA._qhash("what is the tel?"): {"posterior_summary": {
-            "candidates": ["9999 0000"], "credences": [0.75]}},
+            "candidates": ["9999 0000"], "credences": [0.75]}},  # PII-OK: synthetic phone shape
     }
 
     def probe(question: str, value: str, candidates: list[str]) -> dict[int, dict]:

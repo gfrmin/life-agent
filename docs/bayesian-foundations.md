@@ -1588,9 +1588,9 @@ on this list. Answers land here by amendment, citing their evidence.
   contradicts gold while quoting the gold digits as the adjacent tel field —
   but checked against the primary sources, **each candidate is faithful to its
   cited file**: `pdm_accessgovhk.csv`'s header runs fax-BEFORE-tel and its
-  Mong Kok row carries 5550 0199 in the fax column; the q2-105 CSV
+  Mong Kok row carries a DIFFERENT number in the fax column; the q2-105 CSV
   (`accessgovhk_1749223971.csv`) runs tel-before-fax and its Audit Commission
-  row carries 5550 0187 in the fax column. Both golds equal the row's TEL value — the
+  row likewise differs in the fax column. Both golds equal the row's TEL value — the
   factory gold looks tel/fax-swapped on both. Verdicts on these two are
   gold-conditional: the matcher's CORRECT is right-for-the-wrong-reason (a
   token match on the tel digits), the judge's INCORRECT is right against
@@ -1689,7 +1689,7 @@ on this list. Answers land here by amendment, citing their evidence.
   no gate report has ever carried the corpus digest, so "the corpus digest held across all
   firings" was an out-of-band operator check, not an artifact property. Measured extent on
   the current corpus: 238 sources / 230 chunked artifacts (~~1.8% of 12 984~~) sit under
-  `/home/g/Downloads`, a root whose *content differs per machine* (139 files on thinkpad,
+  `<downloads>`, a root whose *content differs per machine* (139 files on thinkpad,
   425 on steel), and 16 of the 104 eval questions cite provenance under it. Three changes,
   frozen here, binding from run 6:
   **MAGNITUDE CORRECTED 2026-08-17, before any run-6 reading — the registered figure
@@ -1699,7 +1699,7 @@ on this list. Answers land here by amendment, citing their evidence.
   rule below is unaffected — still zero rows on the run-6 corpus, re-verified at the same
   date — but the sentence as registered misdescribed how much of the corpus rides on a
   machine-local root, which is the whole point of the entry. Reproduce with
-  `python scripts/forensics/corpus_timeline.py --root /home/g/Downloads`.
+  `python scripts/forensics/corpus_timeline.py --root <downloads>`.
   (1) **Corpus provenance is published.** Every gate report carries the `corpus_digest`,
   the resolved/absent root list, and the count of chunked artifacts whose root is
   unresolvable. Pure measurement, no Δ effect — a reading whose corpus is unrecorded is
@@ -1890,7 +1890,7 @@ on this list. Answers land here by amendment, citing their evidence.
   as read; under the corrected gold it re-grades to typed 48 ✓ / 1 ✗ and **0.811 / +0.275
   [−0.111, +0.733]** (`counterfactual-run6-q053-corrected-20260817.md`, a footnote, not a
   reading). **q2-105 is a real coin flip stated at 0.93** — the chunk lists two unlabeled
-  numbers ("Ms. A. EXAMPLE (852) 5550 0187 (852) 5550 0143"; the header is 113
+  numbers (one row: an honorific-prefixed name, then the fax and tel in that order; the header is 113
   chunks away) and a CACHED opus deliberate read (from `gate-20260807T202838`; the deliberate
   key is (corpus, question, model) — independent of the base instrument, so the run-6 entry's
   "the value came from the new instrument" was wrong) picked the tel; run 5 abstained on the
@@ -2082,7 +2082,7 @@ on this list. Answers land here by amendment, citing their evidence.
   superseded 74.2% at 0.8997 (runner-up, the corrected gold 97%, at 0.033); q2-090 asserted
   $1,234,567 at 0.926 SINGLE-CANDIDATE — the gold $7,654,321 sits in the same chunk and
   `posterior_summary` carries only the candidate list, so the record says nothing; q2-105
-  asserted the tel (852) 5550 0143 at 0.927, single-candidate, the gold fax in the same
+  asserted the row's TEL at 0.927, single-candidate, the gold fax in the same
   row. Root cause is structural: `EXTRACT_SCHEMA` returns ONE value per chunk, so in-chunk
   competition never leaves the extractor — no downstream term can see it. **The mechanism**
   (doctrine-constrained: §4.4's collapse theorem forbids caution via utility width, and
