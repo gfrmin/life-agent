@@ -104,14 +104,16 @@ superset-confirm — the named defect class).** The 40-ceiling was carrier-count
 inflation: 48/63 grounded confirms were forwarded/quoted copies of one attestation,
 killed by the §5 dedup guard; true independent-corroboration ceiling ~6, under the
 "not worth building pre-dogfood" line — the instrument + endpoint stay in-tree,
-tested and dormant (nothing on the decision path calls them; no menu row). The
-n_obs=0 cluster is extraction-side (19/19 retrieved-not-extracted,
-0 not-retrieved — "retrieval failure" retired as a name); single-doc 12 is the
-temper's standing price. With every remaining eval-lever ceiling under the build
-bar, the evidence points at live dogfood on the deployed adopted arm (and, if an
-eval lever is revisited: the one-value-per-chunk extractor's n_obs=0 class, or
-confirm_indep under its two registered follow-ups — strict-span guard, sonnet
-sweep). Old D3–D4 stay re-scoped as Ask's
+tested and dormant (nothing on the decision path calls them; no menu row).
+**The n_obs=0 cluster is DECISION-side (`scripts/extraction_audit.py`, 2026-08-18,
+$0): not retrieval (ceiling 0), not extraction (delivered reach 4) — 17 of the 19
+rows carry candidates with n_obs=0 at EXACTLY uniform credences, i.e. a grounded
+channel a replace-branch probe erased, with the gold already on the lattice in 14.
+"retrieved-not-extracted" is retired as the cluster's name (wrong twice now); the
+suspected over-strong inference is that a NULL re-read is treated as a
+DISAGREEMENT (fail-open precedent one branch away), registered in §14 as NOT yet
+measured — it needs its own frozen criteria + pre-registration.** Single-doc 12 is
+the temper's standing price. Old D3–D4 stay re-scoped as Ask's
 aggregate/thread families. The doc's §14 open questions are a **live empirical ledger**
 (owner's adoption rider): each entry names the evidence that decides it — keep it
 current. Sequencing is continuous and eval-gated, not dogfood-gated (PRINCIPLES §9 as
