@@ -995,6 +995,15 @@ full faculty. The stage-6 governor inherits this line as stated, not as folklore
 
 ## 14. Recorded counterarguments and open questions
 
+> **Commit shas in this section were remapped on 2026-08-18.** Corpus PII had reached
+> the public repo's history; removing it required a `git-filter-repo
+> --sensitive-data-removal` rewrite, which renamed 417 of 528 commits. Every
+> life-agent sha cited below was re-resolved through filter-repo's `commit-map` and
+> now names the same *content* under its new identity — no reading, run, or
+> disposition changed. A clone taken before that date will not find these shas; the
+> pre-rewrite bundle is archived out of tree. Shas belonging to the credence repo
+> (the run-9 pin among them) are unaffected and unchanged.
+
 **The confer round (second expert, 2026-06-12) — findings and dispositions.** The
 review's diagnosis was accepted in full: six instances of one defect — *a decision
 encoded as a structural constraint rather than a priced, updatable quantity* — plus a
@@ -1511,7 +1520,7 @@ on this list. Answers land here by amendment, citing their evidence.
   does not clear, run 6 stays matcher-graded and says so. Either way the run-5
   addendum records the audit verbatim.
   **Run 5 — the warm fold + the first extract@ harvest (2026-08-09, run
-  gate-20260809T102018, master 30383ff — the refusal gate, the tier writers and
+  gate-20260809T102018, master 2660b72 — the refusal gate, the tier writers and
   the judge shadow aboard; runs-3/4 Δ definition, per the split above): FAIL at
   P(Δ>0.05) = 0.098, Δ̄ = −0.230 [−0.525, +0.163].** Typed answer rate =
   correct-report rate = 0.26 (27/104) — zero wrongs, third consecutive executor
@@ -1644,7 +1653,7 @@ on this list. Answers land here by amendment, citing their evidence.
   costs the console total ($1.71) allocated uniformly (per-question split not
   persisted pre-#67; second-order). Artifact + deterministic script:
   `$LIFE_AGENT_KB/eval/gate-outside-option/lambda-sensitivity-20260809{.md,-sweep.py}`
-  (replay requires the repo at the #68 merge `4b11bce` plus the 2026-08-09 KB
+  (replay requires the repo at the #68 merge `edc3ef5` plus the 2026-08-09 KB
   posterior state — the script pins these and takes `LIFE_AGENT_REPO` from the
   environment); the cost=0 sanity pin lands at 0.097/−0.232 vs the published
   run-5 reading 0.098/−0.230 — draw-stream jitter only (the new latent shifts
@@ -1804,7 +1813,7 @@ on this list. Answers land here by amendment, citing their evidence.
   never populated — see the ROADMAP correction of the same date).
 
 - **Run 6 — the first positive Δ̄ (2026-08-17, run `gate-20260817T132417`, branch
-  `feat/fallback-lane` @ `881d652`; every run-6 pre-registration in force: judge grading
+  `feat/fallback-lane` @ `dbd7931`; every run-6 pre-registration in force: judge grading
   for the arms, the λ_usd spend term on both arms, availability censoring, corpus pin
   `full-2026-06-11` MATCHED, the NEW cloud instruments per the migration entry above):
   FAIL at P(Δ>0.05) = 0.678, Δ̄ = +0.180 [−0.244, +0.661].** Guards: λ_usd folded at
@@ -2003,7 +2012,7 @@ on this list. Answers land here by amendment, citing their evidence.
   base-only confident-wrongs, (b) is the fix; if they abstain at the base and pay for
   tiers, (a)'s prior mean is not the risk it looks like.
 
-- **Run 7 — the first PASS (2026-08-17, run `gate-20260817T160244`, master @ `cc9a79d`,
+- **Run 7 — the first PASS (2026-08-17, run `gate-20260817T160244`, master @ `b0147bf`,
   clean; the run-6 recipe verbatim with `PKM_CONFIG` exported — judge grading, λ_usd spend
   on both arms, availability censoring, corpus pin `full-2026-06-11` MATCHED, LOO curves,
   the three corrected golds and the regraded curve food in force): P(Δ>0.05) = 0.945,
@@ -2037,7 +2046,7 @@ on this list. Answers land here by amendment, citing their evidence.
   with a materially different arm; a pass that survives it is worth more than this one.
 
 - **Run 8 — router v2's reading: FAIL at P(Δ>0.05) = 0.857, Δ̄ = +0.344 [−0.109, +0.841]
-  (2026-08-17, run `gate-20260817T164427`, master @ `a488902`, clean; the run-7 recipe
+  (2026-08-17, run `gate-20260817T164427`, master @ `d35b00c`, clean; the run-7 recipe
   verbatim, the ONLY code change ROUTE_PROMPT v2 as registered).** Guards all hold: pin
   MATCHED, λ folded 1.3311, censored 0, judge flipped the same five mono rows, none typed.
   Series: … → 0.678 → 0.945 → **0.857**. Typed **56 ✓ / 3 ✗ / 45 withheld** (answer rate
@@ -2143,7 +2152,7 @@ on this list. Answers land here by amendment, citing their evidence.
   floor's 0.34 and q2-105 is predicted dispersed, not wrong.
 
 - **Run 9 — the temper's reading: PASS at P(Δ>0.05) = 0.938, Δ̄ = +0.390 [+0.032, +0.841]
-  (2026-08-17, run `gate-20260817T195737`, master @ `d21a104`, credence @ `f474e70`,
+  (2026-08-17, run `gate-20260817T195737`, master @ `efce4e6`, credence @ `f474e70`,
   clean; the run-8 recipe verbatim + the registered temper as the only decision-path
   change).** Guards all hold: pin MATCHED, λ_usd folded 1.3311, censored 0, judge flipped
   the SAME five mono rows as run 8 (q2-021/026/028/035/048), none typed; curves held out
@@ -2176,7 +2185,7 @@ on this list. Answers land here by amendment, citing their evidence.
   **Pre-registration for run 9:** the run-8 recipe verbatim (`fire-run9.sh` — with a
   stale-stack kill: fire-run8.sh reuses a listening daemon via the `/ready` short-circuit,
   which would silently run the un-tempered code) + the temper as the only decision-path
-  change (life-agent `55a9239`+`9bb8b2f` + the join-inheritance amendment commit,
+  change (life-agent `f68dced`+`1cebc87` + the join-inheritance amendment commit,
   credence `f474e70`). Expected effect: the
   in-chunk wrong-commit class stops committing (floor: → dispersed; ceiling: deliberate
   recovers the gold); predicted floor reading 0.945/+0.401. Diagnostics to watch: typed
@@ -2241,7 +2250,7 @@ on this list. Answers land here by amendment, citing their evidence.
 - **confirm_indep — the corroborate audit's NEGATIVE reading (2026-08-18,
   `scripts/corroborate_audit.py`, live haiku, $0.06): the frozen criteria REFUSE the
   wiring, and the reach audit's 40-ceiling is retired as carrier-count inflation.**
-  The mechanism was built first (commit `cc7d4eb`, phases 1–3 of the registered plan):
+  The mechanism was built first (commit `6050657`, phases 1–3 of the registered plan):
   a value-targeted independent confirm instrument (`lookup.confirm_hits` +
   `CONFIRM_PROMPT`, cached under `lookup_confirm_key` with the target value in the key
   inputs), a production `/probe/confirm` bridge endpoint (supporter exclusion via a

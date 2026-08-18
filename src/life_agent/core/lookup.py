@@ -655,7 +655,7 @@ def observe_hits(root: Path, question: str, hits: list[dict[str, Any]], *,
     # (identical-quote forward/reply chains, re-filed copies) to one witness here, BEFORE the
     # shaping→deciding split, so a duplicate cannot saturate the posterior on EITHER decider — the
     # host lookup_posterior OR the daemon's reliability_categorical (which consumes this verbatim
-    # through to_abstract_observations). Placed in the decider alone (commit 01a384e), the §4.2
+    # through to_abstract_observations). Placed in the decider alone (commit 546f1a5), the §4.2
     # temper never reached the executor path; observe_hits is the single seam both consume.
     return dedup_correlated(observations), indeterminate
 
@@ -781,7 +781,7 @@ def dedup_correlated(observations: list[Observation]) -> list[Observation]:
     Observations carrying a near-identical quote across DIFFERENT documents are the same
     underlying text duplicated (a forwarded/replied email chain, a re-filed copy), not
     independent witnesses — counting them independently saturates the posterior (the regression
-    862ed66 introduced when it retired the §4.2 ancestry temper: q-002's 6 emails → 0.99 on a
+    c71481f introduced when it retired the §4.2 ancestry temper: q-002's 6 emails → 0.99 on a
     wrong value, q-014's 9 stale copies → 0.80). Each substantial-quote cluster spanning
     multiple documents is reduced to the MAX-covariate document's observations — the
     strongest/freshest copy, so a recent re-attestation keeps its recency. Within a single
@@ -844,7 +844,7 @@ def lookup_posterior(brain: Brain, observations: list[Observation],
     # NB: correlated-duplicate collapse (§5 dedup-as-inference) happens UPSTREAM in observe_hits,
     # the shared shaper both deciders consume — so this builder and the daemon's
     # reliability_categorical see identical, already-deduped evidence. Do not re-dedup here: that
-    # asymmetry (host deciding-time temper the daemon lacked) was the regression 01a384e half-fixed.
+    # asymmetry (host deciding-time temper the daemon lacked) was the regression 546f1a5 half-fixed.
     groups: dict[str, list[Observation]] = {}
     for o in observations:
         groups.setdefault(o.artifact_cache_key, []).append(o)
