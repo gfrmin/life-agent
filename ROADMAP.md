@@ -193,8 +193,11 @@ Bayesian Ask rather than deterministic pipelines. Remaining program, in dependen
    the router) pulled the reading under. **Run 9 (the competing-values temper, same
    day): PASS 0.938 / +0.390 with ZERO wrong commits** (35 ✓ / 0 ✗, answer rate 0.34,
    $4.10) — the registered off-gate sweep predicted the live assert set perfectly; the
-   wrong-commit class is closed at the price of reach. Next: independent-document
-   corroboration on the 67 dispersed (the only rescue path the temper permits).
+   wrong-commit class is closed at the price of reach. Independent-document
+   corroboration (the only rescue path the temper permits) was **built and refused by
+   its own frozen audit (2026-08-18, NO-GO: true ceiling ~6 — the reach audit's 40
+   was forwarded-copy inflation; §14 has the negative reading)** — the instrument
+   (`/probe/confirm`) stays in-tree, dormant. Reach now accrues from live dogfood.
 4. **The aggregate family** (subsumes D3): recall term + completeness priors,
    missing-mass posterior, dedup-as-inference — the spending question answered as a
    posterior with both coverage readouts.

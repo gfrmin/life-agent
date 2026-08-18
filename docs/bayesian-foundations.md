@@ -2237,3 +2237,45 @@ on this list. Answers land here by amendment, citing their evidence.
   broken decisions join (qid vs content-addressed hash — every row read as unlogged) and
   was corrected and re-run before any reading; disclosed here because the class counts
   happened to be join-independent and identical across both runs.
+
+- **confirm_indep — the corroborate audit's NEGATIVE reading (2026-08-18,
+  `scripts/corroborate_audit.py`, live haiku, $0.06): the frozen criteria REFUSE the
+  wiring, and the reach audit's 40-ceiling is retired as carrier-count inflation.**
+  The mechanism was built first (commit `cc7d4eb`, phases 1–3 of the registered plan):
+  a value-targeted independent confirm instrument (`lookup.confirm_hits` +
+  `CONFIRM_PROMPT`, cached under `lookup_confirm_key` with the target value in the key
+  inputs), a production `/probe/confirm` bridge endpoint (supporter exclusion via a
+  warm `observe_hits` replay that also reproduces the wire group order; each grounded
+  confirm is a REAL observation on its own artifact with its OWN quote-window
+  competition factor — §2's corpus-row rule, deliberately not the same-doc
+  inheritance; forwarded copies killed by `dedup_correlated` at the one seam), and an
+  off-gate audit that drives that exact handler over run 9's 69 withheld, m∈{1,2,3},
+  reading criteria frozen in the docstring before results (wire iff zero wrong-rescue
+  flips AND predicted rescues ≥ 5; m = smallest within 0.9× of m=3; analytic-append
+  prediction mode disclosed as optimistic). **The reading: rescue-class 6 ·
+  wrong-rescue 3 · no-confirm 58 · no-leader 2 (the n_obs=0 rows, named excluded);
+  predicted flips at frozen m=2: rescues 3 (q2-043, q2-059, q2-093), wrong-rescue
+  flips 1 — NO-GO on both criteria.** What actually bound: the instrument grounded 63
+  confirms, and **48/63 were dropped by the §5 correlated-copy guard** — the corpus's
+  "independent" gold carriers are overwhelmingly forwarded/quoted email-chain copies
+  of ONE underlying attestation (q2-039's nine carriers are all `>>`-quoted re-sends
+  of the same Oxford line; q2-105's lone carrier is a re-send of the same signature
+  row). The reach audit's `rescuable-retrieved 40` counted those copies as independent
+  documents; the measured true-independence ceiling is ~6 questions — **under the
+  reach audit's own "a ceiling under ~10 is not worth building pre-dogfood" line, so
+  the two frozen rules now agree.** The wrong-rescue flip is a named defect class
+  caught pre-production: q2-019's leader `Sample Doe` is a TRUNCATION of gold `Alex Sample Doe`, and superset-carrying chunks "confirm" the partial value (token
+  containment cannot tell a value from its extension); q2-002/q2-006 are the same
+  class without the flip. Registered follow-ups IF this lever is revisited (never a
+  silent retry): (a) a strict-span guard — refuse a confirm whose matched span
+  extends beyond the target's tokens (the q2-019 class, computable host-side, $0);
+  (b) the sonnet-tier sweep the tier criterion names. Disposition: the instrument,
+  endpoint, and audit stay in-tree, tested and DORMANT (nothing on the decision path
+  calls `/probe/confirm`; no menu row was added — the run-10 pre-registration never
+  happened, per the no-go). What the evidence now points at, in order: the
+  extraction-side n_obs=0 class (19/19 retrieved-not-extracted — the one-value-per-
+  chunk extractor, the largest measured class), and live dogfood on the deployed
+  adopted arm (the owner's real distribution — both audits' remaining eval-lever
+  ceilings are under the build bar). Artifacts:
+  `$LIFE_AGENT_KB/eval/corroborate-audit-20260818.{md,yaml}` (+ the synthetic paired
+  files, unread — the splice is only licensed by a GO).

@@ -96,11 +96,22 @@ typed is the silent default, honest-withhold-only (the uncalibrated fallback lan
 REMOVED — `LIFE_AGENT_FALLBACK_LANE` is ignored), and the deliberate edge is ON by
 default (`LIFE_AGENT_DELIBERATE=0` is the rollback)** — §14's adoption entry has the
 evidence and rejected alternatives. The reach audit (`scripts/reach_audit.py`, $0)
-priced the levers: **independent-document corroboration is the decided next build
-(buildable ceiling 40/69 withheld — an independent gold-bearing chunk already in the
-top-20)**; the n_obs=0 cluster is extraction-side (19/19 retrieved-not-extracted,
+priced the levers and pointed at independent-document corroboration (ceiling 40/69) —
+**built (2026-08-18: `lookup.confirm_hits`, the `/probe/confirm` bridge endpoint,
+`scripts/corroborate_audit.py`) and then REFUSED by its own frozen criteria: NO-GO
+at 3 predicted rescues (< 5) with 1 wrong-rescue flip (q2-019, a truncated-leader
+superset-confirm — the named defect class).** The 40-ceiling was carrier-count
+inflation: 48/63 grounded confirms were forwarded/quoted copies of one attestation,
+killed by the §5 dedup guard; true independent-corroboration ceiling ~6, under the
+"not worth building pre-dogfood" line — the instrument + endpoint stay in-tree,
+tested and dormant (nothing on the decision path calls them; no menu row). The
+n_obs=0 cluster is extraction-side (19/19 retrieved-not-extracted,
 0 not-retrieved — "retrieval failure" retired as a name); single-doc 12 is the
-temper's standing price. Old D3–D4 stay re-scoped as Ask's
+temper's standing price. With every remaining eval-lever ceiling under the build
+bar, the evidence points at live dogfood on the deployed adopted arm (and, if an
+eval lever is revisited: the one-value-per-chunk extractor's n_obs=0 class, or
+confirm_indep under its two registered follow-ups — strict-span guard, sonnet
+sweep). Old D3–D4 stay re-scoped as Ask's
 aggregate/thread families. The doc's §14 open questions are a **live empirical ledger**
 (owner's adoption rider): each entry names the evidence that decides it — keep it
 current. Sequencing is continuous and eval-gated, not dogfood-gated (PRINCIPLES §9 as
