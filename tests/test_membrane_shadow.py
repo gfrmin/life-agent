@@ -165,8 +165,23 @@ def _read_records(path: Path) -> list[dict[str, object]]:
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line]
 
 
+def _n_records(path: Path, kind: str) -> int:
+    """How many records of `kind` are ON DISK.
+
+    Prefer waiting on THIS over any in-memory counter or flag whenever the assertion that
+    follows reads the log. Every worker path mutates its counter BEFORE it appends the
+    record — `state.session` is installed just before `_write_boot_record`, `state.ticks
+    += 1` precedes `_append_record` in each of `_tick_decide`/`_tick_gate`/`_tick_live`/
+    `_tick_verdict`, and `state.respawn_count += 1` opens `_attempt_respawn` — so
+    `alive`/`ticks`/`respawns` all go observably true while the log is still short.
+    Locally the write finishes inside one `_wait_until` poll (10ms) and the race is
+    invisible; on a loaded CI runner it is not, which is how this reached master as an
+    intermittent failure across six tests."""
+    return sum(1 for r in _read_records(path) if r.get("kind") == kind)
+
+
 def _n_boot_records(path: Path) -> int:
-    return sum(1 for r in _read_records(path) if r.get("kind") == "boot")
+    return _n_records(path, "boot")
 
 
 def _wait_until(predicate: object, *, timeout_s: float = 2.0, poll_s: float = 0.01) -> bool:
@@ -195,12 +210,13 @@ def test_start_boots_every_form_and_writes_a_boot_record_each(
     )
     try:
         sh.start()
-        ok = _wait_until(
-            lambda: all(
-                sh.stats()["forms"][f]["alive"] for f in ("said@1", "said@2")  # type: ignore[index]
-            )
+        # Wait on the boot RECORDS, not the `alive` flags: `alive` goes true one statement
+        # before the record is written, so both forms can read alive with only one record
+        # on disk (see `_n_records`). The flags are still asserted, just not waited on.
+        assert _wait_until(lambda: _n_boot_records(cfg.log_path) >= 2)
+        assert all(
+            sh.stats()["forms"][f]["alive"] for f in ("said@1", "said@2")  # type: ignore[index]
         )
-        assert ok
         records = _read_records(cfg.log_path)
         boots = [r for r in records if r["kind"] == "boot"]
         assert {b["form"] for b in boots} == {"said@1", "said@2"}
@@ -453,7 +469,9 @@ def test_decide_submit_is_drained_into_a_decide_record(tmp_path: Path) -> None:
         payload = {"candidates": ["a"], "observations": [1, 2], "era_split": True}
         dec = {"credences": [0.8], "p_none": 0.1, "effector": "report"}
         sh.submit_decide("q-001", payload, dec)
-        assert _wait_until(lambda: sh.stats()["forms"]["said@1"]["ticks"] >= 1)  # type: ignore[index]
+        # the decide RECORD, not `ticks`: the counter is bumped before the append, and it
+        # counts gate/live/verdict ticks too, so it cannot stand in for "a decide landed".
+        assert _wait_until(lambda: _n_records(cfg.log_path, "decide") >= 1)
         records = _read_records(cfg.log_path)
         decides = [r for r in records if r["kind"] == "decide"]
         assert len(decides) == 1
@@ -516,8 +534,12 @@ def test_session_that_always_fails_to_boot_respawns_up_to_max_then_stays_dead(
     )
     try:
         sh.start()
+        # Wait on the terminal respawn RECORD, not the `respawns` counter: the counter is
+        # incremented at the START of an attempt, so it reads max_respawns while the final
+        # (permanent) record is still unwritten — and the assertion below wants
+        # max_respawns + 1 of them. This one loses the race at any write latency at all.
         assert _wait_until(
-            lambda: sh.stats()["forms"]["said@1"]["respawns"] == cfg.max_respawns  # type: ignore[index]
+            lambda: _n_records(cfg.log_path, "respawn") >= cfg.max_respawns + 1
         )
         stats = sh.stats()
         assert stats["forms"]["said@1"]["alive"] is False  # type: ignore[index]
@@ -552,9 +574,13 @@ def test_session_that_raises_during_a_live_tick_dies_and_respawns_against_fresh_
         sh.start()
         assert _wait_until(lambda: sh.stats()["forms"]["said@1"]["alive"])  # type: ignore[index]
         sh.submit_decide("q-001", {"candidates": []}, {"credences": [], "effector": "report"})
-        assert _wait_until(
-            lambda: sh.stats()["forms"]["said@1"]["respawns"] == 1  # type: ignore[index]
-        )
+        # Two respawn RECORDS — the live-tick death, then the failed respawn's permanent
+        # one — not `respawns == 1`. `respawn_count += 1` is the FIRST statement of
+        # `_attempt_respawn`, landing before that attempt's `snapshot()` and before the
+        # factory builds its session, so the counter reads 1 while all three assertions
+        # below are still false. shadow.py:783 calls that visibility ordering benign, and
+        # for a production `stats()` reader it is; for a test that waits on it, it is not.
+        assert _wait_until(lambda: _n_records(cfg.log_path, "respawn") >= 2)
         stats = sh.stats()
         assert stats["forms"]["said@1"]["alive"] is False  # type: ignore[index]
         assert factory.calls["said@1"] == 2  # initial boot + the one respawn attempt
@@ -902,6 +928,10 @@ def test_reaction_after_decision_feeds_the_remembered_live_summary_not_the_fallb
         assert got_summary == live_summary
         assert got_y == 1
 
+        # The fake's call list is appended on the worker BEFORE the evidence record is,
+        # so the wait above orders the engine call but not the log write — wait on the
+        # record too before reading it.
+        assert _wait_until(lambda: _n_records(cfg.log_path, "evidence") >= 1)
         records = _read_records(cfg.log_path)
         evidence = [r for r in records if r["kind"] == "evidence"]
         assert len(evidence) == 1
@@ -1389,7 +1419,9 @@ def test_gate_submit_is_drained_into_a_gate_record_per_form(tmp_path: Path) -> N
         sh.start()
         assert _wait_until(lambda: sh.stats()["forms"]["said@1"]["alive"])  # type: ignore[index]
         sh.submit_gate("q-001", "weak_retrieval")
-        assert _wait_until(lambda: sh.stats()["forms"]["said@1"]["ticks"] >= 1)  # type: ignore[index]
+        # the gate RECORD, not `ticks` — see the decide-submit test for why the counter
+        # neither orders the write nor discriminates the kind.
+        assert _wait_until(lambda: _n_records(cfg.log_path, "gate") >= 1)
         records = _read_records(cfg.log_path)
         gates = [r for r in records if r.get("kind") == "gate"]
         assert len(gates) == 1
