@@ -320,7 +320,7 @@ def test_observe_hits_absent_covariates_are_unit(migrated_root: Path) -> None:
 def test_observe_hits_detects_a_quote_window_competitor(migrated_root: Path) -> None:
     # the q2-105 shape: the extractor's own quote carries the fax AND the tel — the
     # dangerous competitor is inside the anchor, and the observation's r is halved
-    chunk = "Ms C  Tel: (852) 5550 0143  Fax: (852) 5550 0187  (row 113)"
+    chunk = "Ms X  Tel: (852) 5550 0143  Fax: (852) 5550 0187  (row 113)"
     client = FakeClient({"found": True, "value": "(852) 5550 0143",
                          "quote": "Tel: (852) 5550 0143  Fax: (852) 5550 0187"})
     obs, _ = observe_hits(migrated_root, "fax number?", [_hit("a" * 64, chunk)],

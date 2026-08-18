@@ -12,7 +12,7 @@ import reach_audit as RA
 
 
 def test_like_pattern_is_token_ordered_and_escaped() -> None:
-    assert RA._like_pattern("$1,234,567") == "%3%290%250%"
+    assert RA._like_pattern("$1,234,567") == "%1%234%567%"
     assert RA._like_pattern("74.2%") == "%74%2%"      # the literal % never survives
     assert RA._like_pattern("a_b") == "%a%b%"          # _ splits at the token boundary
     assert RA._like_pattern("!!!") is None             # no tokens → no pattern

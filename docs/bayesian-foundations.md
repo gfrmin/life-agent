@@ -1890,7 +1890,7 @@ on this list. Answers land here by amendment, citing their evidence.
   as read; under the corrected gold it re-grades to typed 48 ✓ / 1 ✗ and **0.811 / +0.275
   [−0.111, +0.733]** (`counterfactual-run6-q053-corrected-20260817.md`, a footnote, not a
   reading). **q2-105 is a real coin flip stated at 0.93** — the chunk lists two unlabeled
-  numbers ("Ms A. EXAMPLE (852) 5550 0187 (852) 5550 0143"; the header is 113
+  numbers ("Ms. A. EXAMPLE (852) 5550 0187 (852) 5550 0143"; the header is 113
   chunks away) and a CACHED opus deliberate read (from `gate-20260807T202838`; the deliberate
   key is (corpus, question, model) — independent of the base instrument, so the run-6 entry's
   "the value came from the new instrument" was wrong) picked the tel; run 5 abstained on the
@@ -2264,9 +2264,11 @@ on this list. Answers land here by amendment, citing their evidence.
   documents; the measured true-independence ceiling is ~6 questions — **under the
   reach audit's own "a ceiling under ~10 is not worth building pre-dogfood" line, so
   the two frozen rules now agree.** The wrong-rescue flip is a named defect class
-  caught pre-production: q2-019's leader `Sample Doe` is a TRUNCATION of gold `Alex Sample Doe`, and superset-carrying chunks "confirm" the partial value (token
-  containment cannot tell a value from its extension); q2-002/q2-006 are the same
-  class without the flip. Registered follow-ups IF this lever is revisited (never a
+  caught pre-production: q2-019's leader is a TRUNCATION of its gold (the gold is a
+  three-token personal name; the leader is its two-token suffix — values withheld,
+  this repo is public), and chunks carrying the FULL name "confirm" the partial value,
+  because token containment cannot tell a value from its own extension;
+  q2-002/q2-006 are the same class without the flip. Registered follow-ups IF this lever is revisited (never a
   silent retry): (a) a strict-span guard — refuse a confirm whose matched span
   extends beyond the target's tokens (the q2-019 class, computable host-side, $0);
   (b) the sonnet-tier sweep the tier criterion names. Disposition: the instrument,

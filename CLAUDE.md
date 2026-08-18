@@ -186,6 +186,19 @@ projection. See `docs/act-layer-events.md`.
 
 The principles themselves (functional style, seams, provenance, local/cloud, Tailscale,
 dogfood) live in [`PRINCIPLES.md`](./PRINCIPLES.md) — they are not restated here.
+- **THIS REPO IS PUBLIC (`github.com/gfrmin/life-agent`) AND MUST STAY PII-FREE AND
+  REUSABLE BY STRANGERS.** The owner's data lives out of tree under `$LIFE_AGENT_KB`
+  (corpus, eval question files, audit artifacts, FAILURES.md) — keep it there. Nothing
+  in tree may carry a real person's name, phone/fax number, email address, account or
+  document id, or a verbatim value lifted from the corpus, **including in docs prose,
+  §14 ledger entries, commit messages, and test fixtures.** When an example needs the
+  *shape* of a real value (the competition detector's digit-count classes, a tel/fax
+  pair), invent a synthetic value with the same shape and mark it
+  `# PII-OK: synthetic <what>` — the existing convention. When a ledger entry must
+  describe a real failure, describe the *class* ("the gold is a three-token personal
+  name; the leader is its two-token suffix"), never the value. Equally: no
+  owner-specific absolute paths, hostnames, or ids hard-coded in `src/` — they belong
+  in config/env (`$LIFE_AGENT_KB`, `PKM_CONFIG`, `JARVIS_USER_ID`).
 - **In `pkm`:** obey its SPEC-first + TDD + idempotency rules (see Governance above).
 - **Secrets** live in **gnome-keyring**, never in `.env`. Read one with
   `secret-tool lookup service env key VARNAME`; load all into a shell with
