@@ -2332,3 +2332,43 @@ on this list. Answers land here by amendment, citing their evidence.
   disagreement. None of this disturbs run 9's PASS or the §13 adoption: the erasure is
   conservative (it withholds, never wrong-commits). Artifacts:
   `$LIFE_AGENT_KB/eval/extraction-audit-20260818.{md,yaml}`.
+
+- **Pre-registration for run 10 — the null-read fail-open (2026-08-18, written and
+  committed BEFORE the run, branch `fix/null-read-failopen`).** *Defect:* the previous
+  entry's reading — 17 of run 9's 69 withholdings are a grounded channel a
+  replace-branch probe erased, the gold still on the lattice in 14, the posterior sitting
+  at exactly its flat prior. *Mechanism (the only decision-path change):* the bridge now
+  classifies its own empty channel and the body reads that classification. `/probe/corroborate`
+  returns `read ∈ {confirm, disagree, null}`: **`null`** = the joint named NO value —
+  a lossy whole-document read over 400-char snippets declining to answer, which is
+  absence of evidence about the per-chunk observations already grounded; **`disagree`** =
+  it named a value that would not join the lattice (outside the set, ambiguously
+  contained, or correction-shaped) — evidence AGAINST the leader. On `null` the executor
+  retires the probe **fail-open** and the grounded channel stands (the treatment the
+  deliberate branch already gives an infrastructure failure); on `disagree` it replaces
+  exactly as before, so **run 7's disagree⇒abstain contract is untouched by
+  construction**. A bridge predating the field sends no `read`, and the body falls back
+  to replace — version skew degrades to the previously MEASURED contract, never to an
+  unmeasured one. *Scope, and why it is not all 17:* the change covers the joint re-read
+  sites only (the corroborate tiers and `re_extract_strong`). **The deliberate edge is
+  deliberately NOT changed** — its empty-ok reply is a whole-corpus agentic search
+  reporting NOT_IN_CORPUS, which IS evidence for NONE, unlike a re-read of the same 20
+  chunks; 5 of the 17 rows are deliberate-attributed and are expected to stay withheld.
+  The remaining 12 record `instrument: ""` because a tier firing writes no instrument to
+  the decision record, so **the exact tier/deliberate split is unprovable from the log
+  until the attribution gap closes** — that is registered here as a limitation of the
+  prediction, not a claim. *Frozen constants, unchanged:* δ = 0.05, level = 0.90, the
+  same utility posterior and judge grading; run 9's recipe verbatim otherwise (credence
+  pin `f474e70` untouched — no Julia change). *Predictions:* (1) run 9's 35 asserts are
+  unchanged, since the change can only fire where a null read fired; (2) up to 12
+  withholdings regain a channel, and each COMMITS only if its restored posterior clears
+  the bar on its own — the pre-collapse credence is not recorded anywhere, so the
+  conversion rate is genuinely unknown and run 10 is the measurement; (3) answer rate
+  rises from 0.34; (4) spend is ~flat (the same probes fire, nothing new is bought).
+  *Named risk, stated plainly:* restoring a channel the erasing contract had been
+  suppressing can surface a WRONG leader that clears the bar — this is the first change
+  in the arc whose failure mode is a wrong commit rather than a withholding, and the
+  zero-wrong streak (runs 9) is what it puts at stake. *Diagnostics to read:* typed wrong
+  count (the headline), the count of null reads that fired, how many of the 17 changed
+  action, answer rate, spend. *Rollback:* revert the commit — there is no env flag, and
+  one must not be invented at read time.

@@ -99,6 +99,19 @@ DELIBERATE_TRANSFORM: dict[str, Any] = {
 _DELIBERATE_FALLBACK_RHO = 0.5
 
 
+def _null_read(reply: dict[str, Any]) -> bool:
+    """True when a joint re-read NAMED NO VALUE — the absence-of-evidence case the body
+    must not treat as a disagreement (§14, 2026-08-18).
+
+    The bridge classifies its own empty channel as ``read``: ``null`` (named nothing),
+    ``disagree`` (named a value that would not join the lattice — outside the set,
+    ambiguously contained, or correction-shaped), or ``confirm``. A bridge predating
+    the field reports no ``read`` at all, and this returns False — i.e. the OLD
+    replace-everything behaviour, so a version-skewed pair degrades to the previously
+    measured contract rather than to an unmeasured one."""
+    return str(reply.get("read") or "") == "null"
+
+
 def extract_edge(model: str) -> str:
     """The joint-read edge's attribution name: ONE spelling (the deliberate edge has
     deliberate.instrument(); this is its extract@ sibling — a hand-built f-string at a
@@ -509,14 +522,26 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
                        "time_indexed": route["time_indexed"], "construct": route["construct"],
                        "covariates": {"doc_date": recency}})
             _edge_event(extract_edge(model), cr)
-            # with curves, the read's own stated confidence conditions through the edge's
-            # calibration curve — the instrument's uncertainty is no longer discarded on
-            # the regular tiers (rescue-path parity); without curves the tier rho echoes.
-            obs, era = cr["observations"], False
-            rho = _conditioned_rho(curves, extract_edge(model), cr.get("confidence"),
-                                   cr["gather_rho"])
-            applied = list(dict.fromkeys([*applied, probe]))
-            dec = _decide(obs, rho, era, applied)
+            if _null_read(cr):
+                # §14 (2026-08-18): the joint NAMED NOTHING. A lossy whole-document read
+                # over 400-char snippets declining to answer is absence of evidence, not
+                # evidence against the per-chunk channel already grounded — so retire the
+                # probe fail-open and keep the posterior (the same treatment the
+                # deliberate branch already gives an infrastructure failure below).
+                # Erasing here collapsed 12 of run 9's 69 withholdings to the flat prior
+                # with the gold still on the lattice. A DISAGREEING read is untouched.
+                applied = list(dict.fromkeys([*applied, probe]))
+                dec = _decide(obs, rho, era, applied)
+            else:
+                # with curves, the read's own stated confidence conditions through the
+                # edge's calibration curve — the instrument's uncertainty is no longer
+                # discarded on the regular tiers (rescue-path parity); without curves the
+                # tier rho echoes.
+                obs, era = cr["observations"], False
+                rho = _conditioned_rho(curves, extract_edge(model), cr.get("confidence"),
+                                       cr["gather_rho"])
+                applied = list(dict.fromkeys([*applied, probe]))
+                dec = _decide(obs, rho, era, applied)
         elif eff == "gather" and probe in _GROW_RETRIEVE:
             # a DAEMON-SCHEDULED retrieval grow: rebuild the evidence at the named breadth and
             # adopt it iff it grounded candidates (else the prior evidence stands and the probe
@@ -602,12 +627,15 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
             if cr.get("new_candidate"):
                 candidates = [*candidates, str(cr["new_candidate"])]
                 cand_comp = [*cand_comp, 1.0]
-            # unconditional — an EMPTY strong re-read also replaces (the strong model failed to
-            # confirm any local candidate; the weak evidence must not survive it — disagree ⇒
-            # NONE-dominant ⇒ abstain, the corroborate contract verbatim).
-            obs, era = cr["observations"], False
-            rho = _conditioned_rho(curves, extract_edge(_RE_EXTRACT_MODEL),
-                                   cr.get("confidence"), cr["gather_rho"])
+            # A DISAGREEING strong re-read replaces (the strong model named a value that
+            # would not join; the weak evidence must not survive it — disagree ⇒
+            # NONE-dominant ⇒ abstain, the corroborate contract verbatim). A NULL read —
+            # the model named nothing at all — is the absence-of-evidence case (§14,
+            # 2026-08-18): the probe retires fail-open and the grounded channel stands.
+            if not _null_read(cr):
+                obs, era = cr["observations"], False
+                rho = _conditioned_rho(curves, extract_edge(_RE_EXTRACT_MODEL),
+                                       cr.get("confidence"), cr["gather_rho"])
             enacted.append((probe, last_sensors, changed))
             applied = list(dict.fromkeys([*applied, probe]))
             grow_asked = False

@@ -1650,3 +1650,49 @@ def test_confirm_target_outside_candidates_is_empty_never_minted(
     assert status == 200
     assert payload["observations"] == [] and payload["cost_usd"] == 0.0
     assert not called  # no spend on a target the lattice does not hold
+
+
+# --- the `read` classification: absence of evidence vs evidence of absence (§14) --------
+
+def _reextract(deps: BridgeDeps, monkeypatch: pytest.MonkeyPatch, value: str | None,
+               candidates: list[str], **extra: Any) -> dict[str, Any]:
+    import life_agent.core.joint_extract as JE
+    monkeypatch.setattr(JE, "extract_joint",
+                        lambda root, q, hits, *, model, k: JE.JointResult(
+                            value=value, confidence=0.9, as_of=None))
+    status, payload = _call(deps, "POST", "/probe/corroborate", {
+        "reextract": True, "question": "passport?",
+        "hits": [{"artifact_cache_key": "d0", "chunk_text": "…"}],
+        "candidates": candidates, "model": "claude-opus-4-8", "rho": 0.95, **extra})
+    assert status == 200
+    return payload
+
+
+def test_reextract_read_is_null_when_the_joint_names_nothing(
+        deps: BridgeDeps, monkeypatch: pytest.MonkeyPatch) -> None:
+    # A lossy whole-document read declining to answer says nothing about the per-chunk
+    # channel — the body keeps its posterior on this, so the classification carries the
+    # whole signal (§14, 2026-08-18).
+    p = _reextract(deps, monkeypatch, None, ["PL-900001"])
+    assert p["read"] == "null" and p["observations"] == []
+
+
+def test_reextract_read_is_disagree_when_the_value_will_not_join(
+        deps: BridgeDeps, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Outside the candidate set: evidence AGAINST the leader — still replaces (run 7's
+    # disagree⇒abstain contract, untouched by the null-read change).
+    p = _reextract(deps, monkeypatch, "PL-777777", ["PL-900001"])
+    assert p["read"] == "disagree" and p["observations"] == []
+    # ambiguous containment settles nothing and is equally a disagreement
+    amb = _reextract(deps, monkeypatch, "either PL-900001 or PL-800002",
+                     ["PL-900001", "PL-800002"])
+    assert amb["read"] == "disagree" and amb["observations"] == []
+
+
+def test_reextract_read_is_confirm_when_it_joins(
+        deps: BridgeDeps, monkeypatch: pytest.MonkeyPatch) -> None:
+    p = _reextract(deps, monkeypatch, "PL-900001", ["PL-900001"])
+    assert p["read"] == "confirm" and p["observations"][0]["reports"] == 0
+    # a minted candidate is also a confirm — the read named a value and it joined
+    minted = _reextract(deps, monkeypatch, "PL-777777", ["PL-900001"], allow_new=True)
+    assert minted["read"] == "confirm" and minted["new_candidate"] == "PL-777777"
