@@ -118,7 +118,7 @@ def data_sources() -> dict[str, Any]:
 `config/data-sources.example.yaml` already exists and is documented by README/SETUP and consumed by `scripts/data_source_registry.py`. Task 1's implementer overwrote it — first **restore its original content**, then **append** the `trips:` section (do not remove `version`/`roots`):
 
 ```bash
-git show 6b6e0d8:config/data-sources.example.yaml > config/data-sources.example.yaml
+git show 82c5cc4:config/data-sources.example.yaml > config/data-sources.example.yaml
 ```
 
 Then append (placeholders only — the registry loader ignores this unknown top-level key):

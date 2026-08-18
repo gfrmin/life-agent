@@ -3,7 +3,7 @@
 **Frozen 2026-08-17, before any coarsened-Δ number exists.** This document fixes the
 lattice, the arms, the bar, the decision rule, and the stated limits *blind* to the result it
 will produce, and is committed on its own ahead of the run (the P3 precedent,
-`p3-pre-registration.md`, commit `839ba2e`). Register §17.6 will hold the results and cite
+`p3-pre-registration.md`, commit `f68eeef`). Register §17.6 will hold the results and cite
 this file; this file is not edited after the run.
 
 ## What is (and is not) blind

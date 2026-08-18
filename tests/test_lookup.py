@@ -373,7 +373,7 @@ def _obs(key: str, value: str, n: int = 1, authority: float = 0.95,
 
 
 # --- §5 dedup-as-inference: correlated duplicates count as ONE witness ---------------------
-# The decouple (862ed66) retired the §4.2 ancestry temper; the reliability_categorical group
+# The decouple (c71481f) retired the §4.2 ancestry temper; the reliability_categorical group
 # model then counted correlated DUPLICATE documents (forwarded/replied chains carrying an
 # identical quote) as independent witnesses, saturating credence on duplicated wrong/stale
 # values (the confident-wrong regression: q-002 6 emails→0.99, q-014 9 stale→0.80). dedup

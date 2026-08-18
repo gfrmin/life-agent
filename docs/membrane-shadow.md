@@ -1101,7 +1101,7 @@ held-out regression for P3 to settle.
 
 ### 17.5 P3 — the held-out gate SETTLES it: the +0.043 was in-sample leakage; held-out the flip is EU-negative (2026-07-30)
 
-P3 ran the pre-registered, **held-out** gate (protocol frozen blind at commit `839ba2e`,
+P3 ran the pre-registered, **held-out** gate (protocol frozen blind at commit `f68eeef`,
 `docs/membrane/p3-pre-registration.md`; harness `scripts/membrane/p3_gate.py`, **8** hermetic
 tests atop `lattice_replay`'s 5 reused drift guards, `keyed_verdict_replay` drift-guarded
 byte-identical to `boot_snapshot`'s projection).
