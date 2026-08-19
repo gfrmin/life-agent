@@ -57,6 +57,38 @@ def _hermetic_mirror(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
 
 
 @pytest.fixture(autouse=True)
+def _hermetic_pkm_root(request: pytest.FixtureRequest, tmp_path_factory: pytest.TempPathFactory,
+                       monkeypatch: pytest.MonkeyPatch) -> None:
+    """The machine's pkm root is unreachable by default. The A0 reach (r00-lineage-writer)
+    ran through ``PKM_CONFIG``'s DEFAULT path — ``~/.config/life-agent/pkm.yaml`` on the
+    owner's box — so ``ask.main`` reconciled the LIVE root with no variable exported. All
+    THREE routes are neutralised here (patching the innermost symbol alone is how this class
+    recurs — reviewer ruling, r00 Q1): the ``PKM_CONFIG`` environment variable and the
+    ``config.PKM_CONFIG`` constant point at a scratch config naming a scratch root (a
+    per-test sibling of tmp_path — never inside it, so tests that enumerate tmp_path are
+    untouched); ``config.pkm_root`` and ``ask._pkm_root`` return that root. Opt-in for a
+    real-shaped root: a test's own patch (tmp roots, ``/fake/root``, ``None`` — as many do), or
+    the ``llm``/``system`` markers (the opt-in live suites keep the machine's config)."""
+    if request.node.get_closest_marker("llm") or request.node.get_closest_marker("system"):
+        return
+    import sys
+
+    from life_agent.core import config as CFG
+
+    scratch = tmp_path_factory.mktemp("hermetic-pkm")
+    root = scratch / "root"
+    cfg = scratch / "pkm.yaml"
+    cfg.write_text(f"root_dir: {root}\nextractors: {{}}\n", encoding="utf-8")
+    monkeypatch.setenv("PKM_CONFIG", str(cfg))
+    monkeypatch.setattr(CFG, "PKM_CONFIG", cfg)
+    monkeypatch.setattr(CFG, "pkm_root", lambda: root)
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+    import ask
+
+    monkeypatch.setattr(ask, "_pkm_root", lambda: root)
+
+
+@pytest.fixture(autouse=True)
 def _hermetic_executor(monkeypatch: pytest.MonkeyPatch) -> None:
     """The executor (credence answer-brain daemon) is ask's DEFAULT read-path, but it needs the
     live daemon/bridge; no hermetic test may reach for it. Stub readiness to False so ask

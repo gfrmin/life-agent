@@ -159,6 +159,64 @@ def test_main_returns_2_on_locked_corpus(monkeypatch, capsys) -> None:
     assert "corpus locked" in capsys.readouterr().err
 
 
+# --- hermetic default: the machine's pkm root is unreachable unless a test opts in ------ #
+# (r00-lineage-writer Q1/Q2 rulings): the A0 reach ran through PKM_CONFIG's DEFAULT path, so
+# the conftest fixture neutralises all three routes — ask._pkm_root, config.pkm_root, and the
+# PKM_CONFIG environment variable — at a scratch config naming a scratch root under pytest's
+# basetemp (a per-test sibling of tmp_path).
+
+def _scratch_root(tmp_path: Path) -> Path:
+    """The fixture's scratch root: declared by the scratch PKM_CONFIG, a sibling of tmp_path
+    under the same basetemp, never the machine's config."""
+    import os
+
+    import yaml
+
+    from life_agent.core import config as CFG
+    cfg = Path(os.environ["PKM_CONFIG"])
+    declared = Path(yaml.safe_load(cfg.read_text(encoding="utf-8"))["root_dir"])
+    assert cfg == CFG.PKM_CONFIG and cfg.parent.parent == tmp_path.parent   # same basetemp
+    assert not str(cfg).startswith(str(Path.home() / ".config"))
+    return declared
+
+
+def test_default_pkm_root_is_scratch_on_all_three_routes(tmp_path) -> None:
+    from life_agent.core import config as CFG
+    declared = _scratch_root(tmp_path)
+    assert ask._pkm_root() == CFG.pkm_root() == declared
+    assert declared.parent.parent == tmp_path.parent and not declared.exists()   # inert
+
+
+def test_ask_main_reconciles_the_scratch_root_not_the_machine(monkeypatch, tmp_path) -> None:
+    """The A0 reach, generalised: an ask.main call that gets past the grammar reconciles
+    SOME root before connecting — it must be the scratch root, with no per-test patch."""
+    from life_agent.core import derivations as D
+    seen: list[Path] = []
+    monkeypatch.setattr(ask.D, "reconcile", lambda root: seen.append(root) or D.ReconcileCounts())
+    monkeypatch.setattr(ask, "connect", lambda: (_ for _ in ()).throw(
+        duckdb.Error("Could not set lock on file catalogue.duckdb: Conflicting lock")))
+    assert ask.main(["what is my id?"]) == 2
+    assert seen == [_scratch_root(tmp_path)]
+
+
+def test_startup_reconcile_failure_is_named_not_silent(monkeypatch, caplog) -> None:
+    """The startup reconcile is best-effort by contract (files stay authoritative), but a
+    failure of the pass itself is WARNed with the exception class — never swallowed silently
+    (r00 Q2)."""
+    import logging
+
+    def boom(root: Path) -> None:
+        raise RuntimeError("queue unreadable")
+    monkeypatch.setattr(ask.D, "reconcile", boom)
+    monkeypatch.setattr(ask, "connect", lambda: (_ for _ in ()).throw(
+        duckdb.Error("Could not set lock on file catalogue.duckdb: Conflicting lock")))
+    with caplog.at_level(logging.WARNING):
+        assert ask.main(["what is my id?"]) == 2          # still fail-open
+    msgs = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
+    assert any("reconcile" in m and "RuntimeError" in m for m in msgs), msgs
+    assert not any("queue unreadable" in m for m in msgs)  # class, never the message body
+
+
 def test_tell_records_fact_without_touching_corpus(monkeypatch, tmp_path) -> None:
     # /tell is corpus-free: connect() must never be called, yet the fact lands in the profile.
     monkeypatch.setattr(owner, "PROFILE", tmp_path / "owner.md")

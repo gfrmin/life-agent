@@ -26,6 +26,7 @@ import argparse
 import contextlib
 import hashlib
 import json
+import logging
 import os
 import re
 import readline  # noqa: F401  -- enables line editing / history at the input() prompts
@@ -1541,9 +1542,14 @@ def main(argv: list[str] | None = None) -> int:
     # opens (a writer and a reader cannot coexist). A held lock just means next time.
     root = _pkm_root()
     if root is not None:
-        # best-effort by contract; on any failure the files stay authoritative
-        with contextlib.suppress(Exception):
+        # best-effort by contract; on any failure the files stay authoritative — but a failure
+        # of the pass itself is never silent (reconcile counts and WARNs per key; r00 Q2)
+        try:
             D.reconcile(root)
+        except Exception as e:
+            logging.getLogger("ask").warning(
+                "startup reconcile pass failed (%s) — files stay authoritative; retried next ask",
+                type(e).__name__)
 
     # Demand-led GTD refresh (system-design.md §5), BEFORE the read-only
     # connection opens: a one-shot question and the REPL's first question both
