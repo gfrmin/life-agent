@@ -5,7 +5,10 @@ from cache meta.json files (SPEC §5.3, §13.1).
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
+
+import pytest
 
 from pkm.cache import artifact_dir, meta_file, write_artifact
 from pkm.catalogue import open_catalogue
@@ -251,6 +254,46 @@ def test_rebuild_reconstructs_lineage(migrated_root: Path) -> None:
             [ck],
         ).fetchall()
     assert rows == [("c" * 64, "primary"), ("d" * 64, "context")]
+
+
+def test_rebuild_dedups_repeated_lineage_input_loudly_and_rebuilds_the_rest(
+    migrated_root: Path, caplog: pytest.LogCaptureFixture,
+) -> None:
+    """SPEC §18.9 rider (0.18.0): a lineage.json on disk that repeats an input (a pre-fix
+    writer's output) rebuilds with ONE artifact_lineage row per input and a WARNING naming
+    the artefact — it must not trip the (artifact_cache_key, input_cache_key) primary key
+    and roll back the whole rebuild, taking every other artefact's row with it."""
+    healthy = _write_artifact(migrated_root)                       # an unrelated extractor artefact
+    ck = _write_transform_artifact(migrated_root)                  # written with unique lineage…
+    lp = artifact_dir(migrated_root, ck) / "lineage.json"
+    lineage = json.loads(lp.read_text(encoding="utf-8"))
+    lineage["inputs"] = [                                          # …then repeated on disk
+        {"cache_key": "c" * 64, "role": "primary"},
+        {"cache_key": "d" * 64, "role": "context"},
+        {"cache_key": "c" * 64, "role": "primary"},
+    ]
+    lp.write_text(json.dumps(lineage), encoding="utf-8")
+    _drop_artifacts(migrated_root)
+
+    with caplog.at_level(logging.WARNING, logger="pkm.rebuild"):
+        result = rebuild_artifacts(migrated_root)
+
+    assert result.inserted == 2                                    # both artefacts back
+    assert result.lineage_inserted == 2                            # one row per input
+    assert result.skipped == []
+    with open_catalogue(migrated_root) as conn:
+        rows = conn.execute(
+            "SELECT input_cache_key, role FROM artifact_lineage "
+            "WHERE artifact_cache_key = ? ORDER BY input_cache_key", [ck],
+        ).fetchall()
+        n_healthy = conn.execute(
+            "SELECT COUNT(*) FROM artifacts WHERE cache_key = ?", [healthy]
+        ).fetchone()
+    assert rows == [("c" * 64, "primary"), ("d" * 64, "context")]  # first occurrence wins
+    assert n_healthy == (1,)
+    loud = [r for r in caplog.records if r.levelno == logging.WARNING and ck in r.getMessage()]
+    assert len(loud) == 1
+    assert "repeats" in loud[0].getMessage() and "1 input" in loud[0].getMessage()
 
 
 def test_rebuild_with_extractor_has_zero_lineage(migrated_root: Path) -> None:

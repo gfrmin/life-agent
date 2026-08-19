@@ -42,7 +42,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from pkm.cache import cache_dir, content_path_rel, sweep_orphans
+from pkm.cache import (
+    cache_dir,
+    content_path_rel,
+    duplicate_lineage_inputs,
+    sweep_orphans,
+)
 from pkm.catalogue import open_catalogue
 
 logger = logging.getLogger(__name__)
@@ -307,12 +312,42 @@ def _read_lineage(
     """Read ``lineage.json`` from a cache directory and return rows
     for the ``artifact_lineage`` table. Returns an empty list if
     no lineage.json exists (v0.1.x extractor artifacts).
+
+    A repeated input (SPEC §18.9 rider, 0.18.0: a pre-fix writer's
+    output) is collapsed to its first occurrence — one row per input,
+    the primary key ``(artifact_cache_key, input_cache_key)`` intact —
+    and logged at WARNING naming the artefact, so the violation is
+    counted, never laundered, and one such file can no longer roll
+    back the entire rebuild.
     """
     lineage_path = artifact_directory / "lineage.json"
     if not lineage_path.is_file():
         return []
     lineage = json.loads(lineage_path.read_text(encoding="utf-8"))
+    inputs = lineage.get("inputs", [])
+    dupes = duplicate_lineage_inputs(inputs)
+    if dupes:
+        first: dict[str, Any] = {}
+        for entry in inputs:
+            first.setdefault(str(entry["cache_key"]), entry)
+        n_dup = len(inputs) - len(first)
+        logger.warning(
+            "lineage of %s repeats %d input(s) (%d duplicate entr%s) — "
+            "one row per input; the writer should never have produced "
+            "this",
+            cache_key,
+            len(dupes),
+            n_dup,
+            "y" if n_dup == 1 else "ies",
+            extra={
+                "event": "lineage_duplicate_inputs",
+                "cache_key": cache_key,
+                "inputs": dupes,
+                "duplicate_entries": n_dup,
+            },
+        )
+        inputs = list(first.values())
     return [
         (cache_key, entry["cache_key"], entry["role"])
-        for entry in lineage.get("inputs", [])
+        for entry in inputs
     ]
