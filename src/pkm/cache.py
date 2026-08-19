@@ -47,7 +47,7 @@ import json
 import logging
 import re
 import shutil
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -153,6 +153,25 @@ def lineage_file(root: Path, cache_key: str) -> Path:
     return artifact_dir(root, cache_key) / "lineage.json"
 
 
+def duplicate_lineage_inputs(
+    lineage: Sequence[Mapping[str, Any]],
+) -> list[str]:
+    """The input cache keys that repeat in ``lineage`` (first-occurrence
+    order, each named once), role-blind — the ``artifact_lineage``
+    primary key is ``(artifact_cache_key, input_cache_key)`` (SPEC
+    §18.4), so two entries for one input under different roles collide
+    all the same. Empty when the inputs are unique.
+    """
+    seen: set[str] = set()
+    dupes: list[str] = []
+    for entry in lineage:
+        key = str(entry["cache_key"])
+        if key in seen and key not in dupes:
+            dupes.append(key)
+        seen.add(key)
+    return dupes
+
+
 def _validate_cache_key(cache_key: str) -> None:
     if not _CACHE_KEY_RE.match(cache_key):
         raise ValueError(
@@ -222,6 +241,17 @@ def write_artifact(
         raise ValueError(
             "cache_key_schema_version >= 2 (transform) requires lineage"
         )
+    if lineage is not None:
+        # §18.9 rider (0.18.0): the artifact_lineage key is (artifact_cache_key,
+        # input_cache_key), so a repeated input is a writer bug — refuse it here,
+        # before any file exists, rather than surface it as a PK violation after
+        # content/lineage.json/meta.json are already on disk.
+        dupes = duplicate_lineage_inputs(lineage)
+        if dupes:
+            raise ValueError(
+                f"duplicate lineage input(s) for {cache_key}: "
+                + ", ".join(dupes)
+            )
 
     # Idempotency / asymmetric-recovery guard.
     if _row_exists(conn, cache_key):

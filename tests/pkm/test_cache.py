@@ -513,6 +513,52 @@ def test_transform_requires_lineage(migrated_root: Path) -> None:
         )
 
 
+@pytest.mark.parametrize(
+    "lineage",
+    [
+        # the same input twice under one role
+        [{"cache_key": "c" * 64, "role": "primary"},
+         {"cache_key": "c" * 64, "role": "primary"}],
+        # the same input twice under different roles — the artifact_lineage key is
+        # (artifact_cache_key, input_cache_key), so the role does not disambiguate
+        [{"cache_key": "c" * 64, "role": "primary"},
+         {"cache_key": "d" * 64, "role": "primary"},
+         {"cache_key": "c" * 64, "role": "context"}],
+    ],
+    ids=["same-role", "other-role"],
+)
+def test_write_refuses_duplicate_lineage_inputs_before_writing_anything(
+    migrated_root: Path, lineage: list[dict[str, str]],
+) -> None:
+    """SPEC §18.9 rider (0.18.0): writers MUST NOT record duplicate lineage inputs; the
+    writer's seam refuses them — a ValueError naming the repeated input, raised before any
+    file or row exists (not a PK violation after the files are already on disk)."""
+    cache_key = compute_cache_key(
+        input_hash="a" * 64,
+        producer_name="entity_extraction",
+        producer_version="0.1.0",
+        producer_config={},
+        schema_version=2,
+        model_identity=_MODEL_IDENTITY,
+        prompt_hash=_PROMPT_HASH,
+    )
+    with open_catalogue(migrated_root) as conn:
+        with pytest.raises(ValueError, match=r"duplicate lineage input") as ei:
+            write_artifact(
+                migrated_root, conn,
+                cache_key=cache_key, input_hash="a" * 64,
+                producer_name="entity_extraction", producer_version="0.1.0",
+                producer_config={}, result=_success(),
+                lineage=lineage, cache_key_schema_version=2,
+            )
+        assert "c" * 64 in str(ei.value)
+        rows = conn.execute(
+            "SELECT COUNT(*) FROM artifacts WHERE cache_key = ?", [cache_key]
+        ).fetchone()
+    assert rows == (0,)
+    assert not artifact_dir(migrated_root, cache_key).exists()
+
+
 def test_require_files_detects_missing_lineage_for_transform(
     migrated_root: Path,
 ) -> None:
