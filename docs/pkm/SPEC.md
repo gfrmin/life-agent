@@ -1,6 +1,6 @@
 # SPEC.md — technical specification
 
-Version: 0.18.0 (draft)
+Version: 0.18.1 (draft)
 Status: Phase 1 complete (extraction layer with content-addressed
 caching, chunking, and FTS keyword retrieval); Phase 1.5 OCR-PDF
 fallback applied to the live corpus; source paths are stored as
@@ -289,20 +289,23 @@ downstream code relies on.
 
 The filesystem and the DuckDB catalogue cannot share a single
 transaction, so the invariant is maintained by ordering plus an
-explicit orphan sweep. The write order is:
+explicit consistency sweep. The write order is:
 
 1. Write `content` (byte file) to its final location.
 2. Write `meta.json` beside it.
 3. Open a DuckDB transaction, insert the `artifacts` row, commit.
 
 If the process is interrupted between any of these steps, the on-disk
-state may contain an orphan cache directory (content and/or meta.json
-present without a catalogue row). Orphans are removed by a consistency
-sweep that runs at the start of every `pkm extract` and every
-`pkm rebuild-catalogue` invocation. "Start of invocation" is the only
-meaningful notion of startup here — there is no daemon (SPEC §14.6).
-Other commands (`pkm ingest`, `pkm migrate`) do not touch the cache
-and therefore do not run the sweep.
+state may contain a cache directory without a catalogue row: *torn*
+if the interruption fell before `meta.json` was completely written
+(content and/or a partial `meta.json`, no row), *unregistered* if it
+fell after (a complete `meta.json`, no row). A consistency sweep that
+runs at the start of every `pkm extract` and every
+`pkm rebuild-catalogue` invocation removes torn directories and
+registers unregistered ones (both defined precisely below). "Start of
+invocation" is the only meaningful notion of startup here — there is
+no daemon (SPEC §14.6). Other commands (`pkm ingest`, `pkm migrate`)
+do not touch the cache and therefore do not run the sweep.
 
 The sweep distinguishes **torn** directories from **unregistered**
 ones. A cache directory is *torn* iff it contains a `content` and/or
@@ -1889,6 +1892,20 @@ exactly when `subject_kind` is `person` or `organisation` (fail loudly, not cach
 
 ## 16. Change log
 
+- 0.18.1 (draft): §6.2 wording only — the two sentences adjacent to the 0.18.0 sweep
+  paragraph that still said "orphan sweep" / "orphans are removed" now say *torn* /
+  *unregistered* in the 0.18.0 sense: an interruption before `meta.json` is complete leaves a
+  torn directory (removed), one after it leaves an unregistered directory (registered). No
+  semantic change — the sweep's contract is the 0.18.0 paragraph; this edit stops a reader
+  re-deriving the torn/unregistered distinction from the older sentences around it. Made on
+  the r01 review's Q1 ruling (life-agent `docs/unification/reports/r01-lineage-sweep.md`,
+  "Rulings applied"), which confirmed the torn table as built and grounded it: *torn* fails
+  the minimal invariant every version of the writer has always guaranteed (a parseable JSON
+  object bearing `format_version` and the v1 required fields; content for success; lineage
+  for schema ≥ 2) — without `format_version` no parser can tell which contract applies, and
+  the writer's file-then-row ordering means a complete write always carries it; *left* is
+  parseable-but-out-of-contract in ways a future or foreign writer might legitimately
+  produce, and the future is never deleted. No schema change, no migration, no code change.
 - 0.18.0 (draft): §6.2 amended (the sweep), §18.9 rider — the consistency sweep at the start
   of `pkm extract` / `pkm rebuild-catalogue` now distinguishes **torn** directories (an
   interrupted write: no complete, parseable `meta.json`) from **unregistered** ones (a complete
