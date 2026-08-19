@@ -876,3 +876,22 @@ The tranche-2 design-doc phase, on this census's PROPOSED terms — inputs: cens
 addendum, the two-ledger rule (Q-R1), the wire boundary with its recorded trust (Q-R3), the
 conditional dormancy of `brain.value` (Q-R4), the seven signed scope rulings, and E-14 as the
 first named target. The opening brief is the reviewer's to draft on the owner's word.
+
+## Addendum correction — 2026-08-19 (post design review; append-only)
+
+1. **The correction table under-reports six files (design review Q7, ruled: correct the input of
+   record).** The C5-hooked writers were listed above as changed with no shift; census cites past
+   the hook lines move: `core/decisions.py` cites ≥ `:143` shift **+3** (`append :140` unshifted,
+   `read :145 → :148`); `core/outcomes.py` ≥ `:152` **+3** (`reliability_bins :208 → :211`,
+   `ece :230 → :233`, `scored_pairs :250 → :253`); `core/reactions.py` ≥ `:112` **+3**
+   (`load_reactions :176 → :179`, `:185-187 → :188-190`, `:194 → :197`, `_abstain_threshold :122
+   → :125`, `_coverage_mean :128-134 → :131-137`, `:139-147 → :142-150`, `:157-168 → :160-171`);
+   `core/claude_verdicts.py` ≥ `:129` **+3** (`latest_by_decision :137 → :140`);
+   `core/gather_outcomes.py` ≥ `:85` **+2** (`warm_counts :87 → :89`, `:91 → :93`, `:105-106 →
+   :107-108`, `grow_block :111 → :113`); `core/joint_extract.py` ≥ `:124` **+2** (`extract_joint
+   :350 → :352`). Source: the per-line map in `r01-collapse-design.md` F1 (the same
+   `git diff -U0 873860a HEAD`, applied per line). Everything else in the table above stands.
+2. **The pin (design review Q6, signed).** `873860a` is not in `master`'s history: the PII history
+   rewrite re-created that commit as **`1ea9df8`** ("fix(pii-guard): close the HK/name gap …"),
+   **tree-identical** (`2a705c55…` for both — `r01-collapse-design.md` F3). Cite the pin as
+   `873860a ≡ 1ea9df8`; the correction table is a content diff and holds under either sha.

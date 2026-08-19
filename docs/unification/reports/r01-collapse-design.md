@@ -179,3 +179,71 @@ contract) so the seam tranche inherits a wire corpus?
 Review of `docs/module-collapse-design.md`; on the owner's and reviewer's rulings (the
 questions above), the implementation phases are briefed from the reviewed design — M0 (the
 instrument) first, alone; M1 (E-14) second. Nothing else is proposed here. **STOP.**
+
+## Rulings applied — 2026-08-19 (post-review; the design is adopted as the design of record)
+
+The reviewer's verdict on the design, verbatim where it rules; the owner's five signatures
+follow the recommendations and are made **by executing the revision script** (S12: the run is
+the signature). Applied in `docs/module-collapse-design.md` as "Revision 2026-08-19
+(post-review, before M0)"; the census addendum receives its Q6/Q7 correction in the same
+commit (append-only).
+
+**Verdict:** *"adopted as the design of record, subject to your five signatures below and two
+small pre-M0 additions."* Named for the record: §2.3's regime doctrine ("the S-1 split done
+properly"); §7.5's falsifiable `brain.value` claim ("the dormant-keep ruling implemented as a
+test rather than a promise"); the `lambda_usd` find — *"the online decider and the offline
+gate have been pricing spend in different currencies; that's a D-8-class divergence the census
+missed and the design caught."*
+
+**Reviewer rulings.**
+- **Q2 — both.** *"Regime value on the body (`regime: unavailable`) plus the fixture, and the
+  register entry. The cited evidence decides the mechanism (R-3 folds abstain reactions; an
+  unavailability must never fold as an abstain), but the register's function is
+  anti-relitigation, and 'why unavailability is not an abstain' is precisely what a future
+  census would re-open. One line of insurance."* → §6.5 is a register entry; §9 Q2 resolved.
+- **Q4 — the conditional procedure confirmed and pre-committed:** *"the M0 wire-shape check
+  decides it — draws exposed → 6.3b debt with short retirement; not exposed → inside 6.1's
+  exception. Decided in M0's report, no further ruling needed."* → §6.3b, §8 M0.
+- **Q5 — deferred as stated:** *"the disagreement transcript at M6 decides; a latent with a
+  prior is warranted iff the disagreements are not uniformly the table's wins."*
+- **Q7 — append the one-line correction to the addendum.** *"The input of record must be
+  correct in itself; letting the design's finer table stand as the correction leaves
+  census-plus-addendum wrong for the next citer. And for the record: F1 is a correction of the
+  review packet's claim that its drift table was 'the whole correction table' — the packet's
+  verification missed the six C5-hooked writers, the design phase's finer pass caught it.
+  Verification layering doing its job; recorded, not blamed."* → appended to
+  `r00-collapse-census.md` ("Addendum correction — 2026-08-19"), this commit.
+- **Q9 — the nested-specification framing signed,** *"with one coverage condition attached:
+  the 7.2 fixture set must include at least one fixture per terminal type — `report(claims)`
+  included — so the leaf's content computation sits under the comparator, not beside it."*
+  → §7.2.
+- **Two pre-M0 additions (§7.2, §8 M1):** *"the comparator must pre-state which
+  `/log_decision` fields are runtime-measured (`latency_s`, plausibly `cost_usd` on warm hits)
+  and therefore compared by presence-and-type rather than value — otherwise every replay fails
+  on the clock; second, M1's retirement of `LIFE_AGENT_GROW_LANE` is a config-surface change
+  and gets its one documentation line at the checkpoint."* → the field-class rule (§7.2) and
+  M1's line (§8).
+- **Appendix A: sign all three at M7, not before** — *"the constitution should change when the
+  structure exists, and M7's register-pinning is exactly that moment."* → §8 M7, Appendix A
+  heading. **M5a/M5b split approved as written** (reviewer signs at M4's report if 7.2 shows
+  the pair isn't bisectable). DEVIATIONS 2 (the two poster fields) and 3 (the register
+  proposals) stand as adopted by the rulings above.
+
+**Owner signatures (on the reviewer's recommendations; signed by running the script).**
+- **Q1 — (α), measured:** the terminals-only regime on the reach surface, honestly recorded;
+  β "makes the assistant mute from Telegram exactly when the daemon is down". → §2.3.
+- **Q3 — the gating endorsed:** E-7's structural disposition is design work; replace-vs-condition
+  is measured first (pre-registered, off-gate); M6 waits. → §8 M6.
+- **Q6 — the addendum line naming both shas** (`873860a` re-created as tree-identical `1ea9df8`
+  by the PII rewrite) — durable, survives clones; the local tag optional. → the census
+  addendum correction, this commit.
+- **Q8 — default delete, decided at M4's report;** if the shadow's v2 differential needs
+  `CO.map_action` for its counterfactual it survives *renamed into the shadow namespace* as a
+  measurement function, never lane-shaped. → §8 M5.
+- **Q10 — signed:** B-7 survives only as the eval comparator. → §9.
+
+**Verification (this sitting).** Guard on the three edited files: exit 0. No code touched;
+suite unchanged from STATE. Rehearsal transcript beside the script.
+
+**Next.** M0 is ready to brief (the reviewer drafts, on the owner's word): the instrument first,
+the baseline recorded from the pre-collapse tree, then M1 (E-14).

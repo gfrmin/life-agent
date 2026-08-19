@@ -28,6 +28,17 @@
 > (`unification/reports/r01-collapse-design.md`, "fresh transcripts F1–F4"). Nothing here
 > changes code, `PRINCIPLES.md`, any SPEC, or the daemon; amendments are proposals in
 > Appendix A. British spelling; no corpus values; no owner-specific paths.
+>
+> **Revision 2026-08-19 (post-review, before M0) — adopted as the design of record.** The
+> reviewer's rulings and the owner's signatures (r01-collapse-design "Rulings applied") are
+> folded in: §2.3 carries the signed (α) for the reach surface (Q1); §6.5 is a register entry,
+> not a proposal (Q2: regime value *and* fixture *and* register); §6.3b's procedure is
+> pre-committed to M0's wire-shape check (Q4); §7.2 gains the field-class rule
+> (value-compared vs presence-and-type) and the per-terminal-type coverage condition (Q9);
+> §8 M1 gains its config-surface line, M4's report decides Q8 (default delete), M6 waits on
+> Q3's measurement; §9 marks each question resolved with its ruling; Appendix A is signed **at
+> M7**, not before. Q5 deferred to M6's transcript. Q7 is applied to the census addendum
+> itself (append-only). No section is otherwise changed.
 
 ## 0. What this document is
 
@@ -296,10 +307,10 @@ host may prefer one regime when both are available, and a terminals-only decisio
 "the fallback lane" of the retired uncalibrated fallback — it is the same ranking with an
 empty `K`, honestly recorded. This is the Q-O5 regime-indicator pattern applied to the
 decision space rather than to the evidence set, and it is what lets the in-process families
-survive as *leaves* rather than as a second site. The owner's Q1 (§9) decides whether the
-terminals-only regime is even wanted on the reach surface (or whether an unavailable daemon
-should simply record unavailability and answer nothing); the design supports both — the
-regime field makes either measurable.
+survive as *leaves* rather than as a second site. **Signed (Q1, α):** the terminals-only regime *is*
+wanted on the reach surface — an unavailable daemon answers over `T` with the regime honestly
+recorded, rather than going mute; the M0 field makes the frequency measurable and 7.3's
+arm-split prices the quality difference; revisited on the count.
 
 **The narrative terminal.** `report(claims)` is one element of `T` whose *content* is the
 per-claim EU rule (`NR.decide_claims :346`, per claim `SkinOptimise`): the site prices the
@@ -516,24 +527,27 @@ and a host rewrite to look like a belief would be the antipattern in another coa
 *Retirement path:* an isotonic/monotone fold behind the seam at outcome-log depths — a
 credence backlog item with a known cost envelope, a successor of this tranche. *Rule:* no new
 host folds, ever. *Pinned by:* a test that the decision path reads reliability from D-2's one
-posterior except through `curve_for` (the debt's one door). **6.3b (proposed, §9 Q4):**
-`GATE._sample_u :190-200` — a host approximation of P(U) for the offline MC — either inside
-6.1's scope or a second debt entry with the same retirement path (posterior sampling on the
-wire); the reviewer rules.
+posterior except through `curve_for` (the debt's one door). **6.3b (procedure pre-committed, Q4):**
+`GATE._sample_u :190-200` — a host approximation of P(U) for the offline MC — is decided by
+M0's wire-shape check and recorded in M0's report: posterior draws exposed on the wire → a
+second debt entry with a short retirement path (sample on the wire); not exposed → inside 6.1's
+exception. No further ruling.
 
 **6.4 `brain.value :296` — dormant-keep, conditionally** (Q-R4). *Why:* the VOI building
 block §16 names; §2.5 claims it as the wire that prices a kernel in the terminals-only
 regime. *Condition:* the wire-shape test at M0 (§8); unclaimed, it dies. *Pinned by:* that
 test.
 
-**6.5 (proposed) The seam's unavailability record** — `SEAM.commit(gates=…)` for
+**6.5 The seam's unavailability record** (ruled Q2: register entry *and* regime value *and*
+fixture) — `SEAM.commit(gates=…)` for
 `GATE_EXECUTOR_DOWN`/`GATE_ENGINE_DOWN` (`SEAM:102-103`; S-1). *Why:* when no optimiser is
 available there is no ranking to be inside of; the record is an *unavailability event*, not
 an abstain decision, and saying so keeps "safe behaviour is derived, not patched" honest —
 the derived behaviour needs an engine. *Not covered:* `GATE_WEAK_RETRIEVAL`, which is belief
 and dies. *Pinned by:* the fixture that a down stack yields an unavailability record with no
-`decision_id`. Reviewer Q2 (§9) decides whether this is a register entry or §2.3's regime
-field carrying `unavailable`.
+`decision_id`, and the poster's body carrying `regime: unavailable`. *Why also here:* R-3 folds
+abstain verdicts as utility evidence; an unavailability must never fold as an abstain — the
+one line a future census would otherwise re-open.
 
 ## 7. Behaviour preservation — the equivalence instrument, pre-stated
 
@@ -562,12 +576,20 @@ withheld/dispersed/miss classes run 9 named), stored beside the eval artefacts u
 `$LIFE_AGENT_KB/eval/collapse-fixtures/<checkpoint>/` (out of tree; the design names the
 directory, the implementation phase the schema), replayed through old and new paths at every
 checkpoint. **Comparator:** identical chosen action **and** identical `/log_decision` body
-(field-by-field, floats at 1e-9, `credences` in leader-first order via the one label-view),
-per fixture; **command:** `uv run python scripts/collapse_replay.py --checkpoint <id>` (to be
+per fixture — with the **field-class rule** pre-stated (pre-M0 addition): every body field is
+declared once as *value-compared* (effector, credences at 1e-9 in leader-first order via the
+one label-view, candidates, p_none, eu, n_obs, n_indeterminate, n_competing, instrument,
+run_id, regime, policy, retrieval_keys) or *runtime-measured* — compared by **presence and
+type**, never value (`latency_s`; `cost_usd` on warm hits and wherever the price is realised at
+runtime rather than tabled); the class list is part of the fixture schema and a field may move
+from measured to value-compared at a checkpoint, never the other way (never-silently-weaken); **command:** `uv run python scripts/collapse_replay.py --checkpoint <id>` (to be
 built at M0), exit 1 on any mismatch, the diff printed by field. **Where the design intends a
 difference** (M1: fixtures whose pre-collapse decision came from the cascade E-13/E-14): the
 fixture carries the pre-registered expected *direction* (the priced lane reaches a
 terminal ⊇ the cascade's) and the comparator asserts that direction, not equality.
+**Coverage condition (Q9):** the set holds at least one fixture per terminal type — every
+member of `T`, `report(claims)` included — so the narrative leaf's content computation sits
+*under* the comparator, not beside it.
 
 **7.3 The eval battery, frozen regime** — `run_eval.py --gate` on the run-9 recipe with
 `policy=frozen-elicitations` (Q-O5) and the run-9 corpus pin; comparator: typed answer
@@ -608,14 +630,14 @@ re-run.
 
 | # | Move | Dual / shims | Green | Notes |
 |---|---|---|---|---|
-| **M0** | the instrument: `scripts/collapse_replay.py`, the fixture recorder (7.2), the `brain.value` wire-shape test (§2.5, Q-R4), the `regime`/`policy` fields accepted by `/log_decision` (defaults honest) | nothing moves | 7.1; 7.2 records its baseline (no comparison yet) | no behaviour change; the fixtures are recorded from **this** tree — the pre-collapse truth |
-| **M1** | **E-14 dies** (with E-13, `LIFE_AGENT_GROW_LANE` retires: the priced lane is the lane) | none — the cascade is deleted outright (a hand-priced VOI has no shim value) | 7.1; 7.2 with the pre-registered direction on cascade fixtures; **7.3** (wrong commits 0; answer rate reported) | the first collapse target, alone; the eval run is the checkpoint's evidence, filed in the §14 ledger like runs 1–9 |
+| **M0** | the instrument: `scripts/collapse_replay.py`, the fixture recorder (7.2, with the field-class list and the per-terminal-type coverage), the `brain.value` wire-shape test (§2.5, Q-R4), the `regime`/`policy` fields accepted by `/log_decision` (defaults honest), the wire-shape check that decides 6.3b (Q4) | nothing moves | 7.1; 7.2 records its baseline (no comparison yet) | no behaviour change; the fixtures are recorded from **this** tree — the pre-collapse truth; M0's report records the 6.3b decision |
+| **M1** | **E-14 dies** (with E-13, `LIFE_AGENT_GROW_LANE` retires: the priced lane is the lane) | none — the cascade is deleted outright (a hand-priced VOI has no shim value) | 7.1; 7.2 with the pre-registered direction on cascade fixtures; **7.3** (wrong commits 0; answer rate reported) | the first collapse target, alone; the eval run is the checkpoint's evidence, filed in the §14 ledger like runs 1–9; **`LIFE_AGENT_GROW_LANE`'s retirement is a config-surface change and gets its one documentation line at this checkpoint** (pre-M0 addition) |
 | **M2** | **the one poster** (Q-O6): one driver function; `AC.answer`/`answer_via_executor` become thin delegating shims; the family leaves return their decision; the driver records once; A-3/D-10 die; S-1's unavailability path unified (B-2/A-1) | shims for **one checkpoint** (M2→M3), then deleted; the leaves' own `DEC.append`/`D.record` calls become dead code at M2 and are removed at M3 | 7.1; 7.2 (body equality incl. the new fields); **7.4** (decisions + §18.9 nodes: one write per decision) | the reach surface's decisions become priced in the ledger — a *known* record change, pre-registered: absent keys → present with `0.0`/`""` |
 | **M3** | **the one fold entry point** (Q-O5): `posterior(policy=…)`; D-8's five sites become callers; `fold_version` covers the policy; the memo keyed by it | none (a rename with a required argument; no old spelling survives) | 7.1; 7.2 (`policy` field); **7.3** in the frozen regime — Δ on the band | also the D-2 unification of the two wire reliability instances into `reliability(edge, cell)` — same checkpoint, same instruments; the calibration curve untouched (debt) |
 | **M4** | **the utility atom + the price table** (Q-O3, §4): `action_utilities`/`realised_utility` derived from `u_assert`; the table one module; `lambda_usd` from Ū only (E-5); the tier/menu constants relocated; E-3/E-8/E-9/BR-4's constants die into priors | none | 7.1; 7.2 (vectors identical on every fixture — the derivation is exact); 7.3 | the gate reads the same atom (offline) — its frozen δ/level untouched (§6.1) |
-| **M5** | **the argmax absorption**: the driver's remaining choices die or absorb (E-1/L-9/B-6 family choice → rows; E-4 miss → reason; E-12 latch; L-3 scoped rows; GA-1/GA-2/`gather_answer` dies; M-1…M-5 the live lane dies; B-4/B-1/B-5 dispatch dies; the terminals-only regime declared) | `gather_answer` and the M3 lane deleted; the in-process families stay as **leaves** (not shims — they are the terminals-only regime's ranking) | 7.1; 7.2 on **every** fixture incl. terminals-only ones; **7.3**; 7.4 not needed (no store) | *argued adjustment:* absorption is the largest move and depends on M2–M4; it splits naturally into M5a (family choice + regimes) and M5b (grow-target absorption + live-lane retirement) if 7.2 shows the pair is not bisectable in one step — the design allows the split, the reviewer approves it at M4's report |
-| **M6** | **the observation model declared once** (§3.3): the 36 clauses each with one home; D-11/D-14/D-15 one function each; E-7's replace-branch → second channel (gated on §9 Q3's measurement) | none | 7.1; 7.2 (identical decisions — declaring is not changing, except E-7 which is gated) | may interleave with M2–M5 per clause where a clause's two spellings block a move; E-7 waits for its measurement |
-| **M7** | the register (§6) pinned by its tests; the vocabulary derivations (D-6) + label-views (D-4/D-5); config surface (D-13); Appendix A signed | — | 7.1 | the census's re-listing guard |
+| **M5** | **the argmax absorption**: the driver's remaining choices die or absorb (E-1/L-9/B-6 family choice → rows; E-4 miss → reason; E-12 latch; L-3 scoped rows; GA-1/GA-2/`gather_answer` dies; M-1…M-5 the live lane dies; B-4/B-1/B-5 dispatch dies; the terminals-only regime declared) | `gather_answer` and the M3 lane deleted; the in-process families stay as **leaves** (not shims — they are the terminals-only regime's ranking) | 7.1; 7.2 on **every** fixture incl. terminals-only ones; **7.3**; 7.4 not needed (no store) | *argued adjustment (approved as written):* absorption is the largest move and depends on M2–M4; it splits into M5a (family choice + regimes) and M5b (grow-target absorption + live-lane retirement) if 7.2 shows the pair is not bisectable in one step — the reviewer signs the split at M4's report. **M4's report also decides Q8:** default *delete* the M3 lane; if the shadow's v2 differential needs `CO.map_action` to compute its counterfactual, it survives *renamed into the shadow namespace* as a measurement function — never as anything that could be read as a lane |
+| **M6** | **the observation model declared once** (§3.3): the 36 clauses each with one home; D-11/D-14/D-15 one function each; E-7's replace-branch → second channel (gated on §9 Q3's measurement) | none | 7.1; 7.2 (identical decisions — declaring is not changing, except E-7 which is gated) | may interleave with M2–M5 per clause where a clause's two spellings block a move; E-7 waits for its measurement (Q3, endorsed: pre-registered off-gate, criteria frozen first); Q5's volatility transcript is produced here |
+| **M7** | the register (§6) pinned by its tests; the vocabulary derivations (D-6) + label-views (D-4/D-5); config surface (D-13); **Appendix A signed here, not before** (the constitution changes when the structure exists) | — | 7.1 | the census's re-listing guard |
 
 Between checkpoints nothing is dual except the M2 shims for one step. Every checkpoint is a
 prepared script the owner executes after a rehearsal (S12), reported append-only, and every
@@ -632,54 +654,63 @@ Genuine questions; each names the evidence that decides it. Owner (O) / reviewer
   PRINCIPLES §15's "cost of always-on operation" criterion; the reach ledger's count of
   decisions taken while the stack was down (today unmeasurable — the `regime` field at M0
   measures it); the gate's Δ on terminals-only decisions vs full ones (7.3 can arm-split it).
-  Recommendation: (α) at M5, measured, revisited on the count.
+  **Resolved — signed (α)** at M5, measured, revisited on the count.
 - **Q2 (R) — 6.5, register entry or regime value?** The seam's unavailability record: a fifth
   named exception, or `regime: unavailable` on the poster's body with no exception at all.
   *Evidence:* whether any consumer needs to distinguish "no optimiser" from "optimiser chose
   abstain" — the reaction loop does (R-3 folds abstain verdicts; an unavailability must not
-  fold as an abstain). Recommendation: regime value **and** the fixture — the register only
-  if the reviewer wants it re-listable.
+  fold as an abstain). **Resolved — ruled: both** — regime value + fixture +
+  register entry (§6.5).
 - **Q3 (O/R) — E-7's error model needs its measurement first.** The design's disposition
   (second channel, combined by likelihood) is the structural answer; whether a *disagreeing*
   strong re-read should still replace the grounded channel (today it does — F2) or condition
   it is the empirical question the operating manual's §14 entry left NOT yet measured (the
   n_obs=0 cluster: a probe erasing a grounded channel). *Evidence:* its own frozen criteria +
-  pre-registration, run off-gate like the temper audit; M6 gates E-7 on it.
+  pre-registration, run off-gate like the temper audit; M6 gates E-7 on it. **Resolved — the
+  gating endorsed:** structural disposition here, replace-vs-condition measured first.
 - **Q4 (R) — G-3, the gate's host sampler:** inside 6.1's exception (part of the verdict
   mechanism's estimator) or a second debt entry 6.3b (a host approximation of a wire
   posterior, retire on wire sampling)? *Evidence:* whether the skin exposes posterior draws
   today (a wire-shape check at M0); if it does, 6.3b with a short retirement; if not, 6.1.
+  **Resolved — procedure pre-committed to M0's report; no further ruling.**
 - **Q5 (R) — volatility: override or combine, table or latent?** BR-1 lets the half-life
   table override the router's `time_indexed` verdict; V-1's first-match keyword order is a
   hand rule. *Evidence:* the disagreement rate between the router's verdict and the table on
   the eval questions (a transcript to produce at M6, not now); a latent with a prior is
-  warranted iff the disagreements are not all the table's wins.
+  warranted iff the disagreements are not all the table's wins. **Deferred as stated — M6's
+  transcript decides.**
 - **Q6 (O) — the census pin is an unreferenced object.** `873860a` is not in `master`'s
   history (the PII rewrite re-created it as `1ea9df8`, tree-identical — F3); no branch, tag or
   worktree references it, so it survives only until a prune. *Evidence:* F3. Recommendation:
   `git tag census-pin-873860a 873860a` (local; the sha stays citable), or re-cite the census
   as pinned at `1ea9df8` in a one-line addendum. The addendum's correction table is a content
-  diff and holds either way.
+  diff and holds either way. **Resolved — signed: the addendum line naming both shas**
+  (survives clones); the local tag optional belt-and-braces.
 - **Q7 (R) — the addendum's correction table under-reports six files.** The C5-hooked writers
   (`decisions.py` +3 past `:143`, `outcomes.py` +3 past `:152`, `reactions.py` +3 past `:112`,
   `claude_verdicts.py` +3 past `:129`, `gather_outcomes.py` +2 past `:85`, `joint_extract.py`
   +2 past `:124`) shift census cites the addendum listed as "changed" without a shift (F1). This
   design uses the finer map; the census+addendum is the input of record — append a one-line
   correction to the addendum (append-only), or let this design's table stand as the
-  correction of record?
+  correction of record? **Resolved — ruled: append the correction to the addendum** (the input
+  of record must be correct in itself); done in the same commit as this revision.
 - **Q8 (O) — the M3 live lane: delete or flag-dead?** The design retires it (M5); the code can
   be deleted or left unreachable behind `LIFE_AGENT_MEMBRANE_LIVE`. *Evidence:* whether the
   shadow's v2 differential (the register's measurement) still needs the mapping code
   (`CO.map_action`) to *compute* the counterfactual it records — if yes, keep it as a
-  measurement function off the path; if no, delete.
+  measurement function off the path; if no, delete. **Resolved — signed: default delete,
+  decided at M4's report;** if kept, renamed into the shadow namespace, never lane-shaped.
 - **Q9 (R) — the narrative terminal as a nested specification (§2.3).** Sign, or require the
   per-claim rule to be flattened into the outer decision space (`2^claims` terminals — the
   alternative this design rejects on size). *Evidence:* the census's own reading of
   `decide_claims` (per-claim optimise, host aggregation N-2 = the argmax's implication).
+  **Resolved — signed,** with the coverage condition attached to §7.2 (one fixture per terminal
+  type, `report(claims)` included).
 - **Q10 (O) — the monolithic instrument (B-7)** survives only in the eval harness as the gate's
-  comparator; confirm it is not wanted as a live terminal under any regime.
+  comparator; confirm it is not wanted as a live terminal under any regime. **Resolved —
+  signed:** harness-only; an uncalibrated monolithic instrument has no place as a live terminal.
 
-## Appendix A — PRINCIPLES amendment proposals (verbatim replacement text; the owner signs)
+## Appendix A — PRINCIPLES amendment proposals (verbatim replacement text; the owner signs **at M7**, as scheduled — not before)
 
 **A.1 — §16, add after the sentence ending "…truth is the fold." (the three-verdict rule):**
 
