@@ -1,6 +1,6 @@
 # SPEC.md — technical specification
 
-Version: 0.17.0 (draft)
+Version: 0.18.0 (draft)
 Status: Phase 1 complete (extraction layer with content-addressed
 caching, chunking, and FTS keyword retrieval); Phase 1.5 OCR-PDF
 fallback applied to the live corpus; source paths are stored as
@@ -304,10 +304,22 @@ meaningful notion of startup here — there is no daemon (SPEC §14.6).
 Other commands (`pkm ingest`, `pkm migrate`) do not touch the cache
 and therefore do not run the sweep.
 
-The sweep is conservative: a cache directory is considered orphaned
-iff (a) it contains a `content` file or a `meta.json` file, and (b)
-no row in `artifacts` has `cache_key` equal to the directory name.
-Orphan directories are removed; the event is logged.
+The sweep distinguishes **torn** directories from **unregistered**
+ones. A cache directory is *torn* iff it contains a `content` and/or
+`meta.json` file, no row in `artifacts` has `cache_key` equal to the
+directory name, **and** it does not hold a complete, parseable
+`meta.json` (with `content` present when `status = 'success'`, and
+`lineage.json` present when `cache_key_schema_version ≥ 2`). Torn
+directories are removed; the event is logged. A directory that has no
+row but holds a complete `meta.json` is *unregistered*, not orphaned:
+the sweep MUST NOT remove it — it registers it (inserting the
+`artifacts` and `artifact_lineage` rows from the on-disk files,
+preserving `produced_at` — the §5.3 / §18.9 reconciliation), or, if
+registration fails (malformed lineage, schema mismatch), leaves it in
+place and logs at WARNING with the cache key and the reason. Deletion
+never follows from index lag: `meta.json` is authoritative and the
+catalogue is rebuildable (§13.1); the sweep exists for the
+interrupted-write case only.
 
 **Asymmetric recovery.** The sweep covers only the "files without a
 row" direction. The reverse — a catalogue row whose `content` or
@@ -1721,6 +1733,10 @@ The contract:
   opportunistically whenever a writer can take the lock (e.g. at ask startup, before its
   read-only connection opens). Losing a queue entry delays a row; it never loses truth
   (§13.1 — the catalogue is rebuildable from `meta.json`).
+- **Unique lineage inputs.** Writers MUST NOT record duplicate lineage inputs (the
+  `artifact_lineage` key is `(artifact_cache_key, input_cache_key)`); the writer's seam refuses
+  them, and the reconciler / rebuild deduplicate on read **loudly** (WARNING per artefact) so a
+  violation is counted, never laundered.
 - **Not retrievable.** External content types are NOT in `CHUNKABLE_CONTENT_TYPES` (§15.1):
   external derivations never enter chunking or FTS. This is a deliberate gate — a derived
   answer must not silently re-enter retrieval (and compete with primary sources) before
@@ -1873,6 +1889,26 @@ exactly when `subject_kind` is `person` or `organisation` (fail loudly, not cach
 
 ## 16. Change log
 
+- 0.18.0 (draft): §6.2 amended (the sweep), §18.9 rider — the consistency sweep at the start
+  of `pkm extract` / `pkm rebuild-catalogue` now distinguishes **torn** directories (an
+  interrupted write: no complete, parseable `meta.json`) from **unregistered** ones (a complete
+  `meta.json` whose catalogue row lags). Torn directories are removed as before; unregistered
+  ones are registered from their on-disk files (preserving `produced_at`) or, when registration
+  fails, left in place with a WARNING naming the cache key and the reason — deletion never
+  follows from index lag, because `meta.json` is authoritative and the catalogue is rebuildable
+  (§13.1). §18.9 gains the writer obligation that lineage inputs are unique (the
+  `artifact_lineage` key is `(artifact_cache_key, input_cache_key)`): the writer's seam refuses
+  duplicates and the reconciler / rebuild deduplicate on read loudly, so a violation is counted,
+  never laundered. Justification: under 0.17.0 the sweep's definition of "orphan" was "files
+  without a row", which made every §18.9 file-first artefact whose reconciliation lagged (a
+  consistent state by §18.9's own contract) indistinguishable from an interrupted write; a
+  reconciliation that failed silently on duplicate lineage inputs left such artefacts
+  unregistered for months, and the next extract's sweep deleted them — a data-loss class the
+  unified ledger's two-route count surfaced (life-agent `docs/unification/reports/r03-merge.md`;
+  the fixes' brief and Phase A in `r04-stocktake.md` Appendix A and `r00-lineage-writer.md`).
+  No schema change, no migration, no new dependency; `sweep_orphans` (§6.2),
+  `rebuild-catalogue`'s lineage read (§5.3) and `write_artifact` (§18.4) change behaviour as
+  stated.
 - 0.17.0 (draft): §17.2, §15.1, §15.4 amended, §17.7/§17.8 (new) — the MCP query surface
   becomes addressable and auditable. `search` results (§17.2) gain a `chunk_id` field (the
   `artifact_chunks` surrogate key, §15.1/migration 0005), which §15.1 is amended to
