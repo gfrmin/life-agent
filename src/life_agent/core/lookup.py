@@ -1107,9 +1107,12 @@ def decide_and_record(root: Path, question: str, construct: str,
         "scoped": {"value": scoped_value, "as_of": as_of,
                    "p_attested": round(p_attested, 6)},
     }, sort_keys=True, ensure_ascii=False).encode("utf-8")
+    # unique inputs, first-occurrence order: two observations can share one extract key
+    # (identical chunk text — observe_hits keys on the chunk, not the artefact); the
+    # catalogue's lineage key is (artifact, input), so the observation is ONE input (§18.9)
     D.record(root, akey, content,
-             lineage=[{"cache_key": o.obs_cache_key, "role": "observation"}
-                      for o in observations])
+             lineage=[{"cache_key": k, "role": "observation"}
+                      for k in dict.fromkeys(o.obs_cache_key for o in observations)])
 
     result = LookupResult(
         question=question, construct=construct, action=action, eu=eu,

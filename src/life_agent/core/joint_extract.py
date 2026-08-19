@@ -119,8 +119,10 @@ def extract_joint(root: Path | None, question: str, hits: list[dict[str, Any]], 
     if root is not None:
         D.record(root, key,
                  json.dumps(parsed, sort_keys=True, ensure_ascii=False).encode("utf-8"),
-                 lineage=[{"cache_key": str(h["artifact_cache_key"]), "role": "joint_source"}
-                          for h in pool],
+                 # unique inputs, first-occurrence order (§18.9: the catalogue's lineage key is
+                 # (artifact, input); several hits of one artefact are ONE input)
+                 lineage=[{"cache_key": k, "role": "joint_source"}
+                          for k in dict.fromkeys(str(h["artifact_cache_key"]) for h in pool)],
                  metadata={"in_tokens": res.in_tokens, "out_tokens": res.out_tokens,
                            "served_model": res.served_model})
     return JointResult(parsed["value"], parsed["confidence"], parsed["as_of"],

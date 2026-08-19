@@ -6,6 +6,7 @@ fail-safe parsing, and that the cache key tracks the ORDERED chunk-set (the earl
 """
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from life_agent.core.joint_extract import JointResult, extract_joint
@@ -73,3 +74,20 @@ def test_model_snapshot_changes_the_key(tmp_path: Path) -> None:
     k2 = extract_joint(tmp_path, "q", hits, model="claude-opus-4-8-20260202",
                        complete=stub).cache_key
     assert k1 != k2  # a dated-snapshot roll must not serve a stale cache entry
+
+
+def test_lineage_inputs_are_unique_first_occurrence_order(tmp_path: Path) -> None:
+    """Several hits of one artefact ⇒ ONE lineage entry for it (§18.9: the catalogue's
+    ``artifact_lineage`` key is (artifact, input) — a repeated input rolls the whole row
+    back). Order of first occurrence is preserved (the pool order is the key's hinge)."""
+    from life_agent.core import derivations as D
+    stub = _Stub('{"value": "VAL", "confidence": 0.9, "as_of": "2024-01-01"}')
+    hits = _hits("chunk one of A", "chunk of B", "chunk two of A", "chunk of C")
+    hits[2]["artifact_cache_key"] = hits[0]["artifact_cache_key"]      # A twice
+    r = extract_joint(tmp_path, "what is my X?", hits,
+                      model="claude-opus-4-8-20260101", complete=stub)
+    lineage = json.loads(D.lineage_file(tmp_path, r.cache_key).read_text())["inputs"]
+    keys = [e["cache_key"] for e in lineage]
+    assert keys == [hits[0]["artifact_cache_key"], hits[1]["artifact_cache_key"],
+                    hits[3]["artifact_cache_key"]]
+    assert {e["role"] for e in lineage} == {"joint_source"}

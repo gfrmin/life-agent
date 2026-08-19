@@ -726,6 +726,39 @@ def test_lookup_answer_end_to_end(migrated_root: Path, tmp_path: Path,
          "n_competing": 0, "competition_factor": 1.0}]
 
 
+@pytest.mark.parametrize("second_key", ["a" * 64, "b" * 64],
+                         ids=["same-artefact", "other-artefact"])
+def test_lookup_answer_lineage_inputs_are_unique(migrated_root: Path, tmp_path: Path,
+                                                 monkeypatch: pytest.MonkeyPatch,
+                                                 second_key: str) -> None:
+    """Two hits with IDENTICAL chunk text share one extract key (the key hashes the chunk, not
+    the artefact — :func:`observe_hits`), so two observations can carry one ``obs_cache_key``;
+    a value-only quote keeps both through :func:`dedup_correlated`. The answer's lineage must
+    still name that observation ONCE (§18.9: ``artifact_lineage`` is keyed (artifact, input))
+    — whether the copies sit in one artefact or two."""
+    model_path = tmp_path / "model.yaml"
+    model_path.write_text(MODEL_YAML, encoding="utf-8")
+    monkeypatch.setattr(config, "UTILITY_MODEL", model_path)
+    monkeypatch.setattr(config, "UTILITY_ELICITATIONS", tmp_path / "elicit.jsonl")
+    monkeypatch.setattr(LK, "_U_BAR", None)
+    route = FakeClient({"lookup": True, "construct": "the ID"})
+    extract = FakeClient({"found": True, "value": "12345", "quote": "12345"})  # value-only quote
+    brain = Brain(ScriptedTransport(optimise_action="report_0"))
+    hits = [_hit("a" * 64, "your ID 12345 is recorded"),
+            _hit(second_key, "your ID 12345 is recorded")]           # identical chunk text
+
+    result = lookup_answer(migrated_root, "what is my ID?", hits,
+                           brain=brain, route_client=route, extract_client=extract,
+                           decisions_path=tmp_path / "decisions.jsonl", run_id="test")
+    assert result is not None
+    assert len(result.observations) == 2                              # both observed …
+    assert len({o.obs_cache_key for o in result.observations}) == 1   # … under ONE extract key
+    from pkm.cache import lineage_file
+    lineage = json.loads(lineage_file(migrated_root, result.answer_cache_key)
+                         .read_text(encoding="utf-8"))["inputs"]
+    assert [e["cache_key"] for e in lineage] == [result.observations[0].obs_cache_key]
+
+
 def test_lookup_answer_none_when_not_routed(migrated_root: Path) -> None:
     route = FakeClient({"lookup": False})
     assert lookup_answer(migrated_root, "summarise my week", [],
