@@ -431,6 +431,19 @@ def lookup(root: Path, cache_key: str) -> bytes | None:
     return cf.read_bytes()
 
 
+def duplicate_lineage_inputs(lineage: list[dict[str, str]]) -> list[str]:
+    """The input cache keys that repeat in ``lineage`` (first-occurrence order, each once) —
+    role-blind, since the catalogue key is (artifact, input). Empty iff the inputs are unique."""
+    seen: set[str] = set()
+    dupes: dict[str, None] = {}
+    for entry in lineage:
+        k = str(entry["cache_key"])
+        if k in seen:
+            dupes[k] = None
+        seen.add(k)
+    return list(dupes)
+
+
 def _write_atomic(path: Path, data: bytes) -> None:
     tmp = path.parent / f".{path.name}.{os.getpid()}.tmp"
     tmp.write_bytes(data)
@@ -445,8 +458,15 @@ def record(root: Path, key: StageKey, content: bytes, *,
     reconciliation. Write-once: an existing meta.json makes this a no-op returning False.
 
     ``lineage`` entries are ``{"cache_key": ..., "role": ...}`` pointing at the upstream
-    pkm artifacts that contributed (empty for the corpus-independent expand stage).
+    pkm artifacts that contributed (empty for the corpus-independent expand stage). Inputs
+    MUST be unique: the catalogue's ``artifact_lineage`` key is (artifact, input) (§18.4), so
+    a repeated input could never be registered — it is refused here, before any file is
+    written, with ``ValueError`` (a writer bug surfaces in that writer's tests).
     """
+    dupes = duplicate_lineage_inputs(lineage)
+    if dupes:
+        raise ValueError(f"duplicate lineage input(s) for {key.cache_key}: "
+                         + ", ".join(dupes))
     mf = meta_file(root, key.cache_key)
     if mf.exists():
         return False

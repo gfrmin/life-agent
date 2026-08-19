@@ -114,6 +114,28 @@ def test_record_writes_pkm_shaped_meta_and_lineage(tmp_path: Path) -> None:
     assert lin == {"format_version": 1, "inputs": lineage}
 
 
+def test_record_refuses_duplicate_lineage_inputs_and_writes_nothing(tmp_path: Path) -> None:
+    """§18.4/§18.9 enforced at the seam: the catalogue's ``artifact_lineage`` key is
+    (artifact, input), so a repeated input can never be registered — refuse it where the
+    file would be written (a writer bug surfaces in that writer's tests, not in a sweep two
+    months later). Nothing is written: no directory, no queue line."""
+    key = _synth_key()
+    dup = [{"cache_key": "1" * 64, "role": "retrieval_set"},
+           {"cache_key": "2" * 64, "role": "source"},
+           {"cache_key": "2" * 64, "role": "source"}]           # the same input twice
+    with pytest.raises(ValueError, match="duplicate lineage input"):
+        D.record(tmp_path, key, b"the answer [1]", lineage=dup)
+    assert not meta_file(tmp_path, key.cache_key).parent.exists()   # no directory at all
+    assert not (tmp_path / "external" / "pending.txt").exists()      # no queue line
+    assert D.lookup(tmp_path, key.cache_key) is None
+    # the same input under two ROLES is still one (artifact, input) key — refused too
+    two_roles = [{"cache_key": "2" * 64, "role": "source"},
+                 {"cache_key": "2" * 64, "role": "retrieval_set"}]
+    with pytest.raises(ValueError, match="duplicate lineage input"):
+        D.record(tmp_path, key, b"the answer [1]", lineage=two_roles)
+    assert not meta_file(tmp_path, key.cache_key).parent.exists()
+
+
 def test_lookup_misses_on_half_written_artifact(tmp_path: Path) -> None:
     # meta.json is the commit marker: content without meta must read as a miss
     key = _expand_key()
