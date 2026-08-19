@@ -153,6 +153,7 @@ def test_main_returns_2_on_locked_corpus(monkeypatch, capsys) -> None:
     def _locked() -> None:
         raise duckdb.Error("Could not set lock on file catalogue.duckdb: Conflicting lock")
 
+    monkeypatch.setattr(ask, "_pkm_root", lambda: None)   # hermetic: no reconcile I/O
     monkeypatch.setattr(ask, "connect", _locked)
     assert ask.main(["what is my id?"]) == 2
     assert "corpus locked" in capsys.readouterr().err
