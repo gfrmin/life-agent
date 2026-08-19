@@ -449,3 +449,18 @@ TDD at every unit boundary (all of these have one); the idempotency double-run f
 that writes; no new abstractions — every change here is a *narrowing* (unique, refuse, loud,
 count) of something that already exists. Any diff that adds a concept should make you
 suspicious of yourself.
+
+## Rulings applied — 2026-08-19 (post-review; recorded at the collapse census's placement)
+
+- **Q1 (owner, the backup finding):** being acted on in a separate session — the wrapper's
+  source list now carries the KB volume's directories and the pkm live root, the cache exclusion
+  is dropped, the timer is enabled; the pkm root's move onto the backed-up volume and the first
+  archive after it are the gate for the micro-tranche's two witnesses (r01 B2-live, r00 A5).
+- **Q2 (reviewer, numbering):** confirmed — `r04-stocktake.md`, `r00-lineage-writer.md`,
+  `r01-lineage-sweep.md` as used; the collapse census placed as `r00-collapse-census.md` (Q-R5).
+- **Q3 (reviewer, A0):** moot, closed — landed inside the micro-tranche's Phase A as drafted.
+- **Q4 (owner, §3(ii)):** signed — the consumer facts accepted as the answer to the bench's Q1–Q3;
+  (α) actual per-ask folds is the P2 re-run's frame (β only if α shows the per-ask cost matters).
+  Signed at the census's placement (its addendum §3).
+- **Q5 (owner/reviewer, the draft brief):** signed and executed — the pkm lineage micro-tranche
+  ran on it (r00 Phase A, r01 Phase B; landed and pushed at `b83dbc0`).
