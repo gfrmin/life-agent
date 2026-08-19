@@ -190,6 +190,11 @@ def counts(paths: Paths, store: LedgerStore, *, order: tuple[str, ...] = SRC.MIG
         if legacy_lost:
             verdict += (f" — legacy lost {legacy_lost} identit{'y' if legacy_lost == 1 else 'ies'} "
                         f"the segment retains (deletion on the legacy side)")
+        if "lineage_duplicate_inputs" in sc.extras:
+            # a laundered dedup is a visible number (the envelope collapses repeated inputs)
+            n_dup = sc.extras["lineage_duplicate_inputs"]
+            rows[sid]["lineage_duplicate_inputs"] = n_dup
+            verdict += f" lineage_duplicate_inputs={n_dup}"
         print(f"counts   {sid:28s} tally={tally:7d} segment={segment:7d} (wc -l {seg_lines}, "
               f"quarantined {quarantined}) legacy={len(sc.parsed):7d}"
               + (f" c0={base} growth={len(sc.parsed) - base}" if base is not None else "")

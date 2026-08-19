@@ -8,8 +8,10 @@ pkm-shaped meta/lineage files, pending queue), and catalogue reconciliation
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 
+import duckdb
 import pytest
 
 from life_agent.core import derivations as D
@@ -160,7 +162,7 @@ def test_reconcile_inserts_rows_and_drains_queue(migrated: Path) -> None:
     D.record(migrated, key, b"answer", lineage=lineage)
     recorded_meta = json.loads(meta_file(migrated, key.cache_key).read_text())
 
-    assert D.reconcile(migrated) == 1
+    assert D.reconcile(migrated).inserted == 1
 
     with open_catalogue(migrated) as conn:
         row = conn.execute(
@@ -177,17 +179,17 @@ def test_reconcile_inserts_rows_and_drains_queue(migrated: Path) -> None:
         assert edges == [("1" * 64, "retrieval_set")]
 
     assert (migrated / "external" / "pending.txt").read_text() == ""
-    assert D.reconcile(migrated) == 0  # drained queue: nothing to do
+    assert D.reconcile(migrated).inserted == 0  # drained queue: nothing to do
 
 
 def test_reconcile_is_idempotent_when_row_exists(migrated: Path) -> None:
     key = _expand_key()
     D.record(migrated, key, b"terms", lineage=[])
-    assert D.reconcile(migrated) == 1
+    assert D.reconcile(migrated).inserted == 1
     # re-queue the same key (e.g. a lost rewrite race): row exists, key is dropped
     queue = migrated / "external" / "pending.txt"
     queue.write_text(key.cache_key + "\n")
-    assert D.reconcile(migrated) == 0
+    assert D.reconcile(migrated).inserted == 0
     assert queue.read_text() == ""
     with open_catalogue(migrated) as conn:
         (n,) = conn.execute("SELECT count(*) FROM artifacts WHERE cache_key = ?",
@@ -198,19 +200,127 @@ def test_reconcile_is_idempotent_when_row_exists(migrated: Path) -> None:
 def test_reconcile_noop_without_catalogue(tmp_path: Path) -> None:
     key = _expand_key()
     D.record(tmp_path, key, b"terms", lineage=[])
-    assert D.reconcile(tmp_path) == 0
+    assert D.reconcile(tmp_path).inserted == 0
     # queue intact: the files stay authoritative until a catalogue appears
     assert (tmp_path / "external" / "pending.txt").read_text().split() == [key.cache_key]
     assert not (tmp_path / "catalogue.duckdb").exists()  # reconcile must not create one
 
 
-def test_reconcile_keeps_half_written_keys_queued(migrated: Path) -> None:
-    ghost = "f" * 64  # queued but no files on disk (mid-write by another process)
-    queue = migrated / "external"
-    queue.mkdir()
-    (queue / "pending.txt").write_text(ghost + "\n")
-    assert D.reconcile(migrated) == 0
-    assert (queue / "pending.txt").read_text().split() == [ghost]
+def _queue(root: Path, *keys: str) -> Path:
+    q = root / "external" / "pending.txt"
+    q.parent.mkdir(exist_ok=True)
+    with q.open("a", encoding="utf-8") as fh:
+        fh.write("".join(k + "\n" for k in keys))
+    return q
+
+
+def _write_files(root: Path, key: D.StageKey, content: bytes,
+                 lineage: list[dict[str, str]]) -> None:
+    """The on-disk shape ``record`` writes, laid down by hand — the seam now refuses duplicate
+    inputs, so a duplicate-lineage artefact (the pre-fix writer's output) is built directly."""
+    mf = meta_file(root, key.cache_key)
+    mf.parent.mkdir(parents=True)
+    content_file(root, key.cache_key).write_bytes(content)
+    lineage_file(root, key.cache_key).write_text(
+        json.dumps({"format_version": 1, "inputs": lineage}), encoding="utf-8")
+    mf.write_text(json.dumps({
+        "format_version": D.META_FORMAT_VERSION, "cache_key": key.cache_key,
+        "input_hash": key.input_hash, "producer_name": key.producer_name,
+        "producer_version": key.producer_version, "producer_config": key.producer_config,
+        "producer_config_hash": "0" * 64, "status": "success",
+        "produced_at": "2026-01-01T00:00:00", "size_bytes": len(content),
+        "error_message": None, "content_type": key.content_type, "content_encoding": "utf-8",
+        "producer_metadata": {"inputs": key.inputs}, "cache_key_schema_version": 3}),
+        encoding="utf-8")
+
+
+def test_reconcile_drops_a_dead_key_loudly_naming_the_stream(
+        migrated: Path, caplog: pytest.LogCaptureFixture) -> None:
+    """S-L3: a queued key whose ``meta.json`` no longer exists is DEAD — ``record`` appends
+    the queue line only after ``meta.json`` (write order), so a missing meta means the
+    artefact was removed, never mid-write. Dropped from the queue with one WARNING that names
+    the key AND says the stream retains the occurrence record (the reviewer's rider); counted."""
+    ghost = "f" * 64
+    q = _queue(migrated, ghost)
+    with caplog.at_level(logging.WARNING, logger="life_agent.core.derivations"):
+        counts = D.reconcile(migrated)
+    assert counts.dead == 1 and counts.inserted == 0
+    assert q.read_text() == ""                                # dropped, the queue drains
+    (rec,) = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert ghost in rec.getMessage()                          # names the key …
+    assert "stream retains the occurrence record" in rec.getMessage()   # … and the truth's home
+    assert D.reconcile(migrated) == D.ReconcileCounts()       # idempotent: nothing left to do
+
+
+def test_reconcile_deduplicates_lineage_on_read_loudly(
+        migrated: Path, caplog: pytest.LogCaptureFixture) -> None:
+    """The doctrine as ruled: an on-disk artefact whose lineage repeats an input (the pre-fix
+    writer's output) is registered with ONE lineage row per input — and the repair is never
+    silent: a WARNING names the key and the duplicate count, and the counts carry it."""
+    key = _synth_key()
+    dup = [{"cache_key": "1" * 64, "role": "retrieval_set"},
+           {"cache_key": "2" * 64, "role": "source"},
+           {"cache_key": "2" * 64, "role": "source"},
+           {"cache_key": "2" * 64, "role": "source"}]
+    _write_files(migrated, key, b"answer", dup)
+    _queue(migrated, key.cache_key)
+    with caplog.at_level(logging.WARNING, logger="life_agent.core.derivations"):
+        counts = D.reconcile(migrated)
+    assert counts.inserted == 1 and counts.deduplicated == 1
+    with open_catalogue(migrated) as conn:
+        edges = conn.execute(
+            "SELECT input_cache_key, role FROM artifact_lineage "
+            "WHERE artifact_cache_key = ? ORDER BY input_cache_key", [key.cache_key]).fetchall()
+    assert edges == [("1" * 64, "retrieval_set"), ("2" * 64, "source")]
+    (rec,) = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert key.cache_key in rec.getMessage() and "2 duplicate" in rec.getMessage()
+    assert (migrated / "external" / "pending.txt").read_text() == ""
+    # idempotent: re-queued, the row is present — no second insert, no second warning
+    _queue(migrated, key.cache_key)
+    caplog.clear()
+    assert D.reconcile(migrated) == D.ReconcileCounts(present=1) and not caplog.records
+
+
+def test_reconcile_counts_present_and_names_retry_failures_per_key(
+        migrated: Path, tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    # present: the row exists (a lost rewrite race) — dropped, counted, no warning
+    key = _expand_key()
+    D.record(migrated, key, b"terms", lineage=[])
+    assert D.reconcile(migrated).inserted == 1
+    _queue(migrated, key.cache_key)
+    with caplog.at_level(logging.WARNING, logger="life_agent.core.derivations"):
+        counts = D.reconcile(migrated)
+    assert counts.present == 1 and counts.inserted == 0 and not caplog.records
+    # retry-later: a catalogue with no substrate yet (schema-less) — kept queued, and the
+    # failure is NAMED: exception class + key, never content
+    bare = tmp_path / "bare"
+    (bare / "cache").mkdir(parents=True)
+    duckdb.connect(str(bare / "catalogue.duckdb")).close()
+    D.record(bare, key, b"terms", lineage=[])
+    with caplog.at_level(logging.WARNING, logger="life_agent.core.derivations"):
+        counts = D.reconcile(bare)
+    assert counts.retry == 1 and counts.inserted == 0
+    assert (bare / "external" / "pending.txt").read_text().split() == [key.cache_key]
+    (rec,) = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert key.cache_key in rec.getMessage() and "Exception" in rec.getMessage()
+    assert "terms" not in rec.getMessage()
+
+
+def test_reconcile_counts_malformed_files_and_keeps_them_queued(
+        migrated: Path, caplog: pytest.LogCaptureFixture) -> None:
+    key = _synth_key()
+    _write_files(migrated, key, b"answer", [{"cache_key": "1" * 64, "role": "source"}])
+    lineage_file(migrated, key.cache_key).write_text("{not json", encoding="utf-8")
+    _queue(migrated, key.cache_key)
+    with caplog.at_level(logging.WARNING, logger="life_agent.core.derivations"):
+        counts = D.reconcile(migrated)
+    assert counts.malformed == 1 and counts.inserted == 0
+    assert (migrated / "external" / "pending.txt").read_text().split() == [key.cache_key]
+    (rec,) = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert key.cache_key in rec.getMessage()
+    with open_catalogue(migrated) as conn:
+        assert conn.execute("SELECT count(*) FROM artifacts WHERE cache_key = ?",
+                            [key.cache_key]).fetchone()[0] == 0
 
 
 def test_reconcile_walk_reaches_sources_via_lineage(migrated: Path) -> None:
@@ -224,7 +334,7 @@ def test_reconcile_walk_reaches_sources_via_lineage(migrated: Path) -> None:
     D.record(migrated, ans_key, b"answer",
              lineage=[{"cache_key": rs_key.cache_key, "role": "retrieval_set"},
                       {"cache_key": card, "role": "source"}])
-    assert D.reconcile(migrated) == 2
+    assert D.reconcile(migrated).inserted == 2
 
     with open_catalogue(migrated) as conn:
         hop1 = {r[0] for r in conn.execute(
@@ -260,3 +370,4 @@ def test_lookup_confirm_key_sensitivity() -> None:
                               model="claude-haiku-4-5-20251001", prompt_template="P",
                               engine_version="e/1", output_schema={"type": "object"})
     assert ek.cache_key != base
+

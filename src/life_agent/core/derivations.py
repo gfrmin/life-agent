@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -90,6 +91,7 @@ CONTENT_TYPE_TEMPORAL_INTENT = "application/x-ask-temporal-intent+json"
 CONTENT_TYPE_DELIBERATE_ANSWER = "application/x-ask-deliberate-answer+json"
 
 _PENDING_QUEUE = Path("external") / "pending.txt"
+log = logging.getLogger(__name__)
 
 
 def _sha256(text: str) -> str:
@@ -510,32 +512,72 @@ def record(root: Path, key: StageKey, content: bytes, *,
 
 
 # --- catalogue reconciliation ----------------------------------------------- #
-def reconcile(root: Path) -> int:
+@dataclass(frozen=True)
+class ReconcileCounts:
+    """What one :func:`reconcile` pass did with the queued keys, per class — the loud,
+    counted form of the reconciler (the r03 finding: silence here left 2,047 artefacts
+    unregistered until a sweep removed them). ``inserted`` rows registered (of which
+    ``deduplicated`` needed a lineage repair on read — WARNING'd, never silent);
+    ``present`` already registered (dropped, idempotent); ``dead`` queued keys whose
+    ``meta.json`` no longer exists (dropped with a WARNING — the artefact was removed; the
+    unified stream retains its occurrence record); ``malformed`` unparseable meta/lineage
+    files (kept queued, WARNING'd — they never succeed unattended); ``retry`` everything
+    else (a schema-less or locked catalogue — kept queued, WARNING'd with the exception
+    class and the key)."""
+    inserted: int = 0
+    present: int = 0
+    retry: int = 0
+    dead: int = 0
+    malformed: int = 0
+    deduplicated: int = 0
+
+
+def reconcile(root: Path) -> ReconcileCounts:
     """Insert the lagging catalogue rows for queued file-first artifacts. Opportunistic:
-    returns 0 (queue intact) when the catalogue is absent or its writer lock is held —
+    all-zero counts (queue intact) when the catalogue is absent or its writer lock is held —
     the files remain authoritative (SPEC §13.1) and a later call catches up. Idempotent:
-    a key whose row already exists is dropped from the queue without inserting."""
+    a key whose row already exists is dropped from the queue without inserting. Every
+    per-key failure is logged at WARNING with the exception class and the key (never
+    content) and counted by class; a dead key (S-L3) is dropped, named, and counted."""
     db = root / "catalogue.duckdb"
     queue = root / _PENDING_QUEUE
     if not db.exists() or not queue.exists():
-        return 0
+        return ReconcileCounts()
     keys = [k for k in dict.fromkeys(queue.read_text(encoding="utf-8").split()) if k]
     if not keys:
-        return 0
+        return ReconcileCounts()
     try:
         conn = duckdb.connect(str(db))
     except duckdb.Error:
-        return 0  # writer lock held (an extraction is running) — retry next time
+        return ReconcileCounts()  # writer lock held (an extraction is running) — retry next time
 
-    inserted = 0
+    n: dict[str, int] = {"inserted": 0, "present": 0, "retry": 0, "dead": 0, "malformed": 0,
+                         "deduplicated": 0}
     remaining: list[str] = []
     try:
         for key in keys:
             try:
-                if _reconcile_one(root, conn, key):
-                    inserted += 1
-            except Exception:
-                remaining.append(key)  # half-written or schema-less catalogue; retry later
+                klass, dupes = _reconcile_one(root, conn, key)
+                n[klass] += 1
+                if dupes:
+                    n["deduplicated"] += 1
+            except FileNotFoundError:
+                # the queue line is appended AFTER meta.json (record's write order), so a
+                # missing meta means the artefact was removed, never mid-write: dead (S-L3)
+                n["dead"] += 1
+                log.warning("reconcile: dead key %s dropped — its meta.json no longer exists "
+                            "(the artefact was removed); the stream retains the occurrence "
+                            "record", key)
+            except (ValueError, KeyError, TypeError) as e:
+                n["malformed"] += 1
+                remaining.append(key)
+                log.warning("reconcile: malformed files for %s (%s) — kept queued",
+                            key, type(e).__name__)
+            except Exception as e:
+                n["retry"] += 1
+                remaining.append(key)  # schema-less or locked catalogue; retry later
+                log.warning("reconcile: %s for %s — kept queued (retry later)",
+                            type(e).__name__, key)
     finally:
         conn.close()
 
@@ -545,21 +587,35 @@ def reconcile(root: Path) -> int:
                if queue.exists() else [])
     _write_atomic(queue, ("".join(f"{k}\n" for k in current if k not in processed))
                   .encode("utf-8"))
-    return inserted
+    return ReconcileCounts(**n)
 
 
-def _reconcile_one(root: Path, conn: duckdb.DuckDBPyConnection, cache_key: str) -> bool:
+def _reconcile_one(root: Path, conn: duckdb.DuckDBPyConnection, cache_key: str
+                   ) -> tuple[str, list[str]]:
     """Insert the artifacts + artifact_lineage rows for one file-complete artifact,
-    preserving the recorded ``produced_at``. True iff a row was inserted."""
+    preserving the recorded ``produced_at``. Returns ``("inserted", dupes)`` or
+    ``("present", [])``; ``dupes`` names the lineage inputs that repeated on disk and were
+    collapsed to one row each — loudly (WARNING), so a pre-fix writer's output is registered
+    but never laundered. Raises FileNotFoundError when ``meta.json`` is gone (dead key)."""
     mf = meta_file(root, cache_key)
     if not mf.exists():
-        raise FileNotFoundError(mf)  # mid-write by another process; keep queued
+        raise FileNotFoundError(mf)  # removed after queuing (record writes meta before queue)
     if conn.execute("SELECT 1 FROM artifacts WHERE cache_key = ?", [cache_key]).fetchone():
-        return False
+        return "present", []
     meta = json.loads(mf.read_text(encoding="utf-8"))
     lf = lineage_file(root, cache_key)
     lineage = (json.loads(lf.read_text(encoding="utf-8"))["inputs"]
                if lf.exists() else [])
+    dupes = duplicate_lineage_inputs(lineage)
+    if dupes:
+        first: dict[str, dict[str, str]] = {}          # first occurrence per input, in order
+        for entry in lineage:
+            first.setdefault(str(entry["cache_key"]), entry)
+        n_dup = len(lineage) - len(first)
+        log.warning("reconcile: lineage of %s repeats %d input(s) (%d duplicate entr%s) — "
+                    "registered with one row per input; the writer should never have "
+                    "produced this", cache_key, len(dupes), n_dup, "y" if n_dup == 1 else "ies")
+        lineage = list(first.values())
     conn.execute("BEGIN TRANSACTION")
     try:
         conn.execute(
@@ -586,4 +642,4 @@ def _reconcile_one(root: Path, conn: duckdb.DuckDBPyConnection, cache_key: str) 
     except Exception:
         conn.execute("ROLLBACK")
         raise
-    return True
+    return "inserted", dupes

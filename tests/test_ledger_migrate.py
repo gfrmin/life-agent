@@ -229,3 +229,37 @@ def test_counts_names_a_legacy_side_deletion_on_the_set_shaped_source(
     assert not row["ok"] and row["legacy_lost_identities"] == 1
     assert row["legacy_lost_keys"] == [key]          # by identity, not by count
     assert "legacy lost 1 identity the segment retains" in out.getvalue()
+
+
+def test_census_counts_artefacts_whose_lineage_repeats_an_input(
+        ledger_kb: tuple[Path, G.Paths]) -> None:
+    """A laundered dedup must be a visible number (the pkm lineage micro-tranche, A3): the
+    envelope collapses repeated lineage inputs to one (`inputs` is a set of identities), so
+    the census counts the artefacts whose on-disk `lineage.json` repeats a key — surfaced by
+    the scan's extras AND by `migrate counts` for the set-shaped source."""
+    from pkm.cache import lineage_file
+    root, p = ledger_kb
+    assert p.pkm_root is not None
+    assert SRC.scan("pkm.artifact", p).extras["lineage_duplicate_inputs"] == 0
+    key = "8" * 64
+    meta_file(p.pkm_root, key).parent.mkdir(parents=True)
+    lineage_file(p.pkm_root, key).write_text(json.dumps({"format_version": 1, "inputs": [
+        {"cache_key": "7" * 64, "role": "source"}, {"cache_key": "7" * 64, "role": "source"},
+        {"cache_key": "6" * 64, "role": "source"}]}), encoding="utf-8")
+    meta_file(p.pkm_root, key).write_text(json.dumps({
+        "format_version": 1, "cache_key": key, "input_hash": "1" * 64,
+        "producer_name": "life_agent.ask.joint_extract", "producer_version": "1",
+        "producer_config_hash": "2" * 64, "status": "success",
+        "produced_at": "2026-01-02T00:00:00", "size_bytes": 1, "error_message": None,
+        "content_type": "application/x-ask-joint-extract+json", "content_encoding": "utf-8",
+        "producer_metadata": {}, "cache_key_schema_version": 3}), encoding="utf-8")
+    sc = SRC.scan("pkm.artifact", p)
+    assert sc.extras["lineage_duplicate_inputs"] == 1
+    (row,) = [r for r in sc.parsed if r.output == key]
+    assert row.inputs == ("7" * 64, "6" * 64, "1" * 64)     # the envelope still collapses …
+    store = LedgerStore(root / "ledger")
+    M.migrate(p, store, out=io.StringIO(), epoch="T")
+    out = io.StringIO()
+    res = M.counts(p, store, out=out)
+    assert res["sources"]["pkm.artifact"]["lineage_duplicate_inputs"] == 1   # … counted here
+    assert "lineage_duplicate_inputs=1" in out.getvalue()

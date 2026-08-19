@@ -383,8 +383,9 @@ def _scan_artifacts(root: Path | None) -> Scan:
     unparseable = dup = 0
     bad: list[str] = []
     n_meta = 0
-    complete: dict[str, int] = {}
-    shapes: dict[str, int] = {}
+    n_dup_lineage = 0        # artefacts whose lineage.json repeats an input key (a writer
+    complete: dict[str, int] = {}                # violation the envelope collapses — counted,
+    shapes: dict[str, int] = {}                  # never laundered)
     if root is not None:
         for key, mp in _iter_meta_files(root):
             n_meta += 1
@@ -408,6 +409,11 @@ def _scan_artifacts(root: Path | None) -> Scan:
                         unparseable += 1
                     bad.append(f"{key}:lineage:{lstatus}")
                     continue
+            if lineage is not None:
+                lin_keys = [str(e.get("cache_key", "")) for e in (lineage.get("inputs") or [])
+                            if isinstance(e, dict)]
+                if len(lin_keys) != len(set(lin_keys)):
+                    n_dup_lineage += 1
             _kernel, is_complete = instrument_kernel_id(meta)
             sv = str(meta.get("cache_key_schema_version", 1))
             complete[f"schema{sv}:{'complete' if is_complete else 'partial'}"] = \
@@ -424,7 +430,8 @@ def _scan_artifacts(root: Path | None) -> Scan:
                              tx_time=utc_annotation(produced_at, "naive-utc"), locator=loc, **env))
     return Scan("pkm.artifact", tuple(parsed), unparseable, dup, 0, tuple(bad),
                 {"meta_json_files": n_meta, "kernel_payload": complete,
-                 "produced_at_shapes": shapes, "clock": "naive-utc"})
+                 "produced_at_shapes": shapes, "lineage_duplicate_inputs": n_dup_lineage,
+                 "clock": "naive-utc"})
 
 
 def scan(source_id: str, paths: Paths) -> Scan:
