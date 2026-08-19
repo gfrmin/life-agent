@@ -172,10 +172,83 @@ def test_refresh_without_pkm_root_is_fail_open(
     assert ask.REFRESH_NOTES["failed"].split("{")[0] in capsys.readouterr().out
 
 
+# --- reconcile-or-refuse: the re-ingest never extracts over an unregistered artefact -- #
+# pkm's extract sweeps every file-complete artefact without a catalogue row at start (SPEC
+# §6.2) — the r03 loss. So the refresh registers what is registerable first, and if any
+# registerable key is still pending it does NOT extract: a named line, un-stamped, retried.
+
+
+def _pkm_tmp_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    from pkm.catalogue import run_migrations
+    root = tmp_path / "pkm"
+    (root / "cache").mkdir(parents=True)
+    run_migrations(root)
+    cfg = tmp_path / "pkm.yaml"
+    cfg.write_text(f"root_dir: {root}\nextractors: {{}}\n", encoding="utf-8")
+    monkeypatch.setattr(ask.C, "PKM_CONFIG", cfg)
+    monkeypatch.setattr(ask, "_pkm_root", lambda: root)
+    return root
+
+
+def _fake_extract(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, object]]:
+    calls: list[dict[str, object]] = []
+    monkeypatch.setattr("pkm.extract.extract", lambda root, cfg, **kw: calls.append(kw))
+    return calls
+
+
+def test_refresh_reconciles_before_it_extracts(
+    gtd_paths: tuple[Path, Path], tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+) -> None:
+    from life_agent.core import derivations as D
+    from pkm.catalogue import open_catalogue
+    ledger, _state = gtd_paths
+    _seed_ledger(ledger)
+    root = _pkm_tmp_root(tmp_path, monkeypatch)
+    key = D.expand_key("q", model="m-2026", prompt_template="P", temperature=0.0, max_tokens=9)
+    D.record(root, key, b"terms", lineage=[])          # recorded file-first, row lagging
+    extracts = _fake_extract(monkeypatch)
+
+    ask.ensure_gtd_fresh()
+
+    assert len(extracts) == 1                            # nothing registerable was pending …
+    with open_catalogue(root) as conn:                   # … because it was registered FIRST
+        assert conn.execute("SELECT count(*) FROM artifacts WHERE cache_key = ?",
+                            [key.cache_key]).fetchone()[0] == 1
+    assert (root / "external" / "pending.txt").read_text() == ""
+    assert ask.REFRESH_NOTES["refreshed"].format(n=1) in capsys.readouterr().out
+
+
+def test_refresh_refuses_to_extract_while_a_registerable_key_is_pending(
+    gtd_paths: tuple[Path, Path], tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+) -> None:
+    from life_agent.core import derivations as D
+    ledger, _state = gtd_paths
+    _seed_ledger(ledger)
+    root = _pkm_tmp_root(tmp_path, monkeypatch)
+    key = D.expand_key("q", model="m-2026", prompt_template="P", temperature=0.0, max_tokens=9)
+    D.record(root, key, b"terms", lineage=[])
+    # the reconciler could not register it (the writer lock held by a running extraction, a
+    # schema-less catalogue …): the key stays queued with its meta.json on disk
+    monkeypatch.setattr(ask.D, "reconcile", lambda root: D.ReconcileCounts())
+    extracts = _fake_extract(monkeypatch)
+
+    ask.ensure_gtd_fresh()
+
+    assert extracts == []                                # never reached the sweep
+    out = capsys.readouterr().out
+    assert ask.REFRESH_NOTES["blocked"].format(n=1) in out
+    assert ask.REFRESH_NOTES["failed"].split("{")[0] not in out
+    assert ask.gtd_stale() is True                       # un-stamped: the next ask retries
+    assert (root / "external" / "pending.txt").read_text().split() == [key.cache_key]
+
+
 # --- drift gate: the note table is rendered, never ad-hoc ------------------ #
 
 
 def test_refresh_notes_render() -> None:
-    assert set(ask.REFRESH_NOTES) == {"refreshed", "failed"}
+    assert set(ask.REFRESH_NOTES) == {"refreshed", "failed", "blocked"}
     assert "42" in ask.REFRESH_NOTES["refreshed"].format(n=42)
     assert "oops" in ask.REFRESH_NOTES["failed"].format(error="oops")
+    assert "7" in ask.REFRESH_NOTES["blocked"].format(n=7)

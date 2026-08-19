@@ -371,3 +371,15 @@ def test_lookup_confirm_key_sensitivity() -> None:
                               engine_version="e/1", output_schema={"type": "object"})
     assert ek.cache_key != base
 
+
+def test_pending_registerable_counts_queued_keys_whose_meta_exists(tmp_path: Path) -> None:
+    """The reconcile-or-refuse predicate: a queued key with its meta.json on disk is
+    registerable (an extract's sweep would remove it); a dead key or an empty/absent queue is
+    not. Pure read — nothing is rewritten."""
+    assert D.pending_registerable(tmp_path) == 0                  # no queue at all
+    key = _expand_key()
+    D.record(tmp_path, key, b"terms", lineage=[])
+    _queue(tmp_path, "f" * 64)                                    # plus a dead key
+    before = (tmp_path / "external" / "pending.txt").read_bytes()
+    assert D.pending_registerable(tmp_path) == 1
+    assert (tmp_path / "external" / "pending.txt").read_bytes() == before

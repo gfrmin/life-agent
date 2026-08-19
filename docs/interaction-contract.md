@@ -101,8 +101,12 @@ document retrievable). The refresh is announced, never silent: `gtd state refres
 event N` on success, or the named fail-open degradation `gtd state refresh failed (…) —
 answering over the corpus as-is` (same contract as `/derive`). A failed refresh leaves the
 state stale: the next question retries and the failure is re-named each time — degraded,
-never silent. When fresh: nothing printed, nothing written. The strings are one table
-(`ask.REFRESH_NOTES`), drift-gated.
+never silent. The re-ingest reconciles the pkm catalogue first and, if recorded derivations
+are still awaiting their catalogue rows, **refuses** to extract (pkm's extract sweeps
+unregistered artefacts — SPEC §6.2): `gtd state refresh blocked: N recorded derivation(s)
+still awaiting catalogue reconciliation — not extracting (…)` — un-stamped and retried like
+a failure, never a silent extract. When fresh: nothing printed, nothing written. The
+strings are one table (`ask.REFRESH_NOTES`), drift-gated.
 
 **The owner filter (subject mode).** A plain `QUESTION` with an *unchained* first-person
 possessive — "what is **my** Israeli ID?", "the **owner's** mortgage" — filters hits by

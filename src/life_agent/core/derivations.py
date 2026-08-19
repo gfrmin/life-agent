@@ -590,6 +590,17 @@ def reconcile(root: Path) -> ReconcileCounts:
     return ReconcileCounts(**n)
 
 
+def pending_registerable(root: Path) -> int:
+    """How many queued keys still have their ``meta.json`` on disk — artefacts an extract's
+    orphan sweep (SPEC §6.2) would remove because their catalogue row lags. The
+    reconcile-or-refuse predicate for any caller about to run an extract. Pure read."""
+    queue = root / _PENDING_QUEUE
+    if not queue.exists():
+        return 0
+    keys = [k for k in dict.fromkeys(queue.read_text(encoding="utf-8").split()) if k]
+    return sum(1 for k in keys if meta_file(root, k).exists())
+
+
 def _reconcile_one(root: Path, conn: duckdb.DuckDBPyConnection, cache_key: str
                    ) -> tuple[str, list[str]]:
     """Insert the artifacts + artifact_lineage rows for one file-complete artifact,

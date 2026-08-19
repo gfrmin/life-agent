@@ -1305,7 +1305,19 @@ def run_derive(targets: list[tuple[str, str]]) -> None:
 REFRESH_NOTES: dict[str, str] = {
     "refreshed": "gtd state refreshed @ event {n}",
     "failed": "gtd state refresh failed ({error}) — answering over the corpus as-is",
+    "blocked": ("gtd state refresh blocked: {n} recorded derivation(s) still awaiting catalogue "
+                "reconciliation — not extracting (an extract sweeps unregistered artefacts); "
+                "answering over the corpus as-is"),
 }
+
+
+class _RefreshBlockedError(Exception):
+    """The re-ingest refused to extract: registerable derivations are still pending
+    reconciliation (SPEC §18.9) and pkm's extract would sweep them (§6.2)."""
+
+    def __init__(self, n: int) -> None:
+        super().__init__(n)
+        self.n = n
 
 
 def gtd_stale() -> bool:
@@ -1354,6 +1366,15 @@ def _reingest_state(root: Path, state: Path) -> None:
     ingest_sources(root, only_paths=[state])
     cfg = pkm_load_config(C.PKM_CONFIG)
     prefix = hashlib.sha256(state.read_bytes()).hexdigest()[:16]
+    # Reconcile-or-refuse (SPEC §18.9 meets §6.2): the extract's orphan sweep removes every
+    # file-complete artefact whose catalogue row lags — the r03 loss. Register what is
+    # registerable NOW (the startup reconcile does not cover the REPL's per-question refresh),
+    # and if any registerable key is still pending, do not extract: the caller names it,
+    # un-stamps the state doc, and the next ask retries.
+    D.reconcile(root)
+    n_pending = D.pending_registerable(root)
+    if n_pending:
+        raise _RefreshBlockedError(n_pending)
     pkm_extract(root, cfg, source_prefix=prefix)
     with open_catalogue(root) as wconn:
         build_fts_index(wconn)
@@ -1374,6 +1395,12 @@ def ensure_gtd_fresh() -> None:
             raise FileNotFoundError(f"unresolvable pkm root (config: {C.PKM_CONFIG})")
         _reingest_state(root, C.TASKS_STATE)
         print(REFRESH_NOTES["refreshed"].format(n=len(events)))
+    except _RefreshBlockedError as e:
+        # refused, not failed: un-stamped (the next ask retries after another reconcile),
+        # named with the count — never a silent extract over unregistered artefacts
+        with contextlib.suppress(OSError):
+            C.TASKS_STATE.unlink(missing_ok=True)
+        print(REFRESH_NOTES["blocked"].format(n=e.n))
     except Exception as e:  # fail-open by contract (mirror run_derive)
         # The stamp is the freshness oracle and write_state runs BEFORE the
         # re-ingest, so a failure here must un-stamp the doc: a stamped doc
