@@ -47,7 +47,7 @@ import json
 import logging
 import re
 import shutil
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -486,31 +486,118 @@ def delete_artifact(
 # --- Orphan sweep ---------------------------------------------------------
 
 
-def sweep_orphans(
-    root: Path, conn: duckdb.DuckDBPyConnection
-) -> list[str]:
-    """Remove orphan cache directories and return the cache keys
-    removed (SPEC §6.2).
+@dataclass(frozen=True)
+class SweepPreview:
+    """What a consistency sweep would act on (SPEC §6.2, 0.18.0) — the
+    read-only classification of every cache directory that has files
+    but no ``artifacts`` row.
 
-    A cache directory ``<root>/cache/<aa>/<bb...>/`` is an orphan iff
-    it contains a ``content`` and/or ``meta.json`` file AND no row in
-    ``artifacts`` has ``cache_key`` equal to ``<aa><bb...>``. Empty
-    directories are not touched — the invariant is about files, not
-    directories.
-
-    Must be called at the start of every ``pkm extract`` and every
-    ``pkm rebuild-catalogue`` invocation.
+    Attributes:
+        torn: Directories without a complete, parseable ``meta.json``
+            (or missing ``content`` for ``status = 'success'``, or
+            missing ``lineage.json`` for ``cache_key_schema_version >=
+            2``) — an interrupted write; a sweep removes them.
+        unregistered: Directories holding a complete ``meta.json`` whose
+            catalogue row lags — a sweep registers them from disk or,
+            failing that, leaves them in place with a WARNING.
     """
+
+    torn: tuple[str, ...]
+    unregistered: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class SweepResult:
+    """Outcome of one consistency sweep (SPEC §6.2, 0.18.0).
+
+    Attributes:
+        removed: Torn directories removed.
+        registered: Unregistered directories whose ``artifacts`` +
+            ``artifact_lineage`` rows were inserted from the on-disk
+            files (``produced_at`` preserved).
+        left: Unregistered directories left in place because
+            registration failed (schema mismatch, a ``meta.json``
+            naming another key, malformed lineage …); each is logged at
+            WARNING with the cache key and the reason, every sweep,
+            until repaired — never removed.
+    """
+
+    removed: tuple[str, ...]
+    registered: tuple[str, ...]
+    left: tuple[str, ...]
+
+
+# The meta.json fields a v1 row cannot be built without (SPEC §5.1 /
+# §13.1). A directory whose meta.json lacks one of these is incomplete
+# — an interrupted write, not a lagging index — and therefore torn.
+_META_REQUIRED_KEYS: tuple[str, ...] = (
+    "cache_key",
+    "input_hash",
+    "producer_name",
+    "producer_version",
+    "producer_config_hash",
+    "status",
+    "produced_at",
+)
+
+
+def _torn_reason(adir: Path) -> str | None:
+    """Why ``adir`` (a cache directory with files but no row) is torn
+    (SPEC §6.2, 0.18.0), or ``None`` when it holds a complete,
+    parseable ``meta.json`` — i.e. it is *unregistered*, and the sweep
+    must register-or-leave it rather than remove it.
+
+    Torn: no ``meta.json``; a ``meta.json`` that is not valid JSON; one
+    that lacks ``format_version`` or a required v1 field; a
+    ``status = 'success'`` record without its ``content``; a
+    ``cache_key_schema_version >= 2`` record without ``lineage.json``.
+
+    NOT torn (left to registration, which then leaves-and-WARNs on
+    failure): a ``format_version`` we do not know, a ``cache_key`` that
+    names another directory, a JSON document that is not an object,
+    malformed lineage — deletion never follows from a reading we do not
+    understand.
+    """
+    mf = adir / "meta.json"
+    if not mf.is_file():
+        return "no meta.json"
+    try:
+        meta = json.loads(mf.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as e:
+        return f"meta.json unparseable ({type(e).__name__})"
+    if not isinstance(meta, dict):
+        return None  # a reading we do not understand: leave it to registration
+    if "format_version" not in meta:
+        return "meta.json has no format_version"
+    if meta.get("format_version") != META_FORMAT_VERSION:
+        return None  # schema mismatch: registration fails and leaves it
+    missing = [k for k in _META_REQUIRED_KEYS if k not in meta]
+    if missing:
+        return "meta.json incomplete (missing " + ", ".join(missing) + ")"
+    if meta.get("status") == "success" and not (adir / "content").is_file():
+        return "status = 'success' but no content file"
+    try:
+        schema_version = int(meta.get("cache_key_schema_version", 1))
+    except (TypeError, ValueError):
+        return None
+    if schema_version >= 2 and not (adir / "lineage.json").is_file():
+        return f"cache_key_schema_version {schema_version} but no lineage.json"
+    return None
+
+
+def _iter_unrowed_dirs(
+    root: Path, conn: duckdb.DuckDBPyConnection
+) -> Iterator[tuple[str, Path]]:
+    """Yield ``(cache_key, dir)`` for every ``<aa>/<bb...>/`` directory
+    that contains at least one file and has no ``artifacts`` row. Empty
+    directories are not yielded — the §6.2 invariant is about files."""
     cdir = cache_dir(root)
     if not cdir.exists():
-        return []
-
+        return
     known_keys = {
         row[0]
         for row in conn.execute("SELECT cache_key FROM artifacts").fetchall()
     }
-
-    removed: list[str] = []
     for aa in sorted(cdir.iterdir()):
         if not aa.is_dir() or not _AA_RE.match(aa.name):
             continue
@@ -520,26 +607,107 @@ def sweep_orphans(
             cache_key = aa.name + bb.name
             if cache_key in known_keys:
                 continue
-
-            files = [f for f in bb.iterdir() if f.is_file()]
-            if not files:
-                # Empty directory — not an orphan per §6.2.
+            if not any(f.is_file() for f in bb.iterdir()):
                 continue
+            yield cache_key, bb
 
-            contained = sorted(f.name for f in files)
+
+def preview_sweep(
+    root: Path, conn: duckdb.DuckDBPyConnection
+) -> SweepPreview:
+    """Classify, without changing anything, what ``sweep_orphans`` would
+    act on (SPEC §6.2, 0.18.0): the dry run. Safe on a read-only
+    connection."""
+    torn: list[str] = []
+    unregistered: list[str] = []
+    for cache_key, bb in _iter_unrowed_dirs(root, conn):
+        if _torn_reason(bb) is None:
+            unregistered.append(cache_key)
+        else:
+            torn.append(cache_key)
+    return SweepPreview(torn=tuple(torn), unregistered=tuple(unregistered))
+
+
+def sweep_orphans(
+    root: Path, conn: duckdb.DuckDBPyConnection
+) -> SweepResult:
+    """The consistency sweep (SPEC §6.2, 0.18.0). Over every cache
+    directory that has files but no ``artifacts`` row:
+
+    * **torn** (no complete, parseable ``meta.json``; see
+      :func:`_torn_reason`) — removed; the event is logged;
+    * **unregistered** (a complete ``meta.json`` whose row lags —
+      the §5.3 / §18.9 reconciliation) — registered from the on-disk
+      files, ``produced_at`` preserved; if registration fails
+      (schema mismatch, malformed lineage, a ``meta.json`` naming
+      another key) the directory is left in place and a WARNING names
+      the cache key and the reason.
+
+    Deletion never follows from index lag: ``meta.json`` is
+    authoritative and the catalogue is rebuildable (§13.1). Must be
+    called at the start of every ``pkm extract`` and after every
+    ``pkm rebuild-catalogue``. Idempotent: a second run removes and
+    registers nothing and re-reports (re-WARNs) what it left.
+    """
+    # Registering a directory IS a per-directory rebuild (SPEC §5.3), so
+    # the row construction lives in pkm.rebuild — which imports this
+    # module's path helpers at import time; hence the local import.
+    from pkm.rebuild import register_directory
+
+    removed: list[str] = []
+    registered: list[str] = []
+    left: list[str] = []
+    for cache_key, bb in _iter_unrowed_dirs(root, conn):
+        reason = _torn_reason(bb)
+        if reason is not None:
+            contained = sorted(f.name for f in bb.iterdir() if f.is_file())
             shutil.rmtree(bb)
             removed.append(cache_key)
             logger.warning(
-                "removed orphan cache dir %s (contained %s)",
-                cache_key[:12],
+                "removed torn cache dir %s (%s; contained %s)",
+                cache_key,
+                reason,
                 ", ".join(contained),
                 extra={
                     "event": "orphan_removed",
                     "cache_key": cache_key,
+                    "reason": reason,
                     "contained": contained,
                 },
             )
-    return removed
+            continue
+        try:
+            dupes = register_directory(root, conn, cache_key)
+        except Exception as e:  # every failure class is "leave it, say why"
+            left.append(cache_key)
+            logger.warning(
+                "left unregistered cache dir %s in place — registration "
+                "failed (%s: %s)",
+                cache_key,
+                type(e).__name__,
+                e,
+                extra={
+                    "event": "unregistered_left",
+                    "cache_key": cache_key,
+                    "reason": f"{type(e).__name__}: {e}",
+                },
+            )
+            continue
+        registered.append(cache_key)
+        logger.info(
+            "registered unregistered cache dir %s from its on-disk files",
+            cache_key,
+            extra={
+                "event": "unregistered_registered",
+                "cache_key": cache_key,
+                "duplicate_lineage_inputs": dupes,
+            },
+        )
+    return SweepResult(
+        removed=tuple(removed),
+        registered=tuple(registered),
+        left=tuple(left),
+    )
 
 
 # --- Internal helpers -----------------------------------------------------

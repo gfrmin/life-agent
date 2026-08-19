@@ -25,10 +25,13 @@ from pathlib import Path
 
 import pytest
 
+from pkm.cache import artifact_dir, meta_file, write_artifact
 from pkm.catalogue import open_catalogue, run_migrations
 from pkm.config import Config, ExtractorConfig
 from pkm.extract import ExtractError, ExtractResult, extract
+from pkm.hashing import compute_cache_key
 from pkm.ingest import ingest_sources
+from pkm.producer import ProducerResult
 from pkm.producers.docling import installed_docling_version
 from pkm.producers.email_producer import installed_email_version
 from pkm.producers.pandoc import installed_pandoc_version
@@ -179,6 +182,58 @@ def test_second_extract_is_a_no_op(tmp_path: Path) -> None:
     assert result.succeeded == 0
     assert result.failed == 0
     assert result.cache_hits == 0
+
+
+def test_extract_registers_an_unregistered_derivation_instead_of_sweeping_it(
+    tmp_path: Path,
+) -> None:
+    """SPEC §6.2 (0.18.0) at the extract's own sweep: a file-first §18.9 derivation whose
+    catalogue rows lag (complete content + lineage.json + meta.json, no row) SURVIVES the
+    sweep at extract start and comes out registered — the r03 loss path, closed."""
+    bench = _bench(tmp_path, [("note.md", "# Hello\n\nBody text.\n")])
+    extract(bench.root, bench.config)
+    with open_catalogue(bench.root) as conn:
+        (upstream,) = conn.execute(
+            "SELECT cache_key FROM artifacts ORDER BY cache_key LIMIT 1"
+        ).fetchone()
+    # A §18.9-shaped derivation, written file-first through the normal seam, then its rows
+    # dropped to simulate the lag (the writer's reconciliation has not run yet).
+    derived = compute_cache_key(
+        input_hash="a" * 64, producer_name="life_agent.ask.test_stage",
+        producer_version="1", producer_config={}, schema_version=3,
+        model_identity={"provider": "t", "model": "m", "version": "1"},
+        engine_version="e1", prompt_template_hash="b" * 64,
+        output_schema={"type": "object"},
+    )
+    with open_catalogue(bench.root) as conn:
+        write_artifact(
+            bench.root, conn, cache_key=derived, input_hash="a" * 64,
+            producer_name="life_agent.ask.test_stage", producer_version="1",
+            producer_config={},
+            result=ProducerResult(status="success", content=b"{}",
+                                  content_type="application/json",
+                                  content_encoding="utf-8", error_message=None,
+                                  producer_metadata={}),
+            lineage=[{"cache_key": upstream, "role": "observation"}],
+            cache_key_schema_version=3,
+        )
+        conn.execute("DELETE FROM artifact_lineage WHERE artifact_cache_key = ?", [derived])
+        conn.execute("DELETE FROM artifacts WHERE cache_key = ?", [derived])
+
+    extract(bench.root, bench.config)          # its sweep runs first
+
+    assert artifact_dir(bench.root, derived).exists()
+    assert meta_file(bench.root, derived).exists()
+    with open_catalogue(bench.root) as conn:
+        (n,) = conn.execute(
+            "SELECT COUNT(*) FROM artifacts WHERE cache_key = ?", [derived]
+        ).fetchone()
+        lin = conn.execute(
+            "SELECT input_cache_key, role FROM artifact_lineage "
+            "WHERE artifact_cache_key = ?", [derived],
+        ).fetchall()
+    assert n == 1
+    assert lin == [(upstream, "observation")]
 
 
 # --- retry_failed re-runs failures --------------------------------------

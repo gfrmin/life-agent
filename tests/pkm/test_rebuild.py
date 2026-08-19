@@ -166,6 +166,25 @@ def test_rebuild_skips_unsupported_format_version(
     assert ck in result.skipped
 
 
+def test_rebuild_leaves_an_unregistrable_dir_in_place(migrated_root: Path) -> None:
+    """A meta.json the rebuild cannot use (format_version mismatch) is skipped by the
+    rebuild AND left on disk by the post-rebuild sweep — it is not torn (SPEC §6.2,
+    0.18.0), so index lag or a schema drift never becomes a deletion."""
+    ck = _write_artifact(migrated_root)
+    meta_path = meta_file(migrated_root, ck)
+    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    meta["format_version"] = 99
+    meta_path.write_text(json.dumps(meta), encoding="utf-8")
+    _drop_artifacts(migrated_root)
+
+    result = rebuild_artifacts(migrated_root)
+    assert ck in result.skipped
+    assert result.swept == []
+    assert result.left == [ck]
+    assert artifact_dir(migrated_root, ck).exists()
+    assert meta_file(migrated_root, ck).exists()
+
+
 def test_rebuild_sweeps_orphans_without_meta_json(
     migrated_root: Path,
 ) -> None:

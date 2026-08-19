@@ -42,7 +42,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+import duckdb
+
 from pkm.cache import (
+    artifact_dir,
     cache_dir,
     content_path_rel,
     duplicate_lineage_inputs,
@@ -79,8 +82,11 @@ class RebuildResult:
         skipped: Cache keys whose ``meta.json`` was unreadable,
             malformed, format-incompatible, or whose recorded
             ``cache_key`` did not match the directory.
-        swept: Cache keys whose directories were removed by the
-            post-rebuild orphan sweep.
+        swept: Cache keys whose (torn) directories were removed by the
+            post-rebuild consistency sweep (SPEC §6.2).
+        left: Cache keys the post-rebuild sweep found unregistered but
+            could not register (they are in ``skipped`` too) and left
+            in place with a WARNING — never removed (SPEC §6.2, 0.18.0).
     """
 
     scanned: int
@@ -88,6 +94,7 @@ class RebuildResult:
     lineage_inserted: int = 0
     skipped: list[str] = field(default_factory=list)
     swept: list[str] = field(default_factory=list)
+    left: list[str] = field(default_factory=list)
 
 
 def rebuild_artifacts(
@@ -197,23 +204,25 @@ def rebuild_artifacts(
             conn.execute("ROLLBACK")
             raise
 
-        swept = sweep_orphans(root, conn)
+        sweep = sweep_orphans(root, conn)
 
     logger.info(
         "rebuild complete: scanned %d, inserted %d, lineage %d, "
-        "skipped %d, swept %d",
+        "skipped %d, swept %d, left %d",
         scanned,
         len(rows),
         len(lineage_rows),
         len(skipped),
-        len(swept),
+        len(sweep.removed),
+        len(sweep.left),
         extra={
             "event": "rebuild_complete",
             "scanned": scanned,
             "inserted": len(rows),
             "lineage_inserted": len(lineage_rows),
             "skipped": len(skipped),
-            "swept": len(swept),
+            "swept": len(sweep.removed),
+            "left": len(sweep.left),
         },
     )
 
@@ -222,8 +231,67 @@ def rebuild_artifacts(
         inserted=len(rows),
         lineage_inserted=len(lineage_rows),
         skipped=skipped,
-        swept=swept,
+        swept=list(sweep.removed),
+        left=list(sweep.left),
     )
+
+
+def register_directory(
+    root: Path, conn: duckdb.DuckDBPyConnection, cache_key: str,
+) -> list[str]:
+    """Register ONE cache directory from its on-disk files — a
+    per-directory rebuild (SPEC §5.3; the §6.2 sweep's register step
+    and the §18.9 reconciliation): parse ``meta.json``, run the same
+    consistency check and row construction as ``rebuild_artifacts``,
+    read ``lineage.json`` (repeated inputs collapsed loudly, see
+    ``_read_lineage``), and insert the ``artifacts`` +
+    ``artifact_lineage`` rows in one transaction, preserving the
+    recorded ``produced_at``.
+
+    Returns the input cache keys that repeated in ``lineage.json`` (empty
+    when unique). Raises — ``OSError``, ``json.JSONDecodeError``,
+    ``KeyError``, ``ValueError``, ``TypeError``,
+    ``LineageCorruptionError``, or a DuckDB error — when the directory
+    cannot be registered; nothing is written in that case (the
+    transaction is rolled back) and the files are untouched.
+    """
+    adir = artifact_dir(root, cache_key)
+    meta = json.loads((adir / "meta.json").read_text(encoding="utf-8"))
+    if not isinstance(meta, dict):
+        raise TypeError(
+            f"meta.json for {cache_key} is a JSON {type(meta).__name__}, "
+            f"not an object"
+        )
+    _check_meta_consistency(cache_key, meta)
+    row = _meta_to_row(cache_key, meta)
+    inputs = json.loads((adir / "lineage.json").read_text(encoding="utf-8")).get(
+        "inputs", []
+    ) if (adir / "lineage.json").is_file() else []
+    dupes = duplicate_lineage_inputs(inputs)
+    lineage_rows = _read_lineage(cache_key, adir)
+    conn.execute("BEGIN TRANSACTION")
+    try:
+        conn.execute(
+            "INSERT INTO artifacts "
+            "(cache_key, input_hash, producer_name, producer_version, "
+            " producer_config_hash, status, produced_at, size_bytes, "
+            " error_message, content_type, content_encoding, "
+            " content_path) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            list(row),
+        )
+        for lr in lineage_rows:
+            conn.execute(
+                "INSERT INTO artifact_lineage "
+                "(artifact_cache_key, input_cache_key, role) "
+                "VALUES (?, ?, ?)",
+                list(lr),
+            )
+        conn.execute("COMMIT")
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
+    return dupes
 
 
 # --- Internal helpers -----------------------------------------------------

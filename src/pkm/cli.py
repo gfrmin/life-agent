@@ -483,7 +483,8 @@ def _cmd_rebuild_catalogue(
             f"rebuilt artifacts: scanned {result.scanned}, "
             f"inserted {result.inserted}, "
             f"skipped {len(result.skipped)}, "
-            f"swept {len(result.swept)}"
+            f"swept {len(result.swept)}, "
+            f"left {len(result.left)}"
         )
     return 0
 

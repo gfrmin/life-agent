@@ -199,14 +199,20 @@ def _run(
     t_start: float,
 ) -> ExtractResult:
     with open_catalogue(root) as conn:
-        swept = sweep_orphans(root, conn)
-        if swept:
+        sweep = sweep_orphans(root, conn)
+        if sweep.removed or sweep.registered or sweep.left:
             logger.warning(
-                "swept %d orphan cache directories at extract start",
-                len(swept),
+                "consistency sweep at extract start: removed %d torn, "
+                "registered %d unregistered, left %d unregistrable "
+                "cache directories",
+                len(sweep.removed),
+                len(sweep.registered),
+                len(sweep.left),
                 extra={
                     "event": "extract_swept_orphans",
-                    "count": len(swept),
+                    "count": len(sweep.removed),
+                    "registered": len(sweep.registered),
+                    "left": len(sweep.left),
                 },
             )
 

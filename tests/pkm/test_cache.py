@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from pathlib import Path
 
 import pytest
@@ -38,6 +39,7 @@ from pkm.cache import (
     delete_artifact,
     lineage_file,
     meta_file,
+    preview_sweep,
     read_artifact,
     sweep_orphans,
     write_artifact,
@@ -248,9 +250,10 @@ def test_sweep_removes_orphan_with_content_only(migrated_root: Path) -> None:
     (d / "content").write_bytes(b"stranded")
 
     with open_catalogue(migrated_root) as conn:
-        removed = sweep_orphans(migrated_root, conn)
+        result = sweep_orphans(migrated_root, conn)
 
-    assert removed == [cache_key]
+    assert result.removed == (cache_key,)
+    assert result.registered == () and result.left == ()
     assert not d.exists()
 
 
@@ -265,9 +268,10 @@ def test_sweep_removes_orphan_with_content_and_meta(migrated_root: Path) -> None
     (d / "meta.json").write_text("{}", encoding="utf-8")
 
     with open_catalogue(migrated_root) as conn:
-        removed = sweep_orphans(migrated_root, conn)
+        result = sweep_orphans(migrated_root, conn)
 
-    assert removed == [cache_key]
+    assert result.removed == (cache_key,)
+    assert result.registered == () and result.left == ()
     assert not d.exists()
 
 
@@ -281,17 +285,18 @@ def test_sweep_removes_orphan_with_meta_only(migrated_root: Path) -> None:
     (d / "meta.json").write_text("{}", encoding="utf-8")
 
     with open_catalogue(migrated_root) as conn:
-        removed = sweep_orphans(migrated_root, conn)
+        result = sweep_orphans(migrated_root, conn)
 
-    assert removed == [cache_key]
+    assert result.removed == (cache_key,)
+    assert result.registered == () and result.left == ()
     assert not d.exists()
 
 
 def test_sweep_leaves_healthy_artifacts_untouched(migrated_root: Path) -> None:
     cache_key, _ = _write(migrated_root)
     with open_catalogue(migrated_root) as conn:
-        removed = sweep_orphans(migrated_root, conn)
-    assert removed == []
+        result = sweep_orphans(migrated_root, conn)
+    assert result.removed == () and result.registered == () and result.left == ()
     assert content_file(migrated_root, cache_key).exists()
     assert meta_file(migrated_root, cache_key).exists()
 
@@ -304,9 +309,258 @@ def test_sweep_ignores_empty_cache_directories(migrated_root: Path) -> None:
     cache_key = "4" * 64
     d = _orphan_dir(migrated_root, cache_key)
     with open_catalogue(migrated_root) as conn:
-        removed = sweep_orphans(migrated_root, conn)
-    assert removed == []
+        result = sweep_orphans(migrated_root, conn)
+    assert result.removed == () and result.registered == () and result.left == ()
     assert d.exists()
+
+
+# --- The sweep under 0.18.0: torn vs unregistered ------------------------------
+#
+# SPEC §6.2 (0.18.0): a directory with no row is TORN iff it does not hold a complete,
+# parseable meta.json (+ content when status = 'success', + lineage.json when
+# cache_key_schema_version >= 2) — removed as before. A directory with no row but a
+# complete meta.json is UNREGISTERED — the sweep registers it from its on-disk files
+# (preserving produced_at) or, if registration fails, leaves it in place with a WARNING.
+
+
+def _drop_rows(root: Path, cache_key: str) -> None:
+    """Simulate index lag: the on-disk files are complete, the catalogue rows are gone."""
+    with open_catalogue(root) as conn:
+        conn.execute("DELETE FROM artifact_lineage WHERE artifact_cache_key = ?", [cache_key])
+        conn.execute("DELETE FROM artifacts WHERE cache_key = ?", [cache_key])
+
+
+def _rows(root: Path, cache_key: str) -> tuple[int, list[tuple[str, str]]]:
+    with open_catalogue(root) as conn:
+        (n,) = conn.execute(
+            "SELECT COUNT(*) FROM artifacts WHERE cache_key = ?", [cache_key]
+        ).fetchone()
+        lin = conn.execute(
+            "SELECT input_cache_key, role FROM artifact_lineage "
+            "WHERE artifact_cache_key = ? ORDER BY input_cache_key", [cache_key],
+        ).fetchall()
+    return n, [(a, b) for a, b in lin]
+
+
+def test_sweep_registers_an_unregistered_file_complete_dir(migrated_root: Path) -> None:
+    """The r03 class: complete files, no row (§18.9 index lag). The sweep MUST NOT remove
+    it — it inserts the row from meta.json, preserving the recorded produced_at."""
+    cache_key, _ = _write(migrated_root)
+    with open_catalogue(migrated_root) as conn:
+        (produced_before,) = conn.execute(
+            "SELECT produced_at FROM artifacts WHERE cache_key = ?", [cache_key]
+        ).fetchone()
+    _drop_rows(migrated_root, cache_key)
+    assert _rows(migrated_root, cache_key)[0] == 0
+
+    with open_catalogue(migrated_root) as conn:
+        result = sweep_orphans(migrated_root, conn)
+        (produced_after,) = conn.execute(
+            "SELECT produced_at FROM artifacts WHERE cache_key = ?", [cache_key]
+        ).fetchone()
+
+    assert result.registered == (cache_key,)
+    assert result.removed == () and result.left == ()
+    assert content_file(migrated_root, cache_key).exists()
+    assert meta_file(migrated_root, cache_key).exists()
+    assert produced_after == produced_before
+
+
+def test_sweep_registers_transform_dir_with_its_lineage_rows(migrated_root: Path) -> None:
+    lineage = [
+        {"cache_key": "c" * 64, "role": "primary"},
+        {"cache_key": "d" * 64, "role": "context"},
+    ]
+    cache_key, _ = _write_transform(migrated_root, lineage=lineage)
+    _drop_rows(migrated_root, cache_key)
+
+    with open_catalogue(migrated_root) as conn:
+        result = sweep_orphans(migrated_root, conn)
+
+    assert result.registered == (cache_key,)
+    assert _rows(migrated_root, cache_key) == (
+        1, [("c" * 64, "primary"), ("d" * 64, "context")]
+    )
+
+
+def test_sweep_registers_duplicate_lineage_dir_loudly_with_one_row_per_input(
+    migrated_root: Path, caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The exact r03 loss chain: a pre-fix writer's lineage.json repeats an input, so the
+    row insert used to trip the PK, the artefact stayed unregistered, and the sweep deleted
+    it. Now: registered with one row per input, and a WARNING naming the artefact."""
+    cache_key, _ = _write_transform(migrated_root)
+    lp = lineage_file(migrated_root, cache_key)
+    lin = json.loads(lp.read_text(encoding="utf-8"))
+    lin["inputs"] = [
+        {"cache_key": "c" * 64, "role": "primary"},
+        {"cache_key": "c" * 64, "role": "primary"},
+    ]
+    lp.write_text(json.dumps(lin), encoding="utf-8")
+    _drop_rows(migrated_root, cache_key)
+
+    with caplog.at_level(logging.WARNING), open_catalogue(migrated_root) as conn:
+        result = sweep_orphans(migrated_root, conn)
+
+    assert result.registered == (cache_key,)
+    assert result.removed == ()
+    assert _rows(migrated_root, cache_key) == (1, [("c" * 64, "primary")])
+    assert lineage_file(migrated_root, cache_key).exists()
+    loud = [r for r in caplog.records
+            if r.levelno == logging.WARNING and cache_key in r.getMessage()
+            and "repeats" in r.getMessage()]
+    assert len(loud) == 1
+
+
+def test_sweep_removes_torn_dir_whose_success_content_is_missing(
+    migrated_root: Path,
+) -> None:
+    """A complete meta.json with status = 'success' but no content file is torn (an
+    interrupted delete_artifact, or a content write that never landed) — removed."""
+    cache_key, _ = _write(migrated_root)
+    _drop_rows(migrated_root, cache_key)
+    content_file(migrated_root, cache_key).unlink()
+
+    with open_catalogue(migrated_root) as conn:
+        result = sweep_orphans(migrated_root, conn)
+
+    assert result.removed == (cache_key,)
+    assert result.registered == () and result.left == ()
+    assert not artifact_dir(migrated_root, cache_key).exists()
+
+
+def test_sweep_removes_torn_transform_dir_whose_lineage_is_missing(
+    migrated_root: Path,
+) -> None:
+    """cache_key_schema_version >= 2 requires lineage.json; without it the directory is
+    torn — removed."""
+    cache_key, _ = _write_transform(migrated_root)
+    _drop_rows(migrated_root, cache_key)
+    lineage_file(migrated_root, cache_key).unlink()
+
+    with open_catalogue(migrated_root) as conn:
+        result = sweep_orphans(migrated_root, conn)
+
+    assert result.removed == (cache_key,)
+    assert not artifact_dir(migrated_root, cache_key).exists()
+
+
+def test_sweep_leaves_a_failed_result_dir_registered_not_torn(migrated_root: Path) -> None:
+    """A failed ProducerResult writes meta.json and no content — that is complete for
+    status = 'failed', so an unregistered one is registered, not removed."""
+    cache_key, _ = _write(migrated_root, result=_failed())
+    _drop_rows(migrated_root, cache_key)
+
+    with open_catalogue(migrated_root) as conn:
+        result = sweep_orphans(migrated_root, conn)
+
+    assert result.registered == (cache_key,)
+    assert meta_file(migrated_root, cache_key).exists()
+
+
+@pytest.mark.parametrize(
+    "mutate, reason_fragment",
+    [
+        (lambda m: m.__setitem__("format_version", 99), "format_version"),
+        (lambda m: m.__setitem__("cache_key", "f" * 64), "cache_key"),
+    ],
+    ids=["schema-mismatch", "cache-key-mismatch"],
+)
+def test_sweep_leaves_unregistrable_dir_in_place_with_a_warning(
+    migrated_root: Path, caplog: pytest.LogCaptureFixture, mutate, reason_fragment: str,
+) -> None:
+    """Registration fails (schema mismatch, a meta.json that names another key): the
+    directory is LEFT — never deleted on a reading we do not understand — and a WARNING
+    names the cache key and the reason."""
+    cache_key, _ = _write(migrated_root)
+    mp = meta_file(migrated_root, cache_key)
+    meta = json.loads(mp.read_text(encoding="utf-8"))
+    mutate(meta)
+    mp.write_text(json.dumps(meta), encoding="utf-8")
+    _drop_rows(migrated_root, cache_key)
+
+    with caplog.at_level(logging.WARNING), open_catalogue(migrated_root) as conn:
+        result = sweep_orphans(migrated_root, conn)
+
+    assert result.left == (cache_key,)
+    assert result.removed == () and result.registered == ()
+    assert artifact_dir(migrated_root, cache_key).exists()
+    assert _rows(migrated_root, cache_key)[0] == 0
+    loud = [r for r in caplog.records
+            if r.levelno == logging.WARNING and cache_key in r.getMessage()]
+    assert len(loud) == 1
+    assert reason_fragment in loud[0].getMessage()
+
+
+def test_sweep_is_idempotent_across_a_double_run(migrated_root: Path) -> None:
+    """Second run: nothing to remove, nothing to register; a left directory is left again
+    (re-WARNed, never auto-dropped) and the filesystem is byte-for-byte as after run one."""
+    ok_key, _ = _write(migrated_root)
+    _drop_rows(migrated_root, ok_key)
+    bad_key, _ = _write(migrated_root, input_hash="b" * 64)
+    mp = meta_file(migrated_root, bad_key)
+    meta = json.loads(mp.read_text(encoding="utf-8"))
+    meta["format_version"] = 99
+    mp.write_text(json.dumps(meta), encoding="utf-8")
+    _drop_rows(migrated_root, bad_key)
+    torn_key = "7" * 64
+    (_orphan_dir(migrated_root, torn_key) / "content").write_bytes(b"stranded")
+
+    with open_catalogue(migrated_root) as conn:
+        first = sweep_orphans(migrated_root, conn)
+    snapshot = sorted(
+        (str(p.relative_to(migrated_root)), p.stat().st_mtime_ns, p.stat().st_size)
+        for p in artifact_dir(migrated_root, "0" * 64).parent.parent.rglob("*") if p.is_file()
+    )
+    with open_catalogue(migrated_root) as conn:
+        second = sweep_orphans(migrated_root, conn)
+    snapshot2 = sorted(
+        (str(p.relative_to(migrated_root)), p.stat().st_mtime_ns, p.stat().st_size)
+        for p in artifact_dir(migrated_root, "0" * 64).parent.parent.rglob("*") if p.is_file()
+    )
+
+    assert first.removed == (torn_key,)
+    assert first.registered == (ok_key,)
+    assert first.left == (bad_key,)
+    assert second.removed == () and second.registered == ()
+    assert second.left == (bad_key,)
+    assert snapshot2 == snapshot
+    assert _rows(migrated_root, ok_key)[0] == 1
+
+
+def test_preview_sweep_classifies_without_touching_disk_or_catalogue(
+    migrated_root: Path,
+) -> None:
+    """The dry-run: preview_sweep names what a sweep would remove (torn) and what it would
+    try to register (unregistered) — and changes nothing. A sweep then acts on exactly the
+    previewed sets."""
+    ok_key, _ = _write(migrated_root)
+    _drop_rows(migrated_root, ok_key)
+    torn_key = "8" * 64
+    (_orphan_dir(migrated_root, torn_key) / "content").write_bytes(b"stranded")
+    healthy_key, _ = _write(migrated_root, input_hash="b" * 64)
+
+    def _state() -> tuple[list[tuple[str, int, int]], list[str]]:
+        files = sorted(
+            (str(p.relative_to(migrated_root)), p.stat().st_mtime_ns, p.stat().st_size)
+            for p in (migrated_root / "cache").rglob("*") if p.is_file()
+        )
+        with open_catalogue(migrated_root) as conn:
+            keys = sorted(r[0] for r in conn.execute("SELECT cache_key FROM artifacts").fetchall())
+        return files, keys
+
+    before = _state()
+    with open_catalogue(migrated_root) as conn:
+        preview = preview_sweep(migrated_root, conn)
+    assert _state() == before
+    assert preview.torn == (torn_key,)
+    assert preview.unregistered == (ok_key,)
+    assert healthy_key not in preview.torn + preview.unregistered
+
+    with open_catalogue(migrated_root) as conn:
+        result = sweep_orphans(migrated_root, conn)
+    assert result.removed == preview.torn
+    assert result.registered + result.left == preview.unregistered
 
 
 # --- Asymmetric recovery: row exists, files missing -----------------------
@@ -595,8 +849,8 @@ def test_sweep_removes_orphan_with_lineage(migrated_root: Path) -> None:
     (d / "meta.json").write_text("{}", encoding="utf-8")
 
     with open_catalogue(migrated_root) as conn:
-        removed = sweep_orphans(migrated_root, conn)
-    assert cache_key in removed
+        result = sweep_orphans(migrated_root, conn)
+    assert cache_key in result.removed
     assert not d.exists()
 
 
