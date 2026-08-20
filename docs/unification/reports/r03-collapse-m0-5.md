@@ -681,3 +681,58 @@ an upper bound.
 
 **STOP.** The priced baseline (r02's O2) now runs against a settled retrieval; M1 opens on the
 review of this addendum and that baseline.
+
+## REVIEW 2 — dispositions applied (2026-08-20)
+
+The addendum's review discharged **R2 in full** and ruled on the three questions the addendum
+carried. This section records what was applied, and one correction to the sequence.
+
+**The addendum's commit had already run.** The review's closing sequence names it as the next
+step. It was not a separate commit: the addendum was written before `30da5f5` was signed and
+rode that commit as one of its five files, because R2's ruling asked for the quantisation to
+land *in this checkpoint's commit* and this report is one of the files that commit carried
+(`git show --stat 30da5f5`). Master is at `30da5f5`, pushed, with the R5 clean-checkout
+rehearsal proven on exactly that content. Nothing is outstanding there.
+
+* **R6 — registered, sequenced to M1 behind a trace.** The fourth unordered source is now
+  `module-collapse-design.md` **§6.9**: what it is, why M0.5 left it, the ruled disposition
+  (record a gather-lane trace first, then the same declared key with the same two kills, at
+  M1's checkpoint), and the pre-committed fallback (convert to a standing register entry naming
+  it known-and-uncovered, and M1 proceeds without the fix). It is also named as source (4) in
+  `bayesian-foundations.md` §14, whose entry is retitled *Four* unordered sources. No code
+  changed here: the ruling is that a fix with no oracle is a hope, not a fix.
+* **R7 — M1.5, the coverage census.** A new row in §8's table between M1 and M2, scoped as the
+  review states it: enumerate every reachable lane and terminal, and for each either record a
+  fixture or register it as known-and-uncovered. The row carries the structural reason —
+  *the fixture set pins the traces the recorder was told to run, so coverage is a declared
+  quantity, not an emergent one* — and the attribution argument for why it is not folded into
+  the priced baseline. It inherits §6.9's gather trace as its first row.
+* **R8 — a guard, riding M1's commit.** Recorded in §8's M1 row as part of that checkpoint's
+  commit: refuse to write into a non-empty checkpoint directory without an explicit flag. Not
+  built here — this checkpoint is closed, and the guard belongs to the commit that will next
+  exercise the recorder.
+* **A10.1 — its own register line.** `module-collapse-design.md` **§6.8**: *the declared
+  comparator is the only oracle; a second one built for convenience is a defect even when it
+  agrees.* It cites `compare_outputs`, the two artefact figures, and the fact that only a third
+  contradicting reading caught it — agreement would have taught nothing and would have been
+  quoted as corroboration.
+
+**One more §6.7 instance, found preparing O2.** The priced-baseline script written at M0 (r02's
+O2) was rehearsed before signing and refused twice on its own gates. It carried two defects
+that a sentence would not have caught: its merge target was `m0/`, written before M0.5 existed
+and therefore no longer the baseline of record, and it labelled the priced fixtures under a
+second checkpoint name that would have put two labels inside one baseline directory; and it
+**inherited** `PYTHONHASHSEED` rather than pinning it, which the recorder refuses only when the
+variable is unset — an ambient non-zero value records cleanly and fails at replay, after the
+spend. Both are R5's lesson with a bill attached. The replacement executes each of its
+preconditions as a gate (settled tree; baseline labelled and seeded as expected; the five fold
+inputs unmoved since the baseline was recorded, so both runs pin the same snapshot; R8's
+hazard, executed rather than documented; `PKM_CONFIG` present; daemon up), and its merge step
+gates snapshot byte-equality and fixture-id collisions and writes an undo list. Rehearsed at
+$0: the live gates pass, three refusal paths were witnessed (stale staging directory,
+wrong-checkpoint baseline, dirty worktree), and the full merge ran end to end on copies —
+102 → 105 fixtures, manifest regenerated over the merged set, 105/105 replaying identically.
+The real baseline was not touched.
+
+**STOP.** This checkpoint is closed. Next is r02's O2 — the priced baseline against the settled
+tree — after which M1 opens on the brief, with the three amendments this review names.

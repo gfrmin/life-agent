@@ -2382,7 +2382,7 @@ on this list. Answers land here by amendment, citing their evidence.
   action, answer rate, spend. *Rollback:* revert the commit — there is no env flag, and
   one must not be invented at read time.
 
-- **Three unordered sources on the decision path — the cache was doing the work of determinism
+- **Four unordered sources on the decision path — the cache was doing the work of determinism
   (2026-08-19/20, tranche-2 M0/M0.5, `scripts/collapse_replay.py` + the M0.5 probes, $0
   deterministic).** The decision-equivalence instrument built at M0 found two ties resolved by
   an unordered source, both pre-dating this arc. (1) `lookup.dedup_correlated` broke its
@@ -2402,7 +2402,15 @@ on this list. Answers land here by amendment, citing their evidence.
   questions still returned a different order and 22 a different set; quantising the leading
   term takes both to **zero**. Found at M0.5, deliberately left unfixed under that brief's
   one-change instruction and carried as a named question, then ruled in at review and landed as
-  the checkpoint's second commit. **What kept the ledger comparable
+  the checkpoint's second commit. (4) `probes.probe_corroborate`
+  (`src/life_agent/core/probes.py`) carries *both* pre-M0.5 layers in one function — a dedup
+  keeping the first-arrived candidate on a strict `>`, then a raw-score sort with no
+  tie-breakers at all — and is live whenever the gather lane runs. Found at M0.5 while
+  auditing the fix's blast radius and deliberately NOT fixed under the same one-change rule;
+  at review it was sequenced to M1 *behind* a recorded gather-lane trace, because **no fixture
+  exercises that lane** and a change to the decision path with no oracle is a hope, not a fix
+  (module-collapse-design §6.9 carries the disposition and its pre-committed fallback).
+  **What kept the ledger comparable
   was the §18.9 cache, not the code.** The retrieval stage is keyed on (query, corpus digest,
   k) and the answer stage on its content hash, so the first run to compute a stage froze one
   arbitrary draw and every later run was served it. Comparability therefore held exactly as

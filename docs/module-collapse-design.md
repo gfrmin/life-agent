@@ -587,6 +587,38 @@ estimate, a coverage judgement) — those stay prose, and the register is where 
 as prose. *Pinned by:* the checkpoint commit scripts' own gate sequence (guard, suite, ruff,
 mypy, replay), and stated as run in each checkpoint's report.
 
+**6.8 The declared comparator is the only oracle.** An *instrument-design* rule, added at M0.5.
+*Why:* the fixture-level delta table wanted a per-fixture digest, and a hand-rolled one was
+quicker to write than routing through §7.2's comparator. It reported 91 retrieval moves and 99
+decision moves; the declared comparator reported 17 and 6. Both hand-rolled figures were
+artefacts — a score drifting in its last bits, and the `run_id` the recorder stamps from the
+checkpoint name, a field §7.2 declares *runtime-measured* precisely so that it cannot be read
+as a change. The only reason it was caught is that a third reading contradicted it; had the
+convenience oracle merely *agreed*, nothing would have been learned and the agreement would
+have been quoted as corroboration. *The rule:* every comparison a report states is produced by
+`life_agent.collapse.compare.compare_outputs` under the §7.2 field classes; a second comparator
+built for convenience is a defect **even when it agrees** — agreement teaches nothing, and
+disagreement costs a session establishing which of the two is wrong. *Not covered:* summaries
+*of* the comparator's output (counts, groupings, the delta table's rows) — that is presentation,
+and stays cheap. *Pinned by:* the comparator's own tests, and by each checkpoint's delta table
+being produced by a script that calls it.
+
+**6.9 `probes.probe_corroborate`'s two unordered ties — registered, dispositioned to M1 behind
+a trace.** Not an exception this design wants to keep: a *pending fix*, registered here so the
+disposition survives whatever happens at M1 — the register is what the next census reads.
+*What:* the function dedups candidates keeping the first-arrived on a strict `>`, then sorts by
+raw score with no tie-breakers — the same two layers M0.5 declared total orders for at
+`lookup.dedup_correlated` and `retrieve_set`, in one place, live whenever the gather lane runs.
+*Why not fixed at M0.5:* that checkpoint's one-change rule, and then the standing rule that
+makes this entry worth having — **no fixture exercises the gather lane**, so the one-line
+declared key would land with no oracle, and an unwitnessed change to the decision path is a
+hope, not a fix. *Disposition (ruled at M0.5's review):* record a gather-lane trace first — it
+is wanted regardless (§8 M1.5) — then apply the same declared key with the same two kills
+(a seed sweep and a direct three-call determinism check including score equality) against it,
+at M1's checkpoint. *Fallback, pre-committed:* if the trace proves expensive or awkward, this
+entry converts to a standing one naming the source known-and-uncovered, and M1 proceeds without
+the fix. *Pinned by:* whichever branch is taken — the trace's fixtures, or this entry.
+
 ## 7. Behaviour preservation — the equivalence instrument, pre-stated
 
 **The invariant.** The collapse must not change *what the system decides*: for the same
@@ -669,7 +701,8 @@ re-run.
 | # | Move | Dual / shims | Green | Notes |
 |---|---|---|---|---|
 | **M0** | the instrument: `scripts/collapse_replay.py`, the fixture recorder (7.2, with the field-class list and the per-terminal-type coverage), the `brain.value` wire-shape test (§2.5, Q-R4), the `regime`/`policy` fields accepted by `/log_decision` (defaults honest), the wire-shape check that decides 6.3b (Q4) | nothing moves | 7.1; 7.2 records its baseline (no comparison yet) | no behaviour change; the fixtures are recorded from **this** tree — the pre-collapse truth; M0's report records the 6.3b decision |
-| **M1** | **E-14 dies** (with E-13, `LIFE_AGENT_GROW_LANE` retires: the priced lane is the lane) | none — the cascade is deleted outright (a hand-priced VOI has no shim value) | 7.1; 7.2 with the pre-registered direction on cascade fixtures; **7.3** (wrong commits 0; answer rate reported) | the first collapse target, alone; the eval run is the checkpoint's evidence, filed in the §14 ledger like runs 1–9; **`LIFE_AGENT_GROW_LANE`'s retirement is a config-surface change and gets its one documentation line at this checkpoint** (pre-M0 addition) |
+| **M1** | **E-14 dies** (with E-13, `LIFE_AGENT_GROW_LANE` retires: the priced lane is the lane) | none — the cascade is deleted outright (a hand-priced VOI has no shim value) | 7.1; 7.2 with the pre-registered direction on cascade fixtures; **7.3** (wrong commits 0; answer rate reported) | the first collapse target, alone; the eval run is the checkpoint's evidence, filed in the §14 ledger like runs 1–9; **`LIFE_AGENT_GROW_LANE`'s retirement is a config-surface change and gets its one documentation line at this checkpoint** (pre-M0 addition) · **rides this commit (ruled at M0.5's review):** the recorder's non-empty-output-directory guard (R8 — refuse to write into a non-empty checkpoint directory without an explicit flag; the hazard is a partial failure presenting as a whole artefact, with the manifest globbing a directory it never verified) and §6.9's gather-lane fix *behind* its trace; **R4's hedge-path statement is satisfied by a fixture rather than an argument** — quantised retrieval moved one free-set question into `hedge` at M0.5, so the cascade deletion's effect on that path has an oracle |
+| **M1.5** | **the coverage census** (R7): enumerate every reachable lane and terminal — the gather lane (§6.9) and each hole the baseline's own manifest names — and for each either record a fixture or register it as known-and-uncovered | nothing moves | 7.2 on the widened set | *why its own checkpoint:* the fixture set pins the traces the recorder was **told** to run, so coverage is a declared quantity, not an emergent one — `terminal:hedge` was unpinned until an unrelated change happened to produce one. Widening coverage inside a checkpoint that also changes behaviour (or that pays for a priced baseline) conflates two variables: an odd fixture could not be attributed. Inherits §6.9's gather trace as its first row |
 | **M2** | **the one poster** (Q-O6): one driver function; `AC.answer`/`answer_via_executor` become thin delegating shims; the family leaves return their decision; the driver records once; A-3/D-10 die; S-1's unavailability path unified (B-2/A-1) | shims for **one checkpoint** (M2→M3), then deleted; the leaves' own `DEC.append`/`D.record` calls become dead code at M2 and are removed at M3 | 7.1; 7.2 (body equality incl. the new fields); **7.4** (decisions + §18.9 nodes: one write per decision) | the reach surface's decisions become priced in the ledger — a *known* record change, pre-registered: absent keys → present with `0.0`/`""` |
 | **M3** | **the one fold entry point** (Q-O5): `posterior(policy=…)`; D-8's five sites become callers; `fold_version` covers the policy; the memo keyed by it | none (a rename with a required argument; no old spelling survives) | 7.1; 7.2 (`policy` field); **7.3** in the frozen regime — Δ on the band | also the D-2 unification of the two wire reliability instances into `reliability(edge, cell)` — same checkpoint, same instruments; the calibration curve untouched (debt) |
 | **M4** | **the utility atom + the price table** (Q-O3, §4): `action_utilities`/`realised_utility` derived from `u_assert`; the table one module; `lambda_usd` from Ū only (E-5); the tier/menu constants relocated; E-3/E-8/E-9/BR-4's constants die into priors | none | 7.1; 7.2 (vectors identical on every fixture — the derivation is exact); 7.3 | the gate reads the same atom (offline) — its frozen δ/level untouched (§6.1) |
