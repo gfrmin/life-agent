@@ -773,6 +773,31 @@ def _req_float_list(d: Payload, key: str) -> list[float]:
         raise BridgeError(400, f"decision.{key} must be numbers: {e}") from e
 
 
+def _regime_and_policy(decision: Payload) -> tuple[str, str, tuple[str, ...]]:
+    """The two module-collapse fields (design §2.3, §3.1), with honest defaults.
+
+    A caller that STATES the field is recorded verbatim; one that omits it is recorded at
+    the declared default and named in ``defaulted`` — an assumption must never be readable
+    as a statement (the §6.5 unavailability record turns on exactly that distinction). A
+    value outside either closed vocabulary is a 400: the bridge refuses rather than writing
+    a decision nothing can interpret.
+    """
+    defaulted: list[str] = []
+    values: dict[str, str] = {}
+    for name, vocabulary, default in (("regime", DEC.REGIMES, DEC.REGIME_DEFAULT),
+                                      ("policy", DEC.POLICIES, DEC.POLICY_DEFAULT)):
+        raw = decision.get(name)
+        if raw is None:
+            values[name] = default
+            defaulted.append(name)
+            continue
+        if raw not in vocabulary:
+            raise BridgeError(
+                400, f"decision.{name} {raw!r} is not one of {sorted(vocabulary)}")
+        values[name] = str(raw)
+    return values["regime"], values["policy"], tuple(sorted(defaulted))
+
+
 def _log_decision(deps: BridgeDeps, p: Payload) -> Payload:
     """Append one answer-brain terminal decision to the calibration decision log, shaped
     exactly as the lookup family's own decisions (:func:`core.lookup.decide_and_record`), so
@@ -807,6 +832,7 @@ def _log_decision(deps: BridgeDeps, p: Payload) -> Payload:
     decision_id = _decision_id(question, retrieval_keys, creds_sorted, p_none)
     cost_usd = decision.get("cost_usd")
     latency_s = decision.get("latency_s")
+    regime, policy, defaulted = _regime_and_policy(decision)
     event = DEC.DecisionEvent(
         # the body may tag the run (the gate's executor arm — in-gate decisions must
         # not masquerade as live traffic); absent ⇒ the live default
@@ -827,7 +853,10 @@ def _log_decision(deps: BridgeDeps, p: Payload) -> Payload:
         # posted by the body when a priced transform fired; defaults stay honest.
         instrument=str(decision.get("instrument") or ""),
         cost_usd=float(cost_usd) if cost_usd is not None else None,
-        latency_s=float(latency_s) if latency_s is not None else None)
+        latency_s=float(latency_s) if latency_s is not None else None,
+        # v3 (module-collapse M0): the declared decision space + evidence policy this act
+        # was ranked under, with the defaults NAMED when the caller stated neither
+        regime=regime, policy=policy, defaulted=defaulted)
     DEC.append(deps.decisions_path, event)
     if deps.membrane is not None:
         with contextlib.suppress(Exception):

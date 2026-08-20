@@ -978,6 +978,21 @@ def _shutdown() -> None:
         _BRAIN = None
 
 
+def set_shared_brain(brain: Brain | None) -> None:
+    """Install (or clear) the process's shared skin — **the instrument seam, not a lane**.
+
+    The only sanctioned caller is the module-collapse equivalence instrument
+    (:mod:`life_agent.collapse`), which records the engine wire once and replays it with no
+    engine present; :func:`life_agent.core.narrative.narrative_answer` reaches the skin
+    through :func:`shared_brain` rather than a parameter, so an off-path replay needs this
+    seam to reach it. Nothing on the decision path may call it — a second installer would be
+    a way to swap the engine underneath a live decision, which is precisely the fork the one
+    act seam exists to prevent. Drift-gated in ``tests/test_collapse_record.py``.
+    """
+    global _BRAIN
+    _BRAIN = brain
+
+
 def current_u_bar(brain: Brain) -> tuple[dict[str, float], str]:
     """Ū from the utility posterior (fold of model + elicitations), cached per fold
     version within the process — the fold is recomputed only when evidence moves."""

@@ -27,7 +27,12 @@ from life_agent.core import jsonl_log
 # accounting lands on the ledger itself (which edge answered, at what price), and the
 # per-edge calibration fold (core/calibration.EdgeOutcome) gains its attribution key.
 # v1 lines replay with the fields defaulted (no instrument, unpriced).
-FORMAT_VERSION = 2
+# v3 (2026-08-19, module-collapse M0): + regime / policy / defaulted — WHICH decision space
+# the act was ranked over (design §2.3) and WHICH evidence set valued it (§3.1). Both are
+# facts ABOUT the record, never host choices; `defaulted` names the ones the writer filled
+# in, so an assumption can never be read as a statement. v1/v2 lines replay at the declared
+# defaults claiming nothing.
+FORMAT_VERSION = 3
 
 # Question families with an EU response layer. Grows by edit as families land
 # (aggregate and thread join at bayesian-foundations §12 stages 2-3).
@@ -52,6 +57,34 @@ ACTIONS: frozenset[str] = frozenset({"report", "report_scoped", "hedge",
 LOOKUP_ACTION_ORDER: tuple[str, ...] = ("report", "hedge", "ask_clarify", "abstain",
                                         "report_scoped")
 NARRATIVE_ACTION_ORDER: tuple[str, ...] = ("report", "abstain")
+
+# The DECLARED DECISION SPACE the act was ranked over (module-collapse-design.md §2.3). One
+# rule, two spaces: `full` = the transformations and the terminals (the daemon up),
+# `terminals-only` = the terminals alone (the daemon unavailable — the skin ranks the same
+# terminals over the same posterior and the same Ū). The regime is a FACT OF AVAILABILITY
+# recorded on the decision, never a choice: nothing may prefer one regime when both are
+# available, and a terminals-only decision is not a fallback lane — it is the same ranking
+# with an empty transformation set, honestly recorded.
+#
+# `unavailable` is the third case and NOT an action (§6.5): when no optimiser is reachable
+# there is no ranking to be inside of, so the record is an unavailability event. Keeping it
+# in this vocabulary — rather than spelling it `abstain` — is what stops it folding as an
+# abstain verdict, which reactions §4.4 reads as utility evidence.
+REGIMES: frozenset[str] = frozenset({"full", "terminals-only", "unavailable"})
+REGIME_DEFAULT = "full"
+
+#: What ``defaulted`` says when a writer stated NEITHER field — the honest default, so a
+#: producer predating v3 (and every family leaf until M2 folds them into the one poster)
+#: discloses its silence instead of claiming a regime it never declared.
+DEFAULTED_UNSTATED: tuple[str, ...] = ("policy", "regime")
+
+# The evidence policy the utility posterior was folded under (design §3.1, Q-O5): the
+# ranking's Ū conditions on everything to date, while the offline adoption gate freezes the
+# elicitation set so runs stay comparable. Recorded as a REGIME INDICATOR on the decision —
+# the same pattern the decision space uses — so a policy swap is visible in the record
+# rather than inferable from which module wrote it.
+POLICIES: frozenset[str] = frozenset({"all-to-date", "frozen-elicitations"})
+POLICY_DEFAULT = "all-to-date"
 
 QUESTION_ID_CHARS = 16
 
@@ -106,6 +139,15 @@ class DecisionEvent:
     instrument: str = ""
     cost_usd: float | None = None
     latency_s: float | None = None
+    # v3: the declared decision space and evidence policy this act was ranked under, plus
+    # the names of whichever of them the writer supplied for a caller that stated neither.
+    regime: str = REGIME_DEFAULT
+    policy: str = POLICY_DEFAULT
+    # The DEFAULT is "this writer stated neither" — so a producer that predates the fields
+    # (every v1/v2 line, and the family leaves until M2 folds them into the one poster)
+    # discloses its silence rather than claiming a regime it never declared. The bridge
+    # narrows it to whichever field the caller actually omitted.
+    defaulted: tuple[str, ...] = DEFAULTED_UNSTATED
     format_version: int = field(default=FORMAT_VERSION)
 
     def __post_init__(self) -> None:
@@ -123,17 +165,32 @@ class DecisionEvent:
                 f"chosen action {self.chosen_action!r} not in the action set "
                 f"{list(self.action_set)}"
             )
+        if self.regime not in REGIMES:
+            raise ValueError(
+                f"unknown regime {self.regime!r} (declared: {sorted(REGIMES)})")
+        if self.policy not in POLICIES:
+            raise ValueError(
+                f"unknown policy {self.policy!r} (declared: {sorted(POLICIES)})")
+        unknown_defaulted = set(self.defaulted) - {"regime", "policy"}
+        if unknown_defaulted:
+            raise ValueError(
+                f"defaulted names non-defaultable field(s) {sorted(unknown_defaulted)}")
 
 
 def _to_line(event: DecisionEvent) -> str:
     payload = asdict(event)
     payload["action_set"] = list(event.action_set)
+    payload["defaulted"] = list(event.defaulted)
     return json.dumps(payload, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
 
 
 def _from_line(line: str) -> DecisionEvent:
     obj = json.loads(line)
     obj["action_set"] = tuple(obj.get("action_set", ()))
+    # a line PREDATING v3 stated neither field; reading it as `()` would turn its silence
+    # into a claim, which is the one thing this field exists to prevent
+    obj["defaulted"] = (tuple(obj["defaulted"]) if "defaulted" in obj
+                        else DEFAULTED_UNSTATED)
     return DecisionEvent(**obj)
 
 

@@ -182,3 +182,80 @@ def test_live_skin_beta_bernoulli_conjugate_update() -> None:
         b.condition(s, kernel={"type": "bernoulli"}, observation=1.0)
         # Beta(1,1) + one success -> Beta(2,1), mean 2/3
         assert b.mean(s) == pytest.approx(2 / 3, abs=1e-9)
+
+
+# --- the VOI wire shapes the module collapse pins (M0; design §2.5, §6.3b) ----------------
+# Two claims made falsifiable rather than promised: `value` is the wire that would price a
+# kernel in the terminals-only regime (ruling Q-R4 — unclaimed, it dies), and `draw` decides
+# where the adoption gate's host P(U) sampler lives (pre-committed procedure, Q4).
+
+def test_value_is_pinned_like_optimise_as_the_voi_wire_shape() -> None:
+    """`value(state_id, action_utilities) -> float`: the maximum expected utility WITHOUT
+    the action — VOI = value(informed) - value(uninformed), composed at the call site
+    (design §2.5). Deleting `Brain.value` fails here, which is what earns it "dormant-keep"
+    instead of a promise.
+
+    The preference shape is the one the decision path actually builds: the
+    `functional_per_action` map `lookup.action_utilities` produces, one tabular functional
+    per action over the K candidates + NONE."""
+    t = FakeTransport(results={"value": {"value": 0.42}})
+    b = B.Brain(t)
+    action_utilities = {"report_0": [1.0, -5.0, -5.0], "hedge": [0.2, 0.2, -5.0],
+                        "abstain": [0.0, 0.0, 0.0]}
+    preference = {"type": "functional_per_action",
+                  "actions": {name: {"type": "tabular", "values": vec}
+                              for name, vec in action_utilities.items()}}
+    out = b.value("s_1", actions={"type": "finite", "values": [0.0]},
+                  preference=preference)
+    assert isinstance(out, float) and out == pytest.approx(0.42)
+    (req,) = t.sent
+    assert req["method"] == "value"
+    assert req["params"]["state_id"] == "s_1"
+    assert req["params"]["preference"] == preference
+    assert set(req["params"]) == {"state_id", "actions", "preference"}
+
+
+def test_draw_is_not_on_this_body_s_wire_surface() -> None:
+    """§6.3b's check, host side: `Brain` exposes no `draw`, so the adoption gate's
+    `_sample_u` cannot sample the utility posterior over the wire today — it approximates
+    P(U) host-side from moment summaries. Whether the ENGINE exposes one is the live
+    half of the check (`test_live_skin_advertises_its_method_surface`, opt-in)."""
+    assert not hasattr(B.Brain, "draw")
+
+
+@pytest.mark.system
+def test_live_skin_serves_draw_but_not_for_the_utility_posterior_s_measures() -> None:
+    """The Q4/§6.3b wire-shape check, executed against the engine — and left in as a
+    TRIPWIRE.
+
+    Measured at M0 on the pinned protocol-1.12 image: ``draw`` is served as a verb and works
+    on conjugate measures (Beta), but has no method for either measure the utility posterior
+    folds into — ``truncated_gaussian`` (an independent latent, ``utility._fold_1d``) or
+    ``truncated_mv_gaussian`` (a coupled component, ``utility._fold_joint``). So P(U) cannot
+    be sampled over the wire today, and ``gate._sample_u``'s host moment-Gaussian sampler
+    stays inside §6.1's exception rather than becoming debt §6.3b.
+
+    **If this test fails because a draw SUCCEEDED, the engine has gained the capability and
+    the ruling flips**: register §6.3b with the retirement path (a ``Brain.draw`` wrapper,
+    then sample on the wire) and delete the exception's coverage of G-3.
+    """
+    if not (B._DEV_REPO or B._DEV_SERVER):
+        pytest.skip("set $CREDENCE_REPO or $CREDENCE_SKIN_SERVER to spawn a dev engine")
+    with B.Brain.spawn() as b:
+        info = b.initialize()
+        assert "draw" in set(info.get("methods") or ()), "the verb itself is gone"
+        conjugate = b.create_state({"type": "beta", "alpha": 2.0, "beta": 3.0})
+        try:
+            assert isinstance(b._call("draw", {"state_id": conjugate})["value"], float)
+        finally:
+            b.destroy_state(conjugate)
+        for spec in ({"type": "truncated_gaussian", "mu": 0.0, "sigma": 1.0,
+                      "lo": -5.0, "hi": 5.0},
+                     {"type": "truncated_mv_gaussian", "mu": [0.0, 0.0],
+                      "sigma": [1.0, 1.0], "lo": [-5.0, -5.0], "hi": [5.0, 5.0]}):
+            sid = b.create_state(spec)
+            try:
+                with pytest.raises(B.BrainError, match="no method matching draw"):
+                    b._call("draw", {"state_id": sid})
+            finally:
+                b.destroy_state(sid)

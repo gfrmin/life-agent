@@ -157,3 +157,40 @@ def test_no_other_site_hashes_a_question_itself() -> None:
         "these sites hash the question text themselves instead of deriving from "
         f"decisions.question_id(): {offenders}"
     )
+
+
+# --- regime + policy: the two fields the module collapse's record needs (M0) -------------
+
+def test_regime_and_policy_are_closed_vocabularies() -> None:
+    """Same discipline as `family` and `action_set`: junk fails at construction, never
+    silently onto the ledger."""
+    base = dict(tx_time="2026-08-19T00:00:00+00:00", run_id="r", question_id="q",
+                family="lookup", action_set=D.LOOKUP_ACTION_ORDER,
+                posterior_summary={}, utility_fold_version="v", chosen_action="abstain",
+                predicted_eu=0.0)
+    with pytest.raises(ValueError, match="regime"):
+        D.DecisionEvent(**base, regime="fallback-lane")
+    with pytest.raises(ValueError, match="policy"):
+        D.DecisionEvent(**base, policy="vibes")
+
+
+def test_regime_and_policy_default_to_the_declared_defaults() -> None:
+    """A v1/v2 line replays at the honest default — the fold must never see an empty
+    regime it has to guess about."""
+    line = ('{"tx_time":"2026-08-19T00:00:00+00:00","run_id":"r","question_id":"q",'
+            '"family":"lookup","action_set":["report","hedge","ask_clarify","abstain",'
+            '"report_scoped"],"posterior_summary":{},"utility_fold_version":"v",'
+            '"chosen_action":"abstain","predicted_eu":0.0,"format_version":2}')
+    ev = D._from_line(line)
+    assert ev.regime == D.REGIME_DEFAULT and ev.policy == D.POLICY_DEFAULT
+    # a legacy line stated NEITHER field, and says so — the value is interpretable and the
+    # claim is not overstated
+    assert ev.defaulted == ("policy", "regime")
+
+
+def test_unavailability_is_a_regime_not_an_action() -> None:
+    """§6.5: when no optimiser is available there is no ranking to be inside of. The
+    vocabulary carries `unavailable` as a REGIME so an unavailability can never fold as an
+    abstain verdict (R-3 folds abstains as utility evidence)."""
+    assert "unavailable" in D.REGIMES
+    assert "unavailable" not in D.ACTIONS

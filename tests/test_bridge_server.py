@@ -1696,3 +1696,55 @@ def test_reextract_read_is_confirm_when_it_joins(
     # a minted candidate is also a confirm — the read named a value and it joined
     minted = _reextract(deps, monkeypatch, "PL-777777", ["PL-900001"], allow_new=True)
     assert minted["read"] == "confirm" and minted["new_candidate"] == "PL-777777"
+
+
+# --- /log_decision: the regime + policy fields (module-collapse M0, design §2.3/§3.1) ----
+# M0 makes the poster ACCEPT the two fields the collapse's record needs. Nothing on the
+# decision path changes here: the driver still chooses nothing, and a caller that states
+# neither field is recorded at the honest default with the default NAMED as such.
+
+def test_log_decision_accepts_a_stated_regime_and_policy(deps: BridgeDeps) -> None:
+    _call(deps, "POST", "/log_decision",
+          {"question": "q", "retrieval_keys": ["d0"],
+           "decision": {**_decision(effector="report"),
+                        "regime": "terminals-only", "policy": "frozen-elicitations"}})
+    (d,) = DEC.read(deps.decisions_path)
+    assert d.regime == "terminals-only"
+    assert d.policy == "frozen-elicitations"
+    assert d.defaulted == ()          # both stated — nothing was filled in for the caller
+
+
+def test_log_decision_defaults_are_honest_and_distinguishable_from_stated(
+        deps: BridgeDeps) -> None:
+    """A caller predating the fields records at the default AND says so: `defaulted` names
+    which fields the bridge filled in, so a reader can never mistake an assumption for a
+    statement (the §6.5 unavailability record depends on exactly this distinction)."""
+    _call(deps, "POST", "/log_decision",
+          {"question": "q", "retrieval_keys": ["d0"], "decision": _decision()})
+    (d,) = DEC.read(deps.decisions_path)
+    assert d.regime == DEC.REGIME_DEFAULT == "full"
+    assert d.policy == DEC.POLICY_DEFAULT == "all-to-date"
+    assert d.defaulted == ("policy", "regime")
+
+
+def test_log_decision_defaults_only_the_field_the_caller_omitted(deps: BridgeDeps) -> None:
+    _call(deps, "POST", "/log_decision",
+          {"question": "q", "retrieval_keys": ["d0"],
+           "decision": {**_decision(), "regime": "full"}})
+    (d,) = DEC.read(deps.decisions_path)
+    assert d.defaulted == ("policy",)
+
+
+def test_log_decision_refuses_a_regime_outside_the_vocabulary(deps: BridgeDeps) -> None:
+    status, payload = _call(deps, "POST", "/log_decision",
+                            {"question": "q", "retrieval_keys": ["d0"],
+                             "decision": {**_decision(), "regime": "fallback-lane"}})
+    assert status == 400 and "regime" in payload["error"]
+    assert not deps.decisions_path.exists()      # nothing written on a refusal
+
+
+def test_log_decision_refuses_a_policy_outside_the_vocabulary(deps: BridgeDeps) -> None:
+    status, payload = _call(deps, "POST", "/log_decision",
+                            {"question": "q", "retrieval_keys": ["d0"],
+                             "decision": {**_decision(), "policy": "whatever-is-lying-around"}})
+    assert status == 400 and "policy" in payload["error"]
