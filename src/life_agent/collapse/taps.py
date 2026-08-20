@@ -124,7 +124,8 @@ class RecordingTransport:
     """
 
     def __init__(self, inner: Any, sink: list[FX.Exchange]) -> None:
-        self._inner, self._sink, self._pending = inner, sink, None
+        self._inner, self._sink = inner, sink
+        self._pending: dict[str, Any] | None = None
 
     def send(self, line: str) -> None:
         req = json.loads(line)
@@ -132,7 +133,7 @@ class RecordingTransport:
         self._inner.send(line)
 
     def recv(self) -> str:
-        line = self._inner.recv()
+        line: str = self._inner.recv()
         resp = {k: v for k, v in json.loads(line).items() if k not in ("id", "jsonrpc")}
         self._sink.append(FX.Exchange(seam="skin", request=self._pending or {},
                                       response=resp))
@@ -146,7 +147,8 @@ class ReplayTransport:
     """Serves a recorded skin session — no engine process, no docker, no julia."""
 
     def __init__(self, cassette: Cassette) -> None:
-        self._cassette, self._req = cassette, None
+        self._cassette = cassette
+        self._req: dict[str, Any] | None = None
         self.closed = False
 
     def send(self, line: str) -> None:
@@ -201,11 +203,14 @@ def replay_http(cassette: Cassette) -> tuple[Callable[..., Any], Callable[..., A
     under (the bridge's own leaves are pinned by their own trace-B fixtures)."""
 
     def post(url: str, payload: dict[str, Any]) -> dict[str, Any] | None:
-        return cassette.serve("http", {"method": "POST", "url": _path_of(url),
-                                       "payload": payload})
+        served: dict[str, Any] | None = cassette.serve(
+            "http", {"method": "POST", "url": _path_of(url), "payload": payload})
+        return served
 
     def get(url: str) -> dict[str, Any]:
-        return cassette.serve("http", {"method": "GET", "url": _path_of(url)})
+        served: dict[str, Any] = cassette.serve(
+            "http", {"method": "GET", "url": _path_of(url)})
+        return served
 
     return post, get
 

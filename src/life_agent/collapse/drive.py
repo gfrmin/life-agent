@@ -158,14 +158,16 @@ def sealed(staging_root: Path, *, allow_spend: bool = False) -> Iterator[None]:
         return inner_record(staging_root, key, content, **kw)
 
     saved.append((D, "record", inner_record))
-    D.record = _staged_record          # type: ignore[assignment]
+    D.record = _staged_record
 
     from life_agent.core import outcomes as _O
 
     _SINK["decisions"] = staging_root / "decisions.jsonl"
     _SINK["outcomes"] = staging_root / "outcomes.jsonl"
     saved.append((_SINK, "__cleared__", None))
-    for module, sink_name in ((DEC, "decisions.jsonl"), (_O, "outcomes.jsonl")):
+    sinks: tuple[tuple[Any, str], ...] = ((DEC, "decisions.jsonl"),
+                                          (_O, "outcomes.jsonl"))
+    for module, sink_name in sinks:
         inner_append = module.append
         sink = staging_root / sink_name
 
@@ -174,7 +176,7 @@ def sealed(staging_root: Path, *, allow_spend: bool = False) -> Iterator[None]:
             return _inner(_sink, event)
 
         saved.append((module, "append", inner_append))
-        module.append = _sunk          # type: ignore[assignment]
+        module.append = _sunk
     try:
         yield
     finally:
@@ -386,7 +388,7 @@ def drive_executor_loop(rig: Rig, snapshot: KBSnapshot, *, question: str, k: int
 
     rendered, decision_id = AC.answer(question, k, post=post, get=rig.get,
                                       check_ready=False)
-    view = rig.last_view or {}
+    view: dict[str, Any] = rig.last_view or {}
     return {
         "effector": view.get("effector"),
         "asserted": list(view.get("asserted") or []),
@@ -421,8 +423,11 @@ def drive_ask_poster(question: str, view: dict[str, Any], *,
     captured: list[dict[str, Any]] = []
     prior_post, prior_run = ask._http_post, ask.EXECUTOR_RUN_ID
     ask.EXECUTOR_RUN_ID = run_id
-    ask._http_post = lambda url, payload: (
-        captured.append({"url": url, "payload": payload}) or {"decision_id": "captured"})
+    def _capture(url: str, payload: dict[str, Any]) -> dict[str, Any]:
+        captured.append({"url": url, "payload": payload})
+        return {"decision_id": "captured"}
+
+    ask._http_post = _capture
     try:
         ask._log_executor_decision(question, view)
     finally:

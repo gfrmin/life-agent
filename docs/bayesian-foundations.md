@@ -2381,3 +2381,28 @@ on this list. Answers land here by amendment, citing their evidence.
   count (the headline), the count of null reads that fired, how many of the 17 changed
   action, answer rate, spend. *Rollback:* revert the commit — there is no env flag, and
   one must not be invented at read time.
+
+- **Two unordered sources on the decision path — the cache was doing the work of determinism
+  (2026-08-19/20, tranche-2 M0/M0.5, `scripts/collapse_replay.py` + the M0.5 probes, $0
+  deterministic).** The decision-equivalence instrument built at M0 found two ties resolved by
+  an unordered source, both pre-dating this arc. (1) `lookup.dedup_correlated` broke its
+  equal-covariate tie with `max()` over a *set* of artefact keys, so which duplicate document
+  survived — and with it which observations reached the posterior, which candidates existed,
+  and in what order — depended on the interpreter's per-process string hash seed: **25 of 102
+  recorded fixtures (24.5%) decide differently across seeds 0–4** (18 at a single seed). (2)
+  `core/retrieval.py:retrieve_set` preserved pkm's FTS order, which is nondeterministic among
+  tied BM25 scores *within a single process*: over the 104-question battery at k=80, **87
+  questions (84%) return a different ORDER and 45 (43%) a different SET between three
+  identical calls**; 88 carry ties, 742 tied hits in total. **What kept the ledger comparable
+  was the §18.9 cache, not the code.** The retrieval stage is keyed on (query, corpus digest,
+  k) and the answer stage on its content hash, so the first run to compute a stage froze one
+  arbitrary draw and every later run was served it. Comparability therefore held exactly as
+  long as the cache entry survived, and any recomputation — a new question, a corpus-digest
+  change, a different k, a version bump, or a cache loss (the 2026-08-18 orphan sweep is the
+  worked example) — silently re-rolled it. The decisions were never a function of the corpus
+  alone. It also explains the cold derivations M0 saw on re-runs: an unstable order is an
+  unstable key. *Fixed at M0.5* by declaring a total order at each site — first-seen at equal
+  covariate; `(-score, artifact_cache_key, chunk_text)` for retrieval — with the seed sweep
+  and the retrieval probe as the kills. *What it does not fix:* the readings already in this
+  ledger, which stand as recorded with this entry as their caveat. Runs after M0.5 are the
+  first whose evidence sets are reproducible by construction rather than by cache residency.

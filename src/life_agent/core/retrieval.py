@@ -29,14 +29,23 @@ def build_query(question: str, terms: str) -> str:
 def retrieve_set(conn: duckdb.DuckDBPyConnection, question: str, k: int) -> list[dict[str, Any]]:
     """FTS the given query over the whole corpus; dedupe by chunk text keeping the best
     score; return the top-k as plain dicts — the cacheable retrieval-set content, carrying
-    each hit's artifact cache key for lineage. No snapshot filter."""
+    each hit's artifact cache key for lineage. No snapshot filter.
+
+    Ordered by a DECLARED total order — ``(-score, artifact_cache_key, chunk_text)`` — because
+    pkm's FTS returns tied BM25 scores in a nondeterministic order (M0.5): where a tie straddled
+    the top-k cut, the retrieved *set* changed between two runs of the same code on the same
+    corpus, and with it every §18.9 derivation keyed on it."""
     from pkm.retrieval import SearchResult, search
 
+    # Over-fetch, ORDER, then dedupe: sorting first keeps the dedupe rule unchanged (the
+    # best-scoring copy of a duplicated chunk survives, since the order is score-major) while
+    # making its tie — identical text at an identical score in two documents, this corpus's
+    # commonest shape — resolve by the declared key rather than by arrival order.
+    ordered = sorted(search(conn, question, k=k * 4),
+                     key=lambda h: (-h.score, h.artifact_cache_key, h.chunk_text))
     best: dict[str, SearchResult] = {}
-    for h in search(conn, question, k=k * 4):  # over-fetch, then dedupe down to k
-        prev = best.get(h.chunk_text)
-        if prev is None or h.score > prev.score:
-            best[h.chunk_text] = h
-    top = sorted(best.values(), key=lambda h: h.score, reverse=True)[:k]
+    for h in ordered:
+        best.setdefault(h.chunk_text, h)
+    top = list(best.values())[:k]
     return [{"artifact_cache_key": h.artifact_cache_key, "chunk_text": h.chunk_text,
              "score": h.score, "origin": h.source_path} for h in top]

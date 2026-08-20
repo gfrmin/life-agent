@@ -510,7 +510,13 @@ the frozen δ/level threshold — is the blindness that makes runs comparable; f
 instrument into the optimiser it judges is circular (Q-O2). *Not covered:* the gate's
 utility fold — that is `posterior(policy=frozen-elicitations)`, §3.1 — and (open, §9 Q4) its
 host Gaussian-moment sampler G-3. *Pinned by:* the existing gate tests + §7's frozen-regime
-eval battery.
+eval battery. *Q4, executed at M0 (R1 confirmed):* `draw` is served by the engine but
+has no method for the measures the utility posterior is built from, so P(U) is not
+wire-samplable and G-3 stays inside this exception rather than becoming a 6.3-style debt.
+The reading is self-revising —
+`tests/test_brain.py::test_live_skin_serves_draw_but_not_for_the_utility_posterior_s_measures`
+(system-marked) asserts both `MethodError`s against the pinned image and fails the moment the
+engine gains the capability, at which point G-3 moves to 6.3b's retirement path.
 
 **6.2 The membrane world's utility table** (`W.utility_by_action :214-245`, defaults
 `:237-239`, perfect-information pricing `:226-234`; `argmax_action :286`,
@@ -548,6 +554,21 @@ and dies. *Pinned by:* the fixture that a down stack yields an unavailability re
 `decision_id`, and the poster's body carrying `regime: unavailable`. *Why also here:* R-3 folds
 abstain verdicts as utility evidence; an unavailability must never fold as an abstain — the
 one line a future census would otherwise re-open.
+
+**6.6 Instrument isolation — path-redirection is not isolation; only sinking is.** An
+*instrument-design* rule rather than a decision-shaping exception; it lives in the register
+because the register is what the next census reads. *Why:* a writer that takes no path
+argument falls through to `core/config.py`, so redirecting the configured path does not move
+the instrument off the live store — it moves the instrument's writes onto whatever the config
+now names, and the C5 dual-write mirror then mirrors them faithfully, because that path *is*
+the configured one. Redirection also disarms the guard that would have caught it ("not the
+configured path" cannot fire when it is). An instrument must therefore **sink** the append —
+replace the writer, not its destination. Learned at M0 by leaking exactly one decision row
+onto the owner's stream (r02 DEVIATIONS 1; its provenance is recorded under
+`$LIFE_AGENT_KB/ledger/provenance/`). *Not covered:* the §18.9 derivation writer, which takes
+its root as an argument and is correctly redirected rather than sunk. *Pinned by:*
+`life_agent.collapse.drive.sealed()` and
+`tests/test_collapse_record.py::test_the_seal_sinks_decision_appends_so_the_c5_mirror_never_fires`.
 
 ## 7. Behaviour preservation — the equivalence instrument, pre-stated
 

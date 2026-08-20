@@ -192,7 +192,7 @@ def main(argv: list[str] | None = None) -> int:
         captured_narrative[question] = {"text": text, "cards": list(cards)}
         return inner_narr(root, question, text, cards, **kw)
 
-    NARR.narrative_answer = _capturing_narrative  # type: ignore[assignment]
+    NARR.narrative_answer = _capturing_narrative
     seal = DR.sealed(snapshot.staging / "pkm", allow_spend=bool(args.allow_spend))
     seal.__enter__()
     try:
@@ -315,7 +315,7 @@ def main(argv: list[str] | None = None) -> int:
                     print(f"  {qid} B-narrative ABSENT — {type(e).__name__}: {e}")
     finally:
         seal.__exit__(None, None, None)
-        NARR.narrative_answer = inner_narr  # type: ignore[assignment]
+        NARR.narrative_answer = inner_narr
         with __import__("contextlib").suppress(Exception):
             brain.shutdown()
 

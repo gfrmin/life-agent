@@ -420,6 +420,33 @@ def test_dedup_correlated_keeps_max_covariate_representative() -> None:
     assert len(kept) == 1 and kept[0].authority == 0.95
 
 
+def test_dedup_correlated_breaks_a_covariate_tie_by_first_seen_document() -> None:
+    # M0.5: at EQUAL covariate the survivor is the FIRST-SEEN document — a declared total
+    # order. The tie was resolved by `max()` over a *set* of artefact keys, whose iteration
+    # order depends on the interpreter's per-process string hash seed, so which duplicate
+    # survived — and therefore which observations reached the posterior, which candidates
+    # existed, and in what order — varied between two runs of the same code on the same
+    # corpus (17.6% of the recorded battery at one seed, 24.5% across five). Swept over many
+    # key pairs because a single pair can agree with hash order by luck.
+    q = "a sufficiently long shared sentence of text"
+    for i in range(64):
+        first, second = f"{i:064x}", f"{i + 1000:064x}"
+        kept = LK.dedup_correlated([_obs(first, "V", quote=q), _obs(second, "V", quote=q)])
+        assert len(kept) == 1
+        assert kept[0].artifact_cache_key == first, f"pair {i} took the second document"
+
+
+def test_dedup_correlated_first_seen_does_not_override_a_stronger_later_copy() -> None:
+    # The declared order is a TIE-BREAK, not a policy change: a strictly stronger later
+    # document still wins, so a recent re-attestation keeps its recency (the rule the
+    # max-covariate test pins, restated here against first-seen).
+    q = "a sufficiently long shared sentence of text"
+    weak, strong = f"{1:064x}", f"{2:064x}"
+    kept = LK.dedup_correlated([_obs(weak, "V", quote=q, time_factor=0.2),
+                                _obs(strong, "V", quote=q, time_factor=1.0)])
+    assert len(kept) == 1 and kept[0].artifact_cache_key == strong
+
+
 def test_dedup_correlated_keeps_value_only_quotes() -> None:
     # a quote that is ONLY the value carries no shared CONTEXT, so identical copies may be
     # genuine independent corroboration rather than duplicates — keep them (don't erase evidence).

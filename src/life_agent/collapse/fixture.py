@@ -188,8 +188,8 @@ def coverage(fixtures: Iterable[Fixture]) -> dict[str, list[str]]:
         out[f"trace:{trace}"] = sorted(f.fixture_id for f in fxs if f.trace == trace)
     for declared in DECLARED_CLASSES:
         out[declared] = sorted(f.fixture_id for f in fxs if declared in f.classes)
-    declared = {c for f in fxs for c in f.classes if not c.startswith("terminal:")}
-    for c in sorted(declared):
+    undeclared = {c for f in fxs for c in f.classes if not c.startswith("terminal:")}
+    for c in sorted(undeclared):
         out[c] = sorted(f.fixture_id for f in fxs if c in f.classes)
     return out
 

@@ -793,7 +793,11 @@ def dedup_correlated(observations: list[Observation]) -> list[Observation]:
         by_quote.setdefault(_quote_key(o.quote), []).append(o)
     drop: set[int] = set()
     for qkey, group in by_quote.items():
-        docs = {o.artifact_cache_key for o in group}
+        # Declared FIRST-SEEN order, not a set: `max` returns the first maximal element, so
+        # at equal covariate the survivor is a function of the observations rather than of the
+        # interpreter's per-process hash seed (M0.5 — the tie moved 24.5% of the recorded
+        # battery's decisions between two runs of the same code on the same corpus).
+        docs = list(dict.fromkeys(o.artifact_cache_key for o in group))
         if len(docs) <= 1:
             continue  # within one document — the per-document group already counts it once
         # Dedupe only when the shared quote carries CONTEXT beyond the bare value: identical
