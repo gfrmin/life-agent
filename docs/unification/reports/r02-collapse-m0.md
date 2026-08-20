@@ -524,3 +524,131 @@ Two things M1's brief should settle first, both consequences of this checkpoint:
    before the priced baseline is paid for, so it is recorded once against a reproducible path.
 
 **STOP.**
+
+## ADDENDUM — O2, the priced baseline (2026-08-20)
+
+O2 was sanctioned and run after M0.5 settled retrieval, which is the order this report
+recommended ("fix them before the priced baseline is paid for, so it is recorded once against
+a reproducible path"). Recorded at `08d0f70`, seed 0, merged into the baseline of record.
+This section is append-only; the figures below are the instrument's, not estimates, except
+where explicitly labelled.
+
+### B1 — what ran, and what it left behind
+
+`A-loop`, `A-poster`, `B-narrative` over the 104-question battery, `--allow-spend`, the
+deliberate edge on. **209 fixtures, zero named absences** — the three `WouldSpendError`
+absences the free run recorded stay in the manifest as that run's, correctly, since they were
+its absences and not this one's.
+
+The seal held. All four live surfaces are byte-identical either side, which is the whole
+claim `drive.sealed` makes:
+
+```
+== live surfaces BEFORE          == live surfaces AFTER
+  decisions.jsonl  8e7ecfb5…       decisions.jsonl  8e7ecfb5…
+  ledger/…decisions 47228cb5…      ledger/…decisions 47228cb5…
+  pkm external/pending.txt 134810   pkm external/pending.txt 134810
+  pkm cache directories 30682       pkm cache directories 30682
+```
+
+pkm's own transform telemetry has **no entry for the day**, which corroborates it from the
+other side: the §18.9 derivations went to staging and the live root was never written.
+
+### B2 — the merge, and the coverage it bought
+
+102 → **311 fixtures**, and **311/311 replay identically**. Four declared coverage holes
+close: `trace:A-loop`, `trace:A-poster`, `trace:B-narrative`, `posterior:n_obs=0`. Six remain
+and are named in the manifest: `terminal:report_scoped`, `terminal:ask_clarify`,
+`terminal:report(claims)`, `regime:terminals-only`, `regime:unavailable`,
+`policy:frozen-elicitations`.
+
+`posterior:n_obs=0` closing is worth a line of its own: 14 A-loop fixtures carry it. That
+cluster is a live §14 open question whose measurement is pre-registered but not yet taken, and
+it now has an oracle it did not have this morning — a probe that erases a grounded channel
+would move these fixtures.
+
+**`trace:B-narrative` "closes" on a single fixture, out of 104 questions.** The narrative leaf
+is only recorded where the driver actually reached it, and it reached it once. The coverage
+check cannot tell 1 from 104 — it reports a class as covered when the class is non-empty. This
+is precisely the structural point M1.5 is scoped around (R7): *coverage is a declared quantity,
+not an emergent one*, and "covered" is a weaker statement than it reads. M1.5 should treat
+`trace:B-narrative` as a hole with one fixture in it, not as a closed row.
+
+### B3 — what it cost, and the fact that the instrument cannot say
+
+The script's own estimate was $4–8, from run 9's battery. The run made **87 live model calls**,
+all of one prompt class (single-value extraction), across 15 of 104 questions. Every one of the
+**82 `/probe/deliberate` calls was served warm** from §18.9 — the deliberate edge fired
+throughout and paid nothing, because runs 6–9 had already computed those derivations against
+the retrieval sets R2 made reproducible. Estimated spend from the recorded prompt sizes is
+**≈ $0.05** (41k input, 2k output tokens; ~$0.75 had they all been opus-tier).
+
+That figure is an *estimate*, and the reason it has to be is a gap in the instrument worth
+naming: **the recorder does not meter spend at all.** No fixture carries a cost field; the
+§7.2 field-class list has `cost_usd` as runtime-measured, but nothing writes it on this path;
+pkm's telemetry correctly saw nothing because the writes were sunk. So the priced baseline
+cannot state its own price from its own artefacts — the number above is reconstructed from
+prompt lengths in the recorded wire, at an assumed tokens-per-character and an assumed tier.
+This is §6.7's shape again (a claim nothing executes), and the cheap fix belongs with M1's
+recorder work: sum the metered spend the instrument seam already returns, and stamp it on the
+manifest. *Recommended, not taken here* — this checkpoint is closed.
+
+The practical consequence for the programme is the pleasant one: a priced re-record against a
+settled retrieval costs cents, not dollars, so re-recording the baseline is no longer an
+expensive act. That changes what is affordable at M1.
+
+### B4 — R6 re-checked against the new evidence, and it stands
+
+The merged baseline now contains **326 `/probe/corroborate` calls**. A reader could reasonably
+conclude the fourth unordered source (§6.9) is covered after all. It is not: **all 326 take the
+handler's `reextract` branch**, which calls the joint extractor and never touches
+`P.probe_corroborate`. The plain branch — the one carrying the two unordered ties — is reached
+from the gather lane and from this endpoint only when `reextract` is falsy, and it was called
+**zero** times. §6.9's disposition is unchanged and its premise is now verified rather than
+asserted: the *endpoint* is exercised 326 times, the *function* not once.
+
+### B5 — the merged manifest described only half its own set
+
+`FX.manifest` carries one `provenance` block, so after the merge it read `tree_sha 986faf7`,
+`allow_spend=false` over a set that is two-thirds `08d0f70`, `allow_spend=true`. Every fixture
+stamps its own provenance and those are intact (102 + 209, verified by grouping the files), so
+nothing was lost — but a manifest that summarises a two-recording set with one recording's
+stamp is a claim its own directory contradicts, and the manifest is what a report quotes.
+Fixed additively, without touching the fixture format: `provenance.merged_from` now lists each
+constituent recording, **derived from the fixtures rather than asserted**, with a guard that
+refuses if the set spans more than one hash seed and a check that the parts sum to
+`n_fixtures`. Replay re-run after the edit: 311/311.
+
+### B6 — provenance wart, stated rather than papered over
+
+The priced fixtures stamp `tree_sha 08d0f70`; the free ones stamp `986faf7`. The two recording
+trees are **byte-identical in `src/`, `tests/` and `scripts/`** — `git diff 986faf7 08d0f70`
+touches five files, of which the two code files are R2's and were present as uncommitted
+worktree state when the free half was recorded, and the other three are documentation. So the
+differing stamp is a documentation delta, not a code one, and the merged set is a single-tree
+recording in every sense the oracle cares about. Stated here so that a future bisection reading
+two `tree_sha` values in one directory does not treat it as a finding.
+
+### B7 — deviations
+
+1. **A convenience oracle, again.** Splitting the corroborate calls by branch, I keyed on a
+   `path` field the wire does not have (it records `url` and `payload`), and got "0 plain, 0
+   reextract" — a clean, symmetric, entirely false answer. It was caught only because it
+   contradicted a count of 326 taken moments earlier by different means. Same class as the
+   addendum's A10.1 and now covered by §6.8: a reading produced outside the declared comparator
+   is a defect even when it looks tidy. The corrected split is B4's.
+2. **The merge was invoked once before the recording finished** and refused on its "no staged
+   fixtures" gate, which is the gate working. Noted because the refusal is evidence: the gates
+   were written before the sequence was run, not after it went wrong.
+3. **`stamp-merged-provenance.sh` is a new instrument** written after the merge, not rehearsed
+   beforehand, because the defect it fixes was only visible in the merged artefact. It is
+   idempotent and its effect was verified by re-running the replay. Disclosed rather than
+   presented as part of the planned sequence.
+
+### B8 — O2, answered
+
+**Sanctioned, run, and cheaper than estimated by two orders of magnitude.** M1's `7.2` now has
+104 `A-loop` fixtures to assert the cascade's pre-registered direction against, which is what
+this report said the checkpoint could not proceed without.
+
+**STOP.** M1 opens on the brief, with the three amendments M0.5's second review names.
