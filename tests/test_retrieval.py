@@ -81,3 +81,53 @@ def test_retrieve_set_still_keeps_the_best_scoring_copy_of_a_chunk(
     assert RET.retrieve_set(cast(Any, None), "q", k=5)[0]["artifact_cache_key"] == "b" * 64
     _scripted(monkeypatch, list(reversed(dup)))
     assert RET.retrieve_set(cast(Any, None), "q", k=5)[0]["artifact_cache_key"] == "b" * 64
+
+
+# M0.5 / R2 — finding 3: the scores THEMSELVES are not reproducible. DuckDB sums BM25 term
+# contributions in a parallelism-dependent order, so two identical calls on an unchanged corpus
+# return the same hits at scores differing by 1-2 ulp (149 of 320 hits, measured). A key whose
+# leading term is the raw score therefore cannot be a total order however good its tie-breakers:
+# the near-tie is resolved by whichever draw the engine happened to make. Quantising the leading
+# term to 9 decimal places discards ~1e-15 of noise at BM25 magnitudes of 10-40 and turns the
+# near-tie into a declared tie, resolved by the document key like every other tie.
+
+def _jitter(score: float, ulps: int) -> float:
+    import math
+    for _ in range(ulps):
+        score = math.nextafter(score, math.inf)
+    return score
+
+
+def test_retrieve_set_ranks_ulp_separated_scores_as_a_declared_tie(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    # the LOWER-keyed document scores one ulp WORSE, so a raw-score key ranks it second and a
+    # quantised key ranks it first. One ulp is ~3.6e-15 here — noise, not evidence.
+    hits = [_hit("zulu text", _jitter(31.960842, 1), "c" * 64),
+            _hit("alpha text", 31.960842, "a" * 64)]
+    _scripted(monkeypatch, hits)
+    got = RET.retrieve_set(cast(Any, None), "q", k=2)
+    assert [h["artifact_cache_key"] for h in got] == ["a" * 64, "c" * 64]
+
+
+def test_retrieve_set_is_invariant_to_score_jitter_between_identical_calls(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    # the live shape: the same corpus, the same query, two calls, scores that wobble in the
+    # last bits and a k that cuts through the wobble. Both the SET and its ORDER must hold.
+    def call(ulps: dict[str, int]) -> list[str]:
+        _scripted(monkeypatch, [_hit(f"{c} text", _jitter(31.960842, ulps.get(c, 0)), c * 64)
+                                for c in ("a", "b", "c", "d")])
+        return [h["artifact_cache_key"] for h in RET.retrieve_set(cast(Any, None), "q", k=2)]
+
+    assert call({}) == call({"c": 2, "a": 1}) == call({"d": 3, "b": 1})
+
+
+def test_retrieve_set_still_separates_scores_that_differ_above_the_quantum(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    # the quantum resolves ties, it must not MANUFACTURE them: a real score difference — here
+    # 1e-8, four orders of magnitude above the rounding — still decides the rank, against the
+    # declared key's preference. (Passes before the quantisation too, and must keep passing.)
+    hits = [_hit("alpha text", 31.960842, "a" * 64),
+            _hit("zulu text", 31.960842 + 1e-8, "z" * 64)]
+    _scripted(monkeypatch, hits)
+    got = RET.retrieve_set(cast(Any, None), "q", k=2)
+    assert [h["artifact_cache_key"] for h in got] == ["z" * 64, "a" * 64]

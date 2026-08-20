@@ -570,6 +570,23 @@ its root as an argument and is correctly redirected rather than sunk. *Pinned by
 `life_agent.collapse.drive.sealed()` and
 `tests/test_collapse_record.py::test_the_seal_sinks_decision_appends_so_the_c5_mirror_never_fires`.
 
+**6.7 A gate is a script, not a sentence.** An *instrument-design* rule, added at M0.5 on two
+instances one checkpoint apart. *Why:* M0's brief required the tree to be ruff-, mypy- and
+guard-clean; its commit script ran the guard, the suite and ruff, and the discipline statement
+was left to carry mypy. Thirteen type errors — all in M0's own new files — reached master, and
+the report was silent, because nothing executed the claim. M0.5's script runs mypy, which is
+the only reason the gap was found at all: the checkpoint that *had* the gate caught the
+checkpoint that only had the sentence. The same shape governs rehearsals — a rehearsal that
+inherits ambient state (an exported `PYTHONHASHSEED`; a file set present in the working tree
+but absent from the commit) is a green that cannot fail, and both instances passed in
+rehearsal and failed on the signed run. *The rule:* every condition a checkpoint states is
+executed by its own commit script, and the script is rehearsed against a clean checkout of
+exactly the file set it will commit, in an environment scrubbed of the variables the check
+depends on. *Not covered:* claims about the world that no script can execute (a spend
+estimate, a coverage judgement) — those stay prose, and the register is where they are named
+as prose. *Pinned by:* the checkpoint commit scripts' own gate sequence (guard, suite, ruff,
+mypy, replay), and stated as run in each checkpoint's report.
+
 ## 7. Behaviour preservation — the equivalence instrument, pre-stated
 
 **The invariant.** The collapse must not change *what the system decides*: for the same

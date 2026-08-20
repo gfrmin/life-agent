@@ -31,18 +31,27 @@ def retrieve_set(conn: duckdb.DuckDBPyConnection, question: str, k: int) -> list
     score; return the top-k as plain dicts — the cacheable retrieval-set content, carrying
     each hit's artifact cache key for lineage. No snapshot filter.
 
-    Ordered by a DECLARED total order — ``(-score, artifact_cache_key, chunk_text)`` — because
-    pkm's FTS returns tied BM25 scores in a nondeterministic order (M0.5): where a tie straddled
-    the top-k cut, the retrieved *set* changed between two runs of the same code on the same
-    corpus, and with it every §18.9 derivation keyed on it."""
+    Ordered by a DECLARED total order — ``(-round(score, 9), artifact_cache_key, chunk_text)``
+    — because pkm's FTS is nondeterministic in TWO layers (M0.5): it returns tied BM25 scores in
+    a varying order, and the scores themselves differ by 1-2 ulp between identical calls (DuckDB
+    sums term contributions in a parallelism-dependent order). Where either straddled the top-k
+    cut, the retrieved *set* changed between two runs of the same code on the same corpus, and
+    with it every §18.9 derivation keyed on it."""
     from pkm.retrieval import SearchResult, search
 
     # Over-fetch, ORDER, then dedupe: sorting first keeps the dedupe rule unchanged (the
     # best-scoring copy of a duplicated chunk survives, since the order is score-major) while
     # making its tie — identical text at an identical score in two documents, this corpus's
     # commonest shape — resolve by the declared key rather than by arrival order.
+    #
+    # The leading term is QUANTISED (R2): a key led by a quantity that is not reproducible to
+    # the last bit cannot be a total order however good its tie-breakers. At BM25 magnitudes of
+    # 10-40 the ninth decimal place discards ~1e-15 of engine noise — six orders of magnitude
+    # below any score difference the corpus produces — so a near-tie becomes a declared tie,
+    # resolved by the document key like every other. It resolves ties; it does not make them:
+    # the tie census over the battery is unchanged at 88 questions and 742 tied hits.
     ordered = sorted(search(conn, question, k=k * 4),
-                     key=lambda h: (-h.score, h.artifact_cache_key, h.chunk_text))
+                     key=lambda h: (-round(h.score, 9), h.artifact_cache_key, h.chunk_text))
     best: dict[str, SearchResult] = {}
     for h in ordered:
         best.setdefault(h.chunk_text, h)

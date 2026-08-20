@@ -2382,7 +2382,7 @@ on this list. Answers land here by amendment, citing their evidence.
   action, answer rate, spend. *Rollback:* revert the commit — there is no env flag, and
   one must not be invented at read time.
 
-- **Two unordered sources on the decision path — the cache was doing the work of determinism
+- **Three unordered sources on the decision path — the cache was doing the work of determinism
   (2026-08-19/20, tranche-2 M0/M0.5, `scripts/collapse_replay.py` + the M0.5 probes, $0
   deterministic).** The decision-equivalence instrument built at M0 found two ties resolved by
   an unordered source, both pre-dating this arc. (1) `lookup.dedup_correlated` broke its
@@ -2393,7 +2393,16 @@ on this list. Answers land here by amendment, citing their evidence.
   `core/retrieval.py:retrieve_set` preserved pkm's FTS order, which is nondeterministic among
   tied BM25 scores *within a single process*: over the 104-question battery at k=80, **87
   questions (84%) return a different ORDER and 45 (43%) a different SET between three
-  identical calls**; 88 carry ties, 742 tied hits in total. **What kept the ledger comparable
+  identical calls**; 88 carry ties, 742 tied hits in total. (3) The BM25 **scores themselves**
+  are not reproducible: DuckDB sums a term's contributions in a parallelism-dependent order, so
+  two identical calls on an unchanged corpus return the same hits at scores differing by 1–2
+  ulp (18 of 80 hits on a measured question; largest delta 3.6e-15). A key whose leading term
+  is the raw score therefore cannot be a total order *however good its tie-breakers* — the
+  near-tie is decided by whichever draw the engine made. With (2)'s ordering alone, 48
+  questions still returned a different order and 22 a different set; quantising the leading
+  term takes both to **zero**. Found at M0.5, deliberately left unfixed under that brief's
+  one-change instruction and carried as a named question, then ruled in at review and landed as
+  the checkpoint's second commit. **What kept the ledger comparable
   was the §18.9 cache, not the code.** The retrieval stage is keyed on (query, corpus digest,
   k) and the answer stage on its content hash, so the first run to compute a stage froze one
   arbitrary draw and every later run was served it. Comparability therefore held exactly as
@@ -2402,7 +2411,10 @@ on this list. Answers land here by amendment, citing their evidence.
   worked example) — silently re-rolled it. The decisions were never a function of the corpus
   alone. It also explains the cold derivations M0 saw on re-runs: an unstable order is an
   unstable key. *Fixed at M0.5* by declaring a total order at each site — first-seen at equal
-  covariate; `(-score, artifact_cache_key, chunk_text)` for retrieval — with the seed sweep
-  and the retrieval probe as the kills. *What it does not fix:* the readings already in this
+  covariate; `(-round(score, 9), artifact_cache_key, chunk_text)` for retrieval — with the seed
+  sweep, the retrieval probe, and a per-hit score-equality check across identical calls as the
+  kills. The quantisation resolves ties without manufacturing them: the census is unchanged at
+  88 questions and 742 tied hits before and after, and a test pins that a difference above the
+  quantum still decides the rank against the declared key's preference. *What it does not fix:* the readings already in this
   ledger, which stand as recorded with this entry as their caveat. Runs after M0.5 are the
   first whose evidence sets are reproducible by construction rather than by cache residency.

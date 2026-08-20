@@ -430,3 +430,254 @@ replay does not carry — which is an argument about the harness, not the decisi
 4. M1 opens on the review of this report and that baseline, per its brief.
 
 **STOP.**
+
+---
+
+## ADDENDUM — R2 applied (2026-08-20)
+
+The review ruled R2 in: the quantisation lands, *"in this checkpoint's commit"*, on four
+conditions. It arrived after `986faf7` was committed **and pushed**, so that phrase cannot be
+honoured literally without rewriting published history. This programme's own precedent is a
+compensating entry, never an edit (§6.6's provenance record; C6's void manifest), so R2 lands
+as a **second commit on the same checkpoint** and this report gains an addendum rather than a
+rewrite. That is the one place the ruling is read rather than followed; it is named here so the
+reviewer can overrule it, but a force-push over a reviewed and published artefact would cost
+more than the literal reading buys.
+
+### A1 — what landed
+
+`core.retrieval.retrieve_set` orders by `-round(score, 9)` in place of `-score`; the
+tie-breakers `(artifact_cache_key, chunk_text)` are unchanged. One token on one line.
+
+The quantisation is confined to the **ordering**. The hit dicts still carry `h.score` verbatim,
+so every downstream consumer — the §4.1 covariates, the competition detector, the recorded
+fixture inputs, every §18.9 key hashed from retrieval-set bytes — sees exactly the number the
+engine returned. Nothing that reads a score reads a rounded one.
+
+Three tests, written failing first (`tests/test_retrieval.py`): a one-ulp separation is ranked
+as a declared tie; three calls whose scores wobble in the last bits return the same set **and**
+the same order; and — the guard against over-quantising — a difference above the quantum still
+decides the rank *against* the declared key's preference. The third passed before the change
+and must keep passing: it is what pins "resolves ties, does not manufacture them" as a property
+rather than a claim.
+
+### A2 — kill 1, the seed sweep, re-run on the re-recorded baseline
+
+`seed-sweep.sh`, widened past the briefed 0–4 to include **seeds 6 and 41** — the two that
+DEVIATIONS 2 identified as the ones that broke the original pre-registration (`q2-008` diverges
+at 6, `q2-040` at 41 on the pre-fix tree) — so the sweep samples orders known to catch this
+class, not only convenient ones. Per R3 the list is evidence, not definition.
+
+```
+seed 0: 102/102   seed 1: 102/102   seed 2: 102/102   seed 3: 102/102
+seed 4: 102/102   seed 5: 102/102   seed 6: 102/102   seed 41: 102/102
+0 fixture(s) diverge on seed alone
+```
+
+The same instrument on the pre-M0.5 tree lost 12–18 fixtures per seed, 28 distinct over the
+seeds tried.
+
+### A3 — kill 2, retrieval determinism measured directly, with R2's added condition
+
+`retrieval-determinism.sh`, extended with the per-hit score-equality check the ruling asked
+for: the same query at k=80, three calls in one process, one process per hash seed, comparing
+the **scores themselves** across the three identical calls.
+
+```
+q2-053, k=80, 80 hits, 10 tied, 70 distinct scores
+  seed 0   raw_bit_stable false   raw_scores_moved 18/80   max_raw_delta 3.55e-15
+           quantised_stable true  quantised_scores_moved 0
+  seed 1   raw_bit_stable false   raw_scores_moved 16/80   quantised_stable true
+  seed 2   raw_bit_stable false   raw_scores_moved 15/80   quantised_stable true
+  set_digest    865363e10339   ×3 calls ×3 seeds
+  order_digest  bc7f393ebe5a   ×3 calls ×3 seeds
+```
+
+The finding and the fix in two lines: the engine's noise is **still there** — 15 to 18 of 80
+hits move between identical calls, by up to one ulp — and the sort key no longer sees it. A
+reading of `raw_bit_stable true` would have meant the probe was broken, not that the problem
+was gone.
+
+### A4 — kill 2 over the population
+
+`retrieval-population.sh`, the whole 104-question battery at k=80, three identical calls each,
+run live against the committed tree:
+
+| | order varies | set varies | questions with ties | tied hits |
+|---|---|---|---|---|
+| before M0.5 | 87 | 45 | 88 | 742 |
+| M0.5 orderings only | 48 | 22 | 88 | 742 |
+| **with the quantisation** | **0** | **0** | **88** | **742** |
+
+The tie census is identical in all three columns: 48 questions and 22 retrieved sets moved from
+"varies between identical calls" to "does not", and no new tie was created to do it. This is a
+live re-measurement on the committed code, not r03's apply-and-revert reading.
+
+### A5 — the fixture-level delta table (R2's third condition)
+
+The shallow 7.2 replay **cannot see this fix**: at replay `/retrieve` is served from the
+cassette, so `retrieve_set` never executes. The pre-R2 baseline replays `102/102` through the
+quantised code and would do so whatever the sort key said. That is not a null result but a
+structural blind spot — R3's boundary arriving early ("shallow is sufficient for M1–M4; deep
+replay is required at M5"): a retrieval-side change is exactly the class only a deep replay
+exercises. So the delta is measured where retrieval actually runs, by **re-recording** and
+comparing the two fixture sets under the declared §7.2 comparator.
+
+| of 102 fixtures | |
+|---|---|
+| retrieval identity unchanged | **85** |
+| retrieval merely **reordered** | 8 |
+| retrieval **set changed** | 9 |
+| decision body changed | **6** |
+| terminal class changed | **1** |
+
+Five of the six decision changes differ **only** in `log_decision.retrieval_keys` — the
+recorded citation provenance moved, the answer did not (`q2-011`, `q2-018`, `q2-024`, `q2-083`,
+`q2-105`). The sixth is `q2-059`, which changed `asserted`, `credences` and `effector`: a real
+decision change, and the terminal move below.
+
+### A6 — the baseline of record, and whether it reproduces
+
+`$LIFE_AGENT_KB/eval/collapse-fixtures/m0-5` is re-recorded from the quantised tree and is **the
+baseline of record for M1 onward**. Same recorder, same k=20, same seal, same two free traces,
+seed pinned at 0 and stamped into each fixture's provenance; 102 fixtures, the same three named
+absences as before (`q2-036`, `q2-043`, `q2-095` — cold §18.9 derivations under no-spend), so
+the set's membership is unchanged. The pre-R2 set is retained beside it at
+`collapse-fixtures/m0-5-pre-r2`, and `m0/` still stands from M0 — evidence, never deleted.
+
+**The claim that the baseline is now reproducible by construction is checkable, so it was
+checked** rather than asserted. A third recording was taken from the same code
+(`collapse-fixtures/m0-5-verify`, $0) and compared to the baseline of record:
+
+```
+m0-5 -> m0-5-verify   (102 common fixtures)
+  retrieval: identical 102 · reordered 0 · set changed 0
+  decision differs, excluding run_id: 0
+  terminal moved: 0
+```
+
+The only field that differs is `log_decision.decision.run_id`, which is
+`f"collapse-{checkpoint}"` by construction (`scripts/collapse_record.py:119`) and therefore
+must differ when the verification is recorded under a different checkpoint name. Every other
+field, on every fixture, is identical. Before M0.5 a re-record was one arbitrary draw from an
+unordered engine; it now returns the same evidence twice.
+
+A stale-file hazard was checked and is clean: the recorder writes fixtures by name into an
+existing directory and **never clears it**, so a fixture that failed on a later run would leave
+its predecessor in place and the manifest — which globs the directory — would list it as
+current. All 103 files were rewritten in the run and none predates it. That deserves a guard in
+the recorder rather than a check in a report; not taken here, since it is neither named fix
+(**QUESTIONS R8**).
+
+**`terminal:hedge` is no longer a coverage hole.** It was named as one at M0.5 and R4 accepted
+it on the expectation that a hedge might arise in the priced set. One arose in the **free** set
+instead: the quantised retrieval moved `q2-059` from `report` to `hedge`. The baseline now
+covers abstain 61 · report 38 · hedge 1 · miss 2.
+
+### A7 — the other four rulings, dispositioned
+
+* **R1 — confirmed.** Recorded; no further work.
+* **R3 — adopted as practice from M1.** A pre-registration names the **mechanism**, cites the
+  sweep as evidence, and states the sampled list as a lower bound. No exhaustive enumerator is
+  built: the ruling's test is whether a checkpoint's *direction* depends on completeness, and
+  M1's depends on classification. A2 already applies the standard by sampling the seeds known
+  to catch the class rather than the convenient ones.
+* **R4 — the condition is met and the hole is closed** (A6). The ruling's own escape clause
+  fired, in the free set rather than the priced one. M1 inherits a pinned hedge path and does
+  not need the argued-claim fallback; the instruction stands anyway on its merits, and M1's
+  report will still say whether the cascade deletion can reach that path — now with a fixture
+  behind the answer.
+* **R5 — confirmed, and built effective now rather than at M1** (A8).
+
+### A8 — the clean-checkout rehearsal (R5), stated as run
+
+The instrument is `~/.cache/life-agent/r2/rehearse-clean.sh`: a throwaway worktree at HEAD into
+which **only the files the commit will contain** are copied, then the gate sequence under
+`env -u` for every variable a gate depends on (`PYTHONHASHSEED`, `LIFE_AGENT_KB`), with the
+replay's seed pinned at its own invocation. Anything the commit forgets to list is therefore
+absent from the rehearsal — which is the check that would have caught both prior failures.
+
+This commit is its first user, and it passed from a clean checkout at `986faf7`:
+
+```
+== the file set is complete? (nothing else differs from HEAD)
+ M docs/bayesian-foundations.md · docs/module-collapse-design.md
+ M docs/unification/reports/r03-collapse-m0-5.md
+ M src/life_agent/core/retrieval.py · tests/test_retrieval.py
+guard exit=0
+2501 passed, 35 deselected            (2498 at M0.5; +3 is this addendum's tests)
+ruff  All checks passed!
+mypy  Success: no issues found in 214 source files
+replay  102/102 fixtures replay identically     (against the RE-RECORDED baseline)
+== clean-checkout rehearsal PASSED
+```
+
+The `git status` line is the load-bearing one: five files differ from HEAD and nothing else, so
+the commit's file list is provably complete. That is the assertion neither prior rehearsal
+could make, and the one whose absence produced both failures.
+
+### A9 — a FOURTH unordered source, named not fixed
+
+The standing instruction that governed the third source governs this one: if the fix surfaces
+another, it is a QUESTIONS item with its locator, not another change. It did.
+
+`life_agent.core.probes.probe_corroborate` (`src/life_agent/core/probes.py:189-208`) carries
+the **pre-M0.5 shape at both layers**, in one function:
+
+* it dedupes by chunk text keeping the best score with a strict `>` (`probes.py:203-204`), so
+  at an equal score the **first-arrived** copy wins — the engine's order decides which document
+  survives, which is finding (2) exactly;
+* it then sorts on the **raw score with no tie-breakers at all** (`probes.py:205`) and cuts at
+  top-k — so both the tie order and the ulp noise reach the cut.
+
+It is **on the decision path** when the gather lane runs: `core/gather.py:94` calls it
+per-candidate and `scripts/ask.py:803` takes that branch under `if gather:`. The bridge also
+exposes it at `/probe/corroborate` (`bridge/server.py:427`). No recorded fixture exercises it —
+the free baseline's B-lookup trace does not enter the gather lane — so neither the replay nor
+the re-record can see it, and the population probe measures `retrieve_set`, not this.
+
+I have not touched it. The fix is mechanically the same one line plus the declared key, and
+"mechanically the same" is precisely the argument that would have justified taking the third
+source silently at M0.5.
+
+### A10 — deviations in this addendum
+
+**A10.1 — I wrote a second oracle instead of using the declared one, and it gave a wrong
+answer first.** The fixture-delta instrument initially hand-rolled a digest over whole hit
+dicts and whole `outputs` bodies. It reported **91** retrieval moves and **99** decision moves;
+both were artefacts. The 91 counted 1-ulp drift in the recorded *score value* as a retrieval
+change, when the delivered set and order were identical; the 99 counted `run_id`, which differs
+by construction under a renamed checkpoint. The true figures are 17 and 6. Fixed by comparing
+the retrieval **identity** (the ordered `(document, chunk)` list) and by calling
+`life_agent.collapse.compare.compare_outputs` — the §7.2 comparator that already existed and
+already encodes the field classes, floats at 1e-9 and all. This is §6.7 in miniature: the check
+existed, and a hand-rolled substitute reported a number that would have gone into a report
+unchallenged had the two readings not disagreed with the population probe.
+
+**A10.2 — the verification recording was not asked for.** R2's conditions are the two kills,
+the re-record, the delta table and the §14 extension. The third recording (A6) is extra machine
+time ($0, no-spend seal held) spent to convert "reproducible by construction" from a claim into
+a measurement. It also produced the only reading that isolates the fix's effect from the
+instability it removes, so the delta table in A5 can be read as the fix's effect rather than as
+an upper bound.
+
+### A11 — QUESTIONS carried forward
+
+* **R6 — the fourth source** (A9). Rule it in or out. If in, it is R2's shape again and belongs
+  in a third commit on this checkpoint with the same two kills, plus a decision on whether the
+  gather lane needs its own fixture trace first — it currently has none, so no oracle would
+  catch a regression there. If out, it should be named in the register as a known unordered
+  source the fixture set does not cover, so the next census does not rediscover it as new.
+* **R7 — the fixture set records the traces the recorder was told to run, and nothing else.**
+  A9's blind spot is not specific to A9: the gather lane is unpinned, and `terminal:hedge` was
+  unpinned until an unrelated change happened to produce one. Both were invisible to the
+  shallow oracle for the same structural reason. Is the priced baseline the right place to
+  widen trace coverage, or does that belong in its own checkpoint after M1?
+* **R8 — the recorder does not clear its output directory** (A6). A failed fixture silently
+  leaves its predecessor in the set, and the manifest globs the directory, so a mixed baseline
+  would present as a whole one. Checked clean by hand this time. Worth a guard — refuse to
+  write into a non-empty checkpoint directory without an explicit flag — or is a documented
+  hazard enough?
+
+**STOP.** The priced baseline (r02's O2) now runs against a settled retrieval; M1 opens on the
+review of this addendum and that baseline.
