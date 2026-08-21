@@ -2516,6 +2516,44 @@ on this list. Answers land here by amendment, citing their evidence.
   whether other rows moved in compensating directions; the answer-rate and disagreement
   diagnostics are the check on that.
 
+- **Run 12 — §6.9's declared probe order, isolated and CONVICTED: PASS at P(Δ>0.05) = 0.964,
+  Δ̄ = +0.434 [+0.076, +0.883]** (2026-08-21, `gate-20260821T194120`; typed 36 ✓ / **0 ✗** /
+  68 withheld, miss 2 · dispersed 66, answer rate 0.35 at $1.36 vs mono 0.97 at $39.01;
+  deliberate 67/104, warm 67). Run 11's tree with §6.9's declared key backed out and nothing
+  else — the fail-open restored, M1's deletion and R2's order in place; §6.10's diff named the
+  three decision-logic files that moved. The frozen rule required wrong = 0 AND P ≥ 0.90, and
+  **both hold: §6.9's key is convicted as what moved the wrong commit.** All four predictions
+  held except the parenthetical in (1) — see below. **This is the best reading in the series**
+  (run 7 0.945, run 9 0.938), and the first PASS on the priced lane.
+  **What §6.9 actually did, which is not what the conviction sounds like.** The posterior
+  records across the isolation put the *same wrong leader* on top in runs 10, 11 AND 12: the
+  competitor leads at 0.902 / 0.901 / 0.810 with the gold demoted to 0.03–0.06 in all three.
+  So the declared key did not add the candidate and did not swap the leader — it **concentrated
+  the posterior** (p_none 0.126 → 0.066) enough to carry an already-wrong leader from EU 0 to
+  EU +0.044, a hair over the commit bar. On the priced lane this question is wrong-leader
+  dominant in **every** configuration measured; run 12 passes because the arm *withholds* on a
+  wrong leader, which is the right action and not knowledge of the gold. The single-candidate
+  gold-led posterior belongs to run 9's LEGACY lane and has not been seen since. **What
+  protects the arm here is dispersion, and the thing deciding how much dispersion survives is
+  an arbitrary choice of which document represents a duplicated chunk** — the carrier-identity
+  defect, now with a priced demonstration of what it costs.
+  *A correction to the previous entry, and the third of this investigation.* The "controlled
+  comparison" drawn from the M0.5 live recordings was weaker than it was presented: its
+  pre-§6.9 arm is a SINGLE draw from a nondeterministic order, so it was one ticket in the
+  lottery, not a control — which is why it showed one candidate where run 12 shows two on the
+  same order. The conclusion is carried by the direct isolation (run 11 → run 12, one change,
+  1 wrong → 0 and FAIL → PASS), not by that comparison. *The pattern is worth naming because
+  it recurred:* every attribution in this arc drawn from indirect evidence was wrong (the
+  fail-open, then the lane, then the cassette 2×2), and every one drawn from a single-change
+  isolation was right. Four decision-path changes bundled into one run cost three runs and
+  three retractions to unpick.
+  *What this does NOT license, as pre-registered before the run:* reverting §6.9. The
+  measurement branch does not merge. The old order is nondeterministic and merely a luckier
+  ticket on this corpus — runs 7 and 8 won it, run 10 lost it. Master therefore still carries
+  the configuration that produces the wrong commit, knowingly, until the carrier-identity
+  checkpoint fixes the root cause; **the arc is not deployed, so nothing live is affected, and
+  it should not be deployed before that checkpoint closes.**
+
 - **Four unordered sources on the decision path — the cache was doing the work of determinism
   (2026-08-19/20, tranche-2 M0/M0.5, `scripts/collapse_replay.py` + the M0.5 probes, $0
   deterministic).** The decision-equivalence instrument built at M0 found two ties resolved by

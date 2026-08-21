@@ -98,9 +98,21 @@ run reads 0.952 / +0.410 — PASS, stronger than run 9. But it is **not an attri
 reading**: four decision-path changes were in the tree (the pre-registered null-read
 fail-open, R2's declared retrieval order, §6.9's probe order, tranche-2 M1's executor
 deletion) and three are invisible to the 7.2 oracle by construction. The named risk of
-the null-read fail-open — a restored channel surfacing a wrong leader over the bar — is
-the best-supported cause and is not proven; separated runs decide it. Registered:
-**§6.10 — a gate run must pin its tree, not just its recipe.**
+the null-read fail-open was the first suspect and was **refuted**. An isolation ladder
+settled it: **run 11** (−fail-open) FAIL 0.880, same single wrong row → the fail-open is
+**exonerated** and stays; **run 12** (−§6.9's declared probe order) **PASS 0.964, Δ̄
++0.434, 0 wrong — the best reading in the series and the first PASS on the priced lane**,
+so §6.9's key is **convicted** as what moved the commit. It did not create the wrong
+leader (the same competitor leads in runs 10–12); it concentrated the posterior enough to
+carry an already-wrong leader over the bar. **§6.9 is NOT reverted** — pre-registered
+before the run: the old order is nondeterministic, a luckier ticket rather than a better
+rule, so master knowingly carries the wrong commit until the **carrier-identity**
+checkpoint closes. **Do not deploy this arc before then** (it is not deployed now). Also
+found: **runs 7–9 all fired the LEGACY cascade lane** (the arm's flag defaulted off; each
+run's `env_flags` records it), so run 10 was the first gate run ever on the priced lane
+and M1's deletion switched the arm's lane rather than removing dead code from its path.
+Registered: **§6.10 — a gate run must pin its tree, not just its recipe** (built, tiered,
+used live in runs 11–12).
 **§13 adoption RESOLVED (2026-08-17, on runs 7+9):
 typed is the silent default, honest-withhold-only (the uncalibrated fallback lane is
 REMOVED — `LIFE_AGENT_FALLBACK_LANE` is ignored), and the deliberate edge is ON by

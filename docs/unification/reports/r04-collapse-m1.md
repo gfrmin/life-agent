@@ -610,3 +610,73 @@ pre-registered criteria before anything is changed in `retrieval.py` or `probes.
    worktrees root); master
    keeps the change until the reading rules on it. Nothing is reverted on the strength of a
    contaminated run.
+
+## DONE 12 — the isolation ladder: three runs, one cause
+
+RULINGS 2 and 6 bought the runs; §6.10 (RULING 7) made each one attributable. All three fired
+the run-9 recipe against the archived monolithic arm, which was never re-fired.
+
+| run | tree | wrong | P(Δ>δ) | Δ̄ | typed | spend |
+|---|---|---|---|---|---|---|
+| 10 | four changes bundled | 1 | 0.861 FAIL | +0.323 | 36 ✓ / 1 ✗ / 67 | $3.28 |
+| 11 | run 10 − null-read fail-open | 1 | 0.880 FAIL | +0.343 | 36 ✓ / 1 ✗ / 67 | $1.73 |
+| 12 | run 11 − §6.9's declared key | **0** | **0.964 PASS** | **+0.434** | 36 ✓ / 0 ✗ / 68 | $1.36 |
+
+**Run 11 exonerated the null-read fail-open** on its pre-committed branch: the reading was
+materially unchanged and the same row committed wrong, so its rollback did not fire and master
+keeps it. **Run 12 convicted §6.9's declared key** on its frozen rule (wrong = 0 AND P ≥ 0.90),
+and reads better than any run in the series — the first PASS on the priced lane.
+
+### What the ladder found that no argument had
+
+**Runs 7, 8 and 9 all fired the LEGACY cascade lane.** The gate arm's lane flag defaulted off
+and no fire script ever set it; each of those runs recorded it as an empty string in its own
+`env_flags`. Run 10 is the first gate run ever on the priced lane. M1's deletion therefore did
+not remove dead code from the gate's path — it **switched the arm's lane**, and the 104/104
+equivalence replay never spoke to that, as DONE 10 says in as many words ("the lane it was
+never on did not move"). Four runs went by without anyone noticing which lane the evidence
+came from.
+
+**The wrong leader is not §6.9's doing.** The same competitor leads in runs 10, 11 and 12
+alike (0.902 / 0.901 / 0.810, gold demoted to 0.03–0.06 throughout). §6.9's key concentrated
+the posterior — p_none 0.126 → 0.066 — carrying an already-wrong leader from EU 0 to EU +0.044,
+just over the bar. On the priced lane this question is wrong-leader dominant in every
+configuration measured, and run 12 passes because the arm *withholds*, not because it knows the
+gold. The gold-led posterior belongs to run 9's legacy lane and has not been seen since. What
+protects the arm is dispersion; what decides how much dispersion survives is an arbitrary
+choice of which document represents a duplicated chunk. RULING 4's carrier-identity checkpoint
+now has a priced demonstration of its cost: one wrong commit, −0.09 in Δ̄, a FAIL.
+
+### Three retractions, and the pattern under them
+
+This report attributed the failure three times before the ladder settled it — to the null-read
+fail-open (run 11 refuted it), to M1's lane switch (run 12 refutes it: the lane is constant
+across runs 10–12), and to a "controlled comparison" over the M0.5 live recordings whose
+pre-§6.9 arm was a **single draw from a nondeterministic order** — one ticket in the lottery,
+not a control, which is why it showed one candidate where run 12 shows two under the same
+order. Every attribution drawn from indirect evidence was wrong; every one drawn from a
+single-change isolation was right. Bundling four decision-path changes into one priced run cost
+three runs and three retractions to unpick, and §6.10 exists so the next reader does not pay
+that again.
+
+### What is NOT done
+
+**§6.9 is not reverted.** The pre-registration froze that before run 12 fired: a pass convicts
+the key as what moved this row on this corpus, never as wrong, and the old order is
+nondeterministic — a luckier ticket, not a better rule. The measurement branch does not merge.
+Master therefore knowingly carries the configuration that produces the wrong commit until the
+carrier-identity checkpoint closes. The arc is **not deployed**, so nothing live is affected,
+and it should not be deployed before that checkpoint closes.
+
+## RULINGS — status
+
+| # | ruling | status |
+|---|---|---|
+| 1 | hold the fail-open, measure it clean | **done** — run 11; exonerated, master keeps it |
+| 2 | buy one separated run | **exceeded by the pre-commitment** — run 11 failed, so RULING 6 fired and bought run 12 ($1.73 + $1.36) |
+| 3 | M1 held at this report | **still held** — but 7.3 now has a PASS on M1's tree minus §6.9, and §6.9 is not M1's content; the deletion is vindicated, and whether that signs the checkpoint is the owner's call |
+| 4 | carrier-identity gets its own entry + criteria | **open, and now the critical path** |
+| 5 | run 11's frozen rule | **applied** — 1 wrong, P 0.880; rollback did not fire |
+| 6 | escalate if run 11 still failed | **applied, narrowed to §6.9 alone** (R2 held constant), recorded in §14 |
+| 7 | §6.10 lands before run 11 | **done** — built, tiered, and used live in runs 11 and 12 |
+| 8 | revert lives in a worktree | **done** — both measurement branches are worktree-only and neither merges |
