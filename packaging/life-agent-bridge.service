@@ -1,0 +1,28 @@
+# life-agent capability bridge — the answer-brain read path, a systemd --user unit.
+# Install:
+#   mkdir -p ~/.config/systemd/user
+#   ln -s "$PWD/packaging/life-agent-bridge.service" ~/.config/systemd/user/life-agent-bridge.service
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now life-agent-bridge.service
+# Symlink, never copy. LIFE_AGENT_KB and PKM_CONFIG resolve at runtime through bin/answer-bridge,
+# which sources the gitignored .env; nothing sensitive or owner-specific lives in this file.
+# Localhost-bound by default (:8798) — the owner profile and the utility posterior stay
+# server-side. ExecStart assumes the repo is at %h/git/life-agent — edit if yours differs.
+[Unit]
+Description=life-agent capability bridge (:8798) — answer-brain read path (route/retrieve/extract/probe/utility)
+Documentation=https://github.com/gfrmin/life-agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# ~/.local/bin must stay on PATH: the bridge shells out to tools installed there (the membrane
+# host among them). systemd --user does not guarantee it, so set it explicitly rather than
+# inherit whatever the user manager happened to start with.
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=%h/git/life-agent/bin/answer-bridge
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

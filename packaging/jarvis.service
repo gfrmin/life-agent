@@ -1,0 +1,24 @@
+# life-agent Jarvis — the Telegram reach channel, a systemd --user unit (like gtd-web.service).
+# Install:
+#   mkdir -p ~/.config/systemd/user
+#   ln -s "$PWD/packaging/jarvis.service" ~/.config/systemd/user/jarvis.service   # run from the repo root
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now jarvis.service
+# Symlink, never copy: a copied unit is a second copy free to drift, and this file stops being
+# the source. The owner id and every secret resolve at runtime through bin/jarvis, which sources
+# the gitignored .env; nothing sensitive lives in this file, and nothing owner-specific should
+# ever be added to it. ExecStart assumes the repo is at %h/git/life-agent — edit if yours differs.
+[Unit]
+Description=life-agent Jarvis (Telegram reach channel)
+Documentation=https://github.com/gfrmin/life-agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=%h/git/life-agent/bin/jarvis
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target

@@ -4,9 +4,14 @@
 #   ln -s "$PWD/packaging/gtd-web.service" ~/.config/systemd/user/gtd-web.service   # run from the repo root
 #   systemctl --user daemon-reload
 #   systemctl --user enable --now gtd-web.service
-# The owner id + any secrets resolve from gnome-keyring at runtime (JARVIS_USER_ID); nothing
-# sensitive lives in this file. ExecStart below assumes the repo is at %h/git/life-agent — edit
-# it if the repo lives elsewhere.
+# The owner id + any secrets resolve at runtime through bin/gtd-web (JARVIS_USER_ID from .env,
+# else gnome-keyring); nothing sensitive lives in this file. Put the id in the gitignored .env,
+# NOT in the keyring alone: under `loginctl enable-linger` a systemd --user service starts with
+# a LOCKED keyring, so the keyring fallback is unavailable at boot and owner_user_id() exits
+# with "set JARVIS_USER_ID (env or keyring)". This comment used to say "from gnome-keyring",
+# and a deployment that hit exactly that failure worked around it by inlining the id into its
+# own copy of this unit — which then drifted from this one for a month. ExecStart below assumes
+# the repo is at %h/git/life-agent — edit it if the repo lives elsewhere.
 [Unit]
 Description=life-agent GTD webapp
 After=network.target

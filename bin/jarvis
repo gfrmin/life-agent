@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# jarvis — the Telegram reach channel: polls for messages, parses each to an intent, routes to
+# tasks.commands / tasks.store. Transport only; no truth lives here (PRINCIPLES §6). Sources
+# .env (LIFE_AGENT_KB, JARVIS_USER_ID), then runs the bot in the foreground. Ctrl-C to stop.
+#   jarvis                                   # poll and serve
+#
+# The owner id is resolved by tasks.store.owner_user_id() from JARVIS_USER_ID (env, else
+# gnome-keyring) and is never hard-coded — not here, not in packaging/jarvis.service. Put it
+# in .env, which is gitignored: under `loginctl enable-linger` a systemd --user service starts
+# with a LOCKED keyring, so the keyring fallback is not available at boot and the lookup fails
+# with "set JARVIS_USER_ID (env or keyring)". That is exactly how a deployment ends up with the
+# id inlined into a unit file, which is what this wrapper exists to prevent.
+set -euo pipefail
+# Resolve through symlinks (e.g. ~/.local/bin/jarvis) so root is always the repo.
+root="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+set -a; [ -f "$root/.env" ] && source "$root/.env"; set +a
+exec uv run --project "$root" python -m life_agent.reach.jarvis "$@"
