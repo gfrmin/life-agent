@@ -855,12 +855,25 @@ def _sha256_file(path: Path) -> str | None:
 # equivalence instrument itself (`collapse`) and prose — none can move a terminal, and
 # pinning them would make the diff noisy enough to be ignored, which is the failure mode
 # this is built against.
-_DECISION_PATH: tuple[str, ...] = (
+_DECISION_LOGIC: tuple[str, ...] = (
     "src/life_agent/core/**/*.py",
     "src/life_agent/bridge/**/*.py",
+)
+# The harness shapes a run and so belongs in the digest — but it changes for reasons that
+# are not decision changes (this very pin is one), and a diff that fires on every run is a
+# diff that gets ignored. Reported as its own tier so a harness-only move never reads as a
+# decision move.
+_RUN_HARNESS: tuple[str, ...] = (
     "scripts/eval_executor.py",
     "scripts/run_eval.py",
 )
+_DECISION_PATH: tuple[str, ...] = _DECISION_LOGIC + _RUN_HARNESS
+
+
+def _tier(rel: str) -> str:
+    from pathlib import PurePosixPath
+    return ("logic" if any(PurePosixPath(rel).full_match(pat) for pat in _DECISION_LOGIC)
+            else "harness")
 
 
 def decision_path_tree(root: Path | str | None = None) -> dict:
@@ -955,7 +968,12 @@ def comparison_tree(meta: dict, *, root: Path | str | None = None) -> dict | Non
 
 def tree_pin_note(tree: dict, *, compare: dict | None, compare_run_id: str | None) -> str:
     """The report's tree block — §6.10's pin. Goes ABOVE the verdict, because a reader who
-    reaches the number without knowing what moved underneath it has already been misled."""
+    reaches the number without knowing what moved underneath it has already been misled.
+
+    Differences are grouped by tier and the claim is kept to what a hash can support: a
+    tree diff can say WHAT moved, never whether the mover was intended. Overclaiming here
+    ("cannot be attributed") on a harness-only difference would teach readers to skip the
+    block, which is how a pin dies."""
     head = (f"> **Decision-path tree:** {tree['n']} file(s), digest "
             f"`{tree['digest'][:16]}…`")
     if compare is None:
@@ -966,15 +984,20 @@ def tree_pin_note(tree: dict, *, compare: dict | None, compare_run_id: str | Non
     if d["identical"]:
         return head + (f" — **identical** to `{compare_run_id}`'s. Any difference in Δ is "
                        "this run's own (§6.10).\n\n")
+    moved = sorted({f for k in ("changed", "added", "removed") for f in d[k]})
+    logic = [f for f in moved if _tier(f) == "logic"]
+    harness = [f for f in moved if _tier(f) == "harness"]
     parts = []
-    for label in ("changed", "added", "removed"):
-        if d[label]:
-            parts.append(f"**{label}** ({len(d[label])}): "
-                         + ", ".join(f"`{f}`" for f in d[label]))
-    return head + (f" — **differs** from `{compare_run_id}`'s. "
-                   + " · ".join(parts)
-                   + ". Δ cannot be attributed to one change while more than one moved "
-                     "(§6.10).\n\n")
+    for label, group in (("decision logic", logic), ("harness", harness)):
+        if group:
+            parts.append(f"**{label}** ({len(group)}): "
+                         + ", ".join(f"`{f}`" for f in sorted(group)))
+    detail = " · ".join(f"{k} {len(d[k])}" for k in ("changed", "added", "removed") if d[k])
+    tail = ("Δ is attributable only insofar as this list IS the intended change (§6.10)."
+            if logic else
+            "No decision logic moved; the difference is harness only (§6.10).")
+    return head + (f" — **differs** from `{compare_run_id}`'s ({detail}). "
+                   + " · ".join(parts) + ". " + tail + "\n\n")
 
 
 def build_gate_run_meta(*, run_id: str, args, questions: list[dict], questions_path,

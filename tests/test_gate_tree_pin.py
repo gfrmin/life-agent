@@ -193,3 +193,31 @@ def test_a_recorded_tree_wins_over_reconstruction(tmp_path: Path) -> None:
     meta = {"run_id": "x", "decision_path_tree": tree,
             "life_agent_git": {"sha": "deadbeef", "dirty": False}}
     assert RE.comparison_tree(meta, root=tmp_path) == tree
+
+
+def test_the_note_separates_decision_logic_from_the_harness(tmp_path: Path) -> None:
+    """A pin that fires on every run is a pin that gets ignored — the ignored-diff failure
+    this entry warns about. The harness (`run_eval.py`) shapes a run and belongs in the
+    digest, but a harness-only difference is not a decision change and must not read as
+    one."""
+    old = RE.decision_path_tree(_fake_repo(tmp_path / "a"))
+    new = RE.decision_path_tree(_fake_repo(tmp_path / "b", extra={
+        "scripts/run_eval.py": "def main(): pass\n"}))
+    note = RE.tree_pin_note(new, compare=old, compare_run_id="gate-earlier")
+
+    assert "harness" in note.lower()
+    assert "scripts/run_eval.py" in note
+    # no decision logic moved, so the note must not say the reading is unattributable
+    assert "cannot be attributed" not in note.lower()
+
+
+def test_the_note_flags_moved_decision_logic(tmp_path: Path) -> None:
+    old = RE.decision_path_tree(_fake_repo(tmp_path / "a"))
+    new = RE.decision_path_tree(_fake_repo(tmp_path / "b", extra={
+        "src/life_agent/core/executor.py": "def decide(): pass\n"}))
+    note = RE.tree_pin_note(new, compare=old, compare_run_id="gate-earlier")
+
+    assert "decision logic" in note.lower()
+    assert "src/life_agent/core/executor.py" in note
+    # the honest claim: attributable only insofar as this list IS the intended change
+    assert "intended change" in note.lower()

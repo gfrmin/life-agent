@@ -675,8 +675,7 @@ this entry exists to prevent. Verified live: run 10's recorded commit reconstruc
 decision-path files. One divergence was caught by its own test and is worth recording, because
 it would have made the pin quietly wrong in the direction of *under*-reporting: `fnmatch`'s `**`
 is a plain `*`, so the git-side matcher skipped every file directly under `core/` while the
-working-tree side (`Path.glob`) matched them. Both halves now use `PurePath.full_match`. *Pinned
-by:* `tests/test_gate_tree_pin.py` (12 tests).
+working-tree side (`Path.glob`) matched them. Both halves now use `PurePath.full_match`. The declaration is **tiered**: `core`/`bridge` are *decision logic*, `eval_executor.py`/`run_eval.py` the *harness*. The harness shapes a run and belongs in the digest, but it moves for reasons that are not decision changes — this pin was itself one — and a diff that fires on every run is a diff that gets ignored, which is the failure mode named above. So a harness-only difference is reported as exactly that, and the note's claim is kept to what a hash can support: a tree diff says WHAT moved, never whether the mover was intended. *Pinned by:* `tests/test_gate_tree_pin.py` (14 tests).
 
 ## 7. Behaviour preservation — the equivalence instrument, pre-stated
 
