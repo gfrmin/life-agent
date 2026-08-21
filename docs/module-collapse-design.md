@@ -657,6 +657,27 @@ outside 7.2 by construction**, so for those the gate is the only oracle there is
 of them into one priced run spends the reading without buying it. *Pinned by:* the next gate
 run's own report, which must carry the tree diff or say there was none.
 
+*Built at M1, before run 11 fires (the ruling: registering a rule and not carrying it on the
+very next run is how a register rots).* `run_eval.decision_path_tree()` hashes a **declared**
+file set — `src/life_agent/core/**/*.py`, `src/life_agent/bridge/**/*.py`,
+`scripts/eval_executor.py`, `scripts/run_eval.py`: the body, the bridge it decides through, and
+the harness that drives the arm. Transport, the act layer, the equivalence instrument and prose
+are deliberately excluded — none can move a terminal, and a noisy diff is an ignored diff, which
+is the failure mode this is built against. The manifest and its digest land in `run_meta.json`
+before the first question, beside the corpus and utility pins. `--compare-run-meta` diffs against
+the run this one will be read against and the report names **every** difference, above the
+verdict; with no comparison the report says *not diffed* rather than presenting a pinned
+background it does not have. **The back-series is comparable too:** every earlier run recorded a
+git sha and a dirty flag, and a *clean* sha IS the tree, so `comparison_tree()` reconstructs it
+from the commit (`decision_path_tree_at()`); a run recorded **dirty** refuses reconstruction —
+it is not its commit, and reconstructing anyway would manufacture the very "nothing else changed"
+this entry exists to prevent. Verified live: run 10's recorded commit reconstructs to 45
+decision-path files. One divergence was caught by its own test and is worth recording, because
+it would have made the pin quietly wrong in the direction of *under*-reporting: `fnmatch`'s `**`
+is a plain `*`, so the git-side matcher skipped every file directly under `core/` while the
+working-tree side (`Path.glob`) matched them. Both halves now use `PurePath.full_match`. *Pinned
+by:* `tests/test_gate_tree_pin.py` (12 tests).
+
 ## 7. Behaviour preservation — the equivalence instrument, pre-stated
 
 **The invariant.** The collapse must not change *what the system decides*: for the same

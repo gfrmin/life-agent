@@ -842,6 +842,141 @@ def _sha256_file(path: Path) -> str | None:
         return None
 
 
+# §6.10 — the decision path, declared once. A gate reading is a comparison, and a
+# comparison whose background is free to move attributes nothing: run 10 pinned its recipe
+# (the flags, the corpus, the golds, the utility fold) and ran against a tree that had
+# quietly gained three further decision-path changes, two of them invisible to the 7.2
+# oracle because the fixture set tapes the bridge at the `http` seam. It read FAIL on one
+# wrong commit and no argument could say which of four changes bought it.
+#
+# What belongs here is exactly what can change a decision on the typed arm: the body
+# (`core`), the bridge it decides through (`bridge`), and the harness that drives the arm.
+# What does NOT belong: transport (`reach`), the act layer (`tasks`, `trips`), the
+# equivalence instrument itself (`collapse`) and prose — none can move a terminal, and
+# pinning them would make the diff noisy enough to be ignored, which is the failure mode
+# this is built against.
+_DECISION_PATH: tuple[str, ...] = (
+    "src/life_agent/core/**/*.py",
+    "src/life_agent/bridge/**/*.py",
+    "scripts/eval_executor.py",
+    "scripts/run_eval.py",
+)
+
+
+def decision_path_tree(root: Path | str | None = None) -> dict:
+    """Hash every file on the declared decision path; return the manifest and its digest.
+
+    Recorded in `run_meta.json` before the first question, so a killed run still carries
+    the tree it would have measured. The digest is over the manifest lines, so a rename is
+    a difference like any other."""
+    import hashlib
+    root = Path(root) if root is not None else Path(__file__).resolve().parent.parent
+    files: dict[str, str] = {}
+    for pattern in _DECISION_PATH:
+        for path in sorted(root.glob(pattern)):
+            if not path.is_file() or "__pycache__" in path.parts:
+                continue
+            files[path.relative_to(root).as_posix()] = \
+                hashlib.sha256(path.read_bytes()).hexdigest()
+    manifest = "\n".join(f"{rel} {sha}" for rel, sha in sorted(files.items()))
+    return {
+        "format_version": 1,
+        "declared": list(_DECISION_PATH),
+        "n": len(files),
+        "digest": hashlib.sha256(manifest.encode("utf-8")).hexdigest(),
+        "files": files,
+    }
+
+
+def tree_diff(old: dict, new: dict) -> dict:
+    """Name every difference between two decision-path trees. A digest mismatch is a
+    refusal; this is what makes it actionable — 'something else changed' is what run 10's
+    report was reduced to saying."""
+    o, n = dict(old.get("files") or {}), dict(new.get("files") or {})
+    added = sorted(set(n) - set(o))
+    removed = sorted(set(o) - set(n))
+    changed = sorted(k for k in set(o) & set(n) if o[k] != n[k])
+    return {"added": added, "removed": removed, "changed": changed,
+            "identical": not (added or removed or changed)}
+
+
+def decision_path_tree_at(root: Path | str, ref: str) -> dict:
+    """The same manifest, computed at a git ref instead of the working tree.
+
+    Every run before §6.10 recorded a git sha and a dirty flag but no tree; a CLEAN sha is
+    the tree, so the whole back-series stays comparable. Without this the pin could only
+    ever compare runs fired after itself, which is the slowest possible way to become
+    useful."""
+    import hashlib
+    import subprocess
+    from pathlib import PurePosixPath
+    root = Path(root)
+    listing = subprocess.run(["git", "-C", str(root), "ls-tree", "-r", "--name-only", ref],
+                             capture_output=True, text=True, check=True).stdout.splitlines()
+    # PurePath.full_match, not fnmatch: `**` must mean what it means to Path.glob above, or
+    # the two halves of this pin disagree about which files are on the decision path — and
+    # a pin whose halves disagree is worse than none. (fnmatch's `**` is a plain `*`, so
+    # `core/**/*.py` silently skipped every file directly under `core/`.)
+    wanted = sorted(rel for rel in listing
+                    if any(PurePosixPath(rel).full_match(pat) for pat in _DECISION_PATH))
+    files: dict[str, str] = {}
+    for rel in wanted:
+        blob = subprocess.run(["git", "-C", str(root), "show", f"{ref}:{rel}"],
+                              capture_output=True, check=True).stdout
+        files[rel] = hashlib.sha256(blob).hexdigest()
+    manifest = "\n".join(f"{rel} {sha}" for rel, sha in sorted(files.items()))
+    return {
+        "format_version": 1,
+        "declared": list(_DECISION_PATH),
+        "n": len(files),
+        "digest": hashlib.sha256(manifest.encode("utf-8")).hexdigest(),
+        "files": files,
+    }
+
+
+def comparison_tree(meta: dict, *, root: Path | str | None = None) -> dict | None:
+    """The comparison run's decision-path tree: recorded if it has one, else reconstructed
+    from a clean recorded commit, else None — and None means the report says 'not diffed'.
+
+    A run fired from a DIRTY tree is not its commit, and reconstructing one anyway would
+    manufacture the very 'nothing else changed' this entry exists to prevent."""
+    recorded = meta.get("decision_path_tree")
+    if recorded:
+        return recorded
+    git = meta.get("life_agent_git") or {}
+    if not git.get("sha") or git.get("dirty"):
+        return None
+    root = Path(root) if root is not None else Path(__file__).resolve().parent.parent
+    try:
+        return decision_path_tree_at(root, str(git["sha"]))
+    except Exception:
+        return None
+
+
+def tree_pin_note(tree: dict, *, compare: dict | None, compare_run_id: str | None) -> str:
+    """The report's tree block — §6.10's pin. Goes ABOVE the verdict, because a reader who
+    reaches the number without knowing what moved underneath it has already been misled."""
+    head = (f"> **Decision-path tree:** {tree['n']} file(s), digest "
+            f"`{tree['digest'][:16]}…`")
+    if compare is None:
+        return (head + " — **not diffed** (no comparison run given). This run's Δ is not "
+                "attributable to any single change unless the tree is compared to the run "
+                "it is read against (§6.10).\n\n")
+    d = tree_diff(compare, tree)
+    if d["identical"]:
+        return head + (f" — **identical** to `{compare_run_id}`'s. Any difference in Δ is "
+                       "this run's own (§6.10).\n\n")
+    parts = []
+    for label in ("changed", "added", "removed"):
+        if d[label]:
+            parts.append(f"**{label}** ({len(d[label])}): "
+                         + ", ".join(f"`{f}`" for f in d[label]))
+    return head + (f" — **differs** from `{compare_run_id}`'s. "
+                   + " · ".join(parts)
+                   + ". Δ cannot be attributed to one change while more than one moved "
+                     "(§6.10).\n\n")
+
+
 def build_gate_run_meta(*, run_id: str, args, questions: list[dict], questions_path,
                         corpus: dict, availability: dict[str, bool],
                         baseline: str) -> dict:
@@ -862,6 +997,7 @@ def build_gate_run_meta(*, run_id: str, args, questions: list[dict], questions_p
         "run_id": run_id,
         "created_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "life_agent_git": _git_info(Path(__file__).resolve().parent.parent),
+        "decision_path_tree": decision_path_tree(),
         "corpus": corpus,
         "questions": {
             "path": str(questions_path) if questions_path else None,
@@ -1386,6 +1522,15 @@ def main() -> int:
              "recorded, just unchecked.",
     )
     parser.add_argument(
+        "--compare-run-meta", default=None, metavar="RUN_META",
+        help="path to the run_meta.json of the run this one will be READ AGAINST. Its "
+             "decision-path tree is diffed against this run's and every difference is "
+             "named in the report (§6.10). Run 10 pinned its recipe and not its tree, and "
+             "read FAIL against a tree carrying three further decision-path changes: no "
+             "argument could say which bought it. Without this the tree is still recorded, "
+             "just undiffed — and the report says so.",
+    )
+    parser.add_argument(
         "--corpus-pin-mismatch", choices=("refuse", "allow"), default="refuse",
         help="what a pin mismatch does (default: refuse). 'allow' proceeds but stamps "
              "pin_status=mismatched into run_meta.json, the report header, and EVERY "
@@ -1671,9 +1816,17 @@ def main() -> int:
         result = GATE.delta_posterior(paired, post, oracle_p=LK._ORACLE_P)
         elapsed = time.monotonic() - t0
 
+        compare_meta = None
+        if args.compare_run_meta:
+            compare_meta = json.loads(
+                Path(args.compare_run_meta).read_text(encoding="utf-8"))
         preamble = ((f"> **Baseline arm:** {baseline_name}\n\n"
                      if replay is not None else "")
                     + exec_note + grading_note
+                    + tree_pin_note(run_meta["decision_path_tree"],
+                                    compare=(comparison_tree(compare_meta)
+                                             if compare_meta else None),
+                                    compare_run_id=(compare_meta or {}).get("run_id"))
                     + corpus_note(conn, questions, corpus=corpus))
         (gate_dir / "report.md").write_text(
             preamble + GATE.render_report(result, run_id=run_id, elapsed=elapsed),
