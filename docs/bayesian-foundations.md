@@ -2448,6 +2448,74 @@ on this list. Answers land here by amendment, citing their evidence.
   *Diagnostics to read:* wrong-commit count (the headline), P(Δ>δ), q2-011's terminal and
   candidate-set size, answer rate, spend, and §6.10's tree diff against run 10.
 
+- **Run 11 — the null-read fail-open, isolated and EXONERATED: FAIL at P(Δ>0.05) = 0.880,
+  Δ̄ = +0.343 [−0.057, +0.810]** (2026-08-21, `gate-20260821T190058`; typed 36 ✓ / **1 ✗** /
+  67 withheld, miss 2 · dispersed 65, answer rate 0.36 at $1.73 vs mono 0.97 at $39.01;
+  deliberate 68/104, warm 67; LOO curves over 784 rows). Run 10 with the fail-open reverted
+  and nothing else changed but §6.10's tree pin. Against run 10 (0.861, +0.323, 36 ✓ / 1 ✗ /
+  67, answer rate 0.36) the reading is **materially unchanged**, and the single wrong commit
+  is the same question. The frozen rule required wrong = 0 AND P ≥ 0.90 for the rollback to
+  become permanent; neither holds, so **the pre-committed branch fires: the fail-open is
+  exonerated, its rollback does NOT fire, and master keeps it.** Its own prediction (1) —
+  that the row would return to a withholding — is falsified. *§6.10's first live use:* the
+  report carried the tree diff, naming two decision-logic files (the revert) and one harness
+  file (the pin itself), which is exactly what moved.
+  **Two findings the isolation surfaced, neither of them the fail-open.**
+  *(a) Runs 7, 8 and 9 all fired the LEGACY cascade lane.* The gate arm's lane flag defaulted
+  off and no fire script ever set it — recorded in each run's own `env_flags` as an empty
+  string, and visible only because the recording was retired at M1 as false provenance. Run 10
+  is therefore the first gate run ever to use the priced lane, so tranche-2 M1's deletion did
+  not merely remove dead code from the gate's path: it **switched the arm's lane**. The 104/104
+  equivalence replay proved the deletion does not perturb the priced lane; it never spoke to
+  legacy-versus-priced, and the checkpoint's own report says so. This was unnoticed for four
+  runs.
+  *(b) The cause of the wrong commit is §6.9's declared probe order, and the earlier
+  exoneration of it was wrong.* The M0.5 recordings are LIVE runs and pin their trees, which
+  gives a controlled comparison with the lane held at priced and R2, the corpus, the golds and
+  the utility fold all constant: at `861ea1b` (priced lane, R2 present, fail-open present,
+  **§6.9 absent**) the row carries ONE candidate — the gold — and abstains; at run 10 and again
+  at run 11 (**§6.9 present**) it carries two, a same-shape competitor leads, and it commits
+  wrong. The legacy-lane recording abstains with one candidate too, so the lane is not the
+  discriminator either. *The reasoning error, recorded because it is repeatable:* §6.9 was
+  exonerated on the finding that the competitor is retrieved under BOTH orders, hence the
+  reorder could not have put it on the lattice. That conflates retrieved with extracted — the
+  probe's top-k is what the extractor reads, so a different set of chunks yields different
+  observations and a candidate can enter without the underlying search returning anything new.
+  The measurement that should have carried the inference was already in hand: §6.9's order costs
+  this question one gold-carrying document in the probe's top-k (9 → 8) and costs the competitor
+  none. **What decides it:** run 12, §6.9 reverted alone — a narrowing of run 11's pre-committed
+  escalation (which named R2 *and* §6.9), justified by R2 being held constant across the
+  controlled comparison above and recorded here rather than taken silently.
+  *Limitation, stated:* each run appends its outcomes, so the LOO curve fold grows between runs
+  (737 → 784 rows here); the series has always had this and it is not controlled.
+
+- **Pre-registration for run 12 — §6.9's declared probe order, isolated (2026-08-21, written
+  and committed BEFORE the run).** *The only change:* run 11's tree with §6.9's declared key
+  reverted in `probe_corroborate` and nothing else — the fail-open is restored to master (run
+  11 exonerated it), M1's deletion and R2's order stay. Same recipe, corpus pin, δ = 0.05,
+  level = 0.90, utility posterior, judge grading and credence pin `f474e70`; the monolithic arm
+  is the archived one and is not re-fired. §6.10's tree diff will name the change.
+  *Frozen decision rule, blind:* §6.9's key is convicted as the mover of the wrong commit iff
+  run 12 reads **wrong commits = 0 AND P(Δ>δ) ≥ 0.90** — the same bar runs 10 and 11 were held
+  to. If the row still commits wrong, §6.9 is exonerated too and the remaining suspects are
+  R2's order and M1's lane switch, which the controlled comparison could not separate because
+  both were present in every wrong run.
+  *Stated in advance, because it governs what a PASS may be read to mean:* reverting §6.9
+  restores a nondeterministic order, so a pass would convict the declared key as **the thing
+  that moved this row on this corpus** — never as wrong, and never as an argument for keeping
+  arrival order. The old order is a different ticket in the same lottery; runs 7 and 8 won it
+  and run 10 lost it. **A pass therefore does NOT license reverting §6.9 as the fix.** The fix
+  it licenses is the carrier-identity work already registered for its own checkpoint: byte-
+  identical text carried by several documents, where which document represents it changes the
+  posterior — measured on this question at 20 of 59 deduped chunk texts multi-carried, the
+  representative flipping for 9, two of those carrying the gold at exact score ties.
+  *Predictions:* (1) the row returns to a withholding with one candidate on the lattice, as in
+  the `861ea1b` recording; (2) wrong commits go to 0; (3) answer rate stays near 0.36 — the
+  reorder moves one row, not the arm's reach; (4) spend flat.
+  *Named risk:* a pass here is a conviction on one row out of 104, and the run cannot tell
+  whether other rows moved in compensating directions; the answer-rate and disagreement
+  diagnostics are the check on that.
+
 - **Four unordered sources on the decision path — the cache was doing the work of determinism
   (2026-08-19/20, tranche-2 M0/M0.5, `scripts/collapse_replay.py` + the M0.5 probes, $0
   deterministic).** The decision-equivalence instrument built at M0 found two ties resolved by
