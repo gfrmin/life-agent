@@ -677,6 +677,61 @@ it would have made the pin quietly wrong in the direction of *under*-reporting: 
 is a plain `*`, so the git-side matcher skipped every file directly under `core/` while the
 working-tree side (`Path.glob`) matched them. Both halves now use `PurePath.full_match`. The declaration is **tiered**: `core`/`bridge` are *decision logic*, `eval_executor.py`/`run_eval.py` the *harness*. The harness shapes a run and belongs in the digest, but it moves for reasons that are not decision changes — this pin was itself one — and a diff that fires on every run is a diff that gets ignored, which is the failure mode named above. So a harness-only difference is reported as exactly that, and the note's claim is kept to what a hash can support: a tree diff says WHAT moved, never whether the mover was intended. *Pinned by:* `tests/test_gate_tree_pin.py` (14 tests).
 
+**6.11 Carrier identity — which document represents duplicated text must not decide the
+answer.** Registered at M1 on the mechanism run 12 exposed, and given its own checkpoint by
+ruling (r04 RULING 4) rather than folded into R6: this is a *decision-model* defect, not an
+ordering one, and the difference between the two is the whole point of the entry.
+
+*What:* `core/retrieval.retrieve_set` dedupes the over-fetched hits by `chunk_text` and keeps
+ONE — and that survivor's `artifact_cache_key` becomes the text's carrier for the rest of the
+decision. Everything downstream is keyed on it: `observe_hits` reads the §4.1 covariates per
+artifact (authority from the origin path, `doc_date`, `subject_state`), and `lookup_posterior`
+**groups the observations BY artifact**, one `group_noisy_channel` per document sharing r_d.
+So the carrier choice sets both the weight on an observation and the *correlation structure* of
+the evidence: two chunks that would have shared a document, and been conditioned as one
+correlated group, instead land in two documents and are conditioned as more nearly independent
+— purely because different copies won their dedups.
+
+*How it is chosen today:* by R2's declared key `(-round(score, 9), artifact_cache_key,
+chunk_text)`. Byte-identical text scores identically, so in practice the survivor is the
+lexicographically smallest content hash. Deterministic, reproducible, and arbitrary — a coin
+flip frozen, not resolved.
+
+*Why a declared order is not the fix here, which is what run 12 bought.* §6.9 declared exactly
+this key one layer over on the probe path and the gate convicted it — and the conviction's
+content is narrower than it sounds: the key did not add the wrong candidate and did not swap
+the leader (the same competitor led in runs 10, 11 AND 12), it **concentrated** the posterior
+(p_none 0.126 → 0.066) enough to carry an already-wrong leader from EU 0 to EU +0.044, a hair
+over the commit bar. A declared total order buys reproducibility; it does not buy a right
+answer, and where the tie is between *witnesses of the same content* it hard-codes an answer to
+a question the model should never have been asked. On this corpus what protects the arm from a
+wrong leader is dispersion — and how much dispersion survives is currently decided by a hash.
+
+*The tell is already in the tree: the same question is answered twice, by two different rules.*
+§5's `lookup.dedup_correlated` collapses a cross-document duplicate quote to the
+**max-covariate** document — a substantive rule, and deliberately order-free (`max` returns the
+first maximal element "rather than ... the interpreter's per-process hash seed"). `retrieve_set`
+answers the same duplicate-witness question with a content hash one layer earlier, and *its*
+answer is the one that stands, because by the time §5 runs the losing carriers have already
+been discarded. Only one of the two can be right.
+
+*Candidate fix, named before the measurement so it cannot be tuned to it:* carry the carrier
+SET on the retrieved hit and make the representative a function of that set rather than of its
+order — the §5 max-covariate rule lifted one layer up, with the declared key breaking ties only
+*within* equal covariate. Not adopted here: this entry registers the defect, the audit freezes
+the criteria, and the fix is bought or refused on the reading.
+
+*What oracle it has, which is less than it looks:* none from 7.2. The fixture set tapes the
+§18.9 derivation cache at the `cache` seam, so a replay serves the *recorded* retrieval set and
+never executes `retrieve_set` — the same structural blindness §6.10's corollary named for the
+bridge, and the reason R2's declared order was invisible to 104/104 fixtures. The oracles are
+therefore (1) a hermetic **permutation-invariance** test — §6.9's own kill, and the right shape
+here because invariance is precisely the property being bought — and (2) a priced gate run
+under §6.10, isolated, one change.
+
+*Pinned by:* `scripts/carrier_audit.py` and the frozen criteria in its docstring (mirrored in
+the §14 pre-registration), then whichever branch they take.
+
 ## 7. Behaviour preservation — the equivalence instrument, pre-stated
 
 **The invariant.** The collapse must not change *what the system decides*: for the same

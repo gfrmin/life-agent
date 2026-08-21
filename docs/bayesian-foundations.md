@@ -2554,6 +2554,130 @@ on this list. Answers land here by amendment, citing their evidence.
   checkpoint fixes the root cause; **the arc is not deployed, so nothing live is affected, and
   it should not be deployed before that checkpoint closes.**
 
+- **Carrier identity — the checkpoint opened, criteria frozen BEFORE the instrument reads
+  (2026-08-22, r04 RULING 4; register entry design §6.11; instrument
+  `scripts/carrier_audit.py`, $0).** The defect run 12 exposed: `retrieve_set` dedupes the
+  over-fetched hits by chunk text and keeps ONE, and that survivor's artifact becomes the
+  text's carrier for the whole decision — it sets the §4.1 covariate AND the document
+  partition `lookup_posterior` groups by, so it decides how much of the evidence is treated
+  as correlated. Byte-identical text scores identically, so R2's declared key resolves the
+  tie on the lexicographically smaller content hash: a coin flip frozen, not resolved. The
+  same duplicate-witness question is already answered by a *substantive* rule one layer down
+  — §5's `dedup_correlated` keeps the max-covariate document — and that rule never gets to
+  run on the carriers the dedup already discarded.
+  *Why this is a checkpoint and not a patch:* run 12 convicted §6.9's declared key of
+  carrying an already-wrong leader over the commit bar by concentrating the posterior, which
+  is the same mechanism one layer over. A declared total order buys reproducibility, not a
+  right answer; where the tie is between witnesses of the same content the decision must not
+  depend on the choice at all. So the fix under test is **invariance**, and the rule that
+  implements it is named in advance (the §5 max-covariate representative lifted one layer up,
+  declared key within equal covariate) so it cannot be tuned to the reading.
+  *Frozen criteria* (full text in the instrument's docstring, which predates its first run):
+  exposure is reported and is never a bar on its own (the corroborate lesson — a ceiling
+  counted in artifacts is not reach); **BUILD** iff load-bearing exposure ≥ 5 questions AND
+  regressions ≤ repairs; **REFUSE** iff regressions > repairs; **PRICE a gate run** iff
+  delivered reach ≥ 1, else the fix lands on a hermetic permutation-invariance test with no
+  run bought. Below 5 this entry converts to a standing known-and-uncovered source, §6.9's
+  own fallback shape.
+  *Predictions, blind:* (1) multi-carriage is the corpus's commonest shape and will cover a
+  large fraction of top-k texts; (2) essentially all of it is decided by the content hash,
+  because identical text scores identically; (3) covariate divergence will be far rarer than
+  multi-carriage and concentrated in `doc_date` — a re-filed copy differs in date, rarely in
+  authority class; (4) delivered reach at the lookup layer will be single digits; (5) the
+  adversarial worst-carrier bound will be materially larger than the named rule's effect,
+  and is diagnostic only.
+  *Named risks, and which way they point.* The audit decides at the **lookup layer**, not the
+  executor's — rerank/gather/deliberate sit above it and are out of scope because they spend,
+  so a change measured here need not survive the menu. An uncached owner verdict degrades a
+  carrier's subject state to `unclear` exactly as the live probe does, flattening subject
+  divergence. And the over-fetch window can truncate a carrier list. **All three biases point
+  the same way — toward under-detection** — so a BUILD reading is safe against them and a
+  NO-GO reading is the provisional one, to be reported as such rather than as a clean
+  negative. *Disclosed, and it earned its keep:* a three-question `--only` smoke test ran
+  before the battery. It found **two measurement bugs in the instrument** and one blind spot,
+  all fixed before the reading and none of them a criterion change. (1) Divergence was
+  computed on the carrier's provenance *identity*, which includes the origin path — but two
+  email copies at different paths share an authority class, so it reported divergence where
+  the weight is bit-identical: it **over-stated** load-bearing exposure. It now compares the
+  factor triple the posterior actually reads. (2) The partition was compared as a *set* of
+  artifact keys, but `lookup_posterior` groups by the *assignment* text → document; two
+  assignments can share a key set and group differently, so it **under-stated** the change.
+  It now compares the assignment. (3) The blind spot: with equal covariates the
+  covariate-adversarial permutation is a no-op, because `max` over a declared-order list
+  returns the same first element — so wherever the carriers' factor triples tie, the
+  arbitrariness that survives is not the WEIGHT but the GROUPING, and nothing measured it.
+  Two grouping-adversarial permutations were added (max-independence and max-correlation over
+  the carrier sets) as **diagnostic bounds only**, never candidate rules — a rule chosen to
+  maximise apparent independence is the saturation §5 exists to prevent. The named rule of
+  criterion 4 is unchanged, and this is the reason it is worth saying out loud: the
+  pre-registered fix **cannot** repair the grouping wherever covariates tie, so a small
+  delivered-reach reading will not by itself acquit the defect.
+
+- **Carrier identity — the reading: BUILD on exposure, the named fix REFUTED as a no-op, and
+  the wrong commit turns out not to be carrier identity at all (2026-08-22,
+  `scripts/carrier_audit.py` over run 10, $0; report r05).** Surface (a), the arm's cheap
+  first pass, 102 questions: 57 of 2040 deduped texts multi-carried, **57 of 57 decided by
+  the content hash alone**, **zero** covariate divergence, **17** questions whose carriers
+  admit a different document partition, delivered reach **0**. Criterion 7 reads **BUILD**
+  (17 ≥ 5, regressions 0 ≤ repairs 0) with **no gate run bought** (reach 0).
+  **The pre-registered fix is refuted by its own audit:** carriers of byte-identical text
+  never differ in authority class, subject state or date-projection status on this corpus, so
+  argmax-covariate always returns the declared-key first element. The amended
+  pre-registration predicted exactly that. What is arbitrary is the **grouping**, and it is
+  priced: on q2-059 the gold leads in every arm, the deployed assignment *hedges* it at 0.683
+  and a max-independence assignment *reports* it at 0.975 (EU 0.369 → 0.755) — while on
+  q2-011 the same permutation lowers the gold (0.985 → 0.961). One permutation helps one
+  question and hurts another, which is why it is a bound and never a rule.
+  *Predictions scored:* (1) falsified — multi-carriage is 2.8% of texts at this layer, not the
+  commonest shape; (2) held exactly; (3) held in direction, empty in content — zero divergence
+  instances; (4) held; (5) falsified as stated — the covariate-adversarial bound is 0 and the
+  bound that bites is the grouping one, added after the smoke test.
+  **The instrument had FOUR defects and three were in its measures**, each of which would have
+  produced a confident number: divergence read off the carrier's provenance path rather than
+  the factor triple (over-stating); the partition compared as a key set rather than the
+  text→document assignment (under-stating); the covariate-adversarial permutation being a
+  no-op wherever factor triples tie, so grouping arbitrariness went unmeasured; and — found
+  after the first reading and disclosed in r05's chronology — criterion 3's partition clause
+  implemented as *"does the named rule move it"* when the frozen text asks *"do the carriers
+  disagree on it"*, rule-independent like its two siblings. Correcting the fourth flips
+  surface (a) from NO-GO to BUILD; both quantities are published. *The rule this earns:* an
+  audit that runs is not an audit that measures the thing its criteria name — and the
+  instrument was written before its tests, which is how three of the four survived to a
+  reading.
+  **The redirection, which matters more than the verdict.** Run 10's single wrong commit is
+  q2-011, and the audit's base arm answers it CORRECTLY — 5 grounded observations over 4
+  documents, one candidate (the gold) at 0.985 — **invariant under every carrier permutation
+  measured**. The run's own decision row says why: the committing view carries
+  `instrument: deliberate@<opus>` with **n_obs = 1** and 10 indeterminates, the competitor at
+  0.902 and the gold demoted to 0.033. The recorded wire agrees independently — on the M0.5
+  baseline the base `/decide` returns a SINGLE candidate and the two-candidate shape appears
+  only after the gather steps. So **the wrong leader is introduced above the base pass, by a
+  replace branch discarding a grounded channel** — the class §14 already registered as the
+  n_obs=0 cluster's suspected mechanism and marked NOT yet measured, here at n_obs=1 on the
+  one row that failed a gate. This does not overturn run 12: §6.9's key remains the *marginal*
+  cause of the commit (p_none 0.126 → 0.066; the run-10 row records 0.066). It identifies the
+  cause of the wrong *leader*, which the ladder could not. **And it refutes the premise of the
+  standing deployment block** — "do not deploy until the carrier-identity checkpoint fixes the
+  root cause" — because carrier identity is measurably not this row's root cause. The block
+  may still be right; it needs re-deciding on its own terms, and that is the owner's call
+  because the owner set it.
+  **Surface (b), the corroborate probe** — added to scope before (a) was read, on a mechanism
+  the code states outright (`_fresh_hits` drops a hit whose carrier is already held, so where
+  the carriers straddle the held set the choice decides whether the corroboration EXISTS):
+  37 straddling texts in 17 questions, load-bearing 17, **BUILD**, no run bought. And the
+  split that matters: **37 of 37 straddles fall on the conservative side.** The declared key is
+  the same function on both surfaces and the carrier scores tie, so the probe re-picks the
+  carrier the base pass already picked and the straddle is always resolved by DROPPING the hit
+  — any alternative would add a second copy of text already in hand as independent
+  corroboration, which is the saturation §5 exists to prevent. The consistency of the declared
+  key is doing load-bearing work that "an arbitrary tie-break" undersells, and any fix must
+  preserve it.
+  *Honest bound:* the audit decides at the lookup layer, which agrees with the arm's terminal
+  on 70 of 102 questions; surface (b)'s decision proxy covers 65 of 101 (36 questions hold a
+  chunk the run never extracted, each named, none warmed). The redirection does not rest on that agreement but on the evidence
+  COUNT (5 grounded observations versus 1), which is not a host-versus-daemon modelling
+  difference — both consume the same observation set.
+
 - **Four unordered sources on the decision path — the cache was doing the work of determinism
   (2026-08-19/20, tranche-2 M0/M0.5, `scripts/collapse_replay.py` + the M0.5 probes, $0
   deterministic).** The decision-equivalence instrument built at M0 found two ties resolved by

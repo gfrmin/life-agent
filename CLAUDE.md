@@ -106,8 +106,10 @@ so §6.9's key is **convicted** as what moved the commit. It did not create the 
 leader (the same competitor leads in runs 10–12); it concentrated the posterior enough to
 carry an already-wrong leader over the bar. **§6.9 is NOT reverted** — pre-registered
 before the run: the old order is nondeterministic, a luckier ticket rather than a better
-rule, so master knowingly carries the wrong commit until the **carrier-identity**
-checkpoint closes. **Do not deploy this arc before then** (it is not deployed now). Also
+rule, so master knowingly carries the wrong commit. **Do not deploy this arc** (it is not
+deployed now) — but the reason has changed: the **carrier-identity checkpoint ran and
+refuted its own premise** (below), so the block is no longer waiting on it and is open for
+the owner to re-decide. Also
 found: **runs 7–9 all fired the LEGACY cascade lane** (the arm's flag defaulted off; each
 run's `env_flags` records it), so run 10 was the first gate run ever on the priced lane
 and M1's deletion switched the arm's lane rather than removing dead code from its path.
@@ -134,7 +136,31 @@ channel a replace-branch probe erased, with the gold already on the lattice in 1
 "retrieved-not-extracted" is retired as the cluster's name (wrong twice now); the
 suspected over-strong inference is that a NULL re-read is treated as a
 DISAGREEMENT (fail-open precedent one branch away), registered in §14 as NOT yet
-measured — it needs its own frozen criteria + pre-registration.** Single-doc 12 is
+measured — it needs its own frozen criteria + pre-registration.**
+**The carrier-identity checkpoint is READ (r04 RULING 4 → `docs/unification/reports/r05-carrier-identity.md`,
+register §6.11, instrument `scripts/carrier_audit.py`, criteria frozen in its docstring
+before it ran, $0).** Two surfaces on run 10's tree: the cheap first pass and the
+corroborate probe. **BUILD on exposure (17 load-bearing questions on each, ≥ the frozen 5)
+with delivered reach 0, so no gate run bought — and the pre-registered fix REFUTED as a
+provable no-op:** carriers of byte-identical text never differ in authority class, subject
+state or date-projection status here, so argmax-covariate always returns what the declared
+key already picked. What is arbitrary is the **grouping** (q2-059: the gold leads in every
+arm, the deployed assignment hedges at 0.683, a max-independence assignment reports at
+0.975 — and the mirror case lowers a gold), and on the probe surface **37 of 37 straddles
+fall on the conservative side**, so the declared key's *consistency* is doing real work and
+any fix must preserve it. **The redirection is the result that matters: run 10's wrong
+commit is NOT carrier identity.** The base channel on that row carries 5 grounded
+observations over 4 documents with the gold alone at 0.985, invariant under every carrier
+permutation; the run's own decision row shows the committing view was
+`instrument: deliberate@<opus>` with **n_obs = 1** and the gold demoted to 0.033, and the
+recorded wire agrees that the competitor appears only after the gather steps. So the wrong
+*leader* comes from a **replace branch discarding a grounded channel** — the same class as
+the n_obs=0 cluster above, here at n_obs=1. This does not overturn run 12 (§6.9's key
+remains the *marginal* cause of the commit); it names what the ladder could not. The audit
+found **four defects in itself**, three in its measures — one found after the first reading,
+flipping surface (a) NO-GO → BUILD, disclosed in r05's chronology with both quantities
+published. **Proposed next: r06, the replace branch** — frozen criteria first, a $0
+instrument on the run's own records, no decision-path code until they exist. Single-doc 12 is
 the temper's standing price. Old D3–D4 stay re-scoped as Ask's
 aggregate/thread families. The doc's §14 open questions are a **live empirical ledger**
 (owner's adoption rider): each entry names the evidence that decides it — keep it
