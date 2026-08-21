@@ -2420,6 +2420,34 @@ on this list. Answers land here by amendment, citing their evidence.
   fire script asserted the presence of the change under test and nothing about the rest of the
   decision path, which is why a priced run was spent without buying an attributable reading.
 
+- **Pre-registration for run 11 — the null-read fail-open, isolated (2026-08-21, written and
+  committed BEFORE the run).** *Why:* run 10's reading is contaminated — four decision-path
+  changes in one tree, three of them invisible to the 7.2 oracle — so neither the fail-open's
+  own pre-registered rollback nor its exoneration can fire on it. This run buys the isolation.
+  *The only change:* run 10's tree with the null-read fail-open reverted, fired from a worktree
+  so master keeps the change until the reading rules on it. Everything else is byte-identical to
+  run 10: same recipe, same corpus pin `full-2026-06-11`, same frozen δ = 0.05 and level = 0.90,
+  same utility posterior and judge grading, same credence pin, and the monolithic arm is the
+  ARCHIVED one — it is not re-fired, so the comparator cannot drift. The tree difference is
+  exactly one revert, and §6.10's tree pin records it rather than asserting it.
+  *Frozen decision rule (owner, blind, before firing):* the fail-open's rollback becomes
+  **permanent iff run 11 reads wrong commits = 0 AND P(Δ>δ) ≥ 0.90** — the gate's own bar, both
+  criteria, exactly what M1 was held to. Explicitly NOT a single sub-criterion, and explicitly
+  NOT the behaviour of one row: reading one borderline row is what put the previous checkpoint
+  in trouble. *Pre-committed branch, blind:* if run 11 still fails with a wrong commit, the
+  fail-open is **exonerated** and the ladder escalates to the next isolation (tree minus R2's and
+  §6.9's declared orders, ~$3–4) — no re-diagnosis by argument at that point. *Predictions:*
+  (1) q2-011 returns to a withholding, since the second candidate that displaced the gold is the
+  signature of a restored channel; (2) typed asserts fall from 37 toward run 9's 35, and the
+  answer rate from 0.36 toward 0.34; (3) spend is flat-to-down — nothing new is bought and the
+  deliberate cache is warm; (4) the two declared-order changes and M1's deletion remain in the
+  tree, so any residual difference from run 9 is theirs. *Named risk:* if run 11 passes, the
+  fail-open is convicted on one wrong row out of 104 — a thin basis for reverting a
+  pre-registered change, and the entry records that thinness rather than hiding it; the
+  conviction is of the CHANGE's cost/benefit at this corpus size, not of its reasoning.
+  *Diagnostics to read:* wrong-commit count (the headline), P(Δ>δ), q2-011's terminal and
+  candidate-set size, answer rate, spend, and §6.10's tree diff against run 10.
+
 - **Four unordered sources on the decision path — the cache was doing the work of determinism
   (2026-08-19/20, tranche-2 M0/M0.5, `scripts/collapse_replay.py` + the M0.5 probes, $0
   deterministic).** The decision-equivalence instrument built at M0 found two ties resolved by

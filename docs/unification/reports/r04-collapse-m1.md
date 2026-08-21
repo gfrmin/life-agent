@@ -581,3 +581,32 @@ strengthening. Registered as §6.10 rather than fixed silently.
 Hold M1 at this report. Adopt §6.10 (the tree gate) so the next run is attributable at all, take
 the ruling on Q1–Q3, and open the carrier-identity finding as its own register entry with
 pre-registered criteria before anything is changed in `retrieval.py` or `probes.py`.
+
+## RULINGS (owner, 2026-08-21 — taken on the QUESTIONS above, before any re-run)
+
+1. **The null-read fail-open is HELD, not reverted.** Its pre-registered rollback clause
+   presupposed a reading of *its* effect, and it has never had one — run 10 bundled it with three
+   other decision-path changes. It also bought a correct commit. Measure it clean first; the
+   rollback fires or is released on an attributable number.
+2. **Buy one separated run.** Run 10's tree with the null-read change reverted, typed arm only
+   against the archived monolithic arm (~$3–4). If that closes the attribution, no further runs
+   are bought.
+3. **M1 is HELD at this report.** The code stays landed — it is behaviour-preserving on the
+   surviving lane, with 7.1 clean and 7.2 at 104/104 and 311/311 — but the checkpoint is not
+   marked green until an attributable 7.3 exists. M1.5 does not open on a held checkpoint.
+4. **The carrier-identity finding gets its own register entry and its own pre-registered
+   criteria** before anything changes in `retrieval.py` or `probes.py`. It is not folded into R6
+   and it is not patched here.
+5. **Run 11's decision rule, frozen now and blind:** the null-read fail-open's rollback becomes
+   permanent iff run 11 reads **wrong commits = 0 AND P(Δ>δ) ≥ 0.90** — the gate's own bar, both
+   criteria, exactly M1's. Not a single sub-criterion, and not the behaviour of one row: reading
+   one borderline row is how this checkpoint got into trouble.
+6. **Pre-committed branch, blind:** if run 11 still fails with a wrong commit, the null-read
+   change is exonerated and the ladder escalates to the next isolation (tree minus R2 and §6.9,
+   ~$3–4). No re-diagnosis-by-argument at that point.
+7. **§6.10 lands before run 11 fires.** Registering a rule and then not carrying it on the very
+   next run is how a register rots — and the entry's own pin is the next gate run's report.
+8. **The revert lives in a git worktree** (`run11-minus-nullread`, under the machine's standard
+   worktrees root); master
+   keeps the change until the reading rules on it. Nothing is reverted on the strength of a
+   contaminated run.
