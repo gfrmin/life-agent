@@ -2382,6 +2382,44 @@ on this list. Answers land here by amendment, citing their evidence.
   action, answer rate, spend. *Rollback:* revert the commit — there is no env flag, and
   one must not be invented at read time.
 
+- **Run 10 — the null-read fail-open's reading, contaminated: FAIL at P(Δ>0.05) = 0.861,
+  Δ̄ = +0.323 [−0.074, +0.787]** (2026-08-21, `gate-20260821T094545`; typed 36 ✓ / **1 ✗** /
+  67 withheld, miss 2 · dispersed 65, answer rate 0.36 at $3.28 vs mono 0.97 at $39.01;
+  deliberate 68/104, warm 68; LOO curves over 737 rows). The zero-wrong streak ends at one row,
+  and both frozen criteria are missed. *The failure is a single question.* `gate_splice.py`
+  ($0, both sanity pins reproducing their published verdicts first): the same run with that one
+  row withheld reads **0.952 / +0.410 [+0.053, +0.857] — PASS**, stronger than run 9, because
+  the tree also converted a withholding *correctly*. So the arm did not get worse; it converted
+  two withholdings (dispersed 67 → 65) and one of them was wrong, which at u_wrong = −8.9993
+  is worth −0.087 in Δ̄. *The predictions held in aggregate:* answer rate rose from 0.34 as
+  predicted, spend was flat-to-down, and the conversion count sits inside the "up to 12"
+  envelope — but the pre-registration's **named risk materialised on the first run that could
+  express it**: a restored channel surfaced a wrong leader that cleared the bar. The row's
+  posterior signature is the change's own: the candidate set grew from one (the gold, sole
+  candidate in runs 7–9) to two with a same-shape competitor leading at 0.902 and the gold
+  demoted to 0.033, while p_none collapsed 0.181 → 0.066 and the grounded observation count did
+  not move. *What this run CANNOT say, and the reason it is filed as contaminated:* four
+  decision-path changes were in the tree, not one — the null-read fail-open (08-19), R2's
+  declared retrieval order (08-20), §6.9's declared probe order (08-21) and tranche-2 M1's
+  executor deletion (08-21) — and **three of the four are structurally invisible to the
+  decision-equivalence oracle**, because the fixture set tapes the bridge at the `http` seam and
+  replay never executes bridge code. Attribution by argument is therefore refused. Two of the
+  three were nonetheless measured directly against the corpus ($0, read-only): both declared
+  orders cost the gold one distinct carrying document on that question (primary 7→6, probe 9→8)
+  and cost the competitor none — but the competitor is retrieved under *both* orders, so neither
+  order put it on the lattice; they moved the margin, not the candidate set. The carrier loss
+  has its own mechanism worth recording: 20 of the question's 59 deduped chunk texts are carried
+  by more than one document, the declared key flips which document *represents* 9 of them, and
+  2 of those carry the gold at exact score ties — byte-identical text, different carrier. If two
+  documents carry identical text they are one attestation (§5), so that swap should be a
+  downstream no-op and it is not. **What decides the open part:** separated gate runs, cheapest
+  first — run 10's tree minus the null-read change isolates it against the archived monolithic
+  arm at ~$3–4, with no re-firing of the mono side. Whether the fail-open takes the rollback its
+  own pre-registration names is not settled by this run and is not settled here. Registered with
+  it: **§6.10 of the collapse design — a gate run must pin its tree, not just its recipe**; the
+  fire script asserted the presence of the change under test and nothing about the rest of the
+  decision path, which is why a priced run was spent without buying an attributable reading.
+
 - **Four unordered sources on the decision path — the cache was doing the work of determinism
   (2026-08-19/20, tranche-2 M0/M0.5, `scripts/collapse_replay.py` + the M0.5 probes, $0
   deterministic).** The decision-equivalence instrument built at M0 found two ties resolved by

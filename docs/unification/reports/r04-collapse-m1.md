@@ -390,3 +390,194 @@ moved to `m0-5-legacy-aloop/` and the script prints its own undo.
 
 Composition after the re-base: A-loop 104 (all `grow_lane=true`), A-poster 104, B-lookup 101,
 B-narrative 1, seam 1.
+
+## DONE 11 — 7.3: the eval battery. **FAIL**, and the criterion is not renegotiated
+
+`fire-run10.sh` (the run-9 recipe, `--gate --gate-executor --gate-loo --gate-replay
+--judge-grade --corpus-pin full-2026-06-11`), archived as `gate-20260821T094545`.
+
+| | run 9 | run 10 |
+|---|---|---|
+| verdict | PASS **0.938** | **FAIL 0.861** (gate ≥ 0.90) |
+| Δ̄ | +0.390 [+0.032, +0.841] | +0.323 [−0.074, +0.787] |
+| typed | 35 ✓ / **0 ✗** / 69 withheld | 36 ✓ / **1 ✗** / 67 withheld |
+| withholding split | miss 2 · dispersed 67 | miss 2 · dispersed 65 |
+| answer rate (typed / mono) | 0.34 / 0.97 | 0.36 / 0.97 |
+| spend (typed / mono) | $4.10 / $39.01 | $3.28 / $39.01 |
+| deliberate | 60/104 (warm 53) | 68/104 (warm 68) |
+
+M1's pre-registration named two conditions: **wrong commits stay 0**, and P(Δ>δ) stays in the
+run-7/run-9 band. Both are missed. The checkpoint does not pass 7.3, and nothing below is
+offered to soften that — the sections that follow attribute the failure, they do not appeal it.
+
+### The failure is one row
+
+`scripts/gate_splice.py`, $0, deterministic arithmetic on the archived artefacts under the
+production utility posterior. Both sanity pins reproduce their published verdicts exactly
+before any counterfactual is read:
+
+| variant | P(Δ>0.05) | verdict | Δ̄ | 90% interval |
+|---|---|---|---|---|
+| pin — run 10's own rows | 0.861 | FAIL | +0.323 | [−0.074, +0.787] |
+| pin — run 9's own rows | 0.938 | PASS | +0.390 | [+0.032, +0.841] |
+| run 10 with **q2-011 withheld** (run 9's terminal on that row) | **0.952** | **PASS** | **+0.410** | [+0.053, +0.857] |
+
+One wrong commit is worth −0.087 in Δ̄ and −0.091 in P at n=104 and u_wrong = −8.9993.
+Without it the run is the strongest in the series — better than run 9 — because the tree also
+bought a *correct* commit elsewhere. So the reading is not "the typed arm got worse"; it is
+"the typed arm converted two withholdings, and one of them was wrong."
+
+### Run 10 is **not** M1's reading — four decision-path changes were in the tree
+
+This is the finding that matters more than the verdict. The run was fired believing it isolated
+M1. It did not. Between run 9's firing and run 10's, four changes landed on the decision path:
+
+| # | change | landed | visible to 7.2? |
+|---|---|---|---|
+| 1 | **the null-read fail-open** (pre-registered for run 10; §14) | 2026-08-19 | no — bridge-side |
+| 2 | **R2's declared order** on the primary retrieval path (`core/retrieval.py`) | 2026-08-20 | no — bridge-side |
+| 3 | **§6.9's declared order** on the corroborate probe (`core/probes.py`) | 2026-08-21 | no — bridge-side |
+| 4 | **M1's deletion** (E-13/E-14, the lane flag) | 2026-08-21 | yes — 104/104 and 311/311 |
+
+Only the fourth is M1's, and only the fourth has an oracle. The other three are invisible to the
+decision-equivalence instrument *by construction* — DONE 6 established why (the fixture set
+tapes the bridge at the `http` seam, so replay serves recorded responses and never executes
+bridge code), and that argument was used there to discharge §6.9's trace precondition. The same
+property that made the precondition unmeetable makes these three changes unwitnessed.
+
+An odd reading therefore cannot be attributed, which is precisely the conflation §8 gives M1.5
+its own checkpoint to avoid. The report notes it as an instrument defect below rather than as
+an excuse: the number is what it is.
+
+### The instrument defect: a recipe-verbatim gate is not a tree-verbatim gate
+
+`fire-run10.sh` carried a TREE gate. It asserted a clean worktree, that HEAD *lacks* E-14, and
+that HEAD *has* §6.9's declared key — three assertions about the change under test, and **none**
+about everything else. A gate that pins its command line and the presence of its own change,
+but not the decision-path tree it runs against, cannot deliver an attributable reading; it will
+silently price whatever else has landed. The fix is a positive statement, not another negative:
+a gate run should record, and diff against the comparison run, the set of decision-path files
+and their hashes. Registered as **§6.10**; the next run is the first to carry it.
+
+### q2-011, diagnosed
+
+The wrong commit is `q2-011`. Its posterior across the series (values are corpus data and stay
+out of tree; the gold is a jurisdiction-and-year-prefixed serial reference id, and the
+competitor is a same-shape id from a different year):
+
+| run | terminal | candidates on the lattice | leader credence | p_none | n_obs | EU |
+|---|---|---|---|---|---|---|
+| 7 | ✓ report | 1 (the gold) | 0.916 | 0.084 | 5 | 0.176 |
+| 8 | ✓ report | 1 (the gold) | 0.955 | 0.045 | 1 | 0.562 |
+| 9 | · abstain | 1 (the gold) | 0.819 | 0.181 | 1 | 0.000 |
+| 10 | ✗ report | **2** — a competitor leads, the gold demoted to 0.033 | **0.902** | 0.066 | 1 | 0.044 |
+
+Not a threshold wobble. In run 10 **a second candidate entered the lattice and displaced the
+gold**, which had been the sole candidate in all three prior runs, while `n_obs`, `n_competing`
+and `n_indeterminate` were unchanged from run 9.
+
+**What best explains it: change 1.** The null-read fail-open's pre-registration named this exact
+failure mode in advance — *"restoring a channel the erasing contract had been suppressing can
+surface a WRONG leader that clears the bar … this is the first change in the arc whose failure
+mode is a wrong commit rather than a withholding, and the zero-wrong streak is what it puts at
+stake."* The posterior signature fits it: the candidate set grows, the NONE mass collapses
+(p_none 0.181 → 0.066 — the null re-read is no longer counted as evidence for NONE), and the
+grounded observation count does not move. The aggregate fits its predictions too — dispersed
+withholdings 67 → 65 (two conversions, one correct and one wrong), answer rate 0.34 → 0.36,
+spend flat-to-down. Read on its own pre-registered terms, run 10 is that change's measurement,
+and it measures a wrong commit.
+
+**What is measured but does not explain it: changes 2 and 3.** Both were checked directly
+against the corpus, read-only, $0
+(`~/.cache/life-agent/m1/{q2011_retrieve_diff,q2011_probe_diff,q2011_mechanism}.py`):
+
+| path | gold-carrying documents in the top-k | competitor's carriers |
+|---|---|---|
+| primary retrieval (R2's order, k=20) | 7 → **6** | 4 → 4 |
+| corroborate probe (§6.9's order, k=20) | 9 → **8** | 4 → 4 |
+
+Both declared orders cost the gold one distinct carrier and cost the competitor none. But **the
+competitor is present under both orders** — retrieval order did not surface it, so it cannot be
+what put a new candidate on the lattice. The mechanism of the carrier loss was isolated: of
+q2-011's 59 deduped chunk texts, **20 are carried by more than one document**; the declared key
+flips the *representing* document for 9 of them, and **2 of those 9 carry the gold**, at exact
+score ties across their carriers. The text survives; the carrier identity changes. That is a
+second-order effect on the same row's margin, and it is a real finding — if two documents carry
+byte-identical text they are one attestation (§5), so which one represents it should be a no-op
+downstream, and here it is not. It belongs to R6/§5 and needs its own checkpoint, not a patch
+here.
+
+### A fix considered, measured, and refused
+
+The tempting move — choose a tie-break under which q2-011 comes out right — is overfitting to a
+single borderline row and was ruled out before any number was looked at. The principled version
+was to stop cutting inside a tie block at all, making the retrieved set invariant to *any*
+tie-break rather than picking a favourable one. It was measured before it was proposed, over the
+whole 104-question battery at k=20:
+
+```
+top-20 cut lands INSIDE a tie block: 9 of 104 (9%)
+tie-block size at the cut: min 2  median 2  max 73
+rows admitted if the whole block is kept: median 1, max 60  →  k would run 20..80
+```
+
+Cheap at the median, with a fat tail. It is refused anyway, on a stronger ground: **it would not
+have saved q2-011.** That question's primary cut does not land in a tie (8.047630 vs 8.045824),
+and the gold carrier it loses sits at rank 40 of 59 — far below the cut. The loss is the dedup
+representative, not the cut. Measuring the proposed fix against the case it was invented for is
+what killed it; proposing it first and measuring later would have shipped a change that fixed
+nothing.
+
+### What is claimed, and what is not
+
+Claimed: run 10 fails both frozen criteria; the failure is one row; that row gained a wrong
+leader; the tree carried four decision-path changes of which three are unwitnessed; the
+best-supported cause is the pre-registered null-read fail-open, whose named risk this is.
+
+Not claimed: that the cause is *proven*. Four changes in one tree cannot be separated by
+argument, and this report does not try. Separating them costs gate runs, and which to run — and
+whether the null-read fail-open takes the rollback its own pre-registration names — is a ruling,
+not a decision to take here.
+
+## DEVIATIONS (continued)
+
+**3. Run 10 was fired as M1's reading and is not one.** The TREE gate I wrote checked that the
+change under test was present and that the worktree was clean; it never checked that the
+decision path was otherwise identical to run 9's. Three unrelated decision-path changes had
+landed in the four days between the runs, two of them mine at M0.5/R2 and one merged from a
+pre-registered branch. This is a defect in my own instrument, of the same family as DEVIATION 1
+(§6.7) — the second time this checkpoint that a gate's *script* was the thing that needed
+strengthening. Registered as §6.10 rather than fixed silently.
+
+## REFUSED
+
+- **No tie-break chosen to make q2-011 correct**, and no adjustment to δ, level, or the
+  wrong-commit criterion. The pre-registration is the pre-registration.
+- **No fix to the carrier-identity sensitivity here.** It is a real defect (§5's own principle
+  says swapping the representative of a byte-identical attestation should be a no-op), but it is
+  a different module and a different checkpoint, and bundling it is what produced this report.
+- **No re-run fired.** Which separations to buy is a ruling; firing another priced run to chase
+  an attribution before the reviewer has ruled would repeat the error this report documents.
+
+## QUESTIONS
+
+1. **Does the null-read fail-open take the rollback its own pre-registration names?** It
+   pre-committed to "revert the commit — there is no env flag, and one must not be invented at
+   read time", and its named risk has materialised. Against that: it also bought a correct
+   commit, and one wrong row out of 104 is a thin basis for reverting a pre-registered change.
+   The honest position is that its reading is contaminated by three other changes and it has not
+   had a clean measurement.
+2. **Which separated runs to buy, and in what order?** Cleanest is run 10's tree minus change 1
+   (isolating R2+§6.9+M1), then minus 2 and 3. Each is ~$3–4 typed against the archived
+   monolithic arm, which does not need re-firing.
+3. **Does M1 pass on the strength of the splice?** With q2-011 withheld the tree reads 0.952 /
+   +0.410 and M1's own oracle is 104/104 and 311/311. A defensible ruling is that M1 is green and
+   the FAIL belongs to change 1. The counter-argument is that a splice is not a gate reading, and
+   §6.7 says a gate is a script, not a sentence.
+4. **Is the carrier-identity sensitivity in scope for R6, or does it need its own entry?**
+
+## PROPOSED
+
+Hold M1 at this report. Adopt §6.10 (the tree gate) so the next run is attributable at all, take
+the ruling on Q1–Q3, and open the carrier-identity finding as its own register entry with
+pre-registered criteria before anything is changed in `retrieval.py` or `probes.py`.

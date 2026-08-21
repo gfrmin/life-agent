@@ -637,6 +637,26 @@ ranking — and both pass under one declared key `(-round(score, 9), artifact_ca
 chunk_text)`, used by the dedup and the sort alike, with a third test pinning that score still
 dominates the tie-breakers. *Pinned by:* `tests/test_probes.py`'s three corroborate-order tests.
 
+**6.10 A gate run must pin its tree, not just its recipe.** An *instrument-design* rule, added
+at M1 on a failure of my own instrument. *What happened:* `fire-run10.sh` was the run-9 recipe
+verbatim plus a TREE gate — clean worktree, HEAD lacks the deleted cascade, HEAD carries §6.9's
+declared key. Three assertions about the change under test, none about anything else. Three
+further decision-path changes had landed between the two runs (a pre-registered bridge change,
+R2's declared order on the primary retrieval path, §6.9's on the probe), all three invisible to
+the 7.2 oracle because the fixture set tapes the bridge at the `http` seam. The run read FAIL on
+one wrong commit and **no argument can say which of the four changes bought it**. *The rule:* a
+gate whose result will be compared against an earlier run must record the decision-path tree it
+ran against — the file set and its hashes — and diff that against the comparison run's, naming
+every difference in the report. A recipe-verbatim gate is not a tree-verbatim gate, and
+"nothing else changed" is a claim that needs an instrument like any other. *Why a register entry
+rather than a one-line fix:* the same shape recurred twice in one checkpoint (§6.7 was the
+first), so the standing hazard is the class — a comparison instrument that pins the foreground
+and lets the background float — not this script. *Corollary, and the reason this bites here
+specifically:* while the bridge is taped at the `http` seam, **every bridge-side change is
+outside 7.2 by construction**, so for those the gate is the only oracle there is; bundling two
+of them into one priced run spends the reading without buying it. *Pinned by:* the next gate
+run's own report, which must carry the tree diff or say there was none.
+
 ## 7. Behaviour preservation — the equivalence instrument, pre-stated
 
 **The invariant.** The collapse must not change *what the system decides*: for the same

@@ -91,7 +91,17 @@ the observation's r on both commit sites (`matching.quote_scoped_competitors` �
 `competition_factor`, join channel inherits it — §2 lineage), registered blind off-gate
 (`scripts/temper_audit.py`, counterfactual floor 0.945/+0.401 — the live run matched it
 almost exactly and the sweep predicted the assert set perfectly). The wrong-commit class
-is closed at the price of reach. **§13 adoption RESOLVED (2026-08-17, on runs 7+9):
+was closed at the price of reach — and **reopened by run 10
+(`gate-20260821T094545`): FAIL 0.861, Δ̄ +0.323 [−0.074, +0.787], 36 ✓ / 1 ✗ / 67
+withheld** at $3.28. The failure is one row: spliced with that row withheld the same
+run reads 0.952 / +0.410 — PASS, stronger than run 9. But it is **not an attributable
+reading**: four decision-path changes were in the tree (the pre-registered null-read
+fail-open, R2's declared retrieval order, §6.9's probe order, tranche-2 M1's executor
+deletion) and three are invisible to the 7.2 oracle by construction. The named risk of
+the null-read fail-open — a restored channel surfacing a wrong leader over the bar — is
+the best-supported cause and is not proven; separated runs decide it. Registered:
+**§6.10 — a gate run must pin its tree, not just its recipe.**
+**§13 adoption RESOLVED (2026-08-17, on runs 7+9):
 typed is the silent default, honest-withhold-only (the uncalibrated fallback lane is
 REMOVED — `LIFE_AGENT_FALLBACK_LANE` is ignored), and the deliberate edge is ON by
 default (`LIFE_AGENT_DELIBERATE=0` is the rollback)** — §14's adoption entry has the
