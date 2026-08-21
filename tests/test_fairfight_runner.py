@@ -227,7 +227,6 @@ def test_run_meta_written_first_and_pinned(tmp_path: Path, monkeypatch: pytest.M
     kb = _kb(tmp_path, monkeypatch)
     _write_questions(kb, [_q()])
     # pin the recorded env provenance regardless of the host machine's live services
-    monkeypatch.delenv("LIFE_AGENT_GROW_LANE", raising=False)
     monkeypatch.delenv("LIFE_AGENT_BRIDGE_URL", raising=False)
     monkeypatch.setenv("ANSWER_BRAIN_URL", "http://127.0.0.1:9999")
     args = _args(tmp_path, arms="inprocess")
@@ -263,7 +262,9 @@ def test_run_meta_written_first_and_pinned(tmp_path: Path, monkeypatch: pytest.M
     # the exact env var names scripts/ask.py reads for EXECUTOR_BRIDGE/EXECUTOR_DAEMON —
     # which daemon the baseline arm hit is run provenance (null = unset, ask.py's
     # localhost defaults apply)
-    assert meta["env_flags"] == {"LIFE_AGENT_GROW_LANE": "", "LIFE_AGENT_BRIDGE_URL": None,
+    # LIFE_AGENT_GROW_LANE is absent by design: it retired at M1 (one lane), so recording
+    # it would be false provenance — it implies a run that could have differed.
+    assert meta["env_flags"] == {"LIFE_AGENT_BRIDGE_URL": None,
                                  "ANSWER_BRAIN_URL": "http://127.0.0.1:9999"}
     assert (result["run_dir"] / "questions.sha256").read_text().strip() == \
         meta["questions_sha256"]

@@ -259,3 +259,54 @@ def test_fresh_hits_drops_documents_already_held() -> None:
     ]
     fresh = _fresh_hits(hits, exclude_keys={"held"})
     assert [h["artifact_cache_key"] for h in fresh] == ["new"]
+
+
+# --- §6.9: probe_corroborate's two unordered layers (registered at M0.5, fixed at M1) ------
+# The register's premise was that a fix here would land with no oracle, because no fixture
+# exercises the path. That premise does not hold and cannot: the function runs INSIDE the
+# bridge, and the fixture set tapes the bridge at the `http` seam — replay serves the recorded
+# answer and never executes it (collapse/taps.py's docstring: replay "needs no daemon, no
+# engine, no API key and no corpus"). A trace would have recorded its ANSWERS.
+#
+# This is the oracle instead, and it is stronger: the function's output must not depend on the
+# order `pkm.retrieval.search` happened to return tied hits in. That order is genuinely partial
+# upstream — `src/pkm/retrieval.py` ends `ORDER BY scored.score DESC` with no tie-breaker, and
+# R2's declared key landed in `life_agent/core/retrieval.py`, a different module.
+
+def _sr(chunk: str, score: float, key: str):
+    from pkm.retrieval import SearchResult
+    return SearchResult(chunk_text=chunk, score=score, source_path=f"/corpus/{key}.md",
+                        source_origin=None, artifact_cache_key=key)
+
+
+def _corroborate_under(order, monkeypatch) -> list[dict[str, Any]]:
+    import pkm.retrieval as PR
+    from life_agent.core.probes import probe_corroborate
+    monkeypatch.setattr(PR, "search", lambda conn, q, k=20: list(order))
+    return probe_corroborate(duckdb.connect(), "who signs the lease?", "ACME", k=3)
+
+
+def test_corroborate_is_invariant_to_a_tied_dedup_order(monkeypatch) -> None:
+    # Two hits carry the SAME chunk text at the SAME score from different documents. The dedup
+    # keeps one; with a strict `>` on first-arrived, WHICH one is whatever order search emitted.
+    a, b = _sr("the lessor is ACME", 0.5, "k1"), _sr("the lessor is ACME", 0.5, "k2")
+    forward = _corroborate_under([a, b], monkeypatch)
+    reversed_ = _corroborate_under([b, a], monkeypatch)
+    assert forward == reversed_
+
+
+def test_corroborate_is_invariant_to_a_tied_sort_order(monkeypatch) -> None:
+    # Distinct chunks at IDENTICAL scores: the sort has no tie-breaker, so a stable sort simply
+    # preserves whatever order arrived. Permuting the input must not permute the output.
+    a, b, c = (_sr("alpha", 0.5, "k1"), _sr("bravo", 0.5, "k2"), _sr("charlie", 0.5, "k3"))
+    forward = _corroborate_under([a, b, c], monkeypatch)
+    shuffled = _corroborate_under([c, a, b], monkeypatch)
+    assert forward == shuffled
+
+
+def test_corroborate_still_ranks_by_score_first(monkeypatch) -> None:
+    # The kill that stops the tie-breaker becoming the ranking: score still dominates, and the
+    # quantum only decides hits the raw float cannot separate (R2's shape).
+    lo, hi = _sr("weak", 0.10, "k9"), _sr("strong", 0.90, "k1")
+    out = _corroborate_under([lo, hi], monkeypatch)
+    assert [h["chunk_text"] for h in out] == ["strong", "weak"]

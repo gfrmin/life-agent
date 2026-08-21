@@ -619,6 +619,24 @@ at M1's checkpoint. *Fallback, pre-committed:* if the trace proves expensive or 
 entry converts to a standing one naming the source known-and-uncovered, and M1 proceeds without
 the fix. *Pinned by:* whichever branch is taken — the trace's fixtures, or this entry.
 
+*Resolved at M1 — by a different oracle than the disposition named.* The precondition ("record
+a gather-lane trace first") could not have delivered what it was imposed to deliver: the
+function runs INSIDE the bridge, and the fixture set tapes the bridge at the `http` seam, so
+replay serves the recorded response and never executes it (`collapse/taps.py`: replay "needs no
+daemon, no engine, no API key and no corpus"). A trace would have recorded this function's
+ANSWERS, and a reordering inside it would not be exercised on replay at all. Measured, not
+argued: on the M1 priced baseline all 309 `/probe/corroborate` calls carry `reextract=True`
+(326/326 on the legacy baseline) — the plain branch is 0 calls over 104 fixtures either way, so
+recording the surviving lane bought no coverage here. The source is real and R2 did NOT close
+it: `probe_corroborate` imports `search` from `pkm.retrieval`, whose SQL ends
+`ORDER BY scored.score DESC` with no tie-breaker, while R2's declared key landed in
+`life_agent/core/retrieval.py`. **The oracle used instead** is stronger and hermetic: the
+function's output must be invariant under a permutation of `search`'s return order. Both layers
+were witnessed failing it — a tied dedup returns a different document, a tied sort a different
+ranking — and both pass under one declared key `(-round(score, 9), artifact_cache_key,
+chunk_text)`, used by the dedup and the sort alike, with a third test pinning that score still
+dominates the tie-breakers. *Pinned by:* `tests/test_probes.py`'s three corroborate-order tests.
+
 ## 7. Behaviour preservation — the equivalence instrument, pre-stated
 
 **The invariant.** The collapse must not change *what the system decides*: for the same

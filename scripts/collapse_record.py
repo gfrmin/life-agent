@@ -111,6 +111,10 @@ def main(argv: list[str] | None = None) -> int:
                          "and rewrite the manifest — no engine, no corpus, no recording. A "
                          "class list may be refined without re-recording; the OUTPUTS the "
                          "comparator comes from are never touched.")
+    ap.add_argument("--allow-existing", action="store_true",
+                    help="record into a checkpoint directory that already holds fixture files "
+                         "(default: refuse — the manifest globs the directory, so a leftover "
+                         "fixture from an aborted run would be published as part of this set)")
     ap.add_argument("--deliberate", default="1", choices=("0", "1"),
                     help="the deliberate edge's deployed state (§13 adoption: on)")
     args = ap.parse_args(argv)
@@ -132,6 +136,16 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.relabel_only:
         return _relabel(out, args.checkpoint)
+
+    stale = FX.existing_fixtures(out)
+    if stale and not args.allow_existing:
+        shown = ", ".join(stale[:4]) + (f", … (+{len(stale) - 4} more)" if len(stale) > 4 else "")
+        print(f"refusing: {out} already holds {len(stale)} fixture file(s) — {shown}. The "
+              "manifest is built by globbing this directory, so a leftover fixture from an "
+              "aborted run would be published as part of this set and the mixture would present "
+              "as a whole artefact (R8). Move the directory aside, or pass --allow-existing if "
+              "adding to it is what you mean.", file=sys.stderr)
+        return 2
 
     print(f"== recording {args.checkpoint} → {out}")
     print(f"   {len(questions)} question(s), traces {traces}, k={args.k}, run_id={run_id}")
@@ -159,7 +173,7 @@ def main(argv: list[str] | None = None) -> int:
         "engine_version": str(getattr(client, "engine_version", "")),
         "skin_image": B.CREDENCE_SKIN_IMAGE, "protocol_major": B.PROTOCOL_MAJOR,
         "daemon": AC.DAEMON, "bridge": AC.BRIDGE, "k": args.k,
-        "deliberate": args.deliberate == "1", "grow_lane": AC.GROW_LANE,
+        "deliberate": args.deliberate == "1", "grow_lane": True,  # retired at M1: one lane
         "snapshots": snapshot.provenance(), "questions_file": str(qpath),
         "allow_spend": bool(args.allow_spend),
         # PINNED, and recorded so replay can refuse a mismatch. `lookup.dedup_correlated`

@@ -147,8 +147,8 @@ def menu_transforms(curves: Curves) -> list[dict[str, Any]]:
                      DELIBERATE_TRANSFORM["rho"], _DELIBERATE_FALLBACK_RHO)})
     return rows
 
-# A withholding/miss terminal — the daemon declined to assert. Grow may escalate recall on these,
-# but only when the agent's belief says the answer is MISSING (see _truth_likely_missing).
+# A withholding/miss terminal — the daemon declined to assert. It is the SENSOR condition for
+# re-asking WITH the grow block (run_pass), never a body-side decision to grow (E-13/E-14, M1).
 _WITHHOLD = frozenset({"miss", "abstain", "hedge", "ask_clarify"})
 
 # The unpriced attribution defaults every no-edge View return site spreads — consumers
@@ -200,24 +200,6 @@ def _conditioned_rho(curves: Curves, edge: str, confidence: Any, fallback: float
     return CAL.curve_for(curves, edge).calibrate(c)
 
 
-def _truth_likely_missing(view: View) -> bool:
-    """The agent's belief that the answer is OUTSIDE the retrieved set — the principled trigger to
-    GROW recall (discover a missing candidate), versus CORROBORATE a present-but-weak leader (which
-    the daemon already prices by ``net_voi``). True iff nothing was extracted, or NONE ("the truth
-    is not among the retrieved candidates") is the MAP hypothesis: P(NONE) ≥ the best present
-    candidate's posterior. No magic threshold — the comparison is one the posterior itself defines.
-    Grow can't be VOI-priced over the closed categorical (it enlarges K); P(NONE) is the in-model
-    signal that replaces the old blind "grow on any withhold" cascade, so the body grows on the
-    agent's belief, not the bare effector."""
-    if not view["candidates"]:
-        return True  # zero grounded observations — the truth is definitionally not in the set
-    p_none = view["p_none"]
-    if p_none is None:
-        return False
-    leader = max(view["credences"]) if view["credences"] else 0.0
-    return bool(p_none >= leader)
-
-
 def owner_scoped(question: str) -> bool:
     """A first-person possessive question ("my X") — the class whose-document can protect, so the
     daemon's ``owner_scoped`` slot may schedule the subject-aware corroborate guard."""
@@ -233,33 +215,26 @@ def _obj(post: Post, url: str, payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def decide_via_loop(question: str, k: int, *, bridge: str, daemon: str, post: Post, get: Get,
-                    grow: bool = True, rerank: bool = False,
                     transforms: list[dict[str, Any]] | None = None,
-                    grow_lane: bool = False, live: SEAM.LiveFn | None = None,
+                    live: SEAM.LiveFn | None = None,
                     curves: Curves = None) -> View:
-    """Drive one question through the live loop: route, then a cheap pass, then recall growth.
+    """Drive one question through the live loop: route, then the daemon-priced pass.
 
     A declined route (``/route`` → null) is the NARRATIVE family — synthesize a cited answer,
     audit each claim, include only grounded + EU-positive claims; gate-safe by construction.
 
-    ``grow_lane=True`` (slice 6 — the conferred gather offload, flag-gated for the parity-safe
-    cutover): recall is DECIDED BY THE DAEMON — the loop ships the sensor buckets + the grow
-    menu (bridge ``/grow_menu``: actuators with body-persisted warm counts) into ``/decide``,
-    the daemon prices the grow argmax by the engine gather VOI (``grow_value`` over the
-    structure-BMA ``g``), and the body enacts the named probe and logs the outcome
-    (``/log_gather`` — the structure-observe stream). No body-side cascade, no
-    ``_truth_likely_missing`` gate: P(NONE) enters only as a bucketed *sensor*.
+    A typed route runs :func:`run_pass`. Recall is DECIDED BY THE DAEMON — the loop ships the
+    sensor buckets + the grow menu (bridge ``/grow_menu``: actuators with body-persisted warm
+    counts) into ``/decide``, the daemon prices the grow argmax by the engine gather VOI
+    (``grow_value`` over the structure-BMA ``g``), and the body enacts the named probe and logs
+    the outcome (``/log_gather`` — the structure-observe stream). There is no body-side
+    cascade and no ``p_none >= leader`` gate: P(NONE) enters only as a bucketed *sensor*
+    (E-13/E-14 died at M1, and ``LIFE_AGENT_GROW_LANE`` retired with them — this is the lane).
 
     ``live`` (M3 — the coarse menu live, flag-gated at the caller): the seam consults the
     proplang engine on every decide tick and the loop enacts the ENGINE's coarse act
     (abstain/gather/ask/respond, mapped by :mod:`life_agent.membrane.coarse`); ``None``
-    (the default) is the credence daemon's decision, byte-for-byte today's behaviour.
-
-    ``grow_lane=False`` (the legacy adapter, deleted at cutover): a typed route runs
-    :func:`run_pass`; if ``grow`` and the cheap pass withholds AND the agent's belief says the
-    answer is outside the set (:func:`_truth_likely_missing`), escalate recall breadth (rerank,
-    then native-script expansion) and adopt a grown report (or any grown decision when the
-    cheap pass found no candidates at all)."""
+    (the default) is the credence daemon's decision, byte-for-byte today's behaviour."""
     transforms = DEFAULT_TRANSFORMS if transforms is None else transforms
     route = post(f"{bridge}/route", {"question": question})
     if route is None:
@@ -269,53 +244,19 @@ def decide_via_loop(question: str, k: int, *, bridge: str, daemon: str, post: Po
                 "hits": nv.get("hits", []), "route": None, "rendered": nv.get("rendered"),
                 "n_indeterminate": 0, "question": question,
                 **_UNPRICED_ATTRIBUTION, "edge_events": [], "spend_usd": 0.0}
-    if grow_lane:
-        return run_pass(question, k, route, bridge=bridge, daemon=daemon, post=post, get=get,
-                        rerank=False, expand=False, transforms=transforms, grow_lane=True,
-                        live=live, curves=curves)
-    view = run_pass(question, k, route, bridge=bridge, daemon=daemon, post=post, get=get,
-                    rerank=rerank, expand=rerank, transforms=transforms, live=live,
-                    curves=curves)
-    if grow and not rerank:
-        # Grow recall ONLY when the agent's BELIEF says the answer is outside the set — NONE is the
-        # MAP hypothesis, or nothing was extracted (:func:`_truth_likely_missing`). A withhold with
-        # a plausible present leader is the CORROBORATE case (re-read at higher reliability — priced
-        # by net_voi in the daemon), NOT grow: widening recall there only adds distractors (and
-        # risks growing into a confident-wrong). Grow is the discovery move VOI can't price over the
-        # closed categorical; P(NONE) is its in-model trigger. Escalate breadth cheapest-first; stop
-        # once a report lands or the belief no longer says missing:
-        #   tier 1  rerank(raw)   — over-fetch + listwise reorder surfaces a buried literal hit
-        #   tier 2  rerank+expand — native-script (Hebrew) expansion bridges the English↔Hebrew
-        #                           lexical gap; expansion dilutes strong literals, so it follows
-        #                           raw rerank rather than replacing it.
-        for rr, ex in ((True, False), (True, True)):
-            if view["effector"] not in _WITHHOLD or not _truth_likely_missing(view):
-                break
-            grown = run_pass(question, k, route, bridge=bridge, daemon=daemon, post=post, get=get,
-                             rerank=rr, expand=ex, transforms=transforms, live=live,
-                             curves=curves)
-            # every pass's firings ride the RETURNED view whichever pass wins — the
-            # gate writer grades FIRINGS, not surviving passes (dropping the withheld
-            # pass's events is survivorship bias: its wrong-leaning proposals are
-            # exactly the curve food the fold most needs); same-artifact repeats
-            # across passes dedup on lineage at the writer.
-            merged = [*view["edge_events"], *grown["edge_events"]]
-            merged_spend = view["spend_usd"] + grown["spend_usd"]  # burned is burned,
-            if grown["effector"] == "report" or not view["candidates"]:  # both passes
-                view = grown
-            view["edge_events"] = merged
-            view["spend_usd"] = merged_spend
-    return view
+    return run_pass(question, k, route, bridge=bridge, daemon=daemon, post=post, get=get,
+                    rerank=False, expand=False, transforms=transforms,
+                    live=live, curves=curves)
 
 
 def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemon: str,
              post: Post, get: Get, rerank: bool, expand: bool = False,
              transforms: list[dict[str, Any]] | None = None,
-             grow_lane: bool = False, live: SEAM.LiveFn | None = None,
+             live: SEAM.LiveFn | None = None,
              curves: Curves = None) -> View:
     """One retrieve→probe→extract→decide pass at a given recall breadth, enacting each
-    scheduled transform the daemon returns. With ``grow_lane`` the daemon also prices the
-    grow menu (recall actuators), and each enactment is logged to ``/log_gather``. Returns
+    scheduled transform the daemon returns. The daemon also prices the grow menu (recall
+    actuators), and each enactment is logged to ``/log_gather``. Returns
     the normalized view ``{effector, asserted, candidates, credences, p_none, eu, hits, route}``."""
     transforms = DEFAULT_TRANSFORMS if transforms is None else transforms
 
@@ -345,7 +286,7 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
         return hits, recency, ext
 
     hits, recency, ext = _evidence(rerank, expand)
-    menu = get(f"{bridge}/grow_menu")["grow"] if grow_lane else None
+    menu = get(f"{bridge}/grow_menu")["grow"]
     # (probe, sensors-at-scheduling, evidence-changed) per enacted grow — logged at the terminal.
     enacted: list[tuple[str, dict[str, str], bool]] = []
 
@@ -384,7 +325,7 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
                             "lineage": reply.get("cache_key")})
 
     applied: list[str] = []
-    if grow_lane and not ext["candidates"] and menu is not None:
+    if not ext["candidates"] and menu is not None:
         # The k=0 degenerate case: nothing extracted ⇒ there is no candidate posterior to price
         # against (the daemon requires k ≥ 1), so the body walks the menu cheapest-first (menu
         # order) until candidates ground — the one place enactment order is body-held; every
@@ -640,7 +581,7 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
             applied = list(dict.fromkeys([*applied, probe]))
             grow_asked = False
             dec = _decide(obs, rho, era, applied)
-        elif (eff in _WITHHOLD and grow_lane and not grow_asked
+        elif (eff in _WITHHOLD and not grow_asked
               and (grow_probes - set(applied))):
             # a withholding terminal with unapplied grow actuators: re-ask WITH the grow block
             # so the daemon prices recall (grow_value self-gates on the terminal EU — skipping

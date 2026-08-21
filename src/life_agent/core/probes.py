@@ -197,12 +197,20 @@ def probe_corroborate(conn: duckdb.DuckDBPyConnection, question: str, leader_val
     already in hand. Mirrors ``ask._retrieve_set`` over the ``pkm.retrieval`` seam."""
     from pkm.retrieval import SearchResult, search
 
+    # ONE declared total order, used by both layers — the same shape `core/retrieval.py`
+    # declares (§6.9, fixed at M1). Neither layer may lean on arrival order: `pkm.retrieval`'s
+    # SQL ends `ORDER BY scored.score DESC` with no tie-breaker, so tied hits arrive in
+    # whatever order the engine emitted them, and a raw float can tie 1-2 ulp apart between
+    # identical calls. Quantise first (R2's quantum), then break by artefact key, then text.
+    def rank(h: SearchResult) -> tuple[float, str, str]:
+        return (-round(h.score, 9), h.artifact_cache_key, h.chunk_text)
+
     best: dict[str, SearchResult] = {}
     for h in search(conn, f"{question} {leader_value}", k=k * 4):
         prev = best.get(h.chunk_text)
-        if prev is None or h.score > prev.score:
+        if prev is None or rank(h) < rank(prev):
             best[h.chunk_text] = h
-    top = sorted(best.values(), key=lambda h: h.score, reverse=True)[:k]
+    top = sorted(best.values(), key=rank)[:k]
     hits = [{"artifact_cache_key": h.artifact_cache_key, "chunk_text": h.chunk_text,
              "score": h.score, "origin": h.source_path} for h in top]
     return _fresh_hits(hits, exclude_keys)

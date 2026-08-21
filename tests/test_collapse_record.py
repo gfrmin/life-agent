@@ -266,3 +266,37 @@ def test_the_seal_restores_the_append_functions_and_clears_its_sink(tmp_path: Pa
         assert D2.append is not before[0]
     assert (D2.append, O2.append) == before
     assert DR._SINK == {}
+
+
+# M1 / R8 — the recorder writes one file per fixture and then GLOBS the directory to build its
+# manifest, so a directory that already holds fixtures yields a manifest describing a mixture of
+# two runs while presenting as a whole artefact. The hazard is a partial failure — an aborted
+# recording leaves its predecessors behind, and nothing says so. Found at M0.5 (r03 A6, checked
+# clean by hand that time), ruled at review into a guard that runs BEFORE the recording, since
+# a recording is the expensive part and finding out afterwards is finding out too late.
+
+def test_a_directory_holding_fixtures_is_named_as_unsafe_to_record_into(tmp_path: Path) -> None:
+    FX.write(tmp_path, _fixture(fixture_id="m0-synthetic-1"))
+    FX.write(tmp_path, _fixture(fixture_id="m0-synthetic-2"))
+    assert FX.existing_fixtures(tmp_path) == ["m0-synthetic-1.json", "m0-synthetic-2.json"]
+
+
+def test_an_absent_or_empty_directory_is_safe_to_record_into(tmp_path: Path) -> None:
+    assert FX.existing_fixtures(tmp_path / "never-created") == []
+    (tmp_path / "empty").mkdir()
+    assert FX.existing_fixtures(tmp_path / "empty") == []
+
+
+def test_a_manifest_alone_is_unsafe_because_the_recorder_republishes_it(tmp_path: Path) -> None:
+    # a run that died between writing its manifest and being merged leaves exactly this shape.
+    (tmp_path / "manifest.json").write_text("{}", encoding="utf-8")
+    assert FX.existing_fixtures(tmp_path) == ["manifest.json"]
+
+
+def test_a_snapshots_directory_alone_is_safe_because_the_recorder_refreshes_it(
+        tmp_path: Path) -> None:
+    # `take_snapshot` re-copies the fold inputs on every run, so their presence is not evidence
+    # of a stale FIXTURE — refusing on it would refuse every legitimate re-record.
+    (tmp_path / "snapshots").mkdir()
+    (tmp_path / "snapshots" / "decisions.snapshot").write_text("x", encoding="utf-8")
+    assert FX.existing_fixtures(tmp_path) == []

@@ -325,7 +325,6 @@ def _build_run_meta(
         # reads for EXECUTOR_BRIDGE / EXECUTOR_DAEMON — they determine WHICH daemon the
         # baseline arm actually hit (null = unset, ask.py's localhost defaults apply).
         "env_flags": {
-            "LIFE_AGENT_GROW_LANE": os.environ.get("LIFE_AGENT_GROW_LANE", ""),
             "LIFE_AGENT_BRIDGE_URL": os.environ.get("LIFE_AGENT_BRIDGE_URL"),
             "ANSWER_BRAIN_URL": os.environ.get("ANSWER_BRAIN_URL"),
         },

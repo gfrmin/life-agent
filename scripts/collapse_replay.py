@@ -85,20 +85,20 @@ def replay_fixture(fx: FX.Fixture, snapshot: DR.KBSnapshot) -> tuple[dict[str, A
                     cards=cards, scope=fx.inputs.get("scope", "unscoped"),
                     root=root, run_id=fx.inputs["run_id"]), cassette
             if fx.trace == "A-loop":
-                from life_agent.core import ask_client as AC
                 prior_env = os.environ.get("LIFE_AGENT_DELIBERATE")
-                prior_lane = AC.GROW_LANE
-                # the flags are RECORDED state, restored here rather than assumed from the
-                # ambient environment: a fixture must replay the same way on any box
+                # the flag is RECORDED state, restored here rather than assumed from the
+                # ambient environment: a fixture must replay the same way on any box.
+                # `grow_lane` is no longer restorable — it retired at M1 (there is one lane),
+                # so a pre-M1 A-loop fixture recorded on the legacy lane now raises
+                # CassetteMissError on `/grow_menu`. Loud by design: that fixture pins a path
+                # the code no longer has, and the M1 baseline (`m0-5-growlane`) replaces it.
                 os.environ["LIFE_AGENT_DELIBERATE"] = (
                     "1" if fx.provenance.get("deliberate") else "0")
-                AC.GROW_LANE = bool(fx.provenance.get("grow_lane"))
                 try:
                     return DR.drive_executor_loop(
                         rig, snapshot, question=fx.question, k=fx.inputs["k"],
                         run_id=fx.inputs["run_id"]), cassette
                 finally:
-                    AC.GROW_LANE = prior_lane
                     if prior_env is None:
                         os.environ.pop("LIFE_AGENT_DELIBERATE", None)
                     else:

@@ -161,6 +161,13 @@ the same rider (`LIFE_AGENT_DELIBERATE=0` is the rollback) — the adopted path 
 measured path. The evidence and the rejected alternatives are recorded in
 [`bayesian-foundations.md`](./bayesian-foundations.md) §14 (the adoption entry).
 
+**One lane (M1, the module collapse).** `LIFE_AGENT_GROW_LANE` is **retired**: recall growth
+is the daemon's priced row and there is no second lane to select. A stale flag in an `.env` is
+ignored, exactly as `LIFE_AGENT_FALLBACK_LANE` is. The body-side cascade it used to gate — a
+withhold escalating recall breadth on `p_none >= leader` — is deleted with it; `p_none` remains
+a bucketed *sensor* the daemon prices over, never control flow the body runs. `ANSWER_BRAIN_GROW`
+retires in the same move: it disabled the cascade, and there is no cascade to disable.
+
 Rendering order is posterior order, not rhetorical order; LLM paraphrase stays within
 claim boundaries; the conformance audit (the citation guard extended to claim coverage)
 runs per render, never cached. The strings live in per-family tables

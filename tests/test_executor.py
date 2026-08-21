@@ -126,20 +126,24 @@ def test_typed_report_is_terminal() -> None:
     fake = FakeServices(route={"construct": "passport number", "time_indexed": False},
                         decides=[{"effector": "report", "value": "P123",
                                   "credences": [0.95, 0.05], "p_none": 0.05, "eu": 0.9}])
-    view = _loop(fake, grow=False)
+    view = _loop(fake)
     assert view["effector"] == "report"
     assert view["asserted"] == ["P123"]
     assert view["candidates"] == ["P123"]
     assert view["n_obs"] == 1  # the footer's grounded-observation count is faithful
 
 
-def test_extract_miss_short_circuits() -> None:
-    # Zero grounded observations → the local edge declined; the loop returns a miss without
-    # ever consulting the daemon.
+def test_extract_miss_never_consults_the_daemon() -> None:
+    # Zero grounded observations → the local edge declined. The priced lane still walks the
+    # grow menu (M1: there is no short circuit left), but nothing grounds, so no candidate is
+    # minted and the daemon is never asked — a miss carrying no candidates.
     fake = FakeServices(route={"construct": "passport number", "time_indexed": False},
                         extract={"candidates": [], "observations": [], "rho": 0.7,
-                                 "era_split": False, "indeterminate": 3, "half_life_years": 5.0})
-    view = _loop(fake, grow=False)
+                                 "era_split": False, "indeterminate": 3,
+                                 "half_life_years": 5.0},
+                        corroborate={"observations": [], "gather_rho": 0.95, "value": None,
+                     "confidence": None})
+    view = _loop(fake)
     assert view["effector"] == "miss"
     assert view["candidates"] == []
     assert fake.posted("/decide") == []
@@ -153,11 +157,11 @@ def test_view_threads_the_competed_observation_count() -> None:
            "p_none": 0.08, "eu": 0.5}
     fake = FakeServices(route={"construct": "prize money", "time_indexed": False},
                         extract={**_EXTRACT, "n_competing": 1}, decides=[dec])
-    view = _loop(fake, grow=False)
+    view = _loop(fake)
     assert view["n_competing"] == 1
     fake0 = FakeServices(route={"construct": "prize money", "time_indexed": False},
                          decides=[dict(dec)])
-    assert _loop(fake0, grow=False)["n_competing"] == 0
+    assert _loop(fake0)["n_competing"] == 0
 
 
 def test_recency_gather_is_acknowledged_then_report() -> None:
@@ -170,7 +174,7 @@ def test_recency_gather_is_acknowledged_then_report() -> None:
                   "p_none": 0.1, "eu": 0.3},
                  {"effector": "report", "value": "P123", "credences": [0.9, 0.1],
                   "p_none": 0.05, "eu": 0.8}])
-    view = _loop(fake, grow=False)
+    view = _loop(fake)
     assert view["effector"] == "report"
     decides = fake.posted("/decide")
     assert len(decides) == 2
@@ -190,63 +194,12 @@ def test_corroborate_tier_is_enacted_then_report() -> None:
                   "credences": [0.5, 0.5], "p_none": 0.1, "eu": 0.2},
                  {"effector": "report", "value": "P123", "credences": [0.9, 0.1],
                   "p_none": 0.05, "eu": 0.8}])
-    view = _loop(fake, grow=False)
+    view = _loop(fake)
     assert view["effector"] == "report"
     corr = fake.posted("/probe/corroborate")
     assert len(corr) == 1
     assert corr[0]["reextract"] is True
     assert corr[0]["model"] == "claude-haiku-4-5"  # the scheduled tier's model
-
-
-def test_grow_fires_when_none_is_the_map_hypothesis() -> None:
-    # The cheap pass abstains AND the agent's belief says the answer is OUTSIDE the set — NONE
-    # ("not among the retrieved candidates") outweighs the best present candidate (p_none ≥ leader).
-    # That is the discovery case grow exists for: enlarge recall, re-decide, take the grown report.
-    fake = FakeServices(
-        route={"construct": "passport number", "time_indexed": False},
-        decides=[{"effector": "abstain", "credences": [0.2, 0.1], "p_none": 0.7, "eu": -0.1},
-                 {"effector": "report", "value": "P123", "credences": [0.9, 0.1],
-                  "p_none": 0.05, "eu": 0.8}])
-    view = _loop(fake, grow=True)
-    assert view["effector"] == "report"
-    assert view["asserted"] == ["P123"]
-    retrieves = fake.posted("/retrieve")
-    assert any(r["rerank"] for r in retrieves)  # grow ran a rerank recall pass
-
-
-def test_grow_skipped_when_present_leader_beats_none() -> None:
-    # A withhold whose present leader OUTWEIGHS NONE (p_none < leader) is the CORROBORATE case, not
-    # grow: the agent believes the answer IS among the retrieved candidates (just under the EU bar),
-    # so widening recall would only add distractors. The body consults the agent's P(NONE), not the
-    # bare withholding effector (the de-patch — belief-driven recall, answer_brain.jl's NONE seam).
-    fake = FakeServices(
-        route={"construct": "passport number", "time_indexed": False},
-        decides=[{"effector": "abstain", "credences": [0.55, 0.1], "p_none": 0.35, "eu": -0.05},
-                 {"effector": "report", "value": "WRONG", "credences": [0.9, 0.1],
-                  "p_none": 0.05, "eu": 0.8}])  # a grown report the gate must NOT reach
-    view = _loop(fake, grow=True)
-    assert view["effector"] == "abstain"        # stayed withheld — no grow rescue attempted
-    assert view["asserted"] == []               # did NOT adopt the unreached grown report
-    assert len(fake.posted("/retrieve")) == 1   # exactly one (cheap) recall pass; grow skipped
-
-
-def test_truth_likely_missing_true_when_no_candidates() -> None:
-    # Nothing extracted ⇒ the truth is definitionally not in the set ⇒ grow (discover).
-    assert EX._truth_likely_missing(
-        {"candidates": [], "credences": [], "p_none": None}) is True
-
-
-def test_truth_likely_missing_true_when_none_is_map() -> None:
-    # P(NONE) ≥ the best present candidate ⇒ the answer is likely outside the set ⇒ grow.
-    assert EX._truth_likely_missing(
-        {"candidates": ["a", "b"], "credences": [0.3, 0.2], "p_none": 0.5}) is True
-
-
-def test_truth_likely_missing_false_when_present_leader_wins() -> None:
-    # A present candidate outweighs NONE ⇒ the answer is likely in the set ⇒ corroborate, not grow.
-    assert EX._truth_likely_missing(
-        {"candidates": ["a", "b"], "credences": [0.6, 0.1], "p_none": 0.3}) is False
-
 
 # --- the grow lane (slice 6): the DAEMON schedules recall; the body enacts + logs --------
 # grow_lane=True replaces the hardcoded cascade: after a withholding terminal, the body
@@ -264,7 +217,7 @@ def test_grow_lane_daemon_schedules_retrieve_expand() -> None:
             {"effector": "report", "value": "P123", "credences": [0.9, 0.1],
              "p_none": 0.05, "eu": 0.8},
         ])
-    view = _loop(fake, grow_lane=True)
+    view = _loop(fake)
     assert view["effector"] == "report"
     decides = fake.posted("/decide")
     assert len(decides) == 3
@@ -288,7 +241,7 @@ def test_grow_lane_respects_a_daemon_decline() -> None:
             {"effector": "abstain", "credences": [0.5, 0.2], "p_none": 0.3, "eu": 0.0},
             {"effector": "abstain", "credences": [0.5, 0.2], "p_none": 0.3, "eu": 0.0},
         ])
-    view = _loop(fake, grow_lane=True)
+    view = _loop(fake)
     assert view["effector"] == "abstain"
     assert len(fake.posted("/retrieve")) == 1     # no recall enacted
     assert fake.posted("/log_gather") == []       # nothing enacted ⇒ nothing logged
@@ -309,7 +262,7 @@ def test_grow_lane_re_extract_strong_enlarges_k() -> None:
             {"effector": "report", "value": "NEW-7", "credences": [0.1, 0.9],
              "p_none": 0.0, "eu": 0.8},
         ])
-    view = _loop(fake, grow_lane=True)
+    view = _loop(fake)
     assert view["effector"] == "report"
     assert view["asserted"] == ["NEW-7"]
     corr = fake.posted("/probe/corroborate")
@@ -331,7 +284,7 @@ def test_grow_lane_zero_candidates_walks_the_menu_cheapest_first() -> None:
         extracts=[empty, empty, _EXTRACT],   # cheap, rerank (still empty), expand (grounds)
         decides=[{"effector": "report", "value": "P123", "credences": [0.95],
                   "p_none": 0.05, "eu": 0.9}])
-    view = _loop(fake, grow_lane=True)
+    view = _loop(fake)
     assert view["effector"] == "report"
     logged = {p["probe"]: p["recovered"] for p in fake.posted("/log_gather")}
     assert logged == {"retrieve_rerank": False, "retrieve_expand": True}
@@ -355,7 +308,7 @@ def test_grow_lane_log_gather_failure_never_breaks_the_answer() -> None:
         return real_post(url, payload)
 
     fake.post = flaky_post  # type: ignore[method-assign]
-    view = _loop(fake, grow_lane=True)
+    view = _loop(fake)
     assert view["effector"] == "report"
     assert view["asserted"] == ["P123"]
 
@@ -376,7 +329,7 @@ def test_re_extract_strong_disagreeing_reread_collapses_the_channel() -> None:
             {"effector": "abstain", "credences": [0.1], "p_none": 0.9, "eu": 0.0},
             {"effector": "abstain", "credences": [0.1], "p_none": 0.9, "eu": 0.0},
         ])
-    view = _loop(fake, grow_lane=True)
+    view = _loop(fake)
     assert view["effector"] == "abstain"
     decides = fake.posted("/decide")
     assert decides[2]["observations"] == []      # the channel was replaced, not kept
@@ -398,7 +351,7 @@ def test_re_extract_strong_null_reread_keeps_the_channel() -> None:
             {"effector": "abstain", "credences": [0.2], "p_none": 0.7, "eu": 0.0},
             {"effector": "abstain", "credences": [0.2], "p_none": 0.7, "eu": 0.0},
         ])
-    _loop(fake, grow_lane=True)
+    _loop(fake)
     decides = fake.posted("/decide")
     assert decides[2]["observations"] == _EXTRACT["observations"]  # channel KEPT
     assert decides[2]["rho"] == _EXTRACT["rho"]                    # at its own rho
@@ -419,7 +372,7 @@ def test_corroborate_tier_null_read_keeps_the_channel_disagree_still_replaces() 
                 {"effector": "abstain", "credences": [0.5], "p_none": 0.5, "eu": 0.0},
                 {"effector": "abstain", "credences": [0.5], "p_none": 0.5, "eu": 0.0},
             ])
-        _loop(fake, grow=False)
+        _loop(fake)
         return fake.posted("/decide")
 
     kept = _run({"observations": [], "gather_rho": 0.80, "value": None, "read": "null"})
@@ -445,7 +398,7 @@ def test_a_bridge_without_the_read_field_keeps_the_measured_contract() -> None:
             {"effector": "abstain", "credences": [0.5], "p_none": 0.5, "eu": 0.0},
             {"effector": "abstain", "credences": [0.5], "p_none": 0.5, "eu": 0.0},
         ])
-    _loop(fake, grow=False)
+    _loop(fake)
     assert fake.posted("/decide")[1]["observations"] == []
 
 
@@ -462,7 +415,7 @@ def test_zero_candidate_walk_retires_its_probes() -> None:
             {"effector": "abstain", "credences": [0.2], "p_none": 0.7, "eu": 0.0},
             {"effector": "abstain", "credences": [0.2], "p_none": 0.7, "eu": 0.0},
         ])
-    view = _loop(fake, grow_lane=True)
+    view = _loop(fake)
     assert view["effector"] == "abstain"
     decides = fake.posted("/decide")
     # the grow-priced re-ask (2nd decide) already carries the walked probe as applied
@@ -470,21 +423,6 @@ def test_zero_candidate_walk_retires_its_probes() -> None:
     # and only ONE outcome row was logged for it (no double count)
     logged = [p for p in fake.posted("/log_gather") if p["probe"] == "retrieve_rerank"]
     assert len(logged) == 1
-
-
-def test_grow_lane_off_keeps_the_legacy_cascade() -> None:
-    # The flag gate (parity-safe cutover): grow_lane absent ⇒ the old cascade behaviour,
-    # untouched — /grow_menu and /log_gather are never consulted.
-    fake = FakeServices(
-        route={"construct": "passport number", "time_indexed": False},
-        decides=[{"effector": "abstain", "credences": [0.2, 0.1], "p_none": 0.7, "eu": -0.1},
-                 {"effector": "report", "value": "P123", "credences": [0.9, 0.1],
-                  "p_none": 0.05, "eu": 0.8}])
-    view = _loop(fake, grow=True)
-    assert view["effector"] == "report"
-    assert fake.posted("/log_gather") == []
-    assert all(not u.endswith("/grow_menu") for (u, _) in fake.calls)
-
 
 # --- render_view: the executor's decision in the shared credence grammar ----------------
 
@@ -552,7 +490,7 @@ def test_zero_candidate_walk_reaches_the_strong_re_extract() -> None:
                      "confidence": 0.9},
         decides=[{"effector": "report", "value": "NEW-7", "credences": [0.93],
                   "p_none": 0.07, "eu": 0.8}])
-    view = _loop(fake, grow_lane=True)
+    view = _loop(fake)
     assert view["effector"] == "report"
     assert view["asserted"] == ["NEW-7"]
     corr = fake.posted("/probe/corroborate")
@@ -578,7 +516,7 @@ def test_zero_candidate_rescue_carries_low_confidence_into_rho() -> None:
                      "gather_rho": 0.95, "value": "NEW-7", "new_candidate": "NEW-7",
                      "confidence": 0.35},
         decides=[{"effector": "hedge", "credences": [0.62], "p_none": 0.38, "eu": 0.3}])
-    view = _loop(fake, grow_lane=True)
+    view = _loop(fake)
     assert view["effector"] == "hedge"
     assert view["candidates"] == ["NEW-7"]       # named, not silently dropped
     assert fake.posted("/decide")[0]["rho"] == 0.35
@@ -594,7 +532,7 @@ def test_zero_candidate_rescue_without_confidence_uses_the_prior_cap() -> None:
                      "gather_rho": 0.95, "value": "NEW-7", "new_candidate": "NEW-7"},
         decides=[{"effector": "report", "value": "NEW-7", "credences": [0.93],
                   "p_none": 0.07, "eu": 0.8}])
-    _loop(fake, grow_lane=True)
+    _loop(fake)
     assert fake.posted("/decide")[0]["rho"] == 0.5
 
 
@@ -607,7 +545,7 @@ def test_zero_candidate_rescue_empty_read_stays_miss() -> None:
         extracts=[_EMPTY_EXTRACT, _EMPTY_EXTRACT, _EMPTY_EXTRACT],
         corroborate={"observations": [], "gather_rho": 0.95, "value": None,
                      "confidence": None})
-    view = _loop(fake, grow_lane=True)
+    view = _loop(fake)
     assert view["effector"] == "miss"
     assert fake.posted("/decide") == []
     logged = {p["probe"]: p["recovered"] for p in fake.posted("/log_gather")}
@@ -620,22 +558,9 @@ def test_zero_candidate_rescue_needs_hits() -> None:
         route={"construct": "mortgage", "time_indexed": False},
         hits=[],
         extracts=[_EMPTY_EXTRACT, _EMPTY_EXTRACT, _EMPTY_EXTRACT])
-    view = _loop(fake, grow_lane=True)
-    assert view["effector"] == "miss"
-    assert fake.posted("/probe/corroborate") == []
-
-
-def test_zero_candidates_without_grow_lane_stays_miss() -> None:
-    # Flag parity: grow_lane off keeps the legacy k=0 behaviour byte-for-byte — the breadth
-    # cascade still walks its three passes, but no rescue, no corroborate, no decide.
-    fake = FakeServices(
-        route={"construct": "mortgage", "time_indexed": False},
-        extracts=[_EMPTY_EXTRACT, _EMPTY_EXTRACT, _EMPTY_EXTRACT])
     view = _loop(fake)
     assert view["effector"] == "miss"
     assert fake.posted("/probe/corroborate") == []
-    assert fake.posted("/decide") == []
-
 
 # --- M3: the live coarse-menu consult threads through to the seam ------------------------
 
@@ -645,6 +570,9 @@ def test_live_consult_rewrites_the_terminal_view() -> None:
     fake = FakeServices(
         route={"construct": "passport number", "time_indexed": False},
         decides=[{"effector": "report", "value": "P123", "credences": [0.9],
+                  "p_none": 0.05, "eu": 0.8},
+                 # re-asked WITH the grow block after the withholding terminal; declines
+                 {"effector": "report", "value": "P123", "credences": [0.9],
                   "p_none": 0.05, "eu": 0.8}])
     consults: list[tuple[dict[str, Any], dict[str, Any]]] = []
 
@@ -652,10 +580,13 @@ def test_live_consult_rewrites_the_terminal_view() -> None:
         consults.append((payload, dec))
         return ({**dec, "effector": "abstain", "value": None}, None)
 
-    view = _loop(fake, grow=False, live=live)
+    view = _loop(fake, live=live)
     assert view["effector"] == "abstain"
     assert view["asserted"] == []
-    assert len(consults) == 1
+    # TWO consults, not one — a consequence of M1: the engine's rewritten `abstain` is a
+    # withholding terminal, so the loop re-asks the daemon WITH the grow block, and the seam
+    # consults on that tick too. Named in r04; the count is pinned exactly, never loosened.
+    assert len(consults) == 2
     assert consults[0][1]["effector"] == "report"  # consulted with the daemon's own reply
 
 
@@ -671,8 +602,11 @@ def test_live_consult_gather_override_enacts_the_probe() -> None:
         decides=[{"effector": "abstain", "value": None, "credences": [0.5],
                   "p_none": 0.4, "eu": 0.0},
                  {"effector": "abstain", "value": None, "credences": [0.6],
+                  "p_none": 0.3, "eu": 0.0},
+                 # re-asked WITH the grow block after the withholding terminal; declines
+                 {"effector": "abstain", "value": None, "credences": [0.6],
                   "p_none": 0.3, "eu": 0.0}])
-    calls = iter([("gather", "corroborate_haiku"), (None, None)])
+    calls = iter([("gather", "corroborate_haiku"), (None, None), (None, None)])
 
     def live(payload: dict[str, Any], dec: dict[str, Any]) -> tuple[dict[str, Any], str | None]:
         eff, probe = next(calls)
@@ -680,12 +614,12 @@ def test_live_consult_gather_override_enacts_the_probe() -> None:
             return (dec, None)
         return ({**dec, "effector": eff, "probe": probe}, None)
 
-    view = _loop(fake, grow=False, live=live)
+    view = _loop(fake, live=live)
     assert view["effector"] == "abstain"
     corr = fake.posted("/probe/corroborate")
     assert len(corr) == 1
     assert corr[0]["model"] == "claude-haiku-4-5"
-    assert len(fake.posted("/decide")) == 2
+    assert len(fake.posted("/decide")) == 3   # +1: the grow re-ask (M1 — the priced lane)
 
 
 # --- per-edge calibration threading (plan item 3: constants become the curve) ------------
@@ -717,7 +651,7 @@ def test_rescue_folds_confidence_through_the_edge_curve() -> None:
                      "confidence": 0.9},
         decides=[{"effector": "report", "value": "NEW-7", "credences": [0.93],
                   "p_none": 0.07, "eu": 0.8}])
-    _loop(fake, grow_lane=True, curves=curves)
+    _loop(fake, curves=curves)
     assert fake.posted("/decide")[0]["rho"] == expected
 
 
@@ -735,7 +669,7 @@ def test_rescue_unmeasured_edge_keeps_the_declared_cap() -> None:
                      "gather_rho": 0.95, "value": "NEW-7", "new_candidate": "NEW-7",
                      "confidence": 0.9},
         decides=[{"effector": "hedge", "credences": [0.6], "p_none": 0.4, "eu": 0.1}])
-    _loop(fake, grow_lane=True, curves={})
+    _loop(fake, curves={})
     assert fake.posted("/decide")[0]["rho"] == 0.5
 
 
@@ -752,7 +686,7 @@ def test_rescue_measured_edge_folds_through_its_curve_cold_bins() -> None:
                      "gather_rho": 0.95, "value": "NEW-7", "new_candidate": "NEW-7",
                      "confidence": 0.9},
         decides=[{"effector": "hedge", "credences": [0.6], "p_none": 0.4, "eu": 0.1}])
-    _loop(fake, grow_lane=True, curves=curves)
+    _loop(fake, curves=curves)
     assert (fake.posted("/decide")[0]["rho"]
             == curves["extract@claude-opus-4-8"].calibrate(0.9))
 
@@ -773,7 +707,7 @@ def test_corroborate_tier_folds_confidence_through_the_edge_curve() -> None:
                   "credences": [0.5, 0.5], "p_none": 0.1, "eu": 0.2},
                  {"effector": "report", "value": "P123", "credences": [0.9, 0.1],
                   "p_none": 0.05, "eu": 0.8}])
-    _loop(fake, grow=False, curves=curves)
+    _loop(fake, curves=curves)
     assert fake.posted("/decide")[1]["rho"] == expected
 
 
@@ -796,8 +730,11 @@ def test_join_posts_carry_the_candidates_base_competition() -> None:
         decides=[{"effector": "gather", "probe": "deliberate",
                   "credences": [0.5, 0.5], "p_none": 0.3, "eu": 0.1},
                  {"effector": "abstain", "credences": [0.4, 0.4],
+                  "p_none": 0.2, "eu": 0.0},
+                 # re-asked WITH the grow block after the withholding terminal; declines
+                 {"effector": "abstain", "credences": [0.4, 0.4],
                   "p_none": 0.2, "eu": 0.0}])
-    _loop(fake, grow=False,
+    _loop(fake,
           transforms=[*EX.DEFAULT_TRANSFORMS, EX.DELIBERATE_TRANSFORM])
     delib = fake.posted("/probe/deliberate")
     assert delib and delib[0]["candidate_competition"] == [0.5, 1.0]
@@ -821,7 +758,7 @@ def test_deliberate_gather_is_enacted_and_folds_through_its_curve() -> None:
                   "credences": [0.5, 0.5], "p_none": 0.3, "eu": 0.1},
                  {"effector": "report", "value": "NIS 4,200", "credences": [0.9, 0.1],
                   "p_none": 0.05, "eu": 0.8}])
-    view = _loop(fake, grow=False, curves=curves,
+    view = _loop(fake, curves=curves,
                  transforms=[*EX.DEFAULT_TRANSFORMS, EX.DELIBERATE_TRANSFORM])
     assert view["effector"] == "report"
     delib = fake.posted("/probe/deliberate")
@@ -846,7 +783,7 @@ def test_deliberate_tick_prices_the_view() -> None:
                   "credences": [0.5], "p_none": 0.3, "eu": 0.1},
                  {"effector": "report", "value": "NIS 4,200", "credences": [0.9],
                   "p_none": 0.05, "eu": 0.8}])
-    view = _loop(fake, grow=False, curves={})
+    view = _loop(fake, curves={})
     assert view["instrument"] == "deliberate@claude-opus-4-8"
     assert view["cost_usd"] == 0.42
     assert view["latency_s"] == 23.0
@@ -857,7 +794,7 @@ def test_view_without_a_deliberate_tick_is_unpriced() -> None:
         route={"construct": "tax id", "time_indexed": False},
         decides=[{"effector": "report", "value": "P123", "credences": [0.95],
                   "p_none": 0.02, "eu": 0.9}])
-    view = _loop(fake, grow=False)
+    view = _loop(fake)
     assert view["instrument"] == ""
     assert view["cost_usd"] is None
 
@@ -880,8 +817,11 @@ def test_deliberate_tick_carries_the_raw_proposal_on_the_view() -> None:
         decides=[{"effector": "gather", "probe": "deliberate",
                   "credences": [0.5], "p_none": 0.3, "eu": 0.1},
                  {"effector": "abstain", "credences": [0.4], "p_none": 0.6,
+                  "eu": 0.0},
+                 # re-asked WITH the grow block after the withholding terminal; declines
+                 {"effector": "abstain", "credences": [0.4], "p_none": 0.6,
                   "eu": 0.0}])
-    view = _loop(fake, grow=False, curves={})
+    view = _loop(fake, curves={})
     assert view["effector"] == "abstain"
     assert view["instrument_value"] == "NIS 4,200"
     assert view["instrument_confidence"] == 0.85
@@ -895,7 +835,7 @@ def test_view_without_a_deliberate_tick_has_no_raw_proposal() -> None:
         route={"construct": "tax id", "time_indexed": False},
         decides=[{"effector": "report", "value": "P123", "credences": [0.95],
                   "p_none": 0.02, "eu": 0.9}])
-    view = _loop(fake, grow=False)
+    view = _loop(fake)
     assert view["instrument_value"] is None
     assert view["instrument_confidence"] is None
     assert view["instrument_lineage"] is None
@@ -907,8 +847,9 @@ def test_miss_and_narrative_views_default_the_raw_proposal_fields() -> None:
     miss = _loop(FakeServices(
         route={"construct": "passport number", "time_indexed": False},
         extract={"candidates": [], "observations": [], "rho": 0.7,
-                 "era_split": False, "indeterminate": 3, "half_life_years": 5.0}),
-        grow=False)
+                 "era_split": False, "indeterminate": 3, "half_life_years": 5.0},
+        corroborate={"observations": [], "gather_rho": 0.95, "value": None,
+                     "confidence": None}))
     assert miss["effector"] == "miss"
     assert miss["instrument_value"] is None
     assert miss["instrument_lineage"] is None
@@ -934,8 +875,11 @@ def test_deliberate_decline_leaves_no_gradeable_proposal() -> None:
         decides=[{"effector": "gather", "probe": "deliberate",
                   "credences": [0.4], "p_none": 0.5, "eu": 0.0},
                  {"effector": "abstain", "credences": [0.1], "p_none": 0.9,
+                  "eu": 0.0},
+                 # re-asked WITH the grow block after the withholding terminal; declines
+                 {"effector": "abstain", "credences": [0.1], "p_none": 0.9,
                   "eu": 0.0}])
-    view = _loop(fake, grow=False, curves={})
+    view = _loop(fake, curves={})
     assert view["instrument_value"] is None
     assert view["instrument_confidence"] is None
     assert view["instrument_lineage"] == "dk-declined"
@@ -950,7 +894,7 @@ def test_run_pass_prices_the_menu_in_owner_utility_via_lambda_usd() -> None:
         utility={**_U, "lambda_usd": 2.0},
         decides=[{"effector": "report", "value": "P123", "credences": [0.95],
                   "p_none": 0.02, "eu": 0.9}])
-    _loop(fake, grow=False)
+    _loop(fake)
     sent = fake.posted("/decide")[0]["transforms"]
     authored = {t["probe"]: t["cost"] for t in EX.DEFAULT_TRANSFORMS if "cost" in t}
     priced = {t["probe"]: t["cost"] for t in sent if "cost" in t}
@@ -965,7 +909,7 @@ def test_run_pass_without_the_rate_latent_keeps_legacy_costs() -> None:
         route={"construct": "tax id", "time_indexed": False},
         decides=[{"effector": "report", "value": "P123", "credences": [0.95],
                   "p_none": 0.02, "eu": 0.9}])
-    _loop(fake, grow=False)
+    _loop(fake)
     sent = {t["probe"]: t["cost"]
             for t in fake.posted("/decide")[0]["transforms"] if "cost" in t}
     assert sent["corroborate_haiku"] == next(
@@ -980,7 +924,7 @@ def test_run_pass_prices_the_grow_block_at_the_same_rate() -> None:
         utility={**_U, "lambda_usd": 2.0},
         decides=[{"effector": "abstain", "credences": [0.2], "p_none": 0.7, "eu": -0.1},
                  {"effector": "abstain", "credences": [0.2], "p_none": 0.7, "eu": -0.1}])
-    _loop(fake, grow_lane=True)
+    _loop(fake)
     with_grow = [p for p in fake.posted("/decide") if "grow" in p]
     assert with_grow, "the withhold re-ask must carry the grow block"
     costs = {a["probe"]: a["cost"] for a in with_grow[0]["grow"]["actuators"]}
@@ -1007,7 +951,7 @@ def test_corroborate_tier_appends_an_edge_event() -> None:
                   "credences": [0.5, 0.5], "p_none": 0.1, "eu": 0.2},
                  {"effector": "report", "value": "P123", "credences": [0.9, 0.1],
                   "p_none": 0.05, "eu": 0.8}])
-    view = _loop(fake, grow=False)
+    view = _loop(fake)
     assert view["edge_events"] == [{"edge": "extract@claude-haiku-4-5", "value": "P123",
                                     "confidence": 0.7, "lineage": "jk-1"}]
 
@@ -1027,7 +971,7 @@ def test_escalating_tiers_append_one_event_each() -> None:
                   "credences": [0.6, 0.4], "p_none": 0.1, "eu": 0.3},
                  {"effector": "report", "value": "P123", "credences": [0.9, 0.1],
                   "p_none": 0.05, "eu": 0.8}])
-    view = _loop(fake, grow=False)
+    view = _loop(fake)
     assert [e["edge"] for e in view["edge_events"]] == [
         "extract@claude-haiku-4-5", "extract@claude-opus-4-8"]
 
@@ -1044,7 +988,7 @@ def test_rescue_walk_appends_an_edge_event() -> None:
                      "confidence": 0.9, "cache_key": "jk-r"},
         decides=[{"effector": "report", "value": "NEW-7", "credences": [0.93],
                   "p_none": 0.07, "eu": 0.8}])
-    view = _loop(fake, grow_lane=True)
+    view = _loop(fake)
     assert view["edge_events"] == [{"edge": "extract@claude-opus-4-8", "value": "NEW-7",
                                     "confidence": 0.9, "lineage": "jk-r"}]
 
@@ -1058,7 +1002,7 @@ def test_non_minting_rescue_event_survives_on_the_miss_view() -> None:
         extracts=[_EMPTY_EXTRACT, _EMPTY_EXTRACT, _EMPTY_EXTRACT],
         corroborate={"observations": [], "gather_rho": 0.95, "value": None,
                      "confidence": None, "cache_key": "jk-d"})
-    view = _loop(fake, grow_lane=True)
+    view = _loop(fake)
     assert view["effector"] == "miss"
     assert view["edge_events"] == [{"edge": "extract@claude-opus-4-8", "value": None,
                                     "confidence": None, "lineage": "jk-d"}]
@@ -1076,7 +1020,7 @@ def test_re_extract_strong_appends_an_edge_event() -> None:
                   "credences": [0.5], "p_none": 0.2, "eu": 0.2},
                  {"effector": "report", "value": "P123", "credences": [0.9],
                   "p_none": 0.05, "eu": 0.8}])
-    view = _loop(fake, grow=False)
+    view = _loop(fake)
     assert view["edge_events"] == [{"edge": "extract@claude-opus-4-8", "value": "P123",
                                     "confidence": 0.8, "lineage": "jk-s"}]
 
@@ -1097,8 +1041,11 @@ def test_deliberate_appends_an_edge_event_and_keeps_the_legacy_slot() -> None:
         decides=[{"effector": "gather", "probe": "deliberate",
                   "credences": [0.5], "p_none": 0.3, "eu": 0.1},
                  {"effector": "abstain", "credences": [0.4], "p_none": 0.6,
+                  "eu": 0.0},
+                 # re-asked WITH the grow block after the withholding terminal; declines
+                 {"effector": "abstain", "credences": [0.4], "p_none": 0.6,
                   "eu": 0.0}])
-    view = _loop(fake, grow=False, curves={})
+    view = _loop(fake, curves={})
     assert view["edge_events"] == [{"edge": "deliberate@claude-opus-4-8",
                                     "value": "NIS 4,200", "confidence": 0.85,
                                     "lineage": "dk-42"}]
@@ -1133,7 +1080,7 @@ def test_view_spend_accumulates_every_metered_firing() -> None:
                   "credences": [0.6, 0.4], "p_none": 0.1, "eu": 0.3},
                  {"effector": "report", "value": "NIS 4,200", "credences": [0.9, 0.1],
                   "p_none": 0.05, "eu": 0.8}])
-    view = _loop(fake, grow=False, curves={},
+    view = _loop(fake, curves={},
                  transforms=[*EX.DEFAULT_TRANSFORMS, EX.DELIBERATE_TRANSFORM])
     assert view["spend_usd"] == 0.012 + 0.42
     assert view["cost_usd"] == 0.42  # the decisions-v2 deliberate slot, untouched
@@ -1143,7 +1090,7 @@ def test_all_view_shapes_carry_spend() -> None:
     plain = _loop(FakeServices(
         route={"construct": "tax id", "time_indexed": False},
         decides=[{"effector": "report", "value": "P123", "credences": [0.95],
-                  "p_none": 0.02, "eu": 0.9}]), grow=False)
+                  "p_none": 0.02, "eu": 0.9}]))
     assert plain["spend_usd"] == 0.0
     narr = _loop(FakeServices(route=None, narrative={
         "action": "report", "asserted": ["you travelled in May"],
@@ -1169,60 +1116,8 @@ def test_grow_menu_actuator_without_cost_rides_through() -> None:
         utility={**_U, "lambda_usd": 2.0},
         decides=[{"effector": "abstain", "credences": [0.2], "p_none": 0.7, "eu": -0.1},
                  {"effector": "abstain", "credences": [0.2], "p_none": 0.7, "eu": -0.1}])
-    view = _loop(fake, grow_lane=True)
+    view = _loop(fake)
     assert view["effector"] == "abstain"  # survived; no KeyError on the guard row
-
-
-def test_grow_escalation_keeps_the_abandoned_passes_events() -> None:
-    # PR #63 review (survivorship bias): the legacy grow path replaced the whole view,
-    # discarding the withheld pass's firings — exactly the wrong-leaning proposals the
-    # curve fold most needs. Every pass's firings must ride the RETURNED view,
-    # whichever pass wins. Adopted direction: pass 1 fires haiku then abstains
-    # (NONE is MAP → escalate); the grown pass fires opus and reports.
-    fake = FakeServices(
-        route={"construct": "passport number", "time_indexed": False},
-        corroborate={"observations": [{"reports": 0, "group": 0, "authority": 1.0,
-                                       "subject_factor": 1.0, "time_factor": 1.0}],
-                     "gather_rho": 0.80, "value": "P123", "confidence": 0.7,
-                     "cache_key": "jk-1", "cost_usd": 0.012},
-        decides=[{"effector": "gather", "probe": "corroborate_haiku",
-                  "credences": [0.2], "p_none": 0.6, "eu": 0.0},
-                 {"effector": "abstain", "credences": [0.2], "p_none": 0.7, "eu": -0.1},
-                 {"effector": "gather", "probe": "corroborate_opus",
-                  "credences": [0.5], "p_none": 0.2, "eu": 0.3},
-                 {"effector": "report", "value": "P123", "credences": [0.9],
-                  "p_none": 0.05, "eu": 0.8}])
-    view = _loop(fake, grow=True)
-    assert view["effector"] == "report"
-    assert [e["edge"] for e in view["edge_events"]] == [
-        "extract@claude-haiku-4-5", "extract@claude-opus-4-8"]
-    # PR #67 review: the abandoned pass's SPEND survives the swap like its events do —
-    # money burned on a discarded pass was still burned
-    assert view["spend_usd"] == 0.012 + 0.012
-
-
-def test_grow_escalation_keeps_the_grown_passes_events_when_not_adopted() -> None:
-    # Kept direction: the grown passes also fire (opus on tier 1) but stay withheld —
-    # their firings must survive on the ORIGINAL view the loop returns.
-    fake = FakeServices(
-        route={"construct": "passport number", "time_indexed": False},
-        corroborate={"observations": [{"reports": 0, "group": 0, "authority": 1.0,
-                                       "subject_factor": 1.0, "time_factor": 1.0}],
-                     "gather_rho": 0.80, "value": "P123", "confidence": 0.7,
-                     "cache_key": "jk-1", "cost_usd": 0.012},
-        decides=[{"effector": "gather", "probe": "corroborate_haiku",
-                  "credences": [0.2], "p_none": 0.6, "eu": 0.0},
-                 {"effector": "abstain", "credences": [0.2], "p_none": 0.7, "eu": -0.1},
-                 {"effector": "gather", "probe": "corroborate_opus",
-                  "credences": [0.3], "p_none": 0.5, "eu": 0.0},
-                 {"effector": "abstain", "credences": [0.3], "p_none": 0.6, "eu": -0.1},
-                 {"effector": "abstain", "credences": [0.3], "p_none": 0.6, "eu": -0.1}])
-    view = _loop(fake, grow=True)
-    assert view["effector"] == "abstain"
-    assert [e["edge"] for e in view["edge_events"]] == [
-        "extract@claude-haiku-4-5", "extract@claude-opus-4-8"]
-    assert view["spend_usd"] == 0.012 + 0.012  # the grown pass's spend kept too
-
 
 def test_tier_reply_without_cache_key_warns_of_bridge_skew(capsys) -> None:
     # PR #63 review: a version-skewed bridge (predating the cache_key wire field)
@@ -1238,7 +1133,7 @@ def test_tier_reply_without_cache_key_warns_of_bridge_skew(capsys) -> None:
                   "credences": [0.5, 0.5], "p_none": 0.1, "eu": 0.2},
                  {"effector": "report", "value": "P123", "credences": [0.9, 0.1],
                   "p_none": 0.05, "eu": 0.8}])
-    view = _loop(fake, grow=False)
+    view = _loop(fake)
     assert view["edge_events"][0]["lineage"] is None
     assert "cache_key" in capsys.readouterr().out  # the skew is named, never silent
 
@@ -1249,14 +1144,18 @@ def test_all_view_shapes_carry_edge_events() -> None:
     plain = _loop(FakeServices(
         route={"construct": "tax id", "time_indexed": False},
         decides=[{"effector": "report", "value": "P123", "credences": [0.95],
-                  "p_none": 0.02, "eu": 0.9}]), grow=False)
+                  "p_none": 0.02, "eu": 0.9}]))
     assert plain["edge_events"] == []
     miss = _loop(FakeServices(
         route={"construct": "passport number", "time_indexed": False},
         extract={"candidates": [], "observations": [], "rho": 0.7,
-                 "era_split": False, "indeterminate": 3, "half_life_years": 5.0}),
-        grow=False)
-    assert miss["edge_events"] == []
+                 "era_split": False, "indeterminate": 3, "half_life_years": 5.0},
+        corroborate={"observations": [], "gather_rho": 0.95, "value": None,
+                     "confidence": None}))
+    # M1: the priced lane walks the grow menu before conceding, so the miss carries the
+    # walk's one non-minting strong re-read — an event, never a candidate.
+    assert [e["edge"] for e in miss["edge_events"]] == ["extract@claude-opus-4-8"]
+    assert miss["edge_events"][0]["value"] is None
     narr = _loop(FakeServices(route=None, narrative={
         "action": "report", "asserted": ["you travelled in May"],
         "rendered": "you travelled in May [1]\n\nnarrative footer",
@@ -1278,7 +1177,7 @@ def test_deliberate_new_candidate_enlarges_k() -> None:
                   "credences": [0.4], "p_none": 0.6, "eu": 0.0},
                  {"effector": "report", "value": "NIS 4,200",
                   "credences": [0.2, 0.75], "p_none": 0.05, "eu": 0.7}])
-    view = _loop(fake, grow=False, curves={})
+    view = _loop(fake, curves={})
     assert view["candidates"] == ["NIS 9,999", "NIS 4,200"]
     assert view["effector"] == "report"
     assert fake.posted("/decide")[1]["candidates"] == ["NIS 9,999", "NIS 4,200"]
@@ -1299,7 +1198,7 @@ def test_deliberate_without_curves_takes_the_conservative_cap() -> None:
                   "credences": [0.5], "p_none": 0.3, "eu": 0.1},
                  {"effector": "report", "value": "NIS 4,200", "credences": [0.9],
                   "p_none": 0.05, "eu": 0.8}])
-    _loop(fake, grow=False)
+    _loop(fake)
     assert fake.posted("/decide")[1]["rho"] == 0.5
 
 
@@ -1314,8 +1213,10 @@ def test_deliberate_decline_collapses_the_channel() -> None:
                     "value": None, "status": "ok", "declined": True, "cache": "miss"},
         decides=[{"effector": "gather", "probe": "deliberate",
                   "credences": [0.4], "p_none": 0.5, "eu": 0.0},
+                 {"effector": "abstain", "credences": [0.1], "p_none": 0.9, "eu": 0.0},
+                 # re-asked WITH the grow block after the withholding terminal; declines
                  {"effector": "abstain", "credences": [0.1], "p_none": 0.9, "eu": 0.0}])
-    view = _loop(fake, grow=False, curves={})
+    view = _loop(fake, curves={})
     assert view["effector"] == "abstain"
     assert fake.posted("/decide")[1]["observations"] == []
 
@@ -1333,7 +1234,7 @@ def test_corroborate_no_confidence_without_curves_keeps_the_tier_rho() -> None:
                   "credences": [0.5, 0.5], "p_none": 0.1, "eu": 0.2},
                  {"effector": "report", "value": "P123", "credences": [0.9, 0.1],
                   "p_none": 0.05, "eu": 0.8}])
-    _loop(fake, grow=False)
+    _loop(fake)
     assert fake.posted("/decide")[1]["rho"] == 0.80
 
 
@@ -1353,7 +1254,7 @@ def test_corroborate_no_confidence_on_a_measured_edge_folds_at_the_floor() -> No
                   "credences": [0.5, 0.5], "p_none": 0.1, "eu": 0.2},
                  {"effector": "report", "value": "P123", "credences": [0.9, 0.1],
                   "p_none": 0.05, "eu": 0.8}])
-    _loop(fake, grow=False, curves=curves)
+    _loop(fake, curves=curves)
     assert (fake.posted("/decide")[1]["rho"]
             == curves["extract@claude-haiku-4-5"].calibrate(0.0))
 
@@ -1372,7 +1273,7 @@ def test_deliberate_error_reply_keeps_the_grounded_channel() -> None:
                   "credences": [0.6], "p_none": 0.3, "eu": 0.1},
                  {"effector": "report", "value": "P123", "credences": [0.85],
                   "p_none": 0.1, "eu": 0.6}])
-    view = _loop(fake, grow=False, curves={})
+    view = _loop(fake, curves={})
     assert view["effector"] == "report"
     second = fake.posted("/decide")[1]
     assert len(second["observations"]) == 1      # the local channel survived
@@ -1396,7 +1297,7 @@ def test_deliberate_transport_failure_is_fail_open() -> None:
                   "credences": [0.6], "p_none": 0.3, "eu": 0.1},
                  {"effector": "report", "value": "P123", "credences": [0.85],
                   "p_none": 0.1, "eu": 0.6}])
-    view = _loop(fake, grow=False, curves={})
+    view = _loop(fake, curves={})
     assert view["effector"] == "report"
     assert len(fake.posted("/decide")[1]["observations"]) == 1
 
@@ -1414,7 +1315,7 @@ def test_failed_deliberate_call_still_accounts_its_spend() -> None:
                   "credences": [0.6], "p_none": 0.3, "eu": 0.1},
                  {"effector": "report", "value": "P123", "credences": [0.85],
                   "p_none": 0.1, "eu": 0.6}])
-    view = _loop(fake, grow=False, curves={})
+    view = _loop(fake, curves={})
     assert view["cost_usd"] == 0.11
     assert view["latency_s"] == 240.0
 
@@ -1553,3 +1454,30 @@ def test_instrument_client_is_lazy_on_secrets(monkeypatch) -> None:
         raise AssertionError("complete() should have raised on the missing key")
     except SystemExit:
         pass
+
+
+# --- M1: the priced lane is the lane (E-13/E-14 die, LIFE_AGENT_GROW_LANE retires) -------
+
+def test_the_priced_lane_is_the_only_lane() -> None:
+    # M1: there is no lane flag left to pass. decide_via_loop consults the grow menu on the
+    # ordinary path, because recall growth is the daemon's priced row and nothing else.
+    fake = FakeServices(
+        route={"construct": "passport number", "time_indexed": False},
+        decides=[{"effector": "abstain", "credences": [0.2, 0.1], "p_none": 0.7, "eu": -0.1}] * 3)
+    _loop(fake)
+    assert any(u.endswith("/grow_menu") for (u, _) in fake.calls)
+
+
+def test_the_body_side_cascade_is_gone() -> None:
+    # E-13/E-14: a withholding pass whose belief says the answer is OUTSIDE the set (p_none ≥
+    # leader) used to trigger a body-side rerank→expand escalation. It no longer does: the
+    # daemon is asked WITH the grow block, declines, and the body enacts nothing. Exactly one
+    # recall pass, and no reranked one — `p_none ≥ leader` is a sensor, never control flow.
+    fake = FakeServices(
+        route={"construct": "passport number", "time_indexed": False},
+        decides=[{"effector": "abstain", "credences": [0.2, 0.1], "p_none": 0.7, "eu": -0.1}] * 3)
+    view = _loop(fake)
+    assert view["effector"] == "abstain"
+    retrieves = fake.posted("/retrieve")
+    assert len(retrieves) == 1
+    assert not any(r["rerank"] for r in retrieves)

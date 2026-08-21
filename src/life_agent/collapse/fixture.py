@@ -167,6 +167,26 @@ def write(directory: Path, fx: Fixture) -> Path:
     return path
 
 
+def existing_fixtures(directory: Path) -> list[str]:
+    """The fixture-set files already in a checkpoint directory, in name order — empty when it
+    is safe to record into (R8, M0.5's r03 A6).
+
+    A recording writes one file per fixture and then GLOBS the directory to build its manifest,
+    so recording into a directory that already holds fixtures publishes a manifest describing a
+    MIXTURE of two runs while presenting as a whole artefact. The shape that produces it is a
+    partial failure: an aborted recording leaves its predecessors behind and says nothing.
+
+    ``snapshots/`` is deliberately NOT counted: ``take_snapshot`` re-copies the fold inputs on
+    every run, so its presence is not evidence of a stale fixture, and refusing on it would
+    refuse every legitimate re-record. ``manifest.json`` IS counted — a run that died between
+    publishing its manifest and being merged leaves exactly that, and the next run republishes
+    it.
+    """
+    if not directory.is_dir():
+        return []
+    return sorted(p.name for p in directory.glob("*.json"))
+
+
 def read_all(directory: Path) -> list[Fixture]:
     """Every fixture in the checkpoint directory, in id order. A malformed fixture RAISES —
     a bisection oracle that silently skips a fixture is not an oracle."""

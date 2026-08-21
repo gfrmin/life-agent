@@ -30,7 +30,6 @@ from life_agent.membrane import coarse as CRS
 
 BRIDGE = os.environ.get("LIFE_AGENT_BRIDGE_URL", "http://127.0.0.1:8798")
 DAEMON = os.environ.get("ANSWER_BRAIN_URL", "http://127.0.0.1:8799")
-GROW_LANE = os.environ.get("LIFE_AGENT_GROW_LANE", "") == "1"
 DOWN = ("No answer asserted — the executor is unavailable (the answer-brain "
         "daemon/bridge is not up; start it: bin/answer-brain).")
 # The fold-fate vocabulary — ask-live's /react wording, one voice across surfaces.
@@ -130,8 +129,7 @@ def answer(question: str, k: int = 20, *, post: Any = None, get: Any = None,
         live, wrapped = None, SM.shadow_wrapped_post(post, BRIDGE, question_id)
     transforms, curves = _menu()
     view = EX.decide_via_loop(question, k, bridge=BRIDGE, daemon=DAEMON,
-                              post=wrapped, get=get,
-                              grow_lane=GROW_LANE, live=live,
+                              post=wrapped, get=get, live=live,
                               transforms=transforms, curves=curves)
     decision_id: str | None = None
     if (view["route"] is not None and view["effector"] in DEC.LOOKUP_ACTION_ORDER

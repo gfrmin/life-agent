@@ -20,7 +20,7 @@ The daemon already lets the agent autonomously try transformations — but only 
 
 So **recall is the one kind the agent does NOT decide.** When the answer is missing, the body
 runs a hardcoded cascade (`executor.decide_field`: rerank → rerank+expand, fired off
-`_truth_likely_missing`). That is why per-field extraction didn't convert the misses
+`_truth_likely_missing`, deleted at M1). That is why per-field extraction didn't convert the misses
 ([[per-field-extraction-disconfirmed]]) and why "improve retrieval" keeps presenting as a
 hand-built pipeline: the agent **can't try retrieval transforms**, so a human supplies them.
 
@@ -50,7 +50,7 @@ grow_value(state, u_bar, t) = P(NONE) · g_t · ( u_correct − value(state) )  
 
 This is the missing-mass analogue of `voi_gather`: same shape (expected Δvalue − cost), priced
 against the SAME terminal preference, so **grow competes with answer / corroborate / abstain in
-one EU**. It is NOT a binary `p_none ≥ leader` gate (the de-patch's `_truth_likely_missing`) —
+one EU**. It is NOT a binary `p_none ≥ leader` gate (the de-patch's `_truth_likely_missing`, deleted at M1) —
 that gate is subsumed: it falls out as `grow_value > 0`, and now the agent also **selects which**
 recall transform (the arg-max), and **stops** when no grow clears its cost.
 

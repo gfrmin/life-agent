@@ -896,7 +896,6 @@ def build_gate_run_meta(*, run_id: str, args, questions: list[dict], questions_p
             "elicitations_sha256": _sha256_file(LCFG.UTILITY_ELICITATIONS),
         },
         "env_flags": {
-            "LIFE_AGENT_GROW_LANE": os.environ.get("LIFE_AGENT_GROW_LANE", ""),
             "LIFE_AGENT_BRIDGE_URL": os.environ.get("LIFE_AGENT_BRIDGE_URL"),
             "ANSWER_BRAIN_URL": os.environ.get("ANSWER_BRAIN_URL"),
         },
