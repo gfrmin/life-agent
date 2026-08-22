@@ -2678,6 +2678,101 @@ on this list. Answers land here by amendment, citing their evidence.
   COUNT (5 grounded observations versus 1), which is not a host-versus-daemon modelling
   difference — both consume the same observation set.
 
+- **The rulings r05's reading forced (owner, 2026-08-22).** Four, taken before r06 opened.
+  (1) **The deployment block is kept and RE-POINTED at the replace branch (§6.12)** — its
+  premise was refuted, but the tree it blocks still commits a row wrongly, which is what the
+  block was for; a register entry whose stated reason is known-false is worse than none.
+  (2) **BUILD licenses known-and-uncovered, not a fix** — §6.11 records the grouping bound in
+  both directions and the 37/37 cross-surface conservatism, retires its named fix as refuted,
+  and writes **no decision-path code**; a future carrier-set grouping design does not inherit
+  that BUILD. (3) **M1 is ACCEPTED and closed** (r04 RULING 3 released): the hold's live
+  hypothesis was that the deletion carried 7.3's failure, and run 12 refutes it directly — the
+  deletion was in that tree and read 0.964 with zero wrong commits — with r05's DONE 4
+  redirecting the remaining failure to a mechanism M1 never touched. M1.5 (the coverage census,
+  R7) is unblocked. (4) **r06 is scoped to EVERY replace/override site**, not to the registered
+  NULL-as-disagreement hypothesis alone, on r05's own lesson: an instrument written around the
+  presumed fix measures the fix, not the defect.
+
+- **The replace branch — the checkpoint opened, criteria frozen BEFORE the instrument reads
+  (2026-08-22, register §6.12, report r06, instrument `scripts/replace_audit.py`).** The
+  mechanism r05 named and no run has measured: at five sites the executor's enactment loop lets
+  a probe's reply REPLACE the grounded channel (`obs`/`rho`/`era`) instead of joining it. The
+  entry enumerates the five from the code — the `corroborate_*` tiers, the two retrieval grows,
+  the `deliberate` edge, in-loop `re_extract_strong`, and the k=0 rescue walk — with their
+  guards, and names the asymmetry that makes this readable: **S1 and S4 retire fail-open on a
+  null read; S3 (deliberate) has no null-read guard at all** and collapses the channel on an
+  empty ok reply by design. The population is run 10 (`gate-20260821T094545`), whose one wrong
+  commit fired S3 at n_obs = 1 over a five-observation grounded channel, plus the registered
+  n_obs=0 cluster (17 of 19 rows at exactly uniform credences, gold still on the lattice in 14).
+
+  *The criteria, frozen (the instrument's docstring is the authority; this is the mirror):*
+  **C1 exposure** — per site, the number of run-10 questions on which it fired AND took the
+  replace branch; exposure 0 is reported as *untaken*, never as *clean*. **C2 channel loss** —
+  per firing, n_obs of the grounded channel before against n_obs of the committed posterior; a
+  firing with loss ≤ 0 is not a discard. **C3 delivered reach** — the counterfactual is
+  **RETIRE-NOT-REPLACE** (the probe retires fail-open and the grounded channel stands: exactly
+  the treatment S1 and S4 already give a null read, generalised, so it is a deployable rule and
+  not an invented one); reach is the number of questions whose committed action differs.
+  **C4 the split** — every reach row classified against the run's own gold as REPAIR (a wrong
+  commit becomes right, or becomes an honest withholding), REGRESSION (a right commit becomes
+  wrong or becomes a withholding) or NEUTRAL; reach is published as the triple, never as a
+  total. *Completed before any reading (the frozen text left a gap):* the withholding→commit
+  direction is unnamed above, so it is fixed now rather than after a result — a withholding
+  that becomes a CORRECT commit is a REPAIR, a withholding that becomes a WRONG commit is a
+  REGRESSION. Both arms must be gradeable for a row to be classified; an ungradeable row is
+  named, never bucketed. **C5 conservatism** — for each disagreement, which side the DEPLOYED rule falls on,
+  both directions counted. **C6 the asymmetry** — how many S3 firings carried a reply the
+  S1/S4 guard would have retired on, and what each did to the channel; 0 in the records means
+  the asymmetry is structural-only on this corpus, and that is a finding to state, not to omit.
+  *Amended before any reading (a feasibility fact, not a result):* the eval writer emits an
+  edge-outcome row only when the firing carried BOTH a value and a self-report, so a reply that
+  named nothing leaves no row — C6 is therefore read off a **conjunction** of the run's own
+  records: the terminal decision row's `instrument` field is set only by the deliberate branch
+  (the `extract@` siblings go through `_edge_event`, which never touches it), so
+  `instrument` naming deliberate WITH no `deliberate@` outcome row for that question AND a
+  terminal `n_obs` of 0 over a base channel with `n_obs` > 0 is the signature of S3 collapsing
+  a grounded channel on an empty ok reply. That conjunction is also, by construction, the
+  signature the registered **n_obs=0 cluster** was described by (candidates at exactly uniform
+  credences), so C6 doubles as the first test of whether that cluster IS S3.
+  **C7 the verdict, applied mechanically per site** — reach ≥ 1 with repairs > regressions ⇒
+  **BUILD the retire-not-replace guard for that site AND buy one isolated gate run under
+  §6.10**; reach ≥ 1 with repairs ≤ regressions ⇒ **REFUSE**, the deployed rule is not worse,
+  record the bound; reach 0 with exposure ≥ 5 ⇒ **known-and-uncovered** (the §6.11 precedent),
+  no code; exposure < 5 ⇒ **NO-GO**, too few load-bearing questions to read. The bar of 5 is
+  inherited from r05 deliberately, so the two checkpoints are comparable. **C8 the instrument's
+  own limits, published not averaged** — (a) only ONE of the two arms is recomputed. The
+  **deployed** arm is READ from the run's own terminal decision row (its `chosen_action`, and
+  its leader as the argmax over the recorded candidates/credences), never re-derived — so
+  r05's 70-of-102 layer gap applies to the counterfactual arm alone. That gap is bounded by a
+  **direct control** rather than inherited: on every question where NO edge fired, the terminal
+  IS the base channel, so audit-base-versus-recorded-terminal on those rows measures the layer
+  agreement on this very run, and it is published as a rate with the disagreeing rows named.
+  Both arms are graded by the SAME matcher; where that matcher disagrees with the run's judge
+  grade on the deployed arm, the row is flagged and never silently kept; (b) the JOIN counterfactual (pool base + probe observations under §5
+  dedup) is **not read here** — the probe's observations are not in the records and reading
+  them needs a live bridge replay; it is named as the escalation, not silently dropped; (c) any
+  question whose base channel cannot be recomputed without spend is EXCLUDED BY NAME.
+  **C9 no decision-path code** — nothing under `src/` changes in this checkpoint; a commit gate
+  refuses if `src/` is dirty.
+
+  *Blind predictions, recorded before the read:* (1) S3 shows the largest channel loss per
+  firing, because it is the only site with no null-read guard. (2) The run-10 wrong commit is
+  an S3 firing with loss ≥ 3. (3) Total exposure across the five sites is ≥ 20 on 102
+  questions. (4) S3's delivered reach is ≥ 1 and its repairs exceed its regressions.
+  (5) S2 has exposure > 0 but delivered reach 0 — its `changed` guard already refuses the
+  empty case.
+
+  *Named risks, recorded before the read:* the instrument mirrors the loop's branch conditions,
+  and a mis-mirror produces a confident wrong number — which is exactly how r05 shipped three
+  measure defects, so the mirror is tested against the real predicates (`_null_read`,
+  `_GROW_RETRIEVE`, the guard expressions) and not hand-copied. **Retire-not-replace is a
+  bound, not presumptively a better rule:** retiring a probe that legitimately corrects a wrong
+  grounded channel is a regression, and C4 exists to see it. And the 70/102 layer agreement
+  means up to a third of rows are read at a layer the arm did not use — C8(a) is what keeps
+  that from being averaged away. **This entry supersedes the n_obs=0 cluster's suspected
+  mechanism as the thing to measure**: the suspicion (a NULL re-read treated as a DISAGREEMENT)
+  is one branch of one site, and r06 reads all five rather than confirming it.
+
 - **Four unordered sources on the decision path — the cache was doing the work of determinism
   (2026-08-19/20, tranche-2 M0/M0.5, `scripts/collapse_replay.py` + the M0.5 probes, $0
   deterministic).** The decision-equivalence instrument built at M0 found two ties resolved by

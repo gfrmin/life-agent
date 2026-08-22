@@ -732,6 +732,94 @@ under §6.10, isolated, one change.
 *Pinned by:* `scripts/carrier_audit.py` and the frozen criteria in its docstring (mirrored in
 the §14 pre-registration), then whichever branch they take.
 
+*RULED (owner, 2026-08-22, on the reading — QUESTION 2 of r05): §6.11 becomes a **standing
+known-and-uncovered source**, and the candidate fix named above is retired as **refuted**.*
+The audit read BUILD on exposure — 17 load-bearing questions on each of the two surfaces
+against a frozen bar of 5 — but **delivered reach 0**, and the fix is a *provable no-op on
+this corpus*: carriers of byte-identical text never differ in authority class, subject state
+or date-projection status, so an argmax over the §4.1 covariates always returns what the
+declared key already picked. The tell above therefore **overstates the conflict**: on this
+corpus §5's max-covariate rule and `retrieve_set`'s content hash agree wherever both can see.
+Only one of the two *could* be right; neither is observably wrong here.
+
+Three findings survive the reading, and are what this entry now stands for:
+
+- **The grouping is what is arbitrary, not the representative.** `lookup_posterior` partitions
+  observations by carrier, so permuting carriers among byte-identical texts changes how many
+  independent `group_noisy_channel`s the evidence forms. Measured bound, both directions: on
+  one question a maximum-independence assignment lifts the (correct) leader from a hedge at
+  0.683 to a report at 0.975 (EU 0.369 → 0.755); on another the *same* permutation lowers a
+  correct leader from 0.985 to 0.961 (EU 0.858 → 0.618). One question in each direction is a
+  bound, never a rule — which is why no rule is adopted.
+- **The declared key's CONSISTENCY across surfaces is load-bearing and must be preserved.**
+  `probes.probe_corroborate` drops a hit whose document is already held (`_fresh_hits`), so
+  where carriers straddle the held set the carrier choice decides whether corroboration
+  *exists*. All 37 straddling texts measured resolve on the conservative side — the probe
+  re-picks the base pass's carrier and the duplicate is dropped — precisely because the same
+  function ranks both layers. Any future fix that makes the two layers choose independently
+  would admit copies as if independent, defeating §5's dedup guard.
+- **No decision-path change is licensed by this entry.** It is registered, measured, bounded
+  and left uncovered. A future fix must (a) preserve cross-surface consistency, (b) be scored
+  on *both* directions of the grouping bound rather than the helping one, and (c) come with its
+  own pre-registration and a priced run — not inherit this checkpoint's BUILD.
+
+*Superseded as the deployment blocker.* The block on deploying the run-10/12 arc named this
+entry as what it was waiting for. The reading refutes that premise — carrier identity is not
+what makes that arc commit wrongly — so by the same ruling the block is **kept and re-pointed
+at §6.12**, which is where the wrong answer actually comes from.
+
+**6.12 The replace branch — a view that DISCARDS a grounded channel instead of joining it.**
+Registered 2026-08-22 on r05's redirection (its DONE 4), which is the first evidence that names
+this mechanism rather than suspecting it. Like §6.11 this is a *decision-model* defect, not an
+ordering one, and it is the class §14 already carried as the n_obs=0 cluster's suspected
+mechanism — here caught one step up, at n_obs = 1.
+
+*What:* the executor's enactment loop holds the grounded channel in `obs` / `rho` / `era` and,
+at five sites, a probe's reply **replaces** those bindings outright rather than joining its
+observations to them. The replacement is deliberate and documented at each site as a
+conservative coarsening ("independent-search corroboration is not modelled v0"), on the
+argument that a whole-document re-read of the *same* documents is nested inside the evidence it
+re-reads. That argument is sound for a re-read of the same documents. It is *not* obviously
+sound for an instrument that searches the corpus independently, and it is the deliberate edge —
+the independent searcher — where the measured harm shows up.
+
+*The five sites, enumerated from the code and not from the suspicion:*
+
+| # | site | guard on the replace | what is discarded |
+|---|---|---|---|
+| S1 | the `corroborate_*` tiers | `not _null_read(cr)` — a null read retires the probe fail-open | `obs`, `era` |
+| S2 | the retrieval grows (`retrieve_rerank` / `retrieve_expand`) | `bool(n_ext["candidates"])` — a fruitless recall must not erase a posterior | `hits`, `recency`, `ext`, `candidates`, `cand_comp`, `obs`, `rho`, `era` |
+| S3 | the `deliberate` edge | `status == "ok"` only — **no null-read guard**: an empty ok reply COLLAPSES the channel, by design (NOT_IN_CORPUS read as evidence for NONE) | `obs`, `era` |
+| S4 | `re_extract_strong` in-loop | `not _null_read(cr)` | `obs`, `era` |
+| S5 | the k=0 rescue walk | reached only when nothing grounded | nothing — it mints from zero |
+
+*The asymmetry is the entry's sharpest edge.* S1 and S4 were taught in 2026-08-18 that a joint
+re-read naming nothing is *absence* of evidence and must not erase a grounded posterior. S3 was
+not, and its docstring says so in as many words. Whether that difference is right is an
+empirical question — an independent searcher declining to find a value is better evidence for
+NONE than a lossy 400-character re-read declining is — but it has never been measured, and the
+one row that fails run 10 committed through S3.
+
+*The witness, and why it is not a one-off.* On run 10's wrong commit the grounded channel
+carries five observations over four documents with the gold alone at 0.985, invariant under
+every carrier permutation measured; the committing view is `deliberate@<opus>` at **n_obs = 1**
+with the gold demoted to 0.033, and the recorded wire shows the competitor appearing only after
+the gather steps. The population is not one row: 17 of the 19 questions in the registered
+n_obs=0 cluster carry candidates at exactly uniform credences — the signature of a grounded
+channel a replace branch erased, with the gold still on the lattice in 14 of them.
+
+*What oracle it has:* none from 7.2, for the same structural reason §6.11 has none — the
+fixture set tapes the derivation cache and the probe replies are bridge-side. The oracles are
+(1) a hermetic test that a replace branch's guard is the *stated* guard (the S1/S4-vs-S3
+asymmetry made explicit rather than incidental), and (2) a priced gate run under §6.10,
+isolated, one change — bought only if the audit's frozen criteria buy it.
+
+*Pinned by:* `scripts/replace_audit.py` and the frozen criteria in its docstring (mirrored in
+the §14 pre-registration), then whichever branch they take. Scope ruled by the owner on
+2026-08-22: **every replace/override site**, measured as a class — not the registered
+NULL-as-disagreement hypothesis alone, because r05's own lesson is that an audit written around
+the presumed fix measures the fix and not the defect.
+
 ## 7. Behaviour preservation — the equivalence instrument, pre-stated
 
 **The invariant.** The collapse must not change *what the system decides*: for the same

@@ -302,3 +302,37 @@ single-observation view from another instrument. It already has a registered §1
 it unmeasured, a first witness (q2-011, the row that failed run 10) and a population (the
 n_obs=0 cluster). Same shape as this checkpoint: frozen criteria first, a $0 instrument reading
 the run's own records, no decision-path code until the criteria exist.
+
+## RULINGS (owner, 2026-08-22 — taken on the QUESTIONS above, before r06 opens)
+
+1. **The deployment block is KEPT and RE-POINTED at the replace branch (§6.12).** Its stated
+   reason changes from "until the carrier-identity checkpoint fixes the root cause" to "until
+   the replace branch is read and the wrong commit is fixed or priced". The block was for a
+   tree that knowingly commits a row wrongly; that is still true, and DONE 4 named what does
+   it. A register entry whose stated reason is known-false is worse than no entry, so the
+   re-point lands with this report rather than waiting for r06.
+2. **BUILD licenses known-and-uncovered, not a fix.** §6.11 becomes a standing
+   known-and-uncovered source: the grouping bound (both directions) and the 37/37
+   cross-surface conservatism are recorded in the entry as what it now stands for, the named
+   fix is retired as refuted, and **no decision-path code is written**. A future carrier-set
+   grouping design does not inherit this checkpoint's BUILD — it needs its own
+   pre-registration and its own priced run. The next run's budget goes to §6.12.
+3. **M1 is ACCEPTED and its checkpoint closed** (r04 RULING 3, released). The hold's live
+   hypothesis was that the deletion carried the 7.3 failure; run 12 refutes it directly — the
+   deletion was in that tree and produced the best reading in the series with zero wrong
+   commits — and DONE 4 independently redirects the one remaining failure to a mechanism M1
+   never touched. M1.5 (the coverage census, R7) is therefore unblocked.
+4. **r06's criteria are scoped to EVERY replace/override site**, not to the registered
+   NULL-as-disagreement hypothesis alone. The reason is this report's own DEVIATION 1: an
+   instrument written around the presumed fix measures the fix, not the defect. Enumerate the
+   sites from the code, read exposure / channel loss / delivered reach / conservatism on each,
+   and let the verdict fall where the criteria put it.
+
+## RULINGS — status
+
+| # | ruling | status |
+|---|---|---|
+| 1 | keep the block, re-point at §6.12 | **done** — §6.11's ruling appendix and §6.12 carry it; the operating manual's sentence is re-pointed |
+| 2 | known-and-uncovered, spend on r06 | **done** — §6.11 records the two bounds and licenses no code; `scripts/carrier_audit.py` stays in-tree, tested and dormant |
+| 3 | accept M1, close the checkpoint | **done** — recorded as an appended status update on r04, which is append-only |
+| 4 | r06 scoped to the class | **done** — the five sites are enumerated in §6.12 from `core/executor.py`, and r06's frozen criteria read all five |

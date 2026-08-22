@@ -107,9 +107,10 @@ leader (the same competitor leads in runs 10–12); it concentrated the posterio
 carry an already-wrong leader over the bar. **§6.9 is NOT reverted** — pre-registered
 before the run: the old order is nondeterministic, a luckier ticket rather than a better
 rule, so master knowingly carries the wrong commit. **Do not deploy this arc** (it is not
-deployed now) — but the reason has changed: the **carrier-identity checkpoint ran and
-refuted its own premise** (below), so the block is no longer waiting on it and is open for
-the owner to re-decide. Also
+deployed now) — the block is KEPT and, by owner ruling 2026-08-22, **re-pointed at the
+replace branch (§6.12)**: the carrier-identity checkpoint ran and refuted the block's
+original premise (below), but the tree still commits that row wrongly, which is what the
+block was for. It closes when r06 reads and the row is fixed or priced. Also
 found: **runs 7–9 all fired the LEGACY cascade lane** (the arm's flag defaulted off; each
 run's `env_flags` records it), so run 10 was the first gate run ever on the priced lane
 and M1's deletion switched the arm's lane rather than removing dead code from its path.
@@ -159,8 +160,24 @@ the n_obs=0 cluster above, here at n_obs=1. This does not overturn run 12 (§6.9
 remains the *marginal* cause of the commit); it names what the ladder could not. The audit
 found **four defects in itself**, three in its measures — one found after the first reading,
 flipping surface (a) NO-GO → BUILD, disclosed in r05's chronology with both quantities
-published. **Proposed next: r06, the replace branch** — frozen criteria first, a $0
-instrument on the run's own records, no decision-path code until they exist. Single-doc 12 is
+published. **Rulings taken 2026-08-22 (r05's RULINGS section has all four):** the
+deployment block is kept and re-pointed at §6.12; §6.11's BUILD licenses
+**known-and-uncovered, not a fix** (the grouping bound in both directions and the 37/37
+cross-surface conservatism are what the entry now stands for; `scripts/carrier_audit.py`
+stays in-tree, tested and dormant); **M1 is ACCEPTED and its checkpoint closed** (run 12
+carried the deletion and read 0.964 with zero wrong commits, so the hold had no live
+hypothesis left — **M1.5, the coverage census, is unblocked**); and r06 is scoped to every
+replace/override site rather than to one hypothesis.
+**r06 IS OPEN (`docs/unification/reports/r06-replace-branch.md`, register §6.12, instrument
+`scripts/replace_audit.py`, criteria frozen and committed BEFORE it reads).** §6.12
+enumerates five replace sites from `core/executor.py` and names the asymmetry that makes
+them readable: the corroborate tiers and in-loop `re_extract_strong` retire fail-open on a
+null read; **the `deliberate` edge has no null-read guard at all** and collapses the channel
+on an empty ok reply by design. The counterfactual is RETIRE-NOT-REPLACE (a deployable rule,
+not an invented one), read at $0 off the run's own decision + attributed-edge records, with
+the deployed arm READ rather than re-derived. Every mirror of the decision path is imported
+from it, and every load-bearing predicate was verified RED by mutation before the read —
+r05's lesson applied. Single-doc 12 is
 the temper's standing price. Old D3–D4 stay re-scoped as Ask's
 aggregate/thread families. The doc's §14 open questions are a **live empirical ledger**
 (owner's adoption rider): each entry names the evidence that decides it — keep it

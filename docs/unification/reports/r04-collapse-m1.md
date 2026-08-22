@@ -680,3 +680,17 @@ and it should not be deployed before that checkpoint closes.
 | 6 | escalate if run 11 still failed | **applied, narrowed to §6.9 alone** (R2 held constant), recorded in §14 |
 | 7 | §6.10 lands before run 11 | **done** — built, tiered, and used live in runs 11 and 12 |
 | 8 | revert lives in a worktree | **done** — both measurement branches are worktree-only and neither merges |
+
+## RULINGS — status, updated 2026-08-22 (this report is append-only; the table above stands as written)
+
+| # | ruling | status then | status now |
+|---|---|---|---|
+| 3 | M1 held at this report | still held | **RELEASED — M1 accepted, the checkpoint closes.** The hold's live hypothesis was that the deletion carried 7.3's failure. Run 12 refutes it directly: the deletion was in that tree and read 0.964 with zero wrong commits, the best in the series. r05's DONE 4 then redirects the one remaining failure to the replace branch (§6.12), a mechanism M1 never touched. **M1.5 (the coverage census, R7) is unblocked.** |
+| 4 | carrier identity gets its own entry + criteria | open, and the critical path | **done** — §6.11 registered, criteria frozen in `scripts/carrier_audit.py`, read in r05. The reading refuted the entry's own candidate fix and redirected the investigation; §6.11 is now a standing known-and-uncovered source and the critical path moves to §6.12 |
+
+**What DONE 12's closing paragraph said, and what is now true.** It said master "knowingly
+carries the configuration that produces the wrong commit until the carrier-identity checkpoint
+closes", and that the arc "should not be deployed before that checkpoint closes". The
+checkpoint has closed and the wrong commit is still there — because carrier identity was not
+its cause. The deployment block is kept and re-pointed at §6.12 (r05 RULING 1); the sentence
+above should be read with that substitution.
