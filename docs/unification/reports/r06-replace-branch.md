@@ -316,3 +316,23 @@ counterfactual becomes readable, and (c) the 28% floor can be diagnosed rather t
 published — on the control rows the two arms differ at identical `n_obs`, which points at the
 decide layer and not at the evidence. Same shape as this checkpoint: frozen criteria first, no
 decision-path code until they exist.
+
+## RULINGS (owner, 2026-08-22 — on the reading)
+
+The instruction was **"start r07"**. It disposes of two of the three questions and is silent
+on the third; recorded here at exactly that width, because reading a ruling wider than it was
+given is how a frozen criterion gets renegotiated by accident.
+
+1. **QUESTION 2 — RULED: close the attribution before spending.** r07 opens. The escalation
+   criterion 9(b) named is the one taken: a replay of run 10's questions through the deployed
+   decision path with the firing order and the probe observations recorded.
+2. **QUESTION 1 — RULED (b) *for now*, by implication and not by statement:** nothing is
+   bought. Criterion 8's mechanical BUILD on S1/S3/S4/S5 stands **as frozen and unread-again**
+   — it is not reopened, not narrowed, and not re-scored by r07. What r07 may do is publish a
+   *second* reading beside it at higher fidelity; which site (if any) is worth a priced run
+   returns to the owner when both readings exist.
+3. **QUESTION 3 — NOT RULED.** §6.13 stays a standing known-and-uncovered source with its
+   measured incidence. r07 inherits it as a *limit on itself* (a replayed question whose
+   retrieval is a lottery cannot carry an attribution claim), not as a subject.
+
+*Successor:* [`r07-recorded-replay.md`](./r07-recorded-replay.md).

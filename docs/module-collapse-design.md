@@ -815,7 +815,13 @@ asymmetry made explicit rather than incidental), and (2) a priced gate run under
 isolated, one change — bought only if the audit's frozen criteria buy it.
 
 *Pinned by:* `scripts/replace_audit.py` and the frozen criteria in its docstring (mirrored in
-the §14 pre-registration), then whichever branch they take. Scope ruled by the owner on
+the §14 pre-registration), and — since 2026-08-22 — **`scripts/replay_audit.py`**, which reads
+the same entry a second way: a $0 replay of the pinned run's questions through the deployed
+executor, bridge handlers and live daemon, with every call taped in firing order. It exists
+because r06 could name the class but not the culprit, and because its counterfactual is
+*enacted* through the deployed guards rather than reconstructed beside them. Its reading is
+published BESIDE r06's and may not re-score it (owner ruling, 2026-08-22), then whichever
+branch they take. Scope ruled by the owner on
 2026-08-22: **every replace/override site**, measured as a class — not the registered
 NULL-as-disagreement hypothesis alone, because r05's own lesson is that an audit written around
 the presumed fix measures the fix and not the defect.
