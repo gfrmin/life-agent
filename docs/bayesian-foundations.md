@@ -2825,6 +2825,56 @@ on this list. Answers land here by amendment, citing their evidence.
   run, matcher-versus-judge flips on the deployed arm are 0, and the JOIN counterfactual is not
   read here — the probe's observations are not in the records.
 
+- **r07 PRE-REGISTRATION — the recorded replay (opened 2026-08-22 on r06's QUESTION 2, owner
+  ruling "start r07"; register §6.12; instrument `scripts/replay_audit.py`; criteria frozen in
+  its docstring and committed BEFORE it reads).** r06 read the replace branch from a gate run's
+  own records and named three things it could not reach: which site fired FIRST, what the
+  probes OBSERVED, and why its reconstruction disagreed with the recorded terminal on 28% of
+  the rows where its counterfactual was provably a no-op. This checkpoint replays run 10's
+  questions through the **deployed** path — `core/executor.run_pass` and
+  `bridge/server.dispatch` unmodified, the credence daemon live, a recording transport between
+  them — at $0.
+  *The method's one real idea:* the counterfactual is **enacted, not reconstructed**. The
+  transport rewrites a replace-site reply into the shape the deployed code ALREADY retires on
+  (a null read at S1/S4, a non-ok status at S3, a withheld mint at S5), so RETIRE-NOT-REPLACE
+  runs through the real executor and the real daemon and the guard under test is
+  `executor._null_read` itself. JOIN has no branch in the deployed code and is therefore
+  the one quantity computed rather than enacted. **Criterion 7(b) was amended before any
+  reading, on a structural fact:** §5's dedup keys on an observation's QUOTE, and a joint
+  re-read's observation has none — `/extract` returns abstract observations by design (the body
+  is string-blind) and the corroborate handler synthesises one abstract observation mapping the
+  re-read value to a candidate index. The guard that makes joining safe therefore cannot be
+  applied to the thing being joined, and a §5-deduped JOIN is unreadable by any instrument that
+  stays off the decision path. That is a finding about §6.12's alternative rather than a
+  shortfall of this checkpoint. What is read instead is the UPPER BOUND — pooling with no dedup,
+  the most favourable case joining could ever have.
+  *The pin (§6.10), verified before any question runs and a mismatch REFUSED by name:* `src/`
+  at HEAD byte-identical to run 10's pinned sha (**it is** — r05 and r06 both changed nothing
+  under `src/`, so master IS run 10's decision path); the live corpus digest equal to run 10's
+  (**it is**); the utility elicitations sha equal to run 10's (**it is**); the outcomes and
+  gather-outcome logs truncated to run 10's `created_at` — correct because `run_eval` appends a
+  run's edge rows AFTER the run, so no question in run 10 conditioned on run 10's own rows;
+  curves folded leave-one-question-out as `gate.loo` records; and the transform menu assembled
+  the way the deployed caller assembles it. That last clause is not bookkeeping:
+  `DELIBERATE_TRANSFORM` is **not** in `DEFAULT_TRANSFORMS`, and a rehearsal that took the
+  default lost the deliberate firing entirely and drew the opposite conclusion about which site
+  discarded the channel. Disclosed here because it happened before the criteria were frozen.
+  *Blind predictions, with the one that is not blind declared:* (1) fidelity is >= 90% on the
+  rows where r06's reconstruction disagreed with the record — i.e. the 28% floor is mostly the
+  decide LAYER, `core/lookup`'s decide standing in for the daemon's; (2) JOIN delivers strictly
+  fewer reach rows than RETIRE; (3) S4's exposure is strictly less than S1's opus-tier exposure
+  once the `extract@<opus>` ambiguity class is resolved by payload; (4) at least one question
+  besides the §6.13 witness proves unstable across the mandated double run; (5) **NOT BLIND —
+  informed by a one-question rehearsal:** on run 10's wrong-commit row the attributed discarder
+  is S3, which takes the channel from 5 observations to 1, and S4 then mints the competitor
+  that leads. It is recorded as an expectation rather than a prediction and scores nothing.
+  *Named risks:* the daemon is a live process and nothing here pins its internals, so any
+  residual gap lands in the fidelity control and bounds every claim; a derivation that goes
+  cold mid-loop means run 10 never made that call, which is evidence of divergence rather than
+  a mere exclusion, and eviction is the named alternative; and §6.13's sampler makes at least
+  one question's retrieval a lottery, so the read runs twice and unstable questions carry no
+  attribution. **The reading is PENDING at the time this entry is committed.**
+
 - **A declared total order cannot restore determinism when the tie block is larger than the
   over-fetch window (2026-08-22, register §6.13, found by r06's idempotency double-run, $0).**
   Two identical invocations of the same $0 audit disagreed: one question flapped in and out of
