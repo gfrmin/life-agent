@@ -228,3 +228,63 @@ def test_a_row_without_an_edge_identity_is_ignored(tmp_path):
          "instrument_identity": {"producer_name": "pandoc"}, "grade": "CORRECT"},
     ])
     assert RA.load_edges(p, _RUN) == {}
+
+
+# --- the smoke test's finding: S3 fires without leaving a gradeable edge row ------------
+
+def test_s3_exposure_is_read_from_the_instrument_field_not_only_the_edge_stream():
+    """Found in the 3-question smoke test, before the reading: on the run's own wrong-commit
+    row the decision carries `instrument: deliberate@...` while the attributed-edge stream
+    holds no `deliberate@` row at all — the firing named nothing gradeable. Counting exposure
+    off the edge stream alone reports S3 as UNTAKEN on the very question it decided."""
+    dele = DL.instrument(EX._DELIBERATE_MODEL)
+    assert RA.sites_for([], dele) == ("S3",)
+    assert RA.sites_for([EX.extract_edge(EX._RE_EXTRACT_MODEL)], dele) == (
+        "S1", "S4", "S5", "S3")
+
+
+def test_an_empty_instrument_field_adds_no_site():
+    assert RA.sites_for([EX.extract_edge(EX._TIER_MODEL["corroborate_haiku"])], "") == ("S1",)
+    assert RA.sites_for([], "") == ()
+
+
+def test_a_deliberate_edge_row_and_the_instrument_field_are_not_double_counted():
+    dele = DL.instrument(EX._DELIBERATE_MODEL)
+    assert RA.sites_for([dele], dele) == ("S3",)
+
+
+# --- two confounds found IN the first reading, fixed before any verdict was published ---
+
+def test_the_control_set_is_rows_where_no_site_fired_not_rows_with_no_edge_row():
+    """Criterion 9(a)'s control is 'nothing was replaced, so retire-not-replace is provably a
+    no-op'. Keying it on the EDGE STREAM repeats the very defect `sites_for` fixes: 68 of the
+    first reading's 76 'control' rows had the deliberate edge fire without leaving a gradeable
+    row, so the control was measuring the thing it was meant to exclude."""
+    assert RA.is_control([])
+    assert not RA.is_control(["S3"])
+    assert not RA.is_control(["S1", "S4", "S5"])
+
+
+def test_deliberate_gradeability_is_read_across_every_run_not_just_this_one(tmp_path):
+    """`run_eval` dedups edge rows against the WHOLE prior log, so a warm-replayed deliberate
+    answer already graded in an earlier run leaves no row in this one. Absence of a row is
+    therefore not evidence that the firing named nothing — the audit must be able to say which
+    absences a cross-run dedup explains."""
+    p = _write(tmp_path, "outcomes.jsonl", [
+        {"run_id": "gate-earlier", "question_id": "q2-090", "grader": "eval_edge",
+         "instrument_identity": {"edge": "deliberate@claude-opus-4-8"}, "grade": "CORRECT"},
+        {"run_id": _RUN, "question_id": "q2-011", "grader": "eval_edge",
+         "instrument_identity": {"edge": "extract@claude-opus-4-8"}, "grade": "INCORRECT"},
+    ])
+    assert RA.load_deliberate_ever(p) == {"q2-090"}
+
+
+def test_excess_over_floor_is_reach_minus_what_the_noise_floor_predicts():
+    """Comparing a site's reach RATE to the floor and labelling it "above" turned 19/68
+    against 8/29 — a third of a percentage point — into a claim. The honest quantity is how
+    many reach rows the site delivered ABOVE what the floor alone predicts for its exposure,
+    which makes a wash look like a wash."""
+    assert RA.excess_over_floor(exposure=68, reach=19, floor=8 / 29) == round(
+        19 - 68 * (8 / 29), 1)
+    assert RA.excess_over_floor(exposure=25, reach=10, floor=8 / 29) > 3
+    assert RA.excess_over_floor(exposure=0, reach=0, floor=0.5) == 0.0

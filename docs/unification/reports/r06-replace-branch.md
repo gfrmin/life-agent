@@ -144,4 +144,175 @@ form and the specific test confirmed failing, with the file restored and green a
 
 ## DONE 3 — the reading
 
-*(pending — the criteria above are committed before the instrument runs)*
+`$LIFE_AGENT_KB/eval/replace/audit-gate-20260821T094545.{md,yaml}`, $0, 102 questions read and
+2 excluded by name (both for want of a terminal decision row in this run). Nothing was warmed:
+the client refuses any cold derivation and its question is named.
+
+### Criteria 1–3 — exposure and channel loss
+
+| site | exposure | rows with loss | observations discarded | per firing |
+|---|---|---|---|---|
+| S1 the `corroborate_*` tiers | 26 | 8 | 21 | 0.81 |
+| S2 the retrieval grows | **unreadable** | — | — | — |
+| S3 the `deliberate` edge | **68** | 15 | 34 | 0.50 |
+| S4 `re_extract_strong` | 12 | 4 | 7 | 0.58 |
+| S5 the k=0 rescue walk | 12 | 4 | 7 | 0.58 |
+
+27 questions show a positive channel loss and **59 grounded observations are discarded across
+the battery**. S2's exposure is unmeasured as C1 declared it would be, never zero. S1, S4 and
+S5 share the `extract@<opus>` spelling and their rows are counted under all three, with the
+overlap stated rather than resolved by a guess.
+
+**S3 fired on 68 questions and left a gradeable edge row on none of them.** That is not a
+finding about deliberate's answers; it is a fact about the records, and it has two consistent
+causes the records cannot separate (the firing named nothing gradeable, or a cross-run dedup
+had already graded its §18.9 lineage). Exposure counts the firing either way.
+
+### Criteria 4–6 — delivered reach, the split, and the side it falls on
+
+Delivered reach **23 of the 73 questions where a site fired** — repairs **12**, regressions
+**11**, neutral 0, ungradeable 0. The deployed rule is conservative on 13 and aggressive on 9.
+
+**Criterion 9(a)'s control is what qualifies all of it.** On **29** questions no site fired at
+all, so retire-not-replace is provably a no-op there — and the two arms still differ on **8**.
+That is a **28% noise floor**, measured on this very run rather than inherited from r05:
+
+| site | reach | the floor alone predicts | excess |
+|---|---|---|---|
+| S1 | 11 / 26 | 7.2 | **+3.8 rows** |
+| S3 | 19 / 68 | 18.8 | **+0.2 rows** |
+| S4 | 4 / 12 | 3.3 | +0.7 rows |
+| S5 | 4 / 12 | 3.3 | +0.7 rows |
+
+**S3 — the site with no null-read guard, the site that took run 10's wrong commit — has
+delivered nothing this instrument can distinguish from its own layer gap.** Criterion 8,
+applied mechanically as frozen, nonetheless reads **BUILD+PRICE on S1, S3, S4 and S5** and
+NOT READ on S2. The criterion is left standing exactly as written. Renegotiating a criterion
+once its numbers are in is the failure this programme exists to avoid; publishing the bound
+beside it is the alternative, and that is what the table above is.
+
+### DONE 4 — the witness is repaired, and the attribution is not available
+
+On run 10's wrong-commit row the deployed arm **reports at n_obs = 1** on the competitor; the
+counterfactual **reports at n_obs = 5 over 4 documents** on the gold. Channel loss 4,
+classified a **REPAIR**, side `none` (both arms commit, so it is not a conservatism trade).
+Retiring the replace fixes the row the deployment block is pointed at — which confirms RULING
+1's target is real.
+
+What the records cannot supply is **which** site did it. Four fired on that question: the
+`extract@<opus>` spelling puts S1, S4 and S5 in one ambiguity class, and the deliberate firing
+is recorded only in the terminal decision row's `instrument` field. The two record streams
+carry no ordering between them, so the firing order is not recoverable and is not guessed.
+
+### DONE 5 — criterion 7 retires a suspicion the ledger has carried since 2026-08-18
+
+The S3-collapse signature fires on exactly **one** question — and that one has a graded
+`deliberate@` row in another run, so a cross-run dedup explains its absence here. **Zero rows
+survive as genuine null-read collapses.** Two consequences, both stated as findings rather
+than as absences: the S1/S4-versus-S3 asymmetry is **structural-only on this corpus's
+records**, and the empty-ok collapse is **not** what produced the registered n_obs=0 cluster.
+That cluster keeps its entry and loses its leading suspect.
+
+### The predictions, scored
+
+| # | prediction | outcome |
+|---|---|---|
+| 1 | S3 shows the largest channel loss per firing | **falsified** — S1 discards 0.81 per firing, S3 0.50 |
+| 2 | the wrong-commit row is an S3 firing with loss ≥ 3 | held — loss 4, with S3 among four sites |
+| 3 | total exposure across readable sites ≥ 20 | held — S3 alone is 68 |
+| 4 | S3's reach ≥ 1 with repairs > regressions | **held as stated, empty in content** — 19 reach, 12 > 7, excess over the floor +0.2 rows |
+| 5 | S2 exposure > 0 with reach 0 | unresolved, exactly as pre-registered — S2 is unreadable here |
+
+## DEVIATION 1 — three defects in the instrument's measures and a fourth in an interpretation
+
+All four were caught before a verdict was published, and all four are published rather than
+folded away. This is the same failure mode r05 recorded; what changed is when it was caught.
+
+1. **Exposure read off the attributed-edge stream alone** (found in a 3-question smoke test,
+   before the first full reading). The eval writer emits an edge row only when a firing carried
+   both a value and a self-report, so S3 read as **untaken on the one question it decided**.
+   Fixed by `sites_for`, which unions the edge stream with the terminal decision row's
+   `instrument` field — a field only the deliberate branch ever sets.
+2. **The control set keyed on the same stream** (found in the first full reading). 68 of its 76
+   "control" rows had S3 fire: the control was measuring precisely what it existed to exclude.
+   It read **56/76 = 74% agreement**; the true control set is **29 rows at 21/29**, a 28% floor.
+   Both quantities are published. Fixed by `is_control`, which keys on the site union.
+3. **A rate-against-rate comparison** that labelled 19/68 "above" 8/29 — 27.9% against 27.6%,
+   a third of a percentage point dressed as a signal. Replaced by `excess_over_floor`, which
+   states the same thing in rows.
+4. **A dedup confound in criterion 7's interpretation.** `run_eval._fresh_edge_rows` dedups
+   this run's edge rows against the **whole prior log's** §18.9 lineage, so a warm-replayed
+   deliberate answer already graded in an earlier run leaves no row here. Absence of a row is
+   therefore not evidence of a null read. Criterion 7's count is published as an **upper
+   bound**, split by whether any run holds a graded `deliberate@` row for that question — and
+   the split is what turns 1 into 0.
+
+Corrections (1) and (2) are the same defect twice, which is the honest way to describe it: the
+first fix did not carry through to the control because the control was written from the same
+wrong assumption.
+
+## DONE 6 — the idempotency double-run, and what it found instead
+
+Two identical invocations of the audit on the same records disagreed: one question flapped in
+and out of the exclusion set, moving S1's exposure 25↔26, reach 10↔11, regressions 4↔5 and
+excess +3.1↔+3.8. No verdict changed. The reading of record is the 102-question one; the
+101-question variant is recorded here rather than discarded.
+
+The cause is not the audit, and it is **registered as `docs/module-collapse-design.md`
+§6.13**: *a declared total order cannot restore determinism when the tie block is larger than
+the over-fetch window — the window itself is the sampler.* R2 imposes the declared key on the
+rows the over-fetch **returned**, and pkm's FTS ends `ORDER BY score DESC` with a `LIMIT`, so
+which of a tied population those rows are is settled before the key runs. §14's "quantising
+takes both to zero" was measured at k=80 (an over-fetch of 320). At the arm's own k=20 the
+window is 80 rows, and on **1 of 104** questions those 80 carry five distinct quantised scores
+with **73 sharing one** — the top-20 is four stable hits plus sixteen drawn from a tie block
+larger than the window. Five consecutive calls returned five different chunk sets differing by
+half the top-20; the other 103 questions are stable across three calls each, at 0 chunks of
+symmetric difference. A tail, not a regime, but a live one: on that question the arm's first
+pass is a lottery and every derivation keyed on the retrieval set is a lottery with it.
+
+It is invisible to 7.2 (the fixture set tapes the derivation cache and never executes
+`retrieve_set`) and invisible to a gate run (one question, and a run records a decision, never
+the draw behind it). It took running the same read twice on purpose.
+
+## REFUSED
+
+- **No decision-path code.** C10 forbids it before a reading, a commit gate refuses if `src/`
+  is dirty, and §6.13 — found here and live — was registered rather than patched, for the same
+  reason.
+- **The criterion was not renegotiated after its numbers.** S3's mechanical BUILD+PRICE stands
+  in the report exactly as the frozen rule computes it, with the floor published beside it.
+- **No gate run was bought.** The mechanical verdict buys four; the evidence supports at most
+  one, and which one is not determinable from these records. Buying four would be spending to
+  avoid a decision.
+- **The site attribution was not guessed.** The ambiguity class is reported as a class.
+
+## QUESTIONS
+
+1. **What to do with a mechanical BUILD the bound contradicts.** Criterion 8 buys a run on four
+   sites; the floor says only S1 shows an excess worth the name (+3.8 rows), and S3 — the one
+   the investigation was aimed at — shows +0.2. Options: **(a)** buy one isolated run on S1's
+   guard alone, the only site with an excess, and leave the rest known-and-uncovered
+   (recommended — it is the one place the instrument distinguishes signal from its own gap);
+   **(b)** buy nothing and escalate first (below), on the ground that a 28% floor makes any of
+   these numbers a poor thing to spend $3–4 confirming; **(c)** honour the criterion literally
+   and buy four.
+2. **Whether to close the attribution before spending.** The blocking row IS repaired by
+   retire-not-replace, but four sites fired on it. The escalation criterion 9(b) already names
+   what would settle it: a **bridge replay that records the firing order per question and the
+   probe observations**, which converts the ambiguity class into an attribution *and* unlocks
+   the JOIN counterfactual that C9(b) excluded here. It needs a live stack, not a gate run, and
+   is $0 if the replay is warm.
+3. **§6.13's disposition.** One question in 104, live on the decision path, invisible to both
+   oracles. Its own checkpoint, folded into M1.5's coverage census (which this checkpoint's
+   RULING 3 unblocked), or left standing as registered?
+
+## PROPOSED
+
+**r07 — the recorded replay**, answering QUESTION 2 before any money is spent: replay run 10's
+questions against a live bridge with the firing order and the probe observations recorded, so
+that (a) the `extract@<opus>` ambiguity class becomes an attribution, (b) the JOIN
+counterfactual becomes readable, and (c) the 28% floor can be diagnosed rather than merely
+published — on the control rows the two arms differ at identical `n_obs`, which points at the
+decide layer and not at the evidence. Same shape as this checkpoint: frozen criteria first, no
+decision-path code until they exist.

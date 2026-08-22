@@ -177,7 +177,28 @@ on an empty ok reply by design. The counterfactual is RETIRE-NOT-REPLACE (a depl
 not an invented one), read at $0 off the run's own decision + attributed-edge records, with
 the deployed arm READ rather than re-derived. Every mirror of the decision path is imported
 from it, and every load-bearing predicate was verified RED by mutation before the read —
-r05's lesson applied. Single-doc 12 is
+r05's lesson applied.
+**r06 IS READ (2026-08-22, $0, 102 questions):** exposure S3 68 · S1 26 · S4/S5 12 · S2
+unreadable; 59 grounded observations discarded over 27 questions; delivered reach 23 of the 73
+questions where a site fired (12 repairs · 11 regressions). Criterion 8 reads **BUILD+PRICE on
+S1, S3, S4 and S5** — and the instrument's own control contradicts it: on 29 questions NO site
+fired, so retire-not-replace is provably a no-op, yet the arms differ on 8. **Noise floor 28%**,
+against which S1 delivers +3.8 rows of excess, S4/S5 +0.7, and **S3 just +0.2 — nothing
+distinguishable from the layer gap.** The criterion is left standing as frozen with the bound
+published beside it; no run was bought. **The blocking row IS repaired** (deployed reports at
+n_obs=1 on the competitor, the counterfactual at n_obs=5 over 4 documents on the gold) but four
+sites fired on it and the records carry no ordering, so the attribution is unavailable.
+**Criterion 7 retires a standing suspicion:** the S3-collapse signature fires once and a
+cross-run dedup explains it — zero genuine null-read collapses, so the empty-ok collapse is
+**not** what produced the n_obs=0 cluster, and the S1/S4-vs-S3 asymmetry is structural-only
+here. The instrument shipped three defects in its measures and one in an interpretation, all
+caught before a verdict and all published. **Registered en route: §6.13 — a declared total
+order cannot restore determinism when the tie block is larger than the over-fetch window; the
+window itself is the sampler** (found by r06's idempotency double-run: 1 of 104 questions
+returns five different top-20s in five calls, 73 of its 80 over-fetched rows sharing one
+quantised score; invisible to 7.2 and to a gate run alike). **Proposed next: r07, the recorded
+replay** — attribute the firing order, read the JOIN counterfactual, and diagnose the floor
+before spending. Single-doc 12 is
 the temper's standing price. Old D3–D4 stay re-scoped as Ask's
 aggregate/thread families. The doc's §14 open questions are a **live empirical ledger**
 (owner's adoption rider): each entry names the evidence that decides it — keep it

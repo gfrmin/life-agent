@@ -161,6 +161,31 @@ def site_of_edge(edge: str) -> tuple[str, ...]:
     return EDGE_SITES.get(edge, ("?",))
 
 
+def sites_for(edges: list[str], instrument: str) -> tuple[str, ...]:
+    """Every site evidenced for one question, from BOTH records the run keeps.
+
+    Found in this instrument's own 3-question smoke test, before the reading, and disclosed
+    as a correction rather than folded away: the attributed-edge stream is not a complete
+    record of a firing. The eval writer emits an edge row only when the firing carried both a
+    value and a self-report, so a deliberate call that named nothing gradeable leaves NO row —
+    and neither does a warm replay whose lineage an earlier run already graded (`run_eval`
+    dedups against the whole prior log). On the run's wrong-commit question the stream holds
+    no `deliberate@` row while the decision row's `instrument` names deliberate all the same,
+    so counting S3's exposure off the edge stream alone reported it as UNTAKEN on the one
+    question it decided. Which of the two causes produced a given absence is not recoverable
+    and is not guessed; the FIRING is recorded either way, which is what exposure counts.
+
+    `instrument` is set by the deliberate branch and by nothing else (the `extract@` siblings
+    go through `_edge_event`, which never touches it), so a non-empty deliberate spelling is a
+    DIRECT record of an S3 firing and strictly more complete than the graded stream. The two
+    records carry no ordering between them, so a row evidencing several sites names them all;
+    which fired last is not recoverable and is not guessed."""
+    out = [s for e in edges for s in site_of_edge(e)]
+    if instrument.startswith("deliberate@"):
+        out.append("S3")
+    return tuple(dict.fromkeys(out))
+
+
 # --- the two arms ----------------------------------------------------------------------
 
 def deployed_arm(row: dict[str, Any]) -> Arm:
@@ -230,6 +255,17 @@ def s3_collapse(*, instrument: str, graded_edge: bool,
             and dep_n_obs == 0 and base_n_obs > 0)
 
 
+def excess_over_floor(*, exposure: int, reach: int, floor: float) -> float:
+    """Reach rows delivered ABOVE what the noise floor alone predicts for this exposure.
+
+    A rate-against-rate comparison read 19/68 against 8/29 as "above" — a third of a
+    percentage point, on samples this size a wash, dressed as a signal. This says the same
+    thing in rows, where a wash looks like one. It is a presentation of criterion 9(a)'s
+    published bound, not a threshold: the mechanical verdict stays exactly what criterion 8
+    says, and this number is what qualifies it."""
+    return round(reach - exposure * floor, 1) if exposure else 0.0
+
+
 def verdict(*, exposure: int, reach: int, repairs: int, regressions: int) -> tuple[str, str]:
     """Criterion 8, applied mechanically — no reading of a borderline row."""
     if exposure < 5:
@@ -264,6 +300,39 @@ def load_decisions(path: Path, run_id: str) -> dict[str, dict[str, Any]]:
             r = json.loads(line)
             if r.get("run_id") == run_id and r.get("question_id"):
                 out[str(r["question_id"])] = r
+    return out
+
+
+def is_control(sites: list[str] | tuple[str, ...]) -> bool:
+    """Criterion 9(a)'s control row: NO site fired, so retire-not-replace is provably a no-op
+    and any difference between the two arms is instrument error.
+
+    Keyed on the SITE UNION, never on the edge stream. The first reading keyed it on the edge
+    stream and 68 of its 76 "control" rows had the deliberate edge fire without leaving a
+    gradeable row — the control was measuring exactly what it existed to exclude, and it put
+    the floor at 56/76 when the true control set is 29 rows."""
+    return not sites
+
+
+def load_deliberate_ever(path: Path) -> set[str]:
+    """Questions with a graded `deliberate@` firing in ANY run.
+
+    `run_eval._fresh_edge_rows` dedups this run's edge rows against the whole prior log's
+    §18.9 lineage keys, so a warm-replayed deliberate answer already graded in an earlier run
+    leaves NO row in this one. Absence of a row is therefore not evidence that the firing
+    named nothing, and criterion 7's signature has to be split by which absences a cross-run
+    dedup explains — otherwise a warm replay reads as a null read."""
+    out: set[str] = set()
+    with path.open(encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            r = json.loads(line)
+            if (r.get("grader") == "eval_edge"
+                    and str((r.get("instrument_identity") or {}).get("edge") or "")
+                    .startswith("deliberate@")):
+                out.add(str(r.get("question_id")))
     return out
 
 
@@ -308,15 +377,16 @@ class Row:
     judge_correct: bool | None = None
     matcher_correct: bool = False
     judge_flip: bool = False
-    no_edge_control: bool = False   # criterion 9(a)'s direct control row
+    no_edge_control: bool = False   # criterion 9(a)'s direct control row (NO site fired)
     control_agrees: bool = False
+    dedup_explained: bool = False   # a deliberate@ row exists in some other run
 
 
 def audit_rows(paired: dict[str, dict[str, Any]], questions: list[dict[str, Any]],
                decisions: dict[str, dict[str, Any]],
                edges: dict[str, list[dict[str, Any]]],
-               conn: Any, root: Path, *, k: int, today: date, client: Any, brain: Any,
-               profile: str) -> tuple[list[Row], list[str]]:
+               deliberate_ever: set[str], conn: Any, root: Path, *, k: int, today: date,
+               client: Any, brain: Any, profile: str) -> tuple[list[Row], list[str]]:
     by_id = {str(q["id"]): q for q in questions}
     rows: list[Row] = []
     excluded: list[str] = []
@@ -338,8 +408,8 @@ def audit_rows(paired: dict[str, dict[str, Any]], questions: list[dict[str, Any]
         fired = edges.get(qid, [])
         row = Row(qid=qid, gold=gold,
                   edges=[e["edge"] for e in fired],
-                  sites=list(dict.fromkeys(s for e in fired
-                                           for s in site_of_edge(e["edge"]))),
+                  sites=list(sites_for([e["edge"] for e in fired],
+                                       str(drow.get("instrument") or ""))),
                   graded_edge=any(e["edge"].startswith("deliberate@") for e in fired),
                   instrument=str(drow.get("instrument") or ""),
                   dep=deployed_arm(drow))
@@ -385,9 +455,10 @@ def audit_rows(paired: dict[str, dict[str, Any]], questions: list[dict[str, Any]
         row.matcher_correct = correct(row.dep, gold, variants)
         row.judge_flip = (row.judge_correct is not None
                           and bool(row.judge_correct) != row.matcher_correct)
-        # criterion 9(a)'s direct control: with no edge fired the terminal IS the base channel
-        row.no_edge_control = not fired
+        # criterion 9(a)'s direct control: with NO SITE fired the terminal IS the base channel
+        row.no_edge_control = is_control(row.sites)
         row.control_agrees = row.no_edge_control and not row.reach
+        row.dedup_explained = qid in deliberate_ever
         rows.append(row)
     return rows, excluded
 
@@ -424,6 +495,17 @@ def render(rows: list[Row], excluded: list[str], run_id: str, k: int, today: dat
         o.append(f"| {s} | {desc} | {exp} | {t['loss_rows']} | {t['loss_total']} "
                  f"| {t['reach']} |")
     o.append("")
+    silent = [r for r in rows if r.instrument.startswith("deliberate@")
+              and not any(e.startswith("deliberate@") for e in r.edges)]
+    o.append("")
+    o.append(f"**S3 fired without leaving a gradeable edge row on {len(silent)} question(s)**"
+             + (f" ({', '.join(r.qid for r in silent)})" if silent else "")
+             + " — the attributed-edge stream holds no row for the firing and only the "
+               "decision row's `instrument` field records it. TWO causes are consistent with "
+               "that absence and the records cannot separate them: the firing named nothing "
+               "gradeable, or a cross-run dedup had already graded its §18.9 lineage in an "
+               "earlier run. Exposure counts both records either way; see `sites_for`.")
+    o.append("")
     o.append(f"S2 emits no attributed edge event, so its exposure is UNMEASURED on this run "
              f"— not zero. The `{EX.extract_edge(EX._RE_EXTRACT_MODEL)}` spelling is shared "
              "by S1's opus tier, S4 and S5; rows carrying it are counted under all three and "
@@ -431,19 +513,31 @@ def render(rows: list[Row], excluded: list[str], run_id: str, k: int, today: dat
 
     o.append("\n## Criterion 4-6 — delivered reach, the split, and which side it falls on\n")
     reach_rows = [r for r in rows if r.reach]
-    split = Counter(r.outcome for r in reach_rows)
-    sides = Counter(r.side for r in reach_rows)
-    o.append(f"Delivered reach **{len(reach_rows)}** of {len(rows)} — repairs "
-             f"**{split['repair']}**, regressions **{split['regression']}**, neutral "
-             f"{split['unchanged']}, ungradeable {split['ungradeable']}.")
+    fired_reach = [r for r in reach_rows if not is_control(r.sites)]
+    floor_reach = [r for r in reach_rows if is_control(r.sites)]
+    ctrl_all = [r for r in rows if r.no_edge_control]
+    floor = len(floor_reach) / len(ctrl_all) if ctrl_all else 0.0
+    split = Counter(r.outcome for r in fired_reach)
+    sides = Counter(r.side for r in fired_reach)
+    o.append(f"Delivered reach **{len(fired_reach)}** of {len(rows) - len(ctrl_all)} "
+             f"questions where a site fired — repairs **{split['repair']}**, regressions "
+             f"**{split['regression']}**, neutral {split['unchanged']}, ungradeable "
+             f"{split['ungradeable']}.")
     o.append(f"Deployed rule conservative on {sides['conservative']}, aggressive on "
-             f"{sides['aggressive']}.\n")
+             f"{sides['aggressive']}.")
+    o.append("")
+    o.append(f"**Noise floor: {len(floor_reach)} of {len(ctrl_all)} = {floor:.0%}.** On those "
+             "questions NO site fired, so retire-not-replace is provably a no-op and every "
+             "difference is instrument error. A site whose reach RATE is at or below this "
+             "floor has delivered nothing this instrument can distinguish from its own "
+             "layer gap — the mechanical verdict below is computed exactly as the frozen "
+             "criterion says, and this line is what qualifies it.\n")
     if reach_rows:
         o.append("| question | sites | loss | deployed | counterfactual | outcome | side |")
         o.append("|---|---|---|---|---|---|---|")
         for r in sorted(reach_rows, key=lambda r: r.qid):
             d, b = r.dep, r.base
-            o.append(f"| {r.qid} | {','.join(r.sites) or '—'} | {r.loss} "
+            o.append(f"| {r.qid} | {','.join(r.sites) or '**noise floor**'} | {r.loss} "
                      f"| {d.action if d else '—'} n_obs={d.n_obs if d else 0} "
                      f"| {b.action if b else '—'} n_obs={b.n_obs if b else 0} "
                      f"| {r.outcome} | {r.side} |")
@@ -451,10 +545,21 @@ def render(rows: list[Row], excluded: list[str], run_id: str, k: int, today: dat
 
     o.append("\n## Criterion 7 — the S1/S4-vs-S3 asymmetry\n")
     collapses = [r for r in rows if r.collapse]
+    dedup = [r for r in collapses if r.dedup_explained]
+    clean = [r for r in collapses if not r.dedup_explained]
     o.append(f"S3 collapse signature on **{len(collapses)}** question(s) "
              f"({', '.join(r.qid for r in collapses) or 'none'}) — the deliberate branch "
              "fired, left no gradeable row, and the committed posterior holds no observation "
              "over a grounded channel that did.")
+    o.append("")
+    o.append("**This count is an UPPER BOUND, and the criterion said so only after the first "
+             "reading exposed why.** `run_eval` dedups edge rows against the WHOLE prior "
+             "log's §18.9 lineage, so a warm-replayed deliberate answer already graded in an "
+             "earlier run leaves no row in this one. Absence of a row is therefore not "
+             f"evidence that the firing named nothing. Of the {len(collapses)}, "
+             f"**{len(dedup)}** have a graded `deliberate@` row in some other run (a "
+             f"cross-run dedup explains the absence) and **{len(clean)}** have none in any "
+             f"run{': ' + ', '.join(r.qid for r in clean) if clean else ''}.")
     if not collapses:
         o.append("Zero here means the asymmetry is STRUCTURAL-ONLY on this corpus: the guard "
                  "S3 lacks was never the guard that would have fired. It does not mean S3 is "
@@ -464,7 +569,7 @@ def render(rows: list[Row], excluded: list[str], run_id: str, k: int, today: dat
     ctrl = [r for r in rows if r.no_edge_control]
     agree = sum(1 for r in ctrl if r.control_agrees)
     rate = f"{agree}/{len(ctrl)}" if ctrl else "no control rows"
-    o.append(f"On {len(ctrl)} question(s) NO edge fired, so the terminal IS the base channel "
+    o.append(f"On {len(ctrl)} question(s) NO SITE fired, so the terminal IS the base channel "
              f"and the audit's counterfactual should reproduce it: **{rate}** agree.")
     dis = [r.qid for r in ctrl if not r.control_agrees]
     if dis:
@@ -474,17 +579,20 @@ def render(rows: list[Row], excluded: list[str], run_id: str, k: int, today: dat
              + (f" — {', '.join(flips)}." if flips else "."))
 
     o.append("\n## Criterion 8 — the verdict, per site\n")
-    o.append("| site | verdict | why |")
-    o.append("|---|---|---|")
+    o.append("| site | verdict (mechanical) | reach rate vs floor | why |")
+    o.append("|---|---|---|---|")
     for s in SITES:
-        t = tallies[s]
+        tal = tallies[s]
         if s in UNREADABLE_SITES:
-            o.append(f"| {s} | NOT READ | emits no attributed edge event; exposure is "
+            o.append(f"| {s} | NOT READ | — | emits no attributed edge event; exposure is "
                      "unmeasured on this run, and a live bridge replay is the escalation |")
             continue
-        v, why = verdict(exposure=t["exposure"], reach=t["reach"],
-                         repairs=t["repairs"], regressions=t["regressions"])
-        o.append(f"| {s} | **{v}** | {why} |")
+        v, why = verdict(exposure=tal["exposure"], reach=tal["reach"],
+                         repairs=tal["repairs"], regressions=tal["regressions"])
+        ex = excess_over_floor(exposure=tal["exposure"], reach=tal["reach"], floor=floor)
+        o.append(f"| {s} | **{v}** | {tal['reach']}/{tal['exposure']} reach; the floor alone "
+                 f"predicts {tal['exposure'] * floor:.1f} — **excess {ex:+.1f} rows** "
+                 f"| {why} |")
 
     o.append("\n## Excluded, by name (criterion 9c)\n")
     for e in excluded:
@@ -530,7 +638,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         rows, excluded = audit_rows(
             paired, questions, load_decisions(args.decisions, args.run_id),
-            load_edges(args.outcomes, args.run_id), conn, root, k=args.k, today=today,
+            load_edges(args.outcomes, args.run_id),
+            load_deliberate_ever(args.outcomes), conn, root, k=args.k, today=today,
             client=client, brain=brain, profile=owner.load_profile())
     finally:
         conn.close()

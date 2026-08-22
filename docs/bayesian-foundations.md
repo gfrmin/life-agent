@@ -2773,6 +2773,79 @@ on this list. Answers land here by amendment, citing their evidence.
   mechanism as the thing to measure**: the suspicion (a NULL re-read treated as a DISAGREEMENT)
   is one branch of one site, and r06 reads all five rather than confirming it.
 
+- **The replace branch — the reading: the criteria buy four sites and the instrument's own
+  control says only one of them delivered anything (2026-08-22, `scripts/replace_audit.py`
+  over run 10, $0; report r06).** 102 questions, 2 excluded by name. Exposure: **S3 (the
+  deliberate edge) 68**, S1 (the corroborate tiers) 26, S4/S5 12, S2 **unreadable** (it emits
+  no attributed edge event, so its exposure is unmeasured, never zero). 27 questions show a
+  positive channel loss, 59 grounded observations discarded in total. Delivered reach **23 of
+  the 73 questions where a site fired** — repairs 12, regressions 11, deployed rule
+  conservative on 13 and aggressive on 9. Criterion 8, applied mechanically, reads
+  **BUILD+PRICE on S1, S3, S4 and S5**.
+  **And criterion 9(a)'s control is what the entry is actually for.** On 29 questions NO site
+  fired, so retire-not-replace is provably a no-op — yet the two arms differ on 8 of them.
+  That is a **28% noise floor**, and against it: S1 delivers 11 reach where the floor predicts
+  7.2 (**excess +3.8 rows**), S4/S5 4 where it predicts 3.3 (+0.7), and **S3 delivers 19 where
+  the floor predicts 18.8 — an excess of +0.2 rows.** The site with the missing guard, the
+  site that took run 10's wrong commit, has delivered nothing this instrument can distinguish
+  from its own layer gap. The frozen criterion buys it a run anyway, and it is left standing:
+  renegotiating a criterion after its numbers is the failure this programme exists to avoid.
+  **The witness is repaired, and that is the result to act on.** On run 10's wrong-commit row
+  the deployed arm reports at **n_obs = 1** on the competitor; the counterfactual reports at
+  **n_obs = 5 over 4 documents** on the gold, a channel loss of 4, classified a REPAIR. Retiring
+  the replace fixes the row the deployment block is pointed at. What the records cannot say is
+  WHICH site did it: four fired on that question (the `extract@<opus>` spelling is shared by
+  S1's opus tier, S4 and S5, and the deliberate firing is recorded only in the decision row's
+  `instrument` field), and no ordering between the two record streams exists.
+  **Criterion 7 retires a suspicion §14 has carried since 2026-08-18.** The S3-collapse
+  signature fires on exactly **1** question — and that one has a graded `deliberate@` row in
+  another run, so a cross-run dedup explains its absence here. **Zero rows survive as genuine
+  null-read collapses**, so the S1/S4-vs-S3 asymmetry is structural-only on this corpus's
+  records, and the empty-ok collapse is **not** what produced the n_obs=0 cluster.
+  *Predictions scored:* (1) **falsified** — S1 discards 0.81 observations per firing, S3 only
+  0.50; (2) held — the wrong-commit row is a loss-4 firing with S3 among its sites; (3) held —
+  S3's exposure alone is 68; (4) held as stated and **empty in content**, since S3's excess over
+  the floor is +0.2 rows; (5) unresolved, exactly as pre-registered (S2 is unreadable here).
+  **The instrument shipped three defects in its own measures and a fourth in an
+  interpretation, all four caught before a verdict was published.** (i) Exposure read off the
+  attributed-edge stream alone, so S3 read as *untaken* on the one question it decided — the
+  stream is not a record of firings (found in a 3-question smoke test). (ii) The control set
+  keyed on the same stream, so 68 of its 76 "control" rows had S3 fire and the floor read
+  56/76 against a true control set of 29 (found in the first full reading; both quantities
+  published). (iii) A rate-against-rate label calling 27.9% "above" 27.6%, replaced by excess
+  in rows, where a wash looks like one. (iv) `run_eval` dedups edge rows against the WHOLE
+  prior log's §18.9 lineage, so a warm replay leaves no row either — absence of a row is not
+  evidence of a null read, and criterion 7's count is published as an upper bound split by
+  cross-run gradeability. *What was different this time:* the tests were written first, the
+  criteria were **committed before the instrument read anything** (a commit gate refused unless
+  the report still said *pending*), and every load-bearing predicate was verified RED by
+  mutation — eight of them — before the read rather than after.
+  *Honest bounds:* only the counterfactual arm is recomputed (the deployed arm is read from the
+  run's own terminal decision row), the 28% floor is that arm's measured layer gap on this very
+  run, matcher-versus-judge flips on the deployed arm are 0, and the JOIN counterfactual is not
+  read here — the probe's observations are not in the records.
+
+- **A declared total order cannot restore determinism when the tie block is larger than the
+  over-fetch window (2026-08-22, register §6.13, found by r06's idempotency double-run, $0).**
+  Two identical invocations of the same $0 audit disagreed: one question flapped in and out of
+  the exclusion set, moving a site's exposure by one row. The cause is not the audit.
+  `core/retrieval.retrieve_set` imposes R2's declared total order on the rows the over-fetch
+  RETURNED, and pkm's FTS ends `ORDER BY score DESC` with a `LIMIT` — so which of a tied
+  population those rows are is decided before the declared key ever runs. §14's "quantising
+  takes both to zero" was measured at k=80, an over-fetch of 320. At the arm's own k=20 the
+  window is 80 rows, and on **1 of 104** questions those 80 carry five distinct quantised
+  scores with **73 of them sharing one**: the top-20 is four stable hits plus sixteen drawn
+  from a tie block bigger than the window. Five consecutive calls returned five different chunk
+  sets differing by half the top-20; the other 103 questions are stable across three calls each
+  (0 chunks of symmetric difference). A tail, not a regime — but a live one, and everything
+  keyed on the retrieval set is a lottery with it on that question. Invisible to 7.2 (the
+  fixture set tapes the derivation cache and never executes `retrieve_set`) and invisible to a
+  gate run (one question, and a run reports a decision, never the draw behind it): it took an
+  audit that ran the same read twice on purpose. Candidate fixes named, none adopted:
+  over-fetch until the score strictly drops below the cut; push the tie-break into the SQL; or
+  declare the saturated window and refuse to decide on it. Registered as a standing
+  known-and-uncovered source with a measured incidence and a named witness.
+
 - **Four unordered sources on the decision path — the cache was doing the work of determinism
   (2026-08-19/20, tranche-2 M0/M0.5, `scripts/collapse_replay.py` + the M0.5 probes, $0
   deterministic).** The decision-equivalence instrument built at M0 found two ties resolved by

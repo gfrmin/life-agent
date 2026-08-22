@@ -820,6 +820,50 @@ the §14 pre-registration), then whichever branch they take. Scope ruled by the 
 NULL-as-disagreement hypothesis alone, because r05's own lesson is that an audit written around
 the presumed fix measures the fix and not the defect.
 
+**6.13 A declared total order cannot restore determinism when the tie block is larger than
+the over-fetch window — the window itself is the sampler.** Found 2026-08-22 by r06's
+idempotency double-run, on a question that flapped in and out of that audit's exclusion set
+across two identical invocations. Not r06's subject; registered here because it is a
+*decision-path* nondeterminism the R2 fix was believed to have closed.
+
+*What R2 fixed and what it could not.* R2 quantised the retrieval sort key's leading term
+(`-round(score, 9)`) so that `core/retrieval.retrieve_set`'s key is a genuine total order, and
+§14 records the measurement: over the 104-question battery, ordering alone still left 48
+questions with a different order and 22 with a different set, and quantising took **both to
+zero**. That measurement was taken at k=80 — an over-fetch of `k*4` = 320. The order is
+imposed on the rows the over-fetch **returned**, and pkm's FTS ends `ORDER BY scored.score
+DESC` with a `LIMIT`, so which of a tied population those rows *are* is decided before the
+declared key ever runs. When the tie block fits inside the window the two coincide and the fix
+is total. When it does not, the window is a nondeterministic sample of the tie block and no
+downstream ordering can undo it.
+
+*Measured, at the arm's own k.* At k=20 the over-fetch is 80 rows. On **1 of 104** questions
+those 80 rows carry **five** distinct quantised scores, of which one covers **73** of them: the
+top-20 is four stable hits plus sixteen drawn from a 73-way tie whose population exceeds the
+window. Five consecutive calls returned five different chunk sets, differing by half the
+top-20. The other 103 questions are stable across three calls each — 0 chunks of symmetric
+difference — so this is a tail, not a regime. The tail is nonetheless live: on that question
+the arm's first pass is a lottery, and everything keyed on the retrieval set (the §18.9
+derivations, the carrier assignment of §6.11, the document partition the posterior groups by)
+is a lottery with it.
+
+*Why it stayed invisible.* The equivalence instrument cannot see it for the reason §6.10's
+corollary and §6.11 both give — the fixture set tapes the derivation cache at the `cache` seam,
+so a replay serves the recorded retrieval set and never executes `retrieve_set`. And a gate run
+cannot see it either: it is one question, and the run's own report shows a decision, never the
+draw that produced it. It took an audit that ran the same read twice on purpose.
+
+*Candidate fixes, named before any measurement of them:* (a) close the tie block — over-fetch
+until the score strictly drops below the cut rather than at a fixed multiple, so the window is
+never a sampler; (b) push the tie-break into the SQL so the engine's `LIMIT` cuts a totally
+ordered stream rather than an arbitrary one; (c) declare the saturated case and refuse to
+decide on it. (c) is the cheapest and the most honest, and it composes with `carrier_audit`'s
+criterion 1, which already counts a saturated over-fetch window as a reportable limitation
+rather than assuming it away. None is adopted here: this entry registers the defect.
+
+*Pinned by:* its own checkpoint, when one opens. Until then it is a **standing
+known-and-uncovered source** with a measured incidence (1 of 104 at k=20) and a named witness.
+
 ## 7. Behaviour preservation — the equivalence instrument, pre-stated
 
 **The invariant.** The collapse must not change *what the system decides*: for the same
