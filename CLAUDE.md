@@ -196,9 +196,28 @@ caught before a verdict and all published. **Registered en route: §6.13 — a d
 order cannot restore determinism when the tie block is larger than the over-fetch window; the
 window itself is the sampler** (found by r06's idempotency double-run: 1 of 104 questions
 returns five different top-20s in five calls, 73 of its 80 over-fetched rows sharing one
-quantised score; invisible to 7.2 and to a gate run alike). **Proposed next: r07, the recorded
-replay** — attribute the firing order, read the JOIN counterfactual, and diagnose the floor
-before spending. Single-doc 12 is
+quantised score; invisible to 7.2 and to a gate run alike).
+**r07 IS READ (the recorded replay, `docs/unification/reports/r07-recorded-replay.md`,
+instrument `scripts/replay_audit.py`, ten criteria frozen and committed before it read; pass 1
+2026-08-22 three arms 67/104, pass 2 2026-08-23 deployed-only 73/104, $0):** fidelity 66/67
+and 72/73 with the SAME divergent row both times, control 9/9 — **r06's 28% floor was its
+decide-layer stand-in, not the evidence** (r06's 8 disagreeing control rows replay 7/7 with
+the record). Attribution from the payload: **S1 ×10 + S2 ×2 confirmed** across the mandated
+double run (7 S2 rows withheld as draw-unstable); **S3/S4/S5 discard nothing anywhere**; a
+grounded channel was zeroed on 7 questions (S1 on 6, S3 on 1), and on the blocking row S1
+zeroes the five-observation base before the deliberate edge re-mints the one-observation
+competitor — stable across the double run. **The harm rides the DISAGREE path, which
+retire-not-replace cannot see by construction: the enacted RETIRE arm reads 0 repairs / 1
+regression while the JOIN upper bound reads 10 repairs / 2 regressions** — so §6.12's live
+successor question is a correlation key on the wire (making a §5-deduped JOIN readable),
+decision-path code needing its own frozen pre-registration. Every site KNOWN-AND-UNCOVERED
+under the frozen bar (floor 0%); **nothing bought**; r06's criterion 8 untouched. En route:
+**§6.13 re-measured at commit granularity** (across three draws, 14 of 104 questions wobble
+in committed n_obs, 22 flap between readable and cold — a standing noise floor under every
+gate reading) and the **§18.9 warm-through** (a $0 replay records composed derivations into
+the live store — write-once and key-deterministic so undamaged, but coldness is
+pass-order-dependent). Five further deviations disclosed in the report, including the volume
+failure that interrupted pass 2 mid-read. Single-doc 12 is
 the temper's standing price. Old D3–D4 stay re-scoped as Ask's
 aggregate/thread families. The doc's §14 open questions are a **live empirical ledger**
 (owner's adoption rider): each entry names the evidence that decides it — keep it

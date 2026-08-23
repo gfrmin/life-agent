@@ -145,6 +145,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -599,7 +600,13 @@ def make_transport(deps: Any, daemon: str, meter: SpendMeter, tape: list[Call], 
         status, reply = SRV.dispatch(deps, "POST", path, json.dumps(payload).encode())
         if status != 200:
             raise RuntimeError(f"bridge {path} -> {status}: {reply}")
-        out = dict(reply or {})
+        if reply is None:
+            # `/route` answers NULL for a question the lookup family does not route, and the
+            # executor branches on exactly that (`if route is None` → the narrative path).
+            # Coercing it to {} makes a non-None empty dict, the loop proceeds, and it dies on
+            # the first field it reads. A transport must not invent a reply the bridge withheld.
+            return _tape("bridge", path, payload, None)
+        out = dict(reply)
         if path == "/retrieve" and draws is not None:
             draws[json.dumps(payload, sort_keys=True)] = dict(out)
         if path == "/extract":
@@ -759,6 +766,11 @@ def audit_rows(qids: list[str], by_id: dict[str, dict[str, Any]],
                                    and row.deployed.action == row.recorded_action)
         row.r06_control = not row.sites
         rows.append(row)
+        # progress to STDERR only, and only ids + counts — criterion 9(d): a recorded reply
+        # carries corpus text and none of it may reach a log any more than a report
+        print(f"  [{len(rows)}] {qid}: sites={'/'.join(row.sites) or '-'} "
+              f"n_obs={row.deployed.n_obs if row.deployed else '-'} "
+              f"cold={'/'.join(row.cold_arms) or '-'}", file=sys.stderr, flush=True)
     return rows, excluded
 
 
@@ -776,6 +788,51 @@ def _site_tally(rows: list[Row], site: str, arm: str) -> dict[str, int]:
         elif verd == "regression":
             out["regressions"] += 1
     return out
+
+
+def _distinctive(value: str) -> bool:
+    """Whether a plain substring test can tell this value apart from a coincidence.
+
+    A one-character or purely numeric gold matches the `7` in an `n_obs=7` — and word
+    boundaries do not help, because `=` is not a word character. No text test can separate
+    those two sevens. So short and numeric values are checked only where a coincidence is
+    unlikely and a real leak would actually come from: the report's FREE-TEXT channels."""
+    return len(value) >= 5 and not value.replace(".", "").replace("-", "").isdigit()
+
+
+def _shape(value: str) -> str:
+    """A value's shape, for an error message that must not carry the value itself."""
+    kind = ("numeric" if value.replace(".", "").replace("-", "").isdigit()
+            else "alphanumeric" if any(c.isdigit() for c in value) else "alphabetic")
+    return f"len={len(value)}/{kind}"
+
+
+def leak_check(text: str, rows: list[Row], *, freetext: str | None = None) -> list[str]:
+    """Criterion 9(d): the SHAPES of any corpus value that reached the rendered text.
+
+    Two channels, because they admit different tests. **Distinctive values** are checked
+    against the WHOLE report — a name or an identifier appearing anywhere is a leak, full stop.
+    **Short or numeric values** are checked only against ``freetext`` (the pin notes, the
+    exclusion lines, the site descriptions), because the structured tables emit ids and integers
+    this module computes, and a gold of `7` is indistinguishable there from a count of 7.
+
+    *That is a stated limit, not a silent one:* a one-character gold emitted into a table cell
+    would not be caught here. Nothing in `render` writes a value into a cell — the tables carry
+    qids, site ids, arrows and integers — so the guard's job is to catch a value arriving
+    through prose, which is how one would actually arrive."""
+    hits: list[str] = []
+    for r in rows:
+        for v in (r.gold, *r.variants):
+            if not v:
+                continue
+            haystack = text if _distinctive(v) else (freetext if freetext is not None else text)
+            if _distinctive(v):
+                found = v in haystack
+            else:
+                found = re.search(rf"(?<![\w-]){re.escape(v)}(?![\w-])", haystack) is not None
+            if found:
+                hits.append(_shape(v))
+    return sorted(set(hits))
 
 
 def render(rows: list[Row], excluded: list[str], *, run_id: str, k: int,
@@ -844,14 +901,60 @@ def render(rows: list[Row], excluded: list[str], *, run_id: str, k: int,
             "key is not on this wire, so every pooled copy counts as an independent "
             "witness.*", ""]
     text = "\n".join(out)
-    leaked = sorted({v for r in rows for v in (r.gold, *r.variants) if v and v in text})
+    freetext = "\n".join([*pin_notes, *excluded, *SITES.values(), *unstable])
+    leaked = leak_check(text, rows, freetext=freetext)
     if leaked:
         # criterion 9(d), enforced rather than intended: a recorded reply carries corpus text,
         # and the one thing this report may never contain is a value from it. Loud, not a
-        # silent redaction — a report that has to be scrubbed is a report that was written wrong
+        # silent redaction — a report that has to be scrubbed is a report that was written
+        # wrong. The failure names SHAPES, never the values it is protecting.
         raise AssertionError(
-            f"criterion 9(d): {len(leaked)} corpus value(s) reached the rendered report")
+            f"criterion 9(d): {len(leaked)} corpus value(s) reached the rendered report "
+            f"(shapes: {', '.join(leaked)})")
     return text
+
+
+def dump_rows(rows: list[Row], excluded: list[str]) -> str:
+    """The reading's rows, as data. Carries the leader values — which is why it is written under
+    `$LIFE_AGENT_KB` and never into the repo (criterion 9(d) governs the REPORT; this file is
+    the corpus-side record the report is derived from)."""
+    return json.dumps({
+        "excluded": excluded,
+        "rows": [{"qid": r.qid, "gold": r.gold, "variants": r.variants,
+                  "sites": list(r.sites), "trace": r.trace,
+                  "discarder": list(r.discarder), "cold_arms": list(r.cold_arms),
+                  "deployed": r.deployed.__dict__ if r.deployed else None,
+                  "retire": r.retire.__dict__ if r.retire else None,
+                  "join": r.join.__dict__ if r.join else None,
+                  "recorded_action": r.recorded_action,
+                  "recorded_correct": r.recorded_correct,
+                  "fidelity_agrees": r.fidelity_agrees,
+                  "r06_control": r.r06_control} for r in rows]}, indent=2)
+
+
+def load_rows(path: Path) -> tuple[list[Row], list[str]]:
+    """The inverse of :func:`dump_rows`, for `--render-only`."""
+    return load_rows_from_text(path.read_text())
+
+
+def load_rows_from_text(text: str) -> tuple[list[Row], list[str]]:
+    blob = json.loads(text)
+    rows: list[Row] = []
+    for d in blob["rows"]:
+        r = Row(qid=d["qid"], gold=d.get("gold", ""), variants=list(d.get("variants") or []))
+        r.sites = tuple(d.get("sites") or [])
+        r.trace = [(str(a), int(b)) for a, b in (d.get("trace") or [])]
+        r.discarder = tuple(d.get("discarder") or [])
+        r.cold_arms = tuple(d.get("cold_arms") or [])
+        for arm in ("deployed", "retire", "join"):
+            if d.get(arm):
+                setattr(r, arm, Arm(**d[arm]))
+        r.recorded_action = str(d.get("recorded_action") or "")
+        r.recorded_correct = d.get("recorded_correct")
+        r.fidelity_agrees = bool(d.get("fidelity_agrees"))
+        r.r06_control = bool(d.get("r06_control"))
+        rows.append(r)
+    return rows, list(blob.get("excluded") or [])
 
 
 def main() -> int:
@@ -870,6 +973,7 @@ def main() -> int:
     ap.add_argument("--modes", default="deployed,retire,join")
     ap.add_argument("--out")
     ap.add_argument("--out-yaml")
+    ap.add_argument("--render-only", help="re-render from a rows file written by a prior run")
     args = ap.parse_args()
 
     if str(LCFG.KB) != args.staging:
@@ -881,6 +985,16 @@ def main() -> int:
 
     meta = json.loads(Path(args.run_meta).read_text())
     k = args.k if args.k is not None else int((meta.get("gate") or {}).get("k") or 20)
+    if args.render_only:
+        rows, excluded = load_rows(Path(args.render_only))
+        modes = tuple(m.strip() for m in args.modes.split(",") if m.strip())
+        report = render(rows, excluded, run_id=args.run_id, k=k,
+                        pin_notes=["re-rendered from a saved rows file"],
+                        modes=modes, r06_floor_sites=R06_BOUGHT, unstable=[])
+        print(report)
+        if args.out:
+            Path(args.out).write_text(report)
+        return 0
     root = TREAD.pkm_root()
     conn = duckdb.connect(str(root / "catalogue.duckdb"), read_only=True)
     conn.execute("INSTALL fts; LOAD fts;")
@@ -926,20 +1040,17 @@ def main() -> int:
 
     rows, excluded = audit_rows(qids, by_id, paired, deps=deps, root=root, conn=conn,
                                 daemon=args.daemon, k=k, modes=modes)
+    # The rows are written BEFORE the render. A render that raises — criterion 9(d) does, on
+    # purpose — must not destroy an hour of replaying; `--render-only` then re-renders from
+    # here in seconds. (Learned by losing a full battery to a leak-check false positive.)
+    if args.out_yaml:
+        Path(args.out_yaml).write_text(dump_rows(rows, excluded))
+        print(f"rows written to {args.out_yaml}", file=sys.stderr)
     report = render(rows, excluded, run_id=args.run_id, k=k, pin_notes=pin_notes,
                     modes=modes, r06_floor_sites=R06_BOUGHT, unstable=[])
     print(report)
     if args.out:
         Path(args.out).write_text(report)
-    if args.out_yaml:
-        Path(args.out_yaml).write_text(json.dumps(
-            [{"qid": r.qid, "sites": list(r.sites), "trace": r.trace,
-              "discarder": list(r.discarder),
-              "deployed": r.deployed.__dict__ if r.deployed else None,
-              "retire": r.retire.__dict__ if r.retire else None,
-              "join": r.join.__dict__ if r.join else None,
-              "recorded_action": r.recorded_action,
-              "fidelity_agrees": r.fidelity_agrees} for r in rows], indent=2))
     return 0
 
 

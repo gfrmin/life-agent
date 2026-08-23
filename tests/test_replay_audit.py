@@ -429,3 +429,75 @@ def test_the_renderer_refuses_to_emit_a_corpus_value():
     with pytest.raises(AssertionError, match=r"9\(d\)"):
         RP.render([row], [], run_id="r", k=20, pin_notes=["staged from .../ACME-1234/x"],
                   modes=("deployed",), r06_floor_sites=frozenset(), unstable=[])
+
+
+def test_the_transport_passes_a_null_reply_through_instead_of_inventing_one():
+    """`/route` answers NULL for a question the lookup family does not route, and the executor
+    branches on exactly that. A transport that coerces None to {} hands the loop a non-None
+    empty dict; it proceeds and dies on the first field it reads. Found by the first full read,
+    which crashed on `KeyError: 'time_indexed'` rather than routing to the narrative family."""
+    seen: list = []
+
+    class _Deps:
+        pass
+
+    def _dispatch(_deps, _method, path, _body):
+        return (200, None) if path == "/route" else (200, {"ok": True})
+
+    import life_agent.bridge.server as SRV
+    real = SRV.dispatch
+    SRV.dispatch = _dispatch
+    try:
+        post, _get = RP.make_transport(_Deps(), "http://d", RP.SpendMeter(), seen,
+                                       mode="deployed")
+        assert post("bridge:/route", {"question": "q"}) is None
+        assert post("bridge:/extract", {}) == {"ok": True}
+    finally:
+        SRV.dispatch = real
+    assert [c.path for c in seen] == ["/route", "/extract"]
+
+
+# --- criterion 9(d): the leak check must not refuse every report it protects ------------
+
+def test_a_one_character_gold_does_not_make_every_report_unpublishable():
+    """A full battery's render refused on three values, all one to three characters: a
+    substring test on a 1-char gold matches an `n_obs=1` in any report. Short and numeric
+    values match on WORD BOUNDARIES instead — still catching a real emission."""
+    row = RP.Row(qid="q2-001", gold="7")           # PII-OK: synthetic 1-char gold
+    # the structured tables emit counts; a gold of 7 is indistinguishable from a count of 7
+    assert RP.leak_check("the channel held n_obs=7 observations", [row], freetext="") == []
+    # but the free-text channels are still checked for it
+    assert RP.leak_check("report", [row], freetext="staged from .../7/x") != []
+
+
+def test_a_distinctive_gold_is_still_caught_anywhere_in_the_text():
+    row = RP.Row(qid="q2-002", gold="ACME-1234")   # PII-OK: synthetic gold
+    # a distinctive value is checked against the WHOLE report, free text or not
+    assert RP.leak_check("| q2-002 | ACME-1234 |", [row], freetext="") != []
+
+
+def test_the_leak_failure_names_shapes_and_never_the_value():
+    row = RP.Row(qid="q2-003", gold="ACME-1234")   # PII-OK: synthetic gold
+    shapes = RP.leak_check("ACME-1234", [row], freetext="")
+    assert shapes == ["len=9/alphanumeric"]
+    assert not any("ACME" in s for s in shapes)
+
+
+def test_rows_survive_a_render_that_raises():
+    """dump_rows/load_rows exist so a criterion-9(d) refusal costs seconds, not an hour of
+    replaying. Round-trip everything the report reads."""
+    row = RP.Row(qid="q2-011", gold="g", variants=["v"])
+    row.sites = ("S1", "S3")
+    row.trace = [("base", 5), ("S3", 1)]
+    row.discarder = ("S3",)
+    row.cold_arms = ("retire",)
+    row.deployed = RP.Arm(action="report", leader="g", n_obs=1, n_docs=1, p_none=0.1,
+                          eu=0.5, credences=[0.9])
+    row.recorded_action = "report"
+    row.fidelity_agrees = True
+    back, excl = RP.load_rows_from_text(RP.dump_rows([row], ["q2-007 (no gold)"]))
+    assert excl == ["q2-007 (no gold)"]
+    assert (back[0].qid, back[0].sites, back[0].trace, back[0].discarder,
+            back[0].cold_arms) == (row.qid, row.sites, row.trace, row.discarder,
+                                   row.cold_arms)
+    assert back[0].deployed == row.deployed

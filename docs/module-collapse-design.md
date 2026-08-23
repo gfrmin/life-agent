@@ -826,6 +826,18 @@ branch they take. Scope ruled by the owner on
 NULL-as-disagreement hypothesis alone, because r05's own lesson is that an audit written around
 the presumed fix measures the fix and not the defect.
 
+*Read (r07, 2026-08-22/23, $0, double-run):* attribution lands **S1 ×10 + S2 ×2 confirmed**
+(7 more S2 rows named and withheld as draw-unstable); S3, S4 and S5 discard nothing on any
+replayed row. A grounded channel was zeroed on 7 questions — S1 on 6, S3 on 1 — and on the
+blocking row S1 zeroes the five-observation base before the deliberate edge re-mints the
+one-observation competitor, stable across the double run. **The harm rides the disagree path:
+an empty non-null reply is a disagree, which retire-not-replace leaves untouched by
+construction — the enacted RETIRE arm reads 0 repairs / 1 regression while the JOIN upper
+bound reads 10 repairs / 2 regressions.** Every site KNOWN-AND-UNCOVERED under the frozen
+bar; nothing bought; r06's criterion 8 untouched. The entry's live successor question is a
+correlation key on the wire (so §5's dedup can make a JOIN safe) — decision-path code, its
+own pre-registration.
+
 **6.13 A declared total order cannot restore determinism when the tie block is larger than
 the over-fetch window — the window itself is the sampler.** Found 2026-08-22 by r06's
 idempotency double-run, on a question that flapped in and out of that audit's exclusion set
@@ -869,6 +881,12 @@ rather than assuming it away. None is adopted here: this entry registers the def
 
 *Pinned by:* its own checkpoint, when one opens. Until then it is a **standing
 known-and-uncovered source** with a measured incidence (1 of 104 at k=20) and a named witness.
+*Incidence re-measured at commit granularity (r07, 2026-08-23):* across three fresh draws of
+the same 104-question replay at fixed corpus, fixed `src/` and fixed logs, **14 questions
+wobble in the committed n_obs** (one of them in firing order) and **22 flap between readable
+and cold** — the committed evidence is a wider tail than the retrieval-set instability
+suggested, and it sits under every gate reading as a noise floor until one of the three named
+fixes is priced.
 
 ## 7. Behaviour preservation — the equivalence instrument, pre-stated
 
