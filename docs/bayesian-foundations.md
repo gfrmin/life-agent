@@ -2902,6 +2902,25 @@ on this list. Answers land here by amendment, citing their evidence.
   one question's retrieval a lottery, so the read runs twice and unstable questions carry no
   attribution. **The reading is PENDING at the time this entry is committed.**
 
+- **The rulings r07's reading forced (owner, 2026-08-23, interviewed).** Four questions, each
+  with a recommended branch and its alternatives priced; the owner took the recommended branch
+  on all four (`r07-recorded-replay.md`, RULINGS, has the full width). (1) The
+  JOIN-with-a-correlation-key fix **OPENS** as checkpoint **r09**: the §5 dedup key (the
+  quote) goes on the wire so a §5-deduped JOIN is computable at the replace sites — frozen
+  pre-registration before any `src/` change, then TDD. (2) **Pulled FORWARD**: r09 runs
+  immediately after M1.5 rather than riding M6's E-7 slot (E-7 becomes verify-only; the m0-5
+  baseline is re-recorded and O2 re-prepared after it lands). (3) **§6.13 is repaired FIRST**
+  as checkpoint **r08** — own pre-registration, verified at $0 by a multi-draw replay read —
+  so run 13's reading is not taken against a 14-of-104 commit-wobble floor and r09's Δ is
+  attributable to the JOIN alone. (4) **Run 13's outcome branches frozen at full
+  delegation**: PASS = the gate's frozen δ/level (0.05 / 0.90, §6.1 — unchanged) ∧ the
+  blocking row repaired ∧ zero new wrong commits → the §6.12 deployment block closes and
+  master deploys to live without a further keypress; FAIL on any conjunct → the JOIN reverts
+  from the deploy path, the reading publishes append-only, and work STOPS for a ruling. The
+  cap stands: r07 was the last pure-diagnosis checkpoint; anomalies en route are disclosure
+  items, never a new diagnostic arc. Sequencing under the standing delegation: **r08 → M1.5 →
+  r09 → run 13** (the census records its fixtures on the deterministic tree).
+
 - **A declared total order cannot restore determinism when the tie block is larger than the
   over-fetch window (2026-08-22, register §6.13, found by r06's idempotency double-run, $0).**
   Two identical invocations of the same $0 audit disagreed: one question flapped in and out of

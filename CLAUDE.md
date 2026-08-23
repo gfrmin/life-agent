@@ -218,7 +218,17 @@ gate reading) and the **§18.9 warm-through** (a $0 replay records composed deri
 the live store — write-once and key-deterministic so undamaged, but coldness is
 pass-order-dependent). Five further deviations disclosed in the report, including the volume
 failure that interrupted pass 2 mid-read. Single-doc 12 is
-the temper's standing price. Old D3–D4 stay re-scoped as Ask's
+the temper's standing price.
+**Rulings 2026-08-23 (owner, interviewed — r07's RULINGS section):** the
+JOIN-with-a-correlation-key fix **OPENS as r09**, pulled forward to immediately after M1.5
+(E-7 at M6 becomes verify-only; the m0-5 baseline is re-recorded and O2 re-prepared after it
+lands); **§6.13 is repaired first as r08** (own pre-registration, $0 multi-draw verification)
+so run 13's Δ is attributable to the JOIN alone; **run 13's outcome branches are frozen at
+full delegation** — PASS (the gate's frozen δ/level ∧ the blocking row repaired ∧ zero new
+wrong commits) closes the §6.12 block and deploys master to live without a further keypress;
+FAIL on any conjunct reverts the JOIN from the deploy path and STOPS for a ruling. The cap
+stands: r07 was the last pure-diagnosis checkpoint — anomalies en route are disclosure items,
+never a new diagnostic arc. Sequencing: **r08 → M1.5 → r09 → run 13**. Old D3–D4 stay re-scoped as Ask's
 aggregate/thread families. The doc's §14 open questions are a **live empirical ledger**
 (owner's adoption rider): each entry names the evidence that decides it — keep it
 current. Sequencing is continuous and eval-gated, not dogfood-gated (PRINCIPLES §9 as

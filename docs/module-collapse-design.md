@@ -838,6 +838,14 @@ bar; nothing bought; r06's criterion 8 untouched. The entry's live successor que
 correlation key on the wire (so §5's dedup can make a JOIN safe) — decision-path code, its
 own pre-registration.
 
+*Ruled (owner interview 2026-08-23 — r07's RULINGS section):* the successor **OPENS** as
+checkpoint **r09**, pulled forward to immediately after M1.5 rather than riding M6's E-7 slot
+(E-7 becomes verify-only; the m0-5 baseline is re-recorded and O2 re-prepared after it lands).
+Run 13's outcome branches are frozen at full delegation: PASS (the gate's frozen δ/level ∧ the
+blocking row repaired ∧ zero new wrong commits) closes this deployment block and deploys
+master to live; FAIL on any conjunct reverts the JOIN from the deploy path and STOPS for a
+ruling. §6.13's repair (r08) lands first so r09's Δ is attributable to the JOIN alone.
+
 **6.13 A declared total order cannot restore determinism when the tie block is larger than
 the over-fetch window — the window itself is the sampler.** Found 2026-08-22 by r06's
 idempotency double-run, on a question that flapped in and out of that audit's exclusion set
@@ -881,6 +889,10 @@ rather than assuming it away. None is adopted here: this entry registers the def
 
 *Pinned by:* its own checkpoint, when one opens. Until then it is a **standing
 known-and-uncovered source** with a measured incidence (1 of 104 at k=20) and a named witness.
+*Ruled (owner interview 2026-08-23 — r07's RULINGS section):* the checkpoint **OPENS** as
+**r08**, sequenced before the r09 JOIN checkpoint: its own frozen pre-registration, the repair
+landed and verified at **$0** by a multi-draw replay read. Which of the three named fixes is
+adopted is r08's pre-registration's to freeze, not this entry's.
 *Incidence re-measured at commit granularity (r07, 2026-08-23):* across three fresh draws of
 the same 104-question replay at fixed corpus, fixed `src/` and fixed logs, **14 questions
 wobble in the committed n_obs** (one of them in firing order) and **22 flap between readable

@@ -406,3 +406,39 @@ every future $0 replay.
 - No mechanism is claimed for the 37 deployed-arm exclusions. "Divergence from run 10" was the
   frozen reading and the double run weakened it (criterion 9(c) section); a weaker claim is
   published instead of a defended one.
+
+## RULINGS (owner, 2026-08-23 — interviewed)
+
+Four questions were put to the owner as an interview (each with a recommended branch and its
+alternatives priced); the owner took the recommended branch on all four. Recorded at exactly
+the width asked, because an interview's width is set by its questions.
+
+1. **The JOIN-with-a-correlation-key fix OPENS.** The §5 dedup key (the quote) goes on the
+   wire so a §5-deduped JOIN is computable at the replace sites. Frozen pre-registration
+   first — criteria and predictions committed before any `src/` change — then implementation
+   under TDD. Its checkpoint is **r09**.
+2. **Placement: pulled FORWARD, not ridden at M6.** The fix runs as its own checkpoint
+   immediately after M1.5 rather than waiting for M6's E-7 slot. Accepted cost, stated in the
+   question: one re-record of the m0-5 baseline of record and a re-preparation of O2 after it
+   lands. E-7 at M6 becomes verify-only. Rationale accepted: the block closes ~5 checkpoints
+   earlier and every later checkpoint's 7.3 reads against a tree without a known wrong commit.
+3. **§6.13 is repaired FIRST, separately.** Its own small pre-registration (**r08**), landed
+   and verified at $0 by a replay-based multi-draw read, before the r09 checkpoint — so run
+   13's single reading is not read against a 14-of-104 commit-wobble floor, and r09's Δ is
+   attributable to the JOIN alone. The alternative branches (bundle into r09; accept the
+   floor) were declined.
+4. **Run 13's outcome branches are FROZEN at full delegation.** PASS = the gate's frozen
+   δ/level unchanged (`MATERIALITY_DELTA` 0.05, `GATE_LEVEL` 0.90, §6.1) **and** the blocking
+   row repaired **and** zero new wrong commits → the §6.12 deployment block closes and master
+   deploys to live (`bin/ask-live` / jarvis) without a further keypress. FAIL on any conjunct
+   → the JOIN is reverted from the deploy path, the reading published append-only, and work
+   STOPS for a ruling. Cap-the-arc stands: r07 was the last pure-diagnosis checkpoint; any
+   anomaly found en route to run 13 is a disclosure item in the checkpoint that finds it,
+   never a new diagnostic arc.
+
+*Sequencing under the standing delegation (mine, within the rulings' width):* **r08 (§6.13)
+→ M1.5 → r09 (JOIN) → run 13** — the census records its fixtures on the deterministic tree,
+so they are pinned truth rather than draws from the window's lottery. The r08/r09 numbering
+continues the report series; it does not reopen diagnosis (ruling 4's cap governs both).
+
+*Successor:* `r08-window-determinism.md`.
