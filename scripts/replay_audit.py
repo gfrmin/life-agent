@@ -222,8 +222,13 @@ def build_staging_kb(live: Path, dest: Path, *, cutoff: str) -> Path:
 
 
 def verify_pin(meta: dict[str, Any], *, src_sha: str, corpus_digest: str,
-               elicitations_sha: str) -> list[str]:
-    """Criterion 2 (a)-(c) and (e), as a list of NAMED failures — empty means clean."""
+               elicitations_sha: str, acknowledged_src: str = "") -> list[str]:
+    """Criterion 2 (a)-(c) and (e), as a list of NAMED failures — empty means clean.
+
+    ``acknowledged_src``: the ONE src tree the caller declares HEAD is expected to have when
+    it legitimately differs from the run's (r08 Read C replays a run recorded before the fix
+    commit — the drift IS the intervention). Only an exact match on the declared tree passes;
+    an empty acknowledgement changes nothing, so the pin is never silently weakened."""
     fails: list[str] = []
     want_sha = str((meta.get("life_agent_git") or {}).get("sha") or "")
     # criterion 2(a) is about `src/` being BYTE-IDENTICAL, not about the commit being the same
@@ -231,7 +236,7 @@ def verify_pin(meta: dict[str, Any], *, src_sha: str, corpus_digest: str,
     # not. The comparable object is git's tree hash for `src/` at each commit — comparing the
     # COMMIT sha would refuse a tree that is provably identical, which is a false refusal and
     # exactly as bad as a false pass.
-    if want_sha and src_sha and want_sha != src_sha:
+    if want_sha and src_sha and want_sha != src_sha and src_sha != acknowledged_src:
         fails.append(f"src tree: HEAD's src is {src_sha[:12]}, the run's was {want_sha[:12]}")
     want_digest = str((meta.get("corpus") or {}).get("digest") or "")
     if want_digest and want_digest != corpus_digest:
@@ -974,6 +979,9 @@ def main() -> int:
     ap.add_argument("--out")
     ap.add_argument("--out-yaml")
     ap.add_argument("--render-only", help="re-render from a rows file written by a prior run")
+    ap.add_argument("--acknowledge-src-drift", default="", metavar="TREE_SHA",
+                    help="full `src/` tree hash HEAD is EXPECTED to carry when it differs "
+                         "from the replayed run's (the drift is stamped into the pin notes)")
     args = ap.parse_args()
 
     if str(LCFG.KB) != args.staging:
@@ -1012,13 +1020,18 @@ def main() -> int:
         return 2
     meta = {**meta, "life_agent_git": {"sha": there}}
     fails = verify_pin(meta, src_sha=here, corpus_digest=CORPUS.corpus_digest(conn),
-                       elicitations_sha=elic_sha)
+                       elicitations_sha=elic_sha,
+                       acknowledged_src=args.acknowledge_src_drift)
     if fails:
         print("REFUSED — the pin does not hold (criterion 2):")
         for f in fails:
             print(f"  - {f}")
         return 2
-    pin_notes = [f"src tree {here[:12]} == the run's (HEAD is a later commit, docs only)",
+    src_note = (f"src tree {here[:12]} == the run's (HEAD is a later commit, docs only)"
+                if here == there else
+                f"src tree {here[:12]} != the run's {there[:12]} — drift ACKNOWLEDGED "
+                f"(--acknowledge-src-drift): the replaying tree carries the r08 fix")
+    pin_notes = [src_note,
                  "corpus digest == the run's",
                  "utility elicitations == the run's",
                  f"logs truncated to {meta['created_at']}",

@@ -117,6 +117,25 @@ def test_src_tree_hash_is_empty_for_a_rev_this_checkout_does_not_have():
     assert RP.src_tree_hash("HEAD")
 
 
+def test_an_acknowledged_src_drift_passes_the_pin_and_any_other_drift_still_refuses():
+    """r08 Read C replays a run recorded BEFORE the fix commit, so the src trees differ by
+    design. The pin may accept exactly one NAMED drift — the caller states the tree HEAD is
+    expected to have — and any other mismatch still refuses. Silence is never an option:
+    an empty acknowledgement must not weaken the pin."""
+    # PII-OK: synthetic tree hashes
+    meta = {"life_agent_git": {"sha": "a" * 40}, "corpus": {"digest": "D"},
+            "utility": {"elicitations_sha256": "E"}, "gate": {"loo": True}}
+    ok = RP.verify_pin(meta, src_sha="b" * 40, corpus_digest="D", elicitations_sha="E",
+                       acknowledged_src="b" * 40)
+    assert ok == []
+    fails = RP.verify_pin(meta, src_sha="c" * 40, corpus_digest="D", elicitations_sha="E",
+                          acknowledged_src="b" * 40)
+    assert any("src tree" in f for f in fails)
+    fails = RP.verify_pin(meta, src_sha="b" * 40, corpus_digest="D", elicitations_sha="E",
+                          acknowledged_src="")
+    assert any("src tree" in f for f in fails)
+
+
 def test_verify_pin_refuses_when_the_run_did_not_hold_curves_out():
     """Criterion 2(e): the replay must fold curves the way the pinned run folded them. A run
     without `loo` is a different fold and the instrument may not silently adopt one."""

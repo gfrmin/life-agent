@@ -150,4 +150,27 @@ finding:**
 Artefacts: `$LIFE_AGENT_KB/eval/window/baseline-{p1,p2,stability}.json` (fingerprints and
 counts only, C8).
 
+## DEVIATION 1 — C5's frozen clause is self-contradictory; the instrument amended, disclosed before any draw ran (2026-08-23)
+
+C5 froze "`scripts/replay_audit.py` unmodified". The unmodified instrument REFUSED all three
+draws at its own criterion-2 pin — HEAD's `src/` tree (which carries the r08 fix, by design)
+no longer matches the replayed run's recorded tree. The two frozen clauses cannot both hold:
+Read C exists to replay the run on the fixed tree, and the pin exists to refuse exactly
+that. The contradiction is a pre-registration defect, caught before any measurement was
+read (the r05 lesson again: the instrument's own clauses need the same adversarial read as
+the measures).
+
+Resolution, minimal and named: `verify_pin` gains an `acknowledged_src` parameter and the
+CLI a `--acknowledge-src-drift TREE_SHA` flag — the pin passes only when HEAD's src tree
+equals the ONE tree the caller explicitly declares (the fix commit's), any other mismatch
+still refuses, and an empty acknowledgement changes nothing. The drift is stamped into the
+pin notes of every rendered report, so no artefact of record can silently claim a clean
+pin. No measure was touched. TDD: the test
+(`test_an_acknowledged_src_drift_passes_the_pin_and_any_other_drift_still_refuses`)
+was watched RED (TypeError) before the change; the file's 49 tests, ruff and the full mypy
+gate are green after (one mypy run mid-change reported two phantom attr-defined errors on
+untouched import lines — a poisoned incremental cache from a single-file invocation; a
+clean-cache run is green, noted here because a false red on the instrument would have been
+believed).
+
 **PENDING below this line: the fix commit, then the post-fix reads.**
