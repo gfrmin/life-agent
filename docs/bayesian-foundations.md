@@ -2825,6 +2825,33 @@ on this list. Answers land here by amendment, citing their evidence.
   run, matcher-versus-judge flips on the deployed arm are 0, and the JOIN counterfactual is not
   read here — the probe's observations are not in the records.
 
+- **r07 READ (2026-08-22 pass 1, three arms, 67 of 104; 2026-08-23 pass 2, deployed only, 73
+  of 104; $0 across every pass; report `docs/unification/reports/r07-recorded-replay.md`, THE
+  READING).** Fidelity 66/67 and 72/73 with the SAME divergent row both times; the no-site
+  control reads 9/9 and the 7 of r06's 8 disagreeing control rows that replayed all agree with
+  the record — **the 28% floor was the decide layer** (prediction 1 CONFIRMED at 100%).
+  Attribution from the payload: S1 ×10 and S2 ×9 named; the mandated double run withholds 7 of
+  S2's rows, leaving **S1 ×10 + S2 ×2 confirmed; S3/S4/S5 discard nothing on any replayed
+  row**. A grounded channel was zeroed on 7 questions (S1 on 6, S3 on 1); on run 10's blocking
+  row S1's first corroborate tier zeroes the five-observation grounded base and the deliberate
+  edge re-mints the one-observation competitor — stable across the double run. **The harm
+  rides the DISAGREE path retire-not-replace cannot see: the enacted RETIRE arm reads 0
+  repairs / 1 regression on 40 rows, while the JOIN upper bound reads 10 repairs / 2
+  regressions on 66** (prediction 2 REFUTED — the blind guess ran the other way). Every site
+  KNOWN-AND-UNCOVERED under the frozen bar of 5 with the floor at 0%; **nothing bought**;
+  r06's criterion 8 untouched (owner ruling). Predictions 3 and 4 CONFIRMED (S4 exposure 34 <
+  S1-opus 44; 11 unstable questions besides the §6.13 witness); prediction 5 scored nothing as
+  declared, and its rehearsal-informed expectation was wrong in mechanism. En route, two
+  findings now registered: **§6.13 at commit granularity** — across three draws at fixed
+  corpus and fixed `src/`, 14 of 104 questions wobble in committed n_obs (one in firing order)
+  and 22 flap between readable and cold — and the **§18.9 warm-through** (a $0 replay records
+  composed derivations into the live store; 31 during these passes; write-once and
+  key-deterministic so the store is undamaged, but coldness is pass-order-dependent and
+  "cold-mid-loop = divergence" is retired to a weaker claim). Deviations 7–11 disclosed in the
+  report. The deployable question this leaves is a correlation key on the wire so a §5-deduped
+  JOIN becomes readable — decision-path code, its own frozen pre-registration, not this
+  checkpoint's.
+
 - **r07 PRE-REGISTRATION — the recorded replay (opened 2026-08-22 on r06's QUESTION 2, owner
   ruling "start r07"; register §6.12; instrument `scripts/replay_audit.py`; criteria frozen in
   its docstring and committed BEFORE it reads).** r06 read the replace branch from a gate run's
