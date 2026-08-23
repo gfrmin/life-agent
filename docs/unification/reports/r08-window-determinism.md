@@ -124,4 +124,30 @@ $0 by a multi-draw replay read, before r09) is unchanged.
   surface only and named ($0 discipline).
 - No diagnosis of non-retrieval wobble residue (ruling 4's cap): named, counted, left.
 
-**PENDING.** Nothing below this line exists until the baseline runs.
+## BASELINE (pre-fix, 2026-08-23 — C1)
+
+Read A ran the full battery at all three surfaces, five identical calls each (3 + 2 across
+two fresh processes, C3), $0, read-only. **C1 is satisfied, and the decomposition is the
+finding:**
+
+- **The decision layer (`retrieve_set`'s top-k) is stable on 103 of 104 — the single
+  set-unstable question is q2-036, the §6.13 witness, at the base surface.** r06's 1-of-104
+  replicates exactly, cross-process, on the instrument's first read. The expanded and pool
+  surfaces are top-stable on all 104 (every one of the 104 expansions was cached — no
+  surface was skipped).
+- **The raw over-fetch window underneath is pervasively unstable:** order-unstable on
+  75 / 74 / 75 questions (base / expanded / pool) and **set-unstable on 15 / 14 / 28** —
+  the engine really is sampling tie blocks at every surface; R2's declared key masks it at
+  the top-k everywhere except where the sampled block straddles the cut (the witness).
+  The stability file's headline "104 unstable" is this window-layer noise; the number that
+  reaches decisions is 1.
+- Read B (C4, the census): straddling tie blocks on **17 / 15 / 30** questions per surface.
+  The witness's boundary block spans **153 of 160 probed rows** at base (the probe itself
+  saturates — the true block is larger than 2× the window), 102 at expanded; the largest
+  pool block is 212 rows. The census is published beside the reading as the standing
+  arbitrariness record; nothing gates on it.
+
+Artefacts: `$LIFE_AGENT_KB/eval/window/baseline-{p1,p2,stability}.json` (fingerprints and
+counts only, C8).
+
+**PENDING below this line: the fix commit, then the post-fix reads.**
