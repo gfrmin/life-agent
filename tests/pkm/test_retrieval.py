@@ -357,3 +357,66 @@ def test_search_returns_at_most_k_results(migrated_root: Path) -> None:
         results = search(conn, "word", k=5)
 
     assert len(results) <= 5
+
+
+# ---------------------------------------------------------------------------
+# §6.13 — the LIMIT cut is part of the declared order (r08)
+# ---------------------------------------------------------------------------
+
+
+def _seed_tie_block(migrated_root: Path, keys: list[str]) -> None:
+    """One chunk per artifact, all with IDENTICAL text (identical BM25 score) — the corpus's
+    commonest tie shape — inserted in the order given, each under its own path-current
+    source. # PII-OK: synthetic keys/paths"""
+    with open_catalogue(migrated_root) as conn:
+        for i, key in enumerate(keys):
+            conn.execute(
+                "INSERT INTO sources (source_id, current_path, first_seen, "
+                "last_seen, size_bytes) VALUES (?, ?, current_timestamp, "
+                "current_timestamp, 0)",
+                [key[0] * 64, f"/fake/path/doc_{i}.txt"],
+            )
+            conn.execute(
+                """
+                INSERT INTO artifacts
+                    (cache_key, input_hash, producer_name, producer_version,
+                     producer_config_hash, status, produced_at, content_type,
+                     content_path)
+                VALUES (?, ?, 'pandoc', '3.10.2', 'fakehash', 'success',
+                        current_timestamp, 'text/plain', '/dev/null')
+                """,
+                [key, key[0] * 64],
+            )
+            conn.execute(
+                "INSERT INTO artifact_chunks "
+                "(artifact_cache_key, chunk_index, chunk_text, source_origin, chunk_id) "
+                "VALUES (?, 0, 'identical invoice reminder text', 'test', "
+                "nextval('seq_chunk_id'))",
+                [key],
+            )
+        build_fts_index(conn)
+
+
+def test_search_limit_cuts_a_declared_total_order_not_an_engine_sample(
+        migrated_root: Path) -> None:
+    """§6.13: `ORDER BY score DESC LIMIT k` lets the engine choose WHICH members of a tie
+    block larger than k survive — the window samples the block. The declared total order
+    (R2's key: quantised score desc, artifact_cache_key, chunk_text) must run BEFORE the
+    LIMIT, so the cut is the declared prefix — here the three smallest artefact keys, while
+    insertion order is the three largest."""
+    keys = [c * 64 for c in "fedcba"]  # inserted descending — engine order != declared order
+    _seed_tie_block(migrated_root, keys)
+    with open_catalogue(migrated_root) as conn:
+        results = search(conn, "invoice", k=3)
+    assert [r.artifact_cache_key for r in results] == [c * 64 for c in "abc"]
+
+
+def test_search_orders_ties_by_document_key_within_the_limit(
+        migrated_root: Path) -> None:
+    """Even when the whole tie block FITS the window, tied rows arrive in the declared
+    order — callers may no longer be handed arrival order."""
+    keys = [c * 64 for c in "dcba"]
+    _seed_tie_block(migrated_root, keys)
+    with open_catalogue(migrated_root) as conn:
+        results = search(conn, "invoice", k=10)
+    assert [r.artifact_cache_key for r in results] == [c * 64 for c in "abcd"]
