@@ -99,4 +99,108 @@ already the caller-computed projection, not a minted constant).
    only if its competitor rides within-document repetition (n_indeterminate 12 hints it
    may). A FAIL there is the ruled revert + STOP, not a surprise.
 
-**PENDING below this line: the T2 removal, A1, A2, the sweep, run 14.**
+## THE READING — the C2 sweep (2026-08-24, $0)
+
+Built as pre-registered: T2 removed by ruling (`420b8ac`), then A1 inside THE §5 rule
+(`0388b7e`) and A2 at both synthesis mint sites (`091baad`), every predicate watched RED
+first; suite 2667, ruff green (one pre-existing mypy error in an unrelated runtime
+`sys.path` import, verified pre-existing by stash and disclosed in the A2 commit). The
+sweep ran `scripts/replay_audit.py` deployed-only on run 13's own meta/paired from this
+tree, fresh staging pinned at the run's start, src drift acknowledged and stamped:
+**63 rows replayed, 41 excluded cold**. The 9(d) render guard fired as in r07/r08/r09b
+(one corpus value, len=1/numeric); the rows dump `$LIFE_AGENT_KB/eval/window/r09c-sweep.yaml`
+is the artefact of record.
+
+Graded against **run 13's own committed leader** (recovered per question from
+`calibration/decisions.jsonl`, `posterior_summary.candidates[0]`), not against a string
+matcher — see the disclosure below. **57 of 63 rows replay with the identical action and
+leader**; five rows move; one of the five is an abstain→abstain leader change.
+
+| criterion | frozen bar | read | verdict |
+|---|---|---|---|
+| S1' | q2-105 AND q2-071 BOTH flip (withheld or correct) | **neither** — q2-071 replays identically (same wrong leader, credence 0.936 → 0.939, n_obs 4 → 5); q2-105 is **excluded cold on this pass** and unreadable | **FAIL** |
+| S2' | collateral (correct → withheld) ≤ 5 | 3 — and **none of the three is attributable to A1 or A2** (diagnostic 5) | PASS |
+| S3' | the run-10 blocking row stays repaired | q2-011 replays identically, reporting the gold at n_obs 4 | PASS |
+
+**S1' fails → the frozen consequence is enacted: run 14 is NOT fired; STOP and re-confer.**
+
+### The wire diagnostics ($0, from the sweep's own warm staging)
+
+1. **A2 fires exactly as designed, and is insufficient.** On q2-071 the wire now shows both
+   synthesised confirms arriving at the grounded carriers' covariates (authority 0.85,
+   subject 0.525) instead of 1.0 / 1.0: the amplifier named in the pre-registration is
+   gone. The row still commits the competitor, marginally harder than before. Removing the
+   amplifier does not remove the **count** — four competitor observations against one gold
+   observation, every covariate identical.
+2. **q2-071's carrier is a 2:1 GROUNDED majority, not the confirms.** Three grounded
+   observations: one carries the gold, two carry the competitor — and by the D audit those
+   two are the file-level row and the "(no function)" row of the *same* table, while the
+   gold is the class row the question names. They land in three different chunks, so they
+   are three different `doc_key`s: **one table's rows are counted as independent
+   documents.** `competition_factor` is 1.0 on all three, so the run-9 competing-values
+   temper is blind here by construction (no shared quote window across chunks). Strike the
+   confirms entirely and the competitor still leads 2:1. This is the multi-value-table
+   class (q2-053 / q2-090 precedent), and the entity-anchor lever named in the
+   pre-registration is aimed at exactly it.
+3. **A1 is UNMEASURED on this pass.** No replayable row shows the doc-keyed collapse
+   signature, and the two rows dumped observation-by-observation carry no within-document
+   duplicate pair. A1's target row is q2-105 — **cold on this pass**. The rule is landed,
+   unit-tested and inert in this reading; nothing here is evidence for or against it.
+4. **The readable set is not stable across passes.** Against r09b's sweep on the same
+   record: **14 rows entered the replayable set and 14 left it** (§18.9 pass-order
+   coldness, §6.13's standing residue). q2-009, q2-018, q2-019 and q2-046 became readable;
+   q2-105 went cold. A criterion that names specific rows can therefore become unreadable
+   between two passes of the same instrument — S1' half-failed for that reason, not on
+   evidence. **Register this as a lesson: name a class and a bar, or pre-declare the
+   consequence of a named row going cold.**
+5. **The three collateral rows are S2's, not the temper's.** All three shrink at **S2 —
+   the one replace site r09 left untouched by design** — and on two of them S2 replaces a
+   five-observation channel with one, so the correct leader commits at n_obs 2 and falls
+   under the report bar. Seven rows in the set show an S2 shrink. The JOIN makes S2's
+   surviving replace *worse*, not better: everything upstream now accumulates into a
+   channel that S2 then discards. **This corrects r09b's diagnostic 1**, which attributed
+   all three of its collateral rows to T2: two of them (q2-002, q2-087) did return to
+   correct once T2 was removed, but the third abstains here with T2 gone, so **T2's
+   measured profile is 2 regressions / 0 repairs, not 3 / 0**. The ruling to drop T2 stands
+   on the corrected numbers.
+6. **Splice pricing of the unfired run 14** (`gate_splice.py`, pin reproduced 0.895 /
+   +0.424): the tree as measured reads **0.939 PASS** on the frozen δ/level, and **0.975**
+   if the cold row also flips — the δ/level bar is **no longer the blocker**. But q2-071
+   and q2-018 (warm for the first time on this pass, and identical to the record) both
+   still commit wrong, so **ruling 4's zero-wrong-commit conjunct fails in every variant**.
+   The sweep again saved the spend and a wrong deploy.
+
+### Predictions scored
+
+P1 **unread** (q2-105 cold). P2 **CONFIRMED** — it named q2-071 as the coin-flip and named
+"if it reports, S1' fails"; it reported. P3 **HALF** — two of the three T2 rows returned to
+correct, the third did not (diagnostic 5), and two newly-warm rows moved instead. P4
+**CONFIRMED with a correction** — collateral is 3 ≤ 5, but A1-attributable collateral is
+**0**, not "≤ 2": A1 never fired here. P5 **unread** (no run 14); its pricing half is
+answered by diagnostic 6.
+
+### Disclosure — a defect in this reading, caught before the verdict
+
+The first scoring pass graded the replay by normalised substring match against the gold and
+its variants. That matcher **called q2-071 a repair**: the competitor's value is a substring
+of the gold's (a leading-digit case), so the wrong leader graded as correct — the exact
+shape of failure r05 warned about, and it would have flipped S1' from FAIL to a
+half-PASS. The same matcher mis-graded two judge-graded superset rows the other way. It was
+caught by the sanity check that compares the matcher against the record's own judge grade,
+and the reading was redone against run 13's committed leader per question. Both quantities
+are published above; no verdict was taken on the defective measure.
+
+### What the fail means
+
+A2's hypothesis was **confirmed as a mechanism and refuted as a cure**: the covariate
+inflation was real and is now gone, and the row it was supposed to rescue never depended on
+it. What decides q2-071 is upstream of every aggregation rule in this checkpoint — the
+extractor emits three rows of one table as three independent documents, two of them
+answering a question about a different entity than the one asked. No dedup, cap or temper
+downstream can distinguish them, because at the decide layer they are simply three
+documents that disagree 2:1.
+
+**Enacted:** run 14 not fired; this branch stays unmerged; master keeps the r09-reverted
+state; the §6.12 block stands; nothing bought. The successor decision is conferred in
+`docs/unification/conferrals/r09c-sweep-conferral.md`.
+
