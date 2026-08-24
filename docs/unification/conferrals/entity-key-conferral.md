@@ -151,3 +151,56 @@ it makes a named wrong-commit class worse.**
 3. **If E1 is eventually pre-registered, what is its bar?** Zero channel harms *and* at least
    one wrong-commit repair on the sweep, or is a withhold→correct conversion (reach) enough on
    its own?
+
+---
+
+## RULINGS (owner, interviewed 2026-08-25)
+
+1. **Option A** — targeted warm, then read. Not B (fire run 14 as-is), not C (build E1 blind),
+   not D (park).
+2. **The extract-side entity field RETIRES** from the queue. The qualifier is already carried
+   in the chunk; if a decide-side key later reads badly for a reason that is specifically about
+   extraction, it re-opens under its own pre-registration.
+3. **E1's bar, if it is pre-registered: zero channel harms AND at least one wrong-commit
+   repair on the sweep.** A withhold→answer conversion alone does not license shipping — the
+   block that keeps master undeployed is a wrong-commit block, not a reach block.
+
+### Corrections to this document's own evidence, found while enacting ruling 1
+
+Published rather than amended in place, per the r09c precedent.
+
+1. **The warming price basis above is wrong.** The wall is **not** the deliberate edge: every
+   named row preflights **warm** on the deliberate key (checked through the deployed preflight,
+   `replay_audit.deliberate_is_warm`, $0). The exclusions the sweep reports are a **§18.9
+   derivation going cold mid-loop** — a probe fetching chunks this tree has never extracted,
+   which is the r08 top-k footprint M1.5 named. Those are haiku-class extractions, not $1.2
+   opus deliberates, so the ~$7 estimate is an overestimate of unknown but smaller size.
+2. **The named row set is five, not six** — the four known wrong commits plus the entity key's
+   two cold candidates, of which one is already among the four.
+3. **Three of the five already serve at $0.** The rehearsal found only two rows still cold; the
+   other three warmed since r09d read, which is the §18.9 warm-through's pass-order dependence
+   working in our favour for once. Ruling 1's action is therefore much smaller than priced —
+   and a $0 sweep on the tree of record became possible immediately, without waiting for
+   2026-09-01. It was started as soon as the rehearsal read.
+4. **A defect in the replay's $0 contract, found by the rehearsal and fixed.** `deps.client`
+   covers only the seams the bridge threads a client through; `core/subject` and
+   `core/temporal_intent` build their own on a cache miss, and — the seam that actually fired —
+   `core/joint_extract` calls `anthropic_complete` **directly** from the corroborate probe. The
+   replay was no-spend for exactly as long as some earlier refusal kept firing. Every published
+   reading remains $0 **in fact** (nothing was ever billed); what was missing was the
+   guarantee. Fixed by consuming `collapse/drive._SPEND_SEAMS` — the table the recorder already
+   owns, written after M0 found this same hole — rather than keeping a second copy of the list.
+   `deliberate.answer` is deliberately excluded: criterion 3 preflights that edge per question,
+   and sealing it would refuse the warm cached deliberates the replay depends on.
+
+### Artefacts
+
+- `$LIFE_AGENT_KB/eval/gate-outside-option/warm-rows.sh` + `warm_rows.py` — ruling 1's
+  instrument, prepared and **rehearsed at $0** (`WARM_DRY_RUN=1`), tree-gated to the parked
+  tree of record, budget-capped, and acceptance-tested by a second refusing pass: a row counts
+  as warmed only when the $0 replay can serve it.
+- `$LIFE_AGENT_KB/eval/window/e1-*` — the census, its two carrier variants and their logs.
+- The spend-seam fix rides the tree of record under TDD (RED watched on both tests).
+
+The account's usage limit was **re-verified live on 2026-08-25** rather than inherited: access
+returns 2026-09-01 00:00 UTC. Ruling 1's priced step waits for that date; its $0 half did not.
