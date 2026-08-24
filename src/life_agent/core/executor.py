@@ -500,10 +500,33 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
             n_hits, n_recency, n_ext = _evidence(rr, ex)
             changed = bool(n_ext["candidates"])
             if changed:
+                # r09d D3 — S2 JOINS (the one replace site r09 left untouched). The standing
+                # channel keeps its candidate indices, the grow's new values are appended, and
+                # the pooled set goes through THE §5 rule (``join_wire_observations`` — called,
+                # never re-implemented). A grow ADDS evidence; it must not discard a channel.
+                # r09c measured the cost of replacing here: seven rows shrank at this site and
+                # on two a five-observation channel became one, taking a correct leader under
+                # the report bar with it.
+                joined = list(candidates)
+                slots = {LK._candidate_key(c): j for j, c in enumerate(joined)}
+                remap: dict[int, int] = {}
+                for j, c in enumerate(n_ext["candidates"]):
+                    key = LK._candidate_key(c)
+                    if key not in slots:
+                        slots[key] = len(joined)
+                        joined.append(c)
+                    remap[j] = slots[key]
+                grown = [{**o, "reports": remap.get(int(o.get("reports", -1)), 0)}
+                         for o in (n_ext["observations"] or [])]
+                obs = SO.join_wire_observations(obs, grown, joined)
                 hits, recency, ext = n_hits, n_recency, n_ext
-                candidates = ext["candidates"]
-                cand_comp = _cand_comp(ext, candidates)
-                obs, rho, era = ext["observations"], ext["rho"], ext["era_split"]
+                # competition is a property of the evidence (§4.2), so the joined lattice
+                # keeps the MOST conservative factor either build detected for a candidate.
+                grown_comp = _cand_comp({**n_ext, "observations": grown}, joined)
+                cand_comp = [min(g, cand_comp[j] if j < len(cand_comp) else 1.0)
+                             for j, g in enumerate(grown_comp)]
+                candidates = joined
+                rho, era = ext["rho"], ext["era_split"]
             enacted.append((probe, last_sensors, changed))
             applied = list(dict.fromkeys([*applied, probe]))
             grow_asked = False

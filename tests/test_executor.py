@@ -1561,3 +1561,60 @@ def test_deliberate_payload_carries_the_standing_channel() -> None:
     delib = fake.posted("/probe/deliberate")
     assert delib and delib[0]["observations"] == _EXTRACT_KEYED["observations"]
 
+
+
+# --- r09d D3: S2 joins instead of replacing ----------------------------------------------
+# r09's JOIN reached S1/S3/S4/S5 and left S2 — the retrieval grow — replacing. r09c measured
+# the cost on the deployed tree: seven rows shrink at S2, and on two of them a
+# five-observation channel becomes one, taking a CORRECT leader under the report bar with it.
+# A grow that grounds new candidates must ADD evidence, never discard the standing channel.
+
+def _wobs(reports: int, doc: str, value: str) -> dict[str, Any]:
+    return {"reports": reports, "group": 0, "authority": 0.9, "subject_factor": 1.0,
+            "time_factor": 1.0, "competition_factor": 1.0,
+            "quote": f"q:{doc}", "doc_key": doc, "value_norm": value}
+
+
+def _ext(candidates: list[str], observations: list[dict[str, Any]]) -> dict[str, Any]:
+    return {"candidates": candidates, "observations": observations, "rho": 0.7,
+            "era_split": False, "indeterminate": 0, "half_life_years": 5.0}
+
+
+def test_s2_retrieval_grow_joins_the_standing_channel() -> None:
+    base = _ext(["P123"], [_wobs(0, "d0", "p123"), _wobs(0, "d1", "p123")])
+    grown = _ext(["Q999"], [_wobs(0, "d2", "q999")])
+    fake = FakeServices(
+        route={"construct": "passport number", "time_indexed": False},
+        extract=base, extracts=[base, grown],
+        decides=[
+            {"effector": "abstain", "credences": [0.4], "p_none": 0.6, "eu": 0.0},
+            {"effector": "gather", "probe": "retrieve_expand", "credences": [0.4],
+             "p_none": 0.6, "eu": 0.0},
+            {"effector": "report", "value": "P123", "credences": [0.9, 0.05],
+             "p_none": 0.05, "eu": 0.8},
+        ])
+    _loop(fake)
+    post_grow = fake.posted("/decide")[2]
+    # the standing candidates keep their indices; the grow's candidate is appended
+    assert post_grow["candidates"] == ["P123", "Q999"]
+    assert len(post_grow["observations"]) == 3
+    assert [o["reports"] for o in post_grow["observations"]] == [0, 0, 1]
+
+
+def test_s2_grow_that_grounds_nothing_still_leaves_the_channel_alone() -> None:
+    base = _ext(["P123"], [_wobs(0, "d0", "p123")])
+    fruitless = _ext([], [])
+    fake = FakeServices(
+        route={"construct": "passport number", "time_indexed": False},
+        extract=base, extracts=[base, fruitless],
+        decides=[
+            {"effector": "abstain", "credences": [0.4], "p_none": 0.6, "eu": 0.0},
+            {"effector": "gather", "probe": "retrieve_expand", "credences": [0.4],
+             "p_none": 0.6, "eu": 0.0},
+            {"effector": "report", "value": "P123", "credences": [0.9],
+             "p_none": 0.05, "eu": 0.8},
+        ])
+    _loop(fake)
+    post_grow = fake.posted("/decide")[2]
+    assert post_grow["candidates"] == ["P123"]
+    assert len(post_grow["observations"]) == 1
