@@ -139,3 +139,13 @@ def test_quote_scoped_competitors_uses_the_shared_window() -> None:
     assert M.quote_scoped_competitors("1234", chunk, "value 1234") == 0
     near = "value 1234 and other 5678"
     assert M.quote_scoped_competitors("1234", near, "value 1234") == 1
+
+
+def test_anchor_window_is_the_whole_document_not_the_value_neighbourhood() -> None:
+    # r09d ruling 1: the entity qualifier is a DOCUMENT-level property — a subject named in a
+    # header far from the value still anchors it. The competition term keeps the ±120 window
+    # (a competing value must be adjacent to compete); the anchor does not.
+    chunk = "ACME HOLDINGS LIMITED annual return" + "z" * 500 + "Company Number 1234567"
+    assert M.anchor_window(chunk, "Company Number 1234567") == chunk
+    assert "acme" not in M.tokenize(M.quote_window(chunk, "Company Number 1234567"))
+    assert "acme" in M.tokenize(M.anchor_window(chunk, "Company Number 1234567"))

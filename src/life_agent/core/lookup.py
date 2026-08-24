@@ -672,7 +672,7 @@ def observe_hits(root: Path, question: str, hits: list[dict[str, Any]], *,
         # value inside the extractor's own quote window halves this observation's r.
         n_comp = MATCH.quote_scoped_competitors(
             str(parsed["value"]).strip(), chunk, str(parsed["quote"]))
-        windows.append(MATCH.quote_window(chunk, str(parsed["quote"])))
+        windows.append(MATCH.anchor_window(chunk, str(parsed["quote"])))
         observations.append(Observation(
             card_n=i + 1,
             artifact_cache_key=artifact_key,
@@ -776,7 +776,7 @@ def confirm_hits(root: Path, question: str, value: str, hits: list[dict[str, Any
                     if artifact_key in cov.doc_date else 1.0)
         n_comp = MATCH.quote_scoped_competitors(
             value, chunk, str(parsed["quote"]))
-        windows.append(MATCH.quote_window(chunk, str(parsed["quote"])))
+        windows.append(MATCH.anchor_window(chunk, str(parsed["quote"])))
         observations.append(Observation(
             card_n=i + 1,
             artifact_cache_key=artifact_key,

@@ -153,6 +153,18 @@ _ANCHOR_STOPWORDS = frozenset({
 })
 
 
+def anchor_window(chunk_text: str, quote: str) -> str:
+    """The window the ENTITY ANCHOR reads: the whole document chunk, not the value's
+    neighbourhood. Ruling 2026-08-24, on a $0 battery census — scoped to
+    :func:`quote_window` the rule damped the GOLD on 26 of 42 firings and inverted the
+    ranking on 12, because the qualifier that says what a value is OF (a subject in a
+    header, a class label a table-width away) routinely sits outside ±120 while a rival
+    document's copy happens to carry it. Document-scoped it is strictly harmful on one row
+    at the same clean-firing count. The competition term KEEPS the narrow window: a
+    competing value must be adjacent to compete, an anchor need not be."""
+    return chunk_text
+
+
 def _anchor_terms(question: str) -> list[str]:
     """The question's content tokens, first-seen order, deduped: casefolded FTS tokens of
     at least ``_ANCHOR_MIN_LEN`` characters that are not grammar."""
