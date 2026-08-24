@@ -228,7 +228,24 @@ full delegation** — PASS (the gate's frozen δ/level ∧ the blocking row repa
 wrong commits) closes the §6.12 block and deploys master to live without a further keypress;
 FAIL on any conjunct reverts the JOIN from the deploy path and STOPS for a ruling. The cap
 stands: r07 was the last pure-diagnosis checkpoint — anomalies en route are disclosure items,
-never a new diagnostic arc. Sequencing: **r08 → M1.5 → r09 → run 13**. Old D3–D4 stay re-scoped as Ask's
+never a new diagnostic arc. Sequencing: **r08 → M1.5 → r09 → run 13**.
+**r08 IS READ — §6.13 REPAIRED (2026-08-23/24,
+`docs/unification/reports/r08-window-determinism.md`, $0):** fix (b) frozen blind and landed
+under TDD (`src/pkm/retrieval.py`, SPEC 0.18.2 — the declared total order goes into the SQL
+before `LIMIT`, so the engine cuts a declared prefix, never a sample). Baseline reproduced
+and decomposed the defect (window layer order-unstable 75/74/75, set-unstable 15/14/28 per
+surface; decision layer stable 103/104 with the witness the sole exception); post-fix **zero
+draw-unstable questions everywhere at both layers**; blast radius **one question at one
+surface** (the witness at base — §5 dedup absorbs the other 16 straddles); three replay
+draws: action wobble 0, firing-order wobble 0, n_obs wobble 2 with
+**retrieval-attributable component 0** — run 13's commit-wobble floor is 2, not 14, both
+residue rows named (monotone accumulation, the §18.9 warm-through's signature). Predictions
+2+4 confirmed, 3 refuted, 1 half, 5 an instructive containment-not-equality. Two deviations
+disclosed: the C5 "instrument unmodified" clause contradicted the instrument's own §6.10 pin
+on the fixed tree (resolved: `--acknowledge-src-drift` names the one expected tree, stamped
+into every pin note), and the draws' render-stage 9(d) guard fired as in r07 (rows dumps are
+the artefact of record). The 17/15/30 saturation census is the standing arbitrariness
+record. **M1.5 is next.** Old D3–D4 stay re-scoped as Ask's
 aggregate/thread families. The doc's §14 open questions are a **live empirical ledger**
 (owner's adoption rider): each entry names the evidence that decides it — keep it
 current. Sequencing is continuous and eval-gated, not dogfood-gated (PRINCIPLES §9 as

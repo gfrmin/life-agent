@@ -899,6 +899,18 @@ wobble in the committed n_obs** (one of them in firing order) and **22 flap betw
 and cold** — the committed evidence is a wider tail than the retrieval-set instability
 suggested, and it sits under every gate reading as a noise floor until one of the three named
 fixes is priced.
+*REPAIRED (r08, 2026-08-23/24 — `docs/unification/reports/r08-window-determinism.md`).* Fix
+(b) was frozen and landed (`src/pkm/retrieval.py`, SPEC 0.18.2): the declared total order is
+pushed into the SQL so the engine's `LIMIT` cuts a declared prefix, never a sample. Post-fix:
+**zero draw-unstable questions on every surface at both layers** across five calls in two
+processes (C2); the decision-visible top-k changed on exactly **one** question at one surface
+— the witness at base, inside the straddling census (C6); three replay draws read
+**committed-action wobble 0, firing-order wobble 0, n_obs wobble 2 with the
+retrieval-attributable component 0** (C5's hard clause) — the noise floor above is retired
+from 14 to 2, both residue rows named (monotone accumulation signature, the §18.9
+warm-through's suspected class, not diagnosed per the cap). The saturation census (17/15/30
+straddling per surface; the witness's boundary block saturates its 2× probe) is published as
+the standing arbitrariness record and composes with `carrier_audit` criterion 1.
 
 ## 7. Behaviour preservation — the equivalence instrument, pre-stated
 

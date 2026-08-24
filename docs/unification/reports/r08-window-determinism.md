@@ -173,4 +173,94 @@ untouched import lines — a poisoned incremental cache from a single-file invoc
 clean-cache run is green, noted here because a false red on the instrument would have been
 believed).
 
-**PENDING below this line: the fix commit, then the post-fix reads.**
+## DEVIATION 2 — the draws' render guard fired; the rows dumps are the artefact of record (2026-08-23)
+
+All three replay draws completed their read and wrote their rows dumps, then exited nonzero
+at the render stage: criterion 9(d)'s PII guard refused the `.md` report over one corpus
+value (shape: a one-token numeric). This is the same firing r07's pass 2 accepted at its
+stated limit, with the same resolution: the rows dump (`--out-yaml`), written before the
+render, is the artefact of record; no draw report was rendered. The draws ran with the
+acknowledged src drift of DEVIATION 1 stamped in their pin checks.
+
+## THE READING (2026-08-23/24 — all eight criteria against their frozen text)
+
+**C1 — PASS.** The baseline reproduced (BASELINE section above): the decision layer is
+stable on 103 of 104 with the sole set-unstable question the §6.13 witness — r06's
+1-of-104 replicated cross-process — while the window layer underneath is order-unstable on
+75 / 74 / 75 questions (base / expanded / pool) and set-unstable on 15 / 14 / 28.
+
+**C2 — PASS, the hard kill.** Post-fix, the same Read A (five calls across two fresh
+processes) reads **zero draw-unstable questions on every surface at both layers** — the raw
+over-fetch windows themselves are byte-stable, not merely the deduped top-k that reaches
+decisions. The baseline's window noise replicated exactly, then vanished entirely.
+
+**C3 — satisfied.** Both reads pooled 3 + 2 calls from two separate processes; the merge
+takes the worse verdict per layer.
+
+**C4 — published, not gated.** Straddling tie blocks on 17 / 15 / 30 questions per surface
+(the census is order-independent, so the baseline numbers stand); the witness's boundary
+block spans 153 of 160 probed rows at base and 102 at expanded; the largest pool block is
+212 rows. This is the standing arbitrariness census; it composes with `carrier_audit`
+criterion 1.
+
+**C5 — PASS on the hard clause.** Three post-fix replay draws (deployed-only, staging KB
+rebuilt from live before each, $0). At commit granularity, across the 56 questions readable
+in all three draws: **committed-action wobble 0, firing-order wobble 0** (r07 baseline: 1),
+**committed n_obs wobble 2** (r07 baseline: 14) — and **the retrieval-attributable
+component is 0**: both wobbling questions are retrieval-stable across all five Read A
+calls, so neither is §6.13's. The residue is named, not diagnosed (the cap): on both rows
+the action and leader never change and n_obs drifts monotonically upward draw-over-draw
+(6→7→8 and 11→12→12) — the accumulation signature of the §18.9 warm-through channel r07
+registered, noted here as the suspected class only. The flap bucket reads 34 with 14 never
+readable and 54 stable; readable rows shrink monotonically 76→73→69 as cold exclusions grow
+28→31→35. The **identical-starting-store caveat**, named in the frozen criteria, is what
+this bucket measures: the staging KB is rebuilt per draw but the live pkm store is shared
+and its §18.9 warmth is pass-order-dependent (r07's registered deviation), so coldness
+drifts across draws. Published beside the wobble numbers; r07's flap figure (22) was read
+over a different pass structure and store state and is not directly comparable.
+
+**C6 — history not rewritten, count published.** No §18.9 key changed; warm entries keep
+serving the draws they froze. On a cold pre→post comparison of the decision-visible top-k,
+**exactly one question changed at exactly one surface: the witness, at base** — zero at
+expanded and pool — and it lies inside C4's straddling census. That one change is the fix
+working; nothing gates on it.
+
+**C7 — satisfied.** SPEC 0.18.2 amended in the fix commit; the two new pkm tests were
+watched RED (the engine returned insertion order) before the fix and are GREEN after; the
+stale "no tie-breaker in the SQL" caller comments were corrected in the same commit; full
+suite 2637 passed, ruff and the clean-cache mypy gate green.
+
+**C8 — satisfied.** This report carries classes and counts only. Artefacts of record at
+`$LIFE_AGENT_KB/eval/window/`: `baseline-{p1,p2,stability}.json`,
+`postfix-{p1,p2,stability}.json`, `p5-comparison.json`, `c6-pre-post.json`,
+`draw-d{1,2,3}.yaml`, `draws-verdict.json`.
+
+### The five blind predictions, scored
+
+1. **Half-confirmed.** The witness reproduced in its predicted shape (distinct top-20s
+   across calls; the sole decision-layer set-instability). The concentration claim was
+   wrong at the window layer: pool window set-instability (28) is the *largest*, not the
+   smallest — the 600-row window intersects more blocks, it does not swallow them.
+2. **Confirmed, and stronger than predicted:** zero unstable questions on all surfaces in
+   both processes — at both layers, where the prediction only claimed the top-k.
+3. **Refuted.** 17 straddling questions at base against the predicted ≤5. The set-level
+   tail r06 saw (1 of 104) was dedup absorbing the straddles, not their absence.
+4. **Confirmed on both halves.** Total wobble 2 < 14; the readable↔cold flap did not
+   vanish (34) — the warm-through is untouched, as stated.
+5. **Refuted as an equality, confirmed as a containment.** Predicted: the cold pre→post
+   changed set equals the straddling census. Observed: exactly one changed question (the
+   witness), strictly inside the census — §5 dedup absorbs the other 16 straddles (their
+   tie blocks collapse to the same documents), so straddling predicts *eligibility* to
+   change, not change. No non-straddling question changed anywhere.
+
+### Verdict
+
+§6.13 is **REPAIRED**. The window is no longer the sampler: the engine's `LIMIT` now cuts
+the declared total order (SPEC 0.18.2), the decision-visible effect of the change is
+confined to the witness, and the post-fix tree carries **zero retrieval-attributable
+nondeterminism** under the frozen two-level C5. Run 13's Δ will be read against a
+commit-wobble floor of 2 (both rows named, neither retrieval's), not 14. The residual
+channels stay open by design and are named: the §18.9 warm-through (pass-order-dependent
+coldness; the flap bucket) and the two accumulation-signature wobble rows. Per the cap,
+neither becomes a diagnostic arc; both ride to the next checkpoint as disclosure items.
+

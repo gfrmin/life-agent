@@ -2942,6 +2942,29 @@ on this list. Answers land here by amendment, citing their evidence.
   declare the saturated window and refuse to decide on it. Registered as a standing
   known-and-uncovered source with a measured incidence and a named witness.
 
+- **§6.13 REPAIRED — the window is no longer the sampler (r08, 2026-08-23/24,
+  `docs/unification/reports/r08-window-determinism.md`, $0).** Fix (b) of the three named
+  candidates, frozen blind in r08's pre-registration and landed under TDD (`src/pkm/
+  retrieval.py`, SPEC 0.18.2): the declared total order goes into the SQL before `LIMIT`, so
+  the engine cuts a declared prefix. The baseline first reproduced the defect and decomposed
+  it — the window layer is order-unstable on 75/74/75 and set-unstable on 15/14/28 questions
+  per surface while the decision layer is stable on 103 of 104, the sole exception the
+  witness (r06's 1-of-104, replicated cross-process). Post-fix: zero draw-unstable questions
+  everywhere at both layers; the decision-visible top-k changed on exactly one question at
+  one surface (the witness at base) — §5 dedup absorbs the other 16 straddles, so straddling
+  predicts eligibility to change, not change; three replay draws read committed-action
+  wobble 0, firing-order wobble 0, n_obs wobble 2 with retrieval-attributable component 0 —
+  run 13's commit-wobble floor is 2, not 14, and both residue rows are named (monotone n_obs
+  accumulation, the §18.9 warm-through's signature; per the cap a disclosure, not a
+  diagnosis). Predictions: 2 and 4 confirmed, 3 refuted (17 straddling at base, not ≤5), 1
+  half (pool window instability is the largest, not the smallest), 5 refuted as an equality
+  but confirmed as a containment. Two deviations disclosed en route: C5's frozen
+  "instrument unmodified" clause contradicted the instrument's own §6.10 pin on the fixed
+  tree (resolved by an explicit `--acknowledge-src-drift` that names the one expected tree
+  and stamps the drift into every pin note), and the draws' render-stage 9(d) guard fired as
+  in r07 (the rows dumps are the artefact of record). The saturation census (17/15/30) is
+  the standing arbitrariness record.
+
 - **Four unordered sources on the decision path — the cache was doing the work of determinism
   (2026-08-19/20, tranche-2 M0/M0.5, `scripts/collapse_replay.py` + the M0.5 probes, $0
   deterministic).** The decision-equivalence instrument built at M0 found two ties resolved by
