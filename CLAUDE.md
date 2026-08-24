@@ -245,7 +245,18 @@ disclosed: the C5 "instrument unmodified" clause contradicted the instrument's o
 on the fixed tree (resolved: `--acknowledge-src-drift` names the one expected tree, stamped
 into every pin note), and the draws' render-stage 9(d) guard fired as in r07 (rows dumps are
 the artefact of record). The 17/15/30 saturation census is the standing arbitrariness
-record. **M1.5 IS DONE (2026-08-24, `docs/unification/reports/r05-collapse-m1-5.md`, $0, nothing moved):** 7.2 green on every set against post-r08 master (311/311 + 104/104 + 2/2); every declared class dispositioned; two of M0.5's three B-lookup absences closed free (warmed by the r07/r08 replays), q2-036 the named remainder — the fix's own footprint (its top-k changed, its new chunks never derived), closed by the post-r09 re-record; bridge-internal lanes each named with their actual oracle; the priced lane and seam path stamp neither regime nor policy (0/104 — M2's poster owns it). Also corrected: **O2 already ran and merged** (m0-5's manifest: 102 free + 209 priced, 2026-08-20) — the baseline of record is the merged m0-5. **r09 is next.** Old D3–D4 stay re-scoped as Ask's
+record. **M1.5 IS DONE (2026-08-24, `docs/unification/reports/r05-collapse-m1-5.md`, $0, nothing moved):** 7.2 green on every set against post-r08 master (311/311 + 104/104 + 2/2); every declared class dispositioned; two of M0.5's three B-lookup absences closed free (warmed by the r07/r08 replays), q2-036 the named remainder — the fix's own footprint (its top-k changed, its new chunks never derived), closed by the post-r09 re-record; bridge-internal lanes each named with their actual oracle; the priced lane and seam path stamp neither regime nor policy (0/104 — M2's poster owns it). Also corrected: **O2 already ran and merged** (m0-5's manifest: 102 free + 209 priced, 2026-08-20) — the baseline of record is the merged m0-5. **r09 IS BUILT AND READ (2026-08-24,
+`docs/unification/reports/r09-deduped-join.md`; pre-registration committed BEFORE any src
+change):** the §5 dedup key (quote/doc_key/value_norm) rides every wire observation
+(executor strips before decide — the brain stays string-blind); every S1/S3/S4/S5 probe
+receives the standing channel and returns the §5-deduped JOIN (one rule:
+`lookup.dedup_drop_rows`; groups doc-keyed). Disagree no longer erases; empty-ok no longer
+collapses; null-guard kept; S2 untouched. Finding: the base arrives deduped + probe obs are
+value-only ⇒ the JOIN is idempotent over the raw pool ⇒ **r07's 10/2 bound is run 13's
+expected read, not a ceiling**. 7.2: non-probe fixtures byte-identical; 95 probe-firing
+fixtures unservable (payload grew — the named class). Suite 2653, ruff, mypy green.
+**NEXT: ruling 2's riders (re-record m0-5, re-prep O2), then run 13** (frozen branches:
+PASS ⇒ §6.12 block closes + deploy to live; FAIL ⇒ revert JOIN + STOP). Old D3–D4 stay re-scoped as Ask's
 aggregate/thread families. The doc's §14 open questions are a **live empirical ledger**
 (owner's adoption rider): each entry names the evidence that decides it — keep it
 current. Sequencing is continuous and eval-gated, not dogfood-gated (PRINCIPLES §9 as

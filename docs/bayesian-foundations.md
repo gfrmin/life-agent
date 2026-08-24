@@ -2965,6 +2965,28 @@ on this list. Answers land here by amendment, citing their evidence.
   in r07 (the rows dumps are the artefact of record). The saturation census (17/15/30) is
   the standing arbitrariness record.
 
+- **r09 — the §5-deduped JOIN is on the decision path; the replace branch is retired at the
+  probe sites (2026-08-24, `docs/unification/reports/r09-deduped-join.md`, $0, register
+  §6.12).** Ruling 1 enacted under its own frozen pre-registration (committed before any
+  `src/` change): the §5 dedup key rides every wire observation (quote, doc_key, and
+  value_norm — the third field C2's identity forced in TDD, disclosed as the checkpoint's
+  D1 amendment), stripped before every decide post so the brain stays string-blind; the
+  executor hands its standing channel to every S1/S3/S4/S5 probe and the bridge returns the
+  §5-deduped pool computed by THE deployed rule (`lookup.dedup_drop_rows`, extracted from
+  `dedup_correlated` so the clustering exists once; groups re-derived from doc_key — the r07
+  bound's group-0 collision is dead). Semantics adopted are the bound's, named not smuggled:
+  a disagree no longer erases the grounded channel, the deliberate empty-ok collapse is
+  retired, the single-rho coarsening stands, the null-read guard stays, S2 is untouched.
+  **Finding en route: the deployed JOIN is provably idempotent over the raw pool on today's
+  wire shapes** (the base arrives §5-deduped from `observe_hits`; synthesised probe
+  observations are value-only) — so r07's JOIN upper bound (10 repairs / 2 regressions on
+  66) is run 13's expected read, not a ceiling. 7.2 on this tree: every non-probe-firing
+  fixture replays byte-identically (216/311 + 9/104 + 2/2); the 95 probe-firing fixtures
+  are unservable because the payload grew — the named class, why ruling 2 re-records the
+  baseline. Three deviations disclosed (the D1 third field; a process slip rebuilt and
+  re-verified; prediction 1's instrument-blindness — the direction clause rides run 13).
+  The §6.12 deployment block STANDS until run 13's PASS.
+
 - **Four unordered sources on the decision path — the cache was doing the work of determinism
   (2026-08-19/20, tranche-2 M0/M0.5, `scripts/collapse_replay.py` + the M0.5 probes, $0
   deterministic).** The decision-equivalence instrument built at M0 found two ties resolved by

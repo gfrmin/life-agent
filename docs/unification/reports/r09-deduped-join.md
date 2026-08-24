@@ -119,4 +119,92 @@ r07 artefacts are history and are not re-read.
 - Touching S2, the null-read guard, per-observation rho, or the gate's δ/level.
 - Firing run 13 from this checkpoint (C8).
 
-**PENDING below this line: the implementation commits, then the 7.2 reading.**
+## THE READING (2026-08-24 — the criteria against their frozen text)
+
+Implementation commits: the D1+D2 landing and the comment-hygiene commit, both on this
+branch after the pre-registration (history is the proof C8 asked for).
+
+**C1 — satisfied.** Every predicate was watched RED before its code (the wire key, the
+strip, the shared rule, the four join shapes, the two endpoint joins, the instrument
+delegation); the two C5 tests, which pin a structural invariant and so pass on arrival,
+were each verified RED by mutation (the corroborate derivation key and the deliberate cache
+key both made channel-dependent, each test failing, each mutation reverted). Full suite
+**2653 passed**, ruff and clean-cache mypy green.
+
+**C2 — satisfied.** The clustering rule now exists exactly once: `lookup.dedup_drop_rows`,
+extracted from `dedup_correlated` (which delegates) and called by the wire join and the
+instrument alike. The property test holds identical survivors across the object and wire
+adapters.
+
+**C3 — satisfied.** Per-shape unit tests: a null read and a lattice-refusing disagree pool
+nothing (the channel survives, count unchanged); a confirm and a mint add one; nothing ever
+lowers a grounded channel.
+
+**C4 — satisfied.** Groups re-derive from `doc_key`; the synthesised read takes its own
+fresh group; two chunks of one document stay one group. The bound's group-0 collision is
+dead, tested.
+
+**C5 — satisfied, mutation-verified.** The channel never enters `extract_joint`'s arguments
+or the deliberate §18.9 key; warm entries keep serving. Both tests went RED under a
+deliberate key-poisoning mutation and green on the real code.
+
+**C6 — satisfied, with the counts.** On this tree: `m0-5` **216 of 311 replay identically,
+95 unservable**; `m0-5-growlane` **9 of 104 identically, the same 95 unservable**; `m1-5`
+**2 of 2 identically**. Every non-probe-firing fixture (B-lookup, A-poster, B-narrative,
+seam, and the 9 A-loop rows that scheduled no S1/S3/S4/S5 probe) replays byte-identically —
+the JOIN touches nothing it should not. Every unservable fixture is the SAME named class:
+the executor's probe payload grew the `observations` field, so the tape has no matching
+exchange (`CassetteMissError`, counted per fixture in the replay output). **Zero
+unexplained divergences.** This is the intended-divergence reading the criterion froze —
+and why ruling 2 re-records the baseline after r09.
+
+**C7 — satisfied.** Quotes ride the wire and the fixtures only; this report and the tree
+carry classes and counts.
+
+**C8 — honoured.** No priced run was fired from this checkpoint.
+
+### The blind predictions, scored
+
+1. **NOT SCORED — the instrument is blind to it, a pre-registration miss disclosed as
+   DEVIATION 3.** The prediction assumed probe-firing fixtures would replay to a comparable
+   decision; they are unservable instead (the grown payload has no tape). Neither half of
+   P1 is observable at the fixture layer. Run 13's frozen conjunct (the blocking-row class
+   repairs) reads it live.
+2. **CONFIRMED, and strengthened into a finding.** The base channel arrives already
+   §5-deduped (`observe_hits` dedups at the shared shaper before abstraction) and every
+   synthesised probe observation is value-only (empty quote — §5 never clusters it), so on
+   today's wire shapes the deduped JOIN is **provably idempotent over the raw pool**: the
+   deployed join and r07's "upper bound" coincide. The bound's 10 repairs / 2 regressions
+   moves from most-favourable-case to the expected read for run 13 (modulo the group fix
+   and the single-rho semantics, both named in D3). The key's payoff is what the
+   pre-registration said: readability and the guard rail for any future multi-observation
+   probe reply.
+3. **Pending run 13** (the bracketing claim stands as frozen).
+4. **CONFIRMED at the unit layer** (C5, mutation-verified). The live confirmation rides
+   run 13's spend accounting.
+5. **CONFIRMED.** No credence-side change: the daemon sees stripped observations only
+   (tested), and the full suite's daemon-parity surface is green.
+
+### DEVIATIONS
+
+1. **D1 grew a third field.** The pre-registration froze `quote` + `doc_key` and derived
+   the value-only exemption's tokens from `candidates[reports]`; C2's identity property
+   refuted the derivation in TDD (an OCR-variant candidate's display form is not the
+   observation's own normal form), so `value_norm` rides the wire too. Caught RED before
+   any reading; the strip covers all three.
+2. **A process slip, disclosed:** reverting mutation 1 with `git checkout` discarded the
+   then-uncommitted server implementation; it was rebuilt from the session's own patch
+   scripts and re-verified green by the same 115 tests before anything else ran. Lesson
+   applied immediately: the implementation was committed before mutation 2.
+3. **P1's instrument-blindness** (above): the criterion anticipated unservable requests as
+   a count; it did not anticipate that the count would swallow the direction clause whole.
+   The direction clause is therefore vacuous at the fixture layer and run 13 carries it.
+
+### NEXT (the ruled sequence)
+
+Merge; then ruling 2's riders — re-record the m0-5 baseline of record on this tree
+(re-priced traces; the recorder's fixtures then carry the joined wire), re-prepare O2 —
+then **run 13** under the §6.10 pin with ruling 4's frozen branches: PASS ⇒ the §6.12
+deployment block closes and master deploys to live; FAIL on any conjunct ⇒ the JOIN reverts
+from the deploy path and work stops for a ruling.
+
