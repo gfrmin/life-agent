@@ -103,4 +103,96 @@ so a second gather round can no longer discard an accumulated channel.
    by whichever of the four wrong rows is cold — the coldness clause exists because that is
    now the dominant risk, not the lever.
 
-**PENDING below this line: D1, D2, D3, the sweep, run 14.**
+## THE READING — the C2 sweep (2026-08-24, $0)
+
+Built as pre-registered: D1 the detector with one shared window definition (`95e110c`), D2
+the factor at both mint sites (`023de39`), D3 the S2 join (`af8112e`); every predicate
+watched RED first, suite 2685 and ruff green. The sweep ran the r09b/r09c instrument
+verbatim, deployed-only on run 13's own meta/paired, fresh staging, drift acknowledged and
+stamped. Pass 1: **58 rows readable, 46 cold**; the rows dump
+`$LIFE_AGENT_KB/eval/window/r09d-sweep.yaml` is the artefact of record. Graded against run
+13's own committed leader, per r09c's rule.
+
+| criterion | frozen bar | read | verdict |
+|---|---|---|---|
+| S1'' | every readable run-13 wrong row flips; **< 3 of the four readable ⇒ INCONCLUSIVE, run one further pass** | **1 of 4 readable** (q2-018, still wrong; q2-019, q2-071, q2-105 all cold) | **INCONCLUSIVE** |
+| S2'' | collateral ≤ 5 | **2** (q2-046, q2-057) | PASS |
+| S3'' | blocking row stays repaired if readable | q2-011 reports the gold | PASS |
+| S4'' | q2-009 and q2-046 return to correct if readable | q2-009 **returned**; q2-046 did **not** | **FAIL** |
+
+**The pre-declared second pass could not run.** It was launched immediately and stopped at
+row 12 on an **account-level API usage limit — access returns 2026-09-01 00:00 UTC**. Cold
+rows can only be warmed by real model calls, so no further pass can improve the readable set
+before that date, and **run 14 (~$40) is externally blocked regardless of any sweep result**.
+The frozen chain therefore terminates where it was written to: still inconclusive ⇒
+**STOP and confer**; run 14 not fired.
+
+### The lever's own reading — a $0 census, and it refutes the frozen window
+
+The criteria could not resolve S1'', so the checkpoint was read where it *is* measurable:
+across the whole battery, on the warm channel, how often does the anchor fire and **which
+side does it damp**? (`anchor_census.py` / `window_census.py`, both $0, RefusingClient — no
+model call, cold questions skipped.)
+
+| window | fires | damps the gold | **damps the gold while a non-gold stays at 1.0** | clean firings |
+|---|---|---|---|---|
+| **±120 quote window (as built, frozen in D2)** | 42 | 26 | **12** | 16 |
+| ±600 local | 43 | 26 | 10 | 17 |
+| **whole chunk (document-scoped)** | 28 | 13 | **1** | 15 |
+
+**The frozen window choice is refuted.** As built, the rule damps the gold on 26 of its 42
+firings and *inverts the ranking direction* on 12 — while a document-scoped window keeps
+essentially the same clean firings (15 vs 16) and is strictly harmful on **one**. The
+mechanism is exact, from the wire: on q2-057 the discriminating terms are five tokens of the
+document's subject; the gold's ±120 window carries the value but **none** of them (score 0,
+damped to 1/2) while a competitor's window happens to carry all five (score 5, undamped).
+**A value-adjacency window cannot carry a document-level qualifier** — run 9's window is
+right for competing values, which must be adjacent, and wrong for the entity anchor, which
+need not be.
+
+### What else the wire settled ($0)
+
+1. **q2-046 is not the temper's collateral and never was S2's.** Its single grounded
+   observation is damped by the **pre-existing competition term** (n_comp = 12), not by the
+   anchor — which does not fire there at all (no discriminating terms on a one-observation
+   channel). S4'' named it because **r09c mis-attributed all three of its collateral rows to
+   S2**; the wire now shows S2 was responsible for q2-009 alone, which duly returned to
+   correct once S2 joined. The r09c reading's diagnostic 5 is corrected here.
+2. **The "S2 shrink" census is not a valid measure of D3.** It reads what a *site returned*,
+   not what the executor kept — post-join the site legitimately returns a small payload while
+   the channel grows (q2-057: site reply 4, committed channel 9). Nine rows still "shrink" by
+   that measure with the join in place; the measure, not the join, is what that number is
+   about.
+3. **The anchor never fires on q2-018** under either window: the fax/telephone class produces
+   no discriminating term in that channel. Prediction 2 is refuted with a mechanism.
+
+### Predictions scored
+
+P1 **unread** (q2-071 cold). P2 **REFUTED** — the anchor does not fire on q2-018 at all.
+P3 **REFUTED in both halves** — collateral read 2, below the predicted 3–6, and the criterion
+that failed was S4'', not S2''. P4 **HALF** — q2-009 returned to correct as predicted;
+q2-046 did not, because it was never S2's row. P5 **unread**, and now externally blocked.
+
+### Disclosures
+
+- **Deviation:** the pre-declared second pass was interrupted by the API usage limit, not by
+  a decision. It is reported as interrupted, never as read.
+- The stalled pass was left retrying against an account limit for ~8 minutes before it was
+  killed; nothing was written from it.
+- A wait-loop used to watch the sweeps matched **its own** command line in `pgrep`, so pass 1
+  was reported as "still running" for ~13 minutes after it had finished cleanly. No result
+  depends on it; corrected by matching the interpreter, not the pattern.
+- The census's gold test is a normalised-equality-or-token-containment match, not the judge;
+  the 12 strictly-harmful rows are the set that matters and each is named in the artefact.
+
+### What the checkpoint means
+
+D3 is **confirmed** on its one readable target (q2-009 returned to correct; no row lost a
+correct commit to the join). D1's detector is sound and D2's *placement* is sound — the
+defect is one frozen constant: the **window**. That is not a lever failure, it is a scope
+error found by a $0 census that cost nothing and would have cost ~$40 to find at the gate.
+
+**Enacted:** run 14 not fired; this branch stays unmerged; master keeps the r09-reverted
+state; the §6.12 block stands; nothing bought. The successor decision is conferred in
+`docs/unification/conferrals/r09d-window-conferral.md`.
+
