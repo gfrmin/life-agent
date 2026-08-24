@@ -101,14 +101,7 @@ def quote_scoped_competitors(value: str, chunk_text: str, quote: str) -> int:
     the tel it was asked for) is the dangerous shape; same-shape values in other rows are
     what the quote already resolved. Whole-chunk scanning measured 24-32/56 collateral on
     the run-8 corrects; quote-scoped measured 18/56 with the same 3/3 wrong flips."""
-    if quote:
-        pos = chunk_text.find(quote)
-        if pos >= 0:
-            return competing_value_count(
-                value, chunk_text[max(0, pos - _QUOTE_MARGIN):
-                                  pos + len(quote) + _QUOTE_MARGIN])
-        return competing_value_count(value, quote)
-    return competing_value_count(value, chunk_text)
+    return competing_value_count(value, quote_window(chunk_text, quote))
 
 
 def competing_value_count(value: str, chunk_text: str) -> int:
@@ -124,3 +117,67 @@ def competing_value_count(value: str, chunk_text: str) -> int:
     own_shapes = set().union(*value_classes.values())
     return sum(1 for canon, shapes in _span_classes(chunk_text).items()
                if canon not in own_canons and shapes & own_shapes)
+
+def quote_window(chunk_text: str, quote: str) -> str:
+    """THE anchor window both §4.2 terms read: the extractor's own quote ± the frozen
+    margin, located in the chunk. Falls back to the quote when it is not found in the
+    chunk (a tokenization-divergent replay), and to the whole chunk when there is no
+    quote — the ladder frozen with the competing-values detector. One definition, two
+    consumers (§6.8): :func:`quote_scoped_competitors` and :func:`discriminating_terms`."""
+    if quote:
+        pos = chunk_text.find(quote)
+        if pos >= 0:
+            return chunk_text[max(0, pos - _QUOTE_MARGIN):
+                              pos + len(quote) + _QUOTE_MARGIN]
+        return quote
+    return chunk_text
+
+
+# ── The entity anchor (r09d D1) ─────────────────────────────────────────────────────────
+# The r09c wire class: an observation carries a value but not the QUALIFIER saying what the
+# value is of — a class-scoped question answered with the file-scoped row of the same table,
+# a fax question answered with the telephone beside it. Both survive every aggregation rule
+# because at the decide layer they are simply documents that disagree. The discriminating
+# terms are computed FROM the channel (a question token some window carries and another does
+# not), so the rule is relative by construction: no window separates them ⇒ nothing fires.
+_ANCHOR_MIN_LEN = 3
+# Grammar only. A word that could ever BE the qualifier ("number", "total", "rate") must
+# never appear here — a stopword list that grows into content is how this rule goes wrong.
+_ANCHOR_STOPWORDS = frozenset({
+    "what", "whats", "which", "when", "where", "whose", "whom", "who", "why", "how",
+    "does", "did", "done", "doing", "this", "that", "these", "those", "there", "then",
+    "than", "from", "with", "without", "have", "has", "had", "been", "being", "was",
+    "were", "are", "and", "the", "for", "its", "his", "her", "their", "our",
+    "you", "your", "any", "all", "into", "onto", "about", "many", "much", "please",
+    "according", "listed", "shown", "stated", "given", "say", "says", "said",
+})
+
+
+def _anchor_terms(question: str) -> list[str]:
+    """The question's content tokens, first-seen order, deduped: casefolded FTS tokens of
+    at least ``_ANCHOR_MIN_LEN`` characters that are not grammar."""
+    out: list[str] = []
+    for tok in tokenize(question):
+        if len(tok) >= _ANCHOR_MIN_LEN and tok not in _ANCHOR_STOPWORDS and tok not in out:
+            out.append(tok)
+    return out
+
+
+def discriminating_terms(question: str, windows: list[str]) -> tuple[str, ...]:
+    """The question's content tokens that SEPARATE the channel: present in at least one
+    observation's :func:`quote_window` and absent from at least one. A term every window
+    carries discriminates nothing; a term no window carries discriminates nothing either.
+    Pure and model-free — the count feeds ``lookup.anchor_factor``."""
+    if len(windows) < 2:
+        return ()
+    token_sets = [set(tokenize(w)) for w in windows]
+    return tuple(t for t in _anchor_terms(question)
+                 if any(t in ts for ts in token_sets)
+                 and not all(t in ts for ts in token_sets))
+
+
+def anchor_score(window: str, terms: tuple[str, ...]) -> int:
+    """How many discriminating ``terms`` this window carries, token-boundary (never a
+    substring: a term does not match inside a longer token)."""
+    tokens = set(tokenize(window))
+    return sum(1 for t in terms if t in tokens)
