@@ -94,11 +94,30 @@ def join_wire_observations(
         j = int(o.get("reports", -1))
         return _norm_value(candidates[j]) if 0 <= j < len(candidates) else ""
 
-    rows = [(str(o.get("quote") or ""), str(o.get("doc_key") or ""), _vn(o),
-             float(o.get("authority", 1.0)) * float(o.get("subject_factor", 1.0))
-             * float(o.get("time_factor", 1.0)))
+    def _cov(o: AbstractObservation) -> float:
+        return (float(o.get("authority", 1.0)) * float(o.get("subject_factor", 1.0))
+                * float(o.get("time_factor", 1.0)))
+
+    rows = [(str(o.get("quote") or ""), str(o.get("doc_key") or ""), _vn(o), _cov(o))
             for o in pooled]
     drop = dedup_drop_rows(rows)
+    # r09b T2 — the nested-dependence collapse: synthesised observations (no document of
+    # their own) reporting the SAME candidate collapse to the max-covariate one (first-
+    # maximal on ties). The tiers and the deliberate edge re-read the same retrieved
+    # documents; a re-read cannot corroborate itself. Disagreeing synthesised reads and
+    # every document-carrying observation are untouched.
+    best_synth: dict[Any, int] = {}
+    for i, o in enumerate(pooled):
+        if i in drop or str(o.get("doc_key") or ""):
+            continue
+        key = o.get("reports")
+        if key not in best_synth or _cov(o) > _cov(pooled[best_synth[key]]):
+            best_synth[key] = i
+    for i, o in enumerate(pooled):
+        if i in drop or str(o.get("doc_key") or ""):
+            continue
+        if best_synth.get(o.get("reports")) != i:
+            drop = drop | {i}
     group_order: dict[str, int] = {}
     out: list[AbstractObservation] = []
     for i, o in enumerate(pooled):

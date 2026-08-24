@@ -1891,3 +1891,80 @@ def test_the_channel_never_enters_the_deliberate_cache_key(
     _call(deps, "POST", "/probe/deliberate", {**body, "observations": _CHANNEL})
     assert len(keys) == 2 and keys[0] == keys[1]
 
+
+# --- r09b T1: the strict-span guard (entity-boundary containment) ----------------------------
+
+
+def test_containment_confirm_refused_when_a_name_extends_the_candidate_leftward(
+        deps: BridgeDeps, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The superset-confirm class: a shorter personal-name candidate contained inside a
+    longer name must NOT be confirmed — the adjacent name-shaped token extends the entity.
+    (The corroborate audit's registered follow-up, now the ruled temper.)"""
+    import life_agent.core.joint_extract as JE
+
+    monkeypatch.setattr(JE, "extract_joint",
+                        lambda root, q, hits, *, model, k: JE.JointResult(
+                            value="Xylia Abbot Corden", confidence=0.9, as_of=None))
+    status, payload = _call(deps, "POST", "/probe/corroborate", {
+        "reextract": True, "question": "name?", "hits": [
+            {"artifact_cache_key": "d0", "chunk_text": "…"}],
+        "candidates": ["Abbot Corden"], "model": "claude-opus-4-8", "rho": 0.95})
+    # PII-OK: synthetic personal-name shapes
+    assert status == 200
+    assert payload["observations"] == []
+    assert payload["read"] == "disagree"
+
+
+def test_containment_confirm_refused_when_a_digit_group_extends_the_candidate(
+        deps: BridgeDeps, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The numeric twin: a shorter digit-run contained beside another digit group keeps the
+    conservative no-observation contract."""
+    import life_agent.core.joint_extract as JE
+
+    monkeypatch.setattr(JE, "extract_joint",
+                        lambda root, q, hits, *, model, k: JE.JointResult(
+                            value="9999 8888",  # PII-OK: synthetic digit shapes
+                            confidence=0.9, as_of=None))
+    status, payload = _call(deps, "POST", "/probe/corroborate", {
+        "reextract": True, "question": "number?", "hits": [
+            {"artifact_cache_key": "d0", "chunk_text": "…"}],
+        "candidates": ["8888"], "model": "claude-opus-4-8", "rho": 0.95})
+    # PII-OK: synthetic digit shapes
+    assert status == 200
+    assert payload["observations"] == []
+
+
+def test_containment_confirm_accepted_at_an_entity_boundary(
+        deps: BridgeDeps, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Prose around the candidate is not an extension: lowercase function words beside the
+    matched span leave the confirm intact (the q-011 pooling-loss fix keeps working)."""
+    import life_agent.core.joint_extract as JE
+
+    monkeypatch.setattr(JE, "extract_joint",
+                        lambda root, q, hits, *, model, k: JE.JointResult(
+                            value="the contact is Abbot Corden for now",
+                            confidence=0.9, as_of=None))
+    status, payload = _call(deps, "POST", "/probe/corroborate", {
+        "reextract": True, "question": "name?", "hits": [
+            {"artifact_cache_key": "d0", "chunk_text": "…"}],
+        "candidates": ["Abbot Corden"], "model": "claude-opus-4-8", "rho": 0.95})
+    assert status == 200
+    assert payload["read"] == "confirm"
+    assert payload["observations"][0]["reports"] == 0
+
+
+def test_deliberate_containment_gets_the_same_strict_span_guard(
+        deps: BridgeDeps, monkeypatch: pytest.MonkeyPatch) -> None:
+    """One guard, both containment branches: the deliberate join refuses the superset too."""
+    import life_agent.core.deliberate as DL
+
+    monkeypatch.setattr(DL, "answer", lambda q, cfg: DL.DeliberateResult(
+        question=q, model="m", text="", value="Xylia Abbot Corden", credence=0.9,
+        declined=False, status="ok", notes="", cost_usd=0.0, latency_s=0.0,
+        input_tokens=None, output_tokens=None, session_id=None, tool_calls=0,
+        gather_rounds=0))
+    status, payload = _call(deps, "POST", "/probe/deliberate", {
+        "question": "name?", "candidates": ["Abbot Corden"]})
+    assert status == 200 and payload["status"] == "ok"
+    assert payload["observations"] == []
+

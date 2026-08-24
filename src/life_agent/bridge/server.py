@@ -380,7 +380,8 @@ def _probe_corroborate(deps: BridgeDeps, p: Payload) -> Payload:
                 contained = [i for i, c in enumerate(candidates)
                              if MATCH.answer_matches(str(c), [], jr.value)]
                 if (len(contained) == 1
-                        and not _competing_value_shape(jr.value, candidates[contained[0]])):
+                        and not _competing_value_shape(jr.value, candidates[contained[0]])
+                        and not _superset_extension(jr.value, candidates[contained[0]])):
                     idx = contained[0]
             if idx is None and not contained and p.get("allow_new"):
                 # The re-extract GROW actuator (slice 6): the strong re-read named a value
@@ -561,6 +562,45 @@ def _candidate_competition(p: Payload, idx: int) -> float:
     return float(comp[idx]) if 0 <= idx < len(comp) else 1.0
 
 
+def _superset_extension(value: str, candidate: str) -> bool:
+    """r09b T1 — the strict-span guard: True when the candidate's matched token span in
+    ``value`` is NOT at an entity boundary — the token immediately adjacent (either side)
+    has the same token class as the candidate's own tokens (name-shaped beside name tokens,
+    digit-group beside digit tokens). The superset-confirm class: a shorter personal-name
+    candidate inside a longer name must not be confirmed. Prose (lowercase function words,
+    punctuation-only tokens) beside the span is not an extension. Checked on the FIRST
+    token-level span; a value with no token-level span (a different match route) is left to
+    the existing guards."""
+    def _strip(tok: str) -> str:
+        return tok.strip(".,;:()[]{}<>\"'")
+
+    def _norm(tok: str) -> str:
+        return _strip(tok).casefold()
+
+    def _tclass(tok: str) -> str:
+        t = _strip(tok)
+        if any(c.isdigit() for c in t):
+            return "digit"
+        if t[:1].isupper() and t.replace("-", "").isalpha():
+            return "name"
+        return "other"
+
+    vt = value.split()
+    ct = [_norm(c) for c in candidate.split()]
+    if not ct:
+        return False
+    cclasses = {_tclass(c) for c in candidate.split()} - {"other"}
+    if not cclasses:
+        return False
+    for i in range(len(vt) - len(ct) + 1):
+        if [_norm(x) for x in vt[i:i + len(ct)]] == ct:
+            left = vt[i - 1] if i > 0 else None
+            right = vt[i + len(ct)] if i + len(ct) < len(vt) else None
+            return any(adj is not None and _tclass(adj) in cclasses
+                       for adj in (left, right))
+    return False
+
+
 def _join_deliberate_value(value: str | None, candidates: list[str], allow_new: bool,
                            *, time_factor: float = 1.0,
                            competition: list[float] | None = None,
@@ -582,7 +622,9 @@ def _join_deliberate_value(value: str | None, candidates: list[str], allow_new: 
     if idx is None:
         contained = [i for i, c in enumerate(candidates)
                      if MATCH.answer_matches(str(c), [], value)]
-        if len(contained) == 1 and not _competing_value_shape(value, candidates[contained[0]]):
+        if (len(contained) == 1
+                and not _competing_value_shape(value, candidates[contained[0]])
+                and not _superset_extension(value, candidates[contained[0]])):
             idx = contained[0]
         elif not contained and allow_new:
             new_candidate = value
