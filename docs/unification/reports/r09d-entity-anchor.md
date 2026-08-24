@@ -277,4 +277,63 @@ window token sets, so a term can look discriminating when all it separates is **
 4. The location-question inversion is **not** fixed by this change — its two carriers are
    genuinely different documents.
 
-**PENDING below this line: D4, its census, the verdict.**
+### THE READING — iteration 2 (2026-08-24, $0)
+
+D4 landed under TDD (`d1d05a2`-series): `_apply_anchor` moves after `dedup_correlated`,
+watched RED on exactly the shape the census implied — two chunks of one document, only one
+carrying the qualifier, the §5 survivor wearing a damp its own document earned. Suite 2688,
+ruff green.
+
+**The census, measured exactly** (each observation's own `n_competing` for the base, not a
+re-derivation — see the disclosure):
+
+| tree | fires | damps the gold | strictly harmful | clean firings |
+|---|---|---|---|---|
+| pre-rescope (±120) | 50 | 33 | 10 | 17 |
+| rescoped (document) | 42 | 22 | **5** | 20 |
+| **+ D4 (post-dedup terms)** | 39 | 19 | **5** | 20 |
+
+**The five harmful rows are byte-identical across all three trees.** D4 quietened the rule
+(39 firings, fewer gold damps) and moved not one of them.
+
+| clause (frozen before the change) | read | verdict |
+|---|---|---|
+| **HARD: zero inversions on a named wrong-commit class** | the run-8 multi-value-table row still damps the **gold** to 1/4 while its competitor sits at its base | **FAIL** |
+| inclusive harm ≤ 2 | 2 genuine + 1 marginal = **3** | FAIL |
+| clean firings ≥ 20 | 20 | PASS |
+
+**Predictions:** P1 **REFUTED** (the artefact class persists — those copies are different
+documents, not chunks of one). P2 **REFUTED** — and P2 carried the pre-declared consequence:
+*"if it does not clear, the hard clause fails the iteration and this lever is done."*
+P3 **half** (clean firings did not fall; the bar is met). P4 **CONFIRMED** (the location
+inversion is untouched, its carriers being genuinely different documents).
+
+**Enacted, as pre-registered: the entity anchor is DONE.** It is not accepted, not merged,
+and not queued. What survives the checkpoint is **D3, the S2 join** — confirmed on its one
+readable target, with no row losing a correct commit to it. The §6.12 block stands; nothing
+was bought; run 14 remains externally blocked until 2026-09-01.
+
+**Why the lever failed, stated plainly:** a question's discriminating tokens are not the
+entity anchor. They separate *documents that talk about different things* — but on the rows
+that matter, the gold's document is terse (a table row, a bare line) and a competitor's
+document is discursive, so the discursive document wins the term count no matter which
+window or placement is used. Damping by term count therefore damps the terse carrier, which
+on this corpus is disproportionately the gold. Window scope (iteration 1) and term scope
+(iteration 2) both move the totals and neither touches the mechanism.
+
+### Disclosure — the same measurement error, three times
+
+The acceptance census was wrong twice before it was right, and both errors were the r05
+class:
+
+1. **It re-implemented the window** it was pricing, so it returned byte-identical numbers
+   before and after the rescope. Caught by that identity.
+2. **It re-derived each observation's competition base** instead of reading the observation's
+   own `n_competing`, shifting the totals by ±2 firings. Caught while checking a factor of
+   1/4 that the rule cannot produce alone.
+
+Corrected, the totals move slightly and **the harmful set is invariant at the same five rows
+under every variant** — which is why the verdict is safe. Published with both wrong readings
+and the right one. The standing lesson stands and now has three instances: *a census must
+read the deployed rule end-to-end.*
+
