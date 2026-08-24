@@ -198,10 +198,10 @@ def probe_corroborate(conn: duckdb.DuckDBPyConnection, question: str, leader_val
     from pkm.retrieval import SearchResult, search
 
     # ONE declared total order, used by both layers — the same shape `core/retrieval.py`
-    # declares (§6.9, fixed at M1). Neither layer may lean on arrival order: `pkm.retrieval`'s
-    # SQL ends `ORDER BY scored.score DESC` with no tie-breaker, so tied hits arrive in
-    # whatever order the engine emitted them, and a raw float can tie 1-2 ulp apart between
-    # identical calls. Quantise first (R2's quantum), then break by artefact key, then text.
+    # declares (§6.9, fixed at M1). Since r08 (SPEC 0.18.2) `pkm.retrieval`'s SQL itself cuts
+    # this order, so the window is the declared prefix rather than an engine sample (§6.13);
+    # the sort here remains as defence in depth — idempotent over an already-ordered window —
+    # and still quantises because the returned score column is raw.
     def rank(h: SearchResult) -> tuple[float, str, str]:
         return (-round(h.score, 9), h.artifact_cache_key, h.chunk_text)
 

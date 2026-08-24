@@ -39,6 +39,9 @@ def retrieve_set(conn: duckdb.DuckDBPyConnection, question: str, k: int) -> list
     with it every §18.9 derivation keyed on it."""
     from pkm.retrieval import SearchResult, search
 
+    # Since r08 (SPEC 0.18.2) pkm's SQL cuts this same declared order, so the over-fetch
+    # window is the declared prefix of the corpus rather than an engine sample of a tie
+    # block (§6.13); the sort below is defence in depth, idempotent over an ordered window.
     # Over-fetch, ORDER, then dedupe: sorting first keeps the dedupe rule unchanged (the
     # best-scoring copy of a duplicated chunk survives, since the order is score-major) while
     # making its tie — identical text at an identical score in two documents, this corpus's

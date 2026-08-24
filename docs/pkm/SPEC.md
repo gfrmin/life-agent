@@ -1,6 +1,6 @@
 # SPEC.md — technical specification
 
-Version: 0.18.1 (draft)
+Version: 0.18.2 (draft)
 Status: Phase 1 complete (extraction layer with content-addressed
 caching, chunking, and FTS keyword retrieval); Phase 1.5 OCR-PDF
 fallback applied to the live corpus; source paths are stored as
@@ -1199,9 +1199,22 @@ FROM (
 JOIN artifacts a ON scored.artifact_cache_key = a.cache_key
 JOIN sources   s ON a.input_hash = s.source_id
 WHERE scored.score IS NOT NULL
-ORDER BY scored.score DESC
+ORDER BY round(scored.score, 9) DESC,
+         scored.artifact_cache_key, scored.chunk_text, scored.chunk_id
 LIMIT ?
 ```
+
+**The `LIMIT` cut is part of the declared order (0.18.2).** BM25 ties are common (the
+corpus's commonest shape is identical chunk text in two documents) and the raw scores carry
+1–2 ulp of parallelism-dependent engine noise, so `ORDER BY score DESC` alone lets the
+engine choose *which* members of a tie block survive the cut — a nondeterministic sample
+whenever the block is larger than the fetch. The ordering is therefore a declared total
+order: the score quantised at the ninth decimal (engine noise dies there; corpus-scale score
+gaps do not), then `artifact_cache_key`, then `chunk_text`, then `chunk_id` — the last
+confined by construction to rows identical in every semantic column, so it totalises the row
+order without letting a rebuild-reissued surrogate pick between distinguishable results.
+Callers may rely on `search` returning the declared prefix of the corpus under this order,
+never an engine sample. The `score` column itself is returned unquantised.
 
 **`pkm chunk` CLI:**
 
@@ -1892,6 +1905,14 @@ exactly when `subject_kind` is `person` or `organisation` (fail loudly, not cach
 
 ## 16. Change log
 
+- 0.18.2 (draft): the retrieval SQL's `ORDER BY` becomes a declared total order —
+  `round(score, 9) DESC, artifact_cache_key, chunk_text, chunk_id` — so the `LIMIT` cuts a
+  declared prefix of the corpus rather than an engine sample of a tie block (life-agent
+  register §6.13, checkpoint r08: at k=20 the over-fetch window was a nondeterministic
+  sample of a 73-way quantised tie on a measured question — five identical calls returned
+  five different top-20s). §7.1's semantic determinism promised this in spirit; the cut now
+  delivers it. The returned `score` column is unchanged (unquantised); only the order and
+  therefore the cut are declared.
 - 0.18.1 (draft): §6.2 wording only — the two sentences adjacent to the 0.18.0 sweep
   paragraph that still said "orphan sweep" / "orphans are removed" now say *torn* /
   *unregistered* in the 0.18.0 sense: an interruption before `meta.json` is complete leaves a

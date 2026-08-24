@@ -146,8 +146,12 @@ def search(
         k: Maximum number of results to return.
 
     Returns:
-        List of ``SearchResult`` ordered by descending relevance score.
-        Empty if no matches or index absent.
+        List of ``SearchResult`` in the declared total order (SPEC 0.18.2):
+        quantised score descending, then ``artifact_cache_key``, ``chunk_text``,
+        ``chunk_id`` — so ``LIMIT`` cuts a declared prefix of the corpus, never an
+        engine sample of a tie block larger than ``k`` (life-agent register §6.13).
+        The ``score`` column is returned unquantised. Empty if no matches or index
+        absent.
     """
     conn.execute("INSTALL fts; LOAD fts;")
     try:
@@ -181,7 +185,8 @@ def search(
             JOIN sources s ON a.input_hash = s.source_id
             JOIN path_current pc ON s.source_id = pc.source_id
             WHERE scored.score IS NOT NULL
-            ORDER BY scored.score DESC
+            ORDER BY round(scored.score, 9) DESC,
+                     scored.artifact_cache_key, scored.chunk_text, scored.{_FTS_INPUT_ID}
             LIMIT ?
             """,
             [query, k],
