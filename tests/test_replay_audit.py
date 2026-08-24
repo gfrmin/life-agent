@@ -18,6 +18,10 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
+from life_agent.collapse.taps import WouldSpendError
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
 import replay_audit as RP
@@ -520,3 +524,50 @@ def test_rows_survive_a_render_that_raises():
             back[0].cold_arms) == (row.qid, row.sites, row.trace, row.discarder,
                                    row.cold_arms)
     assert back[0].deployed == row.deployed
+
+
+def test_the_refusing_seam_covers_the_instruments_that_build_their_own_client(monkeypatch):
+    """`deps.client` only covers the seams the bridge threads a client through. `core/subject`
+    and `core/temporal_intent` import `instrument_client` by name and construct their OWN on a
+    cache miss, so a replay that patches nothing is no-spend by LUCK — whichever refusal fires
+    first — not by contract. Found live: a row that used to refuse at a cold §18.9 derivation
+    warmed, ran on, and reached the subject seam, which tried to spend."""
+    from life_agent.core import instrument as INSTR
+    from life_agent.core import subject as SUBJ
+    from life_agent.core import temporal_intent as TI
+
+    for mod in (INSTR, SUBJ, TI):                     # restored by monkeypatch at teardown
+        monkeypatch.setattr(mod, "instrument_client", mod.instrument_client)
+    RP.refuse_live_instrument_seams("test-engine")
+
+    for mod in (INSTR, SUBJ, TI):
+        client = mod.instrument_client("any-model")
+        assert client.engine_version == "test-engine"
+        with pytest.raises(WouldSpendError):
+            client.complete("prompt", {"type": "object"})
+
+
+def test_the_refusing_seam_uses_the_deployed_spend_seam_table(monkeypatch):
+    """`collapse/drive` already owns the list of every binding site that can leave the box —
+    it was written after M0 found that gating the instrument client alone left `joint_extract`
+    free to spend, which is EXACTLY the hole found here. The replay must consume that table,
+    not keep a second copy of it (§6.8's one-rule discipline).
+
+    `deliberate.answer` is the one entry the replay must NOT seal: criterion 3 preflights the
+    edge per question, and a sealed `answer` would refuse the WARM cached deliberates the
+    replay depends on."""
+    import importlib
+
+    from life_agent.collapse import drive as DRIVE
+
+    for mod_name, attr in DRIVE._SPEND_SEAMS:
+        mod = importlib.import_module(mod_name)
+        monkeypatch.setattr(mod, attr, getattr(mod, attr))     # restored at teardown
+    RP.refuse_live_instrument_seams("test-engine")
+
+    for mod_name, attr in DRIVE._SPEND_SEAMS:
+        fn = getattr(importlib.import_module(mod_name), attr)
+        if (mod_name, attr) == ("life_agent.core.deliberate", "answer"):
+            continue
+        with pytest.raises(WouldSpendError):
+            fn("system", "user")

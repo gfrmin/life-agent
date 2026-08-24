@@ -292,10 +292,13 @@ import life_agent.core.deliberate as DL  # noqa: E402
 import life_agent.core.derivations as D  # noqa: E402
 import life_agent.core.executor as EX  # noqa: E402
 import life_agent.core.lookup as LK  # noqa: E402
+import life_agent.core.subject as SUBJ  # noqa: E402
+import life_agent.core.temporal_intent as TI  # noqa: E402
 import life_agent.owner as owner  # noqa: E402
 from life_agent.bridge import server as SRV  # noqa: E402
 from life_agent.collapse.taps import RefusingClient, WouldSpendError  # noqa: E402
 from life_agent.core import config as LCFG  # noqa: E402
+from life_agent.core import instrument as INSTR  # noqa: E402
 from life_agent.tasks import read as TREAD  # noqa: E402
 
 SITES: dict[str, str] = {
@@ -656,6 +659,42 @@ def build_deps(root: Path, conn: Any, client: Any) -> Any:
                           gather_outcomes_path=LCFG.GATHER_OUTCOMES_LOG, membrane=None)
 
 
+def refuse_live_instrument_seams(engine_version: str) -> None:
+    """Criterion 3 by CONTRACT rather than by luck.
+
+    ``deps.client`` covers only the seams the bridge threads a client through. `core/subject`
+    and `core/temporal_intent` import ``instrument_client`` by name and construct their own on
+    a cache miss, and ``lookup._client`` does the same whenever no client is threaded — so a
+    replay that patches none of them is no-spend only for as long as some EARLIER refusal keeps
+    firing. Found live on 2026-08-25: a row whose §18.9 derivation had since warmed ran on to
+    the subject seam, which tried to spend (the account's usage limit refused it, not us).
+
+    The binding sites come from ``collapse/drive._SPEND_SEAMS`` — the table the recorder
+    already owns, written after M0 found that gating the instrument client alone left
+    `joint_extract` free to spend. That is the same hole found here, so this consumes the
+    table rather than keeping a second copy of it.
+
+    The engine version must be the one the deployed client reports, or every cached verdict
+    re-keys and a warm store reads as cold.
+    """
+    import importlib
+
+    from life_agent.collapse import drive as DRIVE
+
+    def _refusing(*_args: Any, **_kwargs: Any) -> Any:
+        return RefusingClient(engine_version=engine_version)
+
+    def _refuse(*_args: Any, **_kwargs: Any) -> Any:
+        raise WouldSpendError("a live model seam was reached and the recorder is no-spend")
+
+    for mod in (INSTR, SUBJ, TI):
+        mod.instrument_client = _refusing       # type: ignore[assignment]
+    for mod_name, attr in DRIVE._SPEND_SEAMS:
+        if (mod_name, attr) == ("life_agent.core.deliberate", "answer"):
+            continue        # criterion 3 preflights the edge per question; sealing `answer`
+        setattr(importlib.import_module(mod_name), attr, _refuse)   # would refuse WARM ones
+
+
 def deliberate_is_warm(root: Path, conn: Any, question: str) -> bool:
     """Criterion 3's preflight, through the bridge's OWN key derivation — the executor swallows
     exceptions around `/probe/deliberate`, so a cold edge must be caught before the loop."""
@@ -1007,6 +1046,7 @@ def main() -> int:
     conn = duckdb.connect(str(root / "catalogue.duckdb"), read_only=True)
     conn.execute("INSTALL fts; LOAD fts;")
     client = RefusingClient(engine_version=str(anthropic.__version__))
+    refuse_live_instrument_seams(str(anthropic.__version__))
     deps = build_deps(root, conn, client)
 
     elic = LCFG.UTILITY_ELICITATIONS
