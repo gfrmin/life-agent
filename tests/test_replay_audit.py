@@ -545,3 +545,29 @@ def test_the_refusing_seam_covers_the_instruments_that_build_their_own_client(mo
         assert client.engine_version == "test-engine"
         with pytest.raises(WouldSpendError):
             client.complete("prompt", {"type": "object"})
+
+
+def test_the_refusing_seam_uses_the_deployed_spend_seam_table(monkeypatch):
+    """`collapse/drive` already owns the list of every binding site that can leave the box —
+    it was written after M0 found that gating the instrument client alone left `joint_extract`
+    free to spend, which is EXACTLY the hole found here. The replay must consume that table,
+    not keep a second copy of it (§6.8's one-rule discipline).
+
+    `deliberate.answer` is the one entry the replay must NOT seal: criterion 3 preflights the
+    edge per question, and a sealed `answer` would refuse the WARM cached deliberates the
+    replay depends on."""
+    import importlib
+
+    from life_agent.collapse import drive as DRIVE
+
+    for mod_name, attr in DRIVE._SPEND_SEAMS:
+        mod = importlib.import_module(mod_name)
+        monkeypatch.setattr(mod, attr, getattr(mod, attr))     # restored at teardown
+    RP.refuse_live_instrument_seams("test-engine")
+
+    for mod_name, attr in DRIVE._SPEND_SEAMS:
+        fn = getattr(importlib.import_module(mod_name), attr)
+        if (mod_name, attr) == ("life_agent.core.deliberate", "answer"):
+            continue
+        with pytest.raises(WouldSpendError):
+            fn("system", "user")
