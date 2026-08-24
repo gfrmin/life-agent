@@ -293,6 +293,7 @@ import life_agent.core.derivations as D  # noqa: E402
 import life_agent.core.executor as EX  # noqa: E402
 import life_agent.core.lookup as LK  # noqa: E402
 import life_agent.owner as owner  # noqa: E402
+from life_agent.bridge import observations as OBS  # noqa: E402
 from life_agent.bridge import server as SRV  # noqa: E402
 from life_agent.collapse.taps import RefusingClient, WouldSpendError  # noqa: E402
 from life_agent.core import config as LCFG  # noqa: E402
@@ -477,7 +478,9 @@ def join_observations(base: list[Any], probe: list[Any]) -> list[Any]:
     inflation §5 exists to stop."""
     pooled = [*base, *probe]
     if dedup_key_available(pooled):
-        return list(LK.dedup_correlated(pooled))
+        # r09: the key is on the wire — the deployed join applies (one rule, one adapter);
+        # candidates are unneeded because every keyed observation carries its value_norm
+        return list(OBS.join_wire_observations(list(base), list(probe), []))
     return pooled
 
 

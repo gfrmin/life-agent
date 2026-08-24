@@ -353,7 +353,9 @@ def test_reextract_confirming_sentence_maps_to_the_candidate(
     assert status == 200
     assert payload["observations"] == [{"reports": 1, "group": 0, "authority": 1.0,
                                         "subject_factor": 1.0, "time_factor": 1.0,
-                                        "competition_factor": 1.0}]
+                                        "competition_factor": 1.0,
+                                        "quote": "", "doc_key": "",
+                                        "value_norm": "pl-900001"}]
     # containment resolves BEFORE allow_new: a confirming sentence must never mint a
     # duplicate candidate and split the posterior mass with the value it confirms.
     status2, payload2 = _call(deps, "POST", "/probe/corroborate", {
@@ -1356,7 +1358,9 @@ def test_deliberate_confirms_an_existing_candidate(
     assert status == 200
     assert payload["observations"] == [{"reports": 0, "group": 0, "authority": 1.0,
                                         "subject_factor": 1.0, "time_factor": 1.0,
-                                        "competition_factor": 1.0}]
+                                        "competition_factor": 1.0,
+                                        "quote": "", "doc_key": "",
+                                        "value_norm": "nis 4,200"}]
     assert payload["confidence"] == 0.85
     assert payload["cost_usd"] == 0.42
     assert payload["model"] == "claude-opus-4-8"
@@ -1391,7 +1395,9 @@ def test_deliberate_mints_a_new_candidate_with_allow_new(
     assert payload["new_candidate"] == "NIS 5,100"
     assert payload["observations"] == [{"reports": 1, "group": 0, "authority": 1.0,
                                         "subject_factor": 1.0, "time_factor": 1.0,
-                                        "competition_factor": 1.0}]
+                                        "competition_factor": 1.0,
+                                        "quote": "", "doc_key": "",
+                                        "value_norm": "nis 5,100"}]
 
 
 def test_deliberate_outside_set_without_allow_new_yields_no_observation(
@@ -1448,7 +1454,9 @@ def test_deliberate_warm_hit_replays_without_a_model_call(
     assert payload["cost_usd"] == 0.0                 # a warm chain costs zero model calls
     assert payload["observations"] == [{"reports": 0, "group": 0, "authority": 1.0,
                                         "subject_factor": 1.0, "time_factor": 1.0,
-                                        "competition_factor": 1.0}]
+                                        "competition_factor": 1.0,
+                                        "quote": "", "doc_key": "",
+                                        "value_norm": "nis 4,200"}]
     assert deliberate_seams["answers"] == []          # the CLI was never invoked
 
 
@@ -1748,3 +1756,138 @@ def test_log_decision_refuses_a_policy_outside_the_vocabulary(deps: BridgeDeps) 
                             {"question": "q", "retrieval_keys": ["d0"],
                              "decision": {**_decision(), "policy": "whatever-is-lying-around"}})
     assert status == 400 and "policy" in payload["error"]
+
+
+# --- r09 D2: the replace sites join instead of erasing ---------------------------------------
+
+_CHANNEL = [
+    {"reports": 0, "group": 0, "authority": 0.9, "subject_factor": 1.0, "time_factor": 1.0,
+     "competition_factor": 1.0, "quote": "ctx one PL-900001", "doc_key": "d0",
+     "value_norm": "pl-900001"},
+    {"reports": 0, "group": 1, "authority": 0.8, "subject_factor": 1.0, "time_factor": 1.0,
+     "competition_factor": 1.0, "quote": "ctx two PL-900001", "doc_key": "d1",
+     "value_norm": "pl-900001"},
+]  # PII-OK: synthetic passport shapes (the file's standing fixture values)
+
+
+def test_corroborate_disagree_joins_instead_of_erasing(
+        deps: BridgeDeps, monkeypatch: pytest.MonkeyPatch) -> None:
+    """r09 D3: a DISAGREE (non-null read whose value does not join the lattice) no longer
+    erases the grounded channel — the reply's observations ARE the standing channel. Run 7's
+    disagree⇒abstain contract is retired by the ruling's fix, named in the pre-registration."""
+    import life_agent.core.joint_extract as JE
+
+    monkeypatch.setattr(JE, "extract_joint",
+                        lambda root, q, hits, *, model, k: JE.JointResult(
+                            value="ZZ-000000", confidence=0.9, as_of=None))
+    status, payload = _call(deps, "POST", "/probe/corroborate", {
+        "reextract": True, "question": "id?", "hits": [
+            {"artifact_cache_key": "d0", "chunk_text": "…"}],
+        "observations": _CHANNEL,
+        "candidates": ["PL-900001"], "model": "claude-opus-4-8", "rho": 0.95})
+    assert status == 200
+    assert payload["read"] == "disagree"
+    assert len(payload["observations"]) == 2
+    assert [o["doc_key"] for o in payload["observations"]] == ["d0", "d1"]
+
+
+def test_corroborate_confirm_joins_the_channel_with_doc_keyed_groups(
+        deps: BridgeDeps, monkeypatch: pytest.MonkeyPatch) -> None:
+    """r09 C3+C4: a CONFIRM adds its observation to the channel (never replaces), and the
+    synthesised read gets its own fresh group — the bound's group-0 collision is dead."""
+    import life_agent.core.joint_extract as JE
+
+    monkeypatch.setattr(JE, "extract_joint",
+                        lambda root, q, hits, *, model, k: JE.JointResult(
+                            value="PL-900001", confidence=0.9, as_of=None))
+    status, payload = _call(deps, "POST", "/probe/corroborate", {
+        "reextract": True, "question": "id?", "hits": [
+            {"artifact_cache_key": "d0", "chunk_text": "…"}],
+        "observations": _CHANNEL,
+        "candidates": ["PL-900001"], "model": "claude-opus-4-8", "rho": 0.95})
+    assert status == 200
+    assert payload["read"] == "confirm"
+    obs = payload["observations"]
+    assert len(obs) == 3
+    assert [o["group"] for o in obs] == [0, 1, 2]  # d0, d1, the synthesised read's own
+    assert obs[2]["reports"] == 0
+
+
+def test_corroborate_without_a_channel_behaves_as_before(
+        deps: BridgeDeps, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A caller that passes no channel (the rescue walk at k=0; an old caller) gets exactly
+    the pre-r09 contract: the probe's own observations, nothing pooled."""
+    import life_agent.core.joint_extract as JE
+
+    monkeypatch.setattr(JE, "extract_joint",
+                        lambda root, q, hits, *, model, k: JE.JointResult(
+                            value="ZZ-000000", confidence=0.9, as_of=None))
+    status, payload = _call(deps, "POST", "/probe/corroborate", {
+        "reextract": True, "question": "id?", "hits": [
+            {"artifact_cache_key": "d0", "chunk_text": "…"}],
+        "candidates": ["PL-900001"], "model": "claude-opus-4-8", "rho": 0.95})
+    assert status == 200
+    assert payload["observations"] == []
+
+
+def test_deliberate_empty_ok_joins_and_keeps_the_channel(
+        deps: BridgeDeps, monkeypatch: pytest.MonkeyPatch) -> None:
+    """r09 D3, the S3 edge: NOT_IN_CORPUS pooled with a grounded channel keeps the channel —
+    the empty-ok collapse is retired (r06 criterion 7 already read zero genuine collapses)."""
+    import life_agent.core.deliberate as DL
+
+    monkeypatch.setattr(DL, "answer", lambda q, cfg: DL.DeliberateResult(
+        question=q, model="m", text="not in corpus", value=None, credence=None,
+        declined=True, status="ok", notes="", cost_usd=0.0, latency_s=0.0,
+        input_tokens=None, output_tokens=None, session_id=None, tool_calls=0,
+        gather_rounds=0))
+    status, payload = _call(deps, "POST", "/probe/deliberate", {
+        "question": "id?", "candidates": ["PL-900001"], "allow_new": True,
+        "observations": _CHANNEL})
+    assert status == 200 and payload["status"] == "ok"
+    assert len(payload["observations"]) == 2
+    assert [o["doc_key"] for o in payload["observations"]] == ["d0", "d1"]
+
+
+def test_the_channel_never_enters_the_corroborate_derivation_key(
+        deps: BridgeDeps, monkeypatch: pytest.MonkeyPatch) -> None:
+    """r09 C5 — warm policy: the joined channel is computed AFTER the derivation layer.
+    `extract_joint` receives byte-identical arguments whether or not the caller hands its
+    channel, so every §18.9 warm entry keeps serving."""
+    import life_agent.core.joint_extract as JE
+
+    calls: list[tuple] = []
+
+    def _spy(root, q, hits, *, model, k):
+        calls.append((q, tuple((h.get("artifact_cache_key"), h.get("chunk_text"))
+                               for h in hits), model, k))
+        return JE.JointResult(value="PL-900001", confidence=0.9, as_of=None)
+
+    monkeypatch.setattr(JE, "extract_joint", _spy)
+    body = {"reextract": True, "question": "id?", "hits": [
+        {"artifact_cache_key": "d0", "chunk_text": "…"}],
+        "candidates": ["PL-900001"], "model": "claude-opus-4-8", "rho": 0.95}
+    _call(deps, "POST", "/probe/corroborate", body)
+    _call(deps, "POST", "/probe/corroborate", {**body, "observations": _CHANNEL})
+    assert calls[0] == calls[1]
+
+
+def test_the_channel_never_enters_the_deliberate_cache_key(
+        deps: BridgeDeps, monkeypatch: pytest.MonkeyPatch, deliberate_seams: Any) -> None:
+    """r09 C5 at the S3 edge: the deliberate §18.9 key is computed from the question and the
+    corpus digest alone — the channel changes nothing, so warm replays keep serving."""
+    import life_agent.core.derivations as D
+
+    keys: list[tuple] = []
+    inner = D.deliberate_key
+
+    def _spy(question, digest, **kw):
+        keys.append((question, digest, tuple(sorted((k, str(v)) for k, v in kw.items()))))
+        return inner(question, digest, **kw)
+
+    monkeypatch.setattr(D, "deliberate_key", _spy)
+    body = {"question": "id?", "candidates": ["PL-900001"]}
+    _call(deps, "POST", "/probe/deliberate", body)
+    _call(deps, "POST", "/probe/deliberate", {**body, "observations": _CHANNEL})
+    assert len(keys) == 2 and keys[0] == keys[1]
+
