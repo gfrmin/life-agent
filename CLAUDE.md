@@ -255,8 +255,15 @@ collapses; null-guard kept; S2 untouched. Finding: the base arrives deduped + pr
 value-only ⇒ the JOIN is idempotent over the raw pool ⇒ **r07's 10/2 bound is run 13's
 expected read, not a ceiling**. 7.2: non-probe fixtures byte-identical; 95 probe-firing
 fixtures unservable (payload grew — the named class). Suite 2653, ruff, mypy green.
-**NEXT: ruling 2's riders (re-record m0-5, re-prep O2), then run 13** (frozen branches:
-PASS ⇒ §6.12 block closes + deploy to live; FAIL ⇒ revert JOIN + STOP). Old D3–D4 stay re-scoped as Ask's
+**Run 13 IS READ (2026-08-24, `gate-20260824T144002`): FAIL on two conjuncts —
+0.895 < 0.90 and four new wrong commits — with the blocking row REPAIRED and the series'
+best mean (Δ̄ +0.424, answer rate 0.71, $0.58).** All four wrong rows were run-10
+dispersals (two are standing named classes: superset-confirm q2-019, warm-deliberate
+q2-105) — the JOIN converts dispersals in both directions and dispersal was the
+protection. **Ruling 4's FAIL branch enacted: the JOIN's code commits are REVERTED from
+master (docs stay), the §6.12 block STANDS, the m0-5 re-record/O2 riders were sequenced
+after the run and cost nothing, and work is STOPPED for an owner ruling** — re-open r09
+with a temper for the named classes under a new pre-registration, or park the JOIN. Old D3–D4 stay re-scoped as Ask's
 aggregate/thread families. The doc's §14 open questions are a **live empirical ledger**
 (owner's adoption rider): each entry names the evidence that decides it — keep it
 current. Sequencing is continuous and eval-gated, not dogfood-gated (PRINCIPLES §9 as

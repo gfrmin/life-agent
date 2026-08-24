@@ -25,7 +25,6 @@ import re
 from collections.abc import Callable
 from typing import Any
 
-from life_agent.bridge import observations as SO
 from life_agent.core import calibration as CAL
 from life_agent.core import deliberate as DL
 from life_agent.core import gather_outcomes as GO
@@ -352,7 +351,6 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
             elif g_probe == "re_extract_strong" and hits:
                 cr = _obj(post, f"{bridge}/probe/corroborate",
                           {"reextract": True, "allow_new": True, "question": question,
-                           "observations": ext["observations"],
                            "hits": hits, "candidates": [], "model": _RE_EXTRACT_MODEL,
                            "rho": _GATHER_RHO,
                            "time_indexed": route["time_indexed"],
@@ -413,10 +411,7 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
     def _decide(observations: list[Any], r: float, era_split: bool, applied: list[str],
                 sensors: dict[str, str] | None = None) -> View:
         payload: dict[str, Any] = {
-            # r09 D1: the correlation key (quote, doc_key) is wire-only — the brain stays
-            # string-blind, so the decide post strips it while the loop's channel keeps it
-            "candidates": candidates, "observations": SO.strip_wire_keys(observations),
-            "rho": r, "u_bar": u_bar,
+            "candidates": candidates, "observations": observations, "rho": r, "u_bar": u_bar,
             "era_split": era_split, "owner_scoped": owner, "applied_probes": applied,
             "transforms": transforms}
         if sensors is not None and menu is not None:
@@ -454,17 +449,13 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
             applied = list(dict.fromkeys([*applied, "recency"]))
             dec = _decide(obs, rho, era, applied)
         elif eff == "gather" and probe.startswith("corroborate"):
-            # a subject-aware whole-doc re-read at the scheduled TIER's model, JOINED onto the
-            # standing channel bridge-side (r09: the payload carries the channel; the reply is
-            # the §5-deduped pool, so a disagree adds evidence instead of erasing). Each tier
+            # a subject-aware whole-doc re-read at the scheduled TIER's model REPLACES the local
+            # channel. The joint's value → one observation (or NONE ⇒ empty ⇒ abstain). Each tier
             # fires at most once (dedup on the probe name) ⇒ escalation across tiers terminates.
             model = _TIER_MODEL.get(probe, "claude-opus-4-8")
             tier_rho = _TIER_RHO.get(probe, _GATHER_RHO)
             cr = _obj(post, f"{bridge}/probe/corroborate",
                       {"reextract": True, "question": question, "hits": hits,
-                       # r09 D2: the standing channel rides the payload so the bridge
-                       # computes the §5-deduped JOIN where the deployed rule lives
-                       "observations": obs,
                        "candidates": candidates, "model": model, "rho": tier_rho,
                        "candidate_competition": cand_comp,
                        # the re-read obs flows through the construct's volatility (the keystone):
@@ -513,12 +504,11 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
             # over the corpus (bridge /probe/deliberate — warm-replayed when the corpus
             # is unchanged). Its bare ANSWER value is joined bridge-side; a new value
             # comes back as a minted candidate (allow_new — the edge exists FOR the
-            # questions the local channel can't ground). On a SUCCESSFUL call the reply
-            # is the §5-deduped JOIN of the standing channel with the deliberate
-            # observation (r09 — the empty-ok collapse is retired: NOT_IN_CORPUS pooled
-            # with a grounded channel keeps the channel; r06 criterion 7 read zero
-            # genuine collapses). An INFRASTRUCTURE failure (CLI error/timeout,
-            # transport raise) is
+            # questions the local channel can't ground). On a SUCCESSFUL call the
+            # observation REPLACES the channel (conservative: independent-search
+            # corroboration is not modelled v0 — a stated coarsening) and an empty ok
+            # reply collapses it — NOT_IN_CORPUS from the reference is evidence for
+            # NONE. An INFRASTRUCTURE failure (CLI error/timeout, transport raise) is
             # not evidence of anything: the grounded channel survives untouched and the
             # probe is simply retired (fail-open — instrumentation never breaks an
             # already-grounded answer). The raw self-report conditions only through the
@@ -527,7 +517,6 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
                 dr: dict[str, Any] | None = _obj(
                     post, f"{bridge}/probe/deliberate",
                     {"question": question, "candidates": candidates, "allow_new": True,
-                     "observations": obs,
                      "candidate_competition": cand_comp,
                      "hits": hits, "time_indexed": route["time_indexed"],
                      "construct": route["construct"],
@@ -566,11 +555,10 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
         elif eff == "gather" and probe == "re_extract_strong":
             # the K-ENLARGING strong re-extract: a whole-doc opus re-read with allow_new — a
             # value outside the local candidate set comes back as a NEW candidate (the bridge
-            # indexes its observation at len(candidates)); the reply is the §5-deduped JOIN
-            # of the standing channel with the re-read (r09), exactly as corroborate does.
+            # indexes its observation at len(candidates)); the re-read REPLACES the channel
+            # (same docs — nested dependence), exactly as corroborate does.
             cr = _obj(post, f"{bridge}/probe/corroborate",
                       {"reextract": True, "allow_new": True, "question": question,
-                       "observations": obs,
                        "hits": hits, "candidates": candidates, "model": _RE_EXTRACT_MODEL,
                        "rho": _GATHER_RHO, "candidate_competition": cand_comp,
                        "time_indexed": route["time_indexed"], "construct": route["construct"],
@@ -580,12 +568,11 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
             if cr.get("new_candidate"):
                 candidates = [*candidates, str(cr["new_candidate"])]
                 cand_comp = [*cand_comp, 1.0]
-            # A DISAGREEING strong re-read no longer erases: the bridge returns the joined
-            # channel (r09 — run 7's disagree⇒abstain contract retired by the ruling's
-            # fix; a disagree that NAMES a joinable value contributes evidence against
-            # the leader instead). A NULL read — the model named nothing at all — is the
-            # absence-of-evidence case (§14, 2026-08-18): the probe retires fail-open and
-            # the grounded channel stands, rho untouched.
+            # A DISAGREEING strong re-read replaces (the strong model named a value that
+            # would not join; the weak evidence must not survive it — disagree ⇒
+            # NONE-dominant ⇒ abstain, the corroborate contract verbatim). A NULL read —
+            # the model named nothing at all — is the absence-of-evidence case (§14,
+            # 2026-08-18): the probe retires fail-open and the grounded channel stands.
             if not _null_read(cr):
                 obs, era = cr["observations"], False
                 rho = _conditioned_rho(curves, extract_edge(_RE_EXTRACT_MODEL),

@@ -2987,6 +2987,20 @@ on this list. Answers land here by amendment, citing their evidence.
   re-verified; prediction 1's instrument-blindness — the direction clause rides run 13).
   The §6.12 deployment block STANDS until run 13's PASS.
 
+- **Run 13 (2026-08-24, `gate-20260824T144002`, the ruled reading of the JOIN): FAIL on two
+  of ruling 4's three conjuncts — P(Δ>0.05)=0.895 (< 0.90 by 0.005) and four new wrong
+  commits — with the BLOCKING-ROW conjunct PASSED (run 10's wrong commit reads correct).**
+  Δ̄ +0.424 [−0.070, +0.941], the series' best mean; typed 70 ✓ / 4 ✗ / 30 withheld, answer
+  rate 0.71 (from 0.34–0.57), $0.58 typed spend (deliberate 29/104 all warm). All four
+  wrong rows were run-10 DISPERSALS — the JOIN converts dispersals in both directions, and
+  dispersal was the protection (run 12's own analysis, now priced). Two of the four are
+  standing named classes: the superset-confirm defect (the corroborate audit's q2-019) and
+  run 8's warm-deliberate confirm (q2-105). Ruling 4's FAIL branch enacted verbatim: the
+  JOIN's code commits reverted from master (docs stay, append-only), the reverted tree
+  green at the pre-r09 count, the §6.12 block STANDS, work STOPPED for an owner ruling.
+  The decidable question the reading leaves: re-open r09 with a temper for the two named
+  wrong-commit classes under a new pre-registration, or park the JOIN.
+
 - **Four unordered sources on the decision path — the cache was doing the work of determinism
   (2026-08-19/20, tranche-2 M0/M0.5, `scripts/collapse_replay.py` + the M0.5 probes, $0
   deterministic).** The decision-equivalence instrument built at M0 found two ties resolved by
