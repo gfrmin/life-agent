@@ -83,3 +83,15 @@ can be warmed at $0.
    clean firings ≥ 15), or a sweep only, once access returns?
 3. **The interval to 2026-09-01:** spend it on $0 instrument/measurement work as above, or
    hold everything until access returns?
+
+## RULINGS (owner, interviewed 2026-08-24)
+
+1. **Option A — the anchor is rescoped to the DOCUMENT.** The anchor reads the whole chunk;
+   the competition term keeps run 9's ±120 (it is right for competing values, which must be
+   adjacent). One frozen constant changes; everything else in r09d stands, including D3.
+2. **The $0 census is the acceptance bar, frozen now:** a rescoped anchor is accepted only at
+   **strictly-harmful rows ≤ 2** and **clean firings ≥ 15**, measured on the whole battery
+   before any sweep is bought. Registered as standing practice — *price a lever's firing
+   direction on the whole battery before buying a sweep.*
+3. **The interval to 2026-09-01 is spent on $0 work:** rescope, re-census, warm what warm
+   cache allows, and leave the sweep + run 14 queued to fire when access returns.
