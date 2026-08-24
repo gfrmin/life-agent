@@ -7,6 +7,7 @@ count feeds ``lookup.competition_factor`` (the §4.2 competition term at the ter
 """
 from __future__ import annotations
 
+from life_agent.core import matching as M
 from life_agent.core.matching import competing_value_count, numeric_spans
 
 
@@ -69,3 +70,24 @@ def test_correction_sentence_competes_same_shape_successor() -> None:
     # the bridge's correction-shaped-read case, now on the shared span detector
     assert competing_value_count(
         "PL-900001", "PL-900001 was renewed; the new number is PL-800002") == 1
+
+
+# --- r10 D1: the entity key's detector (identifier-like tokens ONLY) ----------------------
+
+def test_identifier_terms_picks_up_the_four_shapes_and_nothing_else() -> None:
+    """The r09d anchor scored documents by ordinary-word overlap and was refuted. E1's key is
+    typed: only tokens that NAME something — CamelCase, snake_case, a filename, an ALLCAPS id.
+    A question's English words must never become key terms, or the filter is the refuted lever
+    wearing a different hat."""
+    q = ("what is the statement coverage for the WidgetFactory class in "
+         "widget_factory.py, and what does MAX_RETRIES default to?")   # PII-OK: synthetic
+    # the filename's stem is kept as its own term: the census that priced this rule kept it,
+    # and under the ALL contract it is harmless (a chunk carrying the filename carries the stem)
+    assert M.identifier_terms(q) == ["widget_factory.py", "WidgetFactory",
+                                     "widget_factory", "MAX_RETRIES"]
+
+
+def test_identifier_terms_is_empty_when_the_question_names_nothing() -> None:
+    """60% of the corpus's questions are like this; on them the key can never fire and the
+    filter must be a provable no-op rather than a quiet default."""
+    assert M.identifier_terms("how many paid vacation days do I get?") == []
