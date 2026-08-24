@@ -1481,3 +1481,78 @@ def test_the_body_side_cascade_is_gone() -> None:
     retrieves = fake.posted("/retrieve")
     assert len(retrieves) == 1
     assert not any(r["rerank"] for r in retrieves)
+
+
+# --- r09: the correlation key and the channel handoff (D1/D2) --------------------------------
+
+_EXTRACT_KEYED = {
+    "candidates": ["P123"],
+    "observations": [{"reports": 0, "group": 0, "authority": 0.9,
+                      "subject_factor": 1.0, "time_factor": 1.0,
+                      "quote": "Passport No: P123", "doc_key": "d0"}],
+    "rho": 0.7, "era_split": False, "indeterminate": 0, "half_life_years": 5.0,
+}  # PII-OK: synthetic passport shape (the suite's standing fixture value)
+
+
+def test_decide_payloads_never_carry_the_wire_key() -> None:
+    """r09 D1: the brain stays string-blind — the executor strips the correlation-key fields
+    (quote, doc_key) from every /decide post, while the channel it holds and hands to probes
+    keeps them."""
+    fake = FakeServices(
+        route={"construct": "passport number", "time_indexed": False},
+        extract=_EXTRACT_KEYED,
+        decides=[{"effector": "report", "value": "P123",
+                  "credences": [0.95, 0.05], "p_none": 0.05, "eu": 0.9}])
+    _loop(fake)
+    decides = fake.posted("/decide")
+    assert decides, "the loop must have decided"
+    for post in decides:
+        for o in post["observations"]:
+            assert "quote" not in o and "doc_key" not in o
+
+
+def test_corroborate_payload_carries_the_standing_channel() -> None:
+    """r09 D2: the S1/S4/S5 corroborate call hands the bridge the executor's CURRENT
+    observations (key-carrying), so the §5-deduped JOIN is computed where the deployed rule
+    lives. The reply's observations are adopted verbatim — the replace line becomes a join
+    because the reply is the join."""
+    joined = [{"reports": 0, "group": 0, "authority": 0.9, "subject_factor": 1.0,
+               "time_factor": 1.0, "quote": "Passport No: P123", "doc_key": "d0"},
+              {"reports": 0, "group": 1, "authority": 1.0, "subject_factor": 1.0,
+               "time_factor": 1.0, "quote": "", "doc_key": "joint:tier"}]
+    fake = FakeServices(
+        route={"construct": "tax id", "time_indexed": False},
+        extract=_EXTRACT_KEYED,
+        corroborate={"observations": joined, "gather_rho": 0.80, "value": "P123",
+                     "read": "confirm"},
+        decides=[{"effector": "gather", "probe": "corroborate_haiku",
+                  "credences": [0.5, 0.5], "p_none": 0.1, "eu": 0.2},
+                 {"effector": "report", "value": "P123", "credences": [0.9, 0.1],
+                  "p_none": 0.05, "eu": 0.8}])
+    view = _loop(fake)
+    corr = fake.posted("/probe/corroborate")
+    assert corr and corr[0]["observations"] == _EXTRACT_KEYED["observations"]
+    assert view["n_obs"] == 2  # the joined channel, not a replacement
+    for post in fake.posted("/decide"):
+        for o in post["observations"]:
+            assert "quote" not in o and "doc_key" not in o
+
+
+def test_deliberate_payload_carries_the_standing_channel() -> None:
+    """r09 D2, the S3 edge: /probe/deliberate receives the standing channel too."""
+    fake = FakeServices(
+        route={"construct": "fax number", "time_indexed": False},
+        extract=_EXTRACT_KEYED,
+        deliberate={"observations": [], "status": "ok", "value": None,
+                    "confidence": None, "declined": True, "cost_usd": 0.0,
+                    "latency_s": 0.0, "cache": "hit"},
+        decides=[{"effector": "gather", "probe": "deliberate",
+                  "credences": [0.5, 0.5], "p_none": 0.3, "eu": 0.1},
+                 {"effector": "abstain", "credences": [0.4, 0.4],
+                  "p_none": 0.2, "eu": 0.0},
+                 {"effector": "abstain", "credences": [0.4, 0.4],
+                  "p_none": 0.2, "eu": 0.0}])
+    _loop(fake, transforms=[*EX.DEFAULT_TRANSFORMS, EX.DELIBERATE_TRANSFORM])
+    delib = fake.posted("/probe/deliberate")
+    assert delib and delib[0]["observations"] == _EXTRACT_KEYED["observations"]
+

@@ -788,16 +788,27 @@ def dedup_correlated(observations: list[Observation]) -> list[Observation]:
     document, and for value-ONLY quotes (no shared context), nothing collapses: genuine
     independent corroboration must still accumulate; only duplicates collapse. Order-preserving
     and pure."""
-    by_quote: dict[str, list[Observation]] = {}
-    for o in observations:
-        by_quote.setdefault(_quote_key(o.quote), []).append(o)
+    rows = [(o.quote, o.artifact_cache_key, o.value_norm, _covariate(o))
+            for o in observations]
+    drop = dedup_drop_rows(rows)
+    return [o for i, o in enumerate(observations) if i not in drop]
+
+
+def dedup_drop_rows(rows: list[tuple[str, str, str, float]]) -> set[int]:
+    """THE §5 clustering rule over ``(quote, doc_key, value_norm, covariate)`` rows — the
+    index set to drop. :func:`dedup_correlated` and the wire join
+    (``bridge/observations.join_wire_observations``, r09 D2) both call this; a second
+    implementation of the rule anywhere is a defect (§6.8)."""
+    by_quote: dict[str, list[int]] = {}
+    for i, (quote, _doc, _vn, _cov) in enumerate(rows):
+        by_quote.setdefault(_quote_key(quote), []).append(i)
     drop: set[int] = set()
-    for qkey, group in by_quote.items():
+    for qkey, idxs in by_quote.items():
         # Declared FIRST-SEEN order, not a set: `max` returns the first maximal element, so
         # at equal covariate the survivor is a function of the observations rather than of the
         # interpreter's per-process hash seed (M0.5 — the tie moved 24.5% of the recorded
         # battery's decisions between two runs of the same code on the same corpus).
-        docs = list(dict.fromkeys(o.artifact_cache_key for o in group))
+        docs = list(dict.fromkeys(rows[i][1] for i in idxs))
         if len(docs) <= 1:
             continue  # within one document — the per-document group already counts it once
         # Dedupe only when the shared quote carries CONTEXT beyond the bare value: identical
@@ -805,13 +816,13 @@ def dedup_correlated(observations: list[Observation]) -> list[Observation]:
         # a re-filed copy). A value-only quote is kept — the same value with no shared context
         # may be genuine independent corroboration, not a copy. (q-002's wrong cluster shares the
         # 2-token quote "Israeli <id>"; the gold its own scan-OCR quote — both carry context.)
-        value_tokens = set((group[0].value_norm or "").split())
+        value_tokens = set((rows[idxs[0]][2] or "").split())
         if not any(t not in value_tokens for t in qkey.split()):
             continue
         best = max(docs, key=lambda d: max(
-            _covariate(o) for o in group if o.artifact_cache_key == d))
-        drop.update(id(o) for o in group if o.artifact_cache_key != best)
-    return [o for o in observations if id(o) not in drop]
+            rows[i][3] for i in idxs if rows[i][1] == d))
+        drop.update(i for i in idxs if rows[i][1] != best)
+    return drop
 
 
 def _v_marginal(brain: Brain, state_id: str) -> list[float]:

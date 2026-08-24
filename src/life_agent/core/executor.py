@@ -25,6 +25,7 @@ import re
 from collections.abc import Callable
 from typing import Any
 
+from life_agent.bridge import observations as SO
 from life_agent.core import calibration as CAL
 from life_agent.core import deliberate as DL
 from life_agent.core import gather_outcomes as GO
@@ -351,6 +352,7 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
             elif g_probe == "re_extract_strong" and hits:
                 cr = _obj(post, f"{bridge}/probe/corroborate",
                           {"reextract": True, "allow_new": True, "question": question,
+                           "observations": ext["observations"],
                            "hits": hits, "candidates": [], "model": _RE_EXTRACT_MODEL,
                            "rho": _GATHER_RHO,
                            "time_indexed": route["time_indexed"],
@@ -411,7 +413,10 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
     def _decide(observations: list[Any], r: float, era_split: bool, applied: list[str],
                 sensors: dict[str, str] | None = None) -> View:
         payload: dict[str, Any] = {
-            "candidates": candidates, "observations": observations, "rho": r, "u_bar": u_bar,
+            # r09 D1: the correlation key (quote, doc_key) is wire-only — the brain stays
+            # string-blind, so the decide post strips it while the loop's channel keeps it
+            "candidates": candidates, "observations": SO.strip_wire_keys(observations),
+            "rho": r, "u_bar": u_bar,
             "era_split": era_split, "owner_scoped": owner, "applied_probes": applied,
             "transforms": transforms}
         if sensors is not None and menu is not None:
@@ -456,6 +461,9 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
             tier_rho = _TIER_RHO.get(probe, _GATHER_RHO)
             cr = _obj(post, f"{bridge}/probe/corroborate",
                       {"reextract": True, "question": question, "hits": hits,
+                       # r09 D2: the standing channel rides the payload so the bridge
+                       # computes the §5-deduped JOIN where the deployed rule lives
+                       "observations": obs,
                        "candidates": candidates, "model": model, "rho": tier_rho,
                        "candidate_competition": cand_comp,
                        # the re-read obs flows through the construct's volatility (the keystone):
@@ -517,6 +525,7 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
                 dr: dict[str, Any] | None = _obj(
                     post, f"{bridge}/probe/deliberate",
                     {"question": question, "candidates": candidates, "allow_new": True,
+                     "observations": obs,
                      "candidate_competition": cand_comp,
                      "hits": hits, "time_indexed": route["time_indexed"],
                      "construct": route["construct"],
@@ -559,6 +568,7 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
             # (same docs — nested dependence), exactly as corroborate does.
             cr = _obj(post, f"{bridge}/probe/corroborate",
                       {"reextract": True, "allow_new": True, "question": question,
+                       "observations": obs,
                        "hits": hits, "candidates": candidates, "model": _RE_EXTRACT_MODEL,
                        "rho": _GATHER_RHO, "candidate_competition": cand_comp,
                        "time_indexed": route["time_indexed"], "construct": route["construct"],

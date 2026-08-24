@@ -162,3 +162,112 @@ def test_competition_factor_rides_the_abstract_observation() -> None:
                                    competition_factor=0.5)
     _candidates, abstract = to_abstract_observations([competed, _obs("Bravo", "d1")])
     assert [a["competition_factor"] for a in abstract] == [0.5, 1.0]
+
+
+# --- r09 D1: the correlation key on the wire -------------------------------------------------
+
+
+def test_abstract_observations_carry_the_correlation_key() -> None:
+    """r09 D1: every wire observation carries the §5 dedup key — the grounding quote and the
+    document key — so a §5-deduped JOIN is computable wherever the wire reaches. The daemon
+    never sees these fields (the executor strips them; its own test pins that)."""
+    o = _obs("Alpha", "d0")
+    o = __import__("dataclasses").replace(o, quote="the alpha value is Alpha per the form")
+    _candidates, abstract = to_abstract_observations([o])
+    assert abstract[0]["quote"] == "the alpha value is Alpha per the form"
+    assert abstract[0]["doc_key"] == "d0"
+    assert abstract[0]["value_norm"] == "alpha"  # C2's identity needs the observation's own
+    # normal form: deriving it from candidates[reports] breaks on OCR-variant candidates
+
+
+def test_strip_wire_keys_removes_exactly_the_key_fields() -> None:
+    """r09 D1: the parity boundary holds — the brain stays string-blind. One helper, one
+    spelling of which fields are wire-only."""
+    from life_agent.bridge.observations import strip_wire_keys
+    stripped = strip_wire_keys([{"reports": 0, "group": 0, "authority": 0.9,
+                                 "subject_factor": 1.0, "time_factor": 1.0,
+                                 "competition_factor": 1.0,
+                                 "quote": "q", "doc_key": "d0", "value_norm": "v"}])
+    assert stripped == [{"reports": 0, "group": 0, "authority": 0.9,
+                         "subject_factor": 1.0, "time_factor": 1.0,
+                         "competition_factor": 1.0}]
+
+
+# --- r09 D2: the §5-deduped JOIN, one rule ----------------------------------------------------
+
+
+def _wire(value: str, doc: str, *, quote: str, authority: float = 0.9,
+          reports: int = 0, group: int = 0) -> dict:
+    return {"reports": reports, "group": group, "authority": authority,
+            "subject_factor": 1.0, "time_factor": 1.0, "competition_factor": 1.0,
+            "quote": quote, "doc_key": doc,
+            "value_norm": " ".join(value.split()).casefold()}
+
+
+def test_wire_join_applies_the_deployed_dedup_rule_identically() -> None:
+    """C2 — one rule. The wire join and `dedup_correlated` keep IDENTICAL survivors on
+    parallel inputs: a contextual quote duplicated across two documents collapses to the
+    max-covariate document's copy; the distinct-quote observation survives."""
+    import dataclasses
+
+    from life_agent.bridge.observations import join_wire_observations
+    from life_agent.core.lookup import dedup_correlated
+
+    dup_quote = "as attested, the alpha value is Alpha for the record"
+    objs = [
+        dataclasses.replace(_obs("Alpha", "d0", authority=0.9), quote=dup_quote),
+        dataclasses.replace(_obs("Alpha", "d1", authority=0.5), quote=dup_quote),
+        dataclasses.replace(_obs("Bravo", "d2"), quote="a different grounding entirely"),
+    ]
+    survivors = dedup_correlated(objs)
+    assert [(o.value_raw, o.artifact_cache_key) for o in survivors] == [
+        ("Alpha", "d0"), ("Bravo", "d2")]
+
+    wire = [_wire("Alpha", "d0", quote=dup_quote, authority=0.9, reports=0),
+            _wire("Alpha", "d1", quote=dup_quote, authority=0.5, reports=0),
+            _wire("Bravo", "d2", quote="a different grounding entirely", reports=1)]
+    joined = join_wire_observations(wire, [], ["Alpha", "Bravo"])
+    assert [(o["value_norm"], o["doc_key"]) for o in joined] == [
+        ("alpha", "d0"), ("bravo", "d2")]
+
+
+def test_wire_join_never_lowers_the_channel() -> None:
+    """C3 — the checkpoint's reason to exist: pooling an EMPTY probe reply (a null or a
+    value-outside-the-lattice disagree) keeps every channel observation."""
+    from life_agent.bridge.observations import join_wire_observations
+
+    channel = [_wire("Alpha", "d0", quote="ctx one alpha"),
+               _wire("Alpha", "d1", quote="ctx two alpha")]
+    joined = join_wire_observations(channel, [], ["Alpha"])
+    assert len(joined) == len(channel)
+
+
+def test_wire_join_reindexes_groups_by_doc_key() -> None:
+    """C4 — the bound's group-0 collision, killed: a probe observation with no document of
+    its own gets a FRESH group, never the base channel's first; base groups re-derive from
+    doc_key so two chunks of one document stay one group."""
+    from life_agent.bridge.observations import join_wire_observations
+
+    channel = [_wire("Alpha", "d0", quote="ctx a"),
+               _wire("Alpha", "d0", quote="ctx b"),
+               _wire("Alpha", "d1", quote="ctx c")]
+    probe = [{"reports": 0, "group": 0, "authority": 1.0, "subject_factor": 1.0,
+              "time_factor": 1.0, "competition_factor": 1.0,
+              "quote": "", "doc_key": "", "value_norm": "alpha"}]
+    joined = join_wire_observations(channel, probe, ["Alpha"])
+    groups = [o["group"] for o in joined]
+    assert groups[0] == groups[1] == 0      # one document, one group
+    assert groups[2] == 1                   # the second document
+    assert groups[3] == 2                   # the synthesised read: its own fresh group
+
+
+def test_wire_join_value_only_quotes_never_cluster() -> None:
+    """§5's value-only exemption survives the wire: two documents sharing only the bare value
+    (no surrounding context) are genuine corroboration, not copies — both kept."""
+    from life_agent.bridge.observations import join_wire_observations
+
+    channel = [_wire("Alpha", "d0", quote="Alpha"),
+               _wire("Alpha", "d1", quote="Alpha")]
+    joined = join_wire_observations(channel, [], ["Alpha"])
+    assert len(joined) == 2
+
