@@ -95,3 +95,12 @@ can be warmed at $0.
    direction on the whole battery before buying a sweep.*
 3. **The interval to 2026-09-01 is spent on $0 work:** rescope, re-census, warm what warm
    cache allows, and leave the sweep + run 14 queued to fire when access returns.
+
+## RULINGS 2 (owner, interviewed 2026-08-24, on the addendum)
+
+4. **The bar is read INCLUSIVE: the rescoped anchor is NOT accepted** (2 genuine inversions
+   + 1 marginal = 3 > 2). Iterate at $0; the named next lever is **where the term set is
+   computed** — pre-dedup, as built, versus post-dedup over the surviving witnesses.
+5. **An inversion on a named wrong-commit class is blocking on its own**, regardless of
+   aggregate counts. It becomes a **hard clause** in whatever bar governs the next
+   iteration: no lever ships while it makes a named wrong-commit class worse.

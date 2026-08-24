@@ -245,3 +245,36 @@ commit further the wrong way.
 re-implement the constant it is pricing.* This is the third instance of the r05 class in
 this arc (the carrier audit's measures, r09c's substring grader, and now this), and the
 first that produced identical before/after numbers — the signature to watch for.
+
+## ITERATION 2 — pre-registration (frozen before the src change)
+
+By RULINGS 2 above. **The bar, frozen now:**
+
+- **HARD CLAUSE (ruling 5):** **zero** inversions on a named wrong-commit class. One such
+  inversion fails the iteration outright, whatever the counts say.
+- **Inclusive harm ≤ 2** — genuine inversions *and* marginals, each verified by hand, no
+  census artefacts counted either way.
+- **Clean firings ≥ 20** — the rescoped level; a lever that buys its safety by never firing
+  does not pass.
+- Measured by the deployed-rule census end-to-end, on the whole battery, at $0. No sweep and
+  no spend is bought on this iteration (access returns 2026-09-01).
+
+**The change (D4):** `_apply_anchor` moves to **after** `dedup_correlated`, so the
+discriminating terms are computed over the SURVIVING witnesses — one document, one row —
+instead of over duplicate copies of one document. D2 placed it before dedup on the reasoning
+that a per-observation reliability term must be settled while every observation is its own
+row; the census refutes that reasoning empirically: copies of one document carry different
+window token sets, so a term can look discriminating when all it separates is **copies**.
+
+**Blind predictions:**
+
+1. The census-artefact class disappears — no value is both damped and undamped in the same
+   channel (the signature on both false positives).
+2. The run-8 multi-value-table inversion **clears**: its competitor and gold are in different
+   documents, so the term set does not change, but the gold loses its duplicate-driven damp.
+   *If it does not clear, the hard clause fails the iteration and this lever is done.*
+3. Clean firings fall slightly (fewer rows have ≥ 2 windows after dedup) but stay ≥ 20.
+4. The location-question inversion is **not** fixed by this change — its two carriers are
+   genuinely different documents.
+
+**PENDING below this line: D4, its census, the verdict.**
