@@ -785,8 +785,11 @@ def dedup_correlated(observations: list[Observation]) -> list[Observation]:
     wrong value, q-014's 9 stale copies → 0.80). Each substantial-quote cluster spanning
     multiple documents is reduced to the MAX-covariate document's observations — the
     strongest/freshest copy, so a recent re-attestation keeps its recency. Within a single
-    document, and for value-ONLY quotes (no shared context), nothing collapses: genuine
-    independent corroboration must still accumulate; only duplicates collapse. Order-preserving
+    document, ONE VALUE IS ONE ATTESTATION (r09c A1): repeated carriers of the same value —
+    identical quotes, near-duplicate boilerplate, page headers — collapse to the
+    first-maximal-covariate row (q2-105: twelve same-doc rows rode the group coarsening to
+    0.989; correlated is not once). Across documents, value-ONLY quotes (no shared context)
+    do not collapse: genuine independent corroboration must still accumulate. Order-preserving
     and pure."""
     rows = [(o.quote, o.artifact_cache_key, o.value_norm, _covariate(o))
             for o in observations]
@@ -799,10 +802,26 @@ def dedup_drop_rows(rows: list[tuple[str, str, str, float]]) -> set[int]:
     index set to drop. :func:`dedup_correlated` and the wire join
     (``bridge/observations.join_wire_observations``, r09 D2) both call this; a second
     implementation of the rule anywhere is a defect (§6.8)."""
+    drop: set[int] = set()
+    # r09c A1 — one document attests one value once: doc-keyed rows collapse per
+    # (doc_key, value_norm) to the first-maximal-covariate row, whatever the quotes (the
+    # boilerplate/page-repetition class evades any quote key; the doc-keyed group only
+    # CORRELATES the copies, it does not count them once). Value-only rows (no doc_key)
+    # are synthesised and out of scope here.
+    best_by_doc_value: dict[tuple[str, str], int] = {}
+    for i, (_quote, doc, vn, cov) in enumerate(rows):
+        if not doc:
+            continue
+        key = (doc, vn)
+        if key not in best_by_doc_value or cov > rows[best_by_doc_value[key]][3]:
+            best_by_doc_value[key] = i
+    drop.update(i for i, (_quote, doc, vn, _cov) in enumerate(rows)
+                if doc and best_by_doc_value[(doc, vn)] != i)
+    # The cross-document pass runs over the SURVIVORS.
     by_quote: dict[str, list[int]] = {}
     for i, (quote, _doc, _vn, _cov) in enumerate(rows):
-        by_quote.setdefault(_quote_key(quote), []).append(i)
-    drop: set[int] = set()
+        if i not in drop:
+            by_quote.setdefault(_quote_key(quote), []).append(i)
     for qkey, idxs in by_quote.items():
         # Declared FIRST-SEEN order, not a set: `max` returns the first maximal element, so
         # at equal covariate the survivor is a function of the observations rather than of the
@@ -810,7 +829,7 @@ def dedup_drop_rows(rows: list[tuple[str, str, str, float]]) -> set[int]:
         # battery's decisions between two runs of the same code on the same corpus).
         docs = list(dict.fromkeys(rows[i][1] for i in idxs))
         if len(docs) <= 1:
-            continue  # within one document — the per-document group already counts it once
+            continue  # a single document's survivors — A1 above already reduced them
         # Dedupe only when the shared quote carries CONTEXT beyond the bare value: identical
         # SURROUNDING text across documents is the duplicate signal (a forwarded/quoted chain or
         # a re-filed copy). A value-only quote is kept — the same value with no shared context

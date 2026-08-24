@@ -249,7 +249,7 @@ def test_wire_join_reindexes_groups_by_doc_key() -> None:
     from life_agent.bridge.observations import join_wire_observations
 
     channel = [_wire("Alpha", "d0", quote="ctx a"),
-               _wire("Alpha", "d0", quote="ctx b"),
+               _wire("Beta", "d0", quote="ctx b"),   # a DIFFERENT value: A1 collapses same-value
                _wire("Alpha", "d1", quote="ctx c")]
     probe = [{"reports": 0, "group": 0, "authority": 1.0, "subject_factor": 1.0,
               "time_factor": 1.0, "competition_factor": 1.0,
