@@ -313,7 +313,10 @@ def test_grow_lane_log_gather_failure_never_breaks_the_answer() -> None:
     assert view["asserted"] == ["P123"]
 
 
-def test_re_extract_strong_disagreeing_reread_collapses_the_channel() -> None:
+def test_re_extract_strong_adopts_the_bridge_reply_verbatim() -> None:
+    # r09: the JOIN lives bridge-side (pinned in test_bridge_server); the executor adopts
+    # whatever observations the reply carries — this scripted bridge returns an empty set,
+    # so the channel empties HERE, while the real bridge would return the joined channel.
     # The strong re-read REPLACES the channel exactly as corroborate does when it
     # DISAGREES — it named a value that would not join the lattice, so the weaker local
     # evidence must not survive it (review finding #2). The re-decide then runs on the
@@ -358,7 +361,9 @@ def test_re_extract_strong_null_reread_keeps_the_channel() -> None:
     assert "re_extract_strong" in decides[2]["applied_probes"]     # and retired
 
 
-def test_corroborate_tier_null_read_keeps_the_channel_disagree_still_replaces() -> None:
+def test_corroborate_tier_null_read_keeps_the_channel_reply_adopted_otherwise() -> None:
+    # r09: same note — the executor adopts the non-null reply verbatim; the real bridge
+    # returns the §5-deduped join, so a disagree keeps the channel live (test_bridge_server).
     # The same split on the daemon-scheduled tier — the branch that cost 12 of run 9's
     # 69 withholdings. A null read keeps the channel; a disagreeing one still erases it
     # (run 7's disagree⇒abstain contract, untouched).

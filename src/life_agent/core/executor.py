@@ -454,8 +454,9 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
             applied = list(dict.fromkeys([*applied, "recency"]))
             dec = _decide(obs, rho, era, applied)
         elif eff == "gather" and probe.startswith("corroborate"):
-            # a subject-aware whole-doc re-read at the scheduled TIER's model REPLACES the local
-            # channel. The joint's value → one observation (or NONE ⇒ empty ⇒ abstain). Each tier
+            # a subject-aware whole-doc re-read at the scheduled TIER's model, JOINED onto the
+            # standing channel bridge-side (r09: the payload carries the channel; the reply is
+            # the §5-deduped pool, so a disagree adds evidence instead of erasing). Each tier
             # fires at most once (dedup on the probe name) ⇒ escalation across tiers terminates.
             model = _TIER_MODEL.get(probe, "claude-opus-4-8")
             tier_rho = _TIER_RHO.get(probe, _GATHER_RHO)
@@ -512,11 +513,12 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
             # over the corpus (bridge /probe/deliberate — warm-replayed when the corpus
             # is unchanged). Its bare ANSWER value is joined bridge-side; a new value
             # comes back as a minted candidate (allow_new — the edge exists FOR the
-            # questions the local channel can't ground). On a SUCCESSFUL call the
-            # observation REPLACES the channel (conservative: independent-search
-            # corroboration is not modelled v0 — a stated coarsening) and an empty ok
-            # reply collapses it — NOT_IN_CORPUS from the reference is evidence for
-            # NONE. An INFRASTRUCTURE failure (CLI error/timeout, transport raise) is
+            # questions the local channel can't ground). On a SUCCESSFUL call the reply
+            # is the §5-deduped JOIN of the standing channel with the deliberate
+            # observation (r09 — the empty-ok collapse is retired: NOT_IN_CORPUS pooled
+            # with a grounded channel keeps the channel; r06 criterion 7 read zero
+            # genuine collapses). An INFRASTRUCTURE failure (CLI error/timeout,
+            # transport raise) is
             # not evidence of anything: the grounded channel survives untouched and the
             # probe is simply retired (fail-open — instrumentation never breaks an
             # already-grounded answer). The raw self-report conditions only through the
@@ -564,8 +566,8 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
         elif eff == "gather" and probe == "re_extract_strong":
             # the K-ENLARGING strong re-extract: a whole-doc opus re-read with allow_new — a
             # value outside the local candidate set comes back as a NEW candidate (the bridge
-            # indexes its observation at len(candidates)); the re-read REPLACES the channel
-            # (same docs — nested dependence), exactly as corroborate does.
+            # indexes its observation at len(candidates)); the reply is the §5-deduped JOIN
+            # of the standing channel with the re-read (r09), exactly as corroborate does.
             cr = _obj(post, f"{bridge}/probe/corroborate",
                       {"reextract": True, "allow_new": True, "question": question,
                        "observations": obs,
@@ -578,11 +580,12 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
             if cr.get("new_candidate"):
                 candidates = [*candidates, str(cr["new_candidate"])]
                 cand_comp = [*cand_comp, 1.0]
-            # A DISAGREEING strong re-read replaces (the strong model named a value that
-            # would not join; the weak evidence must not survive it — disagree ⇒
-            # NONE-dominant ⇒ abstain, the corroborate contract verbatim). A NULL read —
-            # the model named nothing at all — is the absence-of-evidence case (§14,
-            # 2026-08-18): the probe retires fail-open and the grounded channel stands.
+            # A DISAGREEING strong re-read no longer erases: the bridge returns the joined
+            # channel (r09 — run 7's disagree⇒abstain contract retired by the ruling's
+            # fix; a disagree that NAMES a joinable value contributes evidence against
+            # the leader instead). A NULL read — the model named nothing at all — is the
+            # absence-of-evidence case (§14, 2026-08-18): the probe retires fail-open and
+            # the grounded channel stands, rho untouched.
             if not _null_read(cr):
                 obs, era = cr["observations"], False
                 rho = _conditioned_rho(curves, extract_edge(_RE_EXTRACT_MODEL),
