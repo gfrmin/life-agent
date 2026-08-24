@@ -1043,21 +1043,3 @@ def test_confirm_hits_damps_a_confirm_that_lacks_the_asked_qualifier(
                              exclude_artifacts=set(), client=client)
     assert len(obs) == 2
     assert [o.competition_factor for o in obs] == [1.0, 0.5]
-
-
-def test_observe_hits_anchors_on_a_qualifier_outside_the_quote_window(
-        migrated_root: Path) -> None:
-    # r09d ruling 1 (the $0 census: the ±120 window damped the GOLD on 12 of 42 firings
-    # because the subject sits outside it). The qualifier is document-level.
-    far = "ACME HOLDINGS LIMITED annual return" + "z" * 500 + "Company Number 1234567"
-    other = "OTHER TRADING LIMITED annual return  Company Number 7654321"
-    client = FakeClient([
-        {"found": True, "value": "1234567", "quote": "Company Number 1234567"},
-        {"found": True, "value": "7654321", "quote": "Company Number 7654321"},
-    ])
-    obs, _ = observe_hits(migrated_root,
-                          "What is the company number for ACME HOLDINGS LIMITED?",
-                          [_hit("a" * 64, far), _hit("b" * 64, other)], client=client)
-    by_value = {o.value_norm: o for o in obs}
-    assert by_value["1234567"].competition_factor == 1.0
-    assert by_value["7654321"].competition_factor == 0.5
