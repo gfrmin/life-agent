@@ -196,3 +196,52 @@ error found by a $0 census that cost nothing and would have cost ~$40 to find at
 state; the §6.12 block stands; nothing bought. The successor decision is conferred in
 `docs/unification/conferrals/r09d-window-conferral.md`.
 
+
+## ADDENDUM — the rescope, and a census that was measuring itself (2026-08-24, $0)
+
+Ruling 1 landed under TDD (`ee7de62`): `matching.anchor_window` names the choice in one
+place, both mint sites read it, the competition term keeps run 9's ±120. Suite 2687, ruff
+green.
+
+**Then the acceptance census returned the same numbers as before the change — 42 / 26 / 12,
+byte for byte.** The census was re-implementing the window instead of reading the deployed
+one, so it was blind to the very constant it existed to price. Rewritten to measure the
+deployed rule end-to-end (mint the channel through `observe_hits`, compare each
+observation's FINAL factor against the competition term alone: a final below the base IS the
+anchor firing, whatever window the code chose), and run on both trees:
+
+| tree | fires | damps the gold | **strictly harmful (raw)** | clean firings |
+|---|---|---|---|---|
+| pre-rescope, ±120 quote window (`af8112e`) | 50 | 33 | **10** | 17 |
+| rescoped, document-scoped (`ee7de62`) | 42 | 22 | **5** | 20 |
+
+**The rescope's direction is confirmed and its magnitude was overstated.** Harm halves
+(10 → 5) and clean firings rise (17 → 20) — but the "strictly harmful on 1" that justified
+ruling 1 came from the blind census and was never a deployed measure. Published rather than
+quietly restated.
+
+**All five remaining rows were then inspected by hand**, because a bar of ≤ 2 cannot be read
+off a measure this coarse:
+
+| row | reading | genuine? |
+|---|---|---|
+| multi-value-table class (run-8 named) | the **gold is damped to 1/4** while the competing value stays at its base — ranking inverted | **YES** |
+| a location question | the **gold is damped** while a vacuous non-answer stays at 1.0 | **YES** |
+| a vesting-period question | a gold phrasing is damped, but another gold witness and a non-gold both sit at the same base | marginal |
+| an antibody-titre question | the damped value is gold-EQUIVALENT phrasing; three undamped witnesses are also gold phrasings (the judge graded this class correct) | no — census artefact |
+| a channel-id question | the gold's leading witness is undamped at 1.0; only a second copy is damped | no — census artefact |
+
+**Verified: 2 genuine inversions, 1 marginal, 2 false positives of the census's gold test.**
+The frozen bar (strictly-harmful ≤ 2, clean firings ≥ 15) therefore reads **met on the strict
+count (2 ≤ 2) and missed on the inclusive one (3 > 2)**, with clean firings 20 ≥ 15 either
+way. A bar that lands exactly on an interpretation boundary is a ruling, not a reading —
+conferred rather than resolved here.
+
+Decision-relevant beside it: one of the two genuine inversions is the **run-8 named
+wrong-commit class**, so on that row the anchor as it stands would push a known-bad
+commit further the wrong way.
+
+**Standing lesson, registered:** *a census must read the deployed rule end-to-end, never
+re-implement the constant it is pricing.* This is the third instance of the r05 class in
+this arc (the carrier audit's measures, r09c's substring grader, and now this), and the
+first that produced identical before/after numbers — the signature to watch for.
