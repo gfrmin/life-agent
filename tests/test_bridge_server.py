@@ -1849,6 +1849,122 @@ def test_deliberate_empty_ok_joins_and_keeps_the_channel(
     assert [o["doc_key"] for o in payload["observations"]] == ["d0", "d1"]
 
 
+# --- r09c A2: a synthesised confirm cannot outrank the channel it re-read -------------------
+
+_WEAK_CHANNEL = [
+    {"reports": 0, "group": 0, "authority": 0.85, "subject_factor": 0.525, "time_factor": 1.0,
+     "competition_factor": 1.0, "quote": "ctx one PL-900001", "doc_key": "d0",
+     "value_norm": "pl-900001"},
+    {"reports": 0, "group": 1, "authority": 0.7, "subject_factor": 0.4, "time_factor": 1.0,
+     "competition_factor": 1.0, "quote": "ctx two PL-900001", "doc_key": "d1",
+     "value_norm": "pl-900001"},
+]  # PII-OK: synthetic passport shapes (the file's standing fixture values)
+
+
+def test_corroborate_confirm_covariates_capped_at_channel_max(
+        deps: BridgeDeps, monkeypatch: pytest.MonkeyPatch) -> None:
+    """r09c A2: the synthesised confirm's minted authority/subject are capped at the
+    per-component max over the channel's doc-keyed rows for the same value (q2-071: a
+    confirm at 1.0/1.0 outranked every grounded 0.85/0.525 carrier it re-read)."""
+    import life_agent.core.joint_extract as JE
+
+    monkeypatch.setattr(JE, "extract_joint",
+                        lambda root, q, hits, *, model, k: JE.JointResult(
+                            value="PL-900001", confidence=0.9, as_of=None))
+    status, payload = _call(deps, "POST", "/probe/corroborate", {
+        "reextract": True, "question": "id?", "hits": [
+            {"artifact_cache_key": "d0", "chunk_text": "…"}],
+        "observations": _WEAK_CHANNEL,
+        "candidates": ["PL-900001"], "model": "claude-opus-4-8", "rho": 0.95})
+    assert status == 200 and payload["read"] == "confirm"
+    synth = [o for o in payload["observations"] if not o["doc_key"]]
+    assert len(synth) == 1
+    assert synth[0]["authority"] == 0.85
+    assert synth[0]["subject_factor"] == 0.525
+
+
+def test_corroborate_cap_prefers_same_value_rows(
+        deps: BridgeDeps, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The cap is per-value first: a strong doc-keyed row for a DIFFERENT value does not
+    raise what a confirm of THIS value may carry."""
+    import life_agent.core.joint_extract as JE
+
+    other = {"reports": 1, "group": 2, "authority": 0.95, "subject_factor": 0.9,
+             "time_factor": 1.0, "competition_factor": 1.0,
+             "quote": "ctx three XX-000111", "doc_key": "d2",
+             "value_norm": "xx-000111"}  # PII-OK: synthetic passport shape
+    monkeypatch.setattr(JE, "extract_joint",
+                        lambda root, q, hits, *, model, k: JE.JointResult(
+                            value="PL-900001", confidence=0.9, as_of=None))
+    status, payload = _call(deps, "POST", "/probe/corroborate", {
+        "reextract": True, "question": "id?", "hits": [
+            {"artifact_cache_key": "d0", "chunk_text": "…"}],
+        "observations": [*_WEAK_CHANNEL, other],
+        "candidates": ["PL-900001", "XX-000111"], "model": "claude-opus-4-8", "rho": 0.95})
+    assert status == 200 and payload["read"] == "confirm"
+    synth = [o for o in payload["observations"] if not o["doc_key"]]
+    assert len(synth) == 1 and synth[0]["authority"] == 0.85
+
+
+def test_corroborate_minted_candidate_capped_at_channel_doc_max(
+        deps: BridgeDeps, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A minted (allow_new) candidate has no same-value rows — the cap falls back to the
+    max over ALL doc-keyed channel rows: new evidence still cannot outrank the channel."""
+    import life_agent.core.joint_extract as JE
+
+    monkeypatch.setattr(JE, "extract_joint",
+                        lambda root, q, hits, *, model, k: JE.JointResult(
+                            value="QQ-777000", confidence=0.9, as_of=None))
+    status, payload = _call(deps, "POST", "/probe/corroborate", {
+        "reextract": True, "question": "id?", "hits": [
+            {"artifact_cache_key": "d0", "chunk_text": "…"}],
+        "observations": _WEAK_CHANNEL, "allow_new": True,
+        "candidates": ["PL-900001"], "model": "claude-opus-4-8", "rho": 0.95})
+    assert status == 200
+    synth = [o for o in payload["observations"] if not o["doc_key"]]
+    assert len(synth) == 1
+    assert synth[0]["authority"] == 0.85 and synth[0]["subject_factor"] == 0.525
+
+
+def test_corroborate_confirm_uncapped_without_a_doc_keyed_channel(
+        deps: BridgeDeps, monkeypatch: pytest.MonkeyPatch) -> None:
+    """No doc-keyed channel (the k=0 rescue mints from zero by design — the S5 exemption):
+    the pre-r09c covariates stand."""
+    import life_agent.core.joint_extract as JE
+
+    monkeypatch.setattr(JE, "extract_joint",
+                        lambda root, q, hits, *, model, k: JE.JointResult(
+                            value="PL-900001", confidence=0.9, as_of=None))
+    status, payload = _call(deps, "POST", "/probe/corroborate", {
+        "reextract": True, "question": "id?", "hits": [
+            {"artifact_cache_key": "d0", "chunk_text": "…"}],
+        "candidates": ["PL-900001"], "model": "claude-opus-4-8", "rho": 0.95})
+    assert status == 200
+    obs = payload["observations"]
+    assert len(obs) == 1 and obs[0]["authority"] == 1.0 and obs[0]["subject_factor"] == 1.0
+
+
+def test_deliberate_synthesis_capped_at_channel_max(
+        deps: BridgeDeps, monkeypatch: pytest.MonkeyPatch) -> None:
+    """r09c A2 at the S3 edge: the deliberate re-mint is capped exactly like a corroborate
+    confirm (q2-105: the re-mint arrived above the twelve grounded rows it re-read)."""
+    import life_agent.core.deliberate as DL
+
+    monkeypatch.setattr(DL, "answer", lambda q, cfg: DL.DeliberateResult(
+        question=q, model="m", text="the id is PL-900001", value="PL-900001",
+        credence=0.9, declined=False, status="ok", notes="", cost_usd=0.0, latency_s=0.0,
+        input_tokens=None, output_tokens=None, session_id=None, tool_calls=0,
+        gather_rounds=0))
+    status, payload = _call(deps, "POST", "/probe/deliberate", {
+        "question": "id?", "candidates": ["PL-900001"], "allow_new": True,
+        "observations": _WEAK_CHANNEL})
+    assert status == 200 and payload["status"] == "ok"
+    synth = [o for o in payload["observations"] if not o["doc_key"]]
+    assert len(synth) == 1
+    assert synth[0]["authority"] == 0.85
+    assert synth[0]["subject_factor"] == 0.525
+
+
 def test_the_channel_never_enters_the_corroborate_derivation_key(
         deps: BridgeDeps, monkeypatch: pytest.MonkeyPatch) -> None:
     """r09 C5 — warm policy: the joined channel is computed AFTER the derivation layer.

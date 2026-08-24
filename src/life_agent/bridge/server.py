@@ -429,6 +429,7 @@ def _probe_corroborate(deps: BridgeDeps, p: Payload) -> Payload:
         # run 7's disagree⇒abstain contract is retired by the ruling's fix); a caller with
         # no channel keeps the pre-r09 contract verbatim.
         channel = list(p.get("observations") or [])
+        obs = _cap_synthesised_covariates(obs, channel)   # r09c A2, before the join
         if channel:
             joined_cands = (candidates if new_candidate is None
                             else [*candidates, new_candidate])
@@ -601,6 +602,32 @@ def _superset_extension(value: str, candidate: str) -> bool:
     return False
 
 
+def _cap_synthesised_covariates(obs: list[Payload], channel: list[Payload]) -> list[Payload]:
+    """r09c A2 — a re-read cannot outrank the channel it re-read: every synthesised
+    observation's minted authority/subject is capped at the per-component max over the
+    channel's doc-keyed rows for the SAME value_norm, else over all doc-keyed rows. A
+    channel with no doc-keyed rows caps nothing (the k=0 rescue mints from zero by
+    design — the S5 exemption). time_factor is untouched: it is already the caller's
+    computed projection, never a minted constant."""
+    keyed = [c for c in channel if str(c.get("doc_key") or "")]
+    if not keyed:
+        return obs
+    out: list[Payload] = []
+    for o in obs:
+        if str(o.get("doc_key") or ""):
+            out.append(o)
+            continue
+        same = [c for c in keyed
+                if str(c.get("value_norm") or "") == str(o.get("value_norm") or "")] or keyed
+        out.append({**o,
+                    "authority": min(float(o.get("authority") or 0.0),
+                                     max(float(c.get("authority") or 0.0) for c in same)),
+                    "subject_factor": min(float(o.get("subject_factor") or 0.0),
+                                          max(float(c.get("subject_factor") or 0.0)
+                                              for c in same))})
+    return out
+
+
 def _join_deliberate_value(value: str | None, candidates: list[str], allow_new: bool,
                            *, time_factor: float = 1.0,
                            competition: list[float] | None = None,
@@ -657,6 +684,7 @@ def _deliberate_joined(p: Payload, obs: list[Payload], candidates: list[str],
     channel = list(p.get("observations") or [])
     if not channel:
         return obs
+    obs = _cap_synthesised_covariates(obs, channel)   # r09c A2, before the join
     joined_cands = candidates if new_candidate is None else [*candidates, new_candidate]
     return join_wire_observations(channel, obs, joined_cands)
 
