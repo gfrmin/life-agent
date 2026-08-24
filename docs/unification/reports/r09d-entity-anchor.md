@@ -337,3 +337,32 @@ under every variant** — which is why the verdict is safe. Published with both 
 and the right one. The standing lesson stands and now has three instances: *a census must
 read the deployed rule end-to-end.*
 
+
+## ENACTED — the disposition (2026-08-25)
+
+By the disposition rulings: the anchor's four code commits are **reverted from the branch**
+(`git revert`, history intact — the docs all stay). The parked tree differs from the A2 head
+by **`core/executor.py` alone**: JOIN + T1 + A1 + A2 + **D3**. Suite 2669, ruff green;
+`git grep` finds no anchor symbol left in `src/`. Nothing merged to master; the §6.12 block
+stands; total spend for r09d: **$0**.
+
+### Queued for 2026-09-01, when API access returns
+
+In this order, per ruling 2:
+
+1. **Warm the cold rows, then re-read the sweep.** S1'' never got its evidence — 3 of the 4
+   known-wrong rows (q2-019, q2-071, q2-105) were cold on every pass, and coldness is
+   pass-order-dependent, so the readable set is a coin flip until the derivations exist.
+   Warming is the first thing that costs money and the cheapest thing that buys evidence.
+2. **Re-price run 14 on the warmed record** (`gate_splice.py`, $0 once warm). On the standing
+   stack the zero-wrong-commit conjunct is expected to fail — q2-018 and q2-071 both still
+   commit wrong — so this is a decision about whether to fire at all, not a formality.
+3. **Pre-register the extract-side entity field** as the next checkpoint: carry the qualifier
+   on the observation *from the extractor* (row label, field name, the subject the value
+   belongs to) instead of inferring it from question-vocabulary overlap. It is the one
+   candidate r09d's terse-vs-discursive finding does not pre-emptively refute. Known costs:
+   the payload grows (the named unservable-fixture class) and the new field needs its own
+   grounding rule.
+
+**Standing constraint to carry forward:** no lever ships while it makes a **named
+wrong-commit class** worse (r09d ruling 5) — a hard clause, independent of aggregate counts.
