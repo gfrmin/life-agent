@@ -845,6 +845,20 @@ Run 13's outcome branches are frozen at full delegation: PASS (the gate's frozen
 blocking row repaired ∧ zero new wrong commits) closes this deployment block and deploys
 master to live; FAIL on any conjunct reverts the JOIN from the deploy path and STOPS for a
 ruling. §6.13's repair (r08) lands first so r09's Δ is attributable to the JOIN alone.
+*BUILT (r09, 2026-08-24 — `docs/unification/reports/r09-deduped-join.md`).* The §5 key
+(quote, doc_key, value_norm — the third field forced by C2's identity in TDD, disclosed)
+rides every wire observation, stripped before any decide post; the executor hands its
+standing channel to every S1/S3/S4/S5 probe and the bridge returns the §5-deduped pool
+(`lookup.dedup_drop_rows` — the ONE rule, `dedup_correlated` delegating; groups re-derived
+from doc_key, the bound's group-0 collision dead). A disagree or empty-ok reply pools
+nothing: the channel survives — run 7's disagree⇒abstain contract and the deliberate
+empty-ok collapse are retired by the ruling's fix, named in the pre-registration. Finding en
+route: the base channel arrives already §5-deduped and probe observations are value-only, so
+on today's shapes the deduped JOIN is provably idempotent over the raw pool — **r07's upper
+bound (10 repairs / 2 regressions) is the expected read for run 13, not a ceiling.** 7.2:
+every non-probe fixture replays byte-identically; the 95 probe-firing fixtures are
+unservable (the payload grew — the named class; why the baseline re-records post-r09).
+**This deployment block still stands: it closes only on run 13's PASS.**
 
 **6.13 A declared total order cannot restore determinism when the tie block is larger than
 the over-fetch window — the window itself is the sampler.** Found 2026-08-22 by r06's

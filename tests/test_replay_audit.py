@@ -320,26 +320,31 @@ def test_the_dedup_key_is_absent_from_wire_observations_which_is_why_join_is_a_b
 
 
 def test_join_calls_the_deployed_dedup_whenever_the_key_is_there(monkeypatch):
-    """Where §5 CAN apply, it is `lookup.dedup_correlated` that applies it — never a copy."""
+    """Where §5 CAN apply, THE deployed rule applies it — r09 put the key on the wire and the
+    join delegates to `bridge/observations.join_wire_observations`, whose clustering is
+    `lookup.dedup_drop_rows` (the ONE rule `dedup_correlated` itself calls) — never a copy."""
     seen: list[list] = []
 
-    def _spy(obs):
-        seen.append(list(obs))
-        return list(obs)
+    def _spy(rows):
+        seen.append(list(rows))
+        return set()
 
-    monkeypatch.setattr(LK, "dedup_correlated", _spy)
-    RP.join_observations([{"quote": "a"}], [{"quote": "b"}])
-    assert seen == [[{"quote": "a"}, {"quote": "b"}]]
+    monkeypatch.setattr(LK, "dedup_drop_rows", _spy)
+    out = RP.join_observations(
+        [{"reports": 0, "group": 0, "quote": "a", "doc_key": "d0", "value_norm": "v"}],
+        [{"reports": 0, "group": 0, "quote": "b", "doc_key": "", "value_norm": "v"}])
+    assert len(seen) == 1 and len(seen[0]) == 2  # the pooled rows reached the one rule
+    assert [o["quote"] for o in out] == ["a", "b"]
 
 
 def test_join_without_the_key_pools_raw_and_is_therefore_an_upper_bound(monkeypatch):
     """No key ⇒ no dedup ⇒ every forwarded copy counts as an independent witness. That is the
     most favourable case joining could ever have, and the instrument must not dress it as an
     estimate by quietly deduping on something else."""
-    def _boom(obs):
+    def _boom(rows):
         raise AssertionError("§5 must not be applied to observations it cannot cluster")
 
-    monkeypatch.setattr(LK, "dedup_correlated", _boom)
+    monkeypatch.setattr(LK, "dedup_drop_rows", _boom)
     assert RP.join_observations([{"reports": 0}], [{"reports": 1}]) == [{"reports": 0},
                                                                         {"reports": 1}]
 

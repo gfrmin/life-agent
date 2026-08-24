@@ -46,7 +46,7 @@ from typing import Any, cast
 import duckdb
 
 from life_agent import owner
-from life_agent.bridge.observations import to_abstract_observations
+from life_agent.bridge.observations import join_wire_observations, to_abstract_observations
 from life_agent.core import config
 from life_agent.core import corpus as CORPUS
 from life_agent.core import decisions as DEC
@@ -404,7 +404,14 @@ def _probe_corroborate(deps: BridgeDeps, p: Payload) -> Payload:
                 tf = _corroborate_time_factor(jr, hits, p)
                 obs = [{"reports": idx, "group": 0, "authority": 1.0,
                         "subject_factor": 1.0, "time_factor": tf,
-                        "competition_factor": _candidate_competition(p, idx)}]
+                        "competition_factor": _candidate_competition(p, idx),
+                        # r09 D1 — the wire key, uniform (see _join_deliberate_value).
+                        # value_norm is the REPORTED candidate's normal form, not the raw
+                        # sentence's: the observation asserts the candidate it joined.
+                        "quote": "", "doc_key": "",
+                        "value_norm": LK._norm_value(
+                            candidates[idx] if idx < len(candidates)
+                            else str(new_candidate))}]
                 read = "confirm"
         # the read's own stated confidence rides beside the tier rho: the k=0 strong rescue
         # conditions at min(tier, confidence), so the wire never discards the instrument's
@@ -416,6 +423,15 @@ def _probe_corroborate(deps: BridgeDeps, p: Payload) -> Payload:
         priced = PRICING.cost_usd(LLMResult(
             text="", in_tokens=jr.in_tokens, out_tokens=jr.out_tokens, seconds=0.0,
             served_model=jr.served_model or model))
+        # r09 D2 — the §5-deduped JOIN: a caller that hands its standing channel gets the
+        # POOLED set back (a disagree or null read pools nothing and the channel survives —
+        # run 7's disagree⇒abstain contract is retired by the ruling's fix); a caller with
+        # no channel keeps the pre-r09 contract verbatim.
+        channel = list(p.get("observations") or [])
+        if channel:
+            joined_cands = (candidates if new_candidate is None
+                            else [*candidates, new_candidate])
+            obs = join_wire_observations(channel, obs, joined_cands)
         out: Payload = {"observations": obs, "gather_rho": tier_rho, "value": jr.value,
                         "confidence": jr.confidence, "cache_key": jr.cache_key,
                         "read": read,
@@ -579,7 +595,28 @@ def _join_deliberate_value(value: str | None, candidates: list[str], allow_new: 
              # the confirmed candidate's inherited §4.2 factor (a minted candidate's idx
              # is beyond the list ⇒ the neutral 1.0)
              "competition_factor": float(comp[idx]) if idx < len(comp) else 1.0,
+             # r09 D1 — the wire key, uniform on every observation: a synthesised read
+             # has no verbatim quote and no single source document (value-only, so §5
+             # never clusters it; the join gives it its own fresh group). value_norm is
+             # the REPORTED candidate's normal form — a containment-confirm asserts the
+             # candidate, not the sentence that contained it.
+             "quote": "", "doc_key": "",
+             "value_norm": LK._norm_value(candidates[idx]) if idx < len(candidates)
+             else vn,
              }], new_candidate
+
+
+def _deliberate_joined(p: Payload, obs: list[Payload], candidates: list[str],
+                       new_candidate: str | None) -> list[Payload]:
+    """r09 D2 at the S3 edge: pool the caller's standing channel with the deliberate
+    observation (the §5 rule, one spelling). An empty ok reply pools nothing, so the
+    grounded channel survives — the empty-ok collapse is retired (pre-registration D3).
+    A caller with no channel keeps the pre-r09 contract verbatim."""
+    channel = list(p.get("observations") or [])
+    if not channel:
+        return obs
+    joined_cands = candidates if new_candidate is None else [*candidates, new_candidate]
+    return join_wire_observations(channel, obs, joined_cands)
 
 
 def _probe_deliberate(deps: BridgeDeps, p: Payload) -> Payload:
@@ -611,6 +648,7 @@ def _probe_deliberate(deps: BridgeDeps, p: Payload) -> Payload:
             c.get("value"), candidates, allow_new,
             time_factor=_source_time_factor(c.get("value"), None, hits, p),
             competition=list(p.get("candidate_competition") or []))
+        obs = _deliberate_joined(p, obs, candidates, new_candidate)
         out: Payload = {"observations": obs, "value": c.get("value"),
                         "confidence": c.get("credence"), "declined": c.get("declined"),
                         "status": "ok", "text": c.get("text"), "model": c.get("model"),
@@ -632,6 +670,8 @@ def _probe_deliberate(deps: BridgeDeps, p: Payload) -> Payload:
         competition=list(p.get("candidate_competition") or []))
     if r.status != "ok":
         obs, new_candidate = [], None
+    else:
+        obs = _deliberate_joined(p, obs, candidates, new_candidate)
     out = {"observations": obs, "value": r.value, "confidence": r.credence,
            "declined": r.declined, "status": r.status, "text": r.text,
            "model": r.model, "cost_usd": r.cost_usd, "latency_s": r.latency_s,
