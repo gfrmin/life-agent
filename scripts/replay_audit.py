@@ -672,14 +672,30 @@ def refuse_live_instrument_seams(engine_version: str) -> None:
     firing. Found live on 2026-08-25: a row whose §18.9 derivation had since warmed ran on to
     the subject seam, which tried to spend (the account's usage limit refused it, not us).
 
+    The binding sites come from ``collapse/drive._SPEND_SEAMS`` — the table the recorder
+    already owns, written after M0 found that gating the instrument client alone left
+    `joint_extract` free to spend. That is the same hole found here, so this consumes the
+    table rather than keeping a second copy of it.
+
     The engine version must be the one the deployed client reports, or every cached verdict
     re-keys and a warm store reads as cold.
     """
+    import importlib
+
+    from life_agent.collapse import drive as DRIVE
+
     def _refusing(*_args: Any, **_kwargs: Any) -> Any:
         return RefusingClient(engine_version=engine_version)
 
+    def _refuse(*_args: Any, **_kwargs: Any) -> Any:
+        raise WouldSpendError("a live model seam was reached and the recorder is no-spend")
+
     for mod in (INSTR, SUBJ, TI):
         mod.instrument_client = _refusing       # type: ignore[assignment]
+    for mod_name, attr in DRIVE._SPEND_SEAMS:
+        if (mod_name, attr) == ("life_agent.core.deliberate", "answer"):
+            continue        # criterion 3 preflights the edge per question; sealing `answer`
+        setattr(importlib.import_module(mod_name), attr, _refuse)   # would refuse WARM ones
 
 
 def deliberate_is_warm(root: Path, conn: Any, question: str) -> bool:
