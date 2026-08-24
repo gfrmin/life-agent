@@ -133,15 +133,20 @@ leader**; five rows move; one of the five is an abstain→abstain leader change.
    amplifier does not remove the **count** — four competitor observations against one gold
    observation, every covariate identical.
 2. **q2-071's carrier is a 2:1 GROUNDED majority, not the confirms.** Three grounded
-   observations: one carries the gold, two carry the competitor — and by the D audit those
-   two are the file-level row and the "(no function)" row of the *same* table, while the
-   gold is the class row the question names. They land in three different chunks, so they
-   are three different `doc_key`s: **one table's rows are counted as independent
-   documents.** `competition_factor` is 1.0 on all three, so the run-9 competing-values
-   temper is blind here by construction (no shared quote window across chunks). Strike the
-   confirms entirely and the competitor still leads 2:1. This is the multi-value-table
-   class (q2-053 / q2-090 precedent), and the entity-anchor lever named in the
+   observations: one carries the gold, two carry the competitor. By the D audit the two
+   competitor rows are a file-scoped and a remainder-scoped row for the same path, while
+   the question asks for a **class-scoped** value and the gold is the class row. The three
+   `doc_key`s resolve in the catalogue to **three genuinely distinct documents** (three
+   separate pandoc artifacts, sizes 88 KB / 27 KB / 221 KB, 91 / 28 / 230 chunks) — so this
+   is not a counting artefact: three independent documents really do disagree 2:1, because
+   two of them answer a *different question about the same path*. `competition_factor` is
+   1.0 on all three, so the run-9 competing-values temper is blind here by construction (no
+   shared quote window across documents). Strike the confirms entirely and the competitor
+   still leads 2:1. The observation carries no entity qualifier, so nothing downstream can
+   tell a class-scoped value from a file-scoped one. This is the multi-value-table class
+   (q2-053 / q2-090 precedent), and the **entity-anchor lever** named in the
    pre-registration is aimed at exactly it.
+
 3. **A1 is UNMEASURED on this pass.** No replayable row shows the doc-keyed collapse
    signature, and the two rows dumped observation-by-observation carry no within-document
    duplicate pair. A1's target row is q2-105 — **cold on this pass**. The rule is landed,
@@ -189,6 +194,18 @@ half-PASS. The same matcher mis-graded two judge-graded superset rows the other 
 caught by the sanity check that compares the matcher against the record's own judge grade,
 and the reading was redone against run 13's committed leader per question. Both quantities
 are published above; no verdict was taken on the defective measure.
+
+### Correction, published after the reading was first committed
+
+The first version of diagnostic 2 asserted that the three carrying documents were three
+**chunks of one table**, i.e. that the 2:1 majority was a counting artefact of chunk-level
+`doc_key`s. That was checked against the catalogue afterwards and is **false**: each
+`doc_key` resolves to a whole document (91, 28 and 230 chunks respectively, three separate
+source artifacts). The diagnostic above is the corrected text; the verdict is unchanged
+(S1' fails on q2-071 either way), but the *successor option* changes materially — a
+correlation key that treats co-chunked rows as one document would have been a no-op here,
+while the entity-anchor lever is aimed at the mechanism that is actually present. Published
+rather than silently amended, per the r05 rule: an audit's measures get audited too.
 
 ### What the fail means
 
