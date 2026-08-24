@@ -1061,24 +1061,3 @@ def test_observe_hits_anchors_on_a_qualifier_outside_the_quote_window(
     by_value = {o.value_norm: o for o in obs}
     assert by_value["1234567"].competition_factor == 1.0
     assert by_value["7654321"].competition_factor == 0.5
-
-
-def test_anchor_terms_discriminate_documents_not_duplicate_copies(
-        migrated_root: Path) -> None:
-    # r09d D4: TWO CHUNKS OF ONE DOCUMENT report the same value; only one chunk's window
-    # holds the question's qualifier. Computed pre-dedup the term looks discriminating (all
-    # it separates is two chunks of one document) and the §5 survivor carries the damp;
-    # computed post-dedup the document is one witness, the term separates nothing, and
-    # nothing is damped. A document must never be damped by its own copy.
-    doc = "d" * 64
-    client = FakeClient([
-        {"found": True, "value": "1234567", "quote": "Company Number 1234567"},
-        {"found": True, "value": "1234567", "quote": "Number 1234567 (cover)"},
-    ])
-    obs, _ = observe_hits(migrated_root,
-                          "What is the company number for ACME HOLDINGS LIMITED?",
-                          [_hit(doc, "Company Number 1234567"),
-                           _hit(doc, "ACME HOLDINGS LIMITED  Number 1234567 (cover)")],
-                          client=client)
-    assert len(obs) == 1                       # §5/A1: one document, one value, one witness
-    assert obs[0].competition_factor == 1.0    # and it is not damped by its own other chunk

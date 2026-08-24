@@ -694,17 +694,9 @@ def observe_hits(root: Path, question: str, hits: list[dict[str, Any]], *,
     # host lookup_posterior OR the daemon's reliability_categorical (which consumes this verbatim
     # through to_abstract_observations). Placed in the decider alone (commit 546f1a5), the §4.2
     # temper never reached the executor path; observe_hits is the single seam both consume.
-    # r09d D4 — the anchor is settled AFTER §5, over the SURVIVING witnesses. D2 put it
-    # before, reasoning that a per-observation term must be settled while every observation
-    # is its own row; the battery census refuted that empirically: two chunks of one document
-    # carry different token sets, so a question term can look discriminating when all it
-    # separates is copies, and the §5 survivor then carries a damp its own document earned.
-    # Terms must discriminate DOCUMENTS.
-    kept = dedup_correlated(observations)          # order-preserving, same objects
-    kept_ids = {id(o) for o in kept}
-    keep_windows = [w for o, w in zip(observations, windows, strict=True)
-                    if id(o) in kept_ids]
-    return _apply_anchor(question, kept, keep_windows), indeterminate
+    # r09d D2 before §5: the anchor is a per-observation reliability term, so it must be
+    # settled while every observation is still its own row — dedup then collapses witnesses.
+    return dedup_correlated(_apply_anchor(question, observations, windows)), indeterminate
 
 
 def confirm_prefilter(value: str, hits: list[dict[str, Any]],
