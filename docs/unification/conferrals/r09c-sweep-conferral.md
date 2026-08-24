@@ -106,3 +106,20 @@ rate the JOIN currently loses at S2.
 2. **A1 + A2:** keep them on the branch, or revert them with the rest of the temper?
 3. **S2 (option E):** bundle into the next checkpoint, or leave it for later?
 4. **Run 14's conjuncts:** ruling 4 verbatim again, or amended?
+
+## RULINGS (owner, interviewed 2026-08-24)
+
+1. **Successor: A — the decide-side entity anchor.** r09d opens with a matching-side rule
+   in run 9's shape: where a question names an entity and *some* competing observation's
+   quote window carries it while others do not, damp the ones that do not; no anchor
+   anywhere ⇒ no change. No wire or extract change. Sweep at $0 before any spend.
+2. **A1 and A2 are KEPT on the branch, and the reading says so plainly** — A2 measured
+   correct and insufficient, A1 landed, unit-tested and **unmeasured** on this pass
+   (its target row went cold). Neither is evidence for the lever; neither is reverted.
+3. **S2 is bundled (option E):** the next checkpoint extends the JOIN to S2 so a second
+   gather round cannot discard an accumulated channel. It buys answer rate, not a wrong
+   commit, and is measured in the same $0 sweep.
+4. **Run 14's branches are ruling 4 verbatim again, at full delegation:** PASS (frozen
+   δ/level ∧ the blocking row repaired ∧ zero new wrong commits) ⇒ the §6.12 block closes
+   and master deploys to live without a further keypress; FAIL on any conjunct ⇒ the
+   deploy-path changes revert and work STOPs for a ruling, with a conferral.
