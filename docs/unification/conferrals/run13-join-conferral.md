@@ -100,3 +100,21 @@ floor. Fragile; folded into A as its first temper rather than standing alone.
    keypress?
 4. The riders (m0-5 re-record + O2 re-preparation): stay deferred until a PASS deploys
    (recommended), or run now?
+
+## RULINGS (owner, 2026-08-24 — interviewed against this document)
+
+All four questions ruled on the recommended branch:
+
+1. **r09b OPENS** — the JOIN re-lands with a temper, under a new frozen pre-registration
+   (committed before any `src/` change), an off-gate collateral sweep before any spend,
+   then run 14 (~$1–4 vs the archived mono arm).
+2. **Temper scope: BOTH named classes** — the strict-span guard on containment confirms
+   (the superset-confirm class) and dispersal preservation on joined confirms of competed
+   values (the warm-deliberate class).
+3. **Run 14's branches: ruling 4's three conjuncts verbatim at full delegation** — PASS
+   closes §6.12 and deploys master to live without a keypress; FAIL reverts the
+   temper+JOIN and STOPs. The splice's 0.980 is registered blind as the expectation.
+4. **The riders (m0-5 re-record + O2 re-preparation) stay deferred until a PASS deploys.**
+
+*Successor:* `docs/unification/reports/r09b-tempered-join.md`.
+
