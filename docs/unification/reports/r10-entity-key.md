@@ -73,6 +73,29 @@ firing run 14: r09e measured two rows still committing wrong, and E1 targets one
 14 remains a separate decision, under its own frozen conjuncts, once the remaining named
 classes are addressed or priced.
 
+## AMENDMENT — before implementation, before any evidence
+
+Made while reading the code to implement the frozen rule, with **no sweep run and no result
+seen**. It narrows the rule; it does not widen it.
+
+The rule says "BOTH mint sites". Only one of them has a carrier. The base channel mints one
+observation **per chunk** (`lookup.observe_hits` — the single seam the base, `/extract` and the
+dormant confirm probe all share), so `carrier(o)` is well defined there. The corroborate probe
+does not: it mints through a **joint** read over all the hits' snippets at once and returns a
+single observation mapped to a candidate index. There is no chunk that observation came from.
+
+Defining one would mean inventing a rule at implementation time — exactly what the discipline
+forbids — and the two available inventions are both bad: the union of all hits keys everything
+(a no-op dressed as a rule), and "the chunk containing the value" is a new carrier definition
+with its own failure modes.
+
+**So E1 lands at `observe_hits` and is structurally inapplicable to the joint mint.** The
+consequence is stated before the sweep: on the target row the competitor's extra observations
+arrive from probe firings, and those are exactly the ones E1 cannot touch. **Prediction 1 is
+therefore weaker than the census implied** — the base-side drop may not be enough to move the
+commit, and if the row stays wrong with its base competitors dropped, that is a real result
+about where the harm lives, not a failure to implement the rule.
+
 ## Reading
 
 *(appended after the sweep; nothing above this line changes.)*
