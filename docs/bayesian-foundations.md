@@ -3001,6 +3001,37 @@ on this list. Answers land here by amendment, citing their evidence.
   The decidable question the reading leaves: re-open r09 with a temper for the two named
   wrong-commit classes under a new pre-registration, or park the JOIN.
 
+- **The tempered-JOIN arc — r09b / r09c / r09d, three sweep-gated iterations, all $0, none
+  fired (2026-08-24/25).** Ruling: re-open with a temper. Each iteration pre-registered its
+  criteria before any `src/` change, read them on a $0 replay of run 13's own record, and
+  STOPPED on its own frozen consequence. **r09b** (T1 strict-span + T2 synthesised-stack
+  collapse): S1 FAIL, 0 of 4 wrong rows flipped; the wire refuted the stacking diagnosis and
+  T2 measured 2 regressions / 0 repairs (corrected from 3 by r09c). **r09c** (A1 per-document
+  witness collapse in THE §5 rule + A2 synthesised-confirm covariate cap, T2 dropped by
+  ruling): S1' FAIL — **A2 fires exactly as designed and the row never depended on it**; the
+  competitor is carried by two of three genuinely distinct documents that answer a
+  file-scoped and a remainder-scoped question while the question asks a class-scoped one.
+  A1 was unmeasured (its target row cold). **r09d** (entity anchor + the S2 join): S1''
+  INCONCLUSIVE under its own pre-declared coldness clause (1 of 4 known-wrong rows readable),
+  and the mandated second pass was **interrupted by an account-level API usage limit —
+  access returns 2026-09-01**, which also blocks run 14 outright. The checkpoint was then
+  read where it was measurable: a $0 battery census of the DEPLOYED rule. Three trees —
+  ±120 window, document-scoped, post-dedup terms — moved the totals (50/33/10 → 42/22/5 →
+  39/19/5 firings/gold-damps/harmful) and **left one invariant set of five harmful rows**.
+  The hard clause (zero inversions on a named wrong-commit class) failed on all three, so
+  the anchor is **DONE** by its own pre-registration and reverted from the branch.
+  **What the arc actually established:** on the rows that matter the gold's carrier is
+  *terse* — a table row, a bare line — and the competitor's is *discursive*, so any lever
+  scoring documents by question-vocabulary overlap damps the gold. That refutes a whole
+  family of decide-side levers, not one. **Surviving:** D3, the S2 join (the one replace
+  site r09 left untouched now joins — a correct commit recovered, none lost), parked
+  unmerged pending a gate run. **Registered en route:** a criterion that names specific rows
+  can go unreadable between two passes of the same instrument (14 rows in / 14 out), so name
+  a class and a bar and pre-declare the consequence of a named row going cold; and *a census
+  must read the deployed rule end-to-end, never re-implement the constant it prices* — the
+  r05 class, three instances in this arc, the newest signature being byte-identical numbers
+  before and after a change.
+
 - **Four unordered sources on the decision path — the cache was doing the work of determinism
   (2026-08-19/20, tranche-2 M0/M0.5, `scripts/collapse_replay.py` + the M0.5 probes, $0
   deterministic).** The decision-equivalence instrument built at M0 found two ties resolved by

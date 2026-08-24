@@ -768,6 +768,18 @@ entry as what it was waiting for. The reading refutes that premise — carrier i
 what makes that arc commit wrongly — so by the same ruling the block is **kept and re-pointed
 at §6.12**, which is where the wrong answer actually comes from.
 
+*Successor arc (r09b/r09c/r09d, 2026-08-24/25, $0, nothing fired):* three sweep-gated tempers
+against the blocking class, each pre-registered and each STOPPED on its own frozen
+consequence — T1/T2, then A1/A2, then the entity anchor. The wire settled what the block is
+NOT: not synthesised stacking (r09b), not covariate inflation (r09c — A2 works and the row
+never depended on it), and not any decide-side rule that scores documents by
+question-vocabulary overlap (r09d — the gold's carrier is systematically the terse one). The
+one surviving change is **D3: S2, the replace site r09 left untouched, now joins**, parked
+unmerged pending a gate run. **§6.12's block STANDS**, and run 14 is externally blocked by an
+API usage limit until 2026-09-01; the queue is warm-the-cold-rows → re-price run 14 →
+pre-register the extract-side entity field. Hard clause carried forward: no lever ships while
+it makes a named wrong-commit class worse.
+
 **6.12 The replace branch — a view that DISCARDS a grounded channel instead of joining it.**
 Registered 2026-08-22 on r05's redirection (its DONE 4), which is the first evidence that names
 this mechanism rather than suspecting it. Like §6.11 this is a *decision-model* defect, not an

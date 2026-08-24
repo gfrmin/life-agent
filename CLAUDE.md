@@ -263,7 +263,31 @@ q2-105) — the JOIN converts dispersals in both directions and dispersal was th
 protection. **Ruling 4's FAIL branch enacted: the JOIN's code commits are REVERTED from
 master (docs stay), the §6.12 block STANDS, the m0-5 re-record/O2 riders were sequenced
 after the run and cost nothing, and work is STOPPED for an owner ruling** — re-open r09
-with a temper for the named classes under a new pre-registration, or park the JOIN. Old D3–D4 stay re-scoped as Ask's
+with a temper for the named classes under a new pre-registration, or park the JOIN.
+**The temper was re-opened and is now CLOSED: r09b → r09c → r09d, three sweep-gated
+iterations (2026-08-24/25), each pre-registered before any `src/` change, each read on a
+$0 replay of run 13's own record, each STOPPED on its own frozen consequence — total spend
+$0, run 14 never fired.** What the wire settled, in order: the block is NOT synthesised
+stacking (r09b: 0 of 4 wrong rows flipped), NOT covariate inflation (r09c: A2 fires exactly
+as designed and the row never depended on it — its competitor is carried by two of three
+genuinely distinct documents answering a file-scoped and a remainder-scoped question while
+the question asks a class-scoped one), and NOT any decide-side rule that scores documents by
+question-vocabulary overlap (r09d: three window/term variants moved the totals and left one
+invariant set of five harmful rows, so the entity anchor is DONE by its own hard clause and
+reverted). **The finding that constrains every successor: on the rows that matter the gold's
+carrier is TERSE — a table row, a bare line — and the competitor's is DISCURSIVE.**
+Surviving the arc: **D3, the S2 join** (the one replace site r09 left untouched now joins —
+one correct commit recovered, none lost), parked unmerged on `r09d-entity-anchor` pending a
+gate run. **Run 14 is externally blocked: the Anthropic account hit its usage limit, access
+returns 2026-09-01**; the frozen queue is (1) warm the cold rows — 3 of 4 known-wrong rows
+were cold on every pass and coldness is pass-order-dependent — (2) re-price run 14 on the
+warmed record, (3) pre-register the **extract-side entity field**. Hard clause carried
+forward (owner ruling): **no lever ships while it makes a named wrong-commit class worse.**
+Two standing lessons registered: a criterion naming specific rows can go unreadable between
+two passes of the same instrument (14 in / 14 out), so name a class + a bar + the
+cold-row consequence; and **a census must read the deployed rule end-to-end, never
+re-implement the constant it prices** (three instances this arc; newest signature =
+byte-identical numbers before and after a change). Old D3–D4 stay re-scoped as Ask's
 aggregate/thread families. The doc's §14 open questions are a **live empirical ledger**
 (owner's adoption rider): each entry names the evidence that decides it — keep it
 current. Sequencing is continuous and eval-gated, not dogfood-gated (PRINCIPLES §9 as
