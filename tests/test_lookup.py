@@ -964,3 +964,82 @@ def test_confirm_hits_meter_accrues_cold_calls_only(migrated_root: Path) -> None
     LK.confirm_hits(migrated_root, "what is the fee?", "1,234,567", hits,
                     exclude_artifacts=set(), client=client, meter=meter)
     assert meter == [0.002]  # the warm replay appends nothing
+
+
+# --- r09d D2: the entity anchor's factor -------------------------------------------------
+# The r09c class: an observation carries a value but not the qualifier that says what the
+# value is OF. The rule damps observations whose quote window carries strictly FEWER of the
+# question's discriminating terms than the channel's best — relative, so it never fires on a
+# channel no term separates. Folded into the competition_factor transport: the wire payload
+# is unchanged in shape (ruling: no wire change).
+
+def test_anchor_factors_damp_the_window_that_lacks_the_qualifier() -> None:
+    f = LK.anchor_factors(
+        "statement coverage for the TaskRequest class?",
+        ["TaskRequest class 100.00%", "file total 0.00%"])
+    assert f == [1.0, 0.5]
+
+
+def test_anchor_factors_are_all_one_when_no_term_separates_the_channel() -> None:
+    f = LK.anchor_factors("what is the total?", ["total 1", "total 2"])
+    assert f == [1.0, 1.0]
+
+
+def test_anchor_factors_are_all_one_when_every_window_ties_at_the_best() -> None:
+    f = LK.anchor_factors("the fax and the tel?", ["fax 1 tel 2", "tel 3 fax 4"])
+    assert f == [1.0, 1.0]
+
+
+def test_anchor_factors_need_two_windows_to_discriminate() -> None:
+    assert LK.anchor_factors("anything at all?", ["one window"]) == [1.0]
+
+
+def test_observe_hits_damps_the_observation_without_the_asked_qualifier(
+        migrated_root: Path) -> None:
+    # PII-OK: synthetic contact block — a fax question with the telephone beside it
+    fax_chunk = "Fax: 852 5550 1234"       # PII-OK: synthetic fax
+    tel_chunk = "Tel: 852 5550 9876"       # PII-OK: synthetic telephone
+    client = FakeClient([
+        {"found": True, "value": "852 5550 1234", "quote": "Fax: 852 5550 1234"},  # PII-OK
+        {"found": True, "value": "852 5550 9876", "quote": "Tel: 852 5550 9876"},  # PII-OK
+    ])
+    obs, _ = observe_hits(migrated_root, "what is the fax?",
+                          [_hit("a" * 64, fax_chunk), _hit("b" * 64, tel_chunk)],
+                          client=client)
+    by_value = {o.value_norm: o for o in obs}
+    assert len(by_value) == 2
+    assert by_value["852 5550 1234"].competition_factor == 1.0  # PII-OK: synthetic phone shape
+    assert by_value["852 5550 9876"].competition_factor == 0.5  # PII-OK: synthetic phone shape
+
+
+def test_observe_hits_multiplies_the_anchor_onto_the_competition_term(
+        migrated_root: Path) -> None:
+    # a same-shape competitor INSIDE the quote window (competition 1/2) on the observation
+    # that also lacks the asked qualifier (anchor 1/2) — the terms are separate and compose
+    anchored = "Fax: 852 5550 1234"                       # PII-OK: synthetic fax
+    other = "Tel: 852 5550 9876 alt 852 5550 9877"        # PII-OK: synthetic telephones
+    client = FakeClient([
+        {"found": True, "value": "852 5550 1234", "quote": "Fax: 852 5550 1234"},  # PII-OK
+        {"found": True, "value": "852 5550 9876",  # PII-OK: synthetic phone shape
+         "quote": "Tel: 852 5550 9876 alt 852 5550 9877"},  # PII-OK: synthetic phone shape
+    ])
+    obs, _ = observe_hits(migrated_root, "what is the fax?",
+                          [_hit("c" * 64, anchored), _hit("d" * 64, other)],
+                          client=client)
+    by_value = {o.value_norm: o for o in obs}
+    assert by_value["852 5550 1234"].competition_factor == 1.0  # PII-OK: synthetic phone shape
+    assert by_value["852 5550 9876"].competition_factor == 0.25  # PII-OK: synthetic phone shape
+
+
+def test_confirm_hits_damps_a_confirm_that_lacks_the_asked_qualifier(
+        migrated_root: Path) -> None:
+    hits = [_hit("e" * 64, "Fax: 852 5550 1234"),        # PII-OK: synthetic fax
+            _hit("f" * 64, "Tel: 852 5550 1234")]        # PII-OK: synthetic telephone
+    client = FakeClient([
+        {"confirms": True, "quote": "Fax: 852 5550 1234"},  # PII-OK: synthetic phone shape
+        {"confirms": True, "quote": "Tel: 852 5550 1234"},  # PII-OK: synthetic phone shape
+    ])
+    obs, _ = LK.confirm_hits(migrated_root, "what is the fax?", "852 5550 1234", hits,  # PII-OK
+                             exclude_artifacts=set(), client=client)
+    assert len(obs) == 2
+    assert [o.competition_factor for o in obs] == [1.0, 0.5]

@@ -215,6 +215,41 @@ def competition_factor(n_competing: int) -> float:
     in the extractor's quote window (``matching.quote_scoped_competitors``): 1 or 1/2."""
     return 1.0 / (1.0 + min(max(n_competing, 0), _COMPETITION_CAP))
 
+
+# r09d D2 — the entity anchor. The r09c wire class the aggregation rules cannot reach: an
+# observation carries a value but not the QUALIFIER saying what the value is of (a
+# class-scoped question answered with the file-scoped row of the same table; a fax question
+# answered with the telephone beside it). Damp, never erase, and only RELATIVE to the
+# channel: an observation whose window carries strictly fewer of the question's
+# discriminating terms than the channel's best is halved — the competition term's own
+# frozen factor, applied ONCE however many terms are missing. A channel no term separates
+# is untouched, so a question whose qualifier is phrased differently in every document (the
+# multilingual case) costs nothing.
+_ANCHOR_DAMP = 0.5
+
+
+def anchor_factors(question: str, windows: list[str]) -> list[float]:
+    """Per-observation anchor multipliers for one channel, aligned with ``windows``
+    (each the observation's ``matching.quote_window``). Pure; folded into the
+    ``competition_factor`` transport at the mint sites, so the wire is unchanged."""
+    terms = MATCH.discriminating_terms(question, windows)
+    if not terms:
+        return [1.0] * len(windows)
+    scores = [MATCH.anchor_score(w, terms) for w in windows]
+    best = max(scores)
+    return [1.0 if s == best else _ANCHOR_DAMP for s in scores]
+
+
+def _apply_anchor(question: str, observations: list[Observation],
+                  windows: list[str]) -> list[Observation]:
+    """Multiply each observation's anchor factor onto its competition factor. The two §4.2
+    terms are independent and compose (a competed observation that also misses the
+    qualifier reads 1/4); ``n_competing`` keeps its own meaning for the logs."""
+    factors = anchor_factors(question, windows)
+    return [o if f == 1.0
+            else dataclasses.replace(o, competition_factor=o.competition_factor * f)
+            for o, f in zip(observations, factors, strict=True)]
+
 # §4.1's v0 source-authority lattice: P(document's assertion = W's value | doc class),
 # a declared prior keyed on what is observable (origin path), calibrated later from
 # outcomes (open question: per-sender vs per-kind).
@@ -588,6 +623,7 @@ def observe_hits(root: Path, question: str, hits: list[dict[str, Any]], *,
         client = _client()
     cov = covariates if covariates is not None else HitCovariates()
     observations: list[Observation] = []
+    windows: list[str] = []
     indeterminate = 0
     for i, hit in enumerate(hits):
         chunk = str(hit["chunk_text"])
@@ -636,6 +672,7 @@ def observe_hits(root: Path, question: str, hits: list[dict[str, Any]], *,
         # value inside the extractor's own quote window halves this observation's r.
         n_comp = MATCH.quote_scoped_competitors(
             str(parsed["value"]).strip(), chunk, str(parsed["quote"]))
+        windows.append(MATCH.quote_window(chunk, str(parsed["quote"])))
         observations.append(Observation(
             card_n=i + 1,
             artifact_cache_key=artifact_key,
@@ -657,7 +694,9 @@ def observe_hits(root: Path, question: str, hits: list[dict[str, Any]], *,
     # host lookup_posterior OR the daemon's reliability_categorical (which consumes this verbatim
     # through to_abstract_observations). Placed in the decider alone (commit 546f1a5), the §4.2
     # temper never reached the executor path; observe_hits is the single seam both consume.
-    return dedup_correlated(observations), indeterminate
+    # r09d D2 before §5: the anchor is a per-observation reliability term, so it must be
+    # settled while every observation is still its own row — dedup then collapses witnesses.
+    return dedup_correlated(_apply_anchor(question, observations, windows)), indeterminate
 
 
 def confirm_prefilter(value: str, hits: list[dict[str, Any]],
@@ -695,6 +734,7 @@ def confirm_hits(root: Path, question: str, value: str, hits: list[dict[str, Any
     cov = covariates if covariates is not None else HitCovariates()
     value = value.strip()
     observations: list[Observation] = []
+    windows: list[str] = []
     indeterminate = 0
     for i, hit in confirm_prefilter(value, hits, exclude_artifacts)[:max(m, 0)]:
         chunk = str(hit["chunk_text"])
@@ -736,6 +776,7 @@ def confirm_hits(root: Path, question: str, value: str, hits: list[dict[str, Any
                     if artifact_key in cov.doc_date else 1.0)
         n_comp = MATCH.quote_scoped_competitors(
             value, chunk, str(parsed["quote"]))
+        windows.append(MATCH.quote_window(chunk, str(parsed["quote"])))
         observations.append(Observation(
             card_n=i + 1,
             artifact_cache_key=artifact_key,
@@ -751,7 +792,7 @@ def confirm_hits(root: Path, question: str, value: str, hits: list[dict[str, Any
             n_competing=n_comp,
             competition_factor=competition_factor(n_comp),
         ))
-    return observations, indeterminate
+    return _apply_anchor(question, observations, windows), indeterminate
 
 
 # --- the posterior (pure builders; conditioning through the credence skin) -------------
