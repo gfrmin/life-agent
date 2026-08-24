@@ -117,4 +117,17 @@ recommended while a targeted $0 iteration remains untried.
 
 ## RULINGS
 
-*(recorded append-only after the interview)*
+**Taken 2026-08-24 (owner, interviewed against this document), all on the recommended
+branch:**
+
+1. **Successor: D then A — r09c OPENS.** The q2-071 gold audit runs first ($0, the q2-053
+   stale-gold precedent); then r09c under a new pre-registration: **A1** (per-(document,
+   value) witness collapse — one document attests one value once) + **A2** (synthesised-
+   confirm covariate cap at the max of its grounded sources), with the same sweep-first
+   shape — a $0 replay sweep on run 13's record with frozen criteria before any spend.
+2. **T2 is DROPPED** (measured: 3 regressions, 0 repairs); **T1 is KEPT** (unfalsified;
+   its class is readable only in a priced run).
+3. **Run 14's outcome branches carry over verbatim from ruling 4 at full delegation:**
+   PASS (frozen δ/level ∧ blocking row repaired ∧ zero new wrong commits) ⇒ the §6.12
+   block closes and master deploys to live without a keypress; FAIL on any conjunct ⇒
+   revert + STOP for a ruling (with a conferral).
