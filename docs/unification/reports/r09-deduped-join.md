@@ -208,3 +208,45 @@ then **run 13** under the §6.10 pin with ruling 4's frozen branches: PASS ⇒ t
 deployment block closes and master deploys to live; FAIL on any conjunct ⇒ the JOIN reverts
 from the deploy path and work stops for a ruling.
 
+
+## RUN 13 — the ruled consequence (2026-08-24, `gate-20260824T144002`)
+
+Fired from clean master under the §6.10 pin (decision-logic delta vs run 10: exactly the six
+r08+r09 files, harness delta one file). Credence code-identical to the run-9 pin (one
+packaging-only commit, gated by tree not commit — the r07 lesson).
+
+**FAIL on two of ruling 4's three conjuncts.**
+
+- (a) **P(Δ > 0.05) = 0.895** against the frozen 0.90 — under by 0.005. Δ̄ **+0.424**
+  [−0.070, +0.941], the strongest mean in the series.
+- (b) **The blocking row is REPAIRED** — the conjunct PASSES: the run-10 wrong commit reads
+  report/correct on the typed arm. The JOIN fixed exactly the row the §6.12 block was for.
+- (c) **Four NEW wrong commits** — the conjunct FAILS: typed reads 70 ✓ / 4 ✗ / 30 withheld
+  (miss 2 · dispersed 28), answer rate **0.71** (runs 9–12 read 0.34–0.57), typed spend
+  $0.58 (deliberate 29/104, all warm — P4's live confirmation).
+
+**The mechanism, named:** all four wrong rows were DISPERSED withholdings in run 10 — the
+JOIN converts dispersals in both directions. Two are standing named classes: the
+**superset-confirm** class (q2-019 — the corroborate audit's named defect, a shorter
+personal-name candidate confirmed inside a longer gold) and run 8's **warm-deliberate
+confirm** class (q2-105). q2-018 and q2-071 are named, not diagnosed (the cap: anomalies en
+route are disclosure items). The u_wrong ≈ −9 tail on four rows is what holds 0.895 under
+the bar against a series-best mean. Prediction 3 scores REFUTED on its regression half:
+repairs landed far beyond the bound's scope (the bound was computed on the 66 replayable
+disagree-path rows; the live JOIN acts on every probe reply — dispersed 65 → 28), and
+regressions read 4 against the bound's 2.
+
+**Enacted — ruling 4's FAIL branch, verbatim and not renegotiated:** the JOIN's two code
+commits are REVERTED from master in this same change (the pre-registration and readings
+stay, append-only); the reverted tree is green at the pre-r09 count (2638, ruff, clean-cache
+mypy); the m0-5 re-record and O2 re-preparation were deliberately sequenced AFTER this run
+and so cost nothing; the §6.12 deployment block **STANDS**; work **STOPS for an owner
+ruling**.
+
+**What the next ruling decides (named, not argued):** the JOIN repaired the blocking row
+and doubled reach at a series-best mean, failing on a four-row wrong tail of which two rows
+belong to classes with standing register entries (the superset-confirm strict-span guard was
+registered as a follow-up when `confirm_hits` was refused; the warm-deliberate class has the
+§4.2 competition lineage). Whether r09 re-opens with a temper for those classes under a new
+pre-registration, or the JOIN parks and the block closes some other way, is the owner's.
+

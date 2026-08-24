@@ -858,7 +858,7 @@ on today's shapes the deduped JOIN is provably idempotent over the raw pool — 
 bound (10 repairs / 2 regressions) is the expected read for run 13, not a ceiling.** 7.2:
 every non-probe fixture replays byte-identically; the 95 probe-firing fixtures are
 unservable (the payload grew — the named class; why the baseline re-records post-r09).
-**This deployment block still stands: it closes only on run 13's PASS.**
+**Run 13 (2026-08-24) FAILED two conjuncts (0.895 < 0.90; four new wrong commits — all run-10 dispersals, two of standing named classes) with the blocking row REPAIRED; ruling 4's FAIL branch enacted — the JOIN's code is reverted from master and this deployment block STANDS. STOPPED for an owner ruling.**
 
 **6.13 A declared total order cannot restore determinism when the tie block is larger than
 the over-fetch window — the window itself is the sampler.** Found 2026-08-22 by r06's
