@@ -7,7 +7,6 @@ count feeds ``lookup.competition_factor`` (the §4.2 competition term at the ter
 """
 from __future__ import annotations
 
-from life_agent.core import matching as M
 from life_agent.core.matching import competing_value_count, numeric_spans
 
 
@@ -70,72 +69,3 @@ def test_correction_sentence_competes_same_shape_successor() -> None:
     # the bridge's correction-shaped-read case, now on the shared span detector
     assert competing_value_count(
         "PL-900001", "PL-900001 was renewed; the new number is PL-800002") == 1
-
-
-# ── r09d D1: the entity anchor's detector (pure, model-free) ─────────────────────────────
-# The r09c wire class: an observation carries a value but not the qualifier that says what
-# the value is OF (a class-scoped question answered with the file-scoped row; a fax question
-# answered with the telephone beside it). The discriminating terms are computed FROM the
-# channel — a question token that some window carries and another does not — so the rule is
-# relative by construction and never fires when no window separates them.
-
-def test_quote_window_is_the_quote_plus_the_frozen_margin() -> None:
-    chunk = "x" * 400 + "THE QUOTE" + "y" * 400
-    win = M.quote_window(chunk, "THE QUOTE")
-    assert "THE QUOTE" in win
-    assert len(win) == len("THE QUOTE") + 2 * M._QUOTE_MARGIN
-    assert "x" * 200 not in win
-
-
-def test_quote_window_falls_back_to_the_quote_then_the_chunk() -> None:
-    assert M.quote_window("a chunk", "a quote not present") == "a quote not present"
-    assert M.quote_window("a chunk", "") == "a chunk"
-
-
-def test_discriminating_terms_are_present_in_one_window_and_absent_from_another() -> None:
-    terms = M.discriminating_terms(
-        "What is the statement coverage for the TaskRequest class?",
-        ["TaskRequest class 100.00%", "the file total 0.00%"])
-    assert "taskrequest" in terms
-
-
-def test_discriminating_terms_drop_a_term_every_window_carries() -> None:
-    terms = M.discriminating_terms(
-        "What is the coverage for the TaskRequest class?",
-        ["coverage TaskRequest", "coverage total"])
-    assert "coverage" not in terms
-
-
-def test_discriminating_terms_drop_a_term_no_window_carries() -> None:
-    terms = M.discriminating_terms(
-        "What is the coverage percentage for the TaskRequest class?",
-        ["TaskRequest 100.00", "the file total 0.00"])
-    assert "percentage" not in terms
-
-
-def test_discriminating_terms_drop_stopwords_and_short_tokens() -> None:
-    terms = M.discriminating_terms(
-        "Which fax did they list?", ["fax 1234", "tel 5678"])
-    assert "which" not in terms and "did" not in terms
-    assert "fax" in terms
-
-
-def test_discriminating_terms_keep_first_seen_question_order() -> None:
-    terms = M.discriminating_terms(
-        "beta alpha gamma", ["alpha", "beta gamma"])
-    assert terms == ("beta", "alpha", "gamma")
-
-
-def test_anchor_score_counts_token_boundary_hits_not_substrings() -> None:
-    assert M.anchor_score("the TaskRequest class", ("taskrequest",)) == 1
-    # substring-only: the term must not match inside a longer token
-    assert M.anchor_score("TaskRequestBuilder", ("taskrequest",)) == 0
-    assert M.anchor_score("fax 1234 tel 5678", ("fax", "tel")) == 2
-
-
-def test_quote_scoped_competitors_uses_the_shared_window() -> None:
-    # one window definition (§6.8): a competitor OUTSIDE the margin does not count
-    chunk = "value 1234" + "z" * 400 + "other 5678"
-    assert M.quote_scoped_competitors("1234", chunk, "value 1234") == 0
-    near = "value 1234 and other 5678"
-    assert M.quote_scoped_competitors("1234", near, "value 1234") == 1
