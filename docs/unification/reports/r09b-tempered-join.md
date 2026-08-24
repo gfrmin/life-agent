@@ -84,4 +84,73 @@ coarsening, the wire key — all exactly as r09 froze them.
 5. No §18.9 re-derivation: both tempers act after the derivation layer (T1 in the
    synthesis branch, T2 in the join), so the sweep runs fully warm on run 13's store.
 
-**PENDING below this line: the revert-of-the-revert, the temper commits, the sweep, run 14.**
+## THE READING — the C3 sweep (2026-08-24, $0)
+
+Built as pre-registered: D0 the revert-of-the-revert (the r09 JOIN restored verbatim,
+`94ada13`), then T1 + T2 under TDD, every predicate watched RED first (`38f0f2d`); suite
+2660, ruff, mypy green. The sweep ran `scripts/replay_audit.py` deployed-only on run 13's
+own meta/paired from this tree (src drift acknowledged and stamped), fresh staging pinned at
+the run's start: **63 rows replayed, 41 excluded cold** (§18.9 pass-order coldness). The
+9(d) render guard fired as in r07/r08 (one corpus value, len=1/numeric); the rows dump
+`$LIFE_AGENT_KB/eval/window/r09b-sweep.yaml` is the artefact of record.
+
+| criterion | frozen bar | read | verdict |
+|---|---|---|---|
+| S1 | every one of the four wrong rows flips | **0 of 4** — q2-018, q2-019 excluded cold; q2-071, q2-105 replay with the same wrong leaders at unchanged n_obs | **FAIL** |
+| S2 | collateral (correct → withheld) ≤ 10 | 3 (q2-002, q2-057, q2-087 — all correct → abstain) | PASS |
+| S3 | the run-10 blocking row stays repaired | q2-011 reports the gold at n_obs 5 | PASS |
+
+**S1 fails → the frozen consequence is enacted: run 14 is NOT fired; STOP and re-confer.**
+The temper demonstrably executed — three rows differ from the record — so the fail is
+substantive, not an inert instrument.
+
+### The wire diagnostics ($0, from the sweep's own warm staging)
+
+1. **T2's target signature lives on the CORRECT rows.** The three collateral rows are the
+   full-cascade traces where tiers + deliberate each mint a same-candidate synthesised
+   confirm; T2 collapses the stack and the correct report drops to abstain. T2's measured
+   effect is 3 regressions, 0 repairs.
+2. **q2-105 is in-document repetition, not stacking.** The competitor arrives as twelve
+   observations from ONE document reporting ONE value with identical or near-identical
+   quotes — a single attestation counted twelve times (the boilerplate/page-repetition
+   class). §5's exact-quote key cannot collapse the near-duplicate variants, and T2
+   (synthesised-only) never touches document-carried rows. n_obs 13 = these 12 + the
+   deliberate re-mint.
+3. **q2-071 is a grounded 2:1 conflict amplified by a covariate-inflated confirm.** Three
+   observations over three documents — one carries the gold, two the competitor — plus one
+   synthesised confirm of the competitor minted at authority 1.0 / subject 1.0, ABOVE the
+   grounded carriers' 0.85 / 0.525: the re-read outranks everything it re-read. The run-9
+   competition temper cannot fire (the values sit in different documents — no shared quote
+   window; competition_factor 1.0 on every row). time_factor is uniform, so the date
+   projection does not separate the carriers.
+4. **The two cold rows are cold by the pin's own construction.** Their derivations were
+   minted DURING run 13, and criterion 2 truncates the staging at the run's start — a
+   second pass over the warmed staging leaves both cold. T1's effect on q2-019 (its named
+   class) is structurally unreadable at $0; only a priced run reads it.
+5. **Splice pricing of the unfired run 14** (gate_splice on modified paired, pin reproduced
+   0.895/+0.424): the temper as measured (collateral enacted, colds unfixed) reads
+   **0.879 FAIL — worse than run 13**; + T1 fixing q2-019 reads 0.940; + q2-018 too reads
+   0.976 — but every scenario keeps ≥ 2 wrong commits, so **ruling 4's zero-wrong-commit
+   conjunct fails in all of them**. The sweep saved the spend and a wrong deploy.
+
+### Predictions scored
+
+P1 **REFUTED** (0 of 4 flip; the collateral half read 3 ≤ 5). P2 **CONFIRMED** (the
+blocking row's document-carried witnesses survive both tempers). P3/P4 **unread** (no run
+14). P5 **CONFIRMED** (the sweep ran fully warm; the 41 cold rows are pin-truncation
+coldness, not re-derivation).
+
+### What the fail means
+
+The pre-registration's STATE diagnosis is **REFUTED**: the decision-row signature (n_obs,
+n_competing) cannot distinguish document-carried from synthesised observations, and on the
+wire the four wrong rows are NOT the stacked-synthesised-confirm class — the stacking
+signature belongs to rows the tree gets right. This is the carrier-audit lesson recurring
+at the design stage: the temper was aimed at the signature the decision rows could show,
+not the mechanism the wire records. The wire now names two real mechanisms — in-document
+repetition inflation (q2-105) and synthesised-confirm covariate inflation over a grounded
+conflict (q2-071) — neither of which T1/T2 addresses.
+
+**Enacted:** run 14 not fired; this branch stays unmerged; master keeps the r09-reverted
+state; the §6.12 block stands. The successor decision is conferred in
+`docs/unification/conferrals/r09b-sweep-conferral.md`.
