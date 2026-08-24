@@ -56,3 +56,13 @@ left that the r09d finding does not pre-emptively refute.
    (park untouched)?
 2. **The next aim:** 1 (pre-register the extract-side entity field), 2 (warm and re-price run
    14 first, decide after), or both in that order?
+
+## RULINGS (owner, interviewed 2026-08-25)
+
+1. **Option A.** The anchor (D1, D2, the rescope, D4) is **reverted from the branch**; D3 (the
+   S2 join) stays, so the tree is exactly JOIN + T1 + A1 + A2 + D3. Nothing merges to master
+   without a gate run. The branch parks until spend returns on 2026-09-01.
+2. **Both aims, in that order.** When access returns: **warm the cold rows first** and
+   re-price run 14 on real data (S1'' never got its evidence — 3 of the 4 known-wrong rows
+   were cold all pass), **then** pre-register the **extract-side entity field** as the next
+   checkpoint. All docs stay; only the anchor's code leaves.
