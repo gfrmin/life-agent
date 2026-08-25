@@ -63,6 +63,7 @@ from typing import Any
 from life_agent.core import config
 from life_agent.core import decisions as DEC
 from life_agent.core import derivations as D
+from life_agent.core import recorder as REC
 from life_agent.core import llm as LLM
 from life_agent.core import outcomes as O
 from life_agent.core import seam as SEAM
@@ -507,8 +508,6 @@ def narrative_answer(root: Path, question: str, text: str,
     }, sort_keys=True, ensure_ascii=False).encode("utf-8")
     lineage = ([{"cache_key": synthesize_cache_key, "role": "proposal"}]
                if synthesize_cache_key else [])
-    D.record(root, akey, content, lineage=lineage)
-
     result = NarrativeResult(
         question=question, action=action, eu=eu, abstain_reason=reason,
         claims=claims, coverage=coverage, coverage_n=coverage_n,
@@ -516,8 +515,12 @@ def narrative_answer(root: Path, question: str, text: str,
         answer_cache_key=akey.cache_key, rendered="")
     result = _with_render(result)
 
-    DEC.append(decisions_path if decisions_path is not None else config.DECISIONS_LOG,
-               DEC.DecisionEvent(
+    # M2 (design §5.1): the decision's two records are the ONE recorder's.
+    REC.record_local(
+        root, akey, content, lineage=lineage,
+        decisions_path=(decisions_path if decisions_path is not None
+                        else config.DECISIONS_LOG),
+        event=DEC.DecisionEvent(
                    tx_time=O.now_iso(), run_id=run_id,
                    question_id=DEC.question_id(question),
                    family="narrative",

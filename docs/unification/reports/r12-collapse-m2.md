@@ -192,3 +192,39 @@ fact, violating §2.3).
 
 Cap-the-arc: anything unexpected en route is a disclosure item in this report's final
 form, never a new diagnostic arc. Rollback: revert the branch (one PR).
+
+## AMENDMENT 1 (2026-08-25, blind — before any gate run; committed before the gates)
+
+Found by reading `collapse/drive.py` during implementation, not by running anything:
+**`drive_executor_loop` (the A-loop trace) drives `AC.answer` and captures the posted
+`/log_decision` body into its outputs** — so the A-loop fixtures recorded the reach
+poster's REDUCED body too, and the §5.1 record change reaches them exactly as it reaches
+the A-poster trace. Two corrections, both scope, neither semantic:
+
+1. **DIR-1's scope** was drawn as "the 104 A-poster fixtures". Corrected definition: DIR-1
+   applies to **every fixture whose recorded `log_decision.decision` lacks the `regime`
+   key** — the precise signature of a body produced by a pre-collapse poster (the
+   B-traces' bodies are shaped from their `DecisionEvent`s and already carry both keys).
+   That is: the 104 A-poster fixtures AND the A-loop fixtures that posted. The appear-set
+   is extended for keys the reach poster never posted at all:
+   `run_id` appears at exactly `"answer-brain"` (the one default — the shim passes no
+   run id, deterministically); `instrument` appears at exactly the fixture's own recorded
+   `audit.instrument` (or `""` where that is null) — the value the loop realised, recorded
+   at m2-base record time; `cost_usd`/`latency_s` appear as numbers (runtime-measured:
+   presence and kind, never value). `regime`/`policy` unchanged: exactly
+   `"full"`/`"all-to-date"`. Everything else stays under the standing classes. A fixture
+   whose recorded body is `null` (miss / route-null) must replay `null` — equality.
+2. **The replay drive serves `/log_decision` canned** (`{"decision_id": "replayed"}`)
+   instead of consulting the cassette: the poster's reply feeds no decision (the id is
+   audit-only), the posted BODY is what the comparator pins, and without this every
+   poster-shape checkpoint would cassette-miss on its own pre-registered change (the
+   cassette matches request shape exactly). The m2-base cassettes' now-unconsulted
+   `/log_decision` exchanges surface as "unused exchange" notes — expected, disclosed.
+   The same canning applies at record from M2 on (the A-poster trace already records its
+   poster hermetically; the bridge endpoint's own validation is pinned by
+   `tests/test_bridge_server.py`).
+
+P1/P2 restated to match: **P1** — the 104 B-lookup + 1 B-narrative fixtures replay
+byte-identical; A-loop fixtures with a `null` body replay byte-identical. **P2** — every
+fixture with a recorded pre-collapse poster body (A-poster + posting A-loop) passes DIR-1
+as amended. P3–P5 unchanged.

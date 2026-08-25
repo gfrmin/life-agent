@@ -47,6 +47,7 @@ from typing import Any
 from life_agent.core import config
 from life_agent.core import decisions as DEC
 from life_agent.core import derivations as D
+from life_agent.core import recorder as REC
 from life_agent.core import instrument as INSTR
 from life_agent.core import matching as MATCH
 from life_agent.core import outcomes as O
@@ -1159,10 +1160,6 @@ def decide_and_record(root: Path, question: str, construct: str,
     # unique inputs, first-occurrence order: two observations can share one extract key
     # (identical chunk text — observe_hits keys on the chunk, not the artefact); the
     # catalogue's lineage key is (artifact, input), so the observation is ONE input (§18.9)
-    D.record(root, akey, content,
-             lineage=[{"cache_key": k, "role": "observation"}
-                      for k in dict.fromkeys(o.obs_cache_key for o in observations)])
-
     result = LookupResult(
         question=question, construct=construct, action=action, eu=eu,
         candidates=cands, credences=creds, p_none=p_none,
@@ -1173,21 +1170,28 @@ def decide_and_record(root: Path, question: str, construct: str,
         time_indexed=time_indexed)
     result = dataclasses.replace(result, rendered=render(result))
 
-    DEC.append(decisions_path if decisions_path is not None else config.DECISIONS_LOG,
-               DEC.DecisionEvent(
-                   tx_time=O.now_iso(), run_id=run_id,
-                   question_id=DEC.question_id(question),
-                   family="lookup",
-                   action_set=_ACTION_ORDER,
-                   posterior_summary={
-                       "candidates": list(cands), "credences": list(creds),
-                       "p_none": p_none, "n_obs": len(observations),
-                       "n_indeterminate": indeterminate,
-                       "n_competing": sum(1 for o in observations if o.n_competing),
-                   },
-                   utility_fold_version=fold_ver,
-                   chosen_action=action, predicted_eu=eu,
-                   decision_id=akey.cache_key))
+    # M2 (design §5.1): the decision's two records — the §18.9 answer node and the ledger
+    # row — are the ONE recorder's; the decision_id = akey.cache_key rule rides verbatim.
+    REC.record_local(
+        root, akey, content,
+        lineage=[{"cache_key": k, "role": "observation"}
+                 for k in dict.fromkeys(o.obs_cache_key for o in observations)],
+        decisions_path=(decisions_path if decisions_path is not None
+                        else config.DECISIONS_LOG),
+        event=DEC.DecisionEvent(
+            tx_time=O.now_iso(), run_id=run_id,
+            question_id=DEC.question_id(question),
+            family="lookup",
+            action_set=_ACTION_ORDER,
+            posterior_summary={
+                "candidates": list(cands), "credences": list(creds),
+                "p_none": p_none, "n_obs": len(observations),
+                "n_indeterminate": indeterminate,
+                "n_competing": sum(1 for o in observations if o.n_competing),
+            },
+            utility_fold_version=fold_ver,
+            chosen_action=action, predicted_eu=eu,
+            decision_id=akey.cache_key))
     return result
 
 

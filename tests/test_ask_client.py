@@ -40,6 +40,12 @@ def test_answer_renders_and_binds_the_decision(monkeypatch: Any) -> None:
     # the replayability fields (§14, 2026-08-17) ride the posted decision, zero-default
     assert posted[0][1]["decision"]["n_indeterminate"] == 0
     assert posted[0][1]["decision"]["n_competing"] == 0
+    # the ONE body (M2, r12 DIR-1): no accounting field is optional on the poster's side,
+    # and the two M0 fields are STATED — the reach surface's decisions become priced rows
+    dec = posted[0][1]["decision"]
+    assert dec["instrument"] == "" and dec["cost_usd"] == 0.0 and dec["latency_s"] == 0.0
+    assert dec["run_id"] == "answer-brain"
+    assert dec["regime"] == "full" and dec["policy"] == "all-to-date"
 
 
 def test_answer_narrative_or_miss_binds_nothing(monkeypatch: Any) -> None:
@@ -235,3 +241,44 @@ def test_answer_deliberate_rollback_reverts_to_the_bare_menu(monkeypatch: Any) -
     monkeypatch.setenv("LIFE_AGENT_DELIBERATE", "0")
     AC.answer("q?", post=lambda u, p: {}, get=lambda u: {}, check_ready=False)
     assert captured["transforms"] is None and captured["curves"] is None
+
+
+# --- the one driver (M2, r12 D2/D3) --------------------------------------------------------
+
+def test_answer_passes_realised_accounting_through(monkeypatch: Any) -> None:
+    """A priced firing's instrument/cost/latency ride the reach surface's body verbatim —
+    the ledger change M2 pre-registered (design §5.1)."""
+    view = _fake_view()
+    view["instrument"] = "deliberate@synthetic-model"  # PII-OK: synthetic
+    view["cost_usd"], view["latency_s"] = 0.0123, 2.5
+    monkeypatch.setattr(EX, "decide_via_loop", lambda *a, **k: view)
+    posted: list[dict[str, Any]] = []
+
+    def post(url: str, payload: dict[str, Any]) -> dict[str, Any]:
+        posted.append(payload)
+        return {"decision_id": "x"}
+
+    AC.answer("q?", post=post, get=lambda u: {}, check_ready=False)
+    dec = posted[0]["decision"]
+    assert dec["instrument"] == "deliberate@synthetic-model"
+    assert dec["cost_usd"] == 0.0123 and dec["latency_s"] == 2.5
+
+
+def test_answer_down_stack_commits_the_gate_mirrors_and_records(monkeypatch: Any) -> None:
+    """B-2/A-1 die (r12 D2): the reach surface's seam-less DOWN bypass is gone — the one
+    driver commits the declared gate, mirrors it, and appends the §6.5 unavailability
+    record. The reply string is untouched (interaction contract)."""
+    from life_agent.core import recorder as REC
+    from life_agent.core import seam as SEAM
+
+    monkeypatch.setattr(AC, "_ready", lambda: False)
+    mirrored: list[tuple[str, str, str]] = []
+    recorded: list[dict[str, Any]] = []
+    monkeypatch.setattr(AC.SM, "mirror_gate",
+                        lambda bridge, qid, gate: mirrored.append((bridge, qid, gate)))
+    monkeypatch.setattr(REC, "record_unavailable",
+                        lambda question, **kw: recorded.append({"question": question, **kw}))
+    reply, decision_id = AC.answer("q?")
+    assert reply == AC.DOWN and decision_id is None
+    assert mirrored == [(AC.BRIDGE, AC.DEC.question_id("q?"), SEAM.GATE_EXECUTOR_DOWN)]
+    assert len(recorded) == 1 and recorded[0]["question"] == "q?"

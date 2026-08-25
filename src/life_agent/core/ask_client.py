@@ -25,6 +25,8 @@ from life_agent.core import calibration as CAL
 from life_agent.core import config as CFG
 from life_agent.core import decisions as DEC
 from life_agent.core import executor as EX
+from life_agent.core import recorder as REC
+from life_agent.core import seam as SEAM
 from life_agent.core import shadow_mirror as SM
 from life_agent.membrane import coarse as CRS
 
@@ -87,68 +89,137 @@ def _ready() -> bool:
     return True
 
 
-def _menu() -> tuple[list[dict[str, Any]] | None, Any]:
-    """The priced transform menu for this surface — the SAME configuration ask.py's
-    read-path runs (§13 adoption: the deliberate edge is on by default, and the surface
-    the owner talks to must be the measured arm, not an unmeasured cousin). Returns
-    ``(None, None)`` only when the edge is explicitly rolled back
-    (``LIFE_AGENT_DELIBERATE=0``). Curve-fold failure degrades fail-open and NAMED to
-    the declared constants (``menu_transforms(None)``) — mirroring ask.py's
-    ``_edge_curves`` contract, never a silent behaviour fork."""
-    if not CFG.deliberate_enabled():
-        return None, None
+def _edge_curves(hold_out_question_id: str | None = None
+                 ) -> dict[str, CAL.ReliabilityCurve] | None:
+    """The per-edge reliability curves folded from the outcomes log — ONE fold for every
+    surface (M2: the CLI's and the reach surface's copies merged; the LOO hold-out is the
+    gate's run-4 machinery, threaded by the caller). **None when the fold yields nothing**:
+    an empty curves dict is NOT a no-op — it would flatten every corroborate tier to the
+    cold start — so no attributed evidence ⇒ the declared constants stand. Curve-fold
+    failure degrades fail-open and NAMED, never a silent behaviour fork."""
     try:
-        rows = CAL.edge_outcomes_from_log(CFG.OUTCOMES_LOG)
-        curves = CAL.fit_edge_curves(rows) if rows else None
+        held_out = (frozenset({hold_out_question_id})
+                    if hold_out_question_id is not None else frozenset())
+        rows = CAL.edge_outcomes_from_log(CFG.OUTCOMES_LOG,
+                                          exclude_question_ids=held_out)
+        if not rows:
+            return None
+        return CAL.fit_edge_curves(rows)
     except Exception as e:
         print(f"  (edge curves unavailable — declared constants stand: {e})")
-        curves = None
+        return None
+
+
+def _menu(hold_out_question_id: str | None = None
+          ) -> tuple[list[dict[str, Any]] | None, Any]:
+    """The priced transform menu — the SAME configuration on every surface (§13 adoption:
+    the deliberate edge is on by default; the surface the owner talks to must be the
+    measured arm). ``(None, None)`` only when the edge is explicitly rolled back
+    (``LIFE_AGENT_DELIBERATE=0``)."""
+    if not CFG.deliberate_enabled():
+        return None, None
+    curves = _edge_curves(hold_out_question_id)
     return EX.menu_transforms(curves), curves
+
+
+class DriveResult:
+    """The one driver's return: the loop's ``view`` (``None`` on a down stack), the
+    ``decision_id`` a verdict can bind to (``None`` when nothing foldable was posted),
+    and the ``down`` fact."""
+
+    __slots__ = ("view", "decision_id", "down")
+
+    def __init__(self, view: dict[str, Any] | None, decision_id: str | None,
+                 down: bool = False) -> None:
+        self.view, self.decision_id, self.down = view, decision_id, down
+
+
+def post_decision(post: Any, bridge: str, question: str, view: dict[str, Any], *,
+                  run_id: str | None = None) -> str | None:
+    """The one poster (M2, design §5.1): post the committed lookup-family terminal with
+    the ONE body — every accounting key present (0.0/"" honest defaults), ``regime`` and
+    ``policy`` STATED. Posts iff the loop committed a lookup terminal through the seam
+    (route ran, terminal effector, a ranked posterior): a miss commits no decision (no
+    posterior — the loop returns before ``/decide``) and a route-null question's decision
+    is the narrative family's, recorded by that leaf. Fail-open by contract and NAMED: a
+    calibration-log write never breaks the answer."""
+    if (view["route"] is None or view["effector"] not in DEC.LOOKUP_ACTION_ORDER
+            or not view["credences"]):
+        return None
+    payload = REC.body(
+        question=question,
+        retrieval_keys=[h["artifact_cache_key"] for h in view["hits"]],
+        effector=view["effector"], credences=view["credences"],
+        candidates=view["candidates"], p_none=view["p_none"], eu=view["eu"],
+        n_obs=view.get("n_obs", 0),
+        n_indeterminate=view.get("n_indeterminate", 0),
+        n_competing=view.get("n_competing", 0),
+        instrument=view.get("instrument"), cost_usd=view.get("cost_usd"),
+        latency_s=view.get("latency_s"), run_id=run_id,
+        # regime is a FACT of availability (§2.3): the daemon decided, so the space was
+        # full; policy is what the fold actually used — current_u_bar folds all-to-date
+        # ("frozen-elicitations" becomes stateable at M3's posterior(policy=…))
+        regime="full", policy="all-to-date")
+    try:
+        return REC.record_via_bridge(post, bridge, payload)
+    except Exception as e:  # fail-open: the verdict simply has nothing to bind to
+        print(f"  (decision not logged: {e})")
+        return None
+
+
+def drive(question: str, k: int = 20, *, bridge: str | None = None,
+          daemon: str | None = None, post: Any = None, get: Any = None,
+          run_id: str | None = None, ready: Any = None,
+          hold_out_question_id: str | None = None,
+          check_ready: bool = True) -> DriveResult:
+    """THE one driver (M2, design §5.1/Q-O6): the reach surface and the CLI answer through
+    this one function with one ``/log_decision`` body. Ready-gate → membrane wiring → the
+    priced menu → ``EX.decide_via_loop`` → the one poster. On a down stack the seam commits
+    the DECLARED gate observation, the gate is mirrored, and the §6.5 unavailability
+    record is appended (``regime: unavailable``, nothing to bind a verdict to) — the same
+    path on every surface (B-2/A-1 unified)."""
+    bridge = bridge if bridge is not None else BRIDGE
+    daemon = daemon if daemon is not None else DAEMON
+    if check_ready and not (ready if ready is not None else _ready)():
+        # A down stack is a DECLARED observation into the one act seam — the seam chooses
+        # abstain and the host obeys, naming the reason (interaction contract). Nothing
+        # but abstain is ENACTABLE against a down stack — an enactment constraint, not a
+        # second decision (test_seam pins the gate contract).
+        gated = SEAM.commit(None, gates=(SEAM.GATE_EXECUTOR_DOWN,))
+        assert gated.action == "abstain"
+        # M2 advisory mirror, fail-open: the bridge (which hosts the shadow) may be the
+        # very thing that is down — then this is an instant refusal, swallowed inside.
+        SM.mirror_gate(bridge, DEC.question_id(question), SEAM.GATE_EXECUTOR_DOWN)
+        REC.record_unavailable(question, run_id=run_id)
+        return DriveResult(None, None, down=True)
+    post = post if post is not None else _post
+    get = get if get is not None else _get
+    # The ONE question_id derivation — the same key /log_decision stamps on the decision,
+    # so a mirrored decide tick and its decision join.
+    question_id = DEC.question_id(question)
+    if CFG.membrane_live():
+        # M3: the live consult records its own enact tick — the decide mirror stays off
+        # (one engine, one consult per tick).
+        live, wrapped = CRS.live_decide(bridge, question_id), post
+    else:
+        live, wrapped = None, SM.shadow_wrapped_post(post, bridge, question_id)
+    transforms, curves = _menu(hold_out_question_id)
+    view = EX.decide_via_loop(question, k, bridge=bridge, daemon=daemon,
+                              post=wrapped, get=get, live=live,
+                              transforms=transforms, curves=curves)
+    return DriveResult(view, post_decision(post, bridge, question, view, run_id=run_id))
 
 
 def answer(question: str, k: int = 20, *, post: Any = None, get: Any = None,
            check_ready: bool = True) -> tuple[str, str | None]:
-    """Answer one question through the executor read-path; return
-    ``(rendered reply, decision_id | None)``. The reply is the shared credence-grammar
-    rendering (``executor.render_view``); the ``decision_id`` is the bridge's
-    content-addressed id for the logged terminal decision — ``None`` when there is nothing
-    foldable to bind (a miss / narrative / down stack). Logging is fail-open by contract:
-    a calibration-log write never breaks the answer."""
-    if check_ready and not _ready():
+    """The reach surface — since M2 a thin shim over :func:`drive` (deleted at M3, when
+    callers take the driver directly): answer one question, return ``(rendered reply,
+    decision_id | None)``. The reply strings are the interaction contract's, untouched."""
+    r = drive(question, k, post=post, get=get, check_ready=check_ready)
+    if r.down:
         return DOWN, None
-    post = post if post is not None else _post
-    get = get if get is not None else _get
-    # The ONE question_id derivation (core.decisions.question_id) — the same key /log_decision
-    # stamps on the decision below, so a mirrored decide tick and its decision join.
-    question_id = DEC.question_id(question)
-    if CFG.membrane_live():
-        # M3: the live consult records its own enact tick — the decide mirror stays off
-        # (one engine, one consult per tick), matching ask.py's read-path.
-        live, wrapped = CRS.live_decide(BRIDGE, question_id), post
-    else:
-        live, wrapped = None, SM.shadow_wrapped_post(post, BRIDGE, question_id)
-    transforms, curves = _menu()
-    view = EX.decide_via_loop(question, k, bridge=BRIDGE, daemon=DAEMON,
-                              post=wrapped, get=get, live=live,
-                              transforms=transforms, curves=curves)
-    decision_id: str | None = None
-    if (view["route"] is not None and view["effector"] in DEC.LOOKUP_ACTION_ORDER
-            and view["credences"]):
-        try:
-            resp = post(f"{BRIDGE}/log_decision", {
-                "question": question,
-                "retrieval_keys": [h["artifact_cache_key"] for h in view["hits"]],
-                "decision": {"effector": view["effector"], "credences": view["credences"],
-                             "candidates": view["candidates"],
-                             "p_none": view["p_none"] if view["p_none"] is not None else 0.0,
-                             "eu": view["eu"] if view["eu"] is not None else 0.0,
-                             "n_obs": view.get("n_obs", 0),
-                             "n_indeterminate": view.get("n_indeterminate", 0),
-                             "n_competing": view.get("n_competing", 0)}})
-            decision_id = (resp or {}).get("decision_id")
-        except Exception:
-            decision_id = None  # fail-open: the verdict simply has nothing to bind to
-    return EX.render_view(view), decision_id
+    assert r.view is not None
+    return EX.render_view(r.view), r.decision_id
 
 
 def react(decision_id: str, valence: str, *, post: Any = None) -> str:

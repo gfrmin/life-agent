@@ -751,6 +751,15 @@ def test_log_reaction_appends_verdict_and_reports_fold_fate(deps: BridgeDeps) ->
     assert events[0].question_id == DEC.read(deps.decisions_path)[0].question_id
 
 
+def test_log_reaction_refuses_an_empty_decision_id(deps: BridgeDeps) -> None:
+    """The §6.5 unavailability event carries decision_id="" so no verdict can EVER bind —
+    an unavailability must never fold as an abstain (r12 P3; the guard is _req_str's
+    non-empty rule, pinned here so it cannot regress silently)."""
+    status, payload = _call(deps, "POST", "/log_reaction",
+                            {"decision_id": "", "valence": "bad"})
+    assert status == 400
+
+
 def test_log_reaction_round_trip_folds_into_u_wrong(deps: BridgeDeps) -> None:
     # The full in-app path THROUGH THE BRIDGE: /log_decision (abstain) then /log_reaction (bad)
     # → load_reactions folds one u_wrong threshold. No ask-live, no new fold code.

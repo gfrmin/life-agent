@@ -149,11 +149,11 @@ def main(argv: list[str] | None = None) -> int:
             errored.append(fx.fixture_id)
             print(f"{fx.fixture_id}: replay raised {type(e).__name__}: {e}")
             continue
-        diffs = CMP.compare_outputs(fx.outputs, outputs)
+        diffs = CMP.compare_fixture(fx, outputs)
         if fx.expected_change is not None:
             print(f"{fx.fixture_id}: expected-change fixture "
                   f"({fx.expected_change.get('checkpoint')}) — "
-                  f"{fx.expected_change.get('direction')}")
+                  f"{fx.expected_change.get('direction')} — direction ASSERTED")
         if diffs:
             failed.append(fx.fixture_id)
         print(CMP.render_diffs(fx.fixture_id, diffs))
