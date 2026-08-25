@@ -83,16 +83,16 @@ def test_subject_footer_quiet_when_all_admitted_cleanly() -> None:
 def test_ask_once_merges_temporal_and_subject_reports(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
 ) -> None:
-    def fake_answer(conn: object, q: str, k: int, **kw: object) -> tuple:
-        ask.TEMPORAL_LAST = ask.TemporalReport(
+    def fake_ave(q: str, k: int) -> tuple:
+        ask.TERM.TEMPORAL_LAST = ask.TemporalReport(
             footer="date filter: 1 admitted",
             targets=[("doc_date_pandoc", "a" * 64)])
-        ask.SUBJECT_LAST = ask.TemporalReport(
+        ask.TERM.SUBJECT_LAST = ask.TemporalReport(
             footer="owner filter: 1 admitted",
             targets=[("doc_subject_pandoc", "b" * 64)])
         return ("an answer", [], {})
 
-    monkeypatch.setattr(ask, "answer", fake_answer)
+    monkeypatch.setattr(ask, "answer_via_executor", fake_ave)
     monkeypatch.setattr(ask, "capture", lambda *a, **k: None)
     targets = ask.ask_once(None, "q", 8)
 

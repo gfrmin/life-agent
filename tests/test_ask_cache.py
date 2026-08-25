@@ -52,9 +52,9 @@ class Harness:
 @pytest.fixture
 def h(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Harness:
     harness = Harness()
-    monkeypatch.setattr(ask, "_pkm_root", lambda: tmp_path)
-    monkeypatch.setattr(ask, "_corpus_digest", lambda conn: harness.digest)
-    monkeypatch.setattr(ask, "_retrieve_set", harness.retrieve_set)
+    monkeypatch.setattr(ask.TERM, "_pkm_root", lambda: tmp_path)
+    monkeypatch.setattr(ask.TERM, "_corpus_digest", lambda conn: harness.digest)
+    monkeypatch.setattr(ask.TERM, "_retrieve_set", harness.retrieve_set)
     monkeypatch.setattr(ask.C, "anthropic_complete", harness.llm)
     monkeypatch.setattr(owner, "load_profile", lambda: harness.profile)
     ask.reset_cache_stats()
@@ -132,10 +132,10 @@ def test_changed_evidence_invalidates_synthesis(h: Harness) -> None:
 
 def test_stages_last_exposes_this_answers_stage_keys(h: Harness) -> None:
     _ask()
-    first = dict(ask.STAGES_LAST)
+    first = dict(ask.TERM.STAGES_LAST)
     assert set(first) == {"retrieve", "synthesize"}
     _ask()  # replay: the same derivation, so the same keys (hit or miss alike)
-    assert first == ask.STAGES_LAST
+    assert first == ask.TERM.STAGES_LAST
 
 
 def test_no_cache_recomputes_but_never_overwrites(h: Harness) -> None:
@@ -149,7 +149,7 @@ def test_no_cache_recomputes_but_never_overwrites(h: Harness) -> None:
 
 
 def test_unresolvable_root_fails_open(h: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(ask, "_pkm_root", lambda: None)
+    monkeypatch.setattr(ask.TERM, "_pkm_root", lambda: None)
     first = _ask()
     second = _ask()
     assert second == first

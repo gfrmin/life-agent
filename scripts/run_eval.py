@@ -210,7 +210,7 @@ def retrieval_outcome(r: dict, q: dict, *, k: int, run_id: str):
 def synthesis_outcome(row: dict, *, run_id: str):
     """One outcome event from a synthesis-grader row: the monolithic answer instrument
     graded end-to-end. Lineage is the answer's §18.9 stage cache keys (captured from
-    ask.STAGES_LAST by synthesis_grade); the synthesize key pins the exact instrument
+    ask.TERM.STAGES_LAST by synthesis_grade); the synthesize key pins the exact instrument
     identity — the dict here is the grouping identity, not a duplicate of every key
     component."""
     import life_agent.core.derivations as D
@@ -1136,7 +1136,7 @@ def gate_paired_outcomes(conn, questions: list[dict], k: int, ask,
                     typed_views.append((q, view))
             else:
                 typed_text, _, _ = ask.answer(conn, q["question"], k)
-                lk, nv = ask.LOOKUP_LAST, ask.NARRATIVE_LAST  # capture before next call
+                lk, nv = ask.TERM.LOOKUP_LAST, ask.TERM.NARRATIVE_LAST  # capture before next call
                 typed = _typed_response(lk, nv, typed_text, q, ask.ABSTENTION)
             if replay is not None:
                 mono = _replay_response(replay[str(q["id"])], q)
@@ -1315,10 +1315,10 @@ def synthesis_grade(conn, q: dict, k: int, *, fresh: bool = False) -> dict:
 
     text, cards, _ = ask.answer(conn, q["question"], k, no_cache=fresh)
     # §18.9 stage cache keys of THIS answer (outcome lineage; empty on the pre-key paths)
-    lineage_keys = tuple(ask.STAGES_LAST[s] for s in ("retrieve", "synthesize")
-                         if s in ask.STAGES_LAST)
-    nv = ask.NARRATIVE_LAST  # the §7 claim set behind this answer (None off-path)
-    lk = ask.LOOKUP_LAST
+    lineage_keys = tuple(ask.TERM.STAGES_LAST[s] for s in ("retrieve", "synthesize")
+                         if s in ask.TERM.STAGES_LAST)
+    nv = ask.TERM.NARRATIVE_LAST  # the §7 claim set behind this answer (None off-path)
+    lk = ask.TERM.LOOKUP_LAST
     # the production path's own decision: an EU abstention asserts nothing — the
     # deterministic decline verdict, not the judge, classifies it (classifier v2)
     declined = ((nv is not None and nv.action == "abstain")
@@ -1924,7 +1924,7 @@ def main() -> int:
         events: list = []
         for q in questions:
             ask.answer(conn, q["question"], args.k)
-            lk = ask.LOOKUP_LAST
+            lk = ask.TERM.LOOKUP_LAST
             if lk is None:
                 rows.append({"id": q["id"], "question": q["question"],
                              "routed": False, "action": None, "top": "",

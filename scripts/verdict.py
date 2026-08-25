@@ -121,8 +121,8 @@ def run(questions: tuple[str, ...]) -> int:
         except Exception as e:
             print(f"  \033[2m[{n}/{len(questions)}] skipped — {e}\033[0m")
             continue
-        nv = ask.NARRATIVE_LAST
-        scope: str = ask.INTENT_LAST or "unscoped"
+        nv = ask.TERM.NARRATIVE_LAST
+        scope: str = ask.TERM.INTENT_LAST or "unscoped"
         claims = nv.claims if nv is not None else ()
         order = sorted(range(len(claims)),
                        key=lambda i: (claims[i].cell != "verified", -claims[i].credence))

@@ -96,7 +96,7 @@ def test_refresh_projects_and_reingests(
     _seed_ledger(ledger)
     calls: list[Path] = []
     monkeypatch.setattr(ask, "_reingest_state", lambda root, p: calls.append(p))
-    monkeypatch.setattr(ask, "_pkm_root", lambda: Path("/fake/root"))
+    monkeypatch.setattr(ask.TERM, "_pkm_root", lambda: Path("/fake/root"))
 
     ask.ensure_gtd_fresh()
 
@@ -122,7 +122,7 @@ def test_refresh_failure_is_fail_open_and_named(
         raise RuntimeError("catalogue locked")
 
     monkeypatch.setattr(ask, "_reingest_state", boom)
-    monkeypatch.setattr(ask, "_pkm_root", lambda: Path("/fake/root"))
+    monkeypatch.setattr(ask.TERM, "_pkm_root", lambda: Path("/fake/root"))
 
     ask.ensure_gtd_fresh()  # must not raise
 
@@ -149,7 +149,7 @@ def test_failed_refresh_stays_stale_and_retries(
         raise RuntimeError("catalogue locked")
 
     monkeypatch.setattr(ask, "_reingest_state", boom)
-    monkeypatch.setattr(ask, "_pkm_root", lambda: Path("/fake/root"))
+    monkeypatch.setattr(ask.TERM, "_pkm_root", lambda: Path("/fake/root"))
 
     ask.ensure_gtd_fresh()
     assert ask.gtd_stale() is True  # the failure is not masked by the stamp
@@ -165,7 +165,7 @@ def test_refresh_without_pkm_root_is_fail_open(
 ) -> None:
     ledger, _ = gtd_paths
     _seed_ledger(ledger)
-    monkeypatch.setattr(ask, "_pkm_root", lambda: None)
+    monkeypatch.setattr(ask.TERM, "_pkm_root", lambda: None)
 
     ask.ensure_gtd_fresh()  # must not raise
 
@@ -186,7 +186,7 @@ def _pkm_tmp_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     cfg = tmp_path / "pkm.yaml"
     cfg.write_text(f"root_dir: {root}\nextractors: {{}}\n", encoding="utf-8")
     monkeypatch.setattr(ask.C, "PKM_CONFIG", cfg)
-    monkeypatch.setattr(ask, "_pkm_root", lambda: root)
+    monkeypatch.setattr(ask.TERM, "_pkm_root", lambda: root)
     return root
 
 

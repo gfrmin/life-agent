@@ -40,7 +40,7 @@ A capability lives in exactly one mode. Mutating a task is *act*; asking about y
    epilog from another (`ask.GRAMMAR`). A vocabulary table nothing enforces will quietly
    diverge, so drift-gate tests assert every entry dispatches and appears in both renderings.
 5. **Flags configure the run; the line is the language.** argv flags are run-configuration
-   and debug knobs only (`--k`, `--no-expand`, `--no-cache`, `--legacy`). A concept the line
+   and debug knobs only (`--k`, `--no-expand`, `--no-cache`). A concept the line
    can express is never also a flag — one grammar, two contexts (REPL prompt and one-shot argv).
 
 ## know — ask-live
@@ -83,14 +83,19 @@ rejected, never guessed at: a duplicated prefix, `/since` later than `/until` (a
 range is almost certainly a typo), an unparseable date, an unknown slash-command.
 
 **Flags** (run-config only): `--k N` retrieval width, `--no-expand` raw-question BM25
-baseline, `--no-cache` recompute every stage, `--legacy` force the in-process path.
+baseline, `--no-cache` recompute every stage. (`--legacy` died at M5, r15 — the path is
+a fact of availability, never a choice.)
 
 **The read-path.** A `QUESTION` is answered by the credence answer-brain **executor** (the
 daemon decides over the VOI-scheduled transforms — PRINCIPLES §16) — the default. When its
-daemon/bridge is unavailable, ask **falls back** to the in-process lookup/narrative families
-and **names** the fallback (never silent); `--legacy` forces that in-process path (for A/B or
-an offline session). Either path renders the same credence grammar (`lookup.GRAMMAR`) and logs
-its decision the same way, so an inline `g`/`b` or a `/react` verdict folds identically.
+daemon/bridge is unavailable, the driver runs the **terminals-only regime** (module-collapse
+design §2.3): the in-process lookup/narrative leaves answer over the terminal space, the
+skin ranks, and the decision is recorded with `regime: "terminals-only"` — an unavailable
+daemon answers rather than going mute, and the regime is a recorded fact, never a flag.
+Only when no engine at all can run does ask reply with the named unavailability string
+(the §6.5 record). Either regime renders the same credence grammar (`lookup.GRAMMAR`) and
+logs its decision the same way, so an inline `g`/`b` or a `/react` verdict folds
+identically.
 
 **Act-layer state.** A plain `QUESTION` covers the GTD — no special grammar. The task
 ledger's knowledge projection (`life_agent.tasks.knowledge` →

@@ -96,7 +96,7 @@ def _withheld_view() -> dict:
             "p_none": None, "n_hits": None, "n_indeterminate": None, "observations": []}
 
 
-def triage_one(conn, q: dict, k: int, ask, *, gather: bool = False,
+def triage_one(conn, q: dict, k: int, ask, *,
                rerank: bool = False, labels: list[Label] | None = None) -> dict:
     """Run one question through the production path and build its triage packet."""
     gold = q.get("answer", "")
@@ -105,8 +105,8 @@ def triage_one(conn, q: dict, k: int, ask, *, gather: bool = False,
     answerable = bool(gold)
     labels = labels or []
 
-    text, cards, scores = ask.answer(conn, q["question"], k, gather=gather, rerank=rerank)
-    lk, nv = ask.LOOKUP_LAST, ask.NARRATIVE_LAST  # capture before the next call resets them
+    text, cards, scores = ask.answer(conn, q["question"], k, rerank=rerank)
+    lk, nv = ask.TERM.LOOKUP_LAST, ask.TERM.NARRATIVE_LAST  # captured before the next reset
     view = _lookup_view(lk) if lk is not None else (
         _narrative_view(nv) if nv is not None else _withheld_view())
 
@@ -247,10 +247,6 @@ def main() -> int:
     parser.add_argument("--k", type=int, default=20, help="top-k per query")
     parser.add_argument("--limit", type=int, default=0,
                         help="triage only the first N questions (0 = all; for a smoke run)")
-    parser.add_argument("--gather", action="store_true",
-                        help="run the gather-augmented lookup loop (re-retrieve corroboration on "
-                             "the top candidates + re-weight by recency/subject) — calibrates the "
-                             "concentrate lever against the single-pass default")
     parser.add_argument("--rerank", action="store_true",
                         help="over-fetch a wide lexical pool and listwise-rerank to top-k — "
                              "calibrates the retrieval-recall lever (rescues golds BM25 buried "
@@ -271,7 +267,7 @@ def main() -> int:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     import ask
 
-    mode = f"k={args.k}{', gather' if args.gather else ''}{', rerank' if args.rerank else ''}"
+    mode = f"k={args.k}{', rerank' if args.rerank else ''}"
     print(f"Triaging {len(questions)} questions through the production path ({mode}) …")
     t0 = time.monotonic()
     labels = load_labels(_kb_root() / "eval" / "labels.jsonl")
@@ -279,7 +275,7 @@ def main() -> int:
         print(f"  (grading against {len(labels)} owner label(s), token-match fallback)")
     packets: list[dict] = []
     for q in questions:
-        p = triage_one(conn, q, args.k, ask, gather=args.gather, rerank=args.rerank,
+        p = triage_one(conn, q, args.k, ask, rerank=args.rerank,
                        labels=labels)
         packets.append(p)
         j = " ⚖" if p["needs_judgment"] else ""

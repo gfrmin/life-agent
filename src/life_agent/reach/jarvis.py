@@ -230,8 +230,11 @@ def handle_action(parsed: dict[str, Any], user_id: int) -> str:
         r = ask_client.drive(q)
         if r.down:
             reply = ask_client.DOWN
+        elif r.view is None:
+            # the terminals-only regime answered (M5, §2.3): the leaf rendered the
+            # text and recorded the decision — same grading contract as the full lane.
+            reply = r.text or ask_client.DOWN
         else:
-            assert r.view is not None
             reply = executor.render_view(r.view)
         decision_id = r.decision_id
         LAST_DECISION_ID = decision_id

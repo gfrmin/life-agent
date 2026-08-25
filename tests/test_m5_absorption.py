@@ -174,3 +174,93 @@ def test_reason_consumers_derive_not_respell() -> None:
     root = Path(__file__).resolve().parent.parent
     assert "withhold_reason" in (root / "scripts" / "run_eval.py").read_text()
     assert "withhold_reason" in (_SRC / "core" / "executor.py").read_text()
+
+
+# --- P-III: the terminals-only regime is DECLARED and reachable ----------------------- #
+
+def test_leaf_decision_declares_the_terminals_regime(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """§2.3: the in-process leaves rank over T by the skin — their decision rows say so
+    (regime declared, not defaulted; the silent 'full' default was a wrong claim)."""
+    import life_agent.core.decisions as DEC2
+    import life_agent.core.lookup as LK
+    from life_agent.core import config as CFG2
+    from life_agent.core import recorder as REC
+    from life_agent.core.brain import Brain
+    from tests.test_lookup import MODEL_YAML, ScriptedTransport
+
+    model_path = tmp_path / "model.yaml"
+    model_path.write_text(MODEL_YAML, encoding="utf-8")
+    monkeypatch.setattr(CFG2, "UTILITY_MODEL", model_path)
+    monkeypatch.setattr(CFG2, "UTILITY_ELICITATIONS", tmp_path / "elicit.jsonl")
+    monkeypatch.setattr(LK, "_U_BAR", None)
+
+    events: list[DEC2.DecisionEvent] = []
+
+    def fake_record_local(root, akey, content, *, lineage, decisions_path, event):
+        events.append(event)
+
+    monkeypatch.setattr(REC, "record_local", fake_record_local)
+    obs = LK.Observation(card_n=1, artifact_cache_key="a" * 64, obs_cache_key="o" * 64,
+                         value_raw="V1", value_norm="v1", quote="V1 is it",
+                         authority_class="body", authority=1.0)
+    LK.decide_and_record(tmp_path, "what is V?", "thing", [obs], 0,
+                         n_hits=1, time_indexed=False,
+                         brain=Brain(ScriptedTransport(optimise_action="abstain")))
+    assert len(events) == 1
+    assert events[0].regime == "terminals-only"
+    assert events[0].policy == "all-to-date"
+    assert events[0].defaulted == ()
+
+
+def test_drive_down_branch_runs_the_terminals_regime(monkeypatch) -> None:
+    """Q1 (signed): an unavailable daemon answers over T — the driver runs the absorbed
+    body and returns its rendered text; no §6.5 record lands (an optimiser DID run)."""
+    from life_agent.core import ask_client as AC2
+    from life_agent.core import recorder as REC
+    from life_agent.core import terminals as TERM2
+
+    unavailable: list[str] = []
+    monkeypatch.setattr(REC, "record_unavailable",
+                        lambda q, **k: unavailable.append(q))
+
+    class _Conn:
+        def close(self) -> None: ...
+    monkeypatch.setattr(TERM2, "connect", lambda: _Conn())
+    monkeypatch.setattr(TERM2, "answer",
+                        lambda conn, q, k, **kw: ("cited answer [1]", [], {}))
+    monkeypatch.setattr(TERM2, "LOOKUP_LAST", None)
+    monkeypatch.setattr(TERM2, "NARRATIVE_LAST", None)
+
+    r = AC2.drive("what is V?", 20, ready=lambda: False)
+    assert r.down is False
+    assert r.text == "cited answer [1]"
+    assert r.view is None
+    assert unavailable == []
+
+
+def test_drive_down_branch_falls_to_unavailable_when_terminals_cannot_run(
+        monkeypatch) -> None:
+    """No catalogue / no skin ⇒ the §6.5 unavailability record, exactly as before."""
+    from life_agent.core import ask_client as AC2
+    from life_agent.core import recorder as REC
+    from life_agent.core import terminals as TERM2
+
+    unavailable: list[str] = []
+    monkeypatch.setattr(REC, "record_unavailable",
+                        lambda q, **k: unavailable.append(q))
+    monkeypatch.setattr(TERM2, "connect",
+                        lambda: (_ for _ in ()).throw(RuntimeError("no catalogue")))
+    monkeypatch.setattr(AC2.SM, "mirror_gate", lambda *a, **k: None)
+
+    r = AC2.drive("what is V?", 20, ready=lambda: False)
+    assert r.down is True and r.view is None and r.decision_id is None
+    assert unavailable == ["what is V?"]
+
+
+def test_ask_once_has_no_dispatch_choice() -> None:
+    """B-1/B-5: the executor= choice and --legacy died — availability decides."""
+    import ask
+    assert "executor" not in inspect.signature(ask.ask_once).parameters
+    src = (_SCRIPTS / "ask.py").read_text()
+    assert "--legacy" not in src

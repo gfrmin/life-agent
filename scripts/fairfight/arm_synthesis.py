@@ -60,7 +60,7 @@ def answer_synthesis(q: dict, k: int, *, fresh: bool = False) -> RawAnswer:
 
     question_id = str(q["id"])
     reset_meter()
-    ask.EFFORT_LAST = {}  # see arm_baseline.answer_baseline: guards against cross-question leak
+    ask.TERM.EFFORT_LAST = {}  # see arm_baseline.answer_baseline: no cross-question leak
     t0 = time.monotonic()
     text = ""
     declined = False
@@ -87,7 +87,7 @@ def answer_synthesis(q: dict, k: int, *, fresh: bool = False) -> RawAnswer:
         lineage_keys = ()
         cards = []
 
-    effort = dict(ask.EFFORT_LAST)
+    effort = dict(ask.TERM.EFFORT_LAST)
     llm_calls = meter_read()
     latency_s = time.monotonic() - t0
     return RawAnswer(

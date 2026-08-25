@@ -140,6 +140,9 @@ class _FakeAsk:
     def __init__(self) -> None:
         self.LOOKUP_LAST: Any = None
         self.NARRATIVE_LAST: Any = None
+        # M5 (r15): run_eval reads the canonical state home ask.TERM.*_LAST — the fake
+        # mirrors the module shape (its own attrs stay for the older read paths).
+        self.TERM = self
         self.calls: list[dict[str, Any]] = []
 
     def answer(self, conn: Any, question: str, k: int, **kw: Any) -> tuple[str, list, dict]:

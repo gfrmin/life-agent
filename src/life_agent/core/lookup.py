@@ -1198,6 +1198,9 @@ def decide_and_record(root: Path, question: str, construct: str,
             },
             utility_fold_version=fold_ver,
             chosen_action=action, predicted_eu=eu,
+            # M5 (r15, §2.3): the leaf ranks over T by the skin — DECLARED, not the
+            # silently-wrong "full" default (regime is the decision-space fact).
+            regime="terminals-only", policy=U_BAR_POLICY, defaulted=(),
             decision_id=akey.cache_key))
     return result
 
