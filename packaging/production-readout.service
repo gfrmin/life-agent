@@ -1,0 +1,16 @@
+# life-agent production readout — the standing watch on the deployed typed arm
+# (stage 0.3: run 14 carried two priced standing wrong rows to production; this is the
+# readout that watches the live calibration stream for them — counts and ids, never
+# corpus values). Install on the box that carries the live stream (steel):
+#   ln -s "$PWD/packaging/production-readout.service" ~/.config/systemd/user/
+#   ln -s "$PWD/packaging/production-readout.timer"   ~/.config/systemd/user/
+#   systemctl --user daemon-reload && systemctl --user enable --now production-readout.timer
+# LIFE_AGENT_KB comes from the unit override or the box's convention; report lands at
+# $LIFE_AGENT_KB/calibration/readout.md.
+[Unit]
+Description=life-agent production readout (weekly watch on the deployed arm)
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/git/life-agent
+ExecStart=%h/git/life-agent/.venv/bin/python scripts/production_readout.py

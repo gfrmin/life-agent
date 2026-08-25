@@ -1,0 +1,10 @@
+# Weekly readout of the live calibration stream (production-readout.service).
+[Unit]
+Description=life-agent production readout, weekly
+
+[Timer]
+OnCalendar=Mon *-*-* 08:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
