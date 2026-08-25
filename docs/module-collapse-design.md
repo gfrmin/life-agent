@@ -1070,6 +1070,14 @@ prepared script the owner executes after a rehearsal (S12), reported append-only
 one after M0 ends with 7.2's replay transcript in its report. Bisectability: each checkpoint
 is one commit or one short series on a clean base; the fixture set is the bisection oracle.
 
+*Baseline of record (2026-08-25 — `docs/unification/reports/r11-baseline-rerecord.md`):*
+the fixture set the ladder bisects against from M2 onward is **`m2-base`** — 314 fixtures,
+0 absences, q2-036 served, recorded in one run on the deployed run-14 tree (one `tree_sha`),
+$0.0388 metered under the delegated $8 cap, the live calibration surfaces byte-identical
+before/after. m0-5 stands as history (95 of its probe-firing fixtures are unservable on the
+deployed tree — the r09 payload class); readings taken against it are unchanged. The oracle
+from here is `scripts/collapse_replay.py --checkpoint m2-base`.
+
 ## 9. Open design questions
 
 Genuine questions; each names the evidence that decides it. Owner (O) / reviewer (R).
