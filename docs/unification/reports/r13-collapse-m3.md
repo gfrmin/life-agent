@@ -237,3 +237,21 @@ What M3 keeps: one write path (`core/recorder.py`), leaf drift-gated
 verbatim. The r12 promise "removed at M3" is discharged as: there is no dead code to
 remove, and the single-writer invariant it protected is already enforced. Gates,
 directions, and predictions unchanged.
+
+## AMENDMENT 6 (2026-08-25, blind — before any gate run)
+
+G3's conjunct (d) as frozen — "every typed-arm decision row states
+`policy="frozen-elicitations"`" — is wrong and would fail every row by construction:
+the typed arm's decisions are ranked by the DAEMON under `current_u_bar`, whose declared
+regime is `all-to-date` (§5.1: the record states which set ranked the decision — that is
+the field working as designed, not a defect). What §7.3 freezes is the GATE'S OWN
+evaluation fold (`run_eval`'s posterior for scoring), which now names
+`policy="frozen-elicitations"` at its call site and is structurally enforced (a
+verdict-projected event under the frozen policy raises — the §7.5 policy-swap defect
+dies at the fold).
+
+Conjunct (d) restated: **(d1)** every typed-arm decision row states
+`policy="all-to-date"` (the decider's regime, derived from `LK.U_BAR_POLICY`, never an
+independent literal), and **(d2)** the firing script's tree gate pins
+`policy="frozen-elicitations"` at `scripts/run_eval.py`'s fold site (a static assert on
+the tree the run describes). Conjuncts (a)–(c) unchanged.
