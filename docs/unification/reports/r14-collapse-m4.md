@@ -113,3 +113,97 @@ the atom rewrite is algebraically identical; the lambda_usd defaults are dead-in
 Disclosure items in the final report; rollback = revert the branch (one PR). After
 green: results appended, mirrors updated, PR/CI/merge, steel deploy, then M5 (single or
 split per item 6) under its own pre-registration.
+
+## RESULTS (read 2026-08-25/26, appended after the gates ran — nothing above changed)
+
+Execution was one TDD phase on branch `collapse-m4` (implementation commit `7949266`):
+the P2 snapshot tests written RED against the not-yet-existing table (all six failed for
+the right reasons), then the table (`core/pricing.py`, version 2), the bindings
+(executor/gather_outcomes/reliability serve the SAME objects), the atom spelling in
+`realised_utility`, and E-5's fail-loud.
+
+### Gate readings
+
+- **G1 — GREEN.** 2724 passed, 35 deselected; ruff clean; mypy clean (221 files).
+- **G2 (7.2) — GREEN.** 314/314 pure equality, re-verified on the final committed tree.
+- **G3 (7.3) — PASS on all four conjuncts.** Run 16 (`gate-20260826T003710`), comparison
+  arm run 15's meta, spend $0.60 of the $8 cap, elapsed 1338s.
+  (a) P(Δ>0.05) = **0.961** (gate ≥ 0.90); Δ̄ = **+0.519** [+0.081, +1.003].
+  (b) NEW wrongs vs run 15: **none** — typed wrongs are exactly the two standing rows,
+  a strict subset of run 15's three.
+  (c) named classes: the superset-confirm row withholds (as in runs 14–15); the
+  warm-deliberate row converts wrong → withheld — better, not worse.
+  (d1) all 102 of the run's decision rows state `policy="all-to-date"`,
+  `regime="full"`; (d2) the firing script's tree gate pinned `7949266`
+  (run-14 lineage + M3 + M4 pins) before spend.
+  Answer rate: typed 0.62 · mono 0.97; withheld miss 2 · dispersed 37.
+- **G4 — 7.4 not run** (no store/writer moved; declared).
+- **G5 — GREEN.** No corpus values; hooks armed.
+
+### Predictions vs readings
+
+- **P1 — CONFIRMED.** 314/314 zero diffs on the first complete build.
+- **P2 — CONFIRMED.** The snapshot literals (dumped from the pre-move declarations)
+  pin the table AND the bindings; the bindings are the same objects (`is`, not `==`).
+- **P3 — CONFIRMED.** The E-5 fail-loud landed with no compat guard; the two tests that
+  had pinned the silent defaults (`test_run_pass_without_the_rate_latent_keeps_legacy_costs`,
+  `test_realised_utility_without_the_rate_latent_is_byte_identical`) flip to pin the
+  loudness — the never-silently-weaken direction (a silent fallback died; nothing else
+  fed a pre-elicitation vector).
+- **P4 — CONFIRMED on both exact clauses; the headline moved by one named row.**
+  Zero NEW wrongs ✓; answer rate 0.62, dead centre of the ±0.06 band ✓. The pair
+  0.907/+0.421 → 0.961/+0.519 is carried entirely by the warm-deliberate wobble row
+  landing withheld (the disposition run 14's warmed re-read predicted) — the judge
+  flips are the identical five cached mono-side rows, and the movement sits inside
+  r08's measured commit-wobble floor (2). Behaviour-preserving modulo the standing
+  named wobble; both dispositions of that row are now observed live.
+- **P5 — CONFIRMED, one interleaved live row disclosed.** Append-only verified by
+  prefix hash (the ledger head before the run hashes identically as a prefix of the
+  ledger after): +102 decisions and +22 outcomes, all under the run's `run_id`;
+  reactions byte-identical. One live ask-surface decision row (`run_id="ask"`,
+  correctly policy-stamped) interleaved between fingerprint and read — the dogfood
+  surface working as designed, not gate leakage.
+
+### The two decisions this report owes
+
+- **Q8 — DECIDED: the M3 lane DELETES at M5** (the design's default). Evidence: the
+  only `map_action` in the tree already lives in the shadow namespace
+  (`membrane/coarse.py:105`, called by the live shadow worker) — the rename Q8
+  contemplated happened in an earlier arc; nothing outside the membrane needs it.
+- **The M5a/M5b split — SIGNED: single M5.** M4's 7.2 work surfaced no evidence of
+  non-bisectability: every fixture class replays under pure equality through both the
+  M3 and M4 moves, and the absorption's two halves (family choice + grow-target) touch
+  disjoint fixture populations (A-loop vs B-traces). If M5's own 7.2 contradicts this,
+  the split re-opens as a blind amendment under M5's pre-registration — evidence first.
+
+### Disclosures (cap-the-arc)
+
+- **D1 — E-5 removed a PRE-REGISTERED contract.** The gate's 0.0 default was documented
+  as "the run-5 comparability pin… pre-registered" (its own docstring and
+  `RealisedResponse`'s). The r14 freeze argued it dead-in-practice (REQUIRED_LATENTS
+  guarantees every live fold carries the latent) and the suite confirmed: the only
+  consumers feeding latent-less vectors were the two legacy-pin tests themselves and
+  hand-built fixtures. The pin's purpose (comparability of pre-run-6 readings) is
+  history — those readings are published in their reports, not recomputed.
+- **D2 — the tier fallback literal.** The executor's unknown-corroborate-tier default
+  was re-spelled to the table's `_RE_EXTRACT_MODEL` — same value, one spelling;
+  behaviourally unreachable today (every scheduled tier is in the map).
+- **D3 — three more test files carried latent-less synthetic posteriors**
+  (loss_ledger, p3_gate, fairfight_runner) — extended with a zero-rate point latent
+  (numbers unchanged); the fairfight meta test's `pricing_version == 1` literal now
+  reads the table's own version.
+- **D4 — run 16 was externally SIGTERM'd twice before it could fire a question.** Root
+  cause: the launching agent session's restarts reap its own background children; both
+  kills tore down cleanly via the script's trap with ~zero spend and no ledger rows.
+  The successful firing ran as a transient `systemd --user` unit, outside any session's
+  process tree — the durable recipe for priced runs from here on.
+
+### Verdict
+
+**M4 is DONE.** The price table has one spelling (`core/pricing.py`, PRICING_VERSION 2)
+and every consumer binds the same objects; the utility atom is spelled where realised
+utility is computed; the rate latent is REQUIRED and fails loud. All gates green,
+including the series' best priced reading (0.961 / +0.519) with zero wrong commits
+beyond the two standing rows. Q8 is decided (the M3 lane deletes at M5) and the split
+is signed (single M5). The ladder resumes at **M5 — the argmax absorption**, under its
+own pre-registration.
