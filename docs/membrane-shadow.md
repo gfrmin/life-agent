@@ -543,7 +543,9 @@ scripts/ on the answer path; `answer-brain.service` decommissioned and `ANSWER_B
 removed; exactly ONE act-committing seam, speaking only to proplang-host; every row above
 either migrated or bucket-(ii)-justified; no EU regression vs the credence-era baseline on
 the fairfight gate + loss ledger at n≥100 (the question factory is the prerequisite
-instrument).
+instrument). *(Owner ruling 2026-08-25 — §18: reaching this exit is now MANDATORY;
+refusal is retired as an endpoint, and the frozen bars pace the migration rather than
+decide it.)*
 
 ## 12. M0 — seam unification: LANDED (2026-07-19)
 
@@ -1244,3 +1246,34 @@ is the decider that is actually improving.
 is that ledger's; the p1 window is read from the harness's per-tick rows, not from a
 sensitivity sweep over u_wrong (which would be a *reading of a Ū the owner did not state* —
 declined, named).
+
+## 18. Owner ruling (2026-08-25): the migration is MANDATORY — gated-mandatory, deferred
+
+**Question → resolution → why.** *Is the proplang migration still an adopt-or-refuse
+decision?* → **No. The owner ruled (2026-08-25, superseding run-14 conferral ruling 5's
+"future gated adoption" phrasing): the endpoint is fixed — proplang WILL replace credence
+at the decide seam, and a refusal by frozen criteria is retired as an endpoint.** → *The
+bars pace the swap; they no longer decide whether it happens.*
+
+What "gated-mandatory" binds, precisely:
+
+- **The frozen bars all stand, un-loosened**: the 0.899 p3 commit bar (§17.6 — the bar is
+  the owner's utility, and the fix is always a sharper p1, never a softer bar), the
+  §8-class priced differential gate with blind pre-registration, and the hard clause (no
+  lever ships while it makes a named wrong-commit class worse).
+- **A FAIL at any gate means iterate, not park**: engine work (the E1 per-candidate
+  posterior remains the named re-earn path — §17.6's verdict), a fresh pre-registration,
+  and a re-run. Iteration under this loop is standing delegation, EXCEPT a second
+  consecutive FAIL on the *same* frozen criterion, which stops for an owner ruling — a
+  repeat-FAIL means the criterion itself is contested, and only the owner re-rules a
+  frozen criterion.
+- **The terminus is §11's exit criteria** ("credence fully retired", checkable), reached
+  via the migration ladder through M6. Adoption happens when the bars pass — no separate
+  adoption keypress remains.
+- **Deferred**: the migration is NOT a completion condition of the 2026-08-25 completion
+  programme (Stages 1–2–4 close without it); it opens as committed follow-on work after
+  the programme's completion audit, and still after collapse-M7, so the seam migrated is
+  the collapsed one.
+- **Unchanged**: nothing in tree may presuppose the swap until it lands; the shadow keeps
+  accruing; the proplang repo is never edited from here — engine asks are filed as issues
+  on the public proplang repo.
