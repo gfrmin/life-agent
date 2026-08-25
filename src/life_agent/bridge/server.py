@@ -46,7 +46,7 @@ from typing import Any, cast
 import duckdb
 
 from life_agent import owner
-from life_agent.bridge.observations import to_abstract_observations
+from life_agent.bridge.observations import join_wire_observations, to_abstract_observations
 from life_agent.core import config
 from life_agent.core import corpus as CORPUS
 from life_agent.core import decisions as DEC
@@ -380,7 +380,8 @@ def _probe_corroborate(deps: BridgeDeps, p: Payload) -> Payload:
                 contained = [i for i, c in enumerate(candidates)
                              if MATCH.answer_matches(str(c), [], jr.value)]
                 if (len(contained) == 1
-                        and not _competing_value_shape(jr.value, candidates[contained[0]])):
+                        and not _competing_value_shape(jr.value, candidates[contained[0]])
+                        and not _superset_extension(jr.value, candidates[contained[0]])):
                     idx = contained[0]
             if idx is None and not contained and p.get("allow_new"):
                 # The re-extract GROW actuator (slice 6): the strong re-read named a value
@@ -404,7 +405,14 @@ def _probe_corroborate(deps: BridgeDeps, p: Payload) -> Payload:
                 tf = _corroborate_time_factor(jr, hits, p)
                 obs = [{"reports": idx, "group": 0, "authority": 1.0,
                         "subject_factor": 1.0, "time_factor": tf,
-                        "competition_factor": _candidate_competition(p, idx)}]
+                        "competition_factor": _candidate_competition(p, idx),
+                        # r09 D1 — the wire key, uniform (see _join_deliberate_value).
+                        # value_norm is the REPORTED candidate's normal form, not the raw
+                        # sentence's: the observation asserts the candidate it joined.
+                        "quote": "", "doc_key": "",
+                        "value_norm": LK._norm_value(
+                            candidates[idx] if idx < len(candidates)
+                            else str(new_candidate))}]
                 read = "confirm"
         # the read's own stated confidence rides beside the tier rho: the k=0 strong rescue
         # conditions at min(tier, confidence), so the wire never discards the instrument's
@@ -416,6 +424,16 @@ def _probe_corroborate(deps: BridgeDeps, p: Payload) -> Payload:
         priced = PRICING.cost_usd(LLMResult(
             text="", in_tokens=jr.in_tokens, out_tokens=jr.out_tokens, seconds=0.0,
             served_model=jr.served_model or model))
+        # r09 D2 — the §5-deduped JOIN: a caller that hands its standing channel gets the
+        # POOLED set back (a disagree or null read pools nothing and the channel survives —
+        # run 7's disagree⇒abstain contract is retired by the ruling's fix); a caller with
+        # no channel keeps the pre-r09 contract verbatim.
+        channel = list(p.get("observations") or [])
+        obs = _cap_synthesised_covariates(obs, channel)   # r09c A2, before the join
+        if channel:
+            joined_cands = (candidates if new_candidate is None
+                            else [*candidates, new_candidate])
+            obs = join_wire_observations(channel, obs, joined_cands)
         out: Payload = {"observations": obs, "gather_rho": tier_rho, "value": jr.value,
                         "confidence": jr.confidence, "cache_key": jr.cache_key,
                         "read": read,
@@ -545,6 +563,71 @@ def _candidate_competition(p: Payload, idx: int) -> float:
     return float(comp[idx]) if 0 <= idx < len(comp) else 1.0
 
 
+def _superset_extension(value: str, candidate: str) -> bool:
+    """r09b T1 — the strict-span guard: True when the candidate's matched token span in
+    ``value`` is NOT at an entity boundary — the token immediately adjacent (either side)
+    has the same token class as the candidate's own tokens (name-shaped beside name tokens,
+    digit-group beside digit tokens). The superset-confirm class: a shorter personal-name
+    candidate inside a longer name must not be confirmed. Prose (lowercase function words,
+    punctuation-only tokens) beside the span is not an extension. Checked on the FIRST
+    token-level span; a value with no token-level span (a different match route) is left to
+    the existing guards."""
+    def _strip(tok: str) -> str:
+        return tok.strip(".,;:()[]{}<>\"'")
+
+    def _norm(tok: str) -> str:
+        return _strip(tok).casefold()
+
+    def _tclass(tok: str) -> str:
+        t = _strip(tok)
+        if any(c.isdigit() for c in t):
+            return "digit"
+        if t[:1].isupper() and t.replace("-", "").isalpha():
+            return "name"
+        return "other"
+
+    vt = value.split()
+    ct = [_norm(c) for c in candidate.split()]
+    if not ct:
+        return False
+    cclasses = {_tclass(c) for c in candidate.split()} - {"other"}
+    if not cclasses:
+        return False
+    for i in range(len(vt) - len(ct) + 1):
+        if [_norm(x) for x in vt[i:i + len(ct)]] == ct:
+            left = vt[i - 1] if i > 0 else None
+            right = vt[i + len(ct)] if i + len(ct) < len(vt) else None
+            return any(adj is not None and _tclass(adj) in cclasses
+                       for adj in (left, right))
+    return False
+
+
+def _cap_synthesised_covariates(obs: list[Payload], channel: list[Payload]) -> list[Payload]:
+    """r09c A2 — a re-read cannot outrank the channel it re-read: every synthesised
+    observation's minted authority/subject is capped at the per-component max over the
+    channel's doc-keyed rows for the SAME value_norm, else over all doc-keyed rows. A
+    channel with no doc-keyed rows caps nothing (the k=0 rescue mints from zero by
+    design — the S5 exemption). time_factor is untouched: it is already the caller's
+    computed projection, never a minted constant."""
+    keyed = [c for c in channel if str(c.get("doc_key") or "")]
+    if not keyed:
+        return obs
+    out: list[Payload] = []
+    for o in obs:
+        if str(o.get("doc_key") or ""):
+            out.append(o)
+            continue
+        same = [c for c in keyed
+                if str(c.get("value_norm") or "") == str(o.get("value_norm") or "")] or keyed
+        out.append({**o,
+                    "authority": min(float(o.get("authority") or 0.0),
+                                     max(float(c.get("authority") or 0.0) for c in same)),
+                    "subject_factor": min(float(o.get("subject_factor") or 0.0),
+                                          max(float(c.get("subject_factor") or 0.0)
+                                              for c in same))})
+    return out
+
+
 def _join_deliberate_value(value: str | None, candidates: list[str], allow_new: bool,
                            *, time_factor: float = 1.0,
                            competition: list[float] | None = None,
@@ -566,7 +649,9 @@ def _join_deliberate_value(value: str | None, candidates: list[str], allow_new: 
     if idx is None:
         contained = [i for i, c in enumerate(candidates)
                      if MATCH.answer_matches(str(c), [], value)]
-        if len(contained) == 1 and not _competing_value_shape(value, candidates[contained[0]]):
+        if (len(contained) == 1
+                and not _competing_value_shape(value, candidates[contained[0]])
+                and not _superset_extension(value, candidates[contained[0]])):
             idx = contained[0]
         elif not contained and allow_new:
             new_candidate = value
@@ -579,7 +664,29 @@ def _join_deliberate_value(value: str | None, candidates: list[str], allow_new: 
              # the confirmed candidate's inherited §4.2 factor (a minted candidate's idx
              # is beyond the list ⇒ the neutral 1.0)
              "competition_factor": float(comp[idx]) if idx < len(comp) else 1.0,
+             # r09 D1 — the wire key, uniform on every observation: a synthesised read
+             # has no verbatim quote and no single source document (value-only, so §5
+             # never clusters it; the join gives it its own fresh group). value_norm is
+             # the REPORTED candidate's normal form — a containment-confirm asserts the
+             # candidate, not the sentence that contained it.
+             "quote": "", "doc_key": "",
+             "value_norm": LK._norm_value(candidates[idx]) if idx < len(candidates)
+             else vn,
              }], new_candidate
+
+
+def _deliberate_joined(p: Payload, obs: list[Payload], candidates: list[str],
+                       new_candidate: str | None) -> list[Payload]:
+    """r09 D2 at the S3 edge: pool the caller's standing channel with the deliberate
+    observation (the §5 rule, one spelling). An empty ok reply pools nothing, so the
+    grounded channel survives — the empty-ok collapse is retired (pre-registration D3).
+    A caller with no channel keeps the pre-r09 contract verbatim."""
+    channel = list(p.get("observations") or [])
+    if not channel:
+        return obs
+    obs = _cap_synthesised_covariates(obs, channel)   # r09c A2, before the join
+    joined_cands = candidates if new_candidate is None else [*candidates, new_candidate]
+    return join_wire_observations(channel, obs, joined_cands)
 
 
 def _probe_deliberate(deps: BridgeDeps, p: Payload) -> Payload:
@@ -611,6 +718,7 @@ def _probe_deliberate(deps: BridgeDeps, p: Payload) -> Payload:
             c.get("value"), candidates, allow_new,
             time_factor=_source_time_factor(c.get("value"), None, hits, p),
             competition=list(p.get("candidate_competition") or []))
+        obs = _deliberate_joined(p, obs, candidates, new_candidate)
         out: Payload = {"observations": obs, "value": c.get("value"),
                         "confidence": c.get("credence"), "declined": c.get("declined"),
                         "status": "ok", "text": c.get("text"), "model": c.get("model"),
@@ -632,6 +740,8 @@ def _probe_deliberate(deps: BridgeDeps, p: Payload) -> Payload:
         competition=list(p.get("candidate_competition") or []))
     if r.status != "ok":
         obs, new_candidate = [], None
+    else:
+        obs = _deliberate_joined(p, obs, candidates, new_candidate)
     out = {"observations": obs, "value": r.value, "confidence": r.credence,
            "declined": r.declined, "status": r.status, "text": r.text,
            "model": r.model, "cost_usd": r.cost_usd, "latency_s": r.latency_s,
