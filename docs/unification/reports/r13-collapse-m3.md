@@ -192,3 +192,23 @@ serves the mean-readback binding (`extractor_reliability_mean` reads `mean`, not
 `read_params` — the wire choreography of every binding must stay cassette-identical).
 `NR.coverage_posterior` is NOT a D-2 instance (the open-world tail is its own belief,
 not an edge's reliability) and stays where it is. Everything else stands.
+
+## AMENDMENT 4 (2026-08-25, blind — before any gate run; shim phase not yet implemented)
+
+Mandate 3 said all three M2 shims are deleted. Two are; the third is retained with its
+shim-ness removed, because deleting the NAME would duplicate a surface:
+
+- `AC.answer` — **deleted.** Its two callers (jarvis, the A-loop replay driver) inline
+  `drive` + `EX.render_view` / the DOWN string. No old-poster spelling survives in core.
+- `ASK._edge_curves` — **deleted.** Its consumers take `AC._edge_curves` with ask's
+  hold-out constant directly.
+- `ASK.answer_via_executor` — **retained as ask's executor-lane surface** (docstring
+  rewritten; the "shim over the one driver, deleted at M3" language retires). It was
+  never a second spelling of the driver: its body is the `*_LAST` seam resets,
+  cards/scores derivation, and the `EXECUTOR_DOWN` contract string — exactly what
+  mandate 3's own parenthetical keeps "in ask's own dispatch, not into core". Its
+  second caller is `run_eval`'s typed arm, which must take the executor lane WITHOUT
+  the dispatch's in-process fallback (a daemon outage mid-gate must raise, never
+  silently switch arms). Deleting the name would force that surface to be spelled
+  twice — the opposite of the collapse. The r12 D3 promise is discharged as: no shim
+  remains (the two duplicate spellings are gone; the survivor is a surface, not a shim).
