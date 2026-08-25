@@ -381,9 +381,13 @@ def drive_executor_loop(rig: Rig, snapshot: KBSnapshot, *, question: str, k: int
 
     def post(url: str, payload: dict[str, Any]) -> Any:
         # the POSTER'S OUTPUT — what §5.1's one-poster move changes — captured on the way
-        # past, identically whether the tap under it is recording or replaying
+        # past, identically whether the tap under it is recording or replaying. Served
+        # CANNED (r12 amendment 1): the poster's reply feeds no decision (the id is
+        # audit-only), the body is what the comparator pins, and consulting the cassette
+        # here would make every poster-shape checkpoint miss on its own registered change.
         if url.endswith("/log_decision"):
             posted.append(json.loads(json.dumps(payload)))
+            return {"decision_id": "replayed"}
         return rig.post(url, payload)
 
     rendered, decision_id = AC.answer(question, k, post=post, get=rig.get,
@@ -410,53 +414,66 @@ def drive_executor_loop(rig: Rig, snapshot: KBSnapshot, *, question: str, k: int
 
 def drive_ask_poster(question: str, view: dict[str, Any], *,
                      run_id: str | None) -> dict[str, Any]:
-    """The OTHER pre-collapse poster: `scripts/ask.py`'s ``_log_executor_decision``.
-
-    Q-O6's asymmetry in one fixture — the CLI surface posts the §10 accounting fields
-    (instrument, cost_usd, latency_s, run_id) that the reach surface omits, and M2 makes the
-    two one function. Hermetic: it needs only a recorded View.
-    """
-    import sys
-    sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts"))
-    import ask
+    """The ONE poster's body from a recorded view (`ask_client.post_decision` — since M2
+    the CLI's `_log_executor_decision` and the reach surface's inline poster are this one
+    function, r12 D2). Hermetic: it needs only a recorded View; the transport is a capture."""
+    from life_agent.core import ask_client as AC
 
     captured: list[dict[str, Any]] = []
-    prior_post, prior_run = ask._http_post, ask.EXECUTOR_RUN_ID
-    ask.EXECUTOR_RUN_ID = run_id
+
     def _capture(url: str, payload: dict[str, Any]) -> dict[str, Any]:
         captured.append({"url": url, "payload": payload})
         return {"decision_id": "captured"}
 
-    ask._http_post = _capture
-    try:
-        ask._log_executor_decision(question, view)
-    finally:
-        ask._http_post, ask.EXECUTOR_RUN_ID = prior_post, prior_run
+    AC.post_decision(_capture, "http://bridge", question, view, run_id=run_id)
     body = captured[-1]["payload"] if captured else None
     return {"effector": view.get("effector"), "asserted": list(view.get("asserted") or []),
             "candidates": list(view.get("candidates") or []),
             "credences": list(view.get("credences") or []),
             "p_none": view.get("p_none"), "eu": view.get("eu"), "gate": None,
             "log_decision": body,
-            "audit": {"posted": bool(captured), "poster": "ask._log_executor_decision"}}
+            "audit": {"posted": bool(captured), "poster": "ask_client.post_decision"}}
 
 
 # --- the seam: a commit with no engine available (§6.5) ------------------------------------
 
 def drive_seam_unavailable(question: str) -> dict[str, Any]:
-    """§6.5's pre-collapse truth: a down stack yields an abstain chosen from the DECLARED
-    observation alone, no decision_id, and nothing on the ledger.
+    """§6.5 driven end-to-end through the ONE driver's down path (M2, r12 D2): the seam
+    commits the declared gate, the gate is mirrored (fail-open — nothing listens here),
+    and the unavailability RECORD is appended — captured into a staging ledger, never the
+    configured one.
 
-    Pre-registered direction (M2/M5): the same situation becomes a RECORD carrying
-    ``regime: unavailable`` with no ``decision_id`` — an unavailability event, never an
-    abstain verdict (R-3 folds abstains as utility evidence).
-    """
+    Pre-M2 truth (the recorded fixture): abstain from the declared observation alone, no
+    decision_id, nothing on the ledger. Registered direction (DIR-2): the same situation
+    becomes a RECORD carrying ``regime: unavailable`` with no ``decision_id`` — an
+    unavailability event, never an abstain verdict (R-3 folds abstains as utility
+    evidence)."""
+    import tempfile
+
+    from life_agent.core import ask_client as AC
+    from life_agent.core import config as CFG
     from life_agent.core import seam as SEAM
 
-    gated = SEAM.commit(None, gates=(SEAM.GATE_EXECUTOR_DOWN,))
-    return {"effector": gated.action, "asserted": [], "candidates": [], "credences": [],
-            "p_none": None, "eu": gated.eu, "gate": gated.gate, "log_decision": None,
-            "audit": {"question_id": DEC.question_id(question)}}
+    with tempfile.TemporaryDirectory(prefix="collapse-seam-") as tmp:
+        sink = Path(tmp) / "decisions.jsonl"
+        prior = CFG.DECISIONS_LOG
+        CFG.DECISIONS_LOG = sink
+        try:
+            r = AC.drive(question, ready=lambda: False)
+        finally:
+            CFG.DECISIONS_LOG = prior
+        assert r.down and r.decision_id is None
+        event = _last_event(sink)
+    body = (body_from_event(event, question=question, retrieval_keys=[])
+            if event else None)
+    return {"effector": event.chosen_action if event else None, "asserted": [],
+            "candidates": [], "credences": [],
+            "p_none": None, "eu": None, "gate": SEAM.GATE_EXECUTOR_DOWN,
+            "regime": event.regime if event else None,
+            "policy": event.policy if event else None,
+            "log_decision": body,
+            "audit": {"question_id": DEC.question_id(question),
+                      "defaulted": list(event.defaulted) if event else None}}
 
 
 def staging_deps(client: Any, staging: Path) -> Any:

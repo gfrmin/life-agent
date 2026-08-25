@@ -24,6 +24,17 @@ def _hermetic_gtd_paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None
 
 
 @pytest.fixture(autouse=True)
+def _hermetic_decisions_log(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The M2 driver's §6.5 unavailability record (and any leaf left unstubbed) appends to
+    ``config.DECISIONS_LOG`` — which, un-redirected, is the owner's LIVE calibration
+    ledger. Same rule as the GTD paths above: hermetic by default; a test that needs a
+    real path overrides it itself."""
+    from life_agent.core import config as CFG
+
+    monkeypatch.setattr(CFG, "DECISIONS_LOG", tmp_path / "hermetic-decisions.jsonl")
+
+
+@pytest.fixture(autouse=True)
 def _hermetic_lookup(monkeypatch: pytest.MonkeyPatch) -> None:
     """No test routes through the lookup family unless it asks to: the router would
     call the live local model and the family would spawn the Julia skin. Tests of the

@@ -48,7 +48,6 @@ import yaml
 import life_agent.core as C
 import life_agent.core.ask_client as AC
 import life_agent.core.calibration as CAL
-import life_agent.core.config as CFG
 import life_agent.core.decisions as DEC
 import life_agent.core.derivations as D
 import life_agent.core.executor as EX
@@ -65,7 +64,6 @@ import life_agent.core.subject as S
 import life_agent.core.synthesis as SYN
 import life_agent.core.temporal as T
 import life_agent.core.temporal_intent as TI
-import life_agent.membrane.coarse as CRS
 import life_agent.owner as owner
 import life_agent.tasks.events as ev
 import life_agent.tasks.knowledge as knowledge
@@ -923,70 +921,20 @@ def _executor_ready() -> bool:
 
 
 def _edge_curves() -> dict[str, CAL.ReliabilityCurve] | None:
-    """The per-edge reliability curves folded from the outcomes log. **None when the
-    fold yields nothing** — today's log has no edge-attributed rows yet (the writers
-    land with the first Δ2 gate run), and an empty curves dict is NOT a no-op: it
-    would flatten every corroborate tier to the 0.25 cold start and information-free
-    the ladder. No attributed evidence ⇒ the declared constants stand; the calibrated
-    regime begins when the first attributed outcome exists. Fail-open the same way,
-    named."""
-    try:
-        held_out = (frozenset({EXECUTOR_HOLD_OUT_QUESTION_ID})
-                    if EXECUTOR_HOLD_OUT_QUESTION_ID is not None else frozenset())
-        rows = CAL.edge_outcomes_from_log(CFG.OUTCOMES_LOG,
-                                          exclude_question_ids=held_out)
-        if not rows:
-            return None
-        return CAL.fit_edge_curves(rows)
-    except Exception as e:
-        print(f"  (edge curves unavailable — declared constants stand: {e})")
-        return None
-
-
-def _log_executor_decision(question: str, view: dict[str, Any]) -> None:
-    """Post a terminal LOOKUP decision to the calibration log so the owner's g/b verdict folds
-    into u(wrong) through the EXISTING reaction loop. The bridge's /log_decision owns the write,
-    shaping it exactly as the in-process lookup family's decision (`decide_and_record`), and
-    returns the content-addressed id; we stash it in ``EXECUTOR_LAST`` so the in-session verdict
-    binds to it. Only a typed-lookup terminal WITH candidates is a logged decision — a
-    miss / narrative is not (the bridge would reject it, and there is no candidate to verdict).
-    Fail-open and named: a calibration-log write never breaks the answer."""
-    global EXECUTOR_LAST
-    if (view["route"] is None or view["effector"] not in DEC.LOOKUP_ACTION_ORDER
-            or not view["credences"]):
-        return
-    try:
-        resp = _http_post(f"{EXECUTOR_BRIDGE}/log_decision", {
-            "question": question,
-            "retrieval_keys": [h["artifact_cache_key"] for h in view["hits"]],
-            "decision": {"effector": view["effector"], "credences": view["credences"],
-                         "candidates": view["candidates"],
-                         "p_none": view["p_none"] if view["p_none"] is not None else 0.0,
-                         "eu": view["eu"] if view["eu"] is not None else 0.0,
-                         "n_obs": view.get("n_obs", 0),
-                         # the record's replayability fix (§14, 2026-08-17): a
-                         # single-candidate commit must disclose its competition
-                         "n_indeterminate": view.get("n_indeterminate", 0),
-                         "n_competing": view.get("n_competing", 0),
-                         # decisions v2 (§10): the answer-proposing edge + realised price
-                         "instrument": view.get("instrument") or "",
-                         "cost_usd": view.get("cost_usd"),
-                         "latency_s": view.get("latency_s"),
-                         **({"run_id": EXECUTOR_RUN_ID}
-                            if EXECUTOR_RUN_ID is not None else {})}})
-        EXECUTOR_LAST = (resp or {}).get("decision_id")
-    except Exception as e:  # fail-open by contract, reason printed — never breaks the answer
-        print(f"  (decision not logged: {e})")
+    """Since M2 a shim over the ONE fold (ask_client._edge_curves — deleted at M3): the
+    LOO hold-out (the gate's --gate-loo executor arm) rides through verbatim."""
+    return AC._edge_curves(EXECUTOR_HOLD_OUT_QUESTION_ID)
 
 
 def answer_via_executor(question: str, k: int
                         ) -> tuple[str, list[C.SourceCard], dict[int, float]]:
-    """Answer through the ONE executor (:mod:`life_agent.core.executor`) instead of the in-process
-    lookup/narrative families: route → retrieve → probe → extract → /decide, enacting each
-    net_voi-scheduled transform the daemon returns, then render in the shared credence grammar and
-    log the terminal lookup decision (so a g/b verdict folds, like the in-process path). Returns
-    ask's 3-tuple unchanged, so render/capture are identical. The daemon + bridge must be up; if
-    not, it abstains with a NAMED reason rather than guessing (interaction contract)."""
+    """Answer through the ONE executor — since M2 a thin shim over the ONE driver
+    (:func:`life_agent.core.ask_client.drive`, deleted at M3 when callers take the driver
+    directly): route → retrieve → probe → extract → /decide, then render in the shared
+    credence grammar. The driver posts the one /log_decision body (design §5.1) and, on a
+    down stack, commits the declared gate + appends the §6.5 unavailability record; this
+    shim keeps ask's surface concerns — the *_LAST globals, cards/scores, and the
+    interaction contract's EXECUTOR_DOWN string — and returns ask's 3-tuple unchanged."""
     global TEMPORAL_LAST, SUBJECT_LAST, INTENT_LAST, LOOKUP_LAST, NARRATIVE_LAST, STAGES_LAST
     global EXECUTOR_LAST, EFFORT_LAST, EXECUTOR_VIEW_LAST
     TEMPORAL_LAST = SUBJECT_LAST = INTENT_LAST = LOOKUP_LAST = NARRATIVE_LAST = None
@@ -997,47 +945,16 @@ def answer_via_executor(question: str, k: int
     # core/executor.py must not be edited to expose them) — absent (not a guessed 0), so a
     # consumer can tell "not tracked here" apart from "zero rounds fired".
     EFFORT_LAST = {}
-    if not _executor_ready():
-        # A down stack is a DECLARED observation into the one act seam (roadmap M0) — the
-        # seam chooses abstain and this host obeys, naming the reason (interaction
-        # contract). The engine that would otherwise decide IS the unreachable daemon, so
-        # the observation must be able to force abstain without reaching it.
-        gated = SEAM.commit(None, gates=(SEAM.GATE_EXECUTOR_DOWN,))
-        # nothing but abstain is ENACTABLE against a down stack — an enactment constraint,
-        # not a second decision; the seam's gate contract pins the act (test_seam).
-        assert gated.action == "abstain"
-        # M2 advisory mirror, fail-open: the bridge (which hosts the shadow) may be the very
-        # thing that is down — then this is an instant refusal, swallowed inside mirror_gate.
-        SM.mirror_gate(EXECUTOR_BRIDGE, DEC.question_id(question), SEAM.GATE_EXECUTOR_DOWN)
+    r = AC.drive(question, k, bridge=EXECUTOR_BRIDGE, daemon=EXECUTOR_DAEMON,
+                 post=_http_post, get=_http_get, run_id=EXECUTOR_RUN_ID,
+                 ready=_executor_ready,
+                 hold_out_question_id=EXECUTOR_HOLD_OUT_QUESTION_ID)
+    if r.down:
         return (EXECUTOR_DOWN, [], {})
-    # The ONE question_id derivation (core.decisions.question_id) — the same key the bridge's
-    # /log_decision stamps, so a live decide tick mirrored here and the terminal decision
-    # logged below join on one key.
-    question_id = DEC.question_id(question)
-    if CFG.membrane_live():
-        # M3 — the coarse menu live: the seam consults the proplang engine on every
-        # decide tick (bridge /decide-live) and enacts ITS act; the enact record is
-        # written by that same consult, so the async decide mirror stays OFF here — the
-        # wrapped post would consult the one engine twice per tick.
-        live: SEAM.LiveFn | None = CRS.live_decide(EXECUTOR_BRIDGE, question_id)
-        post: EX.Post = _http_post
-    else:
-        live = None
-        post = SM.shadow_wrapped_post(_http_post, EXECUTOR_BRIDGE, question_id)
-    # The deliberate edge is ON by default (§13 adoption 2026-08-17; LIFE_AGENT_DELIBERATE=0
-    # is the rollback): the promoted A1b edge joins the priced transform menu — the daemon
-    # schedules it by EU, never a body fork — and every read's stated confidence folds
-    # through the per-edge calibration curves instead of the flat constants.
-    if CFG.deliberate_enabled():
-        curves = _edge_curves()
-        transforms = EX.menu_transforms(curves)  # every row priced at what enactment delivers
-    else:
-        transforms, curves = None, None
-    view = EX.decide_via_loop(question, k, bridge=EXECUTOR_BRIDGE, daemon=EXECUTOR_DAEMON,
-                              post=post, get=_http_get, live=live,
-                              transforms=transforms, curves=curves)
+    view = r.view
+    assert view is not None
     EXECUTOR_VIEW_LAST = view
-    _log_executor_decision(question, view)
+    EXECUTOR_LAST = r.decision_id
     pairs = _cards_from_set(view["hits"])
     cards = [c for c, _ in pairs]
     scores = {c.n: s for c, s in pairs}

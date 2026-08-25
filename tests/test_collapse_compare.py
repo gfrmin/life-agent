@@ -176,3 +176,205 @@ def test_every_runtime_measured_field_is_named_in_the_body_shape(path: str) -> N
     silent loosening (it would excuse a field that later appears)."""
     _, _, tail = path.partition(".")
     assert tail and tail in _body()["decision"]
+
+
+# --- the M2 direction assertions (§7.2's expected-change mechanism, r12 DIR-1/DIR-2) ------
+# A fixture whose `expected_change.checkpoint` names M2 is compared under its pre-registered
+# direction instead of raw equality — TIGHT: every field the direction does not name stays
+# under the standing classes, the named fields must match exactly, and the change must have
+# HAPPENED (a fixture replaying unchanged fails the direction: the checkpoint claims a move
+# it did not make).
+
+def _poster_outputs(body: dict) -> dict:
+    return {"effector": "report", "asserted": ["A"], "candidates": ["A", "B"],
+            "credences": [0.8, 0.2], "p_none": 0.05, "eu": 0.61, "gate": None,
+            "log_decision": body, "audit": {"poster": "x"}}
+
+
+def _recorded_poster() -> dict:
+    """The m2-base A-poster recorded shape: accounting keys present (the CLI poster posts
+    them, cost/latency at null on an unpriced firing), regime/policy ABSENT."""
+    body = _body(decision__cost_usd=None, decision__latency_s=None)
+    del body["decision"]["regime"], body["decision"]["policy"]
+    return _poster_outputs(body)
+
+
+def _replayed_poster() -> dict:
+    """The one poster's body (r12 D2): regime/policy stated, unpriced cost/latency at 0.0."""
+    return _poster_outputs(_body(decision__cost_usd=0.0, decision__latency_s=0.0,
+                                 decision__run_id="collapse-m0"))
+
+
+def test_m2_poster_direction_passes_the_registered_delta() -> None:
+    assert CMP.compare_directed(_recorded_poster(), _replayed_poster(),
+                                checkpoint="M2", question="q") == []
+
+
+def test_m2_poster_direction_requires_the_change_to_have_happened() -> None:
+    """An unchanged replay FAILS the direction — the checkpoint claims a move."""
+    diffs = CMP.compare_directed(_recorded_poster(), _recorded_poster(),
+                                 checkpoint="M2", question="q")
+    assert {d.path for d in diffs} == {"log_decision.decision.regime",
+                                       "log_decision.decision.policy"}
+
+
+def test_m2_poster_direction_kills_a_wrong_regime_value() -> None:
+    actual = _replayed_poster()
+    actual["log_decision"]["decision"]["regime"] = "terminals-only"
+    diffs = CMP.compare_directed(_recorded_poster(), actual, checkpoint="M2", question="q")
+    assert [d.path for d in diffs] == ["log_decision.decision.regime"]
+
+
+def test_m2_poster_direction_kills_any_other_field_change() -> None:
+    actual = _replayed_poster()
+    actual["log_decision"]["decision"]["credences"] = [0.7, 0.3]
+    diffs = CMP.compare_directed(_recorded_poster(), actual, checkpoint="M2", question="q")
+    assert [d.path for d in diffs] == ["log_decision.decision.credences"]
+
+
+def test_m2_poster_direction_kills_an_unnamed_new_field() -> None:
+    actual = _replayed_poster()
+    actual["log_decision"]["decision"]["defaulted"] = []
+    diffs = CMP.compare_directed(_recorded_poster(), actual, checkpoint="M2", question="q")
+    assert [(d.path, d.reason) for d in diffs] == [
+        ("log_decision.decision.defaulted", "unclassified")]
+
+
+def test_m2_poster_direction_allows_priced_cost_to_stay_a_number() -> None:
+    """A fixture recorded with a realised price keeps kind number → number."""
+    rec = _recorded_poster()
+    rec["log_decision"]["decision"]["cost_usd"] = 0.004
+    act = _replayed_poster()
+    act["log_decision"]["decision"]["cost_usd"] = 0.0041  # runtime-measured: value free
+    assert CMP.compare_directed(rec, act, checkpoint="M2", question="q") == []
+
+
+def _recorded_seam() -> dict:
+    return {"effector": "abstain", "asserted": [], "candidates": [], "credences": [],
+            "p_none": None, "eu": None, "gate": "executor_down", "log_decision": None,
+            "audit": {"question_id": "abc"}}
+
+
+def _replayed_seam(question: str = "the stack is down") -> dict:  # PII-OK: synthetic
+    body = {
+        "question": question, "retrieval_keys": [],
+        "decision": {"effector": "abstain", "credences": [], "candidates": [],
+                     "p_none": 0.0, "eu": 0.0, "n_obs": 0, "n_indeterminate": 0,
+                     "n_competing": 0, "instrument": "", "run_id": "answer-brain",
+                     "cost_usd": 0.0, "latency_s": 0.0,
+                     "regime": "unavailable", "policy": "all-to-date"},
+    }
+    return {"effector": "abstain", "asserted": [], "candidates": [], "credences": [],
+            "p_none": None, "eu": None, "gate": "executor_down",
+            "regime": "unavailable", "policy": "all-to-date",
+            "log_decision": body, "audit": {"defaulted": ["policy"]}}
+
+
+def test_m2_seam_direction_passes_the_unavailability_record() -> None:
+    assert CMP.compare_directed(_recorded_seam(), _replayed_seam(),
+                                checkpoint="M2/M5",
+                                question="the stack is down") == []  # PII-OK: synthetic
+
+
+def test_m2_seam_direction_requires_the_record() -> None:
+    diffs = CMP.compare_directed(_recorded_seam(), _recorded_seam(),
+                                 checkpoint="M2/M5", question="the stack is down")
+    assert diffs  # unchanged replay = the record never appeared = FAIL
+
+
+def test_m2_seam_direction_kills_a_changed_act() -> None:
+    actual = _replayed_seam()
+    actual["effector"] = "report"
+    actual["log_decision"]["decision"]["effector"] = "report"
+    diffs = CMP.compare_directed(_recorded_seam(), actual,
+                                 checkpoint="M2/M5", question="the stack is down")
+    assert "effector" in {d.path for d in diffs}
+
+
+def test_m2_seam_direction_kills_a_foldable_regime() -> None:
+    """The record must say `unavailable` — a `full` abstain would fold as a verdict."""
+    actual = _replayed_seam()
+    actual["regime"] = "full"
+    actual["log_decision"]["decision"]["regime"] = "full"
+    diffs = CMP.compare_directed(_recorded_seam(), actual,
+                                 checkpoint="M2/M5", question="the stack is down")
+    assert {d.path for d in diffs} >= {"regime", "log_decision.decision.regime"}
+
+
+def test_an_unknown_direction_checkpoint_fails_loud() -> None:
+    diffs = CMP.compare_directed(_recorded_seam(), _replayed_seam(),
+                                 checkpoint="M9", question="q")
+    assert [(d.path, d.reason) for d in diffs] == [
+        ("expected_change.checkpoint", "unclassified")]
+
+
+# --- AMENDMENT 1: DIR-1's true scope — every pre-collapse poster body (A-loop included) ----
+
+def _recorded_aloop() -> dict:
+    """The A-loop recorded shape: the reach poster's REDUCED body (no accounting keys at
+    all, no regime/policy), with the loop's realised instrument in the recorded audit."""
+    body = _body()
+    for key in ("instrument", "cost_usd", "latency_s", "run_id", "regime", "policy"):
+        del body["decision"][key]
+    out = _poster_outputs(body)
+    out["audit"] = {"instrument": None, "run_id": "collapse-m0"}
+    return out
+
+
+def _replayed_aloop(instrument: str = "", run_id: str = "answer-brain") -> dict:
+    return _poster_outputs(_body(decision__instrument=instrument,
+                                 decision__cost_usd=0.0, decision__latency_s=0.0,
+                                 decision__run_id=run_id))
+
+
+def test_m2_poster_direction_accepts_the_aloop_appearances() -> None:
+    assert CMP.compare_directed(_recorded_aloop(), _replayed_aloop(),
+                                checkpoint="M2", question="q") == []
+
+
+def test_m2_poster_direction_pins_the_appearing_instrument_to_the_recorded_audit() -> None:
+    rec = _recorded_aloop()
+    rec["audit"]["instrument"] = "deliberate@synthetic-model"  # PII-OK: synthetic
+    ok = _replayed_aloop(instrument="deliberate@synthetic-model")  # PII-OK: synthetic
+    assert CMP.compare_directed(rec, ok, checkpoint="M2", question="q") == []
+    diffs = CMP.compare_directed(rec, _replayed_aloop(instrument=""),
+                                 checkpoint="M2", question="q")
+    assert [d.path for d in diffs] == ["log_decision.decision.instrument"]
+
+
+def test_m2_poster_direction_kills_a_wrong_appearing_run_id() -> None:
+    diffs = CMP.compare_directed(_recorded_aloop(), _replayed_aloop(run_id="ask"),
+                                 checkpoint="M2", question="q")
+    assert [d.path for d in diffs] == ["log_decision.decision.run_id"]
+
+
+def test_compare_fixture_applies_dir1_to_unannotated_pre_collapse_poster_bodies() -> None:
+    """The A-loop fixtures carry no expected_change annotation, but their recorded bodies
+    came from the pre-collapse reach poster (signature: no `regime` key) — DIR-1 reaches
+    them (amendment 1); a B-trace body (regime present) stays under raw equality."""
+    fx = FX.Fixture(fixture_id="f1", checkpoint="m2-base", trace="A-loop",
+                    classes=(), question="q", question_id="x" * 16,
+                    inputs={}, outputs=_recorded_aloop())
+    assert CMP.compare_fixture(fx, _replayed_aloop()) == []
+    fx_b = FX.Fixture(fixture_id="f2", checkpoint="m2-base", trace="B-lookup",
+                      classes=(), question="q", question_id="x" * 16,
+                      inputs={}, outputs=_poster_outputs(_body()))
+    changed = _poster_outputs(_body(decision__regime="terminals-only"))
+    assert [d.path for d in CMP.compare_fixture(fx_b, changed)] == [
+        "log_decision.decision.regime"]
+
+
+def test_compare_fixture_null_body_stays_null_under_dir1() -> None:
+    """A miss / route-null A-poster fixture (body null) must replay null — a poster that
+    suddenly posts for a non-decision is a violation, not the M2 direction."""
+    fx = FX.Fixture(fixture_id="f3", checkpoint="m2-base", trace="A-poster",
+                    classes=(), question="q", question_id="x" * 16, inputs={},
+                    outputs={"effector": "miss", "asserted": [], "candidates": [],
+                             "credences": [], "p_none": None, "eu": None, "gate": None,
+                             "log_decision": None},
+                    expected_change={"checkpoint": "M2", "direction": "d"})
+    same = {"effector": "miss", "asserted": [], "candidates": [], "credences": [],
+            "p_none": None, "eu": None, "gate": None, "log_decision": None}
+    assert CMP.compare_fixture(fx, same) == []
+    posts_now = dict(same, log_decision=_body())
+    assert CMP.compare_fixture(fx, posts_now)  # a new post where none was = FAIL

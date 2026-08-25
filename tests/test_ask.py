@@ -364,6 +364,9 @@ def test_answer_via_executor_renders_logs_and_binds(monkeypatch) -> None:
     log_url = next(u for u in posted if u.endswith("/log_decision"))
     assert posted[log_url]["decision"]["effector"] == "report"
     assert posted[log_url]["retrieval_keys"] == ["d0"]
+    # M2 (r12 DIR-1): the one poster STATES the two M0 fields on every posted body
+    assert posted[log_url]["decision"]["regime"] == "full"
+    assert posted[log_url]["decision"]["policy"] == "all-to-date"
     assert ask.EXECUTOR_LAST == "ab-cafef00d"
 
 
@@ -408,7 +411,9 @@ def test_answer_via_executor_tags_run_id_when_set(monkeypatch) -> None:
     monkeypatch.setattr(ask, "EXECUTOR_RUN_ID", None)
     ask.answer_via_executor("my passport?", 20)
     decision = next(p for u, p in posted if u.endswith("/log_decision"))["decision"]
-    assert "run_id" not in decision
+    # M2 (r12): no accounting field is optional on the poster's side — the live default
+    # is STATED, matching the bridge's own ("answer-brain"), so the ledger row is unchanged
+    assert decision["run_id"] == "answer-brain"
 
 
 def test_edge_curves_honor_the_held_out_question(monkeypatch, tmp_path) -> None:
@@ -423,7 +428,9 @@ def test_edge_curves_honor_the_held_out_question(monkeypatch, tmp_path) -> None:
         tx_time="t", run_id="r", question_id="q2-001", claim="c",
         construct="edge-proposal", grade="CORRECT", grader="eval_edge",
         instrument_identity={"edge": "deliberate@opus"}, probability=0.9))
-    monkeypatch.setattr(ask.CFG, "OUTCOMES_LOG", log)
+    from life_agent.core import config as _CFG
+
+    monkeypatch.setattr(_CFG, "OUTCOMES_LOG", log)
     curves = ask._edge_curves()
     assert curves is not None and "deliberate@opus" in curves
     monkeypatch.setattr(ask, "EXECUTOR_HOLD_OUT_QUESTION_ID", "q2-001")
@@ -452,11 +459,19 @@ def test_http_post_surfaces_the_500_body(monkeypatch) -> None:
 
 
 def test_answer_via_executor_abstains_named_when_daemon_down(monkeypatch) -> None:
-    # Never a silent fallback to another path's answer: a down stack is the NAMED abstention.
+    # Never a silent fallback to another path's answer: a down stack is the NAMED abstention —
+    # and, since M2 (r12 D2), a RECORDED one: the §6.5 unavailability event is appended
+    # (regime=unavailable, no decision_id), never a foldable abstain verdict.
+    from life_agent.core import recorder as REC
+
     monkeypatch.setattr(ask, "_executor_ready", lambda: False)
+    recorded: list[str] = []
+    monkeypatch.setattr(REC, "record_unavailable",
+                        lambda question, **kw: recorded.append(question))
     text, cards, scores = ask.answer_via_executor("my passport?", 20)
     assert text == ask.EXECUTOR_DOWN
     assert cards == [] and scores == {}
+    assert recorded == ["my passport?"]
 
 
 def test_record_reaction_binds_verdict_to_executor_decision(monkeypatch, tmp_path) -> None:

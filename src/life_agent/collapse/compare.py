@@ -156,3 +156,130 @@ def render_diffs(fixture_id: str, diffs: list[FieldDiff]) -> str:
     lines += [f"    {d.path:<44} [{d.reason}] recorded={d.expected!r} replayed={d.actual!r}"
               for d in diffs]
     return "\n".join(lines)
+
+
+# --- the pre-registered direction assertions (§7.2's expected-change mechanism) -----------
+# A fixture whose ``expected_change.checkpoint`` names a landed checkpoint is compared under
+# that checkpoint's registered direction instead of raw equality (r12 DIR-1/DIR-2). Each
+# direction is TIGHT: every field it does not name stays under the standing classes, the
+# named fields must match exactly, and the change must have HAPPENED — a fixture replaying
+# unchanged fails the direction, because the checkpoint claims a move it did not make.
+
+#: DIR-1 (r12): the one poster states the two M0 fields on every posted body.
+_M2_APPEAR: dict[str, Any] = {"decision.regime": "full", "decision.policy": "all-to-date"}
+#: DIR-1: the never-absent normalisation — an unpriced null becomes 0.0 (design §5.1).
+_M2_NULL_TO_NUMBER: frozenset[str] = frozenset({"decision.cost_usd", "decision.latency_s"})
+
+
+def _is_number(v: Any) -> bool:
+    return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+
+def _directed_m2_poster(expected: Mapping[str, Any],
+                        actual: Mapping[str, Any]) -> list[FieldDiff]:
+    """DIR-1 as amended (r12 amendment 1) — every fixture whose recorded body came from a
+    pre-collapse poster: ``regime``/``policy`` appear at exactly full/all-to-date; the
+    accounting keys the reach poster never posted appear at the one defaults (``run_id``
+    exactly "answer-brain", ``instrument`` exactly the fixture's own recorded
+    ``audit.instrument`` or ""); unpriced ``cost_usd``/``latency_s`` appear as (or go
+    null→) numbers; everything else equal. A fixture recorded WITHOUT a body (a miss, a
+    route-null narrative view — the loop committed no lookup decision) must replay
+    without one: nothing to direct."""
+    exp_body, act_body = expected.get("log_decision"), actual.get("log_decision")
+    if not isinstance(exp_body, Mapping) or not isinstance(act_body, Mapping):
+        return compare_outputs(expected, actual)
+    audit = expected.get("audit")
+    audit_instrument = (audit.get("instrument") if isinstance(audit, Mapping) else None) or ""
+    appear = dict(_M2_APPEAR)
+    appear["decision.run_id"] = "answer-brain"
+    appear["decision.instrument"] = audit_instrument
+    diffs: list[FieldDiff] = []
+    for d in compare_body(exp_body, act_body, prefix="log_decision."):
+        path = d.path.removeprefix("log_decision.")
+        if path in appear and d.reason == "unexpected":
+            if not values_equal(d.actual, appear[path]):
+                diffs.append(FieldDiff(d.path, appear[path], d.actual, "value"))
+            continue
+        if path in _M2_NULL_TO_NUMBER and _is_number(d.actual) and (
+                (d.reason == "type" and d.expected is None)
+                or d.reason == "unexpected"):
+            continue
+        diffs.append(d)
+    raw_dec = act_body.get("decision")
+    act_dec: Mapping[str, Any] = raw_dec if isinstance(raw_dec, Mapping) else {}
+    for path, want in _M2_APPEAR.items():
+        if path.split(".", 1)[1] not in act_dec:
+            diffs.append(FieldDiff(f"log_decision.{path}", want, None, "absent"))
+    exp_rest = {k: v for k, v in expected.items() if k != "log_decision"}
+    act_rest = {k: v for k, v in actual.items() if k != "log_decision"}
+    return diffs + compare_outputs(exp_rest, act_rest)
+
+
+#: DIR-2 (r12): the §6.5 unavailability record's output-level facts.
+_M2_SEAM_APPEAR: dict[str, Any] = {"regime": "unavailable", "policy": "all-to-date"}
+
+
+def _directed_m2_seam(expected: Mapping[str, Any], actual: Mapping[str, Any],
+                      question: str) -> list[FieldDiff]:
+    """DIR-2 — the seam fixture: the act stays abstain with its gate; the RECORD appears —
+    ``regime: unavailable``, empty posterior, zeroed accounting, no decision id to bind."""
+    skip = {"log_decision", *_M2_SEAM_APPEAR}
+    diffs = compare_outputs({k: v for k, v in expected.items() if k not in skip},
+                            {k: v for k, v in actual.items() if k not in skip})
+    for key, want in _M2_SEAM_APPEAR.items():
+        got = actual.get(key, _MISSING)
+        if got is _MISSING:
+            diffs.append(FieldDiff(key, want, None, "absent"))
+        elif not values_equal(got, want):
+            diffs.append(FieldDiff(key, want, got, "value"))
+    required = {
+        "question": question, "retrieval_keys": [],
+        "decision": {"effector": "abstain", "credences": [], "candidates": [],
+                     "p_none": 0.0, "eu": 0.0, "n_obs": 0, "n_indeterminate": 0,
+                     "n_competing": 0, "instrument": "", "run_id": "answer-brain",
+                     "cost_usd": 0.0, "latency_s": 0.0,
+                     "regime": "unavailable", "policy": "all-to-date"},
+    }
+    body = actual.get("log_decision")
+    if not isinstance(body, Mapping):
+        diffs.append(FieldDiff("log_decision", "the §6.5 unavailability record",
+                               body, "absent"))
+    else:
+        diffs += compare_body(required, body, prefix="log_decision.")
+    return diffs
+
+
+def compare_directed(expected: Mapping[str, Any], actual: Mapping[str, Any], *,
+                     checkpoint: str, question: str) -> list[FieldDiff]:
+    """Dispatch a fixture's pre-registered direction. An unknown checkpoint is a loud
+    failure, never a silent equality fallback — the direction a fixture claims must be one
+    the code registers."""
+    if checkpoint == "M2":
+        return _directed_m2_poster(expected, actual)
+    if checkpoint == "M2/M5":
+        return _directed_m2_seam(expected, actual, question)
+    return [FieldDiff("expected_change.checkpoint", None, checkpoint, "unclassified")]
+
+
+def _pre_collapse_poster_body(outputs: Mapping[str, Any]) -> bool:
+    """The precise signature of a body a pre-collapse poster built (r12 amendment 1): the
+    B-traces' bodies are shaped from their ``DecisionEvent``s and always carry ``regime``;
+    only the two pre-M2 posters (the reach surface's and the CLI's) omit it."""
+    body = outputs.get("log_decision")
+    if not isinstance(body, Mapping):
+        return False
+    decision = body.get("decision")
+    return isinstance(decision, Mapping) and "regime" not in decision
+
+
+def compare_fixture(fx: Any, actual: Mapping[str, Any]) -> list[FieldDiff]:
+    """The one entry point the replay uses: directed where the fixture carries a
+    pre-registered ``expected_change`` — or where its recorded body is a pre-collapse
+    poster's (the A-loop capture, amendment 1) — raw equality everywhere else."""
+    if fx.expected_change is not None:
+        return compare_directed(fx.outputs, actual,
+                                checkpoint=str(fx.expected_change.get("checkpoint")),
+                                question=fx.question)
+    if _pre_collapse_poster_body(fx.outputs):
+        return _directed_m2_poster(fx.outputs, actual)
+    return compare_outputs(fx.outputs, actual)
