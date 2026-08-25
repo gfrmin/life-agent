@@ -569,29 +569,6 @@ def route_question(root: Path, question: str, *,
                  time_indexed=bool(parsed.get("time_indexed", False)))
 
 
-
-def entity_key_filter(question: str, observations: list[Observation],
-                      chunks: list[str]) -> list[Observation]:
-    """r10 D2 — the entity key: drop the observations whose carrier never names what the
-    question names, but only when some carrier does.
-
-    Exact and typed (`matching.identifier_terms`), and a FILTER rather than a factor. Both
-    departures are deliberate: r09d refuted the whole family of soft rules that score a
-    document by question-vocabulary overlap, because on this corpus the gold's carrier is
-    terse and the competitor's is discursive, so overlap damps the gold.
-
-    Three ways it is a provable no-op — the question names nothing (60% of the corpus), no
-    carrier keys (the filter must never empty a channel), or every carrier keys. Pure.
-    """
-    terms = MATCH.identifier_terms(question)
-    if not terms:
-        return observations
-    keyed = [all(t in c for t in terms) for c in chunks]
-    if not any(keyed):
-        return observations
-    return [o for o, k in zip(observations, keyed, strict=True) if k]
-
-
 def observe_hits(root: Path, question: str, hits: list[dict[str, Any]], *,
                  client: Any | None = None,
                  reliability: float | None = None,
@@ -611,7 +588,6 @@ def observe_hits(root: Path, question: str, hits: list[dict[str, Any]], *,
         client = _client()
     cov = covariates if covariates is not None else HitCovariates()
     observations: list[Observation] = []
-    chunks: list[str] = []                  # r10 D2: each observation's carrier, kept parallel
     indeterminate = 0
     for i, hit in enumerate(hits):
         chunk = str(hit["chunk_text"])
@@ -660,7 +636,6 @@ def observe_hits(root: Path, question: str, hits: list[dict[str, Any]], *,
         # value inside the extractor's own quote window halves this observation's r.
         n_comp = MATCH.quote_scoped_competitors(
             str(parsed["value"]).strip(), chunk, str(parsed["quote"]))
-        chunks.append(chunk)
         observations.append(Observation(
             card_n=i + 1,
             artifact_cache_key=artifact_key,
@@ -682,14 +657,7 @@ def observe_hits(root: Path, question: str, hits: list[dict[str, Any]], *,
     # host lookup_posterior OR the daemon's reliability_categorical (which consumes this verbatim
     # through to_abstract_observations). Placed in the decider alone (commit 546f1a5), the §4.2
     # temper never reached the executor path; observe_hits is the single seam both consume.
-    kept = dedup_correlated(observations)
-    # r10 D2: the entity key, applied AFTER §5 dedup — that is where the $0 census that priced
-    # it measured, and the two orders do not agree (r09d D4 moved the totals by moving the
-    # application point). `dedup_correlated` is order-preserving and returns the SAME objects,
-    # so identity carries each survivor's chunk across.
-    kept_ids = {id(o) for o in kept}
-    keep_chunks = [c for o, c in zip(observations, chunks, strict=True) if id(o) in kept_ids]
-    return entity_key_filter(question, kept, keep_chunks), indeterminate
+    return dedup_correlated(observations), indeterminate
 
 
 def confirm_prefilter(value: str, hits: list[dict[str, Any]],

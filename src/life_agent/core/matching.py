@@ -124,33 +124,3 @@ def competing_value_count(value: str, chunk_text: str) -> int:
     own_shapes = set().union(*value_classes.values())
     return sum(1 for canon, shapes in _span_classes(chunk_text).items()
                if canon not in own_canons and shapes & own_shapes)
-
-
-# --- r10 D1: the entity key's detector ------------------------------------------------------
-
-# Identifier-like shapes ONLY, in the order the $0 census that priced the rule collected them.
-# Ordinary English words are deliberately unreachable: the r09d anchor scored documents by
-# question-vocabulary overlap and was refuted across three variants, so a key that could pick
-# up "coverage" or "statement" would be that lever wearing a different hat.
-_IDENTIFIER_PATTERNS = (
-    re.compile(r"\b[\w./-]+\.(?:py|ts|tsx|js|jsx|md|json|ya?ml|sql|jl|toml|csv|pdf|docx?|xlsx?)\b"),
-    re.compile(r"\b[A-Z][a-z0-9]+(?:[A-Z][a-z0-9]+)+\b"),      # CamelCase, >= 2 humps
-    re.compile(r"\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b"),          # snake_case
-    re.compile(r"\b[A-Z][A-Z0-9_]{2,}\b"),                     # ALLCAPS ids
-)
-
-
-def identifier_terms(text: str) -> list[str]:
-    """The tokens in ``text`` that NAME something, in census order, first occurrence wins.
-
-    A filename's snake_case stem comes back as its own term. That is what the census did and
-    it is harmless under E1's ALL contract — a chunk carrying the filename carries the stem —
-    but it is load-bearing for reproducing the census's numbers, so it is kept deliberately
-    rather than tidied away.
-    """
-    found: list[str] = []
-    for pattern in _IDENTIFIER_PATTERNS:
-        for match in pattern.findall(text):
-            if match not in found:
-                found.append(match)
-    return found
