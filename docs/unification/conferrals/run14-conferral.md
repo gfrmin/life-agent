@@ -123,3 +123,16 @@ wrong rows cold on both passes. Two consequences, both stable across the double 
 master's replace-branch reach collapse is confirmed, and **the blocking row is unreadable at
 $0 on master** (its priced evidence remains run 11: FAIL 0.880 with the blocking row
 committing wrong). Option C's description is final; the recommendation is unchanged.
+
+
+## RULING 5 — direction (owner, 2026-08-25, after the addendum)
+
+**Proplang is the intended successor of credence at the decide seam — and credence ships
+first.** Run 14 proceeds as ruled on the credence-typed arm; the proplang engine (today the
+membrane shadow, never on the decision path) replaces credence as its own successor
+milestone, which requires its own gated adoption (shadow → challenger → a priced run under
+frozen criteria), not a swap-by-fiat. Nothing in this arc presupposes the swap; everything
+in it — the wire, the ledger, the record/replay instruments, the gate — binds to the decide
+seam, not the engine, and carries over. The owner also rules the API cap raised (ruling 3's
+first branch): on restored access the ruled tail runs — warm → re-read at $0 → fire run 14
+under the frozen branches, full delegation on PASS.

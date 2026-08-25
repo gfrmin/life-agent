@@ -320,7 +320,10 @@ material for that candidate only.
 - **Membrane shadow (`src/life_agent/membrane`, `src/life_agent/bridge`):** the frozen
   proplang-govhost engine mirrors live decide/verdict traffic off to the side, never on the
   decision path. Env-gated (absence = disabled); report at `$LIFE_AGENT_KB/membrane/report.md`,
-  register at [`docs/membrane-shadow.md`](./docs/membrane-shadow.md).
+  register at [`docs/membrane-shadow.md`](./docs/membrane-shadow.md). **Owner direction
+  (2026-08-25, run-14 conferral ruling 5): proplang is the intended successor of credence at
+  the decide seam — credence ships first; the swap is a future gated adoption, and nothing in
+  tree may presuppose it.**
 
 ## `src/pkm` — the KB core (Python, uv, DuckDB): key files
 
