@@ -265,3 +265,34 @@ def test_replay_cache_serves_recorded_bytes_and_recorded_misses() -> None:
     replay = T.ReplayCache(T.Cassette(sink))
     assert replay("/tmp/root", "warm") == b"xy"
     assert replay("/tmp/root", "cold") is None
+
+
+# --- spend metering (stage-0 rider: the O2 gap — the recorder never metered spend) ------------
+
+class _PricedInner:
+    engine_version = "0.0-test"
+
+    def __init__(self, costs: list[float]) -> None:
+        self._costs = list(costs)
+
+    def complete(self, prompt: str, schema: dict) -> T.InstrumentReply:
+        return T.InstrumentReply(raw_text="{}", cost_usd=self._costs.pop(0))
+
+
+def test_metered_recording_client_sums_spend_and_aborts_past_the_cap() -> None:
+    sink: list = []
+    client = T.MeteredRecordingClient(_PricedInner([0.4, 0.5, 0.2]), sink, max_usd=1.0)
+    client.complete("p1", {})
+    client.complete("p2", {})
+    assert client.spent_usd == pytest.approx(0.9)
+    with pytest.raises(T.RecordBudgetExceeded):
+        client.complete("p3", {})
+    # the two paid calls are still on the wire — the abort loses nothing already recorded
+    assert [x.response["cost_usd"] for x in sink if x.seam == "instrument"][:2] == [0.4, 0.5]
+
+
+def test_record_budget_exceeded_escapes_the_per_trace_absence_handlers() -> None:
+    # the recorder's per-trace handlers catch Exception and continue as a NAMED absence;
+    # a blown budget must abort the whole record instead of becoming 300 absences
+    assert issubclass(T.RecordBudgetExceeded, BaseException)
+    assert not issubclass(T.RecordBudgetExceeded, Exception)
