@@ -648,11 +648,11 @@ def make_transport(deps: Any, daemon: str, meter: SpendMeter, tape: list[Call], 
 def build_deps(root: Path, conn: Any, client: Any) -> Any:
     """The bridge's own deps, with the REFUSING client and the staging sinks."""
     def _u_bar() -> dict[str, float]:
-        u_bar, _v = LK.current_u_bar(LK.shared_brain())
+        u_bar, _v, _p = LK.current_u_bar(LK.shared_brain())
         return u_bar
 
     def _fold_version() -> str:
-        _u, v = LK.current_u_bar(LK.shared_brain())
+        _u, v, _p = LK.current_u_bar(LK.shared_brain())
         return v
 
     return SRV.BridgeDeps(root=root, conn=conn, client=client,

@@ -341,7 +341,24 @@ appear; `cost_usd`/`latency_s` become numbers). Gates: G1 2705 + clean lint/type
 314/314 twice, 105 direction-asserted, DIR-1 amended blind for the 102 posting A-loop
 bodies; G3 golden green on both legs, counts identical; P5 live fingerprints
 byte-identical to r11. `answer_via_executor`/`_edge_curves` are one-checkpoint shims
-that die at M3. The ladder resumes at M3 — the one fold entry point.** Old D3–D4 stay
+that die at M3.
+M3 IS DONE (2026-08-25, `docs/unification/reports/r13-collapse-m3.md`, $0.68): ONE fold
+entry point — `utility.posterior(brain, model, evidence, *, policy)`, the regime a
+required indicator naming a declared conditioning set, structurally enforced
+(frozen-elicitations refuses verdict-projected events), `fold_version` covering the
+policy so no memo can cross regimes; six callers name their regime and the driver's
+stamp derives from `LK.U_BAR_POLICY`. ONE reliability posterior — `core/reliability.py`
+(`PRIORS` keyed (edge, cell)); `LK.extractor_reliability` + `NR.population_posteriors`
+are drift-gated bindings. `AC.answer` and `ask._edge_curves` deleted; jarvis and the
+A-loop driver inline drive + render; `answer_via_executor` is retained as ask's
+executor-lane surface (amendment 4); the leaf write tails stay with the one recorder
+until M5's single caller (amendment 5). Six blind amendments, three catching defects in
+the pre-registration itself (a frozen G3 conjunct would have failed every row by
+construction — re-read every frozen clause against the artefact it names). Gates: G1
+2718 + clean; G2 314/314 pure equality; G3 = run 15 (`gate-20260825T215428`) PASS on
+all four conjuncts — 0.907/+0.421, zero NEW wrongs, the same three carried rows as run
+14. The ladder resumes at M4 — the utility atom + the price table (M4 decides Q8 and
+signs the M5a/M5b split).** Old D3–D4 stay
 re-scoped as Ask's
 aggregate/thread families. The doc's §14 open questions are a **live empirical ledger**
 (owner's adoption rider): each entry names the evidence that decides it — keep it

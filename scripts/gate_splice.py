@@ -105,7 +105,7 @@ def production_posterior() -> UT.UtilityPosterior:
     brain = LK.shared_brain()
     model = UT.load_model(LCFG.UTILITY_MODEL)
     evidence: list[UT.Evidence] = list(UT.load_elicitations(LCFG.UTILITY_ELICITATIONS, model))
-    return UT.posterior(brain, model, evidence)
+    return UT.posterior(brain, model, evidence, policy="frozen-elicitations")
 
 
 def summarise(tag: str, paired: list[GATE.PairedOutcome],

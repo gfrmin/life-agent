@@ -193,7 +193,7 @@ def test_fold_choreography_partitions_by_latent_and_orders_events(
         U.Reaction(tx_time="t2", latent="u_wrong", reacted=True, sign=-1.0, threshold=0.0),
         U.Elicitation(tx_time="t3", latent="lambda_int", stated_value=0.5, noise_sigma=1.0),
     ]
-    post = U.posterior(b, model, events)
+    post = U.posterior(b, model, events, policy="all-to-date")
 
     creates = [r for r in t.sent if r["method"] == "create_state"]
     conditions = [r for r in t.sent if r["method"] == "condition"]
@@ -227,10 +227,10 @@ def test_fold_choreography_partitions_by_latent_and_orders_events(
 def test_fold_version_changes_with_events(model: U.UtilityModel) -> None:
     e1 = [U.Elicitation(tx_time="t1", latent="u_wrong", stated_value=-8.0,
                         noise_sigma=2.0)]
-    v0 = U.fold_version(model, [])
-    v1 = U.fold_version(model, list(e1))
+    v0 = U.fold_version(model, [], "all-to-date")
+    v1 = U.fold_version(model, list(e1), "all-to-date")
     assert v0 != v1
-    assert v1 == U.fold_version(model, list(e1))  # deterministic
+    assert v1 == U.fold_version(model, list(e1), "all-to-date")  # deterministic
     assert len(v0) == 64
 
 
@@ -238,7 +238,8 @@ def test_endpoint_warnings(model: U.UtilityModel) -> None:
     # a latent whose posterior mean sits within 1sigma of a support bound warns
     near = U.LatentPosterior(name="u_wrong", mean=-0.3, variance=1.0, lo=-10.0, hi=0.0)
     post = U.UtilityPosterior(gauge=model.gauge, latents={"u_wrong": near},
-                              n_events=0, fold_version="0" * 64)
+                              n_events=0, fold_version="0" * 64,
+                              policy="all-to-date")
     warned = post.endpoint_warnings(threshold=0.01)
     assert warned and "u_wrong" in warned[0] and "widen" in warned[0]
     assert near.near_bound                      # mean -0.3 is within 1sigma (=1.0) of hi=0
@@ -246,7 +247,8 @@ def test_endpoint_warnings(model: U.UtilityModel) -> None:
     inner = U.LatentPosterior(name="u_hedged", mean=0.0, variance=0.01, lo=-1.0, hi=1.0)
     assert not inner.near_bound
     inner_post = U.UtilityPosterior(gauge=model.gauge, latents={"u_hedged": inner},
-                                    n_events=0, fold_version="0" * 64)
+                                    n_events=0, fold_version="0" * 64,
+                                    policy="all-to-date")
     assert inner_post.endpoint_warnings(threshold=0.01) == []
 
 
@@ -295,7 +297,7 @@ def test_live_fold_matches_reference_and_moves_u_wrong_correctly(
     with B.Brain.spawn() as b:
         b.initialize()
         prior = U.posterior(b, model, [])          # the engine's own prior fold — the baseline
-        post = U.posterior(b, model, events)
+        post = U.posterior(b, model, events, policy="all-to-date")
 
     uw = post.latents["u_wrong"]
     # the verdict-shaped evidence must move Ū(u_wrong) down vs the engine's prior fold
@@ -347,7 +349,7 @@ def _margin_good(p: float) -> U.MarginReaction:
 
 def test_margin_reaction_folds_on_one_joint_grid(model: U.UtilityModel) -> None:
     t = SeqTransport()
-    post = U.posterior(B.Brain(t), model, [_margin_good(0.6)])
+    post = U.posterior(B.Brain(t), model, [_margin_good(0.6)], policy="all-to-date")
     creates = [r for r in t.sent if r["method"] == "create_state"]
     conditions = [r for r in t.sent if r["method"] == "condition"]
     marginals = [r for r in t.sent if r["method"] == "marginal"]
@@ -377,7 +379,7 @@ def test_lookup_and_narrative_u_wrong_share_one_joint(model: U.UtilityModel) -> 
         U.Reaction(tx_time="t1", latent="u_wrong", reacted=True, sign=-1.0, threshold=0.5),
         _margin_good(0.6),
     ]
-    U.posterior(B.Brain(t), model, events)
+    U.posterior(B.Brain(t), model, events, policy="all-to-date")
     creates = [r for r in t.sent if r["method"] == "create_state"]
     conditions = [r for r in t.sent if r["method"] == "condition"]
     # u_wrong is absorbed into ONE joint `truncated_mv_gaussian` with κ_att — never a standalone
@@ -438,3 +440,52 @@ def test_lookup_u_wrong_marginal_is_invariant_when_pulled_into_a_joint(
     assert uw_joint.mean == pytest.approx(uw_1d.mean, abs=1e-9)
     assert uw_joint.variance == pytest.approx(uw_1d.variance, abs=1e-9)
     assert uw_joint.variance == pytest.approx(uw_1d.variance, abs=1e-6)
+
+
+# --- Q-O5/D-8: the one entry point names its evidence policy (r13, M3) -------------------
+
+def test_posterior_requires_a_policy(model: U.UtilityModel) -> None:
+    # the regime indicator is a required keyword — no old spelling survives (design §3.1)
+    with pytest.raises(TypeError):
+        U.posterior(B.Brain(SeqTransport()), model, [])  # type: ignore[call-arg]
+
+
+def test_frozen_elicitations_refuses_the_projection(model: U.UtilityModel) -> None:
+    # the policy names a declared CONDITIONING SET, enforced structurally: the gate's
+    # blind regime cannot fold a verdict-projected event (the §7.5 policy-swap defect
+    # dies at the fold itself, not at a caller's discipline)
+    ev: list[U.Evidence] = [U.Reaction(tx_time="t1", latent="u_wrong", reacted=True,
+                                       sign=-1.0, threshold=0.0)]
+    with pytest.raises(ValueError, match="frozen-elicitations"):
+        U.posterior(B.Brain(SeqTransport()), model, ev, policy="frozen-elicitations")
+
+
+def test_all_to_date_accepts_the_projection_and_stamps_the_policy(
+        model: U.UtilityModel) -> None:
+    ev: list[U.Evidence] = [
+        U.Elicitation(tx_time="t1", latent="u_wrong", stated_value=-8.0, noise_sigma=2.0),
+        U.Reaction(tx_time="t2", latent="u_wrong", reacted=True, sign=-1.0, threshold=0.0),
+    ]
+    post = U.posterior(B.Brain(SeqTransport()), model, ev, policy="all-to-date")
+    assert post.policy == "all-to-date"
+    assert post.fold_version == U.fold_version(model, ev, "all-to-date")
+
+
+def test_an_unknown_policy_is_refused(model: U.UtilityModel) -> None:
+    with pytest.raises(ValueError, match="policy"):
+        U.posterior(B.Brain(SeqTransport()), model, [], policy="everything")
+
+
+def test_fold_version_covers_the_policy(model: U.UtilityModel) -> None:
+    # one memo can never serve one regime's Ū to the other's caller (design §3.1)
+    e1 = [U.Elicitation(tx_time="t1", latent="u_wrong", stated_value=-8.0,
+                        noise_sigma=2.0)]
+    va = U.fold_version(model, list(e1), "all-to-date")
+    vf = U.fold_version(model, list(e1), "frozen-elicitations")
+    assert va != vf and len(va) == 64 and len(vf) == 64
+    assert va == U.fold_version(model, list(e1), "all-to-date")  # deterministic
+
+
+def test_fold_version_requires_the_policy(model: U.UtilityModel) -> None:
+    with pytest.raises(TypeError):
+        U.fold_version(model, [])  # type: ignore[call-arg]

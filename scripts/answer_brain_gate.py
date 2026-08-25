@@ -213,7 +213,7 @@ def main() -> int:
         questions = questions[: args.limit]
     profile = owner.load_profile()
     brain = LK.shared_brain()
-    u_bar, _ver = LK.current_u_bar(brain)
+    u_bar, _ver, _policy = LK.current_u_bar(brain)
     client = LK._client()
 
     out_dir = Path(os.environ["LIFE_AGENT_KB"]) / "eval" / "answer_brain_gate"

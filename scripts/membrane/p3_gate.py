@@ -432,7 +432,7 @@ def main(argv: list[str] | None = None) -> int:
     brain = LK.shared_brain()
     model = UT.load_model(LCFG.UTILITY_MODEL)
     evidence: list[UT.Evidence] = list(UT.load_elicitations(LCFG.UTILITY_ELICITATIONS, model))
-    posterior = UT.posterior(brain, model, evidence)
+    posterior = UT.posterior(brain, model, evidence, policy="frozen-elicitations")
 
     gate_variants = [v.strip() for v in str(args.gate_variants).split(",") if v.strip()]
     unknown = [v for v in gate_variants if v not in variants]

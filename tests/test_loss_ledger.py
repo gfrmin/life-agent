@@ -42,7 +42,7 @@ def _fake_posterior() -> UtilityPosterior:
             "kappa_att": lp("kappa_att", 0.03, 0.0, 1.0),
         },
         n_events=0,
-        fold_version="test-posterior",
+        fold_version="test-posterior", policy="frozen-elicitations",
     )
 
 
@@ -385,7 +385,7 @@ def _noisy_posterior() -> UtilityPosterior:
             "kappa_att": lp("kappa_att", 0.03, 0.0, 0.0, 1.0),
         },
         n_events=0,
-        fold_version="test-noisy-posterior",
+        fold_version="test-noisy-posterior", policy="frozen-elicitations",
     )
 
 

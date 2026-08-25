@@ -66,6 +66,7 @@ from life_agent.core import derivations as D
 from life_agent.core import llm as LLM
 from life_agent.core import outcomes as O
 from life_agent.core import recorder as REC
+from life_agent.core import reliability as REL
 from life_agent.core import seam as SEAM
 from life_agent.core.brain import Brain
 from life_agent.core.citation import SourceLike, extract_citations, value_spans
@@ -76,12 +77,11 @@ from life_agent.core.matching import answer_matches
 # Per-cell Beta priors for P(claim correct | audit cell). Wide on purpose: the lookup
 # family's refuted Beta(17,3) taught that fiat trust burns (construct validity — a
 # verified span can be the wrong subject's value); the cells earn trust from evidence.
+# the closed audit partition; each cell's prior lives in the ONE reliability table
+# (core/reliability.PRIORS — D-2, r13/M3), bound here so the partition keeps its name
+_CELLS: tuple[str, ...] = ("verified", "unsupported", "unverifiable")
 _CELL_PRIORS: dict[str, tuple[float, float]] = {
-    "verified": (3.0, 2.0),      # containment passed; construct validity unproven
-    "unsupported": (1.0, 3.0),   # the cited source lacks the value — but the gate
-                                 # has known false positives (the RTL lesson)
-    "unverifiable": (2.0, 2.0),  # the deterministic instrument is silent
-}
+    cell: REL.PRIORS[("eval_claim", cell)] for cell in _CELLS}
 # P(a true relevant claim is proposed at all) — the open-world tail's prior. Wide:
 # "this may be incomplete" until eval_coverage evidence narrows it.
 _COVERAGE_PRIOR: tuple[float, float] = (2.0, 2.0)
@@ -219,14 +219,8 @@ def population_posteriors(brain: Brain, outcomes_path: Path = config.OUTCOMES_LO
     shape as the priors, so cells with no evidence stay at their stated wide priors."""
     by_cell = _cell_observations(outcomes_path)
     post: dict[str, tuple[float, float]] = {}
-    for cell, (a, b) in _CELL_PRIORS.items():
-        sid = brain.create_state({"type": "beta", "alpha": a, "beta": b})
-        try:
-            for obs in by_cell[cell]:
-                brain.condition(sid, kernel=_BERNOULLI, observation=obs)
-            post[cell] = _beta_ab(brain.read_params(sid))
-        finally:
-            brain.destroy_state(sid)
+    for cell in _CELL_PRIORS:
+        post[cell] = REL.reliability(brain, "eval_claim", cell, by_cell[cell])
     return post
 
 
@@ -462,7 +456,7 @@ def narrative_answer(root: Path, question: str, text: str,
     # the wire holds every cell/coverage Beta; the body conditions + decides through it
     b = LK.shared_brain()
     if u_bar is None or utility_fold_version is None:
-        u_bar, utility_fold_version = LK.current_u_bar(b)
+        u_bar, utility_fold_version, _policy = LK.current_u_bar(b)
 
     opath = outcomes_path if outcomes_path is not None else config.OUTCOMES_LOG
     cards = list(cards)

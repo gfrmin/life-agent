@@ -530,7 +530,7 @@ def main() -> int:
     brain = LK.shared_brain()
     model = UT.load_model(LCFG.UTILITY_MODEL)
     evidence: list[UT.Evidence] = list(UT.load_elicitations(LCFG.UTILITY_ELICITATIONS, model))
-    posterior = UT.posterior(brain, model, evidence)
+    posterior = UT.posterior(brain, model, evidence, policy="frozen-elicitations")
     for warning in posterior.endpoint_warnings(model.endpoint_mass_warn):
         print(f"  ⚠ {warning}")
 

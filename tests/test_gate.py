@@ -33,7 +33,7 @@ def _posterior(*, u_wrong: float, u_hedged: float = 0.3, lambda_int: float = 0.5
             "lambda_int": _point("lambda_int", lambda_int),
             "kappa_att": _point("kappa_att", kappa_att),
         },
-        n_events=0, fold_version="test",
+        n_events=0, fold_version="test", policy="frozen-elicitations",
     )
 
 
@@ -152,7 +152,7 @@ def test_utility_uncertainty_propagates_into_p_gt() -> None:
         latents={"u_wrong": spread, "u_hedged": _point("u_hedged", 0.3),
                  "lambda_int": _point("lambda_int", 0.5),
                  "kappa_att": _point("kappa_att", 0.05)},
-        n_events=2, fold_version="spread")
+        n_events=2, fold_version="spread", policy="frozen-elicitations")
     paired = [_pair("a", _resp("abstain"), _resp("report", False))]  # d = -u_wrong ∈ {3, 0}
     res = G.delta_posterior(paired, post, oracle_p=0.9, n_draws=8000, seed=7)
     assert 0.3 < res.p_delta_gt < 0.7   # ~half the U-mass clears δ

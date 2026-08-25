@@ -191,7 +191,7 @@ def _posterior() -> UT.UtilityPosterior:
                  "u_hedged": _point("u_hedged", 0.3),
                  "lambda_int": _point("lambda_int", 0.5),
                  "kappa_att": _point("kappa_att", 0.05)},
-        n_events=0, fold_version="test")
+        n_events=0, fold_version="test", policy="frozen-elicitations")
 
 
 def _p3b_fixture() -> tuple[list[P3.HeldoutTick], dict[str, str], list[dict]]:

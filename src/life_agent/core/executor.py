@@ -167,7 +167,7 @@ _UNPRICED_ATTRIBUTION: dict[str, Any] = {
 _GROW_RETRIEVE = {"retrieve_rerank": (True, False), "retrieve_expand": (True, True)}
 _RE_EXTRACT_MODEL = "claude-opus-4-8"
 # The k=0 rescue channel's reliability CAP — a stated wide prior (mean of the local
-# extractor's own Beta(4,4), core/lookup._RHO_PRIOR_*), declared blind, NOT the tier's
+# extractor's own Beta(4,4), core/reliability.PRIORS), declared blind, NOT the tier's
 # 0.95 and NOT the model's self-stated confidence: a lone strong read with zero local
 # corroboration is an unmeasured instrument, and the first field run showed fiat trust
 # asserting a true-but-vague read at 0.866 (q-015, graded wrong). Under this cap the
