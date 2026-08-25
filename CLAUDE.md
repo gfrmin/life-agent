@@ -348,10 +348,13 @@ material for that candidate only.
 - **Membrane shadow (`src/life_agent/membrane`, `src/life_agent/bridge`):** the frozen
   proplang-govhost engine mirrors live decide/verdict traffic off to the side, never on the
   decision path. Env-gated (absence = disabled); report at `$LIFE_AGENT_KB/membrane/report.md`,
-  register at [`docs/membrane-shadow.md`](./docs/membrane-shadow.md). **Owner direction
-  (2026-08-25, run-14 conferral ruling 5): proplang is the intended successor of credence at
-  the decide seam — credence ships first; the swap is a future gated adoption, and nothing in
-  tree may presuppose it.**
+  register at [`docs/membrane-shadow.md`](./docs/membrane-shadow.md). **Owner ruling
+  (2026-08-25, superseding run-14 conferral ruling 5): proplang is the RULED successor of
+  credence at the decide seam — the migration is MANDATORY, gated-mandatory
+  (membrane-shadow §18: the frozen bars pace the swap and a FAIL means iterate-and-re-run,
+  never park; refusal is retired as an endpoint) and DEFERRED (not a completion-programme
+  condition; opens post-M7 after the completion audit). Nothing in tree may presuppose the
+  swap until it lands.**
 
 ## `src/pkm` — the KB core (Python, uv, DuckDB): key files
 
