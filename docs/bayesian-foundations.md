@@ -3151,3 +3151,21 @@ on this list. Answers land here by amendment, citing their evidence.
   quantum still decides the rank against the declared key's preference. *What it does not fix:* the readings already in this
   ledger, which stand as recorded with this entry as their caveat. Runs after M0.5 are the
   first whose evidence sets are reproducible by construction rather than by cache residency.
+
+- **The baseline re-record — `m2-base` replaces m0-5 as the ladder's fixture set of record
+  (2026-08-25, `docs/unification/reports/r11-baseline-rerecord.md`, $0.0388 of a delegated
+  $8 cap).** r07 ruling 2's rider, due once the JOIN tree merged and deployed (run 14's
+  PASS, same day). The instrument first closed its own named gap: metered spend —
+  `spent_usd` **derived** on the manifest from the instrument-seam wire exchanges (the
+  `merged_from` lesson), and a budget abort that rides a `BaseException` so the recorder's
+  per-trace absence handlers cannot swallow a blown cap into named absences. One single
+  gated run (fresh daemon, R8-guarded new label, `PYTHONHASHSEED=0`, rehearsed at $0
+  first): **314 fixtures, 0 absences** (m0-5: 311 with 3), one `tree_sha` — the deployed
+  decision path — so the m0-5 two-provenance merge wart does not recur. All four frozen
+  clauses green: 314/314 replay identically; **q2-036 served** (the last named B-lookup
+  absence, r08's own footprint, CLOSED as M1.5 said it would be); spend ≤ cap; the live
+  calibration surfaces byte-identical before and after. The 95 m0-5 fixtures unservable
+  since r09 (the payload class) are re-recorded servable; the recorder's own output
+  annotates the two pre-registered M2 expected-change classes (poster accounting keys,
+  seam `regime=unavailable`). m0-5 stands as history; the collapse ladder resumes at M2
+  against `collapse_replay.py --checkpoint m2-base`.

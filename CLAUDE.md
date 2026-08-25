@@ -322,7 +322,16 @@ two passes of the same instrument (14 in / 14 out), so name a class + a bar + th
 cold-row consequence; and **a census must read the deployed rule end-to-end, never
 re-implement the constant it prices** (four instances this arc — the fourth, r10's carrier
 mapping, is the first to flip a verdict at a frozen bar; an earlier signature =
-byte-identical numbers before and after a change). Old D3–D4 stay re-scoped as Ask's
+byte-identical numbers before and after a change).
+**Stage 0 of the completion programme is DONE (2026-08-25): the collapse baseline is
+re-recorded as `m2-base` (`docs/unification/reports/r11-baseline-rerecord.md` — one
+single run on the deployed tree, 314/314 replay green, 0 absences, q2-036 served,
+$0.0388 of the delegated $8 cap, live calibration surfaces byte-identical before/after;
+r07 ruling 2's rider CLOSED, m0-5 stands as history), and a weekly production readout
+watches the live calibration stream for the carried wrong-row classes
+(`scripts/production_readout.py` + `packaging/production-readout.*`, installed on the
+live box; report at `$LIFE_AGENT_KB/calibration/readout.md`). The ladder resumes at
+M2.** Old D3–D4 stay re-scoped as Ask's
 aggregate/thread families. The doc's §14 open questions are a **live empirical ledger**
 (owner's adoption rider): each entry names the evidence that decides it — keep it
 current. Sequencing is continuous and eval-gated, not dogfood-gated (PRINCIPLES §9 as
