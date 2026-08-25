@@ -255,3 +255,94 @@ Conjunct (d) restated: **(d1)** every typed-arm decision row states
 independent literal), and **(d2)** the firing script's tree gate pins
 `policy="frozen-elicitations"` at `scripts/run_eval.py`'s fold site (a static assert on
 the tree the run describes). Conjuncts (a)–(c) unchanged.
+## RESULTS (read 2026-08-25, appended after the gates ran — nothing above this line changed)
+
+Execution was three TDD phases on branch `collapse-m3` (implementation commit `1a54854`),
+plus one phase discharged by amendment: (1) the policy-covered fold
+(`utility.posterior(…, *, policy)`, structural enforcement, `fold_version` covering the
+policy, the `_U_BAR` memo keyed by the covered version, six callers naming their regime,
+the driver's stamp derived from `LK.U_BAR_POLICY`), (2) the one reliability fold
+(`core/reliability.py`: `PRIORS` keyed `(edge, cell)`, `reliability`/`conditioned_state`,
+both instruments as bindings, drift-gated), (3) the shim deletions as amended
+(`AC.answer` and `ask._edge_curves` deleted, jarvis and the A-loop driver inline
+drive + render, `answer_via_executor` re-documented as the executor-lane surface),
+(4) withdrawn by amendment 5 (the leaf write tails stay with the one recorder until M5).
+
+### Gate readings
+
+- **G1 — GREEN.** 2718 passed, 35 deselected; `ruff` clean; `mypy` clean (221 files).
+  (`~/.cache/life-agent/m3/pytest-final2.log`.)
+- **G2 (7.2) — GREEN.** 314/314 fixtures replay identically under PURE EQUALITY — no
+  new directions, exactly as pre-registered: the `policy` value on every A-trace body is
+  unchanged (now derived, not stamped), trace-B projections byte-identical, and the
+  fold-version hash change is invisible to the comparator (`audit` is recorded-only).
+  (`~/.cache/life-agent/m3/replay-final-*.log`.)
+- **G3 (7.3) — PASS on all four conjuncts.** Run 15 (`gate-20260825T215428`), the
+  run-14 recipe on the committed tree `1a54854`, comparison arm run 14's meta, spend
+  $0.68 of the $8 cap (deliberate 40/104, all warm).
+  (a) **P(Δ>0.05) = 0.907** (≥ 0.90), Δ̄ = +0.421 [−0.046, +0.920] — numerically
+  identical to run 14, which is exactly what a behaviour-preserving checkpoint on warm
+  caches should read. (b) typed wrongs = {the two standing rows + the warm-deliberate
+  row} — **precisely run 14's carried set; zero NEW.** (c) no named class worse (same
+  three rows, same classes). (d1) **every run-15 decision row states
+  `policy="all-to-date"` and `regime="full"`** (102 rows under
+  `run_id=gate-20260825T215428`). (d2) pinned at the tree gate (rehearsed gate-only,
+  then fired). Answer rate typed 0.62 · mono 0.97.
+- **G4 — 7.4 not run**, as declared: no store or writer identity moved (the recorder
+  performs every write before and after; only signatures and bindings changed).
+- **G5 — GREEN.** No corpus values in tree; hooks armed on every commit.
+
+### Predictions vs readings
+
+- **P1 — CONFIRMED.** G2 read 314/314 with zero diffs on the first complete build (one
+  earlier partial run had two jarvis-surface test failures — G1 side, not fixtures).
+- **P2 — CONFIRMED.** The frozen-policy refusal test was RED (TypeError — the keyword
+  did not exist) before the enforcement landed, GREEN after.
+- **P3 — CONFIRMED.** `fold_version` covers the policy (old two-arg spelling refused;
+  same inputs differ across policies; deterministic within one); nothing compared
+  observes the hex.
+- **P4 — CONFIRMED.** Within band with zero NEW wrongs; answer rate 0.62, inside ±0.06
+  of run 14's 0.60.
+- **P5 — HALF-REFUTED, disclosed.** Before run 15 the fingerprints were r11's exactly
+  (`live-fingerprints-before-run15.txt`); development touched nothing. But the
+  prediction located G3's writes "under $LIFE_AGENT_KB/eval/" — in fact the gate's
+  bridge appends its decisions and outcomes to the LIVE calibration ledger
+  (`decisions.jsonl` +102 rows at `run_id=gate-20260825T215428`, `outcomes.jsonl`
+  +22; `reactions.jsonl` untouched), exactly as run 14's did (run 14's 37 gate rows
+  already sat in the ledger under its run_id, inside the r11 fingerprints). Gate rows
+  are run_id-distinguishable and no live fold moved (Ū conditions on reactions joined
+  to decisions; reactions unchanged). A prediction about WHERE, wrong; the invariant it
+  protected — no untracked live-state change — holds by the run_id accounting.
+
+### Disclosures (cap-the-arc)
+
+- **D1 — six blind amendments, all committed before any gate ran**, three of them
+  catching defects in the pre-registration itself: amendment 1 (the fifth D-8 site
+  lives under `scripts/`; recon greped the census's old path and read exit-1 as
+  deletion), amendment 2 (mandate 4 claimed byte-identical trace-B events and a 7.2
+  assertion that does not exist), amendment 6 (G3(d) as frozen would have failed every
+  row by construction — the decision rows record the DECIDER'S regime; the gate's
+  frozen fold is a tree-pinned property). The lesson of r05 — audits measure the fix —
+  extends to pre-registrations: every frozen clause was re-read against the artefact it
+  names before being relied on, and three did not survive contact.
+- **D2 — amendment 2's commit carried in-progress src** (utility.py Phase 1) under a
+  `docs(r13)` message; the pre-registration itself (`01c080d`) and amendment 1 predate
+  every src change, so the freeze-before-build discipline held where it matters.
+- **D3 — the leaf-write promise (r12 → M3) discharged, not executed** (amendment 5):
+  the design's "dead code removed at M3" assumed a driver-records-for-leaves M2 that
+  r12 deliberately did not build; moving the write to today's three callers per leaf
+  would multiply spellings 2→6. The single-writer invariant is enforced by the drift
+  gates; the move happens at M5 as one move to one place.
+- **D4 — `_CELL_PRIORS` retained as a binding** (narrative's partition name now derives
+  its values from `REL.PRIORS`), and narrative legitimately keeps two non-D-2 beta
+  creates (the coverage tail; the per-claim cell-state re-materialization) — both named
+  in the drift gate.
+
+### Verdict
+
+**M3 is DONE**: one fold entry point with two declared, structurally-enforced evidence
+policies, the fold identity covering the regime; one reliability posterior behind the
+seam with its priors in one table; the M2 shims dead as amended; every gate green with
+the priced 7.3 a PASS at run 14's own numbers. The ladder proceeds to **M4 — the
+utility atom + the price table** under its own pre-registration (M4's report also
+decides Q8 and signs the M5a/M5b split).
