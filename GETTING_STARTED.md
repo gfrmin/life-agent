@@ -13,9 +13,11 @@ operating manual) first; [`ROADMAP.md`](./ROADMAP.md) has the full plan.
 (NVMe catalogue, ~13k sources / ~400k chunks). The read path is `scripts/ask.py`, dogfooded via
 **`bin/ask-live`**. The GTD act layer is live and event-sourced (`life_agent.tasks`), reached
 over Telegram (`life_agent.reach`); email→GTD auto-files cited tasks off a timer.
-**Active phase = the derivation framework (Phase 1.6):** execute
-[`docs/system-design.md`](./docs/system-design.md) §8 in order (act-ledger knowledge
-projection → engine D2 → D3 → D4), eval-gated; dogfood misses still go to
+**Active phase = the derivation framework (Phase 1.6):** the typed Bayesian ask arm is
+the **deployed default since 2026-08-25** (run 14 PASS; ROADMAP item 3f). What remains is
+the approved completion programme: the collapse ladder M2–M7
+(`docs/module-collapse-design.md` §8), then the aggregate + thread families (ROADMAP items
+4–5), then the proplang graduation — each eval-gated; dogfood misses still go to
 `$LIFE_AGENT_KB/FAILURES.md` as evidence, but no longer gate the next phase (PRINCIPLES §9
 as amended). The agent loop / brain / spine are later phases (spine = open decision,
 PRINCIPLES §15).
