@@ -691,7 +691,10 @@ def refuse_live_instrument_seams(engine_version: str) -> None:
         raise WouldSpendError("a live model seam was reached and the recorder is no-spend")
 
     for mod in (INSTR, SUBJ, TI):
-        mod.instrument_client = _refusing       # type: ignore[assignment]
+        # mypy joins the tuple to ModuleType (no attrs), so plain assignment is an
+        # attr-defined error; setattr is the typed idiom here.  noqa: the B010 autofix
+        # would put the assignment back and re-break the type gate.
+        setattr(mod, "instrument_client", _refusing)  # noqa: B010
     for mod_name, attr in DRIVE._SPEND_SEAMS:
         if (mod_name, attr) == ("life_agent.core.deliberate", "answer"):
             continue        # criterion 3 preflights the edge per question; sealing `answer`
