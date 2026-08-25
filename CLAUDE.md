@@ -329,7 +329,7 @@ current. Sequencing is continuous and eval-gated, not dogfood-gated (PRINCIPLES 
 amended).
 
 **Not built, deliberately:** the agent-loop spine (open decision — PRINCIPLES §15),
-the VOI governor (last on the geodesic — PRINCIPLES §16), a live MCP server
+a separate VOI governor (there is none to build — the governor is the spine itself, PRINCIPLES §16), a live MCP server
 (`src/pkm/mcp_server.py` is dormant-by-design — PRINCIPLES §5). One candidate spine+brain
 composition is documented at
 [`docs/candidates/brain-design.md`](./docs/candidates/brain-design.md) — a candidate, not the

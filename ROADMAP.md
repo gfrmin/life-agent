@@ -19,7 +19,7 @@ view** — what each faculty is and where it stands.
 | Faculty | System / language | Status |
 |---|---|---|
 | **Memory** — recall + retrieval | **PKM** (`src/pkm`, Python) + **`life_agent`** (this repo, Python) | **Live.** PKM: content-addressed extraction + DuckDB `fts`/`vss` + **composable transforms** (chained, cited perspectives — SPEC §18.7). `life_agent` adds the retrieval/synthesis read path (`scripts/ask.py`, dogfooded via `bin/ask-live`). |
-| **Brain** — beliefs under uncertainty; value-of-information → ask/proceed/block | **credence** (`../credence`, Julia; the skin's JSON-RPC-over-stdio seam) | **Adopted, being wired (Phase 1.6 / Ask v0):** [`docs/bayesian-foundations.md`](./docs/bayesian-foundations.md) — answers become claim sets with posteriors; responses are EU decisions through `src/life_agent/core/brain.py` (slice 1). The VOI governor stays last. |
+| **Brain** — beliefs under uncertainty; value-of-information → ask/proceed/block | **credence** (`../credence`, Julia; the skin's JSON-RPC-over-stdio seam) | **Adopted, being wired (Phase 1.6 / Ask v0):** [`docs/bayesian-foundations.md`](./docs/bayesian-foundations.md) — answers become claim sets with posteriors; responses are EU decisions through `src/life_agent/core/brain.py` (slice 1). **The typed arm is the deployed default since 2026-08-25 (run 14 PASS — §14).** Per §16 there is no separate VOI governor to build afterwards: the governor is the spine itself. |
 | **Hands** — capabilities/actions | **GTD** (`life_agent.tasks`, event-sourced) reached via **`life_agent.reach`** (Telegram transport + persona); email (`msmtp`/JMAP), calendar (CalDAV/Google), chat (matrix) | GTD live, ledger-as-truth (PRINCIPLES §7); **email→GTD shipped (M2)** — the `action_items` transform (haiku, grounded quotes) **auto-files** cited tasks to the inbox; you triage in Telegram. Rest not wired. |
 | **Goals / Utility** — what the owner values | *(new, unbuilt)* | **The hardest missing piece.** EU-maximisation presupposes it; owed a design before any autonomous *action* (PRINCIPLES §3). |
 | **Spine** — the agent loop + routing | **TBD — open decision** | Deferred to Phase 2 (PRINCIPLES §15). Candidates: pi-mono (TS), a Python loop, or Claude Code as an interim loop. |
@@ -198,6 +198,29 @@ Bayesian Ask rather than deterministic pipelines. Remaining program, in dependen
    its own frozen audit (2026-08-18, NO-GO: true ceiling ~6 — the reach audit's 40
    was forwarded-copy inflation; §14 has the negative reading)** — the instrument
    (`/probe/confirm`) stays in-tree, dormant. Reach now accrues from live dogfood.
+3f. **Runs 10–14 — the wrong-commit arc closed and the typed arm DEPLOYED (2026-08-21 →
+   2026-08-25; foundations §14 has every reading, `docs/module-collapse-design.md` §6.9–§6.13
+   the registered defect classes).** Run 10 reopened the wrong-commit class (FAIL 0.861, one
+   row); the isolation ladder (runs 11–12) convicted §6.9's declared probe order as the
+   marginal cause and run 12 read the then-best 0.964; the §6.12 deployment block was
+   registered on the replace-branch mechanism (a probe view DISCARDING a grounded channel).
+   Diagnosis checkpoints r05–r08 ($0) named the mechanism, repaired window determinism
+   (§6.13, SPEC 0.18.2), and capped further diagnosis; r09 built the §5-deduped JOIN with a
+   correlation key on the wire; run 13 FAILED (0.895, four wrong commits) and was reverted;
+   the tempered arc (r09b–r09d, r09e, r10 — all $0, each STOPPED by its own frozen
+   consequence) established the terse-carrier finding (any carrier-side requirement damps the
+   terse gold — a closed lever family) and parked the tempered tree. **Run 14
+   (`gate-20260825T102725`): PASS on all four frozen conjuncts — P(Δ>0.05)=0.907, Δ̄ +0.421;
+   the blocking row commits correct; zero NEW wrong commits; no named class worse. §6.12
+   CLOSED; the tree merged (PR #81); master deployed to live (`bin/ask-live` / jarvis on the
+   typed arm).** Two standing wrongs ride priced (corroborate-tier; entity-qualifier); the
+   hard clause — no lever ships while it makes a named wrong-commit class worse — binds every
+   successor. **The completion programme from here (owner-approved 2026-08-25):** stage 0
+   riders (baseline re-record closing q2-036; this doc-currency sweep; a production readout
+   for the carried risks) → the collapse ladder M2–M7 (`docs/module-collapse-design.md` §8;
+   Appendix A signed at M7) → items 4–5 below through §8 gates → the proplang graduation
+   (shadow → challenger → priced run; `docs/membrane-shadow.md` §11 exit criteria), with the
+   MVP exit test running wall-clock-parallel from the deploy.
 4. **The aggregate family** (subsumes D3): recall term + completeness priors,
    missing-mass posterior, dedup-as-inference — the spending question answered as a
    posterior with both coverage readouts.
