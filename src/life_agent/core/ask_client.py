@@ -127,7 +127,7 @@ class DriveResult:
     ``decision_id`` a verdict can bind to (``None`` when nothing foldable was posted),
     and the ``down`` fact."""
 
-    __slots__ = ("view", "decision_id", "down")
+    __slots__ = ("decision_id", "down", "view")
 
     def __init__(self, view: dict[str, Any] | None, decision_id: str | None,
                  down: bool = False) -> None:

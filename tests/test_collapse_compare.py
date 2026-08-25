@@ -306,3 +306,75 @@ def test_an_unknown_direction_checkpoint_fails_loud() -> None:
                                  checkpoint="M9", question="q")
     assert [(d.path, d.reason) for d in diffs] == [
         ("expected_change.checkpoint", "unclassified")]
+
+
+# --- AMENDMENT 1: DIR-1's true scope — every pre-collapse poster body (A-loop included) ----
+
+def _recorded_aloop() -> dict:
+    """The A-loop recorded shape: the reach poster's REDUCED body (no accounting keys at
+    all, no regime/policy), with the loop's realised instrument in the recorded audit."""
+    body = _body()
+    for key in ("instrument", "cost_usd", "latency_s", "run_id", "regime", "policy"):
+        del body["decision"][key]
+    out = _poster_outputs(body)
+    out["audit"] = {"instrument": None, "run_id": "collapse-m0"}
+    return out
+
+
+def _replayed_aloop(instrument: str = "", run_id: str = "answer-brain") -> dict:
+    return _poster_outputs(_body(decision__instrument=instrument,
+                                 decision__cost_usd=0.0, decision__latency_s=0.0,
+                                 decision__run_id=run_id))
+
+
+def test_m2_poster_direction_accepts_the_aloop_appearances() -> None:
+    assert CMP.compare_directed(_recorded_aloop(), _replayed_aloop(),
+                                checkpoint="M2", question="q") == []
+
+
+def test_m2_poster_direction_pins_the_appearing_instrument_to_the_recorded_audit() -> None:
+    rec = _recorded_aloop()
+    rec["audit"]["instrument"] = "deliberate@synthetic-model"  # PII-OK: synthetic
+    ok = _replayed_aloop(instrument="deliberate@synthetic-model")  # PII-OK: synthetic
+    assert CMP.compare_directed(rec, ok, checkpoint="M2", question="q") == []
+    diffs = CMP.compare_directed(rec, _replayed_aloop(instrument=""),
+                                 checkpoint="M2", question="q")
+    assert [d.path for d in diffs] == ["log_decision.decision.instrument"]
+
+
+def test_m2_poster_direction_kills_a_wrong_appearing_run_id() -> None:
+    diffs = CMP.compare_directed(_recorded_aloop(), _replayed_aloop(run_id="ask"),
+                                 checkpoint="M2", question="q")
+    assert [d.path for d in diffs] == ["log_decision.decision.run_id"]
+
+
+def test_compare_fixture_applies_dir1_to_unannotated_pre_collapse_poster_bodies() -> None:
+    """The A-loop fixtures carry no expected_change annotation, but their recorded bodies
+    came from the pre-collapse reach poster (signature: no `regime` key) — DIR-1 reaches
+    them (amendment 1); a B-trace body (regime present) stays under raw equality."""
+    fx = FX.Fixture(fixture_id="f1", checkpoint="m2-base", trace="A-loop",
+                    classes=(), question="q", question_id="x" * 16,
+                    inputs={}, outputs=_recorded_aloop())
+    assert CMP.compare_fixture(fx, _replayed_aloop()) == []
+    fx_b = FX.Fixture(fixture_id="f2", checkpoint="m2-base", trace="B-lookup",
+                      classes=(), question="q", question_id="x" * 16,
+                      inputs={}, outputs=_poster_outputs(_body()))
+    changed = _poster_outputs(_body(decision__regime="terminals-only"))
+    assert [d.path for d in CMP.compare_fixture(fx_b, changed)] == [
+        "log_decision.decision.regime"]
+
+
+def test_compare_fixture_null_body_stays_null_under_dir1() -> None:
+    """A miss / route-null A-poster fixture (body null) must replay null — a poster that
+    suddenly posts for a non-decision is a violation, not the M2 direction."""
+    fx = FX.Fixture(fixture_id="f3", checkpoint="m2-base", trace="A-poster",
+                    classes=(), question="q", question_id="x" * 16, inputs={},
+                    outputs={"effector": "miss", "asserted": [], "candidates": [],
+                             "credences": [], "p_none": None, "eu": None, "gate": None,
+                             "log_decision": None},
+                    expected_change={"checkpoint": "M2", "direction": "d"})
+    same = {"effector": "miss", "asserted": [], "candidates": [], "credences": [],
+            "p_none": None, "eu": None, "gate": None, "log_decision": None}
+    assert CMP.compare_fixture(fx, same) == []
+    posts_now = dict(same, log_decision=_body())
+    assert CMP.compare_fixture(fx, posts_now)  # a new post where none was = FAIL

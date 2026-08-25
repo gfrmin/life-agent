@@ -330,8 +330,19 @@ $0.0388 of the delegated $8 cap, live calibration surfaces byte-identical before
 r07 ruling 2's rider CLOSED, m0-5 stands as history), and a weekly production readout
 watches the live calibration stream for the carried wrong-row classes
 (`scripts/production_readout.py` + `packaging/production-readout.*`, installed on the
-live box; report at `$LIFE_AGENT_KB/calibration/readout.md`). The ladder resumes at
-M2.** Old D3–D4 stay re-scoped as Ask's
+live box; report at `$LIFE_AGENT_KB/calibration/readout.md`).
+M2 IS DONE (2026-08-25, `docs/unification/reports/r12-collapse-m2.md`, $0): the one
+poster — `ask_client.post_decision` + `drive` own the reach surface's record;
+`core/recorder.py` is the one recorder (family leaves write through it, the leaf-drift
+gate pins it); the §6.5 unavailability RECORD lands locally with `decision_id=""`
+(unfoldable — the bridge refuses an empty id, pinned). The pre-registered record change
+shipped: reach decisions are priced rows (`regime`/`policy`/`run_id`/`instrument`
+appear; `cost_usd`/`latency_s` become numbers). Gates: G1 2705 + clean lint/type; G2
+314/314 twice, 105 direction-asserted, DIR-1 amended blind for the 102 posting A-loop
+bodies; G3 golden green on both legs, counts identical; P5 live fingerprints
+byte-identical to r11. `answer_via_executor`/`_edge_curves` are one-checkpoint shims
+that die at M3. The ladder resumes at M3 — the one fold entry point.** Old D3–D4 stay
+re-scoped as Ask's
 aggregate/thread families. The doc's §14 open questions are a **live empirical ledger**
 (owner's adoption rider): each entry names the evidence that decides it — keep it
 current. Sequencing is continuous and eval-gated, not dogfood-gated (PRINCIPLES §9 as

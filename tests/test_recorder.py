@@ -15,7 +15,6 @@ from life_agent.core import decisions as DEC
 from life_agent.core import derivations as D
 from life_agent.core import recorder as REC
 
-
 # --- the one body (no accounting field is optional on the poster's side) ------------------
 
 def test_the_one_body_has_no_optional_key() -> None:

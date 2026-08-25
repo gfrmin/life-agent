@@ -755,8 +755,8 @@ def test_log_reaction_refuses_an_empty_decision_id(deps: BridgeDeps) -> None:
     """The §6.5 unavailability event carries decision_id="" so no verdict can EVER bind —
     an unavailability must never fold as an abstain (r12 P3; the guard is _req_str's
     non-empty rule, pinned here so it cannot regress silently)."""
-    status, payload = _call(deps, "POST", "/log_reaction",
-                            {"decision_id": "", "valence": "bad"})
+    status, _payload = _call(deps, "POST", "/log_reaction",
+                             {"decision_id": "", "valence": "bad"})
     assert status == 400
 
 

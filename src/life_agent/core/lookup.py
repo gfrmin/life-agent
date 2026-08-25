@@ -47,11 +47,11 @@ from typing import Any
 from life_agent.core import config
 from life_agent.core import decisions as DEC
 from life_agent.core import derivations as D
-from life_agent.core import recorder as REC
 from life_agent.core import instrument as INSTR
 from life_agent.core import matching as MATCH
 from life_agent.core import outcomes as O
 from life_agent.core import reactions as R
+from life_agent.core import recorder as REC
 from life_agent.core import seam as SEAM
 from life_agent.core import utility as UT
 from life_agent.core.brain import Brain

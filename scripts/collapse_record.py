@@ -267,7 +267,7 @@ def main(argv: list[str] | None = None) -> int:
                     f"{args.checkpoint}-poster-{qid}", args.checkpoint, "A-poster",
                     question=question,
                     classes=_classes(outputs_p, trace="A-poster",
-                                     extra=("poster:ask._log_executor_decision",)),
+                                     extra=("poster:ask_client.post_decision",)),
                     inputs={"view": view, "run_id": run_id},
                     outputs=outputs_p, wire=[], provenance=provenance,
                     expected_change={

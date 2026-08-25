@@ -228,3 +228,89 @@ P1/P2 restated to match: **P1** — the 104 B-lookup + 1 B-narrative fixtures re
 byte-identical; A-loop fixtures with a `null` body replay byte-identical. **P2** — every
 fixture with a recorded pre-collapse poster body (A-poster + posting A-loop) passes DIR-1
 as amended. P3–P5 unchanged.
+## RESULTS (read 2026-08-25, appended after the gates ran — nothing above this line changed)
+
+Execution was four TDD phases on branch `collapse-m2`, in the pre-registered order:
+(1) the directed comparator (`collapse/compare.py`: DIR-1 as amended, DIR-2, the
+`compare_fixture` dispatch — 35 comparator tests), (2) the one recorder
+(`core/recorder.py` + `tests/test_recorder.py`, including the leaf-drift gate that bans
+`DEC.append(` from the family leaves' source), (3) the one driver + shims
+(`ask_client.drive`/`post_decision`, `scripts/ask.py` reduced to shims,
+`_log_executor_decision` deleted, the hermetic `DECISIONS_LOG` conftest guard), (4) the
+replay drive (`collapse/drive.py`: canned `/log_decision`, the poster driven through
+`AC.post_decision`, the seam trace driven through `AC.drive(ready=False)` reading the
+§6.5 event from a swapped sink).
+
+### Gate readings
+
+- **G1 — GREEN.** `pytest -m 'not llm and not system'`: **2705 passed, 35 deselected**
+  (the growth over the pre-M2 tree is this checkpoint's own new tests). `ruff
+  check .`: all checks passed. `mypy`: no issues in 220 source files. (Seven ruff
+  findings and one mypy narrowing arose en route on new code and were fixed before the
+  gate reading — disclosure D1.)
+- **G2 — GREEN, twice.** `collapse_replay --checkpoint m2-base`: **314/314 fixtures
+  replay identically** — run once when implementation went green
+  (`~/.cache/life-agent/m2/replay-20260825T153531.log`) and again on the final tree
+  after every lint/type fix (`replay-final-*.log`). 105 fixtures direction-ASSERTED.
+  Populations: 104 A-loop + 104 B-lookup + 1 B-narrative + 104 A-poster + 1 seam; the
+  105 ASSERTED lines are the annotation-carried fixtures (poster + seam), and DIR-1
+  additionally dispatched on the A-loop bodies by the amended signature — 102 with-body +
+  2 null on each of A-poster and A-loop — the amendment's scope correction was load-bearing on all 102 posting A-loop
+  fixtures.
+- **G3 — GREEN.** The 7.4 golden harness on both legs: before-leg on the pre-M2 tree
+  (worktree at `6911eba`), after-leg on this branch. All five decision-derived artefacts
+  (utility-fold-version, curves, reactions, answers, pkm-index) compare **exit=0** on
+  both legs; the C6 counts blocks are identical between the legs (nothing wrote the live
+  stores). Log: `~/.cache/life-agent/m2/golden-20260825T203222.log`. G3-hermetic: the
+  one-write-per-decision pins are unit tests (bridge posts exactly once; trace-B exactly
+  one `DEC.append` + one `D.record`; the §6.5 path exactly one local append).
+- **G4 — GREEN (by G2).** Effector equality holds on all 314 — M2 changed no case of
+  what is decided, so no named wrong-commit class can have moved.
+- **G5 — GREEN.** No corpus values in the new module or tests; the armed PII hooks ran
+  on every commit with `LIFE_AGENT_KB` exported.
+
+### Predictions vs readings
+
+- **P1 (as amended) — CONFIRMED.** 104 B-lookup + 1 B-narrative byte-identical; the 2+2
+  null-body A-fixtures byte-identical.
+- **P2 (as amended) — CONFIRMED.** All 204 pre-collapse poster bodies pass DIR-1:
+  `regime`/`policy`/`run_id`/`instrument` the only appearances, `cost_usd`/`latency_s`
+  the only kind changes.
+- **P3 — CONFIRMED.** The seam fixture passes DIR-2; the §6.5 event appends locally with
+  `decision_id=""`; `test_log_reaction_refuses_an_empty_decision_id` pins that no
+  verdict can bind to it (400).
+- **P4 — CONFIRMED.** Golden green on both legs; counts identical between legs.
+- **P5 — CONFIRMED.** Live calibration fingerprints byte-identical to r11's before and
+  after the gate runs (`e598b…`/`1d558…`/`b3b7d…`).
+
+### Disclosures (cap-the-arc: items, not arcs)
+
+- **D1 — lint/type fixes after green, before the gate reading.** Seven ruff findings
+  (import sorts, an unused variable, a `__slots__` sort) and one mypy narrowing in
+  `compare.py`, all in this checkpoint's new code; G2 was re-run on the final tree after
+  them (green, identically).
+- **D2 — unused-exchange cassette notes.** The m2-base A-trace cassettes carry
+  `/log_decision` exchanges replay no longer consults (served canned per Amendment 1);
+  `--verbose` surfaces them as notes, not failures. They retire at the next baseline
+  re-record.
+- **D3 — a pre-existing wart, out of scope.** `BR._narrative` does not pass
+  `deps.decisions_path` through, so the narrative leaf's ledger append lands on the
+  config default rather than an injected path. Unchanged by M2 (the moved write is
+  byte-identical); noted for M3, whose fold-entry unification touches that seam.
+- **D4 — the G3 harness ran three times to get one complete reading.** Attempt 1 was
+  killed externally mid-before-leg (3/5 artefacts green at the kill). Attempt 2 stalled
+  for 30+ minutes: an unrelated session's recursive grep over the KB volume's maildir had
+  been saturating the USB disk's 2-tag request queue for 4.5 hours (every yo IO starved in
+  `blk_mq_get_tag`); the reader was killed, the disk moved to the BFQ scheduler with a
+  real queue depth (udev-persisted — a machine fix, not a repo change), and the same
+  invocation then completed as the reading above. Environment interference, not a gate
+  signal: the artefact comparisons are content-addressed and unaffected by when they run.
+
+### Verdict
+
+**M2 is DONE**: one poster (`ask_client.post_decision`), one recorder
+(`core.recorder`), one unavailability record (§6.5, locally appended, unfoldable), the
+family leaves write through the one recorder, and `scripts/ask.py`'s
+`answer_via_executor`/`_edge_curves` are thin shims that die at M3. The record change is
+exactly the pre-registered shape delta. The ladder proceeds to **M3 — the one fold entry
+point** under its own pre-registration.

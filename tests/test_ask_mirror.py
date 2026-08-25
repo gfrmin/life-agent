@@ -16,6 +16,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
 import ask
 
+from life_agent.core import config as _CFG
+from life_agent.membrane import coarse as _CRS
+
 
 def test_answer_via_executor_wires_the_shared_shadow_mirror(monkeypatch: Any) -> None:
     monkeypatch.setattr(ask, "_executor_ready", lambda: True)
@@ -52,7 +55,7 @@ def test_answer_via_executor_wires_the_shared_shadow_mirror(monkeypatch: Any) ->
 
 def test_answer_via_executor_flag_off_passes_no_live_consult(monkeypatch: Any) -> None:
     monkeypatch.setattr(ask, "_executor_ready", lambda: True)
-    monkeypatch.setattr(ask.CFG, "membrane_live", lambda: False)
+    monkeypatch.setattr(_CFG, "membrane_live", lambda: False)
     captured: dict[str, Any] = {}
 
     def fake_decide_via_loop(question: str, k: int, **kwargs: Any) -> dict[str, Any]:
@@ -73,7 +76,7 @@ def test_answer_via_executor_flag_on_wires_the_live_consult_and_skips_the_mirror
     # (the live path records its own enact tick; a wrapped post would consult the one
     # engine twice per tick).
     monkeypatch.setattr(ask, "_executor_ready", lambda: True)
-    monkeypatch.setattr(ask.CFG, "membrane_live", lambda: True)
+    monkeypatch.setattr(_CFG, "membrane_live", lambda: True)
 
     def sentinel_consult(payload: dict[str, Any], dec: dict[str, Any]) -> Any:
         return (dec, None)
@@ -84,7 +87,7 @@ def test_answer_via_executor_flag_on_wires_the_live_consult_and_skips_the_mirror
         live_calls.append((bridge, question_id))
         return sentinel_consult
 
-    monkeypatch.setattr(ask.CRS, "live_decide", fake_live_decide)
+    monkeypatch.setattr(_CRS, "live_decide", fake_live_decide)
 
     def forbidden_wrap(*a: Any, **kw: Any) -> Any:
         raise AssertionError("shadow_wrapped_post must not be constructed under the flag")

@@ -428,7 +428,9 @@ def test_edge_curves_honor_the_held_out_question(monkeypatch, tmp_path) -> None:
         tx_time="t", run_id="r", question_id="q2-001", claim="c",
         construct="edge-proposal", grade="CORRECT", grader="eval_edge",
         instrument_identity={"edge": "deliberate@opus"}, probability=0.9))
-    monkeypatch.setattr(ask.CFG, "OUTCOMES_LOG", log)
+    from life_agent.core import config as _CFG
+
+    monkeypatch.setattr(_CFG, "OUTCOMES_LOG", log)
     curves = ask._edge_curves()
     assert curves is not None and "deliberate@opus" in curves
     monkeypatch.setattr(ask, "EXECUTOR_HOLD_OUT_QUESTION_ID", "q2-001")

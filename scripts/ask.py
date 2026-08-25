@@ -48,7 +48,6 @@ import yaml
 import life_agent.core as C
 import life_agent.core.ask_client as AC
 import life_agent.core.calibration as CAL
-import life_agent.core.config as CFG
 import life_agent.core.decisions as DEC
 import life_agent.core.derivations as D
 import life_agent.core.executor as EX
@@ -65,7 +64,6 @@ import life_agent.core.subject as S
 import life_agent.core.synthesis as SYN
 import life_agent.core.temporal as T
 import life_agent.core.temporal_intent as TI
-import life_agent.membrane.coarse as CRS
 import life_agent.owner as owner
 import life_agent.tasks.events as ev
 import life_agent.tasks.knowledge as knowledge

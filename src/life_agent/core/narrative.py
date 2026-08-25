@@ -63,9 +63,9 @@ from typing import Any
 from life_agent.core import config
 from life_agent.core import decisions as DEC
 from life_agent.core import derivations as D
-from life_agent.core import recorder as REC
 from life_agent.core import llm as LLM
 from life_agent.core import outcomes as O
+from life_agent.core import recorder as REC
 from life_agent.core import seam as SEAM
 from life_agent.core.brain import Brain
 from life_agent.core.citation import SourceLike, extract_citations, value_spans

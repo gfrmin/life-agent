@@ -177,25 +177,36 @@ def _is_number(v: Any) -> bool:
 
 def _directed_m2_poster(expected: Mapping[str, Any],
                         actual: Mapping[str, Any]) -> list[FieldDiff]:
-    """DIR-1 — the 104 A-poster fixtures: ``regime``/``policy`` appear at exactly
-    full/all-to-date, unpriced ``cost_usd``/``latency_s`` may go null→number, everything
-    else equal. A fixture recorded WITHOUT a body (a miss, a route-null narrative view —
-    the loop committed no lookup decision) must replay without one: nothing to direct."""
+    """DIR-1 as amended (r12 amendment 1) — every fixture whose recorded body came from a
+    pre-collapse poster: ``regime``/``policy`` appear at exactly full/all-to-date; the
+    accounting keys the reach poster never posted appear at the one defaults (``run_id``
+    exactly "answer-brain", ``instrument`` exactly the fixture's own recorded
+    ``audit.instrument`` or ""); unpriced ``cost_usd``/``latency_s`` appear as (or go
+    null→) numbers; everything else equal. A fixture recorded WITHOUT a body (a miss, a
+    route-null narrative view — the loop committed no lookup decision) must replay
+    without one: nothing to direct."""
     exp_body, act_body = expected.get("log_decision"), actual.get("log_decision")
     if not isinstance(exp_body, Mapping) or not isinstance(act_body, Mapping):
         return compare_outputs(expected, actual)
+    audit = expected.get("audit")
+    audit_instrument = (audit.get("instrument") if isinstance(audit, Mapping) else None) or ""
+    appear = dict(_M2_APPEAR)
+    appear["decision.run_id"] = "answer-brain"
+    appear["decision.instrument"] = audit_instrument
     diffs: list[FieldDiff] = []
     for d in compare_body(exp_body, act_body, prefix="log_decision."):
         path = d.path.removeprefix("log_decision.")
-        if path in _M2_APPEAR and d.reason == "unexpected":
-            if not values_equal(d.actual, _M2_APPEAR[path]):
-                diffs.append(FieldDiff(d.path, _M2_APPEAR[path], d.actual, "value"))
+        if path in appear and d.reason == "unexpected":
+            if not values_equal(d.actual, appear[path]):
+                diffs.append(FieldDiff(d.path, appear[path], d.actual, "value"))
             continue
-        if (path in _M2_NULL_TO_NUMBER and d.reason == "type"
-                and d.expected is None and _is_number(d.actual)):
+        if path in _M2_NULL_TO_NUMBER and _is_number(d.actual) and (
+                (d.reason == "type" and d.expected is None)
+                or d.reason == "unexpected"):
             continue
         diffs.append(d)
-    act_dec = act_body.get("decision") if isinstance(act_body.get("decision"), Mapping) else {}
+    raw_dec = act_body.get("decision")
+    act_dec: Mapping[str, Any] = raw_dec if isinstance(raw_dec, Mapping) else {}
     for path, want in _M2_APPEAR.items():
         if path.split(".", 1)[1] not in act_dec:
             diffs.append(FieldDiff(f"log_decision.{path}", want, None, "absent"))
@@ -250,11 +261,25 @@ def compare_directed(expected: Mapping[str, Any], actual: Mapping[str, Any], *,
     return [FieldDiff("expected_change.checkpoint", None, checkpoint, "unclassified")]
 
 
+def _pre_collapse_poster_body(outputs: Mapping[str, Any]) -> bool:
+    """The precise signature of a body a pre-collapse poster built (r12 amendment 1): the
+    B-traces' bodies are shaped from their ``DecisionEvent``s and always carry ``regime``;
+    only the two pre-M2 posters (the reach surface's and the CLI's) omit it."""
+    body = outputs.get("log_decision")
+    if not isinstance(body, Mapping):
+        return False
+    decision = body.get("decision")
+    return isinstance(decision, Mapping) and "regime" not in decision
+
+
 def compare_fixture(fx: Any, actual: Mapping[str, Any]) -> list[FieldDiff]:
     """The one entry point the replay uses: directed where the fixture carries a
-    pre-registered ``expected_change``, raw equality everywhere else."""
+    pre-registered ``expected_change`` — or where its recorded body is a pre-collapse
+    poster's (the A-loop capture, amendment 1) — raw equality everywhere else."""
     if fx.expected_change is not None:
         return compare_directed(fx.outputs, actual,
                                 checkpoint=str(fx.expected_change.get("checkpoint")),
                                 question=fx.question)
+    if _pre_collapse_poster_body(fx.outputs):
+        return _directed_m2_poster(fx.outputs, actual)
     return compare_outputs(fx.outputs, actual)
