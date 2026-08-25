@@ -111,3 +111,15 @@ If the cap is raised: all of it the same day. If not: 2026-09-01.
 4. **Full delegation on PASS:** close the §6.12 block, merge the parked tree to master,
    deploy to live, publish — no further keypress. FAIL on any conjunct: STOP for a ruling,
    nothing merges.
+
+
+## ADDENDUM — the master counterfactual's second pass (2026-08-25, $0)
+
+Pass 2 (fresh staging from the live store, the mandated double run) reproduces pass 1
+**byte-for-byte at the decision layer**: the same 46/104 readable, the same fidelity 38/46,
+the same eight moved rows — seven correct → withheld collapses at n_obs 1 and the
+warm-deliberate wrong avoided only by abstaining — and the blocking row plus all four named
+wrong rows cold on both passes. Two consequences, both stable across the double run:
+master's replace-branch reach collapse is confirmed, and **the blocking row is unreadable at
+$0 on master** (its priced evidence remains run 11: FAIL 0.880 with the blocking row
+committing wrong). Option C's description is final; the recommendation is unchanged.
