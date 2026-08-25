@@ -325,6 +325,6 @@ def test_recorder_cli_carries_a_spend_cap_with_the_delegated_default() -> None:
     import importlib
     import sys as _sys
     _sys.path.insert(0, str(SRC.parents[1] / "scripts"))
-    CR = importlib.import_module("collapse_record")
-    args = CR._parser().parse_args(["--allow-spend"])
+    rec = importlib.import_module("collapse_record")
+    args = rec._parser().parse_args(["--allow-spend"])
     assert args.max_usd == pytest.approx(8.0)   # the stage-0 delegation's hard cap
