@@ -91,7 +91,7 @@ def _classes(outputs: dict[str, Any], *, trace: str,
     return tuple(classes) + extra
 
 
-def main(argv: list[str] | None = None) -> int:
+def _parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--checkpoint", default="m0")
@@ -117,7 +117,15 @@ def main(argv: list[str] | None = None) -> int:
                          "fixture from an aborted run would be published as part of this set)")
     ap.add_argument("--deliberate", default="1", choices=("0", "1"),
                     help="the deliberate edge's deployed state (§13 adoption: on)")
-    args = ap.parse_args(argv)
+    ap.add_argument("--max-usd", type=float, default=8.0,
+                    help="hard cap on a priced record's metered spend; blowing it ABORTS "
+                         "the whole record (RecordBudgetExceeded escapes the per-trace "
+                         "absence handlers by design). Ignored without --allow-spend.")
+    return ap
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = _parser().parse_args(argv)
 
     traces = tuple(t.strip() for t in args.traces.split(",") if t.strip())
     run_id = args.run_id or f"collapse-{args.checkpoint}"
@@ -163,8 +171,9 @@ def main(argv: list[str] | None = None) -> int:
     # the engine is reached (brain.spawn), one tap around it
     brain = B.Brain(T.RecordingTransport(inner_brain._transport, sink))
     brain.initialize()
-    client: Any = (T.RecordingClient(__import__(
-        "life_agent.core.lookup", fromlist=["_client"])._client(), sink)
+    client: Any = (T.MeteredRecordingClient(__import__(
+        "life_agent.core.lookup", fromlist=["_client"])._client(), sink,
+        max_usd=args.max_usd)
         if args.allow_spend else T.RefusingClient(engine_version=_engine_version()))
     cache = T.RecordingCache(D.lookup, live_root=live_root, sink=sink)
 
@@ -340,6 +349,8 @@ def main(argv: list[str] | None = None) -> int:
     (out / "manifest.json").write_text(json.dumps(man, indent=1, sort_keys=True),
                                        encoding="utf-8")
     print(f"\n== {len(recorded)} fixture(s) written to {out}")
+    print(f"== metered spend: ${man['spent_usd']:.4f}"
+          + (f" (cap ${args.max_usd:.2f})" if args.allow_spend else " (no-spend run)"))
     if absences:
         print(f"== {len(absences)} NAMED absence(s):")
         for a in absences:

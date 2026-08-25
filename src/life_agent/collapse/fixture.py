@@ -230,5 +230,11 @@ def manifest(checkpoint: str, fixtures: Iterable[Fixture],
             "float_tolerance": FLOAT_TOL,
         },
         "coverage": coverage(fxs),
+        # derived from the recorded wire, never asserted (the merged_from lesson): the sum
+        # of every instrument-seam reply's cost_usd across the set's fixtures
+        "spent_usd": round(sum(
+            float(x.response.get("cost_usd") or 0.0)
+            for f in fxs for x in f.wire
+            if x.seam == "instrument" and isinstance(x.response, dict)), 4),
         "provenance": dict(provenance),
     }

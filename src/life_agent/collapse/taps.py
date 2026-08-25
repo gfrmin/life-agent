@@ -246,6 +246,30 @@ class RecordingClient:
         return reply
 
 
+class RecordBudgetExceeded(BaseException):
+    """A priced record blew its cap. Derives from BaseException so the recorder's
+    per-trace absence handlers (``except Exception``) cannot swallow it into 300 named
+    absences — a blown budget aborts the whole record."""
+
+
+class MeteredRecordingClient(RecordingClient):
+    """A :class:`RecordingClient` that sums ``cost_usd`` at the instrument seam and aborts
+    past ``max_usd`` — the O2 gap (the recorder never metered spend) closed. The call that
+    blows the cap is still recorded first: it was spent, so it belongs on the wire."""
+
+    def __init__(self, inner: Any, sink: list[FX.Exchange], *, max_usd: float) -> None:
+        super().__init__(inner, sink)
+        self.max_usd, self.spent_usd = float(max_usd), 0.0
+
+    def complete(self, prompt: str, schema: dict[str, Any]) -> Any:
+        reply = super().complete(prompt, schema)
+        self.spent_usd += float(getattr(reply, "cost_usd", 0.0) or 0.0)
+        if self.spent_usd > self.max_usd:
+            raise RecordBudgetExceeded(
+                f"record budget exhausted: ${self.spent_usd:.2f} > ${self.max_usd:.2f}")
+        return reply
+
+
 class ReplayClient:
     def __init__(self, cassette: Cassette, *, engine_version: str) -> None:
         self._cassette = cassette

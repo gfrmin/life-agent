@@ -300,3 +300,31 @@ def test_a_snapshots_directory_alone_is_safe_because_the_recorder_refreshes_it(
     (tmp_path / "snapshots").mkdir()
     (tmp_path / "snapshots" / "decisions.snapshot").write_text("x", encoding="utf-8")
     assert FX.existing_fixtures(tmp_path) == []
+
+
+# --- spend metering on the manifest (stage-0 rider) -------------------------------------------
+
+def test_manifest_derives_spent_usd_from_the_recorded_instrument_wire() -> None:
+    paid = _fixture(wire=(
+        FX.Exchange(seam="instrument", request={}, response={"raw_text": "{}",
+                                                             "cost_usd": 0.03}),
+        FX.Exchange(seam="instrument", request={}, response={"raw_text": "{}",
+                                                             "cost_usd": 0.02}),
+        FX.Exchange(seam="http", request={}, response={"cost_usd": 99.0}),  # not a model call
+    ))
+    free = _fixture(fixture_id="m0-synthetic-2")
+    man = FX.manifest("m0", [paid, free], {"tree_sha": "deadbeef"})
+    assert man["spent_usd"] == pytest.approx(0.05)   # derived from the fixtures, not asserted
+
+
+def test_manifest_spent_usd_is_zero_for_an_unpriced_set() -> None:
+    assert FX.manifest("m0", [_fixture()], {})["spent_usd"] == 0.0
+
+
+def test_recorder_cli_carries_a_spend_cap_with_the_delegated_default() -> None:
+    import importlib
+    import sys as _sys
+    _sys.path.insert(0, str(SRC.parents[1] / "scripts"))
+    CR = importlib.import_module("collapse_record")
+    args = CR._parser().parse_args(["--allow-spend"])
+    assert args.max_usd == pytest.approx(8.0)   # the stage-0 delegation's hard cap
