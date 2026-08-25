@@ -357,8 +357,22 @@ the pre-registration itself (a frozen G3 conjunct would have failed every row by
 construction — re-read every frozen clause against the artefact it names). Gates: G1
 2718 + clean; G2 314/314 pure equality; G3 = run 15 (`gate-20260825T215428`) PASS on
 all four conjuncts — 0.907/+0.421, zero NEW wrongs, the same three carried rows as run
-14. The ladder resumes at M4 — the utility atom + the price table (M4 decides Q8 and
-signs the M5a/M5b split).** Old D3–D4 stay
+14.
+M4 IS DONE (2026-08-26, `docs/unification/reports/r14-collapse-m4.md`, $0.60): ONE
+price table — `core/pricing.py` (PRICING_VERSION 2) declares the corroborate tiers,
+the transform menu, the deliberate seed, the grow actuators, the re-read model and the
+D-2 reliability prior column; executor/gather/reliability BIND the same objects
+(drift-gated — a second spelling cannot exist); `realised_utility`'s report branch is
+spelled through the `u_assert` atom (exact); E-5: both silent `lambda_usd` defaults are
+dead — the latent is REQUIRED and a missing one fails loud. Gates: G1 2724 + clean; G2
+314/314 pure equality; G3 = run 16 (`gate-20260826T003710`) PASS on all four conjuncts
+— 0.961/+0.519 [+0.081, +1.003], zero NEW wrongs (the two standing rows only; the
+warm-deliberate row lands withheld this time — the headline's whole move off run 15 is
+that one named wobble), $0.60, all-warm deliberates. Q8 DECIDED: the M3 lane deletes at
+M5. The split SIGNED: single M5. Run 16 also settled an ops class: a priced run fired
+as an agent-session background task dies with the session (two clean SIGTERM teardowns,
+~$0) — priced runs launch as transient `systemd --user` units from here on. The ladder
+resumes at M5 — the argmax absorption.** Old D3–D4 stay
 re-scoped as Ask's
 aggregate/thread families. The doc's §14 open questions are a **live empirical ledger**
 (owner's adoption rider): each entry names the evidence that decides it — keep it

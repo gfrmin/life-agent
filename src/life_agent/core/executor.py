@@ -31,6 +31,7 @@ from life_agent.core import deliberate as DL
 from life_agent.core import gather_outcomes as GO
 from life_agent.core import lookup as LK
 from life_agent.core import matching as MATCH
+from life_agent.core import pricing as PRC
 from life_agent.core import seam as SEAM
 
 # The per-edge reliability curves (calibration.fit_edge_curves over the outcomes log),
@@ -49,55 +50,16 @@ Get = Callable[[str], dict[str, Any]]
 View = dict[str, Any]  # {effector, asserted, candidates, credences, p_none, eu, n_obs, hits,
 #                        route}; a narrative view also carries "rendered" (rendered bridge-side).
 
-# The corroborate model-tier ladder: the body names the tier (the daemon schedules it by name);
-# each tier carries the model it re-reads with and the reliability that re-read is conditioned at.
-_TIER_MODEL = {"corroborate_haiku": "claude-haiku-4-5",
-               "corroborate_sonnet": "claude-sonnet-4-6",
-               "corroborate_opus": "claude-opus-4-8"}
-_TIER_RHO = {"corroborate_haiku": 0.80, "corroborate_sonnet": 0.90, "corroborate_opus": 0.95}
-_GATHER_RHO = 0.95  # the corroborate re-read's default reliability (the opus tier's)
-
-# The per-question transform MENU the body offers the daemon (the daemon prices + schedules it;
-# the body enacts the arg-max by probe name). Guards fire on a precondition (era_split / an
-# owner-scoped report); :voi tiers fire when a leader is below the EU bar, each at a stated
-# reliability + cost-in-utility (frozen-blind world-knowledge priors, monotone in model strength;
-# calibrated from verdicts downstream).
-DEFAULT_TRANSFORMS: list[dict[str, Any]] = [
-    {"name": "recency", "probe": "recency", "kind": "guard", "trigger": "era_split"},
-    {"name": "corroborate_owner", "probe": "corroborate_opus", "kind": "guard",
-     "trigger": "owner_report"},
-    {"name": "corroborate_haiku", "probe": "corroborate_haiku", "kind": "voi",
-     "trigger": "below_bar", "rho": 0.80, "cost": 0.004},
-    {"name": "corroborate_sonnet", "probe": "corroborate_sonnet", "kind": "voi",
-     "trigger": "below_bar", "rho": 0.90, "cost": 0.012},
-    {"name": "corroborate_opus", "probe": "corroborate_opus", "kind": "voi",
-     "trigger": "below_bar", "rho": 0.95, "cost": 0.020},
-]
-
-# The deliberative edge (core/deliberate — the promoted A1b arm) as a menu row the daemon
-# prices like any other transform. Priors frozen blind, both cited: rho 0.92 = the arm's
-# measured 92.3% correct (ff-v2-delib-20260719, 104 questions); cost 0.37 = the same
-# run's mean $/question in the tier-cost convention. NOT in DEFAULT_TRANSFORMS: the
-# caller opts the row in (env-gated at ask.py until the §8 gate passes) — a rollout
-# gate on an unmeasured-in-production edge, never a decision fork (the daemon still
-# prices and schedules it).
-_DELIBERATE_MODEL = "claude-opus-4-8"
-# The SEED template — never offered to the daemon as-is: menu_transforms() re-prices its
-# rho to what the enactment fold can actually deliver (the daemon must never buy a probe
-# at a rho the body cannot cash). rho_seed 0.92 = the arm's measured 92.3% correct and
-# cost 0.38 = the run's mean $/question (both ff-v2-delib-20260719, frozen blind). Costs
-# here are AUTHORED IN USD (as are the 0.004/0.012/0.020 tier costs); run_pass converts
-# them to gauge utility at u_bar's elicited lambda_usd exchange rate before the daemon
-# reads them (plan item C) — a u_bar without the latent keeps the legacy $1 ≈ 1-gauge
-# convention.
-DELIBERATE_TRANSFORM: dict[str, Any] = {
-    "name": "deliberate", "probe": "deliberate", "kind": "voi",
-    "trigger": "below_bar", "rho": 0.92, "cost": 0.38,
-}
-# An unmeasured deliberate read without curves conditions at min(cap, confidence) — the
-# rescue channel's stated-wide-prior rationale verbatim (a lone strong read is an
-# unmeasured instrument; fiat trust at its self-report was refuted on q-015).
-_DELIBERATE_FALLBACK_RHO = 0.5
+# Every priced row below is a BINDING of the one price table (core/pricing — M4, r14):
+# the ladder, the menu, the deliberate seed and the re-read model are declared there as
+# data; this module enacts them. Same objects, so a second spelling cannot drift.
+_TIER_MODEL = PRC.TIER_MODEL
+_TIER_RHO = PRC.TIER_RHO
+_GATHER_RHO = PRC.GATHER_RHO
+DEFAULT_TRANSFORMS = PRC.DEFAULT_TRANSFORMS
+_DELIBERATE_MODEL = PRC.DELIBERATE_MODEL
+DELIBERATE_TRANSFORM = PRC.DELIBERATE_TRANSFORM
+_DELIBERATE_FALLBACK_RHO = PRC.DELIBERATE_FALLBACK_RHO
 
 
 def _null_read(reply: dict[str, Any]) -> bool:
@@ -165,7 +127,7 @@ _UNPRICED_ATTRIBUTION: dict[str, Any] = {
 # re-read with allow_new — the K-enlarging strong extractor); the menu itself is data
 # (core/gather_outcomes.GROW_ACTUATORS, served by the bridge's /grow_menu).
 _GROW_RETRIEVE = {"retrieve_rerank": (True, False), "retrieve_expand": (True, True)}
-_RE_EXTRACT_MODEL = "claude-opus-4-8"
+_RE_EXTRACT_MODEL = PRC.RE_EXTRACT_MODEL
 # The k=0 rescue channel's reliability CAP — a stated wide prior (mean of the local
 # extractor's own Beta(4,4), core/reliability.PRIORS), declared blind, NOT the tier's
 # 0.95 and NOT the model's self-stated confidence: a lone strong read with zero local
@@ -387,7 +349,7 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
     # units per dollar — a learned latent, never a constant invented here) converts
     # them at the one place the daemon reads prices. A u_bar lacking the latent
     # (pre-elicitation prod) prices at the legacy $1 ≈ 1-gauge convention, unchanged.
-    rate = float(u_bar.get("lambda_usd", 1.0))
+    rate = float(u_bar["lambda_usd"])  # REQUIRED latent — a missing one fails loud (E-5)
     transforms = [dict(t, cost=float(t["cost"]) * rate) if "cost" in t else t
                   for t in transforms]
     if menu is not None:
@@ -458,7 +420,7 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
             # standing channel bridge-side (r09: the payload carries the channel; the reply is
             # the §5-deduped pool, so a disagree adds evidence instead of erasing). Each tier
             # fires at most once (dedup on the probe name) ⇒ escalation across tiers terminates.
-            model = _TIER_MODEL.get(probe, "claude-opus-4-8")
+            model = _TIER_MODEL.get(probe, _RE_EXTRACT_MODEL)  # the table's strong-read model
             tier_rho = _TIER_RHO.get(probe, _GATHER_RHO)
             cr = _obj(post, f"{bridge}/probe/corroborate",
                       {"reextract": True, "question": question, "hits": hits,
