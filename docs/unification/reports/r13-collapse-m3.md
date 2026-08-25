@@ -174,3 +174,21 @@ body, same writer function); every event field except `utility_fold_version` is
 unchanged, `utility_fold_version` changes per P3, and G2's assertion is the projected
 output equality (in which `audit` is recorded-only). No gate, direction, or prediction
 changes; the mandate's substance (who records) is untouched.
+
+## AMENDMENT 3 (2026-08-25, blind — before any gate run; D-2 not yet implemented)
+
+The frozen D-2 signature `reliability(brain, edge, cell, outcomes_path)` cannot be built
+as written: the two observation-stream selectors (`LK._extractor_outcomes`,
+`NR._cell_observations`) filter on their instruments' CURRENT identity
+(`extract_instrument_hash()` / `instrument_identity()`), so a fold module reading
+`outcomes_path` itself would import the instruments while they import the fold — a
+cycle; and the selectors are §3.3 observation-model clauses (each docstring: "pure
+data-reading… no host belief arithmetic"), owned by their instruments, not belief
+folds. Corrected signature: **`reliability(brain, edge, cell, observations)`** — the
+one fold owns the prior table keyed `(edge, cell)` and the create→condition→read→destroy
+choreography; the instruments keep their declared stream selectors and pass the
+Bernoulli stream in. A `conditioned_state(brain, edge, cell, observations)` companion
+serves the mean-readback binding (`extractor_reliability_mean` reads `mean`, not
+`read_params` — the wire choreography of every binding must stay cassette-identical).
+`NR.coverage_posterior` is NOT a D-2 instance (the open-world tail is its own belief,
+not an edge's reliability) and stays where it is. Everything else stands.
