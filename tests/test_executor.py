@@ -11,12 +11,14 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 from life_agent.core import executor as EX
 
 B = "http://bridge"
 D = "http://daemon"
 _U = {"u_correct": 1.0, "u_wrong": -5.0, "u_hedged": 0.2, "u_abstain": 0.0,
-      "oracle_p": 0.9, "lambda_int": 0.1, "kappa_att": 0.0}
+      "oracle_p": 0.9, "lambda_int": 0.1, "kappa_att": 0.0, "lambda_usd": 1.0}
 _HIT = [{"artifact_cache_key": "d0", "chunk_text": "Passport No: P123"}]
 _EXTRACT = {"candidates": ["P123"],
             "observations": [{"reports": 0, "group": 0, "authority": 0.9,
@@ -907,18 +909,17 @@ def test_run_pass_prices_the_menu_in_owner_utility_via_lambda_usd() -> None:
     assert priced["corroborate_opus"] == 2.0 * authored["corroborate_opus"]
 
 
-def test_run_pass_without_the_rate_latent_keeps_legacy_costs() -> None:
-    # legacy parity: a u_bar lacking lambda_usd (pre-elicitation prod) prices at the
-    # old $1 ≈ 1-gauge convention — costs ride through unchanged.
+def test_run_pass_without_the_rate_latent_fails_loud() -> None:
+    # E-5 (M4, r14): lambda_usd is a REQUIRED latent — the old silent $1 ≈ 1-gauge
+    # default died with the module-local fallbacks; a u_bar lacking the latent is a
+    # modelling error, never a quietly re-priced menu.
     fake = FakeServices(
         route={"construct": "tax id", "time_indexed": False},
+        utility={k: v for k, v in _U.items() if k != "lambda_usd"},
         decides=[{"effector": "report", "value": "P123", "credences": [0.95],
                   "p_none": 0.02, "eu": 0.9}])
-    _loop(fake)
-    sent = {t["probe"]: t["cost"]
-            for t in fake.posted("/decide")[0]["transforms"] if "cost" in t}
-    assert sent["corroborate_haiku"] == next(
-        t["cost"] for t in EX.DEFAULT_TRANSFORMS if t["probe"] == "corroborate_haiku")
+    with pytest.raises(KeyError, match="lambda_usd"):
+        _loop(fake)
 
 
 def test_run_pass_prices_the_grow_block_at_the_same_rate() -> None:

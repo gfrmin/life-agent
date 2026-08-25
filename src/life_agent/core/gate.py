@@ -62,6 +62,7 @@ import random
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from life_agent.core.decide import u_assert
 from life_agent.core.matching import answer_matches
 
 if TYPE_CHECKING:  # avoid a hard import cycle; the posterior is a plain dataclass
@@ -165,17 +166,20 @@ def realised_utility(resp: RealisedResponse, u: dict[str, float], *,
     """The realised answer's utility under one sampled (or mean) ``u`` — the stated
     answer-level model (module docstring), minus the arm's realised spend priced at
     the sampled ``lambda_usd`` exchange rate. Spend is spent whatever the act was
-    (an abstain that burned a deliberate call still paid for it). A ``u`` lacking
-    the latent (every pre-elicitation model) prices spend at exactly zero — the
-    pre-run-6 Δ byte-for-byte, which is the comparability pin, not a fallback."""
-    spend = u.get("lambda_usd", 0.0) * resp.cost_usd
+    (an abstain that burned a deliberate call still paid for it). ``lambda_usd`` is a
+    REQUIRED latent of every model (E-5, M4): a ``u`` lacking it is a modelling error
+    and fails loud — the old 0.0 comparability pin died with the two module-local
+    defaults (every live fold passes REQUIRED_LATENTS; nothing replays archived
+    pre-elicitation vectors through this function)."""
+    spend = u["lambda_usd"] * resp.cost_usd  # REQUIRED latent — missing fails loud (E-5)
     a = resp.action
     if a == "abstain":
         return u["u_abstain"] - spend
     if a == "ask_clarify":
         return oracle_p * u["u_correct"] - u["lambda_int"] - spend
     if a == "report":
-        return (u["u_correct"] if resp.correct else u["u_wrong"]) - spend
+        # D-1 (M4): the report outcome IS the atom at p ∈ {1, 0} — one written source
+        return u_assert(1.0 if resp.correct else 0.0, u) - spend
     if a == "hedge":
         return (u["u_hedged"] if resp.correct else u["u_wrong"]) - spend
     if a == "report_scoped":

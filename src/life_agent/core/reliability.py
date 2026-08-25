@@ -14,20 +14,13 @@ with monotone smoothing — the named debt (§6.3), not a second fold.
 """
 from __future__ import annotations
 
+from life_agent.core import pricing as PRC
 from life_agent.core.brain import Brain
 
-#: The one prior table, keyed (edge, cell) — each row is where an edge's trust STARTS,
-#: wide on purpose (the refuted fiat Beta(17,3) taught that trust is earned from
-#: evidence). ("extract", "value"): the local extractor, one cell. ("eval_claim", *):
-#: the claim instrument's closed audit partition — a verified span can still be the
-#: wrong subject's value (construct validity), the unsupported gate has known false
-#: positives, and the unverifiable cell stays near its prior until owner audits arrive.
-PRIORS: dict[tuple[str, str], tuple[float, float]] = {
-    ("extract", "value"): (4.0, 4.0),
-    ("eval_claim", "verified"): (3.0, 2.0),
-    ("eval_claim", "unsupported"): (1.0, 3.0),
-    ("eval_claim", "unverifiable"): (2.0, 2.0),
-}
+#: The prior column of the ONE price table (core/pricing.RELIABILITY_PRIORS — M4/§4.2):
+#: the data lives with the other priced rows; the fold lives here. Same object, one
+#: spelling.
+PRIORS: dict[tuple[str, str], tuple[float, float]] = PRC.RELIABILITY_PRIORS
 
 _BERNOULLI: dict[str, str] = {"type": "bernoulli"}
 

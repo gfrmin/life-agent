@@ -31,6 +31,7 @@ from pathlib import Path
 from typing import Any
 
 from life_agent.core import outcomes as O
+from life_agent.core import pricing as PRC
 
 # The declared sensor vocabulary — names + per-feature bucket sets, in ONE order (the daemon's
 # `context_from_features` fails loud on drift; this list is the single source).
@@ -40,15 +41,9 @@ SENSOR_FEATURES: list[tuple[str, list[str]]] = [
     ("indeterminate", ["none", "some"]),    # hits whose subject verdict was indeterminate
 ]
 
-# The grow menu as data. Costs are in utility units, commensurate with the corroborate tiers
-# (executor.DEFAULT_TRANSFORMS); the Beta(alpha0, beta0) means are frozen-blind world-knowledge
-# priors, monotone in mechanism strength (a cloud whole-doc re-read recovers more than a local
-# rerank), stated before any counts — the counts do the calibrating.
-GROW_ACTUATORS: list[dict[str, Any]] = [
-    {"probe": "retrieve_rerank", "cost": 0.004, "alpha0": 3.0, "beta0": 7.0},
-    {"probe": "retrieve_expand", "cost": 0.006, "alpha0": 3.5, "beta0": 6.5},
-    {"probe": "re_extract_strong", "cost": 0.020, "alpha0": 4.0, "beta0": 6.0},
-]
+# The grow menu is a BINDING of the one price table (core/pricing — M4, r14); the rows'
+# rationale lives with the data. Same object, so a second spelling cannot drift.
+GROW_ACTUATORS: list[dict[str, Any]] = PRC.GROW_ACTUATORS
 
 
 def sensors_from(*, candidates: list[str], credences: list[float],

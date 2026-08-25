@@ -29,6 +29,7 @@ from fairfight import grading as G
 from fairfight import run_fairfight as RF
 
 import life_agent.core.config as LCFG
+from life_agent.core import pricing as PR
 from life_agent.core.llm import LLMResult
 from life_agent.fairfight import records as REC
 
@@ -241,7 +242,7 @@ def test_run_meta_written_first_and_pinned(tmp_path: Path, monkeypatch: pytest.M
     assert meta["k"] == 8
     assert meta["judge_model"] == "gpt-5.1"
     assert meta["judge_n"] == 3
-    assert meta["pricing_version"] == 1
+    assert meta["pricing_version"] == PR.PRICING_VERSION  # the table's own version
     assert meta["arms"] == ["inprocess"]
     assert meta["arm_configs"]["inprocess"] == {
         "entrypoint": "ask.answer", "path": "inprocess", "gather": True, "fresh": False}

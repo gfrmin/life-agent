@@ -32,6 +32,9 @@ def _posterior(*, u_wrong: float, u_hedged: float = 0.3, lambda_int: float = 0.5
             "u_hedged": _point("u_hedged", u_hedged),
             "lambda_int": _point("lambda_int", lambda_int),
             "kappa_att": _point("kappa_att", kappa_att),
+            # E-5 (M4): every model carries the exchange rate; 0.0 keeps these tests'
+            # pinned numbers (no priced rows ride through this fixture)
+            "lambda_usd": _point("lambda_usd", 0.0),
         },
         n_events=0, fold_version="test", policy="frozen-elicitations",
     )
@@ -61,19 +64,21 @@ def test_realised_utility_prices_realised_spend_under_lambda_usd() -> None:
     assert G.realised_utility(ab, u, oracle_p=0.9) == 0.0 - 0.2
 
 
-def test_realised_utility_without_the_rate_latent_is_byte_identical() -> None:
-    # the run-5-comparability pin: a utility sample from a model that lacks lambda_usd
-    # (every run before the elicitation channel) prices spend at exactly zero — the old
-    # Δ, byte for byte, cost fields present or not.
+def test_realised_utility_without_the_rate_latent_fails_loud() -> None:
+    # E-5 (M4, r14): the run-5 comparability pin RETIRED — lambda_usd is REQUIRED of
+    # every model (load_model fails loud without it), so a u vector lacking it can only
+    # be a hand-built or archived pre-elicitation artefact; pricing it silently at zero
+    # was the two-defaults defect. Loud, never quietly unpriced.
     u = {"u_correct": 1.0, "u_wrong": -2.0, "u_abstain": 0.0, "u_hedged": 0.3,
          "u_wrong_scoped": -1.0, "lambda_int": 0.5}
     priced = G.RealisedResponse(action="report", correct=True, cost_usd=0.4)
-    assert G.realised_utility(priced, u, oracle_p=0.9) == 1.0
+    with pytest.raises(KeyError, match="lambda_usd"):
+        G.realised_utility(priced, u, oracle_p=0.9)
     assert G.RealisedResponse(action="report", correct=True).cost_usd == 0.0
 
 
 def test_realised_utility_recovers_the_gauge_and_latents() -> None:
-    u = {"u_correct": 1.0, "u_abstain": 0.0, "u_wrong": -2.0, "u_hedged": 0.3,
+    u = {"lambda_usd": 0.0, "u_correct": 1.0, "u_abstain": 0.0, "u_wrong": -2.0, "u_hedged": 0.3,
          "lambda_int": 0.5}
     assert G.realised_utility(_resp("report", True), u, oracle_p=0.9) == 1.0
     assert G.realised_utility(_resp("report", False), u, oracle_p=0.9) == -2.0
@@ -151,7 +156,8 @@ def test_utility_uncertainty_propagates_into_p_gt() -> None:
         gauge={"u_correct": 1.0, "u_abstain": 0.0},
         latents={"u_wrong": spread, "u_hedged": _point("u_hedged", 0.3),
                  "lambda_int": _point("lambda_int", 0.5),
-                 "kappa_att": _point("kappa_att", 0.05)},
+                 "kappa_att": _point("kappa_att", 0.05),
+                 "lambda_usd": _point("lambda_usd", 0.0)},
         n_events=2, fold_version="spread", policy="frozen-elicitations")
     paired = [_pair("a", _resp("abstain"), _resp("report", False))]  # d = -u_wrong ∈ {3, 0}
     res = G.delta_posterior(paired, post, oracle_p=0.9, n_draws=8000, seed=7)

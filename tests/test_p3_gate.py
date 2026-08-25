@@ -24,7 +24,7 @@ from life_agent.membrane import world as W
 
 # the gate's utility keys (a minimal Ū — the live-ish values; enough for realised_utility)
 U_BAR = {"u_correct": 1.0, "u_wrong": -5.94, "u_abstain": 0.0, "u_hedged": 0.3,
-         "u_wrong_scoped": -0.5, "lambda_int": 0.1}
+         "u_wrong_scoped": -0.5, "lambda_int": 0.1, "lambda_usd": 0.0}
 
 
 def _decision(decision_id: str, question_id: str, chosen_action: str, *,
@@ -190,6 +190,7 @@ def _posterior() -> UT.UtilityPosterior:
         latents={"u_wrong": _point("u_wrong", -2.0),
                  "u_hedged": _point("u_hedged", 0.3),
                  "lambda_int": _point("lambda_int", 0.5),
+                 "lambda_usd": _point("lambda_usd", 0.0),
                  "kappa_att": _point("kappa_att", 0.05)},
         n_events=0, fold_version="test", policy="frozen-elicitations")
 
