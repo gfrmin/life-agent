@@ -181,6 +181,46 @@ Pure equality is NOT the oracle everywhere. The classes, pre-registered:
 - **P6**: no named wrong-commit class changes membership in either direction
   (the absorbed dispatch does not touch matching, tempering, or the §5 dedup).
 
+## AMENDMENTS (blind — appended before P-II's gates ran; each corrects a frozen claim against a verified artefact)
+
+**A1 — E-4 re-scoped: the censused death is REFUTED by the daemon's own wire
+contract.** STATE item 2 and the mandate's P-II(a) inherited the census claim that
+"the argmax with an empty candidate set already ranks the withhold terminals … the
+daemon is consulted every time". Verified against the deployed engine
+(`answer-brain/daemon/server.jl`): `decide_response` hard-errors on empty
+candidates — ``k >= 1 || error("`candidates` must be non-empty")``. A k=0 consult is
+not a decision the host stole from the ranking; it is a request the wire refuses.
+§2.4 (trusted-by-contract, no cross-repo change this checkpoint) therefore re-types
+the empty-candidate early return as the wire's ENACTMENT CONSTRAINT — mechanics, the
+same logic as §6.5's "the derived behaviour needs an engine" — and it STAYS, with its
+comment re-stated to name the contract. What survives of P-II(a): the D-5 one
+withhold-reason derivation (``unavailable ≻ miss ≻ dispersed``), one function with
+the named consumers as callers. DIR-E4 narrows to zero wire change and zero fixture
+impact.
+
+**A2 — E-12 re-scoped: the first-consult grow block is UNBUILDABLE host-side, and
+the latch decomposes into verified non-choices plus ONE measurable residue.** The
+censused endpoint ("the one decision space always carries the grow rows") requires
+``sensors`` on every consult; sensors are derived from the PREVIOUS decide's
+posterior (``GO.sensors_from`` over credences/p_none), so no first consult can carry
+them without the stateless daemon computing its own — a daemon-side change §2.4
+excludes. The latch's arms, decomposed against the verified engine source
+(`answer_brain.jl`: "Grow self-gates on the terminal EU … a confident report prices
+≈ −cost"): (i) no-grow-before-first-decide = the sensor dependency (mechanics);
+(ii) stop-after-a-grow-block-consult-returns-a-terminal = obedience (the daemon saw
+every unapplied grow and declined them); (iii) no-re-ask-after-a-REPORT = the
+engine's own ≈−cost pricing, exact for confident reports, UNPROVEN for
+low-confidence ones — the single genuine residue. Disposition: the residue is
+MEASURED at $0 before any code change, by replaying every recorded A-loop ``/decide``
+exchange whose reply was a report against the LIVE daemon with the grow block added
+(sensors derived by the DEPLOYED ``GO.sensors_from`` from the recorded reply's own
+posterior — the deployed rule end-to-end, never re-implemented; r10's lesson).
+Frozen consequence, before the probe runs: **zero effector flips ⇒ E-12 is
+re-classified verified-economy/mechanics and no code changes** (the fixture set
+stays intact); **any flip ⇒ the residue is real, and the fix (the grow re-ask fires
+after reports too) lands with its cassette-miss fixture cost counted under
+DIR-E12.** P2's unservable-count prediction transfers to the flip>0 branch only.
+
 ## Deviations
 
 Disclosure items in the final report; rollback = revert the branch (one PR). After
