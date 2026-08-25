@@ -132,3 +132,25 @@ Anything unexpected is a disclosure item in this report's final form. Rollback: 
 the branch (one PR). Sequencing after green: report results appended, mirrors updated
 (CLAUDE.md tail + design §8 row), PR, CI, merge, steel deploy, then M4 under its own
 pre-registration.
+
+## AMENDMENT 1 (2026-08-25, blind — before any src change; nothing above edited)
+
+Recon error, caught by enumerating `UT.posterior(` callers before touching the
+signature. Two corrections to STATE:
+
+1. **The census's fifth D-8 site LIVES** — `fairfight/loss_ledger.py` moved to
+   `scripts/fairfight/loss_ledger.py` (the recon greped the census's old `src/` path and
+   read exit-1 as deletion). Its evidence set is elicitations only → it names
+   `policy="frozen-elicitations"`. Five live D-8 sites, not four; Disclosure D0 is
+   withdrawn.
+2. **A sixth caller exists outside the census:** `ledger/golden.py:160`
+   (`_utility_evidence` → the A4a/A4b artefacts) folds elicitations + reactions —
+   it snapshots the live decider's fold → it names `policy="all-to-date"`.
+   Consequence for G4's not-run declaration: A4a compares `fold_version` hex, so any
+   CROSS-tree (pre-M3 vs post-M3) golden comparison would read a hex difference by
+   design — P3 already predicts the hex change; within-tree snapshot/compare pairs
+   (the only mandated use) are unaffected.
+
+The mandate's caller list is restated as: `current_u_bar` + `golden._utility_evidence`
+→ `"all-to-date"`; `run_eval`, `gate_splice`, `p3_gate`, `loss_ledger` →
+`"frozen-elicitations"`. Everything else in the pre-registration stands unchanged.
