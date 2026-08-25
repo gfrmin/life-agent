@@ -212,3 +212,28 @@ shim-ness removed, because deleting the NAME would duplicate a surface:
   silently switch arms). Deleting the name would force that surface to be spelled
   twice — the opposite of the collapse. The r12 D3 promise is discharged as: no shim
   remains (the two duplicate spellings are gone; the survivor is a surface, not a shim).
+
+## AMENDMENT 5 (2026-08-25, blind — before any gate run; phase 4 not implemented)
+
+Mandate 4 ("the leaves return what they minted and their caller invokes
+`REC.record_local`") is withdrawn as written — enumerating the callers before moving
+anything showed it would MULTIPLY spellings, not collapse them:
+
+- The design's §8 premise ("the leaves' own write calls become dead code at M2 and are
+  removed at M3") assumed the M2 driver records for the in-process leaves. r12 froze the
+  safer construction instead: the leaves write THROUGH the one recorder
+  (`REC.record_local`, byte-identical events) — the calls are live and load-bearing,
+  not dead.
+- Each leaf has THREE callers today (`ask.py`'s in-process lanes, `bridge/server.py`,
+  `gather.py`/the replay drivers). Moving the write to the callers turns 2 recording
+  sites into 6 — the opposite of Q-O6 — and every new site is a chance to record
+  differently.
+- The collapsed end-state (one driver records once) arrives at M5, when the argmax
+  absorption makes the driver the leaves' ONLY caller; the write moves then, as one
+  move, to one place.
+
+What M3 keeps: one write path (`core/recorder.py`), leaf drift-gated
+(`tests/test_recorder.py` bans leaf-side `DEC.append`), `decision_id = akey.cache_key`
+verbatim. The r12 promise "removed at M3" is discharged as: there is no dead code to
+remove, and the single-writer invariant it protected is already enforced. Gates,
+directions, and predictions unchanged.
