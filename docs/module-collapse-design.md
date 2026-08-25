@@ -776,9 +776,31 @@ never depended on it), and not any decide-side rule that scores documents by
 question-vocabulary overlap (r09d — the gold's carrier is systematically the terse one). The
 one surviving change is **D3: S2, the replace site r09 left untouched, now joins**, parked
 unmerged pending a gate run. **§6.12's block STANDS**, and run 14 is externally blocked by an
-API usage limit until 2026-09-01; the queue is warm-the-cold-rows → re-price run 14 →
-pre-register the extract-side entity field. Hard clause carried forward: no lever ships while
+API usage limit until 2026-09-01. Hard clause carried forward: no lever ships while
 it makes a named wrong-commit class worse.
+
+*Continuation (r09e + r10, 2026-08-25, both $0):* **r09e** replayed run 13's record on the
+parked tree itself (66/104 readable — the §18.9 warm-through keeps growing the readable set
+pass over pass): two of run 13's four wrong rows still commit wrong there, one is repaired to
+withheld, one is cold — so a gate run on this tree fails a zero-wrong conjunct as-is,
+measured rather than predicted, and the two decision-level collaterals attribute to the
+temper stack, not D3 (a five-row isolation). The **entity-key conferral** then took three
+rulings: warm-then-read; the **extract-side entity field RETIRES** (the qualifier is already
+carried where an extractor could see it — and where it is not carried, no extractor could
+recover it either); and E1's bar frozen blind at zero channel harms AND ≥1 wrong-commit
+repair. **r10 built E1** — an exact, typed identifier filter at the base mint, pre-registered
+and amended before implementation — **and REFUSED it by its own frozen bar**: the sweep's
+marginal read against r09e is exactly one row (the entity-qualifier row, wrong → correct —
+conjunct 2 met, the first lever to repair it), but a channel-harm census through the
+**deployed** rule found one gold-dropping *inversion* on a row the motivating census had
+misread via its re-implemented carrier mapping (the census class's fourth instance this arc
+and the first to flip a verdict at a frozen bar). E1 is reverted from the parked chain
+(`r10-entity-key` head, tree-identical to the pre-E1 head). **The terse-carrier finding now
+closes the carrier-side family in full — exact or fuzzy, hard or soft: a terse gold carrier
+omits qualifiers, so any carrier-side requirement damps it.** The queue for 2026-09-01:
+warm the one still-cold named row (superset-confirm; the other three now serve at $0), then
+a run-14 conferral that picks the tree and freezes the wrong-commit conjunct — the parked
+tree measurably carries two standing wrongs; master carries the un-repaired blocking row.
 
 **6.12 The replace branch — a view that DISCARDS a grounded channel instead of joining it.**
 Registered 2026-08-22 on r05's redirection (its DONE 4), which is the first evidence that names

@@ -3032,6 +3032,39 @@ on this list. Answers land here by amendment, citing their evidence.
   r05 class, three instances in this arc, the newest signature being byte-identical numbers
   before and after a change.
 
+- **r09e + the entity-key conferral + r10 — the tree of record read, one ruling enacted, one
+  lever refused by its own bar (2026-08-25, all $0,
+  `docs/unification/reports/{r09e-tree-of-record,r10-entity-key}.md`,
+  `docs/unification/conferrals/entity-key-conferral.md`).** r09e replayed run 13's record on
+  the parked tree itself: 66/104 readable (the §18.9 warm-through grows the readable set pass
+  over pass — 58 → 66 → 68 across three passes); two of run 13's four wrong rows still commit
+  wrong, one is repaired to withheld, one is cold, so **a gate run on this tree fails a
+  zero-wrong conjunct as-is — measured, not predicted**; the two decision-level collaterals
+  attribute to the temper stack, not D3 (five-row isolation on the A2 head). The conferral's
+  rulings: warm-then-read (~the priced half now shrunk to one row); the **extract-side entity
+  field RETIRES**; E1's bar frozen blind — zero channel harms AND ≥1 wrong-commit repair,
+  with a withhold→answer conversion licensing nothing. **r10 built E1** (exact typed
+  identifier filter at the base mint; pre-registered, then amended before implementation when
+  the code showed only one mint site has a carrier) and the read REFUSED it: the sweep's
+  marginal diff against r09e is **exactly one row** — the entity-qualifier row, wrong →
+  correct at the strong branch, the first lever to repair it, with every other common row
+  byte-identical (all five predictions pass) — but a channel-harm census driven through the
+  **deployed** rule (a recorder on the deployed filter, the deployed `observe_hits`, all 104
+  questions) found the rule fires on 6 questions where the motivating census read 3, and on
+  one it **drops the gold and keeps the competitor** — an inversion the census had misread
+  as both-keyed/no-op through its re-implemented first-hit-by-cache-key carrier mapping. The
+  census-reimplementation class thus takes its fourth instance this arc and its first
+  verdict-flip at a frozen bar; the harm sat precisely in the sweep's blind spot (all three
+  census/deployed divergence rows are cold-mid-loop — readable at the base seam, unreadable
+  at the decision layer; the predictions were all decision-layer). Consequence enacted: E1
+  reverted from the parked chain, tree-identical to the pre-E1 head, suite green. **The
+  terse-carrier finding is now a closed family, not a lesson about one lever: exact or
+  fuzzy, hard or soft, any carrier-side requirement damps the terse gold, because terse
+  carriers omit qualifiers.** What remains for the block: the parked tree carries two
+  standing wrong commits (corroborate-tier; entity-qualifier, its one repairer refused) and
+  master carries the un-repaired blocking row — the run-14 conferral must pick a tree and
+  freeze the wrong-commit conjunct against that measured landscape.
+
 - **Four unordered sources on the decision path — the cache was doing the work of determinism
   (2026-08-19/20, tranche-2 M0/M0.5, `scripts/collapse_replay.py` + the M0.5 probes, $0
   deterministic).** The decision-equivalence instrument built at M0 found two ties resolved by

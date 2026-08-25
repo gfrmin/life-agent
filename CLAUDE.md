@@ -277,16 +277,32 @@ invariant set of five harmful rows, so the entity anchor is DONE by its own hard
 reverted). **The finding that constrains every successor: on the rows that matter the gold's
 carrier is TERSE — a table row, a bare line — and the competitor's is DISCURSIVE.**
 Surviving the arc: **D3, the S2 join** (the one replace site r09 left untouched now joins —
-one correct commit recovered, none lost), parked unmerged on `r09d-entity-anchor` pending a
-gate run. **Run 14 is externally blocked: the Anthropic account hit its usage limit, access
-returns 2026-09-01**; the frozen queue is (1) warm the cold rows — 3 of 4 known-wrong rows
-were cold on every pass and coldness is pass-order-dependent — (2) re-price run 14 on the
-warmed record, (3) pre-register the **extract-side entity field**. Hard clause carried
+one correct commit recovered, none lost), parked unmerged pending a gate run (the parked
+chain's head is `r10-entity-key` post-revert, tree-identical to the pre-E1 head). **Run 14 is
+externally blocked: the Anthropic account hit its usage limit, access returns 2026-09-01.**
+The blocked window was spent on $0 checkpoints: **r09e** read the tree of record on run 13's
+record (66/104 readable under the §18.9 warm-through; two known-wrong rows still commit
+wrong, one repaired to withheld, one cold — so run 14 on this tree would fail a zero-wrong
+conjunct as-is, measured not predicted); the **entity-key conferral** took three rulings
+(warm-then-read; the extract-side entity field RETIRES; E1's bar frozen at zero channel
+harms AND ≥1 wrong-commit repair); and **r10 built E1 (exact typed identifier filter at the
+base mint) and REFUSED it by its own frozen bar** — the sweep's marginal read is exactly one
+row, the entity-qualifier row, wrong → correct (conjunct 2 met), but a channel-harm census
+through the DEPLOYED rule found one gold-dropping *inversion* on a row the motivating census
+had misread through its re-implemented carrier mapping, so E1 is reverted from the parked
+tree. **The terse-carrier finding now closes the whole carrier-side family, exact or fuzzy,
+hard or soft: a terse gold carrier omits qualifiers, so any carrier-side requirement damps
+it.** The queue for 2026-09-01: (1) warm the one still-cold named row — the superset-confirm
+row; the warm-through already serves the other three at $0 — (2) run-14 conferral + re-price
+on the warmed record: the conferral must pick the tree and freeze the wrong-commit conjunct,
+since the parked tree measurably carries two standing wrongs and master carries the
+un-repaired blocking row. Hard clause carried
 forward (owner ruling): **no lever ships while it makes a named wrong-commit class worse.**
 Two standing lessons registered: a criterion naming specific rows can go unreadable between
 two passes of the same instrument (14 in / 14 out), so name a class + a bar + the
 cold-row consequence; and **a census must read the deployed rule end-to-end, never
-re-implement the constant it prices** (three instances this arc; newest signature =
+re-implement the constant it prices** (four instances this arc — the fourth, r10's carrier
+mapping, is the first to flip a verdict at a frozen bar; an earlier signature =
 byte-identical numbers before and after a change). Old D3–D4 stay re-scoped as Ask's
 aggregate/thread families. The doc's §14 open questions are a **live empirical ledger**
 (owner's adoption rider): each entry names the evidence that decides it — keep it
