@@ -895,8 +895,8 @@ def lookup_posterior(brain: Brain, observations: list[Observation],
     return _v_marginal(brain, state_id), state_id
 
 
-def action_utilities(weights: list[float], u_bar: dict[str, float],
-                     scoped_eu: float) -> dict[str, list[float]]:
+def action_utilities(weights: list[float], u_bar: dict[str, float], *,
+                     scoped: dict[int, float] | None = None) -> dict[str, list[float]]:
     """Per-action utility vectors over the hypothesis atoms (K candidates + NONE), derived from
     :func:`life_agent.core.decide.u_assert` (the one written atom). `report_j` (one per candidate)
     asserts candidate j — ``u_assert(1)`` at j, ``u_assert(0)`` = u_wrong elsewhere incl NONE — so
@@ -904,10 +904,12 @@ def action_utilities(weights: list[float], u_bar: dict[str, float],
     argmax. hedge asserts the candidate set (misleading only when the truth is NONE); ask_clarify
     is the oracle price (NOT a u_assert outcome); abstain is the gauge zero.
 
-    ``report_scoped`` asserts a TRUE time-scoped claim ("as of <date>, X"). Its truth is about the
-    *record*, not which V_now holds, so its row is **flat** at ``scoped_eu`` — the attested-record
-    EU computed SERVER-SIDE off the recency-off posterior (``expect`` in :func:`_scoped_option`),
-    never a host ``p_attested*u_hedged + …``. (0.0 ⇒ no datable record ⇒ stays below abstain.)"""
+    ``report_scoped_j`` (one per DATED candidate — M5/r15 L-3) asserts a TRUE time-scoped
+    claim ("as of <date>, X_j"). Its truth is about the *record*, not which V_now holds,
+    so each row is **flat** at its ``scoped[j]`` — the attested-record EU computed
+    SERVER-SIDE off the recency-off posterior (``expect`` in :func:`_scoped_options`),
+    never a host ``p_attested*u_hedged + …``. No dated candidate ⇒ NO scoped rows (an
+    empty option set, no EU mass — the censused endpoint)."""
     k = len(weights) - 1
     u_correct = u_assert(1.0, u_bar)
     u_wrong = u_assert(0.0, u_bar)
@@ -917,7 +919,8 @@ def action_utilities(weights: list[float], u_bar: dict[str, float],
     out["hedge"] = [u_bar["u_hedged"]] * k + [u_wrong]
     out["ask_clarify"] = [_ORACLE_P * u_bar["u_correct"] - u_bar["lambda_int"]] * (k + 1)
     out["abstain"] = [u_bar["u_abstain"]] * (k + 1)
-    out["report_scoped"] = [scoped_eu] * (k + 1)
+    for j, eu_j in sorted((scoped or {}).items()):
+        out[f"report_scoped_{j}"] = [eu_j] * (k + 1)
     return out
 
 
@@ -926,14 +929,17 @@ _LOOKUP_ACTIONS: dict[str, Any] = {"type": "finite", "values": [0.0]}
 
 
 def decide(brain: Brain, state_id: str, weights: list[float],
-           u_bar: dict[str, float], scoped_eu: float = 0.0) -> tuple[str, float]:
+           u_bar: dict[str, float], scoped: dict[int, float] | None = None,
+           ) -> tuple[str, float, int | None]:
     """`optimise` over the response actions on the live rho-latent state, committed through
     the ONE act seam (:func:`life_agent.core.seam.commit` — roadmap M0). `report` expands into
     a per-candidate `report_j` so the engine picks the asserted candidate (no host argmax); a
     `report_j` winner maps to action ``report`` (its candidate is the weight-MAP = the weight-sorted
     ``candidates[0]`` the caller renders — a render label, not a second decision).
-    ``scoped_eu`` prices report_scoped (0.0 ⇒ never wins)."""
-    utilities = action_utilities(weights, u_bar, scoped_eu)
+    ``scoped`` prices one ``report_scoped_j`` row per dated candidate (M5/r15 L-3 — the
+    engine picks the scoped value too); a ``report_scoped_j`` winner maps to
+    ``("report_scoped", eu, j)`` so the caller renders THAT candidate's claim."""
+    utilities = action_utilities(weights, u_bar, scoped=scoped)
     preference = {
         "type": "functional_per_action",
         "actions": {name: {"type": "tabular", "values": vec} for name, vec in utilities.items()},
@@ -942,9 +948,13 @@ def decide(brain: Brain, state_id: str, weights: list[float],
                                         actions=_LOOKUP_ACTIONS, preference=preference))
     action, eu = dec.action, dec.eu
     assert eu is not None  # a SkinOptimise commit always carries the engine's EU
-    if isinstance(action, str) and action.startswith("report_") and action != "report_scoped":
+    scoped_j: int | None = None
+    if isinstance(action, str) and action.startswith("report_scoped_"):
+        scoped_j = int(action.rsplit("_", 1)[1])
+        action = "report_scoped"
+    elif isinstance(action, str) and action.startswith("report_"):
         action = "report"  # report_j → report; the asserted value is the weight-MAP candidate
-    return action, eu
+    return action, eu, scoped_j
 
 
 # --- render (deterministic — the render IS the claim set) -------------------------------
@@ -1057,42 +1067,52 @@ def current_u_bar(brain: Brain) -> tuple[dict[str, float], str, str]:
 
 # --- the family, end to end --------------------------------------------------------------
 
-def _scoped_option(brain: Brain, observations: list[Observation],
-                   candidates: list[str], rho_ab: tuple[float, float], *,
-                   u_bar: dict[str, float], state_current: str,
-                   weights_current: list[float], time_indexed: bool,
-                   ) -> tuple[float, float, str | None, str | None]:
-    """The report_scoped inputs (scoped-claims design): the freshest DATED observation gives the
-    scoped value V_s ("most recent record on file") and its as-of date. Returns ``(scoped_eu,
-    p_attested, V_s, as_of)``. ``scoped_eu`` is the attested-record EU computed SERVER-SIDE —
-    ``expect(recency-off posterior, tabular[u_hedged @ V_s, u_wrong_scoped elsewhere])`` =
-    P_attested(V_s)·u_hedged + (1-P_attested(V_s))·u_wrong_scoped — never a host product on a
-    belief value. ``p_attested`` = V_s's recency-off V-marginal (recorded). Both 0.0 / None when
-    no observation carries a date (scoped disabled — the flat row sits below abstain). The attested
-    posterior is the current one when recency was already off (a permanent fact), else a second
-    pass with the time decay removed."""
-    dated = [o for o in observations if o.doc_date]
-    if not dated:
-        return 0.0, 0.0, None, None
-    freshest = max(dated, key=lambda o: o.doc_date or "")  # ISO dates sort lexicographically
+def _scoped_options(brain: Brain, observations: list[Observation],
+                    candidates: list[str], rho_ab: tuple[float, float], *,
+                    u_bar: dict[str, float], state_current: str,
+                    weights_current: list[float], time_indexed: bool,
+                    ) -> dict[int, tuple[float, float, str]]:
+    """The report_scoped inputs (scoped-claims design, per-candidate since M5/r15 L-3):
+    every candidate with a DATED observation gets its own scoped option — the ENGINE
+    picks among them (a ``report_scoped_j`` row each, priced beside the other actions);
+    the host pick of V_s (the freshest dated) DIED. Returns ``{j: (scoped_eu_j,
+    p_attested_j, as_of_j)}``; ``as_of_j`` is candidate j's freshest supporting
+    doc_date. ``scoped_eu_j`` is the attested-record EU computed SERVER-SIDE —
+    ``expect(recency-off posterior, tabular[u_hedged @ j, u_wrong_scoped elsewhere])``
+    — never a host product on a belief value. Empty when no observation carries a date
+    (scoped disabled — an EMPTY option set, no EU mass; the old flat 0.0 row died).
+    The attested posterior is the current one when recency was already off (a
+    permanent fact), else a second pass with the time decay removed."""
     keys = [_candidate_key(c) for c in candidates]
-    idx_vs = keys.index(_candidate_key(freshest.value_raw))
+    dated_by_j: dict[int, str] = {}
+    for o in observations:
+        if not o.doc_date:
+            continue
+        j = keys.index(_candidate_key(o.value_raw))
+        if o.doc_date > dated_by_j.get(j, ""):
+            dated_by_j[j] = o.doc_date
+    if not dated_by_j:
+        return {}
     k = len(candidates)
-    # tabular over K candidates + NONE: u_hedged at the attested value, u_wrong_scoped elsewhere.
-    scoped_tab = {"type": "tabular",
-                  "values": [(u_bar["u_hedged"] if i == idx_vs else u_bar["u_wrong_scoped"])
-                             for i in range(k)] + [u_bar["u_wrong_scoped"]]}
+    sid, weights_attested = state_current, weights_current
+    fresh_sid = None
     if time_indexed:
         attested_obs = [dataclasses.replace(o, time_factor=1.0) for o in observations]
-        weights_attested, sid = lookup_posterior(brain, attested_obs, candidates, rho_ab)
-        try:
-            scoped_eu = brain.expect(sid, function=scoped_tab)
-        finally:
-            brain.destroy_state(sid)
-    else:
-        weights_attested = weights_current
-        scoped_eu = brain.expect(state_current, function=scoped_tab)
-    return scoped_eu, weights_attested[idx_vs], freshest.value_raw, freshest.doc_date
+        weights_attested, fresh_sid = lookup_posterior(brain, attested_obs,
+                                                       candidates, rho_ab)
+        sid = fresh_sid
+    try:
+        out: dict[int, tuple[float, float, str]] = {}
+        for j, as_of in sorted(dated_by_j.items()):
+            scoped_tab = {
+                "type": "tabular",
+                "values": [(u_bar["u_hedged"] if i == j else u_bar["u_wrong_scoped"])
+                           for i in range(k)] + [u_bar["u_wrong_scoped"]]}
+            out[j] = (brain.expect(sid, function=scoped_tab), weights_attested[j], as_of)
+    finally:
+        if fresh_sid is not None:
+            brain.destroy_state(fresh_sid)
+    return out
 
 
 def decide_and_record(root: Path, question: str, construct: str,
@@ -1119,13 +1139,26 @@ def decide_and_record(root: Path, question: str, construct: str,
     candidates = candidates_from(observations)
     weights, state_id = lookup_posterior(b, observations, candidates, rho)
     try:
-        scoped_eu, p_attested, scoped_value, as_of = _scoped_option(
+        scoped_opts = _scoped_options(
             b, observations, candidates, rho,
             u_bar=u_bar, state_current=state_id,
             weights_current=weights, time_indexed=time_indexed)
-        action, eu = decide(b, state_id, weights, u_bar, scoped_eu)
+        action, eu, scoped_j = decide(
+            b, state_id, weights, u_bar,
+            scoped={j: t[0] for j, t in scoped_opts.items()})
     finally:
         b.destroy_state(state_id)
+    # The recorded scoped triple (the deferred upgrade governor's evidence — the true
+    # partial that was available): the CHOSEN row's when the engine picked one, else
+    # the engine-best row's (max scoped_eu_j). None/0.0 when no candidate is dated.
+    best_j = (scoped_j if scoped_j is not None
+              else (max(scoped_opts, key=lambda j: scoped_opts[j][0])
+                    if scoped_opts else None))
+    if best_j is not None:
+        _scoped_eu_j, p_attested, as_of = scoped_opts[best_j]
+        scoped_value: str | None = candidates[best_j]
+    else:
+        p_attested, as_of, scoped_value = 0.0, None, None
 
     # posterior order for rendering: candidates by weight, NONE mass separate
     order = sorted(range(len(candidates)), key=lambda j: weights[j], reverse=True)

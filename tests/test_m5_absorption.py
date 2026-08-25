@@ -264,3 +264,75 @@ def test_ask_once_has_no_dispatch_choice() -> None:
     assert "executor" not in inspect.signature(ask.ask_once).parameters
     src = (_SCRIPTS / "ask.py").read_text()
     assert "--legacy" not in src
+
+
+# --- P-IV (A3): the single-writer invariant, drift-gated ------------------------------ #
+
+def test_record_local_callers_are_exactly_the_two_leaves() -> None:
+    """A3: one recorder, two leaf call sites, no third writer and no second spelling."""
+    hits = []
+    for py in (_SRC).rglob("*.py"):
+        text = py.read_text()
+        if "REC.record_local(" in text or "recorder.record_local(" in text:
+            hits.append(py.relative_to(_SRC).as_posix())
+    assert sorted(hits) == ["core/lookup.py", "core/narrative.py"]
+
+
+# --- P-V (L-3): report_scoped_j — the engine picks the scoped value ------------------- #
+
+def test_scoped_rows_are_per_dated_candidate_and_engine_picked() -> None:
+    """L-3: one report_scoped_j row per dated candidate, engine-priced; the host pick
+    of V_s (freshest dated) DIED — a scripted engine choosing report_scoped_1 must
+    surface candidate 1's value and ITS as-of date, even when candidate 0's record is
+    fresher."""
+    import life_agent.core.lookup as LK
+
+    captured: dict = {}
+
+    class _Brain:
+        def create_state(self, spec):
+            return "s1"
+        def condition(self, sid, *, kernel, observation):
+            return None
+        def marginal(self, sid, **k):
+            return None
+        def expect(self, sid, *, function):
+            # the attested-record EU: candidate 1's row prices higher than 0's
+            vals = function["values"]
+            return 0.9 if vals[1] > vals[0] else 0.2
+        def optimise(self, sid, *, actions, preference):
+            captured["rows"] = sorted(preference["actions"])
+            return "report_scoped_1", 0.9
+        def destroy_state(self, sid):
+            return None
+
+    obs = [
+        LK.Observation(card_n=1, artifact_cache_key="a" * 64, obs_cache_key="o" * 64,
+                       value_raw="OLD-VAL", value_norm="old-val", quote="q1",
+                       authority_class="body", authority=1.0, doc_date="2026-05-01"),
+        LK.Observation(card_n=2, artifact_cache_key="b" * 64, obs_cache_key="p" * 64,
+                       value_raw="NEW-VAL", value_norm="new-val", quote="q2",
+                       authority_class="body", authority=1.0, doc_date="2026-01-01"),
+    ]
+    # candidate order: OLD-VAL is j=0 (fresher record), NEW-VAL is j=1 (staler record)
+    scoped = LK._scoped_options(_Brain(), obs, ["OLD-VAL", "NEW-VAL"], (4.0, 4.0),
+                                u_bar={"u_hedged": 0.5, "u_wrong_scoped": -2.0},
+                                state_current="s1", weights_current=[0.5, 0.4, 0.1],
+                                time_indexed=False)
+    assert set(scoped) == {0, 1}
+    action, _eu, j = LK.decide(_Brain(), "s1", [0.5, 0.4, 0.1],
+                              {"u_correct": 1.0, "u_wrong": -9.0, "u_hedged": 0.5,
+                               "u_abstain": 0.0, "lambda_int": 0.1},
+                              scoped={jj: t[0] for jj, t in scoped.items()})
+    assert "report_scoped_0" in captured["rows"] and "report_scoped_1" in captured["rows"]
+    assert "report_scoped" not in captured["rows"]  # the flat host-picked row died
+    assert (action, j) == ("report_scoped", 1)
+
+
+def test_undated_candidates_have_no_scoped_rows() -> None:
+    """'No dated ⇒ disabled' is an EMPTY option set (no EU mass), not a 0.0 row."""
+    import life_agent.core.lookup as LK
+    rows = LK.action_utilities([0.6, 0.3, 0.1], {"u_correct": 1.0, "u_wrong": -9.0,
+                                                 "u_hedged": 0.5, "u_abstain": 0.0,
+                                                 "lambda_int": 0.1}, scoped={})
+    assert not any(a.startswith("report_scoped") for a in rows)

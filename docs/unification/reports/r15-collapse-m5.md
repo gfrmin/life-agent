@@ -221,6 +221,37 @@ stays intact); **any flip ⇒ the residue is real, and the fix (the grow re-ask 
 after reports too) lands with its cassette-miss fixture cost counted under
 DIR-E12.** P2's unservable-count prediction transfers to the flip>0 branch only.
 
+**A3 — P-IV re-scoped: the single-writer invariant is already satisfied in substance;
+the residual move would be churn without semantics.** Verified against the live tree
+before any P-IV code: every decision has exactly ONE writer — the full regime's typed
+decisions ride the M2 poster (`ask_client.post_decision`, the only writer on that
+path; M2's 7.4 gate verified one-write-per-decision); the full regime's route-None
+narrative and both terminals-regime families write through `REC.record_local`, whose
+callers are exactly the two family leaves (one call site each — the "two writes" of
+the census moved into the one recorder at M2 as §2.2's fate row required). Hoisting
+those two calls further (into the bridge endpoint and the driver's down-branch) would
+re-route the same two records through more plumbing for byte-identical output — the
+kind of move r05/r10 taught us to refuse. P-IV lands as: (i) this amendment, (ii) a
+drift gate pinning `record_local`'s caller set to exactly the two leaves, so a third
+writer or a second spelling fails loud. r13 amendment 5's debt is closed by
+declaration + gate, not by relocation.
+
+**A4 — DIR-L3's equality clause named the wrong oracle layer; the whole lookup-leaf
+class is wire-unservable.** DIR-L3 froze "on single-dated-value questions the decision
+is equal by construction" — true of DECISIONS, but the 7.2 oracle matches the exact
+WIRE, and L-3 changes every lookup decision's ``optimise`` request body (the flat
+``report_scoped`` row died — undated questions lose a row; dated questions carry
+``report_scoped_j`` rows instead; ``expect`` calls go per-candidate). The cassette
+cannot serve a recorded reply to a request that was never asked, so ALL 102 replayable
+B-lookup fixtures become the same named wire-shape class as DIR-E12 (P-V read: 165
+raises = 63 DIR-E12 + 102 DIR-L3-wire, every one ``CassetteMissError``, ZERO decision
+divergences among the 149 servable). The oracle for M5's final tree is therefore: the
+149 servable fixtures (posters, narrative, seam, snapshots) + the unit suite's
+behavioural pins + run 17's priced conjuncts; the post-M5 re-record restores the full
+set. A registered request-transform that would serve old replies to new requests was
+considered and REFUSED — a reply recorded for a different action set is not evidence
+about this one.
+
 ## Deviations
 
 Disclosure items in the final report; rollback = revert the branch (one PR). After
