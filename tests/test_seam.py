@@ -45,9 +45,9 @@ class _CannedBrain:
 # --- gates: declared observations decide, the engine is not consulted --------------------
 
 def test_gate_short_circuits_to_abstain() -> None:
-    d = S.commit(None, gates=(S.GATE_WEAK_RETRIEVAL,))
+    d = S.commit(None, gates=(S.GATE_EXECUTOR_DOWN,))
     assert d.action == "abstain"
-    assert d.gate == S.GATE_WEAK_RETRIEVAL
+    assert d.gate == S.GATE_EXECUTOR_DOWN
     assert d.eu is None and d.view is None
 
 
@@ -146,34 +146,6 @@ def test_only_the_seam_posts_decide() -> None:
 
 
 # --- M3: the live consult re-point (DaemonDecide.live) -----------------------------------
-
-def test_daemon_decide_with_live_commits_the_consult_view() -> None:
-    payload = {"candidates": ["a"], "u_bar": {}}
-    reply = {"effector": "report", "value": "a", "eu": 1.5}
-    seen: list[tuple[dict, dict]] = []
-
-    def live(p: dict, r: dict) -> tuple[dict, str | None]:
-        seen.append((p, r))
-        return ({"effector": "abstain", "value": None, "eu": None}, None)
-
-    d = S.commit(S.DaemonDecide(post=lambda u, p: reply, daemon="http://d:1",
-                                payload=payload, live=live))
-    assert seen == [(payload, reply)]  # consulted with the payload + the daemon's reply
-    assert d.action == "abstain"
-    assert d.eu is None
-    assert d.gate is None
-    assert d.view == {"effector": "abstain", "value": None, "eu": None}
-
-
-def test_daemon_decide_live_gate_names_engine_down() -> None:
-    def live(p: dict, r: dict) -> tuple[dict, str | None]:
-        return ({"effector": "abstain", "value": None}, S.GATE_ENGINE_DOWN)
-
-    d = S.commit(S.DaemonDecide(post=lambda u, p: {"effector": "report"},
-                                daemon="http://d:1", payload={}, live=live))
-    assert d.action == "abstain"
-    assert d.gate == S.GATE_ENGINE_DOWN
-
 
 def test_daemon_decide_without_live_is_unchanged() -> None:
     d = S.commit(S.DaemonDecide(post=lambda u, p: {"effector": "hedge", "eu": 0.25},

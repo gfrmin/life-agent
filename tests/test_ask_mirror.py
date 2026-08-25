@@ -16,9 +16,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
 import ask
 
-from life_agent.core import config as _CFG
-from life_agent.membrane import coarse as _CRS
-
 
 def test_answer_via_executor_wires_the_shared_shadow_mirror(monkeypatch: Any) -> None:
     monkeypatch.setattr(ask, "_executor_ready", lambda: True)
@@ -53,9 +50,19 @@ def test_answer_via_executor_wires_the_shared_shadow_mirror(monkeypatch: Any) ->
     assert captured["post"] is sentinel_wrapped  # decide_via_loop gets the WRAPPED post back
 
 
-def test_answer_via_executor_flag_off_passes_no_live_consult(monkeypatch: Any) -> None:
+
+
+def test_answer_via_executor_always_shadow_wraps(monkeypatch: Any) -> None:
+    """M5 (r15): the M3 live lane died — the executor path always mirrors through
+    the shadow-wrapped transport and decide_via_loop takes no consult at all."""
     monkeypatch.setattr(ask, "_executor_ready", lambda: True)
-    monkeypatch.setattr(_CFG, "membrane_live", lambda: False)
+    wrapped_calls: list[str] = []
+
+    def fake_wrap(post: Any, bridge: str, question_id: str) -> Any:
+        wrapped_calls.append(question_id)
+        return post
+
+    monkeypatch.setattr(ask.AC.SM, "shadow_wrapped_post", fake_wrap)
     captured: dict[str, Any] = {}
 
     def fake_decide_via_loop(question: str, k: int, **kwargs: Any) -> dict[str, Any]:
@@ -63,48 +70,7 @@ def test_answer_via_executor_flag_off_passes_no_live_consult(monkeypatch: Any) -
         return {"effector": "miss", "asserted": [], "candidates": [], "credences": [],
                 "p_none": None, "eu": None, "n_obs": 0, "hits": [], "route": None}
 
-    monkeypatch.setattr(ask.EX, "decide_via_loop", fake_decide_via_loop)
+    monkeypatch.setattr(ask.AC.EX, "decide_via_loop", fake_decide_via_loop)
     ask.answer_via_executor("my passport?", 20)
-    assert captured["live"] is None  # today's behaviour — the daemon decides
-
-
-def test_answer_via_executor_flag_on_wires_the_live_consult_and_skips_the_mirror(
-    monkeypatch: Any,
-) -> None:
-    # M3 wiring pin (review finding): under the flag, decide_via_loop must get the
-    # coarse.live_decide consult AND the BARE transport — the decide mirror stays off
-    # (the live path records its own enact tick; a wrapped post would consult the one
-    # engine twice per tick).
-    monkeypatch.setattr(ask, "_executor_ready", lambda: True)
-    monkeypatch.setattr(_CFG, "membrane_live", lambda: True)
-
-    def sentinel_consult(payload: dict[str, Any], dec: dict[str, Any]) -> Any:
-        return (dec, None)
-
-    live_calls: list[tuple[str, str]] = []
-
-    def fake_live_decide(bridge: str, question_id: str, **kw: Any) -> Any:
-        live_calls.append((bridge, question_id))
-        return sentinel_consult
-
-    monkeypatch.setattr(_CRS, "live_decide", fake_live_decide)
-
-    def forbidden_wrap(*a: Any, **kw: Any) -> Any:
-        raise AssertionError("shadow_wrapped_post must not be constructed under the flag")
-
-    monkeypatch.setattr(ask.SM, "shadow_wrapped_post", forbidden_wrap)
-
-    captured: dict[str, Any] = {}
-
-    def fake_decide_via_loop(question: str, k: int, **kwargs: Any) -> dict[str, Any]:
-        captured.update(kwargs)
-        return {"effector": "miss", "asserted": [], "candidates": [], "credences": [],
-                "p_none": None, "eu": None, "n_obs": 0, "hits": [], "route": None}
-
-    monkeypatch.setattr(ask.EX, "decide_via_loop", fake_decide_via_loop)
-    ask.answer_via_executor("my passport?", 20)
-
-    assert live_calls == [(ask.EXECUTOR_BRIDGE,
-                           hashlib.sha256(b"my passport?").hexdigest()[:16])]
-    assert captured["live"] is sentinel_consult
-    assert captured["post"] is ask._http_post  # the bare transport — no mirror wrap
+    assert wrapped_calls, "the shadow mirror must always be constructed"
+    assert "live" not in captured

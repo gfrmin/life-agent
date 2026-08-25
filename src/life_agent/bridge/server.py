@@ -829,37 +829,6 @@ def _gate_support(deps: BridgeDeps, p: Payload) -> Payload:
     return {"ok": True}
 
 
-def _decide_live(deps: BridgeDeps, p: Payload) -> Payload:
-    """M3 — the coarse menu live: the executor (flag-gated on LIFE_AGENT_MEMBRANE_LIVE)
-    posts each `/decide` request/reply pair here SYNCHRONOUSLY and enacts the mapped view
-    this returns; the engine's coarse choice is the act. Unlike every `-support` feed this
-    IS on the answer path — but it still never raises past itself: a disabled membrane, a
-    dead engine, a timeout, or a shadow-side error all return a named non-ok reply, which
-    the host maps to its DECLARED engine-down abstain (seam.GATE_ENGINE_DOWN)."""
-    if deps.membrane is None:
-        return {"ok": False, "disabled": True}
-    question_id = _req_str(p, "question_id")
-    payload = p.get("payload")
-    dec = p.get("dec")
-    if not isinstance(payload, dict):
-        raise BridgeError(400, "field 'payload' must be a JSON object")
-    if not isinstance(dec, dict):
-        raise BridgeError(400, "field 'dec' must be a JSON object")
-    try:
-        out = deps.membrane.decide_live(question_id, payload, dec)
-    except Exception:
-        out = None
-    if out is None:
-        return {"ok": False, "down": True}
-    return {"ok": True, **out}
-
-
-# Terminal brain actions (DEC.LOOKUP_ACTION_ORDER) each map to one logged lookup decision; the
-# steer `gather` is enacted by the body internally (re-extract + re-decide) and is never a
-# terminal decision, so /log_decision rejects it.
-_TERMINAL_ACTIONS: frozenset[str] = frozenset(DEC.LOOKUP_ACTION_ORDER)
-
-
 def _decision_id(question: str, retrieval_keys: list[str],
                  credences: list[float], p_none: float) -> str:
     """A stable, content-addressed id for one answer-brain decision: the question, the
@@ -906,6 +875,12 @@ def _regime_and_policy(decision: Payload) -> tuple[str, str, tuple[str, ...]]:
                 400, f"decision.{name} {raw!r} is not one of {sorted(vocabulary)}")
         values[name] = str(raw)
     return values["regime"], values["policy"], tuple(sorted(defaulted))
+
+
+# Terminal brain actions (DEC.LOOKUP_ACTION_ORDER) each map to one logged lookup decision; the
+# steer `gather` is enacted by the body internally (re-extract + re-decide) and is never a
+# terminal decision, so /log_decision rejects it.
+_TERMINAL_ACTIONS: frozenset[str] = frozenset(DEC.LOOKUP_ACTION_ORDER)
 
 
 def _log_decision(deps: BridgeDeps, p: Payload) -> Payload:
@@ -1045,7 +1020,6 @@ _POST: dict[str, Handler] = {
     "/log_gather": _log_gather,
     "/decide-support": _decide_support,
     "/gate-support": _gate_support,
-    "/decide-live": _decide_live,
 }
 _GET: dict[str, Handler] = {"/utility": _utility, "/grow_menu": _grow_menu}
 
@@ -1233,7 +1207,6 @@ def main() -> None:
     print("  POST /log_decision /log_reaction   (answer-brain verdict-emission seam)")
     print("  POST /decide-support   (membrane shadow per-tick feed; no-op unless enabled)")
     print("  POST /gate-support     (membrane shadow seam-gate feed; no-op unless enabled)")
-    print("  POST /decide-live      (M3 coarse menu live; named non-ok unless enabled)")
     print("  GET  /utility /ready")
     try:
         server.serve_forever()

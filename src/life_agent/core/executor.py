@@ -179,7 +179,6 @@ def _obj(post: Post, url: str, payload: dict[str, Any]) -> dict[str, Any]:
 
 def decide_via_loop(question: str, k: int, *, bridge: str, daemon: str, post: Post, get: Get,
                     transforms: list[dict[str, Any]] | None = None,
-                    live: SEAM.LiveFn | None = None,
                     curves: Curves = None) -> View:
     """Drive one question through the live loop: route, then the daemon-priced pass.
 
@@ -193,11 +192,7 @@ def decide_via_loop(question: str, k: int, *, bridge: str, daemon: str, post: Po
     the outcome (``/log_gather`` — the structure-observe stream). There is no body-side
     cascade and no ``p_none >= leader`` gate: P(NONE) enters only as a bucketed *sensor*
     (E-13/E-14 died at M1, and ``LIFE_AGENT_GROW_LANE`` retired with them — this is the lane).
-
-    ``live`` (M3 — the coarse menu live, flag-gated at the caller): the seam consults the
-    proplang engine on every decide tick and the loop enacts the ENGINE's coarse act
-    (abstain/gather/ask/respond, mapped by :mod:`life_agent.membrane.coarse`); ``None``
-    (the default) is the credence daemon's decision, byte-for-byte today's behaviour."""
+    The M3 membrane live consult died at M5 (Q8): the daemon's decision is the act."""
     transforms = DEFAULT_TRANSFORMS if transforms is None else transforms
     route = post(f"{bridge}/route", {"question": question})
     if route is None:
@@ -209,13 +204,12 @@ def decide_via_loop(question: str, k: int, *, bridge: str, daemon: str, post: Po
                 **_UNPRICED_ATTRIBUTION, "edge_events": [], "spend_usd": 0.0}
     return run_pass(question, k, route, bridge=bridge, daemon=daemon, post=post, get=get,
                     rerank=False, expand=False, transforms=transforms,
-                    live=live, curves=curves)
+                    curves=curves)
 
 
 def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemon: str,
              post: Post, get: Get, rerank: bool, expand: bool = False,
              transforms: list[dict[str, Any]] | None = None,
-             live: SEAM.LiveFn | None = None,
              curves: Curves = None) -> View:
     """One retrieve→probe→extract→decide pass at a given recall breadth, enacting each
     scheduled transform the daemon returns. The daemon also prices the grow menu (recall
@@ -384,12 +378,10 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
         if sensors is not None and menu is not None:
             payload["sensors"] = sensors
             payload["grow"] = menu
-        # committed through the ONE act seam (roadmap M0). With `live` (M3, flag-gated)
-        # the seam consults the proplang engine and the view is the mapped enactment;
-        # without it the reply view is the daemon's decision verbatim — either way the
-        # loop below reads one view shape and is unchanged.
-        dec = SEAM.commit(SEAM.DaemonDecide(post=post, daemon=daemon, payload=payload,
-                                            live=live)).view
+        # committed through the ONE act seam (roadmap M0); the reply view is the
+        # daemon's decision verbatim.
+        dec = SEAM.commit(SEAM.DaemonDecide(post=post, daemon=daemon,
+                                            payload=payload)).view
         assert dec is not None  # a DaemonDecide commit always carries the reply view
         return dec
 

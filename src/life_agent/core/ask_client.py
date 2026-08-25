@@ -29,7 +29,6 @@ from life_agent.core import lookup as LK
 from life_agent.core import recorder as REC
 from life_agent.core import seam as SEAM
 from life_agent.core import shadow_mirror as SM
-from life_agent.membrane import coarse as CRS
 
 BRIDGE = os.environ.get("LIFE_AGENT_BRIDGE_URL", "http://127.0.0.1:8798")
 DAEMON = os.environ.get("ANSWER_BRAIN_URL", "http://127.0.0.1:8799")
@@ -198,15 +197,10 @@ def drive(question: str, k: int = 20, *, bridge: str | None = None,
     # The ONE question_id derivation — the same key /log_decision stamps on the decision,
     # so a mirrored decide tick and its decision join.
     question_id = DEC.question_id(question)
-    if CFG.membrane_live():
-        # M3: the live consult records its own enact tick — the decide mirror stays off
-        # (one engine, one consult per tick).
-        live, wrapped = CRS.live_decide(bridge, question_id), post
-    else:
-        live, wrapped = None, SM.shadow_wrapped_post(post, bridge, question_id)
+    wrapped = SM.shadow_wrapped_post(post, bridge, question_id)
     transforms, curves = _menu(hold_out_question_id)
     view = EX.decide_via_loop(question, k, bridge=bridge, daemon=daemon,
-                              post=wrapped, get=get, live=live,
+                              post=wrapped, get=get,
                               transforms=transforms, curves=curves)
     return DriveResult(view, post_decision(post, bridge, question, view, run_id=run_id))
 

@@ -511,8 +511,8 @@ def gate_advisory(records: list[dict[str, Any]], form: str) -> dict[str, Any]:
 
 
 ENACT_NOTE = (
-    "Live enactments (kind: enact) are M3 ticks where the ENGINE's coarse act WAS the "
-    "committed act (flag LIFE_AGENT_MEMBRANE_LIVE=1): action = the engine's affordance, "
+    "Live enactments (kind: enact) are HISTORICAL M3-lane ticks (the lane died at M5, "
+    "r15 — nothing produces them any more): action = the engine's affordance, "
     "real_effector = the effector the host enacted under the named transitional rules "
     "(respond -> host-MAP value; gather -> cheapest unapplied voi transform, exhausted "
     "-> restricted argmax at the engine's own p1), daemon_effector = what credence "
@@ -1551,8 +1551,7 @@ def _md_gates(form: str, g: dict[str, Any]) -> list[str]:
 def _md_enactment(form: str, e: dict[str, Any]) -> list[str]:
     lines = [f"### {form}", ""]
     if not e["n"]:
-        lines += ["_No enact rows: the live flag (LIFE_AGENT_MEMBRANE_LIVE) has not "
-                  "produced a tick in this log._", ""]
+        lines += ["_No enact rows (the M3 live lane died at M5 — historical logs only)._", ""]
         return lines
     lines.append(f"- live enactments: {e['n']}")
     by_action = ", ".join(f"{a}: {n}" for a, n in sorted(e["by_engine_action"].items()))

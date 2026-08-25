@@ -19,7 +19,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from life_agent.core import seam as SEAM
 from life_agent.membrane import coarse as CO
 
 # The same hand-computable utility the report tests use: eu_by_action(p1) =
@@ -192,53 +191,3 @@ def test_gather_exhausted_without_u_bar_abstains_named() -> None:
 # --- live_decide: the seam's consult closure ---------------------------------------------
 
 
-def test_live_decide_posts_the_tick_and_returns_the_bridge_view() -> None:
-    posts: list[tuple[str, dict[str, Any]]] = []
-    mapped = _dec(effector="ask_clarify")
-
-    def post(url: str, body: dict[str, Any]) -> dict[str, Any]:
-        posts.append((url, body))
-        return {"ok": True, "dec": mapped, "action": "ask", "degraded": None}
-
-    consult = CO.live_decide("http://b:1", "q-mirror-id", post=post)
-    payload, reply = _payload(), _dec(effector="abstain")
-    view, gate = consult(payload, reply)
-    assert view == mapped
-    assert gate is None
-    (url, body), = posts
-    assert url == "http://b:1/decide-live"
-    assert body == {"question_id": "q-mirror-id", "payload": payload, "dec": reply}
-
-
-def test_live_decide_down_bridge_is_the_declared_abstain() -> None:
-    def post(url: str, body: dict[str, Any]) -> dict[str, Any]:
-        raise OSError("connection refused")
-
-    consult = CO.live_decide("http://b:1", "q-mirror-id", post=post)
-    reply = _dec(effector="report", value="alpha", credences=[0.9, 0.1])
-    view, gate = consult(_payload(), reply)
-    assert view["effector"] == "abstain"
-    assert view["value"] is None
-    assert view["credences"] == [0.9, 0.1]  # the posterior survives for the footer
-    assert gate == SEAM.GATE_ENGINE_DOWN
-
-
-def test_live_decide_not_ok_reply_is_the_declared_abstain() -> None:
-    for resp in ({"ok": False, "down": True}, {"ok": False, "disabled": True},
-                 {"ok": True, "dec": "not-a-dict"}, None):
-        consult = CO.live_decide(
-            "http://b:1", "q-mirror-id", post=lambda u, b, _r=resp: _r)
-        view, gate = consult(_payload(), _dec(effector="report", value="alpha"))
-        assert view["effector"] == "abstain", resp
-        assert gate == SEAM.GATE_ENGINE_DOWN, resp
-
-
-def test_default_transport_is_the_short_lived_live_post() -> None:
-    # the closure's default transport is coarse.py's own poster with its OWN timeout —
-    # never a real-leg 300s poster (the consult IS on the answer path; a wedged bridge
-    # must cost a bounded wait, not five minutes).
-    import inspect
-
-    sig = inspect.signature(CO.live_decide)
-    assert sig.parameters["post"].default is CO._live_post
-    assert CO.LIVE_TIMEOUT_S < 300.0

@@ -1083,9 +1083,8 @@ def gate_paired_outcomes(conn, questions: list[dict], k: int, ask,
                          typed_views: list | None = None,
                          loo: bool = False) -> list:
     """Run the typed policy over the corpus and pair it against the baseline arm per
-    question. The typed pass is the production answer path with the **gather-augmented**
-    lookup loop (gather=True → re-retrieve corroboration on the top candidates, then
-    re-weight by recency + whose-document before deciding) — or, with
+    question. The typed pass is the in-process production answer path (the
+    gather-augmented loop died at M5, r15) — or, with
     ``typed_arm="executor"``, the executor surface (ask.answer_via_executor: the
     daemon/bridge loop the priced transform menu lives on — the ONLY arm that can carry
     the deliberate edge; a mid-run down stack VOIDS the reading loudly, and
@@ -1137,7 +1136,7 @@ def gate_paired_outcomes(conn, questions: list[dict], k: int, ask,
                 if typed_views is not None:
                     typed_views.append((q, view))
             else:
-                typed_text, _, _ = ask.answer(conn, q["question"], k, gather=True)
+                typed_text, _, _ = ask.answer(conn, q["question"], k)
                 lk, nv = ask.LOOKUP_LAST, ask.NARRATIVE_LAST  # capture before next call
                 typed = _typed_response(lk, nv, typed_text, q, ask.ABSTENTION)
             if replay is not None:

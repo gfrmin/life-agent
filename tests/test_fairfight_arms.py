@@ -413,46 +413,6 @@ def test_ask_answer_counts_one_retrieve_pass_and_zero_gather_tiers_by_default(
     assert ask.EFFORT_LAST == {"retrieve_passes": 1, "gather_tiers": 0}
 
 
-def test_ask_answer_counts_gather_tier_fired_when_gather_true(monkeypatch) -> None:
-    monkeypatch.setattr(ask, "_pkm_root", lambda: Path("/fake/root"))
-    monkeypatch.setattr(ask, "_retrieve_set", lambda conn, q, k: [_weak_floor_hit()])
-    monkeypatch.setattr(ask.GA, "gather_answer", lambda *a, **k: None)
-    monkeypatch.setattr(ask.SYN, "synthesize",
-                        lambda *a, **k: ("raw prose [1]", "sk", False))
-    ask.answer(conn=None, question="what is the ID?", k=8, expand=False, gather=True)
-    assert ask.EFFORT_LAST == {"retrieve_passes": 1, "gather_tiers": 1}
-
-
-def test_ask_answer_gather_tier_stays_zero_when_families_off(monkeypatch) -> None:
-    # families=False (the monolithic instrument) never reaches the `if gather:` line at
-    # all, even when gather=True is passed — 0 is a true fact here, not a placeholder.
-    monkeypatch.setattr(ask, "_pkm_root", lambda: Path("/fake/root"))
-    monkeypatch.setattr(ask, "_retrieve_set", lambda conn, q, k: [_weak_floor_hit()])
-    monkeypatch.setattr(ask.GA, "gather_answer",
-                        lambda *a, **k: (_ for _ in ()).throw(
-                            AssertionError("gather must not run when families=False")))
-    monkeypatch.setattr(ask.SYN, "synthesize",
-                        lambda *a, **k: ("raw prose [1]", "sk", False))
-    ask.answer(conn=None, question="what is the ID?", k=8, expand=False,
-              gather=True, families=False)
-    assert ask.EFFORT_LAST == {"retrieve_passes": 1, "gather_tiers": 0}
-
-
-def test_ask_answer_effort_last_resets_between_calls(monkeypatch) -> None:
-    monkeypatch.setattr(ask, "_pkm_root", lambda: Path("/fake/root"))
-    monkeypatch.setattr(ask, "_retrieve_set", lambda conn, q, k: [_weak_floor_hit()])
-    monkeypatch.setattr(ask.GA, "gather_answer", lambda *a, **k: None)
-    monkeypatch.setattr(ask.SYN, "synthesize",
-                        lambda *a, **k: ("raw prose [1]", "sk", False))
-    ask.answer(conn=None, question="q1", k=8, expand=False, gather=True)
-    assert ask.EFFORT_LAST["gather_tiers"] == 1
-    ask.answer(conn=None, question="q2", k=8, expand=False)  # gather=False this time
-    assert ask.EFFORT_LAST == {"retrieve_passes": 1, "gather_tiers": 0}
-
-
-# --- synthesis arm --------------------------------------------------------------------------
-
-
 def test_answer_synthesis_calls_ask_answer_with_no_extra_flags(monkeypatch) -> None:
     conn = _FakeConn()
     captured: dict = {}

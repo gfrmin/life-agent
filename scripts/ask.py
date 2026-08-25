@@ -51,14 +51,11 @@ import life_agent.core.decisions as DEC
 import life_agent.core.derivations as D
 import life_agent.core.executor as EX
 import life_agent.core.expansion as EXP
-import life_agent.core.gather as GA
 import life_agent.core.lookup as LK
 import life_agent.core.narrative as N
 import life_agent.core.outcomes as O
 import life_agent.core.probes as P
 import life_agent.core.reactions as R
-import life_agent.core.seam as SEAM
-import life_agent.core.shadow_mirror as SM
 import life_agent.core.subject as S
 import life_agent.core.synthesis as SYN
 import life_agent.core.temporal as T
@@ -77,11 +74,11 @@ _retrieve_set = retrieve_set
 
 DEFAULT_K = 8  # matches phase1_answer.py's synthesis-context default
 
-# Abstention floor (§reliability): refuse to synthesise when retrieval is too weak, rather than
-# confabulate from topically-adjacent-but-wrong chunks. Conservative defaults (fire only on
-# genuinely weak retrieval); tune from the eval BM25 score distribution via these env vars.
-WEAK_SCORE_FLOOR = float(os.environ.get("LIFE_AGENT_SCORE_FLOOR", "4.0"))
-MIN_STRONG_HITS = int(os.environ.get("LIFE_AGENT_MIN_HITS", "1"))
+# The synthesis path's frozen decline string. HISTORICAL since M5 (r15): B-4's
+# weak-retrieval pre-emption died (S-1 split — weakness is belief, the ranking
+# withholds by EU), so nothing PRODUCES this text any more; it stays because the
+# graders (scripts/fairfight/grading.py, scripts/run_eval.py) classify RECORDED
+# answers by exact match against it, and the records are append-only.
 ABSTENTION = (
     "I don't have a strong enough source in your corpus to answer that confidently — retrieval "
     "surfaced nothing above the relevance floor. I'd rather say so than guess; the weak matches "
@@ -229,9 +226,9 @@ STAGES_LAST: dict[str, str] = {}
 # already knows the count (never a new probe, never a guess). ``answer()`` populates both
 # keys below every call it reaches retrieval (``retrieve_passes`` — always exactly 1: this
 # driver retrieves once per question, even under ``rerank=True``, which re-orders an
-# over-fetched pool rather than re-querying) and ``gather_tiers`` (1 iff the gather-
-# augmented lookup loop was invoked this call, 0 otherwise — the loop's OWN internal
-# per-candidate re-retrieval rounds are opaque from here; see gather.py). Keys are present
+# over-fetched pool rather than re-querying) and ``gather_tiers`` (constant 0 since M5:
+# the gather-augmented loop died with core/gather.py — the key survives so the
+# raw-capture record shape is stable across the deletion). Keys are present
 # (0 or more) whenever ``answer()`` runs; ``answer_via_executor()`` resets this to {}
 # (empty — genuinely absent, not a guessed 0) because the daemon's internal retrieve/grow
 # rounds are not observable in the ``View`` it returns, and ``core/executor.py`` must not
@@ -625,12 +622,6 @@ def retrieve(conn: duckdb.DuckDBPyConnection, question: str,
     return _cards_from_set(_retrieve_set(conn, question, k))
 
 
-def retrieval_is_weak(scores: dict[int, float], *, floor: float, min_hits: int) -> bool:
-    """Pure: True when fewer than ``min_hits`` retrieved chunks cleared ``floor``. Empty scores
-    (zero retrieval) are weak by definition. The confabulation guard for the synthesis step."""
-    return sum(1 for s in scores.values() if s >= floor) < min_hits
-
-
 def _typed_lookup_applies(lk: LK.LookupResult | None) -> TypeGuard[LK.LookupResult]:
     """The routing criterion (§9 no-hard-zeros): the lookup family answered iff it returned a
     result. It returns None in exactly two cases — the question was not classified as a typed
@@ -646,7 +637,6 @@ def answer(conn: duckdb.DuckDBPyConnection, question: str,
            k: int, *, expand: bool = True,
            no_cache: bool = False,
            families: bool = True,
-           gather: bool = False,
            rerank: bool = False,
            since: _date | None = None, until: _date | None = None,
            recent: bool = False) -> tuple[str, list[C.SourceCard], dict[int, float]]:
@@ -664,12 +654,6 @@ def answer(conn: duckdb.DuckDBPyConnection, question: str,
     bayesian-foundations §8): skip the typed lookup route AND the narrative scorer, so the
     raw synthesize prose is returned — the pre-Bayesian answer the gate weighs the typed
     families against. Default ``True`` preserves the production path exactly.
-
-    ``gather=True`` runs the lookup route through the **gather-augmented loop**
-    (:func:`life_agent.core.gather.gather_answer`): re-retrieve corroboration on the top
-    candidates, then re-weight by recency + whose-document before deciding. Default
-    ``False`` keeps the single-pass production path; the adoption gate turns it on for the
-    typed arm to measure it.
 
     ``rerank=True`` over-fetches a wide lexical pool and lets a listwise reranker
     (:func:`_rerank_hits`) pick the top-k — the recall lever for golds BM25 buried below
@@ -766,21 +750,9 @@ def answer(conn: duckdb.DuckDBPyConnection, question: str,
     pairs = _cards_from_set(hits, card_dates)
     cards = [c for c, _ in pairs]
     scores = {c.n: s for c, s in pairs}
-    # Abstain on weak retrieval (subsumes the zero-hit case) unless the owner profile can answer
-    # an identity question on its own. The weakness is a DECLARED observation into the one act
-    # seam (roadmap M0) — the seam chooses abstain and this host obeys the returned act; the
-    # fork is data at the seam, not an undeclared refusal here. Returns the weak cards so the
-    # dogfood loop sees the misses. No synthesize derivation is recorded for an abstention —
-    # it is a refusal, not an answer.
-    if retrieval_is_weak(scores, floor=WEAK_SCORE_FLOOR, min_hits=MIN_STRONG_HITS) and not profile:
-        gated = SEAM.commit(None, gates=(SEAM.GATE_WEAK_RETRIEVAL,))
-        # M2 advisory: the pre-emption itself is ledger data — mirrored to the shadow
-        # (fail-open, off the answer path) so the register can say how often the host
-        # abstained before any engine saw the question, and what the engine would have done.
-        SM.mirror_gate(EXECUTOR_BRIDGE, DEC.question_id(question), SEAM.GATE_WEAK_RETRIEVAL)
-        if gated.action == "abstain":
-            return (ABSTENTION, cards, scores)
-
+    # B-4 died at M5 (S-1 split, r15): weak retrieval is BELIEF — few/weak observations
+    # withhold by EU inside the ranking (typed) or the per-claim inclusion (narrative),
+    # never by a host threshold pre-empting the ranking.
     # The lookup family (Ask v0, foundations §4): typed point-fact questions take the
     # Bayesian path — grounded per-hit observations → tempered mixture posterior → EU
     # response under the utility posterior — and its decision IS the answer. Routed
@@ -789,31 +761,20 @@ def answer(conn: duckdb.DuckDBPyConnection, question: str,
     # NAMED (interaction contract), never silent.
     if families and root is not None:
         try:
-            if gather:
-                # the gather-augmented loop projects its OWN covariates over the
-                # gathered union (recency + whose-document) — it does not reuse the
-                # baseline covariates computed above.
-                # One gather-augmented pass is FIRED here (the attempt, matching "rounds
-                # fired" — not "rounds that grounded a decision"); gather.py's own internal
-                # per-candidate re-retrieval count is opaque from this seam.
-                EFFORT_LAST["gather_tiers"] = 1
-                lk = GA.gather_answer(conn, root, question, hits, profile=profile,
-                                      owner_scoped=owner_question(question))
-            else:
-                # §4.1 covariates, projected read-side and carried OUTSIDE the hit
-                # dicts (the retrieval-set bytes — and every key hashed from them —
-                # stay untouched): the owner-filter partition states from above, and
-                # the doc_date projection (None = projected but undated/underived).
-                hit_keys = list(dict.fromkeys(h["artifact_cache_key"] for h in hits))
-                date_of: dict[str, str | None] = {
-                    d.artifact_cache_key:
-                        (d.date.isoformat() if d.date is not None else None)
-                    for d in T.project_dates(conn, root, hit_keys,
-                                             caller="ask.lookup")}
-                cov = LK.HitCovariates(subject_state=subject_state_of,
-                                       doc_date=date_of)
-                lk = LK.lookup_answer(root, question, hits, covariates=cov,
-                                      scope=INTENT_LAST or "unscoped")
+            # §4.1 covariates, projected read-side and carried OUTSIDE the hit
+            # dicts (the retrieval-set bytes — and every key hashed from them —
+            # stay untouched): the owner-filter partition states from above, and
+            # the doc_date projection (None = projected but undated/underived).
+            hit_keys = list(dict.fromkeys(h["artifact_cache_key"] for h in hits))
+            date_of: dict[str, str | None] = {
+                d.artifact_cache_key:
+                    (d.date.isoformat() if d.date is not None else None)
+                for d in T.project_dates(conn, root, hit_keys,
+                                         caller="ask.lookup")}
+            cov = LK.HitCovariates(subject_state=subject_state_of,
+                                   doc_date=date_of)
+            lk = LK.lookup_answer(root, question, hits, covariates=cov,
+                                  scope=INTENT_LAST or "unscoped")
         except Exception as e:  # fail-open by contract, reason printed
             print(LK.GRAMMAR["fallthrough"].format(reason=f"failed: {e}"))
             lk = None

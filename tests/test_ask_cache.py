@@ -9,7 +9,6 @@ digest. No live catalogue, no API.
 """
 from __future__ import annotations
 
-import json
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -22,7 +21,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 import ask
 
 from life_agent import owner
-from pkm.cache import meta_file
 
 HIT = {"artifact_cache_key": "1" * 64, "chunk_text": "salary is 100 [doc]",
        "score": 9.0, "origin": "/data/contract.pdf"}
@@ -132,21 +130,6 @@ def test_changed_evidence_invalidates_synthesis(h: Harness) -> None:
 
 # --- abstention -------------------------------------------------------------- #
 
-def test_abstention_records_no_synthesis_derivation(h: Harness, tmp_path: Path) -> None:
-    h.hits = [{**HIT, "score": 1.0}]  # below the relevance floor
-    text, _, _ = _ask()
-    assert text == ask.ABSTENTION
-    assert h.llm_calls == ["expand"]  # synthesis never ran
-    # expand + retrieval set recorded; NO synthesize artifact (a refusal is not an answer)
-    queued = (tmp_path / "external" / "pending.txt").read_text().split()
-    assert len(queued) == 2
-    producers = {json.loads(meta_file(tmp_path, k).read_text())["producer_name"]
-                 for k in queued}
-    assert producers == {"life_agent.ask.expand", "life_agent.ask.retrieve"}
-
-
-# --- STAGES_LAST (outcome lineage — bayesian-foundations §8) ------------------ #
-
 def test_stages_last_exposes_this_answers_stage_keys(h: Harness) -> None:
     _ask()
     first = dict(ask.STAGES_LAST)
@@ -154,17 +137,6 @@ def test_stages_last_exposes_this_answers_stage_keys(h: Harness) -> None:
     _ask()  # replay: the same derivation, so the same keys (hit or miss alike)
     assert first == ask.STAGES_LAST
 
-
-def test_stages_last_has_no_synthesize_key_on_abstention(h: Harness) -> None:
-    h.hits = [{**HIT, "score": 1.0}]  # below the relevance floor
-    text, _, _ = _ask()
-    assert text == ask.ABSTENTION
-    # a refusal is not an answer: no synthesize derivation, so no synthesize key
-    assert "synthesize" not in ask.STAGES_LAST
-    assert "retrieve" in ask.STAGES_LAST
-
-
-# --- --no-cache and fail-open ------------------------------------------------ #
 
 def test_no_cache_recomputes_but_never_overwrites(h: Harness) -> None:
     first = _ask()

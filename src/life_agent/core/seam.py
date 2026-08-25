@@ -18,7 +18,7 @@ place a decision becomes an action:
 M0 is behaviour-preserving: on every dispatch the seam does exactly what the old
 call site did, byte-for-byte on the wire. What changes is topology — the forks
 become data at one auditable choke point, the shape later stages re-point at the
-proplang engine (M2 advisory, M3 live). A ``.optimise(`` call or a ``/decide`` POST
+proplang engine (M2 advisory). A ``.optimise(`` call or a ``/decide`` POST
 anywhere else in ``src/life_agent`` is a doctrine bug, enforced by the drift gate in
 ``tests/test_seam.py``.
 """
@@ -34,22 +34,16 @@ from life_agent.core.brain import Brain
 # ticks by this suffix; the drift gate keeps the literal out of every other module).
 DECIDE_PATH = "/decide"
 
-# The declared pre-empting observations (M0's two; later stages add to this vocabulary).
-GATE_WEAK_RETRIEVAL = "weak_retrieval"   # retrieval cleared no chunk above the floor
+# The declared unavailability observations (register §6.5, S-1): when no optimiser is
+# reachable there is no ranking to be inside of — the record is an unavailability
+# event, never an abstain decision. GATE_WEAK_RETRIEVAL died at M5 (S-1's split:
+# weak retrieval is belief — few/weak observations withhold by EU, not by a host
+# threshold pre-empting the ranking).
 GATE_EXECUTOR_DOWN = "executor_down"     # the daemon/bridge stack is unreachable
-# M3: the live coarse-menu consult failed (bridge/shadow down, engine dead or malformed)
-# — the DECLARED fallback is abstain, chosen by policy, never a silent host guess.
-GATE_ENGINE_DOWN = "engine_down"
+GATE_ENGINE_DOWN = "engine_down"         # an engine consult failed mid-decision
 
 # The executor's transport seam shape (executor.Post, restated to avoid an import cycle).
 Post = Callable[[str, dict[str, Any]], "dict[str, Any] | None"]
-
-# M3's live consult shape: (payload, daemon reply) -> (enactable view, gate | None).
-# The production implementation is life_agent.membrane.coarse.live_decide (one
-# /decide-live round-trip + the coarse-act mapping); the seam only ever calls it —
-# injected, so this module stays free of membrane imports and the consult is a pure
-# function under test.
-LiveFn = Callable[[dict[str, Any], dict[str, Any]], "tuple[dict[str, Any], str | None]"]
 
 
 @dataclass(frozen=True)
@@ -67,18 +61,10 @@ class SkinOptimise:
 class DaemonDecide:
     """A P2 act request: one ``POST {daemon}{DECIDE_PATH}`` over the injected
     transport. The reply object is the daemon's decision view, passed through
-    verbatim as :attr:`SeamDecision.view`.
-
-    ``live`` (M3 — the coarse menu live, flag-gated at the caller) re-points the COARSE
-    act at the proplang engine: the daemon still computes the posterior, but the
-    committed act is the consult's rewrite of the daemon view (agreement passes it
-    through unchanged; a failed consult is the DECLARED :data:`GATE_ENGINE_DOWN`
-    abstain). ``None`` — the default, and the only production value while
-    ``LIFE_AGENT_MEMBRANE_LIVE`` is unset — is byte-for-byte today's behaviour."""
+    verbatim as :attr:`SeamDecision.view`."""
     post: Post
     daemon: str
     payload: dict[str, Any]
-    live: LiveFn | None = None
 
 
 @dataclass(frozen=True)
@@ -108,12 +94,6 @@ def commit(request: SkinOptimise | DaemonDecide | None, *,
         return SeamDecision(action=action, eu=eu)
     reply = request.post(f"{request.daemon}{DECIDE_PATH}", request.payload)
     assert reply is not None, f"{request.daemon}{DECIDE_PATH} returned null"
-    if request.live is not None:
-        view, gate = request.live(request.payload, reply)
-        raw_eu = view.get("eu")
-        return SeamDecision(action=view["effector"],
-                            eu=float(raw_eu) if raw_eu is not None else None,
-                            gate=gate, view=view)
     raw_eu = reply.get("eu")
     return SeamDecision(action=reply["effector"],
                         eu=float(raw_eu) if raw_eu is not None else None, view=reply)

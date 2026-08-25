@@ -95,24 +95,6 @@ def test_membrane_read_timeout_env_name_matches_client() -> None:
 
 # --- M3: the live coarse-menu flag -------------------------------------------------------
 
-def test_membrane_live_default_off(monkeypatch) -> None:
-    monkeypatch.delenv(config.MEMBRANE_LIVE_ENV, raising=False)
-    assert config.membrane_live() is False
-
-
-def test_membrane_live_on(monkeypatch) -> None:
-    monkeypatch.setenv(config.MEMBRANE_LIVE_ENV, "1")
-    assert config.membrane_live() is True
-
-
-def test_membrane_live_other_values_stay_off(monkeypatch) -> None:
-    for v in ("0", "", "true", "yes"):
-        monkeypatch.setenv(config.MEMBRANE_LIVE_ENV, v)
-        assert config.membrane_live() is False, v
-
-
-# --- the deliberative edge: ON by default since the §13 adoption (2026-08-17) ------------
-
 def test_deliberate_default_on(monkeypatch) -> None:
     monkeypatch.delenv(config.DELIBERATE_ENV, raising=False)
     assert config.deliberate_enabled() is True

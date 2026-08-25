@@ -12,9 +12,9 @@ uniformly per (arm, question) regardless of which entrypoint answered:
   (``ask._executor_ready``) is checked FIRST and a down stack is a NAMED ``status="error"``
   — never a silent in-process fallback (that would mislabel the arm as the executor's own
   answer when it is really a different path's).
-- ``path="inprocess"`` (arm ``inprocess``) drives ``ask.answer(conn, question, k,
-  gather=True)`` — the in-process typed-families path WITH the gather-augmented lookup loop
-  (foundations §4 gather.py), matching the ``gate_paired_outcomes`` "typed" pass
+- ``path="inprocess"`` (arm ``inprocess``) drives ``ask.answer(conn, question, k)``
+  — the in-process typed-families path (the gather-augmented loop died at M5, r15),
+  matching the ``gate_paired_outcomes`` "typed" pass
   (``scripts/run_eval.py``) and offering the fully-metered $ headline the executor arm
   cannot (its own LLM calls run in THIS process, bracketed by ``core.llm``'s meter).
 
@@ -219,7 +219,7 @@ def answer_baseline(
             conn = ask.connect()
             try:
                 text, raw_cards, _scores = ask.answer(
-                    conn, q["question"], k, gather=True, no_cache=fresh)
+                    conn, q["question"], k, no_cache=fresh)
                 cards = [{"n": c.n, "text": c.text, "origin": c.origin} for c in raw_cards]
             finally:
                 conn.close()
