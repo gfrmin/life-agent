@@ -154,3 +154,23 @@ signature. Two corrections to STATE:
 The mandate's caller list is restated as: `current_u_bar` + `golden._utility_evidence`
 → `"all-to-date"`; `run_eval`, `gate_splice`, `p3_gate`, `loss_ledger` →
 `"frozen-elicitations"`. Everything else in the pre-registration stands unchanged.
+
+## AMENDMENT 2 (2026-08-25, blind — before any gate run; src Phase 1 in progress)
+
+Mandate 4's sentence "Trace-B ledger events stay **byte-identical** (7.2 asserts it)"
+is wrong on two counts, found by checking what the fixtures actually observe before
+relying on it:
+
+1. The leaf events stamp `utility_fold_version`, and P3 registers that the hash changes
+   once the policy enters it — so post-M3 leaf events are **field-identical except that
+   stamp**, not byte-identical. (The m2-base fixtures carry the old hex at
+   `outputs/audit/utility_fold_version`.)
+2. 7.2 does not assert event bytes: the comparator's field classes declare `audit`
+   as `OUTPUT_RECORDED_ONLY` — recorded, never compared — so the hash change is
+   invisible to G2 and the pure-equality comparator stands exactly as frozen.
+
+Restated mandate 4, replacing the sentence: the write tail moves call-site only (same
+body, same writer function); every event field except `utility_fold_version` is
+unchanged, `utility_fold_version` changes per P3, and G2's assertion is the projected
+output equality (in which `audit` is recorded-only). No gate, direction, or prediction
+changes; the mandate's substance (who records) is untouched.

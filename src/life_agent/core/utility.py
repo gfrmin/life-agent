@@ -44,6 +44,7 @@ from typing import Any
 import yaml
 
 from life_agent.core.brain import Brain
+from life_agent.core.decisions import POLICIES
 
 FORMAT_VERSION = 1
 
@@ -255,6 +256,7 @@ class UtilityPosterior:
     latents: dict[str, LatentPosterior]
     n_events: int
     fold_version: str
+    policy: str
 
     def u_bar(self) -> dict[str, float]:
         """The posterior-mean utility — all a one-shot `optimise` needs (the collapse
@@ -272,12 +274,24 @@ class UtilityPosterior:
         ]
 
 
-def fold_version(model: UtilityModel, events: list[Evidence]) -> str:
-    """SHA-256 identity of (model, evidence-in-order) — pins exactly which utility
-    posterior valued a decision (recorded per decision, decisions.py)."""
+def _check_policy(policy: str) -> None:
+    # the vocabulary has ONE spelling — decisions.py's record schema declares it (a policy
+    # swap is visible in the record); the fold validates membership and enforces the set.
+    if policy not in POLICIES:
+        raise ValueError(
+            f"unknown evidence policy {policy!r}; declared policies: {sorted(POLICIES)}")
+
+
+def fold_version(model: UtilityModel, events: list[Evidence], policy: str) -> str:
+    """SHA-256 identity of (model, evidence-in-order, policy) — pins exactly which utility
+    posterior valued a decision (recorded per decision, decisions.py). The policy name is
+    part of the identity (Q-O5): a memo keyed by it can never serve one regime's U-bar to
+    the other regime's caller."""
+    _check_policy(policy)
     payload = {
         "model": asdict(model),
         "events": [{"kind": type(e).__name__, **asdict(e)} for e in events],
+        "policy": policy,
     }
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"),
                            ensure_ascii=False)
@@ -430,12 +444,27 @@ def _fold_joint(brain: Brain, model: UtilityModel, comp: frozenset[str],
 
 
 def posterior(brain: Brain, model: UtilityModel,
-              events: list[Evidence]) -> UtilityPosterior:
+              events: list[Evidence], *, policy: str) -> UtilityPosterior:
     """fold(model prior, evidence) → the utility posterior, conditioned through the
     credence skin. Events are consumed in order (the canonical replay order). Latents a
     MarginReaction couples fold on a joint grid; independent latents fold 1-D — the
     connected components of the latent co-occurrence graph (§4.4). The gauge pins are
-    never conditioned — they have no state to condition."""
+    never conditioned — they have no state to condition.
+
+    ``policy`` is the regime indicator (Q-O5/D-8): it names a DECLARED conditioning set,
+    enforced structurally — ``frozen-elicitations`` (the gate's blind regime: the model
+    file + the committed elicitation set, nothing else) refuses any verdict-projected
+    event; ``all-to-date`` (the decider's regime) accepts elicitations + the
+    verdict→evidence projection. Two conditioning sets over one probability model; which
+    set ranked a decision is part of that decision's record (§5.1)."""
+    _check_policy(policy)
+    if policy == "frozen-elicitations":
+        for event in events:
+            if not isinstance(event, Elicitation):
+                raise ValueError(
+                    f"frozen-elicitations refuses {type(event).__name__} evidence "
+                    f"(tx_time={event.tx_time!r}): the blind regime folds the committed "
+                    "elicitation set only — fold under policy=\'all-to-date\' instead")
     for event in events:
         for name in _event_latents(event):
             if name not in model.latents:
@@ -454,5 +483,6 @@ def posterior(brain: Brain, model: UtilityModel,
         gauge=dict(model.gauge),
         latents=latents,
         n_events=len(events),
-        fold_version=fold_version(model, events),
+        fold_version=fold_version(model, events, policy),
+        policy=policy,
     )
