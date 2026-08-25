@@ -25,6 +25,7 @@ from life_agent.core import calibration as CAL
 from life_agent.core import config as CFG
 from life_agent.core import decisions as DEC
 from life_agent.core import executor as EX
+from life_agent.core import lookup as LK
 from life_agent.core import recorder as REC
 from life_agent.core import seam as SEAM
 from life_agent.core import shadow_mirror as SM
@@ -157,9 +158,9 @@ def post_decision(post: Any, bridge: str, question: str, view: dict[str, Any], *
         instrument=view.get("instrument"), cost_usd=view.get("cost_usd"),
         latency_s=view.get("latency_s"), run_id=run_id,
         # regime is a FACT of availability (§2.3): the daemon decided, so the space was
-        # full; policy is what the fold actually used — current_u_bar folds all-to-date
-        # ("frozen-elicitations" becomes stateable at M3's posterior(policy=…))
-        regime="full", policy="all-to-date")
+        # full; policy derives from the decider's one declared regime — the same constant
+        # current_u_bar folds under, so record and fold cannot diverge (M3, r13)
+        regime="full", policy=LK.U_BAR_POLICY)
     try:
         return REC.record_via_bridge(post, bridge, payload)
     except Exception as e:  # fail-open: the verdict simply has nothing to bind to
@@ -208,18 +209,6 @@ def drive(question: str, k: int = 20, *, bridge: str | None = None,
                               post=wrapped, get=get, live=live,
                               transforms=transforms, curves=curves)
     return DriveResult(view, post_decision(post, bridge, question, view, run_id=run_id))
-
-
-def answer(question: str, k: int = 20, *, post: Any = None, get: Any = None,
-           check_ready: bool = True) -> tuple[str, str | None]:
-    """The reach surface — since M2 a thin shim over :func:`drive` (deleted at M3, when
-    callers take the driver directly): answer one question, return ``(rendered reply,
-    decision_id | None)``. The reply strings are the interaction contract's, untouched."""
-    r = drive(question, k, post=post, get=get, check_ready=check_ready)
-    if r.down:
-        return DOWN, None
-    assert r.view is not None
-    return EX.render_view(r.view), r.decision_id
 
 
 def react(decision_id: str, valence: str, *, post: Any = None) -> str:

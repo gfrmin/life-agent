@@ -19,7 +19,7 @@ from datetime import date
 from typing import Any
 from urllib.error import HTTPError, URLError
 
-from life_agent.core import ask_client, secret
+from life_agent.core import ask_client, executor, secret
 from life_agent.reach import telegram
 from life_agent.tasks import commands, store
 
@@ -227,7 +227,13 @@ def handle_action(parsed: dict[str, Any], user_id: int) -> str:
         q = str(parsed.get("question") or "").strip()
         if not q:
             return "What would you like to know?"
-        reply, decision_id = ask_client.answer(q)
+        r = ask_client.drive(q)
+        if r.down:
+            reply = ask_client.DOWN
+        else:
+            assert r.view is not None
+            reply = executor.render_view(r.view)
+        decision_id = r.decision_id
         LAST_DECISION_ID = decision_id
         if decision_id:
             reply += "\n\nReply g (good) or b (bad) to grade this answer."

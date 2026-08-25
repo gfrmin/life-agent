@@ -1751,7 +1751,7 @@ def main() -> int:
             # the writer: grade every firing the run produced (extract tiers AND
             # deliberate — the view's edge_events stream), dedup against the log's
             # already-graded §18.9 lineage, and append AFTER the run — the in-run
-            # curve fold (ask._edge_curves per question) never saw its own run's rows
+            # curve fold (ask_client._edge_curves per question) never saw its own run's rows
             stats = executor_run_stats(typed_views)
             fresh, n_dup, prior = _fresh_edge_rows(typed_views, run_id=run_id)
             # the pre-run evidence base IN FORCE (latest row per edge+lineage — a
@@ -1832,7 +1832,7 @@ def main() -> int:
         # parameter (only Elicitations exist on this path; reactions fold elsewhere)
         evidence: list[UT.Evidence] = list(UT.load_elicitations(LCFG.UTILITY_ELICITATIONS,
                                                                  model))
-        post = UT.posterior(brain, model, evidence)
+        post = UT.posterior(brain, model, evidence, policy="frozen-elicitations")
         for warning in post.endpoint_warnings(model.endpoint_mass_warn):
             print(f"  ⚠ {warning}")
 

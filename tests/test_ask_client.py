@@ -16,6 +16,15 @@ from life_agent.core import ask_client as AC
 from life_agent.core import executor as EX
 
 
+def _answer(question: str, k: int = 20, **kw):
+    """What every surface does since M3: drive, then render — the inline that replaced
+    the AC.answer shim (jarvis and the A-loop driver spell exactly this)."""
+    r = AC.drive(question, k, **kw)
+    if r.down:
+        return AC.DOWN, None
+    assert r.view is not None
+    return EX.render_view(r.view), r.decision_id
+
 def _fake_view(effector: str = "report") -> dict[str, Any]:
     return {"effector": effector, "asserted": ["P123"] if effector == "report" else [],
             "candidates": ["P123"], "credences": [0.92], "p_none": 0.05, "eu": 0.8,
@@ -32,7 +41,7 @@ def test_answer_renders_and_binds_the_decision(monkeypatch: Any) -> None:
         assert url.endswith("/log_decision")
         return {"decision_id": "ab-cafe"}
 
-    reply, decision_id = AC.answer("what is my passport number?",
+    reply, decision_id = _answer("what is my passport number?",
                                    post=post, get=lambda u: {}, check_ready=False)
     assert "P123" in reply                       # the shared credence grammar rendering
     assert decision_id == "ab-cafe"              # the id the in-chat verdict binds to
@@ -52,7 +61,7 @@ def test_answer_narrative_or_miss_binds_nothing(monkeypatch: Any) -> None:
     view = _fake_view("miss")
     view["candidates"], view["credences"] = [], []
     monkeypatch.setattr(EX, "decide_via_loop", lambda *a, **k: view)
-    reply, decision_id = AC.answer("q?", post=lambda u, p: {"decision_id": "x"},
+    reply, decision_id = _answer("q?", post=lambda u, p: {"decision_id": "x"},
                                    get=lambda u: {}, check_ready=False)
     assert decision_id is None                   # nothing foldable to bind
     assert reply                                 # still a named reply, never empty
@@ -84,7 +93,7 @@ def test_answer_wires_the_shared_shadow_mirror(monkeypatch: Any) -> None:
         return _fake_view("miss")  # not a LOOKUP_ACTION_ORDER effector — no extra /log_decision
 
     monkeypatch.setattr(EX, "decide_via_loop", fake_decide_via_loop)
-    AC.answer("what is my passport number?", post=bare_post, get=lambda u: {},
+    _answer("what is my passport number?", post=bare_post, get=lambda u: {},
              check_ready=False)
 
     assert len(wrap_calls) == 1
@@ -97,7 +106,7 @@ def test_answer_wires_the_shared_shadow_mirror(monkeypatch: Any) -> None:
 
 def test_answer_names_a_down_stack(monkeypatch: Any) -> None:
     monkeypatch.setattr(AC, "_ready", lambda: False)
-    reply, decision_id = AC.answer("q?")
+    reply, decision_id = _answer("q?")
     assert "unavailable" in reply and decision_id is None
 
 
@@ -173,7 +182,7 @@ def test_answer_flag_on_wires_the_live_consult_and_skips_the_mirror(monkeypatch:
         return _fake_view("miss")
 
     monkeypatch.setattr(EX, "decide_via_loop", fake_decide_via_loop)
-    AC.answer("what is my passport number?", post=bare_post, get=lambda u: {},
+    _answer("what is my passport number?", post=bare_post, get=lambda u: {},
               check_ready=False)
 
     assert live_calls == [(AC.BRIDGE,
@@ -223,7 +232,7 @@ def test_answer_offers_the_deliberate_menu_by_default(monkeypatch: Any) -> None:
 
     monkeypatch.setattr(EX, "decide_via_loop", fake_loop)
     monkeypatch.delenv("LIFE_AGENT_DELIBERATE", raising=False)
-    AC.answer("q?", post=lambda u, p: {}, get=lambda u: {}, check_ready=False)
+    _answer("q?", post=lambda u, p: {}, get=lambda u: {}, check_ready=False)
     names = [t["name"] for t in captured["transforms"]]
     assert "deliberate" in names and "corroborate_opus" in names
 
@@ -239,7 +248,7 @@ def test_answer_deliberate_rollback_reverts_to_the_bare_menu(monkeypatch: Any) -
 
     monkeypatch.setattr(EX, "decide_via_loop", fake_loop)
     monkeypatch.setenv("LIFE_AGENT_DELIBERATE", "0")
-    AC.answer("q?", post=lambda u, p: {}, get=lambda u: {}, check_ready=False)
+    _answer("q?", post=lambda u, p: {}, get=lambda u: {}, check_ready=False)
     assert captured["transforms"] is None and captured["curves"] is None
 
 
@@ -258,7 +267,7 @@ def test_answer_passes_realised_accounting_through(monkeypatch: Any) -> None:
         posted.append(payload)
         return {"decision_id": "x"}
 
-    AC.answer("q?", post=post, get=lambda u: {}, check_ready=False)
+    _answer("q?", post=post, get=lambda u: {}, check_ready=False)
     dec = posted[0]["decision"]
     assert dec["instrument"] == "deliberate@synthetic-model"
     assert dec["cost_usd"] == 0.0123 and dec["latency_s"] == 2.5
@@ -278,7 +287,13 @@ def test_answer_down_stack_commits_the_gate_mirrors_and_records(monkeypatch: Any
                         lambda bridge, qid, gate: mirrored.append((bridge, qid, gate)))
     monkeypatch.setattr(REC, "record_unavailable",
                         lambda question, **kw: recorded.append({"question": question, **kw}))
-    reply, decision_id = AC.answer("q?")
+    reply, decision_id = _answer("q?")
     assert reply == AC.DOWN and decision_id is None
     assert mirrored == [(AC.BRIDGE, AC.DEC.question_id("q?"), SEAM.GATE_EXECUTOR_DOWN)]
     assert len(recorded) == 1 and recorded[0]["question"] == "q?"
+
+
+def test_the_m2_shims_are_dead() -> None:
+    # r13 mandate 3 (as amended): AC.answer and ask._edge_curves are deleted — callers
+    # take the one driver directly; no old-poster spelling survives in core
+    assert not hasattr(AC, "answer")

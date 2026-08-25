@@ -390,8 +390,13 @@ def drive_executor_loop(rig: Rig, snapshot: KBSnapshot, *, question: str, k: int
             return {"decision_id": "replayed"}
         return rig.post(url, payload)
 
-    rendered, decision_id = AC.answer(question, k, post=post, get=rig.get,
-                                      check_ready=False)
+    r = AC.drive(question, k, post=post, get=rig.get, check_ready=False)
+    if r.down:
+        rendered = AC.DOWN
+    else:
+        assert r.view is not None
+        rendered = EX.render_view(r.view)
+    decision_id = r.decision_id
     view: dict[str, Any] = rig.last_view or {}
     return {
         "effector": view.get("effector"),

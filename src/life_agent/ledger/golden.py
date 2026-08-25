@@ -150,14 +150,15 @@ def a4a_fold_version(p: Paths) -> Any:
     """A4a — byte (R3, always-on): the sha over (model, evidence-in-order)."""
     model, events = _utility_evidence(p)
     return {"kind": "byte", "comparator": "fold_version hex equality",
-            "fold_version": UT.fold_version(model, events), "n_events": len(events)}
+            "fold_version": UT.fold_version(model, events, "all-to-date"),
+            "n_events": len(events)}
 
 
 def a4b_posterior(p: Paths, brain: Any) -> Any:
     """A4b — Julia-in-the-loop (R3/S3): the posterior through the pinned credence skin."""
     from life_agent.core import brain as B
     model, events = _utility_evidence(p)
-    post = UT.posterior(brain, model, events)
+    post = UT.posterior(brain, model, events, policy="all-to-date")
     return {"kind": "julia", "comparator": "exact equality of u_bar and per-latent params",
             "image": B.CREDENCE_SKIN_IMAGE, "protocol_major": B.PROTOCOL_MAJOR,
             "fold_version": post.fold_version, "n_events": post.n_events,

@@ -356,7 +356,7 @@ def decide_arm(root: Path, question: str, hits: list[dict[str, Any]],
                                            today=today)
     if not observations:
         return None
-    u_bar, _ = LK.current_u_bar(brain)
+    u_bar, _, _ = LK.current_u_bar(brain)
     rho = LK.extractor_reliability(brain)
     candidates = LK.candidates_from(observations)
     weights, state_id = LK.lookup_posterior(brain, observations, candidates, rho)

@@ -1187,12 +1187,12 @@ def build_deps() -> BridgeDeps:
     conn.execute("INSTALL fts; LOAD fts;")
 
     def _u_bar() -> dict[str, float]:
-        u_bar, _version = LK.current_u_bar(LK.shared_brain())
+        u_bar, _version, _policy = LK.current_u_bar(LK.shared_brain())
         return u_bar
 
     def _fold_version() -> str:
         # current_u_bar caches per fold version in-process, so this rides the /utility fold.
-        _u_bar, version = LK.current_u_bar(LK.shared_brain())
+        _u_bar, version, _policy = LK.current_u_bar(LK.shared_brain())
         return version
 
     return BridgeDeps(root=root, conn=conn, client=LK._client(),

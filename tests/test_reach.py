@@ -95,10 +95,13 @@ def test_handle_list_with_tag_routes_to_tag_view() -> None:
 
 
 def test_handle_question_routes_to_the_know_mode(monkeypatch: pytest.MonkeyPatch) -> None:
-    from life_agent.core import ask_client
+    # since M3 jarvis takes the driver directly: drive → render (r13 amendment 4)
+    from life_agent.core import ask_client, executor
 
-    monkeypatch.setattr(ask_client, "answer",
-                        lambda q, **k: (f"ANSWER to {q}", "ab-cafe"))
+    monkeypatch.setattr(ask_client, "drive",
+                        lambda q, **k: ask_client.DriveResult({"q": q}, "ab-cafe"))
+    monkeypatch.setattr(executor, "render_view",
+                        lambda view: f"ANSWER to {view['q']}")
     jarvis.LAST_DECISION_ID = None
     reply = jarvis.handle_action(
         {"action": "question", "question": "what is my Israeli tax ID?"}, USER)
@@ -109,9 +112,11 @@ def test_handle_question_routes_to_the_know_mode(monkeypatch: pytest.MonkeyPatch
 
 def test_handle_question_without_decision_invites_no_verdict(
         monkeypatch: pytest.MonkeyPatch) -> None:
+    # a down stack: drive returns the DOWN fact; jarvis replies the contract string
     from life_agent.core import ask_client
 
-    monkeypatch.setattr(ask_client, "answer", lambda q, **k: ("No answer asserted — …", None))
+    monkeypatch.setattr(ask_client, "drive",
+                        lambda q, **k: ask_client.DriveResult(None, None, down=True))
     jarvis.LAST_DECISION_ID = "stale"
     reply = jarvis.handle_action({"action": "question", "question": "q?"}, USER)
     assert "grade" not in reply.lower()

@@ -17,6 +17,8 @@ from types import SimpleNamespace
 
 import duckdb
 
+from life_agent.core import ask_client as AC_client
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
 import ask
@@ -431,10 +433,10 @@ def test_edge_curves_honor_the_held_out_question(monkeypatch, tmp_path) -> None:
     from life_agent.core import config as _CFG
 
     monkeypatch.setattr(_CFG, "OUTCOMES_LOG", log)
-    curves = ask._edge_curves()
+    curves = AC_client._edge_curves(ask.EXECUTOR_HOLD_OUT_QUESTION_ID)
     assert curves is not None and "deliberate@opus" in curves
     monkeypatch.setattr(ask, "EXECUTOR_HOLD_OUT_QUESTION_ID", "q2-001")
-    assert ask._edge_curves() is None
+    assert AC_client._edge_curves(ask.EXECUTOR_HOLD_OUT_QUESTION_ID) is None
 
 
 def test_http_post_surfaces_the_500_body(monkeypatch) -> None:
@@ -536,3 +538,8 @@ def test_ask_once_legacy_flag_forces_in_process(monkeypatch) -> None:
     monkeypatch.setattr(ask, "render", lambda text, *a, **k: seen.update(text=text))
     ask.ask_once(None, "my passport?", 20, executor=False)
     assert seen["text"] == "LEGACY"
+
+
+def test_the_edge_curves_shim_is_dead() -> None:
+    # r13 mandate 3 (as amended): the fold has one spelling (ask_client._edge_curves)
+    assert not hasattr(ask, "_edge_curves")

@@ -22,7 +22,7 @@ stage on the ledger (system-design §3) and every modelling choice stated:
     decide     the decision logged (§8 — no EU decision is ever made unlogged)
 
 Stated channel parameters (each a prior choice calibration will move — §2, §14):
-``_A_ALTERNATIVES`` (effective wrong-value alternatives), ``_RHO_PRIOR_*`` (the
+``_A_ALTERNATIVES`` (effective wrong-value alternatives), ``reliability.PRIORS`` (the
 grounded-extraction reliability Beta prior, moved by audit outcomes — the
 ``reliability_categorical`` rho prior the engine integrates exactly), ``_ORACLE_P``
 (the owner-as-oracle prior for pricing ask_clarify), the declared source-authority
@@ -52,6 +52,7 @@ from life_agent.core import matching as MATCH
 from life_agent.core import outcomes as O
 from life_agent.core import reactions as R
 from life_agent.core import recorder as REC
+from life_agent.core import reliability as REL
 from life_agent.core import seam as SEAM
 from life_agent.core import utility as UT
 from life_agent.core.brain import Brain
@@ -188,8 +189,8 @@ _A_ALTERNATIVES = 10.0   # effective number of wrong values a misreport spreads 
 # Beta(17,3)=0.85 quote-fidelity prior for THIS construct (report accuracy 0/7): the
 # prior is now wide, and the eval's per-candidate claim outcomes condition it (see
 # extractor_reliability) — the instrument earns trust from evidence, never from fiat.
-_RHO_PRIOR_A = 4.0       # Beta(4,4): mean 0.5, wide
-_RHO_PRIOR_B = 4.0
+# the extractor's Beta(4,4) prior now lives in the ONE reliability table
+# (core/reliability.PRIORS[("extract", "value")] — D-2, r13/M3)
 # The none-of-the-retrieved prior mass: the stated complement of an unproven extraction
 # channel — candidates share the rest uniformly. (Was uniform over K+1; the first eval
 # showed agreeing junk burying NONE at 0.98 credence.)
@@ -495,10 +496,8 @@ def _extractor_rho_state(brain: Brain, outcomes_path: Path) -> str:
     (audit + eval_lookup). The live state id; the caller reads + destroys it. Never a host
     `prior + correct` fold (Invariant 1: condition is the one learning mechanism, even though
     Beta-Bernoulli conjugacy is exact)."""
-    sid = brain.create_state({"type": "beta", "alpha": _RHO_PRIOR_A, "beta": _RHO_PRIOR_B})
-    for o in _extractor_outcomes(outcomes_path):
-        brain.condition(sid, kernel={"type": "bernoulli"}, observation=o)
-    return sid
+    return REL.conditioned_state(brain, "extract", "value",
+                                 _extractor_outcomes(outcomes_path))
 
 
 def extractor_reliability(brain: Brain, outcomes_path: Path = config.OUTCOMES_LOG
@@ -1028,9 +1027,15 @@ def set_shared_brain(brain: Brain | None) -> None:
     _BRAIN = brain
 
 
-def current_u_bar(brain: Brain) -> tuple[dict[str, float], str]:
-    """Ū from the utility posterior (fold of model + elicitations), cached per fold
-    version within the process — the fold is recomputed only when evidence moves."""
+U_BAR_POLICY = "all-to-date"  # the decider's declared evidence regime (design §3.1, Q-O5)
+
+
+def current_u_bar(brain: Brain) -> tuple[dict[str, float], str, str]:
+    """Ū from the utility posterior (fold of model + elicitations + the verdict→evidence
+    projection — the ``all-to-date`` regime, declared once above), cached per fold version
+    within the process — the fold is recomputed only when evidence moves. Returns
+    ``(u_bar, fold_version, policy)``: the policy the fold ACTUALLY ran under, so a record
+    stamps what was used, never an independent literal (M3, r13)."""
     global _U_BAR
     model = UT.load_model(config.UTILITY_MODEL)
     events: list[UT.Evidence] = list(
@@ -1038,14 +1043,14 @@ def current_u_bar(brain: Brain) -> tuple[dict[str, float], str]:
     # §4.4 reaction loop: the owner's clean abstain-verdicts, joined to the decision log,
     # condition u(wrong). fold_version covers them, so a new verdict re-folds Ū demand-led.
     events += R.load_reactions(config.REACTIONS_LOG, config.DECISIONS_LOG)
-    version = UT.fold_version(model, events)
+    version = UT.fold_version(model, events, U_BAR_POLICY)
     if _U_BAR is not None and _U_BAR[0] == version:
-        return _U_BAR[1], version
-    post = UT.posterior(brain, model, events)
+        return _U_BAR[1], version, U_BAR_POLICY
+    post = UT.posterior(brain, model, events, policy=U_BAR_POLICY)
     for warning in post.endpoint_warnings(model.endpoint_mass_warn):
         print(f"  ⚠ {warning}")
     _U_BAR = (version, post.u_bar())
-    return _U_BAR[1], version
+    return _U_BAR[1], version, U_BAR_POLICY
 
 
 # --- the family, end to end --------------------------------------------------------------
@@ -1107,7 +1112,7 @@ def decide_and_record(root: Path, question: str, construct: str,
     produced by a DIFFERENT instrument (the ``extract@<model>`` joint edge folds its calibrated
     confidence here, not the local ``extractor_reliability``)."""
     b = brain if brain is not None else shared_brain()
-    u_bar, fold_ver = current_u_bar(b)
+    u_bar, fold_ver, _policy = current_u_bar(b)
     rho = rho_override if rho_override is not None else extractor_reliability(b)
     candidates = candidates_from(observations)
     weights, state_id = lookup_posterior(b, observations, candidates, rho)
