@@ -3065,6 +3065,48 @@ on this list. Answers land here by amendment, citing their evidence.
   master carries the un-repaired blocking row — the run-14 conferral must pick a tree and
   freeze the wrong-commit conjunct against that measured landscape.
 
+- **Run 14 — the gate PASSES and the §6.12 deployment block CLOSES (2026-08-25,
+  `gate-20260825T102725`; typed arm $0.69 live, mono archived at $39.01; the ruled tail of
+  `docs/unification/conferrals/run14-conferral.md`, option A at full delegation).** The
+  pre-fire tail ran as ruled, same day as the cap raise. (1) *The warm pass* (~$0.09 of the
+  $5 cap) found and fixed a warm-instrument defect: the first firing warmed the DEPLOYED
+  trajectory's frontier, which the $0 replay lane never visits, because `rerank_hits` is
+  uncached with fail-open — under the refusing client the rerank's raise is swallowed and
+  the lexical top-k returned, so the replay lane deterministically takes the lexical branch
+  wherever the deployed daemon scheduled `retrieve_rerank` and the rerank moved the window
+  (per-pass call tapes: probe ≡ accept byte-identical; the priced pass diverges at the
+  second /retrieve with 16 of 20 chunk hashes differing). The fix makes the priced pass a
+  hybrid — deployed client at every §18.9-recorded seam (instrument client, joint_extract,
+  expansion), refusal kept at every unrecorded one (rerank, raw llm) — trajectory parity
+  with the acceptance pass, verified RED→GREEN live. **The same mechanism names r07's one
+  persistently fidelity-divergent row**: the $0 replay's "deployed" arm is the deployed arm
+  *modulo the rerank lane*. Disclosure, not a new arc (the cap stands); it does not touch
+  run 14 itself, which prices the deployed arm live. Full artefact:
+  `eval/gate-outside-option/run14-warm-disclosure.md` (KB). (2) *The $0 re-read* of run 13's
+  record on the warmed parked tree (68/104 readable, fidelity 64/68, r06 control 1/1, zero
+  discarders): zero new wrong commits; both readable run-13 wrongs (superset-confirm,
+  warm-deliberate) convert to withheld. (3) *The refreshed splice*, registered before
+  firing: PASS 0.977 / Δ̄ +0.583 [+0.147, +1.063]. **The live run: PASS on all four frozen
+  conjuncts — P(Δ>0.05)=0.907 (≥ 0.90 at the frozen δ/level), Δ̄ +0.421 [−0.046, +0.920];
+  the run-10 blocking row commits correct (the block's own class, repaired on the tree that
+  ships); zero NEW wrong commits — the three wrongs are all run-13 rows (corroborate-tier,
+  entity-qualifier, warm-deliberate); no named class worse — the superset-confirm row
+  converts wrong → withheld.** Typed 60 ✓ + 2 ✓hedge / 3 ✗ / 39 withheld (miss 2 ·
+  dispersed 37), answer rate 0.62 vs mono 0.97, correct-report 0.60 vs 0.91; judge grading
+  flipped 5 mono rows, 0 typed. The live 0.907 sits under the registered 0.977: the gap is
+  the warm-deliberate row reporting wrong live where the warmed re-read had it withheld — a
+  carried run-13 row (not NEW by the frozen baseline), disclosed rather than renegotiated,
+  and consistent with §6.13's standing residue (the warm-through's monotone accumulation
+  names live-vs-replay divergence on warm-deliberate rows as the expected wobble class).
+  **Ruling 4's PASS branch ENACTED, no further keypress: the §6.12 block is CLOSED; the
+  parked tree (`r10-entity-key` post-E1-revert) is merged to master src-tree-identical;
+  master deploys to live (`bin/ask-live` / jarvis).** What ships that run 13 did not have:
+  the §5-deduped JOIN at S1/S3/S4/S5 with the correlation key on the wire, T1's strict-span
+  guard, A1's per-document witness collapse, A2's synthesised-confirm covariate cap, and
+  D3 (S2 joins). The two standing wrongs ride in production, priced and published; the hard
+  clause (no lever ships while it makes a named wrong-commit class worse) binds every
+  successor, including the proplang graduation path (ruling 5).
+
 - **Four unordered sources on the decision path — the cache was doing the work of determinism
   (2026-08-19/20, tranche-2 M0/M0.5, `scripts/collapse_replay.py` + the M0.5 probes, $0
   deterministic).** The decision-equivalence instrument built at M0 found two ties resolved by

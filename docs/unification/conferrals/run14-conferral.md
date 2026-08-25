@@ -136,3 +136,37 @@ in it — the wire, the ledger, the record/replay instruments, the gate — bind
 seam, not the engine, and carries over. The owner also rules the API cap raised (ruling 3's
 first branch): on restored access the ruled tail runs — warm → re-read at $0 → fire run 14
 under the frozen branches, full delegation on PASS.
+
+
+## ENACTMENT (2026-08-25 — the ruled tail, run and read)
+
+All four ruling-3/4 steps ran the same day as the cap raise, in order:
+
+1. **Warm** (`warm-rows.sh`, ruling A's scope): all five named rows serve at $0, ~$0.09 of
+   the $5 cap spent. En route the instrument's first firing exposed a defect — it warmed the
+   DEPLOYED trajectory's frontier, which the $0 replay lane never visits (`rerank_hits` is
+   uncached with fail-open; the refusing lane deterministically takes the lexical branch
+   wherever the deployed rerank moved the window). Fixed as a hybrid priced pass (deployed
+   client at §18.9-recorded seams only), verified RED→GREEN; the same mechanism names r07's
+   one persistently fidelity-divergent row. Disclosure under the cap, not a new arc:
+   `eval/gate-outside-option/run14-warm-disclosure.md` (KB).
+2. **Re-read at $0** (`run14-sweep-parked-warmed.md`, KB): 68/104 readable, fidelity 64/68,
+   zero discarders, r06 control 1/1 — zero new wrong commits; both readable run-13 wrongs
+   convert to withheld.
+3. **Splice updated** (`run14-splice-parked-warmed.md`, KB; the pin reproduces run 13's
+   0.895 / +0.424 exactly): registered expectation **PASS 0.977 / Δ̄ +0.583 [+0.147,
+   +1.063]**, stamped into the fire script header before firing.
+4. **Run 14 fired** (`gate-20260825T102725`): **PASS on all four frozen conjuncts.**
+   P(Δ>0.05) = **0.907** (≥ 0.90); Δ̄ +0.421 [−0.046, +0.920]; the run-10 blocking row
+   commits correct; zero NEW wrong commits (the three wrongs are all run-13 rows: the two
+   standing wrongs + the warm-deliberate row); no named class worse (the superset-confirm
+   row converts wrong → withheld). Typed 60 ✓ + 2 ✓hedge / 3 ✗ / 39 withheld at $0.69;
+   mono 0.97 at $39.01 (archived). The live 0.907 vs the registered 0.977: the gap is the
+   warm-deliberate row reporting wrong live where the warmed re-read withheld — a carried
+   run-13 row, disclosed, not renegotiated.
+
+**Ruling 4's PASS branch enacted without a further keypress:** the §6.12 deployment block is
+CLOSED; the parked tree (`r10-entity-key` post-E1-revert) merged to master with `src/`
+tree-identical to the tree of record; master deployed to live (`bin/ask-live` / jarvis).
+The §14 ledger entry and the §6.12 register carry the full reading; ruling 5's direction
+(proplang as credence's gated successor) is the standing post-deploy sequence.

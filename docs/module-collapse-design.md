@@ -894,6 +894,20 @@ every non-probe fixture replays byte-identically; the 95 probe-firing fixtures a
 unservable (the payload grew — the named class; why the baseline re-records post-r09).
 **Run 13 (2026-08-24) FAILED two conjuncts (0.895 < 0.90; four new wrong commits — all run-10 dispersals, two of standing named classes) with the blocking row REPAIRED; ruling 4's FAIL branch enacted — the JOIN's code is reverted from master and this deployment block STANDS. STOPPED for an owner ruling.**
 
+*CLOSED (run 14, `gate-20260825T102725`, 2026-08-25).* The run-14 conferral ruled option A
+at full delegation (parked tree; conjunct 3 baselined on run 13's typed arm; cap raised).
+The ruled tail — warm (with the rerank-lane warm-instrument fix, disclosed in §14 and
+`run14-warm-disclosure.md` in the KB), $0 re-read, refreshed splice (registered expectation
+PASS 0.977 / Δ̄ +0.583) — then the live run: **PASS on all four conjuncts. P(Δ>0.05)=0.907;
+Δ̄ +0.421 [−0.046, +0.920]; the blocking row commits correct; zero NEW wrong commits (the
+three wrongs are all run-13 rows); no named class worse.** Typed 62 asserts (60 report +
+2 hedge, 3 wrong) / 39 withheld at $0.69 vs mono 0.97 at $39.01. The live 0.907 sits under
+the 0.977 expectation — the warm-deliberate row reports wrong live where the warmed re-read
+withheld; a carried run-13 row, disclosed. **This deployment block is CLOSED: the parked
+tree is merged to master and master deploys to live.** The two standing wrongs
+(corroborate-tier; entity-qualifier, its one repairer refused by its own bar) ride in
+production, priced and published — the hard clause stands for every future lever.
+
 **6.13 A declared total order cannot restore determinism when the tie block is larger than
 the over-fetch window — the window itself is the sampler.** Found 2026-08-22 by r06's
 idempotency double-run, on a question that flapped in and out of that audit's exclusion set
