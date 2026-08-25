@@ -258,3 +258,92 @@ Disclosure items in the final report; rollback = revert the branch (one PR). Aft
 green: results appended, mirrors updated, PR/CI/merge, steel deploy (executor,
 ask_client, lookup, narrative, membrane, bridge, ask all move — bridge + jarvis
 restart), then M6 (E-7 verify-only) under its own pre-registration.
+
+## RESULTS (read 2026-08-26, appended after the gates ran — nothing above changed)
+
+Execution was five phases on branch `collapse-m5`, each landing green before the next
+(P-I `4e5debd` deletions; P-II `f6bf3a9` executor absorptions; P-III `d9f5d4e` the
+dispatch absorption; P-IV+P-V `22ba0f0`), under four blind amendments (A1–A4), every
+`src/` change TDD'd RED-first.
+
+### What the amendments settled (each against a verified artefact)
+
+- **A1 (E-4):** the daemon hard-errors on k=0 (`server.jl`, verified) — the censused
+  "consulted every time" is unbuildable over this wire; the early return is the wire's
+  enactment constraint and stays. D-5's one reason derivation landed instead
+  (`decisions.withhold_reason`, three callers).
+- **A2 (E-12):** the first-consult grow block is unbuildable (sensors are
+  posterior-derived); the latch decomposed into two proofs and ONE measurable residue —
+  and the $0 probe read the residue REAL: **62 of 63** recorded economy-class report
+  consults flip to a scheduled re-read when shown the block, up to EU 0.88 (the
+  engine's "grow prices ≈ −cost after a confident report" holds only at credence ≈ 1).
+  Per the frozen consequence the fix landed: the grow offer follows EVERY terminal.
+- **A3 (P-IV):** the single-writer invariant verified already satisfied; drift-gated
+  (`record_local`'s callers are exactly the two family leaves). r13 A5's debt closed.
+- **A4 (DIR-L3):** the frozen equality clause named the wrong oracle layer — L-3
+  changes every lookup `optimise` body, so the 102 B-lookup fixtures join the named
+  wire-shape class.
+
+### Gate readings
+
+- **G1 — GREEN** per phase and on the final tree: 2704 passed; ruff + mypy clean.
+- **G2 (7.2), cumulative per phase:** P-I **314/314 pure equality** (DIR-B4 and
+  DIR-RETIRED both empty on the replay set — better than P1 predicted); P-II 251/314
+  (63 = DIR-E12, all `CassetteMissError`, zero divergences); P-III 251/314 (all 105
+  B-fixtures GREEN under the registered DIR-M5 regime direction; the §6.5 replay
+  driver now forces the no-engine situation its fixture models); final **149/314
+  identical · 165 misses = 63 DIR-E12 + 102 DIR-L3-wire, 100% cassette-shape, ZERO
+  decision divergences** among the servable. The full-set oracle returns at the
+  post-M5 re-record.
+- **G3 (7.3) — FAIL on two conjuncts.** Run 17 (`gate-20260826T025059`), comparison
+  arm run 16's meta, spend $4.51 of the $8 cap, tree gate pre-spend at `22ba0f0`.
+  **(a) FAIL:** P(Δ>0.05) = **0.743** (gate ≥ 0.90); Δ̄ = **+0.238** [−0.220, +0.736].
+  **(b) FAIL by the frozen letter:** typed wrongs {the two standing rows + the
+  warm-deliberate wobble row}; the wobble row was withheld in run 16's typed arm, so
+  its wrong here counts NEW under the frozen definition — it is simultaneously the
+  standing run-13 class (wrong in runs 13 and 15 and live in run 14; both dispositions
+  now observed repeatedly), which the ruling may weigh but this reading does not
+  renegotiate. **(c)** the warm-deliberate class reads WORSE than run 16
+  (withheld → wrong); superset-confirm unchanged (withheld). **(d) PASS** — 102/102
+  decision rows `policy="all-to-date"`, `regime="full"`; tree pinned.
+  Answer rate typed **0.49** (run 16: 0.62) · mono 0.97; correct-report 0.46 (run 16:
+  0.61); withheld miss 2 · **dispersed 51** (run 16: 37); deliberate fired 71/104
+  (run 16: 41), warm 65.
+- **G4 — 7.4 not run**, declared (A3's gate covers the writer topology).
+- **G5 — GREEN.** No corpus values in tree; hooks armed.
+
+### Predictions vs readings
+
+- **P1 — CONFIRMED+.** ~1,500 net lines deleted at P-I; zero fixture diffs (both named
+  classes empty on the replay set).
+- **P2 — TRANSFERRED by A2 and CONFIRMED on the flip>0 branch:** 63 unservable, every
+  one payload-shape, none decision-divergence.
+- **P3 — CONFIRMED.** The terminals-only regime never fired in run 17 (stack up;
+  102/102 rows regime="full"); its coverage is the DIR-M5-directed fixtures + the
+  seam/driver tests.
+- **P4 — REFUTED.** Run 17 does NOT read within run 16's band: answer rate 0.49 is
+  outside ±0.06 of 0.62, and the headline collapsed (0.961/+0.519 → 0.743/+0.238).
+- **P5 — CONFIRMED** (accounting): decisions +102 and outcomes +106 under the run's
+  `run_id`; the live ledger's movement is the gate rows.
+- **P6 — REFUTED on the warm-deliberate class** (withheld → wrong vs run 16); the
+  superset-confirm class held.
+
+### The mechanism (diagnosis for the ruling, not a renegotiation)
+
+The failure is A2's fix meeting the engine's calibration. With the grow block offered
+after every terminal, the daemon schedules a re-read on essentially every report (the
+probe's 62/63, confirmed live: deliberate firings 41 → 71, dispersed withholds
+37 → 51). The bought evidence JOINS the channel (r09 semantics — nothing erased), and
+on marginal reports the joined competing observations disperse the posterior below the
+assert bar: the arm withholds where run 16 reported correctly. The engine's grow
+pricing (hand-set Beta priors over recovery, `grow_value` against terminal EU) values
+the information at more than the realised Δ says it is worth — the hand-priced VOI the
+census wanted to retire is, on this reading, MIS-priced when exercised at full reach.
+The old report-economy skip was, empirically, load-bearing protection — the same
+structural lesson as run 13's "dispersal was the protection".
+
+### Ruling required (the FAIL branch, plan keypress map)
+
+Master is UNTOUCHED (M5 lives on `collapse-m5`, unmerged; live runs M4). The branch
+parks pending an owner ruling; a conferral document with the options and prices
+accompanies this report (`docs/unification/conferrals/run17-conferral.md`).
