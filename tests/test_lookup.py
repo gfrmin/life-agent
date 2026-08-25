@@ -402,12 +402,58 @@ def test_dedup_correlated_keeps_independent_corroboration() -> None:
     assert len(LK.dedup_correlated(obs)) == 3
 
 
-def test_dedup_correlated_preserves_within_document_observations() -> None:
-    # two chunks of ONE document sharing a quote are not cross-document duplicates; the
-    # per-document group already counts them as one witness — leave them intact.
+def test_dedup_correlated_one_document_attests_one_value_once() -> None:
+    # r09c A1: within ONE document, every observation of the SAME value is one attestation —
+    # identical quotes, near-duplicate boilerplate, or repeated page headers alike. The old
+    # rule skipped within-document rows on the premise that the per-document group "already
+    # counts it once"; the group mechanism counts them CORRELATED, not once (q2-105: twelve
+    # same-doc same-value rows rode the coarsening to 0.989).
     obs = [_obs("a" * 64, "V", quote="a sufficiently long shared sentence of text"),
            _obs("a" * 64, "V", quote="a sufficiently long shared sentence of text")]
+    assert len(LK.dedup_correlated(obs)) == 1
+
+
+def test_dedup_within_document_collapses_near_duplicate_quotes_too() -> None:
+    # the boilerplate/page-repetition class: the same value under VARYING quotes in one
+    # document is still one attestation — the key is (document, value), not the quote.
+    obs = [_obs("a" * 64, "V", quote=f"page {i} footer: contact V for details")
+           for i in range(12)]
+    kept = LK.dedup_correlated(obs)
+    assert len(kept) == 1
+
+
+def test_dedup_within_document_keeps_the_max_covariate_row() -> None:
+    obs = [_obs("a" * 64, "V", quote="weak copy of the value V", authority=0.5),
+           _obs("a" * 64, "V", quote="strong copy of the value V", authority=0.95)]
+    kept = LK.dedup_correlated(obs)
+    assert len(kept) == 1 and kept[0].authority == 0.95
+
+
+def test_dedup_within_document_tie_keeps_first_seen() -> None:
+    # the declared total order (M0.5): at equal covariate the FIRST row survives.
+    obs = [_obs("a" * 64, "V", quote="first copy of the value V"),
+           _obs("a" * 64, "V", quote="second copy of the value V")]
+    kept = LK.dedup_correlated(obs)
+    assert len(kept) == 1 and kept[0].quote == "first copy of the value V"
+
+
+def test_dedup_within_document_keeps_different_values() -> None:
+    # one document may genuinely attest two DIFFERENT values (a table with many rows) —
+    # the collapse is per (document, value), never per document.
+    obs = [_obs("a" * 64, "V1", quote="row one carries value V1"),
+           _obs("a" * 64, "V2", quote="row two carries value V2")]
     assert len(LK.dedup_correlated(obs)) == 2
+
+
+def test_dedup_within_document_then_cross_document_compose() -> None:
+    # q2-105's shape: twelve same-doc same-value repetitions vs one other-document gold —
+    # the competitor collapses to ONE witness and the gold survives untouched.
+    rep = [_obs("a" * 64, "WRONGVAL", quote=f"header {i}: fax WRONGVAL")
+           for i in range(12)]
+    gold = [_obs("b" * 64, "GOLDVAL", quote="the official form lists GOLDVAL")]
+    kept = LK.dedup_correlated(rep + gold)
+    assert sum(o.value_raw == "WRONGVAL" for o in kept) == 1
+    assert sum(o.value_raw == "GOLDVAL" for o in kept) == 1
 
 
 def test_dedup_correlated_keeps_max_covariate_representative() -> None:
@@ -753,16 +799,16 @@ def test_lookup_answer_end_to_end(migrated_root: Path, tmp_path: Path,
          "n_competing": 0, "competition_factor": 1.0}]
 
 
-@pytest.mark.parametrize("second_key", ["a" * 64, "b" * 64],
+@pytest.mark.parametrize(("second_key", "n_obs"), [("a" * 64, 1), ("b" * 64, 2)],
                          ids=["same-artefact", "other-artefact"])
 def test_lookup_answer_lineage_inputs_are_unique(migrated_root: Path, tmp_path: Path,
                                                  monkeypatch: pytest.MonkeyPatch,
-                                                 second_key: str) -> None:
+                                                 second_key: str, n_obs: int) -> None:
     """Two hits with IDENTICAL chunk text share one extract key (the key hashes the chunk, not
     the artefact — :func:`observe_hits`), so two observations can carry one ``obs_cache_key``;
-    a value-only quote keeps both through :func:`dedup_correlated`. The answer's lineage must
-    still name that observation ONCE (§18.9: ``artifact_lineage`` is keyed (artifact, input))
-    — whether the copies sit in one artefact or two."""
+    across two artefacts a value-only quote keeps both through :func:`dedup_correlated`, while
+    within ONE artefact r09c A1 counts them once. The answer's lineage must still name that
+    observation ONCE (§18.9: ``artifact_lineage`` is keyed (artifact, input)) either way."""
     model_path = tmp_path / "model.yaml"
     model_path.write_text(MODEL_YAML, encoding="utf-8")
     monkeypatch.setattr(config, "UTILITY_MODEL", model_path)
@@ -778,8 +824,8 @@ def test_lookup_answer_lineage_inputs_are_unique(migrated_root: Path, tmp_path: 
                            brain=brain, route_client=route, extract_client=extract,
                            decisions_path=tmp_path / "decisions.jsonl", run_id="test")
     assert result is not None
-    assert len(result.observations) == 2                              # both observed …
-    assert len({o.obs_cache_key for o in result.observations}) == 1   # … under ONE extract key
+    assert len(result.observations) == n_obs                          # A1: one per (doc, value)
+    assert len({o.obs_cache_key for o in result.observations}) == 1   # ONE extract key throughout
     from pkm.cache import lineage_file
     lineage = json.loads(lineage_file(migrated_root, result.answer_cache_key)
                          .read_text(encoding="utf-8"))["inputs"]

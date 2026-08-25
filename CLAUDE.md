@@ -292,11 +292,30 @@ through the DEPLOYED rule found one gold-dropping *inversion* on a row the motiv
 had misread through its re-implemented carrier mapping, so E1 is reverted from the parked
 tree. **The terse-carrier finding now closes the whole carrier-side family, exact or fuzzy,
 hard or soft: a terse gold carrier omits qualifiers, so any carrier-side requirement damps
-it.** The queue for 2026-09-01: (1) warm the one still-cold named row — the superset-confirm
-row; the warm-through already serves the other three at $0 — (2) run-14 conferral + re-price
-on the warmed record: the conferral must pick the tree and freeze the wrong-commit conjunct,
-since the parked tree measurably carries two standing wrongs and master carries the
-un-repaired blocking row. Hard clause carried
+it.** The run-14 conferral (owner, 2026-08-25,
+`docs/unification/conferrals/run14-conferral.md`) ruled option A at full delegation: fire on
+the parked tree, conjunct 3 baselined on run 13's typed arm (a wrong commit is NEW iff the
+row was not wrong there), cap raised. The ruled tail ran the same day. The warm pass fixed a
+warm-instrument defect en route: the rerank lane is uncached with fail-open, so a refusing
+replay takes the lexical branch wherever the deployed daemon's rerank moved the window — the
+first warm minted the DEPLOYED trajectory's frontier, which the $0 lane never visits; the
+priced pass became a hybrid (deployed client at every §18.9-recorded seam, refusal kept at
+rerank/raw-llm), verified RED→GREEN. This also names the mechanism of r07's one persistently
+fidelity-divergent row — disclosure, not a new arc. The $0 re-read on the warmed tree read
+zero new wrong commits (both readable run-13 wrongs convert to withheld) and the refreshed
+splice registered PASS 0.977 / Δ̄ +0.583 as the expectation. **Run 14
+(`gate-20260825T102725`, 2026-08-25): PASS on all four frozen conjuncts — P(Δ>0.05)=0.907,
+Δ̄ +0.421 [−0.046, +0.920]; the run-10 blocking row commits correct; zero NEW wrong commits
+(the three wrongs are all run-13 rows: the two standing wrongs + the warm-deliberate row);
+no named class worse (the superset-confirm row converts wrong → withheld).** Typed 60 ✓ +
+2 ✓hedge / 3 ✗ / 39 withheld (miss 2 · dispersed 37) at $0.69 vs mono 0.97 at $39.01. The
+live read sits under the registered expectation (0.907 vs 0.977); the gap is the
+warm-deliberate row reporting wrong live where the warmed re-read had it withheld — a
+run-13 row, carried not new; disclosed, not renegotiated. **Ruling 4's PASS branch is
+ENACTED: the §6.12 deployment block is CLOSED, the parked tree is merged to master (src
+tree-identical to `r10-entity-key` post-E1-revert), and master deploys to live
+(`bin/ask-live` / jarvis).** The two standing wrongs ride in production, priced and
+published. Hard clause carried
 forward (owner ruling): **no lever ships while it makes a named wrong-commit class worse.**
 Two standing lessons registered: a criterion naming specific rows can go unreadable between
 two passes of the same instrument (14 in / 14 out), so name a class + a bar + the

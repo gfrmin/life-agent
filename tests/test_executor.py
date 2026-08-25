@@ -313,7 +313,10 @@ def test_grow_lane_log_gather_failure_never_breaks_the_answer() -> None:
     assert view["asserted"] == ["P123"]
 
 
-def test_re_extract_strong_disagreeing_reread_collapses_the_channel() -> None:
+def test_re_extract_strong_adopts_the_bridge_reply_verbatim() -> None:
+    # r09: the JOIN lives bridge-side (pinned in test_bridge_server); the executor adopts
+    # whatever observations the reply carries — this scripted bridge returns an empty set,
+    # so the channel empties HERE, while the real bridge would return the joined channel.
     # The strong re-read REPLACES the channel exactly as corroborate does when it
     # DISAGREES — it named a value that would not join the lattice, so the weaker local
     # evidence must not survive it (review finding #2). The re-decide then runs on the
@@ -358,7 +361,9 @@ def test_re_extract_strong_null_reread_keeps_the_channel() -> None:
     assert "re_extract_strong" in decides[2]["applied_probes"]     # and retired
 
 
-def test_corroborate_tier_null_read_keeps_the_channel_disagree_still_replaces() -> None:
+def test_corroborate_tier_null_read_keeps_the_channel_reply_adopted_otherwise() -> None:
+    # r09: same note — the executor adopts the non-null reply verbatim; the real bridge
+    # returns the §5-deduped join, so a disagree keeps the channel live (test_bridge_server).
     # The same split on the daemon-scheduled tier — the branch that cost 12 of run 9's
     # 69 withholdings. A null read keeps the channel; a disagreeing one still erases it
     # (run 7's disagree⇒abstain contract, untouched).
@@ -1481,3 +1486,135 @@ def test_the_body_side_cascade_is_gone() -> None:
     retrieves = fake.posted("/retrieve")
     assert len(retrieves) == 1
     assert not any(r["rerank"] for r in retrieves)
+
+
+# --- r09: the correlation key and the channel handoff (D1/D2) --------------------------------
+
+_EXTRACT_KEYED = {
+    "candidates": ["P123"],
+    "observations": [{"reports": 0, "group": 0, "authority": 0.9,
+                      "subject_factor": 1.0, "time_factor": 1.0,
+                      "quote": "Passport No: P123", "doc_key": "d0"}],
+    "rho": 0.7, "era_split": False, "indeterminate": 0, "half_life_years": 5.0,
+}  # PII-OK: synthetic passport shape (the suite's standing fixture value)
+
+
+def test_decide_payloads_never_carry_the_wire_key() -> None:
+    """r09 D1: the brain stays string-blind — the executor strips the correlation-key fields
+    (quote, doc_key) from every /decide post, while the channel it holds and hands to probes
+    keeps them."""
+    fake = FakeServices(
+        route={"construct": "passport number", "time_indexed": False},
+        extract=_EXTRACT_KEYED,
+        decides=[{"effector": "report", "value": "P123",
+                  "credences": [0.95, 0.05], "p_none": 0.05, "eu": 0.9}])
+    _loop(fake)
+    decides = fake.posted("/decide")
+    assert decides, "the loop must have decided"
+    for post in decides:
+        for o in post["observations"]:
+            assert "quote" not in o and "doc_key" not in o
+
+
+def test_corroborate_payload_carries_the_standing_channel() -> None:
+    """r09 D2: the S1/S4/S5 corroborate call hands the bridge the executor's CURRENT
+    observations (key-carrying), so the §5-deduped JOIN is computed where the deployed rule
+    lives. The reply's observations are adopted verbatim — the replace line becomes a join
+    because the reply is the join."""
+    joined = [{"reports": 0, "group": 0, "authority": 0.9, "subject_factor": 1.0,
+               "time_factor": 1.0, "quote": "Passport No: P123", "doc_key": "d0"},
+              {"reports": 0, "group": 1, "authority": 1.0, "subject_factor": 1.0,
+               "time_factor": 1.0, "quote": "", "doc_key": "joint:tier"}]
+    fake = FakeServices(
+        route={"construct": "tax id", "time_indexed": False},
+        extract=_EXTRACT_KEYED,
+        corroborate={"observations": joined, "gather_rho": 0.80, "value": "P123",
+                     "read": "confirm"},
+        decides=[{"effector": "gather", "probe": "corroborate_haiku",
+                  "credences": [0.5, 0.5], "p_none": 0.1, "eu": 0.2},
+                 {"effector": "report", "value": "P123", "credences": [0.9, 0.1],
+                  "p_none": 0.05, "eu": 0.8}])
+    view = _loop(fake)
+    corr = fake.posted("/probe/corroborate")
+    assert corr and corr[0]["observations"] == _EXTRACT_KEYED["observations"]
+    assert view["n_obs"] == 2  # the joined channel, not a replacement
+    for post in fake.posted("/decide"):
+        for o in post["observations"]:
+            assert "quote" not in o and "doc_key" not in o
+
+
+def test_deliberate_payload_carries_the_standing_channel() -> None:
+    """r09 D2, the S3 edge: /probe/deliberate receives the standing channel too."""
+    fake = FakeServices(
+        route={"construct": "fax number", "time_indexed": False},
+        extract=_EXTRACT_KEYED,
+        deliberate={"observations": [], "status": "ok", "value": None,
+                    "confidence": None, "declined": True, "cost_usd": 0.0,
+                    "latency_s": 0.0, "cache": "hit"},
+        decides=[{"effector": "gather", "probe": "deliberate",
+                  "credences": [0.5, 0.5], "p_none": 0.3, "eu": 0.1},
+                 {"effector": "abstain", "credences": [0.4, 0.4],
+                  "p_none": 0.2, "eu": 0.0},
+                 {"effector": "abstain", "credences": [0.4, 0.4],
+                  "p_none": 0.2, "eu": 0.0}])
+    _loop(fake, transforms=[*EX.DEFAULT_TRANSFORMS, EX.DELIBERATE_TRANSFORM])
+    delib = fake.posted("/probe/deliberate")
+    assert delib and delib[0]["observations"] == _EXTRACT_KEYED["observations"]
+
+
+
+# --- r09d D3: S2 joins instead of replacing ----------------------------------------------
+# r09's JOIN reached S1/S3/S4/S5 and left S2 — the retrieval grow — replacing. r09c measured
+# the cost on the deployed tree: seven rows shrink at S2, and on two of them a
+# five-observation channel becomes one, taking a CORRECT leader under the report bar with it.
+# A grow that grounds new candidates must ADD evidence, never discard the standing channel.
+
+def _wobs(reports: int, doc: str, value: str) -> dict[str, Any]:
+    return {"reports": reports, "group": 0, "authority": 0.9, "subject_factor": 1.0,
+            "time_factor": 1.0, "competition_factor": 1.0,
+            "quote": f"q:{doc}", "doc_key": doc, "value_norm": value}
+
+
+def _ext(candidates: list[str], observations: list[dict[str, Any]]) -> dict[str, Any]:
+    return {"candidates": candidates, "observations": observations, "rho": 0.7,
+            "era_split": False, "indeterminate": 0, "half_life_years": 5.0}
+
+
+def test_s2_retrieval_grow_joins_the_standing_channel() -> None:
+    base = _ext(["P123"], [_wobs(0, "d0", "p123"), _wobs(0, "d1", "p123")])
+    grown = _ext(["Q999"], [_wobs(0, "d2", "q999")])
+    fake = FakeServices(
+        route={"construct": "passport number", "time_indexed": False},
+        extract=base, extracts=[base, grown],
+        decides=[
+            {"effector": "abstain", "credences": [0.4], "p_none": 0.6, "eu": 0.0},
+            {"effector": "gather", "probe": "retrieve_expand", "credences": [0.4],
+             "p_none": 0.6, "eu": 0.0},
+            {"effector": "report", "value": "P123", "credences": [0.9, 0.05],
+             "p_none": 0.05, "eu": 0.8},
+        ])
+    _loop(fake)
+    post_grow = fake.posted("/decide")[2]
+    # the standing candidates keep their indices; the grow's candidate is appended
+    assert post_grow["candidates"] == ["P123", "Q999"]
+    assert len(post_grow["observations"]) == 3
+    assert [o["reports"] for o in post_grow["observations"]] == [0, 0, 1]
+
+
+def test_s2_grow_that_grounds_nothing_still_leaves_the_channel_alone() -> None:
+    base = _ext(["P123"], [_wobs(0, "d0", "p123")])
+    fruitless = _ext([], [])
+    fake = FakeServices(
+        route={"construct": "passport number", "time_indexed": False},
+        extract=base, extracts=[base, fruitless],
+        decides=[
+            {"effector": "abstain", "credences": [0.4], "p_none": 0.6, "eu": 0.0},
+            {"effector": "gather", "probe": "retrieve_expand", "credences": [0.4],
+             "p_none": 0.6, "eu": 0.0},
+            {"effector": "report", "value": "P123", "credences": [0.9],
+             "p_none": 0.05, "eu": 0.8},
+        ])
+    _loop(fake)
+    post_grow = fake.posted("/decide")[2]
+    assert post_grow["candidates"] == ["P123"]
+    assert len(post_grow["observations"]) == 1

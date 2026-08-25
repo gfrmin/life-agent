@@ -295,6 +295,7 @@ import life_agent.core.lookup as LK  # noqa: E402
 import life_agent.core.subject as SUBJ  # noqa: E402
 import life_agent.core.temporal_intent as TI  # noqa: E402
 import life_agent.owner as owner  # noqa: E402
+from life_agent.bridge import observations as OBS  # noqa: E402
 from life_agent.bridge import server as SRV  # noqa: E402
 from life_agent.collapse.taps import RefusingClient, WouldSpendError  # noqa: E402
 from life_agent.core import config as LCFG  # noqa: E402
@@ -480,7 +481,9 @@ def join_observations(base: list[Any], probe: list[Any]) -> list[Any]:
     inflation §5 exists to stop."""
     pooled = [*base, *probe]
     if dedup_key_available(pooled):
-        return list(LK.dedup_correlated(pooled))
+        # r09: the key is on the wire — the deployed join applies (one rule, one adapter);
+        # candidates are unneeded because every keyed observation carries its value_norm
+        return list(OBS.join_wire_observations(list(base), list(probe), []))
     return pooled
 
 
@@ -688,7 +691,10 @@ def refuse_live_instrument_seams(engine_version: str) -> None:
         raise WouldSpendError("a live model seam was reached and the recorder is no-spend")
 
     for mod in (INSTR, SUBJ, TI):
-        mod.instrument_client = _refusing       # type: ignore[assignment]
+        # mypy joins the tuple to ModuleType (no attrs), so plain assignment is an
+        # attr-defined error; setattr is the typed idiom here.  noqa: the B010 autofix
+        # would put the assignment back and re-break the type gate.
+        setattr(mod, "instrument_client", _refusing)  # noqa: B010
     for mod_name, attr in DRIVE._SPEND_SEAMS:
         if (mod_name, attr) == ("life_agent.core.deliberate", "answer"):
             continue        # criterion 3 preflights the edge per question; sealing `answer`
