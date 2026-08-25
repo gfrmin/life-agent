@@ -96,3 +96,18 @@ If the cap is raised: all of it the same day. If not: 2026-09-01.
 ## RULINGS
 
 *(recorded after the interview; nothing above this line changes.)*
+
+**Taken 2026-08-25 (owner, interviewed after the conferral was committed at `be7fa14`):**
+
+1. **Option A.** Run 14 fires on the parked tree (branch `r10-entity-key` post-E1-revert,
+   tree-identical to the pre-E1 head) under the four frozen conjuncts: (1) P(Δ>0.05) ≥ 0.90
+   at the frozen δ/level 0.05 / 0.90; (2) the blocking row commits correct; (3) zero NEW
+   wrong commits; (4) the standing hard clause — no named wrong-commit class worse.
+2. **Conjunct 3's baseline is run 13's typed arm.** A wrong commit is NEW iff the row was
+   not wrong in run 13's typed arm. The two standing wrongs are carried, priced, published.
+3. **The cap is raised now** (owner console action). On restored access, same day:
+   warm the superset-confirm row (`warm-rows.sh`, the ruled targeted scope) → re-read the
+   record at $0 and update the splice → fire run 14 under the frozen branches.
+4. **Full delegation on PASS:** close the §6.12 block, merge the parked tree to master,
+   deploy to live, publish — no further keypress. FAIL on any conjunct: STOP for a ruling,
+   nothing merges.
