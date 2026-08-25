@@ -975,10 +975,12 @@ def render(result: LookupResult) -> str:
         body = GRAMMAR["hedge"].format(alts=alts)
     elif result.action == "ask_clarify":
         body = GRAMMAR["ask_clarify"].format(alts=alts)
-    elif result.action == "abstain" and result.candidates:
+    elif (DEC.withhold_reason(effector=result.action, candidates=result.candidates)
+          == "dispersed"):
+        # D-5 (M5, r15): the reason is the ONE derivation over the decision record.
         body = GRAMMAR["abstain_withheld"].format(reason=REASON_DISPERSED, alts=alts)
     else:
-        # zero candidates ⇒ no posterior existed, so "dispersed" would be a false reason
+        # miss — no posterior ever existed, so "dispersed" would be a false reason
         # (interaction contract: the named reason must be the true one).
         body = GRAMMAR["abstain"].format(reason=REASON_NO_OBSERVATIONS)
     footer = GRAMMAR["footer"].format(

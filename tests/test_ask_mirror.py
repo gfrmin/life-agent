@@ -29,7 +29,7 @@ def test_answer_via_executor_wires_the_shared_shadow_mirror(monkeypatch: Any) ->
         wrap_calls.append((post, bridge, question_id))
         return sentinel_wrapped
 
-    monkeypatch.setattr(ask.SM, "shadow_wrapped_post", fake_shadow_wrapped_post)
+    monkeypatch.setattr(ask.AC.SM, "shadow_wrapped_post", fake_shadow_wrapped_post)
 
     captured: dict[str, Any] = {}
 

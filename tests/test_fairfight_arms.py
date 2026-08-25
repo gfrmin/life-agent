@@ -258,7 +258,7 @@ def test_answer_baseline_executor_down_never_falls_back_silently(monkeypatch) ->
 # --- baseline (inprocess) ------------------------------------------------------------------
 
 
-def test_answer_baseline_inprocess_happy_path_turns_gather_on(monkeypatch) -> None:
+def test_answer_baseline_inprocess_happy_path_no_gather_flag(monkeypatch) -> None:
     conn = _FakeConn()
     captured: dict = {}
     monkeypatch.setattr(ask, "connect", lambda: conn)
@@ -276,7 +276,7 @@ def test_answer_baseline_inprocess_happy_path_turns_gather_on(monkeypatch) -> No
     monkeypatch.setattr(ask, "answer", fake_answer)
     out = AB.answer_baseline(_q(), 8, path="inprocess")
     assert captured["conn"] is conn
-    assert captured["kwargs"].get("gather") is True   # the one flag this arm turns on
+    assert "gather" not in captured["kwargs"]   # the flag died with the loop (M5, r15)
     assert out.status == "ok"
     assert out.decision_view is not None and out.decision_view["family"] == "lookup"
     assert out.decision_view["asserted"] is True
@@ -474,7 +474,7 @@ def test_answer_baseline_inprocess_fresh_threads_no_cache_true(monkeypatch) -> N
 
     monkeypatch.setattr(ask, "answer", fake_answer)
     AB.answer_baseline(_q(), 8, path="inprocess", fresh=True)
-    assert captured["kwargs"].get("gather") is True
+    assert "gather" not in captured["kwargs"]   # died at M5 (r15)
     assert captured["kwargs"].get("no_cache") is True
 
 

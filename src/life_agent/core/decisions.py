@@ -206,3 +206,20 @@ def read(path: Path) -> list[DecisionEvent]:
     """Every decision in file order — the canonical replay order. Malformed lines
     raise; a missing file means no decisions yet."""
     return [_from_line(line) for line in jsonl_log.read_lines(path)]
+
+
+def withhold_reason(*, effector: object, candidates: object,
+                    available: bool = True) -> str:
+    """D-5 (M5, r15): withhold-reason is ONE derivation over the decision record —
+    ``unavailable ≻ miss ≻ dispersed``. ``unavailable`` dominates (no engine ranked, the
+    row says nothing about the policy); ``miss`` means no posterior ever existed (the
+    effector says so, or no candidate ever grounded); ``dispersed`` means a posterior
+    existed and lost the EU argmax. The gate's ``WITHHELD_*`` labels, the eval's reason
+    readout, and the render grammars' reason strings are all this function's callers —
+    a second spelling of the chain is drift.
+    """
+    if not available:
+        return "unavailable"
+    if str(effector) == "miss" or not candidates:
+        return "miss"
+    return "dispersed"

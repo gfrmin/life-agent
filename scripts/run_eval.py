@@ -53,6 +53,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from eval_grading import answer_matches, chunk_matches_any, classify
 
+from life_agent.core import decisions as DEC
+
 # Effectively-unbounded k for the in-corpus set-membership check: we want "does the
 # answer appear ANYWHERE", not a ranked top-k, so we take all FTS matches and confirm
 # with the token-boundary matcher (specific answers match few chunks; this only runs
@@ -594,13 +596,10 @@ def withheld_reason(view: dict, *, available: bool):
     ``available=False`` dominates: if this machine's catalogue cannot answer the question,
     the withholding says nothing about the policy and the row is censored from Δ.
     """
-    import life_agent.core.gate as GATE
-
-    if not available:
-        return GATE.WITHHELD_UNAVAILABLE
-    if str(view.get("effector")) == "miss" or not view.get("candidates"):
-        return GATE.WITHHELD_MISS
-    return GATE.WITHHELD_DISPERSED
+    # D-5 (M5, r15): the chain lives in ONE derivation — decisions.withhold_reason.
+    return DEC.withhold_reason(effector=view.get("effector"),
+                               candidates=view.get("candidates"),
+                               available=available)
 
 
 def _typed_response_executor(view: dict, q: dict, *, available: bool = True):

@@ -27,6 +27,7 @@ from typing import Any
 
 from life_agent.bridge import observations as SO
 from life_agent.core import calibration as CAL
+from life_agent.core import decisions as DEC
 from life_agent.core import deliberate as DL
 from life_agent.core import gather_outcomes as GO
 from life_agent.core import lookup as LK
@@ -329,7 +330,10 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
                            "era_split": False,
                            "indeterminate": ext.get("indeterminate", 0)}
                     break
-    if not ext["candidates"]:  # zero grounded observations → the local edge declined
+    if not ext["candidates"]:
+        # The wire's ENACTMENT CONSTRAINT, not a host decision (r15 A1): the daemon's
+        # /decide hard-errors on empty candidates (server.jl: k >= 1 — verified), so a
+        # k=0 state has no ranking to be inside of. Mechanics, the same logic as §6.5.
         _log_outcomes("miss")
         return {"effector": "miss", "asserted": [], "candidates": [], "credences": [],
                 "p_none": None, "eu": None, "n_obs": 0, "hits": hits, "route": route,
@@ -571,12 +575,16 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
             applied = list(dict.fromkeys([*applied, probe]))
             grow_asked = False
             dec = _decide(obs, rho, era, applied)
-        elif (eff in _WITHHOLD and not grow_asked
-              and (grow_probes - set(applied))):
-            # a withholding terminal with unapplied grow actuators: re-ask WITH the grow block
-            # so the daemon prices recall (grow_value self-gates on the terminal EU — skipping
-            # the re-ask after a report is transport economy, not a decision: a confident
-            # report prices at about minus-cost by construction).
+        elif not grow_asked and (grow_probes - set(applied)):
+            # a TERMINAL with unapplied grow actuators: re-ask WITH the grow block so the
+            # daemon prices recall over the full space. Reports included (M5/r15 A2): the
+            # old report-economy skip claimed "a confident report prices grow at about
+            # minus-cost", which the $0 residue probe REFUTED against the live engine —
+            # 62 of 63 recorded economy-class reports flip to a scheduled re-read when
+            # shown the block (scripts/e12_residue_probe.py). The daemon's self-gate is
+            # the rule; the host offers, never filters. A grow-block consult that still
+            # returns a terminal ends the loop (obedience — the daemon saw and declined
+            # every unapplied grow).
             last_sensors = GO.sensors_from(
                 candidates=candidates, credences=list(dec["credences"] or []),
                 p_none=dec["p_none"], indeterminate=int(ext.get("indeterminate") or 0))
@@ -637,12 +645,15 @@ def render_view(view: View) -> str:
         body = LK.GRAMMAR["hedge"].format(alts=alts)
     elif eff == "ask_clarify":
         body = LK.GRAMMAR["ask_clarify"].format(alts=alts)
-    elif eff == "abstain" and cands:
-        body = LK.GRAMMAR["abstain_withheld"].format(reason=LK.REASON_DISPERSED, alts=alts)
-    else:  # abstain with no candidates, or miss (zero grounded observations)
-        # No posterior existed, so "dispersed" would be a false reason — the interaction
-        # contract requires the named reason to be the true one. Mirrors lookup.render.
-        body = LK.GRAMMAR["abstain"].format(reason=LK.REASON_NO_OBSERVATIONS)
+    else:
+        # D-5 (M5, r15): the reason is the ONE derivation over the decision record;
+        # this render maps it onto the interaction contract's grammar strings.
+        reason = DEC.withhold_reason(effector=eff, candidates=cands)
+        if reason == "dispersed":
+            body = LK.GRAMMAR["abstain_withheld"].format(reason=LK.REASON_DISPERSED,
+                                                         alts=alts)
+        else:  # miss — no posterior ever existed
+            body = LK.GRAMMAR["abstain"].format(reason=LK.REASON_NO_OBSERVATIONS)
     p_none, eu = view["p_none"], view["eu"]
     footer = LK.GRAMMAR["footer"].format(
         n_hits=len(hits), n_obs=view.get("n_obs", 0),

@@ -97,3 +97,80 @@ def test_ask_has_no_weak_retrieval_predicate() -> None:
     assert "retrieval_is_weak" not in src
     assert "WEAK_SCORE_FLOOR" not in src
     assert "MIN_STRONG_HITS" not in src
+
+
+# --- P-II (A2): the report-economy latch dies — the grow offer follows EVERY terminal - #
+
+def _fake_services_module():  # the executor test rig, reused without duplication
+    import tests.test_executor as TE
+    return TE
+
+
+def test_report_terminal_gets_the_grow_offer() -> None:
+    """A2's measured residue (62/63 recorded reports flip when shown the block): the
+    re-ask with the grow block fires after a REPORT too — the daemon prices recall on
+    the full space, and its gather choice is enacted."""
+    te = _fake_services_module()
+    fake = te.FakeServices(
+        route={"construct": "passport number", "time_indexed": False},
+        corroborate={"observations": [{"reports": 0, "group": 0, "authority": 1.0,
+                                       "subject_factor": 1.0, "time_factor": 1.0}],
+                     "gather_rho": 0.95, "value": "P123"},
+        decides=[
+            {"effector": "report", "value": "P123", "credences": [0.6, 0.2],
+             "p_none": 0.2, "eu": 0.35},
+            {"effector": "gather", "probe": "re_extract_strong",
+             "credences": [0.6, 0.2], "p_none": 0.2, "eu": 0.35},
+            {"effector": "report", "value": "P123", "credences": [0.95, 0.03],
+             "p_none": 0.02, "eu": 0.9},
+            {"effector": "report", "value": "P123", "credences": [0.95, 0.03],
+             "p_none": 0.02, "eu": 0.9},
+        ])
+    view = te._loop(fake)
+    assert view["effector"] == "report"
+    decides = fake.posted("/decide")
+    # consult(plain) -> re-ask(grow) -> gather enacted -> re-decide(plain) ->
+    # re-ask(grow, retrieval grows still unapplied) -> declined -> end
+    assert len(decides) == 4
+    assert "grow" not in decides[0]           # sensors are posterior-derived (A2 arm i)
+    assert "grow" in decides[1] and "sensors" in decides[1]
+    assert "grow" in decides[3]               # the offer repeats until declined
+    assert len(fake.posted("/probe/corroborate")) >= 1  # the re-read was enacted
+
+
+def test_confident_report_grow_decline_ends_the_loop() -> None:
+    """The obedience arm (A2 arm ii): the daemon saw the block and repeated the
+    report — the loop ends; nothing is enacted twice."""
+    te = _fake_services_module()
+    fake = te.FakeServices(
+        route={"construct": "passport number", "time_indexed": False},
+        decides=[
+            {"effector": "report", "value": "P123", "credences": [0.99, 0.005],
+             "p_none": 0.005, "eu": 0.98},
+            {"effector": "report", "value": "P123", "credences": [0.99, 0.005],
+             "p_none": 0.005, "eu": 0.98},
+        ])
+    view = te._loop(fake)
+    assert view["effector"] == "report"
+    assert len(fake.posted("/decide")) == 2
+    assert fake.posted("/log_gather") == []   # nothing enacted, nothing logged
+
+
+# --- P-II (A1 + D-5): withhold-reason is ONE derivation ------------------------------- #
+
+def test_withhold_reason_is_one_derivation() -> None:
+    from life_agent.core import decisions as DEC2
+    assert DEC2.withhold_reason(effector="report", candidates=["x"],
+                                available=False) == "unavailable"
+    assert DEC2.withhold_reason(effector="miss", candidates=[], available=True) == "miss"
+    assert DEC2.withhold_reason(effector="abstain", candidates=[],
+                                available=True) == "miss"
+    assert DEC2.withhold_reason(effector="abstain", candidates=["x"],
+                                available=True) == "dispersed"
+
+
+def test_reason_consumers_derive_not_respell() -> None:
+    """D-5 drift gate: the named consumers call the one derivation."""
+    root = Path(__file__).resolve().parent.parent
+    assert "withhold_reason" in (root / "scripts" / "run_eval.py").read_text()
+    assert "withhold_reason" in (_SRC / "core" / "executor.py").read_text()
