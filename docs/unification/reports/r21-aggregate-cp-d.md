@@ -158,4 +158,25 @@ this checkpoint closes.
 
 ## RESULTS
 
-*(appends per phase; nothing above this line changes.)*
+### Phase 1 (2026-08-26, $0)
+
+SPEC-first held: SPEC 0.19.0's §18.14 was committed before any transform code. TDD
+held: the 13 tests were watched RED (`ModuleNotFoundError: No module named
+'pkm.transforms.extract_amounts'`) before the module existed, then 13/13 GREEN.
+`pkm.transforms.extract_amounts.ExtractAmountsProducer` implements the §18.5 gate
+exactly as pre-registered (ungroundable `amount_raw` or `label_raw` fails the source;
+`majority_unlabelled` derived in `parse_output`, never trusted; the currency_default
+fallback applied before validation with an explicit no-currency failure; finite-amount
+guard). Example declarations for all four input producers + the prompt + the canonical
+schema live under `docs/pkm/examples/transforms/extract_amounts/v1/`; the live install
+(out of tree, `/…/transforms|prompts|schemas`) loads through
+`load_transform_declaration` for all four producers. Nothing demands the transform yet
+— the derive path stays cold until phase 2 (demand-led, $0 so far).
+
+**Phase-1 gate:** suite **2755 passed**; `ruff check` clean; `mypy` clean (225
+files); m5-base replay **314/314 pure equality** at the recorded seed.
+**Deviations:** the example-loading test called the loader with a path — corrected to
+its real `(root, name)` signature; plus two lint-shape fixes (import sort, an unused
+noqa). Nothing semantic.
+
+*(phase 2 appends below; nothing above changes.)*
