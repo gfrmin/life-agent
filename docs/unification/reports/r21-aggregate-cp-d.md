@@ -224,4 +224,29 @@ arithmetic exactly.
   RUN19_GATE_ONLY=1: tree gate (run-18 lineage + the r21 pins) + C0a + credence pin
   all PASS on the phase-2 tree. Comparison meta: run 18's.
 
-*(the run's reading appends below; nothing above changes.)*
+### Run 19, first firing (2026-08-26) — STOPPED before C1; no conjunct read
+
+The fire sequence surfaced, in order: **(defect 1)** the second-stage router's schema
+carried a nullable enum the structured-output API rejects — found at the first live
+call (the hermetic fake never validates schemas), fixed red-first as the `"none"`
+sentinel (PR #102), live-verified in both directions; **(defect 2)** the demand-led
+warm failed on every derive — `extract_amounts` was never added to `make_producer`'s
+closed §18.2 dispatch table (phase 1 extended every ladder but that one; its tests
+instantiated the class directly), fixed red-first on the exact seam (PR #103). The
+run was STOPPED before its C1 leg; the cold-lane C2/console artifacts are renamed
+`VOID-coldlane-*`; the partial gate rows are inert under an unpublished run id;
+spend ≲$1.
+
+**Valid readings kept from the aborted legs:** C0a (structural, above) and **C0b —
+the second-stage sweep read 0 narrative→aggregate false positives and 2/2 aggregate
+recall** on the labelled mixed set (verdicts cached).
+
+**The STOP that outlives the defects:** the voided C2 rows carry the deployed
+routing census — 11 of 15 aggregate questions (the fund-deposit exhibit included)
+are ADMITTED by stage 1 as lookups, so the family, frozen to the declined path (§8),
+never fires on them and **exhibit (a) is unreachable as instrumented**. No conjunct
+was read; firing would purchase a known C2 FAIL. STOPPED for an owner ruling —
+`docs/unification/conferrals/cp-d-routing-conferral.md` has the evidence, options,
+and prices.
+
+*(the ruling and the re-fire's reading append below; nothing above changes.)*
