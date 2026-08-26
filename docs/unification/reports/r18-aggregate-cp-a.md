@@ -90,4 +90,9 @@ renegotiation.
 
 ## RULING
 
-*(fills at the conferral; the questions and recommended answers are in the conferral doc.)*
+*2026-08-26, owner interviewed — all four recommendations adopted (the conferral doc's
+RULING section has the full text):* v0 scope is numeric-total only; the priced run's
+capability conjuncts are exhibits-hard with Δ_agg frozen only at gradeable N≥15 (N counts
+gradeable questions; as installed N=11 ⇒ disclosed reading); the four schema decisions
+stand as written; aggregate verdicts are recorded, not folded, with the fold the named
+successor entry. **CP-A is CLOSED. CP-B (r19) opens.**

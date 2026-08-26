@@ -83,4 +83,23 @@ programme's DONE item 2 stays open on item 4.
 
 ## RULING
 
-*(records the owner's answers; taken before any CP-B src change.)*
+*Taken 2026-08-26 (owner, four-question interview). All four recommendations adopted:*
+
+1. **Q1 — v0 scope: numeric-total aggregates only.** Sums and counts over a scope;
+   lists, summaries, comparisons and compound questions keep their narrative treatment.
+2. **Q2 — conjunct structure ruled as recommended, with the census clarification:**
+   hard binary conjuncts = the two stage-gate exhibits + zero commits in the family's
+   new wrong-commit class (asserted interval excluding the external gold); the
+   Δ_agg-vs-narrative comparison is a frozen conjunct **only if the gradeable set
+   reaches N≥15** — and **N counts gradeable questions** (gold-none honesty rows cannot
+   pad the count). As installed the set holds 11 gradeable, so Δ_agg is a disclosed
+   reading unless the gradeable set grows before CP-D's prereg freezes. The 104-corpus
+   regression conjuncts are unconditional either way.
+3. **Q3 — all four schema decisions adopted as written** (design §3–§4/§7): bounded
+   typed line-items ≤8/doc; `amount_raw` grounding mandatory with `label_raw` the
+   quality flag; `basis` enum + `as_of` per item; the dedup split (schema carries the
+   keys, CP-C infers, the §5 lookup rule stays untouched as proposal generator).
+4. **Q4 — aggregate verdicts recorded, not folded, in v0.** The interval-verdict fold
+   is the family's named successor entry; nothing is invented silently.
+
+CP-A's gate is met. CP-B (r19) opens under these terms.
