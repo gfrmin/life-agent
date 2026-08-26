@@ -298,7 +298,7 @@ class HitCovariates:
 
 
 def subject_factor(state: str | None) -> float:
-    """The doc_subject covariate on a_i. None = no covariate (not an owner-scoped
+    """[§3.3 · L-7] The doc_subject covariate on a_i. None = no covariate (not an owner-scoped
     question, or not projected). A state outside the partition raises — junk from
     the annotation seam must surface, not silently weight evidence."""
     if state is None or state == "owner":
@@ -311,10 +311,27 @@ def subject_factor(state: str | None) -> float:
     raise ValueError(f"subject covariate outside the partition: {state!r}")
 
 
+def source_date_iso(dated: list[str | None], as_of_iso: str | None) -> str | None:
+    """[§3.3 · D-14] (with L-6/N-4/BR-3/P-1): THE date-selection of the one recency
+    policy — which date feeds :func:`time_factor` for a whole-question/re-read
+    observation. Recency is a document property, independent of WHOSE value it is, so
+    a value is as current as its freshest SOURCE attestation: the max among the
+    doc_dates of the value-carrying hits; else the instrument's self-reported
+    (already-normalised) ``as_of``; else ``None`` (undated time-indexed ⇒ the stated
+    marginal attenuation inside ``time_factor``). The policy's other two declared
+    branches live with their inputs: the projection-side date-SOURCE rule (P-1 — the
+    email-header fallback in ``probes``' doc_date covariate) and the claim-side branch
+    (N-4 — ``narrative.scope_decay`` reads the claim's own ``as_of``, present scope
+    only). Different inputs, one policy; a second spelling of this chain may not
+    exist."""
+    known = sorted(d for d in dated if d)
+    return known[-1] if known else as_of_iso
+
+
 def time_factor(date_iso: str | None, *, time_indexed: bool,
                 today: date | None = None,
                 half_life_years: float = _TIME_HALF_LIFE_YEARS) -> float:
-    """The doc_date covariate on a_i: for a time-indexed construct, the probability a
+    """[§3.3 · L-6] The doc_date covariate on a_i: for a time-indexed construct, the probability a
     document's assertion is still current decays with document age at the construct's
     ``half_life_years`` (the per-construct volatility prior; a permanent construct passes a
     near-infinite half-life ⇒ no decay). ``date_iso`` None = projected but unknown
@@ -386,6 +403,7 @@ def _sha(text: str) -> str:
 
 
 def _norm_value(value: str) -> str:
+    # [§3.3 · L-4] candidate identity — the observation equivalence relation
     return " ".join(value.split()).casefold()
 
 
@@ -411,7 +429,8 @@ def _candidate_key(value: str) -> str:
     return _norm_value(value)
 
 
-def era_split(observations: list[Observation], doc_date: dict[str, str | None],
+def era_split(  # [§3.3 · L-5/GA-3] the era structure of the observation set
+        observations: list[Observation], doc_date: dict[str, str | None],
               *, years: float = _TIME_HALF_LIFE_YEARS) -> bool:
     """Do the candidate values split across eras? True iff, among candidates with at least one
     dated supporting document, the span between the newest-dated and the oldest-dated candidate
@@ -439,7 +458,9 @@ def era_split(observations: list[Observation], doc_date: dict[str, str | None],
 
 
 def _grounded(quote: str, value: str, chunk: str) -> bool:
-    """Whitespace-normalised verbatim containment of the quote OR the value (the
+    """[§3.3 · L-1/E-10] The grounding predicate — a likelihood term of the observation
+    model (an ungrounded quote is not an observation; a retrieval grow re-enters here).
+    Whitespace-normalised verbatim containment of the quote OR the value (the
     action_items precedent, widened): the gate ties the observation to the excerpt
     (anti-hallucination), and must not fail a value that is plainly present just
     because RTL PDF extraction scrambled the visual order the model quoted in.
@@ -451,7 +472,7 @@ def _grounded(quote: str, value: str, chunk: str) -> bool:
 
 
 def authority_for(origin: str) -> tuple[str, float]:
-    """The declared v0 authority class for a hit's origin path (stated prior)."""
+    """[§3.3 · L-8] The declared v0 authority class for a hit's origin path (stated prior)."""
     low = origin.casefold()
     if any(marker in low for marker in _AUTHORITY_MAIL_MARKERS):
         return ("email", 0.90)
@@ -776,7 +797,8 @@ def _quote_key(quote: str) -> str:
 
 
 def dedup_correlated(observations: list[Observation]) -> list[Observation]:
-    """Collapse correlated DUPLICATE observations to one witness each (§5 dedup-as-inference).
+    """[§3.3 · L-2] The correlation structure — correlated duplicates are one attestation.
+    Collapse correlated DUPLICATE observations to one witness each (§5 dedup-as-inference).
 
     Observations carrying a near-identical quote across DIFFERENT documents are the same
     underlying text duplicated (a forwarded/replied email chain, a re-filed copy), not
@@ -884,7 +906,8 @@ def lookup_posterior(brain: Brain, observations: list[Observation],
         groups.setdefault(o.artifact_cache_key, []).append(o)
     for group in groups.values():
         o0 = group[0]  # one document's covariates are shared by all its chunks
-        # §4.2's competition term: chunk-level, so the group covariate takes the group's
+        # [§3.3 · L-10] §4.2's competition term: chunk-level, so the group covariate
+        # takes the group's
         # most-competed observation (min factor — the conservative fold; mirrors the
         # daemon's per-observation r product on the executor path).
         covariate = _covariate(o0) * min(o.competition_factor for o in group)

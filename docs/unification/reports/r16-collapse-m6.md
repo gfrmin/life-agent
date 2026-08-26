@@ -162,3 +162,73 @@ PR/merge, steel deploy) without a further keypress; the ladder resumes at M7 (ow
 keypress — Appendix A). Any G2 divergence → STOP, publish the finding, blind
 amendment before any further phase. Anomalies en route are disclosure items
 (cap-the-arc).
+
+## RESULTS (read 2026-08-26, appended after the gates ran — nothing above changed)
+
+Execution: five TDD phases on branch `collapse-m6`, every pin watched RED first
+(`tests/test_m6_declaration.py` — 18 pins).
+
+- **P-I (D-11):** `_lattice_join` + `_joined_observation` are the one join; the
+  corroborate site and `_join_deliberate_value` bind them; the exact-norm-scan idiom
+  appears once in the bridge (drift-gated). All r09b endpoint pins green unchanged.
+- **P-II (D-14):** `LK.source_date_iso` declares the ≻-chain;
+  `BR._source_time_factor` binds it; the P-1 and N-4 branches are named in the
+  declaration.
+- **P-III (D-15):** the projection declaration lands at `RX.VERDICT_Y` naming all
+  three branches + the precedence site; `SES._VERDICT_Y is RX.VERDICT_Y`
+  (is-identity, the M4 pattern); `claude_verdicts.y` and the `boot_snapshot`
+  precedence carry the cross-references.
+- **P-IV:** 23 clause stamps in the uniform `[§3.3 · X-n]` form, drift-gated by one
+  test over the (module, marker) census.
+- **P-V (riders):** `DEC.edge_id(kind, model)` with `extract_edge`/`DL.instrument`
+  as bindings; ask.py's stack URLs are bindings of `AC.BRIDGE`/`AC.DAEMON` (the env
+  is read once).
+
+### Gate readings
+
+- **G1 — GREEN.** 2721 passed, 35 deselected; ruff clean; mypy clean (221 files).
+- **G2 — GREEN, the frozen bar met exactly: 314/314 PURE EQUALITY on `m5-base`.**
+  Declaring was not changing — zero direction classes, zero misses, zero diffs.
+- **G3 — none demanded; none run.** G5 — no corpus values in tree (the Q5 table's
+  construct strings are corpus-derived, so the full transcript lives in the KB:
+  `$LIFE_AGENT_KB/eval/q5-volatility-transcript-20260826.md`; only counts and
+  classes appear here).
+
+### P-VI — the E-7 verification (verify-only, as ruled)
+
+Zero replace sites on the tree (P5 CONFIRMED). The declared second-channel
+semantics, each with its pinning test:
+
+| site | semantics | pin |
+|---|---|---|
+| corroborate tiers | null read ⇒ channel stands, rho untouched | `test_corroborate_tier_null_read_keeps_the_channel_reply_adopted_otherwise` |
+| in-loop `re_extract_strong` | null read ⇒ channel stands | `test_re_extract_strong_null_reread_keeps_the_channel` |
+| deliberate edge, empty ok | JOINS, channel kept (empty-ok collapse retired) | `test_deliberate_empty_ok_joins_and_keeps_the_channel` |
+| deliberate edge, decline | NOT_IN_CORPUS is DECLARED evidence for none (not a collapse) | `test_deliberate_decline_collapses_the_channel` |
+| deliberate edge, error | infrastructure, non-observation, channel survives (DL-2) | `test_deliberate_error_reply_keeps_the_grounded_channel` |
+| S2 retrieval grow | joins the standing channel (r09d D3) | `test_s2_retrieval_grow_joins_the_standing_channel` |
+| the JOIN itself | never lowers the channel; §5 rule identical | `test_wire_join_never_lowers_the_channel`, `test_wire_join_applies_the_deployed_dedup_rule_identically` |
+
+### P-VII — Q5's transcript, and the disposition it decides
+
+$0 (103 of 104 questions read warm from the route cache; 1 narrative-routed; 0 cold
+— P4 CONFIRMED, including the q-014 protective class: contact-info constructs the
+model called permanent, decayed by keyword rows). **Disagreements 89 of 103 (86.4%),
+ALL one-directional** (model-permanent → table-decays; the risk direction is empty),
+and **65 of the 89 sit on the DEFAULT branch** (half-life 5.0, the unclassified
+fallback) — among them permanent-in-kind constructs (a standard's publication year,
+a floating-point format constant, historical totals-as-of-a-date) where the model
+was right and the default decays true old evidence (conservative harm: attenuation,
+never a confident-wrong). **By the frozen rule — the disagreements are NOT all the
+table's wins — a latent with a prior IS warranted.** Disposition: REGISTERED as
+future work (a learned per-construct volatility latent; the override stays deployed
+until that arc lands under its own pre-registration); no code moved at M6, per this
+checkpoint's own mandate.
+
+### Verdict
+
+**M6 is DONE.** Every §3.3 clause has one declaration with one home — three real
+unifications (D-11, D-14, D-15), two mechanics riders (D-12, D-13), twenty-three
+stamps, E-7 verified second-channel everywhere, Q5's transcript produced and its
+disposition decided — at 314/314 pure equality and $0. The ladder stands at **M7 —
+the register pinned; the owner signs Appendix A (owner keypress)**.

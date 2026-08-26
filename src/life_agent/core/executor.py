@@ -77,10 +77,10 @@ def _null_read(reply: dict[str, Any]) -> bool:
 
 
 def extract_edge(model: str) -> str:
-    """The joint-read edge's attribution name: ONE spelling (the deliberate edge has
-    deliberate.instrument(); this is its extract@ sibling — a hand-built f-string at a
-    call site silently splits the curve namespace)."""
-    return f"extract@{model}"
+    """The joint-read edge's attribution name — a binding of the one constructor
+    (D-12: `decisions.edge_id`; the deliberate edge's `deliberate.instrument` is its
+    sibling binding)."""
+    return DEC.edge_id("extract", model)
 
 
 def menu_transforms(curves: Curves) -> list[dict[str, Any]]:
@@ -451,9 +451,10 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
                 applied = list(dict.fromkeys([*applied, probe]))
                 dec = _decide(obs, rho, era, applied)
         elif eff == "gather" and probe in _GROW_RETRIEVE:
-            # a DAEMON-SCHEDULED retrieval grow: rebuild the evidence at the named breadth and
-            # adopt it iff it grounded candidates (else the prior evidence stands and the probe
-            # is simply retired — a fruitless recall must not erase a posterior).
+            # [§3.3 · E-10] a DAEMON-SCHEDULED retrieval grow: rebuild the evidence at
+            # the named breadth and adopt it iff it grounded candidates (L-1 applied; else
+            # the prior evidence stands and the probe is simply retired — a fruitless
+            # recall must not erase a posterior).
             rr, ex = _GROW_RETRIEVE[probe]
             n_hits, n_recency, n_ext = _evidence(rr, ex)
             changed = bool(n_ext["candidates"])

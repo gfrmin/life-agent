@@ -186,6 +186,8 @@ def _route(deps: BridgeDeps, p: Payload) -> Payload | None:
     # mobile/address/employer decay while DOB/national-id/tax-id do not. The model only
     # classifies the
     # CONSTRUCT; volatility decides whether it decays.
+    # [§3.3 · BR-1] volatility overrides the route model's verdict (Q5's transcript
+    # reads this choice; override-vs-combine is its open question).
     time_indexed = VOL.half_life(r.construct) < VOL.PERMANENT
     return {"construct": r.construct, "time_indexed": time_indexed}
 
@@ -318,8 +320,8 @@ def _source_time_factor(value: str | None, as_of: str | None, hits: list[Payload
     doc_date = dict((p.get("covariates") or {}).get("doc_date") or {})
     src_dates = [doc_date.get(h["artifact_cache_key"]) for h in hits
                  if MATCH.answer_matches(value or "", [], str(h.get("chunk_text", "")))]
-    dated = sorted(d for d in src_dates if d)
-    date_iso = dated[-1] if dated else _normalize_date_iso(as_of)
+    # D-14's one date-selection (LK.source_date_iso) — the ≻-chain is declared there.
+    date_iso = LK.source_date_iso(src_dates, _normalize_date_iso(as_of))
     return LK.time_factor(date_iso, time_indexed=True, today=_opt_date(p.get("today")),
                           half_life_years=hl)
 
@@ -360,40 +362,12 @@ def _probe_corroborate(deps: BridgeDeps, p: Payload) -> Payload:
         read = "null"
         if jr.value is not None:
             read = "disagree"
-            vn = LK._norm_value(jr.value)
-            idx = next((i for i, c in enumerate(candidates) if LK._norm_value(c) == vn), None)
-            contained: list[int] = []
-            if idx is None:
-                # The join must not read a CONFIRMING sentence as a disagreement (the q-011
-                # pooling loss: the strong read confirmed the grounded passport leader
-                # inside a full sentence; exact equality returned no observation and
-                # the replace-contract erased the grounded channel). A candidate uniquely
-                # contained in the re-read value — the graders' own token-boundary matcher —
-                # is the confirmed leader; two contained candidates settle nothing and keep
-                # the conservative outside-set ⇒ no-observation contract. Nor may it read a
-                # CORRECTING sentence as a confirmation ("…was renewed; the new number is
-                # …"): containment alone cannot tell confirm from correct-while-mentioning,
-                # and the daemon-scheduled tiers feed this join at trusted rho — a
-                # misclassified correction would assert the superseded value as a
-                # confident-wrong. A same-shaped competing token beside the contained
-                # candidate keeps the conservative no-observation contract.
-                contained = [i for i, c in enumerate(candidates)
-                             if MATCH.answer_matches(str(c), [], jr.value)]
-                if (len(contained) == 1
-                        and not _competing_value_shape(jr.value, candidates[contained[0]])
-                        and not _superset_extension(jr.value, candidates[contained[0]])):
-                    idx = contained[0]
-            if idx is None and not contained and p.get("allow_new"):
-                # The re-extract GROW actuator (slice 6): the strong re-read named a value
-                # OUTSIDE the current candidate set — with allow_new it ENLARGES K (that is what
-                # grow is for): the value comes back as a new candidate whose observation is
-                # indexed at len(candidates); the body appends it and re-decides. Without
-                # allow_new the corroborate contract is unchanged (outside-set ⇒ no observation
-                # ⇒ disagree-abstain). Gated on `not contained`: a read that MENTIONS a known
-                # candidate (ambiguous or correction-shaped above) must not be minted
-                # wholesale as a new candidate — the sentence is not a value.
-                new_candidate = jr.value
-                idx = len(candidates)
+            # THE value-join (D-11, one declaration — see _lattice_join for the full
+            # confirm/correct/mint contract; the re-extract GROW actuator rides its
+            # allow_new arm: an outside-set value ENLARGES K, indexed at
+            # len(candidates), and the body appends it and re-decides).
+            idx, new_candidate = _lattice_join(jr.value, candidates,
+                                               bool(p.get("allow_new")))
             if idx is not None:
                 # The keystone: the re-read obs flows through the SAME volatility projector
                 # /extract uses — no transform may hand-set time_factor=1.0 and report a stale
@@ -402,17 +376,10 @@ def _probe_corroborate(deps: BridgeDeps, p: Payload) -> Payload:
                 # as its freshest SOURCE attestation. Ditto competition (§4.2/§2 lineage): a
                 # re-read of the same competed row inherits the candidate's base factor —
                 # the body posts it; a minted candidate (idx == len) reads 1.0.
-                tf = _corroborate_time_factor(jr, hits, p)
-                obs = [{"reports": idx, "group": 0, "authority": 1.0,
-                        "subject_factor": 1.0, "time_factor": tf,
-                        "competition_factor": _candidate_competition(p, idx),
-                        # r09 D1 — the wire key, uniform (see _join_deliberate_value).
-                        # value_norm is the REPORTED candidate's normal form, not the raw
-                        # sentence's: the observation asserts the candidate it joined.
-                        "quote": "", "doc_key": "",
-                        "value_norm": LK._norm_value(
-                            candidates[idx] if idx < len(candidates)
-                            else str(new_candidate))}]
+                obs = [_joined_observation(
+                    idx, candidates, new_candidate,
+                    time_factor=_corroborate_time_factor(jr, hits, p),
+                    competition_factor=_candidate_competition(p, idx))]
                 read = "confirm"
         # the read's own stated confidence rides beside the tier rho: the k=0 strong rescue
         # conditions at min(tier, confidence), so the wire never discards the instrument's
@@ -553,6 +520,55 @@ def _deliberate_cfg() -> DL.DeliberateConfig:
     )
 
 
+def _lattice_join(value: str, candidates: list[str], allow_new: bool
+                  ) -> tuple[int | None, str | None]:
+    """[§3.3 · D-11/BR-2] (with L-4): THE value-join — the observation-equivalence rule
+    mapping an instrument's bare value onto the candidate lattice, one declaration for
+    both edges (corroborate and deliberate bind it). Returns ``(idx, new_candidate)``.
+
+    Exact normalised match first. Else unique token-boundary containment — the join
+    must not read a CONFIRMING sentence as a disagreement (the q-011 pooling loss),
+    but nor may it read a CORRECTING sentence as a confirmation: containment alone
+    cannot tell confirm from correct-while-mentioning, so a competing same-shaped
+    token beside the contained candidate (``_competing_value_shape``) or a
+    name/digit-group extending it (``_superset_extension``, r09b T1) keeps the
+    conservative no-observation contract. Else, ``allow_new`` mints the value as a
+    candidate indexed at ``len(candidates)`` (the grow contract) — gated on ``not
+    contained``: a read that MENTIONS a known candidate (ambiguous or
+    correction-shaped) must not be minted wholesale, the sentence is not a value.
+    Else no join."""
+    vn = LK._norm_value(value)
+    idx = next((i for i, c in enumerate(candidates) if LK._norm_value(c) == vn), None)
+    if idx is not None:
+        return idx, None
+    contained = [i for i, c in enumerate(candidates)
+                 if MATCH.answer_matches(str(c), [], value)]
+    if (len(contained) == 1
+            and not _competing_value_shape(value, candidates[contained[0]])
+            and not _superset_extension(value, candidates[contained[0]])):
+        return contained[0], None
+    if not contained and allow_new:
+        return len(candidates), value
+    return None, None
+
+
+def _joined_observation(idx: int, candidates: list[str], new_candidate: str | None,
+                        *, time_factor: float, competition_factor: float) -> Payload:
+    """[§3.3 · BR-4] The ONE builder for a joined edge observation (D-11's output
+    shape) — the re-read edge's fixed authority/subject covariates are declared model
+    content (learnable). r09 D1's
+    uniform wire keys on every observation — a synthesised read has no verbatim quote
+    and no single source document (value-only, so §5 never clusters it; the join gives
+    it its own fresh group). ``value_norm`` is the REPORTED candidate's normal form,
+    never the raw sentence's: the observation asserts the candidate it joined (a
+    minted candidate asserts itself)."""
+    return {"reports": idx, "group": 0, "authority": 1.0, "subject_factor": 1.0,
+            "time_factor": time_factor, "competition_factor": competition_factor,
+            "quote": "", "doc_key": "",
+            "value_norm": LK._norm_value(candidates[idx]) if idx < len(candidates)
+            else LK._norm_value(str(new_candidate))}
+
+
 def _candidate_competition(p: Payload, idx: int) -> float:
     """The candidate's inherited §4.2 competition factor, posted by the body as
     ``candidate_competition`` (aligned with ``candidates``; competition is a property of
@@ -640,39 +656,19 @@ def _join_deliberate_value(value: str | None, candidates: list[str], allow_new: 
     :func:`_source_time_factor` — the keystone holds here too: on a time-indexed
     construct no transform may hand-set 1.0 and report a stale value as current
     (the q-006 class); the deliberate observation is as current as its freshest
-    retrieved source attestation."""
+    retrieved source attestation. The lattice mapping itself is D-11's ONE
+    declaration (:func:`_lattice_join`); this wrapper only shapes the observation."""
     if value is None:
         return [], None
-    vn = LK._norm_value(value)
-    idx = next((i for i, c in enumerate(candidates) if LK._norm_value(c) == vn), None)
-    new_candidate: str | None = None
-    if idx is None:
-        contained = [i for i, c in enumerate(candidates)
-                     if MATCH.answer_matches(str(c), [], value)]
-        if (len(contained) == 1
-                and not _competing_value_shape(value, candidates[contained[0]])
-                and not _superset_extension(value, candidates[contained[0]])):
-            idx = contained[0]
-        elif not contained and allow_new:
-            new_candidate = value
-            idx = len(candidates)
+    idx, new_candidate = _lattice_join(value, candidates, allow_new)
     if idx is None:
         return [], None
     comp = list(competition or [])
-    return [{"reports": idx, "group": 0, "authority": 1.0,
-             "subject_factor": 1.0, "time_factor": time_factor,
-             # the confirmed candidate's inherited §4.2 factor (a minted candidate's idx
-             # is beyond the list ⇒ the neutral 1.0)
-             "competition_factor": float(comp[idx]) if idx < len(comp) else 1.0,
-             # r09 D1 — the wire key, uniform on every observation: a synthesised read
-             # has no verbatim quote and no single source document (value-only, so §5
-             # never clusters it; the join gives it its own fresh group). value_norm is
-             # the REPORTED candidate's normal form — a containment-confirm asserts the
-             # candidate, not the sentence that contained it.
-             "quote": "", "doc_key": "",
-             "value_norm": LK._norm_value(candidates[idx]) if idx < len(candidates)
-             else vn,
-             }], new_candidate
+    return [_joined_observation(
+        idx, candidates, new_candidate, time_factor=time_factor,
+        # the confirmed candidate's inherited §4.2 factor (a minted candidate's idx
+        # is beyond the list ⇒ the neutral 1.0)
+        competition_factor=float(comp[idx]) if idx < len(comp) else 1.0)], new_candidate
 
 
 def _deliberate_joined(p: Payload, obs: list[Payload], candidates: list[str],
@@ -738,6 +734,7 @@ def _probe_deliberate(deps: BridgeDeps, p: Payload) -> Payload:
         r.value, candidates, allow_new,
         time_factor=_source_time_factor(r.value, None, hits, p),
         competition=list(p.get("candidate_competition") or []))
+    # [§3.3 · BR-8] the edge's failure semantics: ok-only yields an observation.
     if r.status != "ok":
         obs, new_candidate = [], None
     else:

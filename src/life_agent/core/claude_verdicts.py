@@ -100,7 +100,9 @@ _FIELDS: frozenset[str] = frozenset(f.name for f in fields(ClaudeVerdictEvent))
 def y(event: ClaudeVerdictEvent) -> int:
     """The engine projection: y = the ``correct`` bit ("asserting now would have been
     correct"), and nothing else — completeness/grounding are recorded, not priced, until
-    the deferred scalarization is decided."""
+    the deferred scalarization is decided. A branch of THE verdict→evidence projection
+    (D-15 — the one declaration lives at ``core.reactions.VERDICT_Y``); admitted under
+    owner ≻ Claude precedence at the ``membrane.shadow.boot_snapshot`` merge."""
     return event.dimensions["correct"]
 
 

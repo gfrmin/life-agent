@@ -27,7 +27,6 @@ import contextlib
 import hashlib
 import json
 import logging
-import os
 import readline  # noqa: F401  -- enables line editing / history at the input() prompts
 import sys
 import urllib.request
@@ -247,8 +246,9 @@ def parse_line(line: str) -> Parsed:
 # owner's g/b verdict folds into u(wrong) through the EXISTING reaction loop (the bridge's
 # /log_decision owns the write, shaping it as the lookup family's own; the in-session verdict binds
 # to its content-addressed id). Flag-gated; the default path is untouched.
-EXECUTOR_BRIDGE = os.environ.get("LIFE_AGENT_BRIDGE_URL", "http://127.0.0.1:8798")
-EXECUTOR_DAEMON = os.environ.get("ANSWER_BRAIN_URL", "http://127.0.0.1:8799")
+# D-13: the stack URLs are read ONCE (ask_client); these are bindings, not reads.
+EXECUTOR_BRIDGE = AC.BRIDGE
+EXECUTOR_DAEMON = AC.DAEMON
 EXECUTOR_DOWN = ("No answer asserted — the executor is unavailable (the answer-brain "
                  "daemon/bridge is not up; start it: bin/answer-brain).")
 # the last executor decision's id (the bridge's content-addressed "ab-…") — the in-session g/b

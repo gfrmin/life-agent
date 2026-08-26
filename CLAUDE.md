@@ -391,8 +391,21 @@ as A5 with directional claims and conjunct (b) restated CLASS-BASED (prospective
 run 17's record untouched). **Run 18 (`gate-20260826T083356`): PASS on all four —
 0.959/+0.514 [+0.077, +0.999], wrongs exactly the two standing rows, the wobble row
 withheld, all three directional claims confirmed, $0.37** — reproducing run 16 almost
-exactly, so run 17's collapse is attributed to the grow-offer alone. The ladder
-resumes at M6 — the observation model declared once.** Old D3–D4 stay
+exactly, so run 17's collapse is attributed to the grow-offer alone.
+M6 IS DONE (2026-08-26, `docs/unification/reports/r16-collapse-m6.md`, $0): the
+observation model declared once — every §3.3 clause ONE declaration with ONE home.
+Three unifications (D-11 `BR._lattice_join` — both edge joins bind; D-14
+`LK.source_date_iso` — the date-selection ≻-chain declared, P-1/N-4 named as its
+branches; D-15 `RX.VERDICT_Y` — the verdict→evidence projection's one declaration,
+membrane binds is-identity), two riders (D-12 `DEC.edge_id`; D-13 the stack URLs
+read once), 23 drift-gated `[§3.3 · X-n]` stamps. E-7 VERIFIED second-channel at
+every site — zero replace sites, each pinned by a named test. Q5's transcript
+produced ($0, 103/104 warm from the route cache): 89/103 disagree, all
+one-directional, 65 on the DEFAULT branch ⇒ NOT all table wins ⇒ **a per-construct
+volatility latent is warranted — registered, not built; the override stays until
+that arc lands.** Gates: G1 2721 + clean; G2 **314/314 pure equality on m5-base**;
+no priced run demanded. The ladder stands at M7 — the register pinned; the owner
+signs Appendix A (owner keypress).** Old D3–D4 stay
 re-scoped as Ask's
 aggregate/thread families. The doc's §14 open questions are a **live empirical ledger**
 (owner's adoption rider): each entry names the evidence that decides it — keep it

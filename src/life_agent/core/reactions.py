@@ -59,6 +59,29 @@ FORMAT_VERSION = 1
 KINDS: frozenset[str] = frozenset({"verdict"})
 VALENCES: dict[str, frozenset[str]] = {"verdict": frozenset({"good", "bad"})}
 
+# --- [§3.3 · D-15] THE verdict→evidence projection — the one declaration --------------
+#
+# Every verdict that becomes fold evidence passes through this projection. Its declared
+# domain, in full (a verdict route not named here does not fold — absence from the
+# domain is the declared exclusion, never an accident):
+#   (1) the (action, valence) → y table ``VERDICT_Y`` below (M-7's domain rule:
+#       hedge/ask_clarify/gather and any unrecognised pair are a named exclusion —
+#       ambiguous is not evidence). The membrane's session surface BINDS this table
+#       is-identity (``membrane.session._VERDICT_Y``); a second spelling cannot exist.
+#   (2) the Claude channel's y (``claude_verdicts.y``: the ``correct`` bit and nothing
+#       else), admitted under OWNER ≻ CLAUDE precedence by SOURCE (M-6) — enforced at
+#       the merge in ``membrane.shadow.boot_snapshot``, where an owner's routable
+#       verdict on the same decision overrules the Claude one.
+#   (3) the utility-evidence branches in this module (R-3: which verdicts become
+#       utility evidence): ``_lookup_reaction`` (the implied abstain-threshold datum,
+#       R-4) and ``_narrative_reaction`` (the coverage-gated narrative branch, R-5 —
+#       coverage enters the datum, never a bar on the fold).
+VERDICT_Y: dict[tuple[str, str], int] = {
+    ("report", "good"): 1, ("report", "bad"): 0,
+    ("report_scoped", "good"): 1, ("report_scoped", "bad"): 0,
+    ("abstain", "good"): 0, ("abstain", "bad"): 1,
+}
+
 # Valences that carry a binary utility signal. Equals the verdict vocabulary today; kept
 # distinct as the fold's gate for when non-folding valences land under a later kind (§ above).
 _FOLDED_VALENCES: frozenset[str] = frozenset({"good", "bad"})

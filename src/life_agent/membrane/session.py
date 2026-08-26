@@ -29,6 +29,8 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 
+from life_agent.core import reactions as RX
+
 from .client import MembraneClient, MembraneError
 from .world import (
     ACT_NAME,
@@ -53,15 +55,11 @@ class ShadowChoice:
     readouts: dict[str, object]
 
 
-# The evidence-mapping table (module-level, pure): the executor's chosen action + the
-# owner's one-bit verdict valence -> y = "asserting now would have been correct".
-# hedge/ask_clarify/gather/respond-under-other-valences, and any unrecognised pair, are
-# a named exclusion — ambiguous is not evidence.
-_VERDICT_Y: dict[tuple[str, str], int] = {
-    ("report", "good"): 1, ("report", "bad"): 0,
-    ("report_scoped", "good"): 1, ("report_scoped", "bad"): 0,
-    ("abstain", "good"): 0, ("abstain", "bad"): 1,
-}
+# The evidence-mapping table: the executor's chosen action + the owner's one-bit
+# verdict valence -> y = "asserting now would have been correct". D-15 (M6): BOUND to
+# the one projection declaration (`core.reactions.VERDICT_Y`) — the domain rule
+# (named exclusions, ambiguous is not evidence) is stated there, once.
+_VERDICT_Y = RX.VERDICT_Y
 
 
 def verdict_y(chosen_action: str, valence: str) -> int | None:

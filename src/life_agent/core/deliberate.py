@@ -111,6 +111,7 @@ def parse_credence(text: str) -> tuple[str, float | None]:
         p = float(raw)
     except ValueError:
         return stripped, None
+    # [§3.3 · DL-3] output validation: an out-of-range credence carries no signal.
     return stripped, (p if 0.0 <= p <= 1.0 else None)
 
 
@@ -194,10 +195,10 @@ class DeliberateResult:
 
 
 def instrument(model: str) -> str:
-    """The per-edge attribution name (calibration + decision log): ONE spelling — the
-    executor's curve lookups and the decision log's ``instrument`` field both call this
-    (a second, hand-derived f-string would silently split the attribution namespace)."""
-    return f"deliberate@{model}"
+    """The per-edge attribution name (calibration + decision log) — a binding of the
+    one constructor (D-12: `decisions.edge_id`); the executor's curve lookups and the
+    decision log's ``instrument`` field both call this."""
+    return DEC.edge_id("deliberate", model)
 
 
 def _workdir(cfg: DeliberateConfig) -> Path:
@@ -328,6 +329,7 @@ def answer(question: str, cfg: DeliberateConfig, *,
                 # cannot be. Run 6 (2026-08-17) cached nine such declines as status=ok
                 # after the pkm MCP server failed to register (PKM_CONFIG unset →
                 # `pkm --config "" serve` crashed); they replayed as frozen absence.
+                # [§3.3 · DL-2] a blind decline is a non-observation (the poison guard).
                 if detect_decline(raw_text) and not tool_log_rows:
                     notes_parts.append(
                         f"attempt {attempt}: blind decline (0 tool calls) — the pkm "
