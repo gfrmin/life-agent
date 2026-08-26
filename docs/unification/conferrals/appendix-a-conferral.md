@@ -45,4 +45,29 @@ re-opens as an owner item — nothing else blocks on it.
 
 ## RULING
 
-_(recorded after the keypress)_
+**SIGNED — 2026-08-26, owner keypress.** Provenance, in order: a second-agent review
+of this conferral was relayed into the held session (operative word "Sign it", with
+two for-the-record observations); the session held rather than enacting on the relay —
+the signature is owner-only by this conferral's own terms — and put the question to
+the owner directly; the owner answered **Sign**. That answer is the keypress. The
+relayed observations, recorded as observations and not conditions: A.2 is the
+amendment expected to do the most long-horizon work (*which space and which policy a
+decision was ranked under is a fact on its record, not a host choice* forecloses the
+quiet reintroduction of host-side preference under the guise of routing, in a sentence
+a future census can cite); and the decline branch's honesty ("the structure stands and
+behaves identically") is what makes the signature descriptive rather than load-bearing.
+
+**Enacted the same day, one docs-only commit:** A.1, A.2 and A.3 pasted verbatim from
+design Appendix A (machine-verified verbatim-modulo-line-wrap against the design's
+blockquotes before commit); A.3's "(date of signature)" stamped **2026-08-26**.
+
+**Disclosure — one preparation error in this conferral, caught at enactment:** the
+A.3 summary line above says "foundations §14"; the verbatim authority places it in
+**PRINCIPLES §14** (the appendix's own heading "PRINCIPLES amendment proposals", the
+anchor "after the executor unification entry" — which exists only in PRINCIPLES §14 —
+and r17's consequence branch "enacts A.1–A.3 on PRINCIPLES.md"). Enacted onto
+PRINCIPLES §14; the summary line is left standing with this correction beside it (the
+append-only convention).
+
+**The collapse ladder is CLOSED.** M7 completes at this signature; the completion
+programme's DONE item 1 is met.

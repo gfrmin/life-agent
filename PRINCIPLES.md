@@ -126,14 +126,27 @@ publicly; never use `tailscale serve`/funnel.
   "Confident-wrong" is not a category: confidence is P(truth), calibrated against truth. This
   re-grounds the staged plan ([`docs/bayesian-foundations.md`](./docs/bayesian-foundations.md)
   §12) — its "stage 6 governor" is the spine itself, not a deferred stage.
+- **The module collapse is adopted (2026-08-26):** one decision site over
+  {terminal responses ∪ transformations}, one `posterior()` behind the brain seam with two
+  declared evidence policies (frozen-elicitations for the gate, all-to-date for the decider —
+  a regime indicator, not a flag), one utility atom (`u_assert`) from which every host
+  spelling derives, one price table, one poster recording every decision once with its
+  regime and policy. Adopted on the module-collapse census (`docs/unification/reports/
+  r00-collapse-census.md` + addendum) and the reviewed design (`docs/module-collapse-design.md`);
+  its behaviour-preservation instrument is the decision-equivalence fixture set (design §7),
+  and each checkpoint of its migration is eval-gated (design §8).
 
 **§15. Open decisions.** Decided when their phase arrives, not before:
 - **The spine** (Phase 2): pi-mono (TS) vs a Python loop vs Claude Code as interim. Criteria:
   openness/extensibility vs lock-in; whether it consumes the §5 seams unchanged; the cost of
   always-on operation. The owner is neutral; nothing in the tree may presuppose the answer.
   **Under §16 the spine is transport** — it feeds events in and executes the chosen action's
-  *how*; the agent itself lives in the belief-core (credence + U + A), so this is a reversible
-  engineering choice, not an architectural fork.
+  *how*: enactment order, iteration bounds, availability, retries, and rendering are
+  mechanics, *recorded* on the decision's record and never *priced* by it. The agent itself
+  lives in the belief-core (credence + U + A), so the spine is a reversible engineering
+  choice, not an architectural fork — and nothing in the spine may prefer one decision space
+  or one evidence policy over another when both are available: which space and which policy
+  a decision was ranked under is a fact on its record, not a host choice.
 - **The goals/utility representation** (Phase 2): the form the expected-utility model takes.
 - **The CRM rebuild**: of the seven decisions in
   [`docs/crm-architecture-decisions.md`](./docs/crm-architecture-decisions.md), #1, #2, #5
@@ -144,7 +157,20 @@ publicly; never use `tailscale serve`/funnel.
 are the same move: a single argmax of expected utility over one decision space — the terminal
 responses **and** the transformations — under one belief, with the owner's utility, every
 probability and every optimisation carried by credence, over an immutable log whose only
-invariant is that truth is the fold.* This is **the executor**; §1 makes plain it is not a
+invariant is that truth is the fold.*
+
+Every mechanism outside that argmax that shapes a decision receives exactly one of three
+verdicts, and the collapse design (`docs/module-collapse-design.md` §1) is the register of
+them: **belief-shaping** — it changes the observation set or the likelihood the posterior
+folds — is *declared error model*, model content priced as such and calibrated where the
+outcomes stream reaches it; **decision-shaping** — it compares or orders to choose an action
+— goes *into the argmax or dies*; **mechanics** — it sequences the same work — is
+*enactment*, recorded and never priced. There is no fourth verdict, and a mechanism that
+resists classification is a design question, not an exception. The named exceptions (the
+adoption gate's verdict mechanism, the membrane world's utility, the one host reliability
+curve, `brain.value` while claimed) are listed once with their reasons in that design's §6.
+
+This is **the executor**; §1 makes plain it is not a
 deferred final stage — an autonomous agent simply *is* (belief, utility, decisions) ranked by
 EU, so there is no separate "governor" to build afterwards. There is only this optimiser: built
 now, thin first, grown.
