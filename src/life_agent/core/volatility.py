@@ -43,7 +43,8 @@ _SEED: tuple[tuple[tuple[str, ...], float], ...] = (
 
 
 def half_life(construct: str | None) -> float:
-    """The construct's volatility half-life in years. A permanent attribute → ``PERMANENT`` (no
+    """[§3.3 · V-1] The construct's volatility half-life in years. A permanent
+    attribute → ``PERMANENT`` (no
     decay); a volatile one → its world-knowledge half-life; an unclassified construct → ``DEFAULT``
     (the global current-state half-life). Pure, deterministic — the v0 keyword seed."""
     if not construct:

@@ -46,7 +46,8 @@ SENSOR_FEATURES: list[tuple[str, list[str]]] = [
 GROW_ACTUATORS: list[dict[str, Any]] = PRC.GROW_ACTUATORS
 
 
-def sensors_from(*, candidates: list[str], credences: list[float],
+def sensors_from(  # [§3.3 · GO-1] the sensor vocabulary (with M-9)
+        *, candidates: list[str], credences: list[float],
                  p_none: float | None, indeterminate: int) -> dict[str, str]:
     """Bucket one decision view into the declared sensor vocabulary. Nothing extracted (or no
     posterior yet) reads as the missing-most context; ``p_none`` buckets against the best present
@@ -106,7 +107,9 @@ def warm_counts(path: Path, probe: str) -> dict[str, Any] | None:
 
 
 def grow_block(path: Path) -> dict[str, Any]:
-    """The `/decide` grow block: the shared feature vocabulary + every menu actuator with its
+    """[§3.3 · GO-2] (cold prior: an actuator with no rows carries None ⇒ the
+    daemon's declared cold prior — correct, declared.) The `/decide` grow block: the
+    shared feature vocabulary + every menu actuator with its
     body-persisted warm counts (``None`` ⇒ the daemon uses the declared cold prior)."""
     return {
         "features": {"names": [n for n, _ in SENSOR_FEATURES],

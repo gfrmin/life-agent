@@ -79,6 +79,7 @@ from life_agent.core.matching import answer_matches
 # verified span can be the wrong subject's value); the cells earn trust from evidence.
 # the closed audit partition; each cell's prior lives in the ONE reliability table
 # (core/reliability.PRIORS — D-2, r13/M3), bound here so the partition keeps its name
+# [§3.3 · N-1] the claim cells — the claims' observation model.
 _CELLS: tuple[str, ...] = ("verified", "unsupported", "unverifiable")
 _CELL_PRIORS: dict[str, tuple[float, float]] = {
     cell: REL.PRIORS[("eval_claim", cell)] for cell in _CELLS}
@@ -414,7 +415,8 @@ def render(result: NarrativeResult) -> str:
 
 def scope_decay(credence: float, as_of: str | None, claim_text: str, scope: str,
                 *, today: date | None = None) -> float:
-    """The present-intent staleness decay (temporal-scope slice 3) — GATE-SAFE: it only ever
+    """[§3.3 · N-4] the claims' time covariate — the claim-side branch of D-14. The
+    present-intent staleness decay (temporal-scope slice 3) — GATE-SAFE: it only ever
     LOWERS a credence, so it can add abstention but never a new confident-wrong. Applies ONLY to
     a present-scope question and ONLY to a DATED claim (an undated claim is a derivation gap, not
     evidence of staleness — never penalise recall, [[verdict-rule-truth-relevance]]); a non-present

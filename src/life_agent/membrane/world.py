@@ -138,6 +138,8 @@ _OBS_BUCKETS: tuple[str, ...] = ("0", "1to2", "3plus")
 _FLAG_FAMILIES: tuple[str, ...] = ("era-split", "owner-scoped", "grow-pass")
 
 
+# [§3.3 · M-9] feature bucketing — the sensor vocabulary of g and of the world
+# (model inputs, never control flow).
 def _candidates_bucket(n: int) -> str:
     if n == 0:
         return "0"

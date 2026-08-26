@@ -223,3 +223,12 @@ def withhold_reason(*, effector: object, candidates: object,
     if str(effector) == "miss" or not candidates:
         return "miss"
     return "dispersed"
+
+
+def edge_id(kind: str, model: str) -> str:
+    """D-12 (§5.3): THE per-edge attribution name — ``kind@model`` — one constructor
+    for the calibration curves, the decision log's ``instrument`` field and every
+    attribution key. ``executor.extract_edge`` and ``deliberate.instrument`` are
+    bindings of it; a hand-built f-string at a call site would silently split the
+    curve namespace."""
+    return f"{kind}@{model}"

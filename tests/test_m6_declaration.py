@@ -1,0 +1,212 @@
+"""M6 (r16) — the observation model declared once: the drift gates and the one-declaration
+behavioural pins for the checkpoint's unifications (D-11 / D-14 / D-15) and its riders
+(D-12 / D-13). Pure-refactor checkpoint: every pin here asserts a SPELLING property or
+the one function's behaviour; the behaviour itself is byte-pinned by the m5-base replay
+(G2, pure equality)."""
+from __future__ import annotations
+
+import inspect
+
+# --- P-I (D-11): the value-join is ONE declaration ------------------------------------
+
+
+def test_d11_the_lattice_join_is_one_declaration() -> None:
+    """Both edge joins bind the one lattice join; the exact-norm-match idiom appears
+    exactly once in the bridge (a second spelling cannot exist)."""
+    from life_agent.bridge import server as BR
+
+    assert hasattr(BR, "_lattice_join"), "the one join function must exist (D-11)"
+    src = inspect.getsource(BR)
+    assert src.count("LK._norm_value(c) == vn") == 1, (
+        "the candidate equality scan must have ONE spelling — inside _lattice_join")
+    assert "_lattice_join(" in inspect.getsource(BR._probe_corroborate)
+    assert "_lattice_join(" in inspect.getsource(BR._join_deliberate_value)
+
+
+def test_d11_join_exact_normalised_match() -> None:
+    from life_agent.bridge import server as BR
+
+    idx, minted = BR._lattice_join("  P123 ", ["P123", "Q999"], allow_new=False)
+    assert (idx, minted) == (0, None)   # PII-OK: synthetic id shapes
+
+
+def test_d11_join_unique_containment_confirms() -> None:
+    from life_agent.bridge import server as BR
+
+    idx, minted = BR._lattice_join(
+        "the contact is Abbot Corden for now", ["Abbot Corden"], allow_new=False)
+    assert (idx, minted) == (0, None)   # PII-OK: synthetic personal-name shape
+
+
+def test_d11_join_superset_extension_refused() -> None:
+    from life_agent.bridge import server as BR
+
+    idx, minted = BR._lattice_join(
+        "Xylia Abbot Corden", ["Abbot Corden"], allow_new=False)
+    assert (idx, minted) == (None, None)   # PII-OK: synthetic personal-name shapes
+
+
+def test_d11_join_competing_shape_refused() -> None:
+    from life_agent.bridge import server as BR
+
+    # PII-OK: synthetic digit shapes on the next line
+    idx, minted = BR._lattice_join("9999 8888", ["8888"], allow_new=False)  # PII-OK
+    assert (idx, minted) == (None, None)
+
+
+def test_d11_join_mint_gated_on_not_contained() -> None:
+    from life_agent.bridge import server as BR
+
+    # outside the set + allow_new -> minted at len(candidates)
+    idx, minted = BR._lattice_join("Z777", ["P123"], allow_new=True)
+    assert (idx, minted) == (1, "Z777")    # PII-OK: synthetic id shapes
+    # ambiguous containment (a known candidate mentioned) must NOT mint wholesale
+    idx, minted = BR._lattice_join(
+        "Xylia Abbot Corden", ["Abbot Corden"], allow_new=True)
+    assert (idx, minted) == (None, None)
+
+
+def test_d11_joined_observation_shape_is_the_one_builder() -> None:
+    """The r09-D1 uniform wire keys ride every joined observation, from ONE builder."""
+    from life_agent.bridge import server as BR
+
+    ob = BR._joined_observation(0, ["P123"], None, time_factor=0.5,
+                                competition_factor=0.7)
+    assert ob == {"reports": 0, "group": 0, "authority": 1.0, "subject_factor": 1.0,
+                  "time_factor": 0.5, "competition_factor": 0.7,
+                  "quote": "", "doc_key": "", "value_norm": "p123"}
+    minted = BR._joined_observation(1, ["P123"], "Z777", time_factor=1.0,
+                                    competition_factor=1.0)
+    assert minted["reports"] == 1 and minted["value_norm"] == "z777"
+
+
+# --- P-II (D-14): the one recency policy's date-selection is ONE declaration ----------
+
+
+def test_d14_the_date_selection_is_one_declaration() -> None:
+    from life_agent.bridge import server as BR
+    from life_agent.core import lookup as LK
+
+    assert hasattr(LK, "source_date_iso"), "the one date-selection must exist (D-14)"
+    assert "source_date_iso(" in inspect.getsource(BR._source_time_factor), (
+        "the bridge's recency covariate must BIND the declared selection")
+
+
+def test_d14_freshest_source_attestation_wins() -> None:
+    from life_agent.core import lookup as LK
+
+    assert LK.source_date_iso(["2020-01-01", None, "2024-06-05"],
+                              "2019-01-01") == "2024-06-05"
+
+
+def test_d14_self_reported_as_of_is_the_fallback() -> None:
+    from life_agent.core import lookup as LK
+
+    assert LK.source_date_iso([None, None], "2019-01-01") == "2019-01-01"
+    assert LK.source_date_iso([], None) is None
+
+
+# --- P-III (D-15): the verdict→evidence projection is ONE declaration -----------------
+
+
+def test_d15_the_projection_table_is_one_object() -> None:
+    """M4's binding pattern: the membrane's (action, valence)→y table IS the declared
+    one (is-identity — a second spelling cannot drift)."""
+    from life_agent.core import reactions as RX
+    from life_agent.membrane import session as SES
+
+    assert SES._VERDICT_Y is RX.VERDICT_Y
+
+
+def test_d15_the_declaration_names_every_branch() -> None:
+    """The one declaration's docstring/comment names the full domain: the y table
+    (M-7), the Claude channel under owner precedence (M-6), and the utility branches
+    (R-3/R-4/R-5) — a reader lands on every branch from the one home."""
+    from life_agent.core import reactions as RX
+
+    src = inspect.getsource(RX)
+    assert "VERDICT_Y" in src
+    assert "claude_verdicts.y" in src
+    assert "boot_snapshot" in src            # the owner ≻ Claude precedence site
+    assert "_lookup_reaction" in src and "_narrative_reaction" in src
+
+
+def test_d15_the_table_content_is_unchanged() -> None:
+    from life_agent.core import reactions as RX
+
+    assert RX.VERDICT_Y == {
+        ("report", "good"): 1, ("report", "bad"): 0,
+        ("report_scoped", "good"): 1, ("report_scoped", "bad"): 0,
+        ("abstain", "good"): 0, ("abstain", "bad"): 1,
+    }
+
+
+# --- P-IV: every §3.3 clause home carries its declaration stamp -----------------------
+
+_STAMPS: tuple[tuple[str, str], ...] = (
+    ("life_agent.core.lookup", "[§3.3 · L-1/E-10]"),
+    ("life_agent.core.lookup", "[§3.3 · L-2]"),
+    ("life_agent.core.lookup", "[§3.3 · L-4]"),
+    ("life_agent.core.lookup", "[§3.3 · L-5/GA-3]"),
+    ("life_agent.core.lookup", "[§3.3 · L-6]"),
+    ("life_agent.core.lookup", "[§3.3 · L-7]"),
+    ("life_agent.core.lookup", "[§3.3 · L-8]"),
+    ("life_agent.core.lookup", "[§3.3 · L-10]"),
+    ("life_agent.core.lookup", "[§3.3 · D-14]"),
+    ("life_agent.bridge.server", "[§3.3 · D-11/BR-2]"),
+    ("life_agent.bridge.server", "[§3.3 · BR-1]"),
+    ("life_agent.bridge.server", "[§3.3 · BR-4]"),
+    ("life_agent.bridge.server", "[§3.3 · BR-8]"),
+    ("life_agent.core.volatility", "[§3.3 · V-1]"),
+    ("life_agent.core.deliberate", "[§3.3 · DL-2]"),
+    ("life_agent.core.deliberate", "[§3.3 · DL-3]"),
+    ("life_agent.membrane.world", "[§3.3 · M-9]"),
+    ("life_agent.core.gather_outcomes", "[§3.3 · GO-1]"),
+    ("life_agent.core.gather_outcomes", "[§3.3 · GO-2]"),
+    ("life_agent.core.narrative", "[§3.3 · N-1]"),
+    ("life_agent.core.narrative", "[§3.3 · N-4]"),
+    ("life_agent.core.reactions", "[§3.3 · D-15]"),
+    ("life_agent.core.executor", "[§3.3 · E-10]"),
+)
+
+
+def test_every_clause_home_carries_its_stamp() -> None:
+    """P-IV: the observation model's clauses are findable from the design and back —
+    each declared home names its clause id in the uniform stamp form. A stamp that
+    disappears (a refactor moving a clause without its declaration) fails here."""
+    import importlib
+
+    for module_name, marker in _STAMPS:
+        src = inspect.getsource(importlib.import_module(module_name))
+        assert marker in src, f"{module_name} lost its clause stamp {marker}"
+
+
+# --- P-V riders: D-12 (one edge-name constructor) + D-13 (env constants read once) ----
+
+
+def test_d12_edge_names_have_one_constructor() -> None:
+    """One `edge_id(kind, model)` (§5.3 D-12): the executor's extract edge and the
+    deliberate edge are BINDINGS of it — a hand-built f-string at a call site would
+    silently split the curve/attribution namespace."""
+    from life_agent.core import decisions as DEC
+    from life_agent.core import deliberate as DL
+    from life_agent.core import executor as EX
+
+    assert DEC.edge_id("extract", "m") == "extract@m"
+    assert DEC.edge_id("deliberate", "m") == "deliberate@m"
+    assert EX.extract_edge("m") == "extract@m"
+    assert DL.instrument("m") == "deliberate@m"
+    assert "edge_id(" in inspect.getsource(EX.extract_edge)
+    assert "edge_id(" in inspect.getsource(DL.instrument)
+
+
+def test_d13_the_stack_urls_are_read_once() -> None:
+    """D-13: `LIFE_AGENT_BRIDGE_URL`/`ANSWER_BRAIN_URL` are read in ONE place
+    (ask_client); ask.py binds — a second environ read can drift its default."""
+    from pathlib import Path
+
+    ask_src = (Path(__file__).resolve().parent.parent / "scripts" / "ask.py").read_text()
+    assert 'os.environ.get("LIFE_AGENT_BRIDGE_URL"' not in ask_src
+    assert 'os.environ.get("ANSWER_BRAIN_URL"' not in ask_src
+    assert "EXECUTOR_BRIDGE = AC.BRIDGE" in ask_src
+    assert "EXECUTOR_DAEMON = AC.DAEMON" in ask_src

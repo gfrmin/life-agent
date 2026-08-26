@@ -1009,7 +1009,7 @@ def boot_snapshot(
             continue
         r_owner = latest_reaction.get(decision_id)
         if r_owner is not None and verdict_y(d.chosen_action, r_owner.valence) is not None:
-            continue  # owner precedence: his ROUTABLE verdict overrules the Claude one
+            continue  # owner ≻ Claude precedence by source (D-15/M-6, declared at RX.VERDICT_Y)
         verdict_replay.append((W.summary_from_decision_event(asdict(d)), CV.y(cv)))
 
     outcome_replay: list[tuple[str, W.DecideSummary, int]] = []
