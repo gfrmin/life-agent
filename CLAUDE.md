@@ -404,8 +404,15 @@ produced ($0, 103/104 warm from the route cache): 89/103 disagree, all
 one-directional, 65 on the DEFAULT branch ⇒ NOT all table wins ⇒ **a per-construct
 volatility latent is warranted — registered, not built; the override stays until
 that arc lands.** Gates: G1 2721 + clean; G2 **314/314 pure equality on m5-base**;
-no priced run demanded. The ladder stands at M7 — the register pinned; the owner
-signs Appendix A (owner keypress).** Old D3–D4 stay
+no priced run demanded.
+M7 IS COMPLETE (2026-08-26, `docs/unification/reports/r17-collapse-m7.md`, $0): the
+§6 register pinned by a mutation-verified re-listing guard (census {6.1…6.13} →
+artefact pins); D-6 (`EX._WITHHOLD` derives from the one action vocabulary) and D-4
+(the leader as one label-view) closed; advisory replay 314/314 pure equality. **Appendix
+A SIGNED (owner keypress, 2026-08-26** — the conferral's RULING records the provenance):
+PRINCIPLES §16 gains the three-verdict rule, §15's spine sentence carries the
+no-space/policy-preference clause, §14 records the module collapse adopted.
+**The collapse ladder is CLOSED.** Old D3–D4 stay
 re-scoped as Ask's
 aggregate/thread families. The doc's §14 open questions are a **live empirical ledger**
 (owner's adoption rider): each entry names the evidence that decides it — keep it

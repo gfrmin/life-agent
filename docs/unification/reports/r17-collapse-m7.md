@@ -125,3 +125,19 @@ register is pinned by a guard that fails on a new unlisted entry or a rotted pin
 the vocabulary partitions derive from or gate on the one vocabulary; the leader is
 one label-view. Work STOPS here for the owner's Appendix A keypress — the
 signature is the ladder's last act and is not delegated.
+
+## SIGNATURE (2026-08-26, appended after the RESULTS — nothing above changed)
+
+The owner's keypress arrived 2026-08-26: a relayed second-agent review ("Sign it")
+reached the held session first; the session held — the signature is owner-only by
+this report's own consequence branch — and asked the owner directly; the owner
+answered **Sign** (the conferral's RULING records the full provenance and the two
+for-the-record observations). A.1–A.3 were then enacted verbatim from design
+Appendix A onto PRINCIPLES §16 / §15 / §14 in one docs-only commit, A.3 stamped
+with the signature date, each paste machine-verified verbatim-modulo-line-wrap
+against the design's blockquotes before commit. One disclosure: the conferral's
+A.3 summary line said "foundations §14" — a preparation error corrected in its
+RULING; this report's consequence branch ("PRINCIPLES.md/§14") was the enacted
+reading.
+
+**M7 is COMPLETE. The collapse ladder is CLOSED.**
