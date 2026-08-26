@@ -347,3 +347,87 @@ structural lesson as run 13's "dispersal was the protection".
 Master is UNTOUCHED (M5 lives on `collapse-m5`, unmerged; live runs M4). The branch
 parks pending an owner ruling; a conferral document with the options and prices
 accompanies this report (`docs/unification/conferrals/run17-conferral.md`).
+
+## RULING (owner, 2026-08-26) — option A, enacted
+
+Option A: revert A2's fix ALONE — restore the executor's withhold-only re-ask
+condition — keep every other M5 move (none has evidence against it), re-register
+blind, re-run as run 18. The owner's reasoning, recorded: the FAIL branch worked as
+designed, not as a setback — A2's frozen consequence meant the fix landed and was
+PRICED, so the gate's own FAIL branch disposes of it (a pre-registration paying out,
+not a failure of one); reverting A2 alone re-establishes the isolation the run-10→12
+ladder pattern wants, at $1–5 against days for option B. Option B (ground the engine's
+grow priors in the gather-outcome stream) is **the right work at the wrong time** —
+registered NOW as its own future pre-registered cross-repo arc in foundations §14
+("the argmax cannot genuinely own recall while VOI is hand-priced"), opened after M5
+closes, never a hostage-taking prerequisite. Option C is dominated (the ladder pays
+the same restart cost later with staler context).
+
+Two conditions bind the revert, both enacted in A5 below: the revert is pre-registered
+as a DIRECTIONAL claim before any src change; and a run-18 FAIL is the second-cause
+reading, cleanly earned — no further change may be folded into the same run to chase
+it.
+
+On the orthogonal conjunct-(b) point: agreed, the four-flip history is the argument —
+a clause whose disposition changes on identical trees isn't measuring what it names.
+Restated CLASS-BASED at this (the next) pre-registration, prospectively for run 18
+only; run 17's record is untouched — retroactive edits to a live criterion are the one
+thing that would compromise the ladder's whole record.
+
+## AMENDMENT A5 (blind, 2026-08-26, committed BEFORE any src change) — the A2 revert, pre-registered
+
+**The move (exact):** restore `run_pass`'s re-ask guard to the pre-A2 condition —
+`eff in _WITHHOLD and not grow_asked and (grow_probes - set(applied))` — with the
+report-economy comment restated as MEASURED protection (citing run 17's reading)
+rather than the refuted "prices at about minus-cost by construction" claim. Nothing
+else moves: A2's probe finding STANDS as evidence about the engine (the 62/63 is real,
+and is now §14-registered as the hand-priced-VOI arc); what reverts is its enactment.
+A1's enactment-constraint comment, D-5's one derivation, and every other M5 phase
+stay.
+
+**Test surface:** the two A2 pins in `tests/test_m5_absorption.py` flip to pin the
+restored latch (a report terminal gets NO grow offer; a withholding terminal still
+does), watched RED against the widened code before the revert lands; the two
+`test_executor.py` consult budgets return to their pre-A2 counts, and the fake's
+overflow rig (whose comment states the widened behaviour) reverts with them.
+
+**G2 expectation (frozen):** the DIR-E12 class EMPTIES — its 63 A-loop fixtures
+return to servable equality (the recorded wire never carried the grow-block consult
+the revert removes); DIR-L3-wire's 102 remain the sole cassette-miss class, restored
+by the post-M5 re-record. A DIR-E12 fixture still missing after the revert is a
+defect, not a class.
+
+**Directional claims (direction, not equality — run 18 is a fresh draw):** restoring
+the latch moves the typed arm's answer rate from run 17's 0.49 TOWARD run 16's 0.62;
+dispersed withholds from 51 TOWARD 37; deliberate firings from 71 TOWARD 41.
+
+**Run 18 G3 conjuncts (frozen; comparison arm run 16's `run_meta`; cap $8; fired as a
+transient `systemd --user` unit):**
+
+- **(a)** P(Δ>0.05) ≥ 0.90 at the gate's frozen δ/level — unchanged.
+- **(b) restated class-based (prospective only):** zero NEW wrong commits, where a
+  wrong commit is NEW iff its row was not wrong in run 16's typed arm AND it is not a
+  member of a standing named class (superset-confirm; warm-deliberate wobble, i.e. a
+  wrong whose committing view is a warm deliberate). Standing-class rows are governed
+  by (c), not (b). Cold-row consequence: a row unreadable in the typed arm contributes
+  no evidence to (b) and is NAMED in the report.
+- **(c)** no standing named class reads worse (the hard clause), with the bar the
+  class's standing ROW CENSUS, not the previous draw's face: the warm-deliberate
+  class contributes at most its ONE standing row in any disposition — its four-flip
+  history across identical trees (wrong in runs 13/15/17, live-wrong in 14, withheld
+  in 16) is the measured evidence that the face is draw noise, which run 17's
+  by-letter (b) mistook for harm — and a SECOND row newly exhibiting the class is
+  FAIL; the superset-confirm class's wrong count must not exceed run 16's (zero; its
+  standing row withheld). A cold standing-class row is NAMED, never silently passed.
+- **(d)** unchanged from run 17's letter: every typed decision row states
+  policy="all-to-date"; the fold site pins policy="frozen-elicitations"; §6.10's tree
+  pin on the fire script.
+
+**Fire script (frozen):** `fire-run18.sh` = `fire-run17.sh` with the unit renamed, the
+same comparison meta (run 16's), and ONE added tree pin asserting the restored latch
+(`eff in _WITHHOLD` in the re-ask guard).
+
+**Consequence branches (frozen):** PASS on all four → M5 completes on the standing
+ladder pattern (append results, PR, merge, deploy to live) without a further keypress.
+FAIL on any → STOP for an owner ruling; the second-cause reading is cleanly earned;
+nothing further is folded into the same run.

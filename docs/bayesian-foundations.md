@@ -3169,3 +3169,25 @@ on this list. Answers land here by amendment, citing their evidence.
   annotates the two pre-registered M2 expected-change classes (poster accounting keys,
   seam `regime=unavailable`). m0-5 stands as history; the collapse ladder resumes at M2
   against `collapse_replay.py --checkpoint m2-base`.
+
+- **Hand-priced VOI mis-prices recall when exercised at full reach — the engine's grow
+  priors are the named cause of run 17's FAIL (2026-08-26, owner ruling on
+  `docs/unification/conferrals/run17-conferral.md`; evidence
+  `docs/unification/reports/r15-collapse-m5.md`, G3 + mechanism).** M5's A2 removed the
+  executor's report-economy latch on probe-measured evidence (62/63 recorded
+  economy-class reports flip to a scheduled re-read when shown the grow block — a real
+  engine preference, not an artefact), and the priced gate then measured what exercising
+  that preference is worth: deliberate firings 41 → 71, dispersed withholds 37 → 51,
+  answer rate 0.62 → 0.49, headline 0.961/+0.519 → 0.743/+0.238. The bought evidence
+  joined the channel correctly (r09 semantics — nothing erased); the harm is the PRICE:
+  the engine's hand-set Beta recovery priors value a re-read above its realised Δ-worth,
+  so the argmax buys dispersal on marginal reports. The finding is about the system, not
+  about M5: the census called hand-priced VOI a §16 gap, and run 17 measured its cost in
+  answer rate. **Registered as its own future arc (owner ruling — option B's framing,
+  "the right work at the wrong time"): ground the grow/recovery priors in the accrued
+  gather-outcome stream (hundreds of realised rows) as a pre-registered cross-repo
+  (credence) arc, opened AFTER M5 closes — the argmax cannot genuinely own recall while
+  VOI is hand-priced.** Until that arc lands, the report-economy latch stands as
+  measured protection (the A2 revert, r15 A5) — the same structural lesson as run 13's
+  "dispersal was the protection". Decided by: the arc's own frozen criteria and a
+  §8-class gate run.

@@ -53,3 +53,10 @@ registered r10 lesson), never a retroactive edit.
 The two standing wrong rows ride in production exactly as before (master/live is M4's
 tree; run 17 changed nothing there). The live calibration ledger gained run 17's rows
 under its `run_id` (accounted, as every gate run since 14).
+
+## RULING TAKEN (2026-08-26)
+
+**Option A**, with option B registered as its own future §14 arc (foundations §14,
+"hand-priced VOI") and two binding conditions on the revert. The full ruling record
+and the blind A5 pre-registration live in
+`docs/unification/reports/r15-collapse-m5.md` (RULING + AMENDMENT A5).
