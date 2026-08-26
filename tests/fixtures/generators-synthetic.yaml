@@ -1,0 +1,16 @@
+# PII-OK: synthetic generator registry — invented ids/paths, the r19 loader fixture.
+generators:
+  - generator_id: gen-notes
+    kind: meeting-note
+    cadence: monthly
+    active_from: 2025-01-01
+    active_to: null
+    scope_keys: [meetings]
+    evidence: [notes-series]
+  - generator_id: gen-statements
+    kind: deposit
+    cadence: quarterly
+    active_from: 2024-01-01
+    active_to: 2025-12-31
+    scope_keys: [deposits]
+    evidence: [statements-series]

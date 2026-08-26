@@ -112,4 +112,28 @@ disclosure items in this report (cap-the-arc); a gate miss STOPS.
 
 ## RESULTS
 
-*(appends after the gate runs; nothing above this line changes.)*
+*2026-08-26, same day. TDD held: `tests/test_aggregate.py` (t1-t10 exactly as
+pre-registered, plus the local `ConjugateBrain`/`RaisingBrain` oracles and the synthetic
+fixture `tests/fixtures/generators-synthetic.yaml`) was committed-first in authorship
+order and watched RED — `ModuleNotFoundError: No module named 'life_agent.core.aggregate'`
+— before `src/life_agent/core/aggregate.py` existed; then 10/10 GREEN with no test edit
+beyond one lint hyphen in the module docstring.*
+
+- **Gate, all conjuncts:** suite **2736 passed** (35 deselected, the llm/system opt-ins);
+  `ruff check` clean; `mypy` clean (223 files); `collapse_replay.py --checkpoint m5-base`
+  at the recorded `PYTHONHASHSEED=0` reads **314/314 pure equality**.
+- **Library-only verified:** no decision-path module imports `aggregate` (grep over
+  `decisions/lookup/narrative/terminals/executor/reactions/recorder` + bridge: prose
+  mentions only).
+- **The real registry is installed and admissible:** `$LIFE_AGENT_KB/generators.yaml`
+  (two entries — the quarterly fund-statement generator and the monthly payslip
+  generator whose active window is the attested employment period, its final month
+  expected-and-absent by design) loads through `load_registry` with
+  every evidence citation resolving against the declared evidence root; content hash
+  recorded in the KB file's header convention. Entry details stay out of tree (PII).
+- **Deviations: none.** The replay's seed refusal at unset `PYTHONHASHSEED` is the
+  script's own guard, not an anomaly; the run above is at the recorded seed.
+
+**CP-B is DONE. CP-C (r20) opens** — component 3 (dedup-as-inference) + the
+pre-registered off-gate duplicate-pair measurement; its prereg commits before any `src/`
+change, and a directional miss is a STOP.
