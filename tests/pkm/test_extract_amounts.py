@@ -210,3 +210,13 @@ def test_example_declarations_load() -> None:
         assert decl.producer_class.endswith("ExtractAmountsProducer")
         assert decl.input_producer == producer
         assert decl.output_schema["properties"]["items"]["maxItems"] == 8
+
+
+def test_make_producer_dispatches_extract_amounts(monkeypatch: Any) -> None:
+    """The derive path's closed dispatch table (SPEC §18.2) must carry the entry —
+    run 19's warm failed live on exactly this seam (every declaration loaded, every
+    derive refused: 'unknown producer_class')."""
+    from pkm.transforms._shared import make_producer
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    producer = make_producer(_decl())
+    assert isinstance(producer, ExtractAmountsProducer)

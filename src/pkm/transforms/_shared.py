@@ -305,6 +305,7 @@ def make_producer(declaration: TransformDeclaration) -> Any:
     from pkm.transforms.doc_subject import DocSubjectProducer
     from pkm.transforms.email_triage import EmailTriageProducer
     from pkm.transforms.entity_extraction import EntityExtractionProducer
+    from pkm.transforms.extract_amounts import ExtractAmountsProducer
 
     table = {
         "pkm.transforms.entity_extraction.EntityExtractionProducer":
@@ -319,6 +320,8 @@ def make_producer(declaration: TransformDeclaration) -> Any:
             DocDateEmailProducer,
         "pkm.transforms.doc_subject.DocSubjectProducer":
             DocSubjectProducer,
+        "pkm.transforms.extract_amounts.ExtractAmountsProducer":
+            ExtractAmountsProducer,
     }
     cls = table.get(declaration.producer_class)
     if cls is None:
