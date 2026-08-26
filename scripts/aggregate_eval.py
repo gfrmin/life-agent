@@ -90,20 +90,25 @@ def warm(kb: Path, cap_usd: float) -> int:
                 try:
                     result = pkm_derive(root, cfg, decl, input_cache_key=key,
                                         caller="aggregate_eval.warm")
-                    cost = float(
-                        (result.producer_metadata or {}).get("cost_usd", 0.0) or 0.0
-                    ) if hasattr(result, "producer_metadata") else 0.0
-                    spent += cost
+                    # DeriveResult carries no realised cost (that lands in the §18.11
+                    # demand log) — the meter charges the PLANNING price per cache-miss
+                    # node, the cap formula's own denomination, so the cap binds by
+                    # construction; realised spend is published from the demand log.
+                    from life_agent.core.pricing import EXTRACT_AMOUNTS_USD
+                    misses = sum(1 for n in result.nodes if not n.hit)
+                    spent += misses * EXTRACT_AMOUNTS_USD
                     derived += 1
-                    print(f"derived {decl} {key[:12]}… (${cost:.4f})")
+                    print(f"derived {decl} {key[:12]}… "
+                          f"({misses} miss node(s), meter ${spent:.2f})")
                 except Exception as e:
                     failed += 1
                     print(f"derive failed {decl} {key[:12]}…: {e}")
             conn = duckdb.connect(str(root / "catalogue.duckdb"), read_only=True)
     finally:
         conn.close()
-    print(f"warm complete: {derived} derived, {failed} failed, ${spent:.2f} spent "
-          f"(cap ${cap_usd:.2f})")
+    print(f"warm complete: {derived} derived, {failed} failed, metered ${spent:.2f} "
+          f"at the planning price (cap ${cap_usd:.2f}); realised spend is in the "
+          f"§18.11 demand log under caller=aggregate_eval.warm")
     return 0
 
 
