@@ -179,4 +179,49 @@ files); m5-base replay **314/314 pure equality** at the recorded seed.
 its real `(root, name)` signature; plus two lint-shape fixes (import sort, an unused
 noqa). Nothing semantic.
 
-*(phase 2 appends below; nothing above changes.)*
+### Phase 2 — build (2026-08-26, $0 so far)
+
+Everything the prereg names is landed and green: component 2 (`compose_total` — the
+§4 refusals, the same-doc issuer fold and scope-end roll-up preference as the
+deterministic recognition mechanics the prereg left to implementation, component-3
+dedup on the §5-uncollapsed proposal pairs, named-missed-slot imputation from the
+observed series' order statistics), `project_amounts` (read-only, underived named
+with remedies), the family declaration + the ONE body called by terminals' declined
+path and the bridge's `/aggregate` handler, the `/route_family` second-stage router
+(own prompt/schema/cache key), the executor decline branch (fail-open on an unserved
+endpoint — an older daemon or a pre-router replay reads as narrative), the
+recorded-never-folded reactions arm, `gate.realised_aggregate` with the frozen
+constants + `RealisedResponse.x`, run_eval's numeric-gold branch, PRICING_VERSION 3
+with the §18.14 planning-price row, and the two instruments (`route2_audit.py` —
+`route_audit.py` deliberately byte-untouched — and `aggregate_eval.py`).
+
+**Gate:** suite 2777; ruff + mypy clean; m5-base replay **314/314 pure equality on
+the changed decision path** (the fail-open guards verified by the replay itself).
+TDD held throughout (each slice watched RED first). One expectation error was mine,
+not the rule's: a near-miss interval scores x≈0.99 under the frozen constants while
+the categorical wrong-class flag still fires — the test now asserts the frozen
+arithmetic exactly.
+
+### Pre-run disclosures (BEFORE the priced run fires — r21's reading terms)
+
+- **C0a is verified structurally and frozen into the fire script:** the
+  `ROUTE_PROMPT` block's sha256 prefix `00597cddef591086` is byte-identical on the
+  ladder-close tree, current master, and the phase-2 tree.
+- **The published warm cap:** by the frozen formula, 15 questions × k=20 ×
+  $0.01/derive = **$3.00**; the warm aborts at the cap and its actual spend is
+  published. The C0b sweep's ~21 uncached second-stage verdicts cost cents and ride
+  the run budget.
+- **Exhibit (b)'s reading, stated before the run:** the real duplicate pair's
+  garbled side extracts `unreadable: true` under §18.14, so it contributes NO
+  addends — the pair cannot form on the amounts lane, and the double-count it
+  guards against is structurally absent (the unreadable document is NAMED in
+  readout 1). The priced-context reading of exhibit (b) is therefore: **no
+  false-merge fires on the control pairs in the run** (adjacent-period equal-value
+  addends stay two transactions), with the real pair's identity resolution standing
+  on CP-C's live-engine measurement (r20: all three directions MET, same engine,
+  same rule). Stated here so the conjunct is read, not renegotiated.
+- The run fires as `fire-run19.sh` (out of tree, gate-outside-option), rehearsed
+  RUN19_GATE_ONLY=1: tree gate (run-18 lineage + the r21 pins) + C0a + credence pin
+  all PASS on the phase-2 tree. Comparison meta: run 18's.
+
+*(the run's reading appends below; nothing above changes.)*
