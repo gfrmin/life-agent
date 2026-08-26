@@ -1,8 +1,13 @@
 # Derivation engine — demand-driven materialisation over pkm
 
-> **Status: adopted 2026-06-11 (owner-approved).** D0 and D1 are landed; D2–D4 execute
-> continuously, gated by the §11 eval gates — not by per-phase dogfood demand (owner
-> directive, PRINCIPLES §9 as amended). The whole-system view this leg belongs to is
+> **Status: adopted 2026-06-11 (owner-approved); D3–D4 re-scoped 2026-06-12.** D0–D2 are
+> landed. The old D3/D4 are no longer deterministic pipelines: they are **Ask's aggregate
+> and thread question families** (PRINCIPLES §14; `docs/bayesian-foundations.md` §5/§6,
+> §12 stages 2–3; the aggregate family's build register is
+> [`aggregate-family-design.md`](./aggregate-family-design.md)). This doc's §5/§10/§11
+> D3–D4 text remains authoritative for the *mechanisms* the families reuse (the coverage
+> contract, the `assemble` amendment, the reclassification budget), read through that
+> re-scope. The whole-system view this leg belongs to is
 > [`system-design.md`](./system-design.md). The genesis research report
 > ([`nix-for-documents-report.md`](./nix-for-documents-report.md), April 2026) is an input
 > to this design, not a mandate. Every in-tree claim verified against the working tree on
