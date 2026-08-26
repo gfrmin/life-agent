@@ -2011,6 +2011,27 @@ on this list. Answers land here by amendment, citing their evidence.
   other firing. Decide after run 7/8: if the newly-admitted questions (router v2) produce
   base-only confident-wrongs, (b) is the fix; if they abstain at the base and pay for
   tiers, (a)'s prior mean is not the risk it looks like.
+  **READ 2026-08-26 ($0, the frozen rule applied to the accrued record): the verdict is
+  (a).** The newly-admitted set was re-derived from the paired run records (run 7's 18
+  route-misses minus run 8's 2 — the 16 ids match this ledger's run-8 entry exactly) and
+  tallied across runs 8–18 at commit granularity: **zero wrong commits (and zero wrong
+  hedges) in all 176 question-run cells, any instrument, any run** — the observed
+  behaviour is exactly (a)'s clause: the base abstains, the paid tiers/deliberate fire
+  (58 `eval_edge` rows on the set in run 8 alone; typed spend on the 16 = $2.35 of that
+  run's $3.25), and questions convert to correct or stay withheld, never through a wrong.
+  The two base-instrument confident-wrongs the series did produce (run 8's two
+  curve-evolution rows) sat on questions routed identically since run 6 and were closed
+  as the in-chunk-competition class — not a ρ-attribution defect. Also re-verified live:
+  the base evidence pool is still the 23 qwen-era rows (7 correct, Beta(11,20) mean
+  0.355, all graded 2026-06-12; zero `eval_lookup` rows since), and the base still writes
+  no `eval_edge` rows — every `extract@<model>` outcome row is the joint/corroborate
+  edge. **Disposition: exit (a) — fold the model identity into
+  `extract_instrument_hash` — is REGISTERED for enactment under its own small
+  pre-registration, NOT bundled here:** it is a decision-path lever (base ρ 0.355 → the
+  Beta(4,4) prior mean 0.5, i.e. commits *more* willingly on base-only channels), so the
+  prereg freezes the expected direction and reads a $0 replay of the latest gate record
+  through the changed fold before anything ships; the hard clause applies. Until it
+  lands, the base ρ stays qwen-priced — known, dated, and now bounded by this read.
 
 - **Run 7 — the first PASS (2026-08-17, run `gate-20260817T160244`, master @ `b0147bf`,
   clean; the run-6 recipe verbatim with `PKM_CONFIG` exported — judge grading, λ_usd spend
