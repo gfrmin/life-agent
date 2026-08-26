@@ -99,61 +99,51 @@ def test_ask_has_no_weak_retrieval_predicate() -> None:
     assert "MIN_STRONG_HITS" not in src
 
 
-# --- P-II (A2): the report-economy latch dies — the grow offer follows EVERY terminal - #
+# --- P-II as amended by A5 (run-17 ruling): the report-economy latch is RESTORED ------ #
 
 def _fake_services_module():  # the executor test rig, reused without duplication
     import tests.test_executor as TE
     return TE
 
 
-def test_report_terminal_gets_the_grow_offer() -> None:
-    """A2's measured residue (62/63 recorded reports flip when shown the block): the
-    re-ask with the grow block fires after a REPORT too — the daemon prices recall on
-    the full space, and its gather choice is enacted."""
+def test_report_terminal_gets_no_grow_offer() -> None:
+    """A5 (the run-17 ruling): the report-economy latch is MEASURED protection — run 17
+    priced the every-terminal offer at answer rate 0.62 -> 0.49 (dispersal; run 13's
+    lesson again). A confident report ends the loop with NO grow re-ask; the engine's
+    real preference for the re-read (A2's 62/63) is priced by the §14 hand-priced-VOI
+    arc, not enacted here."""
     te = _fake_services_module()
     fake = te.FakeServices(
         route={"construct": "passport number", "time_indexed": False},
-        corroborate={"observations": [{"reports": 0, "group": 0, "authority": 1.0,
-                                       "subject_factor": 1.0, "time_factor": 1.0}],
-                     "gather_rho": 0.95, "value": "P123"},
         decides=[
-            {"effector": "report", "value": "P123", "credences": [0.6, 0.2],
-             "p_none": 0.2, "eu": 0.35},
-            {"effector": "gather", "probe": "re_extract_strong",
-             "credences": [0.6, 0.2], "p_none": 0.2, "eu": 0.35},
-            {"effector": "report", "value": "P123", "credences": [0.95, 0.03],
-             "p_none": 0.02, "eu": 0.9},
-            {"effector": "report", "value": "P123", "credences": [0.95, 0.03],
-             "p_none": 0.02, "eu": 0.9},
+            {"effector": "report", "value": "P123", "credences": [0.9, 0.05],
+             "p_none": 0.05, "eu": 0.8},
         ])
     view = te._loop(fake)
     assert view["effector"] == "report"
     decides = fake.posted("/decide")
-    # consult(plain) -> re-ask(grow) -> gather enacted -> re-decide(plain) ->
-    # re-ask(grow, retrieval grows still unapplied) -> declined -> end
-    assert len(decides) == 4
-    assert "grow" not in decides[0]           # sensors are posterior-derived (A2 arm i)
-    assert "grow" in decides[1] and "sensors" in decides[1]
-    assert "grow" in decides[3]               # the offer repeats until declined
-    assert len(fake.posted("/probe/corroborate")) >= 1  # the re-read was enacted
+    assert len(decides) == 1                  # one plain consult; the latch holds
+    assert "grow" not in decides[0]
+    assert fake.posted("/log_gather") == []   # nothing enacted, nothing logged
 
 
-def test_confident_report_grow_decline_ends_the_loop() -> None:
-    """The obedience arm (A2 arm ii): the daemon saw the block and repeated the
-    report — the loop ends; nothing is enacted twice."""
+def test_withholding_terminal_still_gets_the_grow_offer() -> None:
+    """The latch is withhold-ONLY: an abstaining terminal with unapplied grow
+    actuators is re-asked WITH the grow block (unchanged since the grow lane landed —
+    the daemon prices recall where the arm would otherwise stay silent)."""
     te = _fake_services_module()
     fake = te.FakeServices(
         route={"construct": "passport number", "time_indexed": False},
         decides=[
-            {"effector": "report", "value": "P123", "credences": [0.99, 0.005],
-             "p_none": 0.005, "eu": 0.98},
-            {"effector": "report", "value": "P123", "credences": [0.99, 0.005],
-             "p_none": 0.005, "eu": 0.98},
+            {"effector": "abstain", "credences": [0.2, 0.1], "p_none": 0.7, "eu": 0.0},
+            {"effector": "abstain", "credences": [0.2, 0.1], "p_none": 0.7, "eu": 0.0},
         ])
     view = te._loop(fake)
-    assert view["effector"] == "report"
-    assert len(fake.posted("/decide")) == 2
-    assert fake.posted("/log_gather") == []   # nothing enacted, nothing logged
+    assert view["effector"] == "abstain"
+    decides = fake.posted("/decide")
+    assert len(decides) == 2
+    assert "grow" not in decides[0] and "sensors" not in decides[0]  # first pass plain
+    assert "grow" in decides[1] and "sensors" in decides[1]          # the offer fired
 
 
 # --- P-II (A1 + D-5): withhold-reason is ONE derivation ------------------------------- #

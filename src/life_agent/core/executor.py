@@ -575,16 +575,16 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
             applied = list(dict.fromkeys([*applied, probe]))
             grow_asked = False
             dec = _decide(obs, rho, era, applied)
-        elif not grow_asked and (grow_probes - set(applied)):
-            # a TERMINAL with unapplied grow actuators: re-ask WITH the grow block so the
-            # daemon prices recall over the full space. Reports included (M5/r15 A2): the
-            # old report-economy skip claimed "a confident report prices grow at about
-            # minus-cost", which the $0 residue probe REFUTED against the live engine —
-            # 62 of 63 recorded economy-class reports flip to a scheduled re-read when
-            # shown the block (scripts/e12_residue_probe.py). The daemon's self-gate is
-            # the rule; the host offers, never filters. A grow-block consult that still
-            # returns a terminal ends the loop (obedience — the daemon saw and declined
-            # every unapplied grow).
+        elif (eff in _WITHHOLD and not grow_asked
+              and (grow_probes - set(applied))):
+            # a WITHHOLDING terminal with unapplied grow actuators: re-ask WITH the grow
+            # block so the daemon prices recall. The withhold-only latch is MEASURED
+            # protection, not transport economy (r15 A5, the run-17 ruling): offering the
+            # block after every terminal enacted a real engine preference (A2's 62/63)
+            # and the priced gate read the exercised reach as harmful — answer rate
+            # 0.62 -> 0.49, dispersal on marginal reports. The latch stands until the
+            # hand-set grow priors are grounded in the gather-outcome stream
+            # (foundations §14, the hand-priced-VOI arc).
             last_sensors = GO.sensors_from(
                 candidates=candidates, credences=list(dec["credences"] or []),
                 p_none=dec["p_none"], indeterminate=int(ext.get("indeterminate") or 0))

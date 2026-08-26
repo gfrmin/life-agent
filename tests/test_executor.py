@@ -59,13 +59,6 @@ class FakeServices:
         self.extract = extract if extract is not None else _EXTRACT
         self._extracts = list(extracts) if extracts is not None else None
         self._decides = list(decides or [])
-        # M5 (r15 A2): the grow offer follows EVERY terminal, so a script that ends in
-        # a terminal receives one more grow-block consult than it used to. The fake
-        # models the daemon's self-gate by REPEATING its last terminal on overflow (a
-        # repeat = the daemon declining the offer); `decide_overflows` counts them so a
-        # test can assert exact consult budgets when it cares.
-        self.decide_overflows = 0
-        self._last_decide: dict[str, Any] | None = None
         self.narrative = narrative
         self.corroborate = corroborate
         self.deliberate = deliberate
@@ -95,14 +88,7 @@ class FakeServices:
         if url.endswith("/log_gather"):
             return {"logged": True}
         if url.endswith("/decide"):
-            if self._decides:
-                self._last_decide = self._decides.pop(0)
-                return self._last_decide
-            assert self._last_decide is not None, "decide consulted before any script"
-            assert self._last_decide.get("effector") != "gather", (
-                "overflow repeat of a gather would loop forever — script exhausted")
-            self.decide_overflows += 1
-            return self._last_decide
+            return self._decides.pop(0)
         raise AssertionError(f"unexpected POST {url}")
 
     def get(self, url: str) -> dict[str, Any]:
@@ -193,8 +179,7 @@ def test_recency_gather_is_acknowledged_then_report() -> None:
     view = _loop(fake)
     assert view["effector"] == "report"
     decides = fake.posted("/decide")
-    assert len(decides) == 3          # + the M5 grow offer on the terminal (declined)
-    assert fake.decide_overflows == 1
+    assert len(decides) == 2
     assert "recency" in decides[1]["applied_probes"]  # acknowledged on the re-decide
 
 
@@ -237,8 +222,7 @@ def test_grow_lane_daemon_schedules_retrieve_expand() -> None:
     view = _loop(fake)
     assert view["effector"] == "report"
     decides = fake.posted("/decide")
-    assert len(decides) == 4          # + the M5 grow offer on the terminal (declined)
-    assert fake.decide_overflows == 1
+    assert len(decides) == 3
     assert "grow" not in decides[0] and "sensors" not in decides[0]   # first pass is plain
     assert decides[1]["grow"]["actuators"][0]["probe"] == "retrieve_rerank"  # menu forwarded
     assert decides[1]["sensors"]["extracted"] == "some"
