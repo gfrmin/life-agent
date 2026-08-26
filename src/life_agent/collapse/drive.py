@@ -480,7 +480,11 @@ def drive_seam_unavailable(question: str) -> dict[str, Any]:
             CFG.DECISIONS_LOG = prior
             AC._terminals_answer = prior_term
         assert r.down and r.decision_id is None
-        event = _last_event(sink)
+        # Read the event back through the seal-aware sink (_SINK's contract): under the
+        # recorder's seal `decisions.append` itself is redirected, so the tempdir this
+        # driver handed the leaf stays empty and reading it would silently find nothing
+        # — exactly what the m5-base rehearsal caught (effector recorded None).
+        event = _last_event(decisions_sink(Path(tmp)))
     body = (body_from_event(event, question=question, retrieval_keys=[])
             if event else None)
     return {"effector": event.chosen_action if event else None, "asserted": [],

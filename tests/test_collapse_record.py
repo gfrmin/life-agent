@@ -328,3 +328,17 @@ def test_recorder_cli_carries_a_spend_cap_with_the_delegated_default() -> None:
     rec = importlib.import_module("collapse_record")
     args = rec._parser().parse_args(["--allow-spend"])
     assert args.max_usd == pytest.approx(8.0)   # the stage-0 delegation's hard cap
+
+
+def test_seam_driver_reads_the_event_through_the_seal(tmp_path: Path) -> None:
+    """The §6.5 seam driver must read the event it caused back through `decisions_sink`
+    — under the recorder's seal, `decisions.append` itself is redirected to the seal's
+    sink, and reading the tempdir the driver handed the leaf finds nothing (the m5-base
+    rehearsal caught exactly this: the fixture recorded effector=None where the replay
+    reads the event's 'abstain'; the m2-base record never exposed it because the
+    pre-M2 tree appended no event on this path at all)."""
+    with DR.sealed(tmp_path / "pkm"):
+        out = DR.drive_seam_unavailable("the stack is down")  # PII-OK: synthetic
+    assert out["effector"] == "abstain"
+    assert out["regime"] == "unavailable"
+    assert out["log_decision"] is not None
