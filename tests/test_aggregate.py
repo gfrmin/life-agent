@@ -9,6 +9,7 @@ Run: uv run --project . python -m pytest tests/test_aggregate.py
 from __future__ import annotations
 
 import hashlib
+import math
 from datetime import date
 from pathlib import Path
 
@@ -16,12 +17,15 @@ import pytest
 
 from life_agent.core.aggregate import (
     _RECALL_PRIOR,
+    UNREADABLE,
     Generator,
+    PairCovariates,
     RegistryError,
     Scope,
     expected_slots,
     load_registry,
     recall_posterior,
+    same_entity_posterior,
 )
 
 FIXTURE = Path(__file__).parent / "fixtures" / "generators-synthetic.yaml"
@@ -234,3 +238,125 @@ def test_state_destroyed_on_success_and_on_read_error() -> None:
     with pytest.raises(RuntimeError, match="wire read refused"):
         recall_posterior(raising, [_gen()], YEAR, {"g-pay": frozenset({"2025-01"})})
     assert raising.destroyed and not raising._states
+
+
+# ====================================================================================
+# CP-C (r20): component 3 — dedup-as-inference (design §7), the pairwise same-entity
+# hypothesis comparison. Oracle: TabularBrain — an independent categorical +
+# tabular_log_density reimplementation, not the module's own math.
+
+
+
+class TabularBrain:
+    """Categorical-state oracle for the CP-C wire shape: log-weight accumulation from
+    declared tabular log-density kernels, softmax on ``weights``."""
+
+    def __init__(self) -> None:
+        self._states: dict[str, tuple[list[float], list[float]]] = {}
+        self._n = 0
+        self.conditions = 0
+        self.destroyed: list[str] = []
+
+    def create_state(self, spec: dict) -> str:
+        assert spec["type"] == "categorical", spec
+        assert spec["space"]["type"] == "finite", spec
+        vals = [float(v) for v in spec["space"]["values"]]
+        lw = [float(w) for w in spec.get("log_weights") or [0.0] * len(vals)]
+        self._n += 1
+        sid = f"c_{self._n}"
+        self._states[sid] = (vals, lw)
+        return sid
+
+    def destroy_state(self, sid: str) -> None:
+        self._states.pop(sid, None)
+        self.destroyed.append(sid)
+
+    def condition(self, sid: str, *, kernel: dict, observation: float) -> float:
+        assert kernel["type"] == "tabular_log_density", kernel
+        vals, lw = self._states[sid]
+        assert [float(v) for v in kernel["source_vals"]] == vals
+        ti = [float(t) for t in kernel["target_vals"]].index(float(observation))
+        self._states[sid] = (vals, [w + float(kernel["densities"][si][ti])
+                                    for si, w in enumerate(lw)])
+        self.conditions += 1
+        return 0.0
+
+    def weights(self, sid: str) -> list[float]:
+        _, lw = self._states[sid]
+        mx = max(lw)
+        es = [math.exp(w - mx) for w in lw]
+        z = sum(es)
+        return [e / z for e in es]
+
+
+class RaisingTabularBrain(TabularBrain):
+    """Poisoned weights read — proves the categorical state dies in the finally."""
+
+    def weights(self, sid: str) -> list[float]:
+        raise RuntimeError("wire read refused")
+
+
+REAL_SHAPE = PairCovariates(period="same", amount=UNREADABLE, entity="same", kind="same")
+ADJACENT_SHAPE = PairCovariates(period="adjacent", amount=UNREADABLE, entity="same",
+                                kind="same")
+
+
+# --- c-t1: choreography — one condition per readable covariate, destroy both paths ---
+
+def test_pair_choreography_and_destroy() -> None:
+    brain = TabularBrain()
+    post = same_entity_posterior(brain, REAL_SHAPE)
+    assert brain.conditions == 3  # period, entity, kind; amount unreadable
+    assert brain.destroyed and not brain._states
+    assert post.conditioned == ("period", "entity", "kind")
+    raising = RaisingTabularBrain()
+    with pytest.raises(RuntimeError, match="wire read refused"):
+        same_entity_posterior(raising, REAL_SHAPE)
+    assert raising.destroyed and not raising._states
+
+
+# --- c-t2: the real-pair shape reads one entity -------------------------------------
+
+def test_real_pair_shape_reads_one_entity() -> None:
+    post = same_entity_posterior(TabularBrain(), REAL_SHAPE)
+    l_one = 0.98 * 0.97 * 0.99
+    l_two = 0.15 * 0.70 * 0.80
+    assert post.p_one == pytest.approx(l_one / (l_one + l_two))
+    assert post.p_one > 0.5
+
+
+# --- c-t3: the adjacent-period control shape reads two entities ---------------------
+
+def test_adjacent_period_shape_reads_two() -> None:
+    post = same_entity_posterior(TabularBrain(), ADJACENT_SHAPE)
+    l_one = 0.01 * 0.97 * 0.99
+    l_two = 0.45 * 0.70 * 0.80
+    assert post.p_one == pytest.approx(l_one / (l_one + l_two))
+    assert post.p_one < 0.5
+
+
+# --- c-t4: unreadable covariates are skipped and named ------------------------------
+
+def test_unreadable_covariate_skipped_named() -> None:
+    post = same_entity_posterior(TabularBrain(), REAL_SHAPE)
+    assert post.skipped == ("amount",)
+
+
+# --- c-t5: the posterior is a distribution ------------------------------------------
+
+def test_pair_posterior_sums_to_one() -> None:
+    readable = PairCovariates(period="adjacent", amount="different", entity="same",
+                              kind="same")
+    post = same_entity_posterior(TabularBrain(), readable)
+    assert post.p_one + post.p_two == pytest.approx(1.0)
+    assert post.skipped == ()
+    assert post.conditioned == ("period", "amount", "entity", "kind")
+
+
+# --- c-t6: an unknown bucket is loud (closed vocabularies) --------------------------
+
+def test_unknown_bucket_loud() -> None:
+    bad = PairCovariates(period="overlapping", amount="equal", entity="same",
+                         kind="same")
+    with pytest.raises(ValueError, match="overlapping"):
+        same_entity_posterior(TabularBrain(), bad)
