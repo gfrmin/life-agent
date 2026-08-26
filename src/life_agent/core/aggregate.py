@@ -608,7 +608,8 @@ NOT an aggregate.
 
 If aggregate, also name:
 - target_kind: the amount kind being totalled — one of income_gross, income_net, tax,
-  deduction, balance, deposit, fee, invoice_total, payment, other.
+  deduction, balance, deposit, fee, invoice_total, payment, other. For narrative,
+  answer "none".
 - period_start / period_end: the question's period as YYYY-MM-DD dates, null if the
   question states none.
 
@@ -622,10 +623,12 @@ ROUTE2_SCHEMA: dict[str, Any] = {
     "required": ["family", "target_kind", "period_start", "period_end"],
     "properties": {
         "family": {"type": "string", "enum": ["aggregate", "narrative"]},
-        "target_kind": {"type": ["string", "null"],
+        # A nullable enum (enum + type union) is rejected by the structured-output
+        # API (found live, r21 disclosure) — "none" is the sentinel, parsed as null.
+        "target_kind": {"type": "string",
                         "enum": ["income_gross", "income_net", "tax", "deduction",
                                  "balance", "deposit", "fee", "invoice_total",
-                                 "payment", "other", None]},
+                                 "payment", "other", "none"]},
         "period_start": {"type": ["string", "null"]},
         "period_end": {"type": ["string", "null"]},
     },
@@ -673,7 +676,8 @@ def route_aggregate(root: Path, question: str, *,
                  json.dumps({"format_version": 1, **parsed}, sort_keys=True,
                             ensure_ascii=False).encode("utf-8"),
                  lineage=[])
-    if parsed.get("family") != "aggregate" or not parsed.get("target_kind"):
+    kind = parsed.get("target_kind")
+    if parsed.get("family") != "aggregate" or not kind or kind == "none":
         return None
     return AggregateRoute(target_kind=str(parsed["target_kind"]),
                           period_start=parsed.get("period_start"),

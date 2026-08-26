@@ -684,7 +684,7 @@ def test_route_aggregate_caches_and_defaults(migrated_root: Path) -> None:
                          "period_start": None, "period_end": None})
     assert route_aggregate(migrated_root, "summarise my week", client=narr) is None
 
-    hollow = _RouteClient({"family": "aggregate", "target_kind": None,
+    hollow = _RouteClient({"family": "aggregate", "target_kind": "none",
                            "period_start": None, "period_end": None})
     # aggregate without a kind is NOT a confident sum-shape — conservative default
     assert route_aggregate(migrated_root, "what about totals?", client=hollow) is None
