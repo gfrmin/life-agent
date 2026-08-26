@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["format_version", "currency_default", "unreadable",
+               "majority_unlabelled", "items"],
+  "properties": {
+    "format_version": {"const": 1},
+    "currency_default": {"type": ["string", "null"], "pattern": "^[A-Z]{3}$"},
+    "unreadable": {"type": "boolean"},
+    "majority_unlabelled": {"type": "boolean"},
+    "items": {
+      "type": "array",
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "required": ["kind", "basis", "as_of", "amount", "currency",
+                     "amount_raw", "label_raw", "entity"],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": ["income_gross", "income_net", "tax", "deduction", "balance",
+                     "deposit", "fee", "invoice_total", "payment", "other"]
+          },
+          "basis": {
+            "type": "string",
+            "enum": ["point_in_time", "monthly", "quarterly", "annual", "other"]
+          },
+          "as_of": {"type": ["string", "null"],
+                    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"},
+          "amount": {"type": "number"},
+          "currency": {"type": ["string", "null"], "pattern": "^[A-Z]{3}$"},
+          "amount_raw": {"type": "string", "minLength": 1},
+          "label_raw": {"type": ["string", "null"]},
+          "entity": {"type": ["string", "null"]}
+        }
+      }
+    }
+  }
+}

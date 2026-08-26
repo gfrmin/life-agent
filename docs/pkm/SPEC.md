@@ -1903,8 +1903,62 @@ like §18.12, the projection is a function of content, not of which extractor pr
 exactly when `subject_kind` is `person` or `organisation` (fail loudly, not cached —
 §18.11 miss-path parity). No grounding step (a classification, not a quote).
 
+### 18.14 The `extract_amounts` transform
+
+`extract_amounts` projects one document's labelled amounts as **grounded, typed
+line-items** — the observation instrument of the consumer-side aggregate family (a
+financial document is a small table of labelled amounts, not a scalar; one amount per
+document would re-import "which?" as a silent model choice). Output schema:
+
+```json
+{"format_version": 1, "currency_default": "ISO-4217"|null, "unreadable": false,
+ "majority_unlabelled": false, "items": [
+   {"kind":  "income_gross|income_net|tax|deduction|balance|deposit|fee|invoice_total|payment|other",
+    "basis": "point_in_time|monthly|quarterly|annual|other",
+    "as_of": "YYYY-MM-DD"|null,
+    "amount": 123456.78, "currency": "ISO-4217",
+    "amount_raw": "<verbatim source substring>",
+    "label_raw": "<verbatim source substring>"|null,
+    "entity": "<counterparty/account label as written>"|null}]}
+```
+
+- **`kind` and `basis` are closed enums** (§18.8 pattern); `items` is bounded
+  (`maxItems` 8 — the salient labelled amounts, not an exhaustive ledger). An **empty
+  `items` is a determinate success** ("no amounts of interest" — the §18.12 `null`-date
+  analogue); **`unreadable: true` is the named indeterminate** for extraction-soup
+  documents and requires `items: []`.
+- **Grounding (§18.5, whitespace-normalised containment):** every `amount_raw` MUST
+  ground in the source or the whole source fails (never cached as success — §14.3);
+  `label_raw` grounds when non-null. The split of duties is deliberate and
+  probe-calibrated: amount grounding is near-free on real documents but also survives
+  on OCR noise, so it alone cannot discriminate hallucinated glyph soup; label
+  grounding does discriminate; full-sentence quotes would reject most true table rows.
+  Hence: amounts gate hard, labels are the quality signal.
+- **`majority_unlabelled`** is injected at `post_validate`: `true` when more than half
+  the items carry `label_raw: null`. It flags the artifact for consumers (a weaker
+  error-model cell — priced downstream, never dropped here); the transform itself
+  passes no judgement.
+- **Raw + parsed pairs per item** because normalisation (RTL digit order, thousands
+  separators, currency glyphs) is itself error-prone: display and citation use
+  `amount_raw`; models fold the parsed `amount`. `currency` falls back to
+  `currency_default` when the item carries no explicit glyph.
+- `post_validate` enforces internal consistency (enums; `unreadable` ⇒ empty items;
+  finite `amount` with a currency; the `majority_unlabelled` derivation), failing
+  loudly and never caching a miss (§18.11 parity).
+
+One LLM producer class, declared once per input producer (`docling`, `pandoc`,
+`tesseract`, `email`) — like §18.12/§18.13 the projection is a function of content,
+not of which extractor produced it. Consumers attribute the edge per model from its
+first firing (no pooled reliability across models — a consumer-side discipline noted
+here because the schema's stability depends on it being unnecessary to re-key).
+
 ## 16. Change log
 
+- 0.19.0 (draft): §18.14 (new) — *extract_amounts*, grounded typed line-item amounts
+  per document (bounded list, closed `kind`/`basis` enums, §18.5 amount grounding with
+  label grounding as the quality discriminator, `unreadable` indeterminate,
+  `majority_unlabelled` flag). The consumer-side aggregate family's observation
+  instrument (life-agent `docs/aggregate-family-design.md` §3, checkpoint r21).
 - 0.18.2 (draft): the retrieval SQL's `ORDER BY` becomes a declared total order —
   `round(score, 9) DESC, artifact_cache_key, chunk_text, chunk_id` — so the `LIMIT` cuts a
   declared prefix of the corpus rather than an engine sample of a tie block (life-agent

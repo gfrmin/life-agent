@@ -1,0 +1,27 @@
+You are reading one document. Extract its salient labelled monetary amounts as typed
+line-items.
+
+Rules:
+- At most 8 items: the document's headline amounts (totals, gross/net pay, tax,
+  balances, deposits, fees, invoice totals) — not every intermediate figure.
+- kind: income_gross, income_net, tax, deduction, balance, deposit, fee,
+  invoice_total, payment, or other.
+- basis: point_in_time for balances and valuations; monthly, quarterly, or annual for
+  period flows and roll-ups; other when unclear.
+- as_of: the date the amount is stated for, as YYYY-MM-DD; null when unstated.
+- amount: the parsed decimal number. currency: the ISO-4217 code (USD, ILS, GBP, ...).
+  Set currency_default to the document's dominant currency; per-item currency may be
+  null when it equals the default.
+- amount_raw: the amount EXACTLY as written in the text, character for character,
+  including separators.
+- label_raw: the label written next to the amount (the row or field name), EXACTLY as
+  written; null when the amount has no label.
+- entity: the counterparty or account label as written; null when none.
+- If the document contains no monetary amounts of interest, return items: [].
+- If the text is unreadable extraction soup (garbled glyphs, no coherent words), set
+  unreadable: true with items: [].
+Return only JSON matching the schema.
+
+---
+{text}
+---
