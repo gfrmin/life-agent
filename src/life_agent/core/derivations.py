@@ -54,6 +54,8 @@ RETRIEVE_VERSION = "1"
 SYNTHESIZE_VERSION = "1"
 OWNER_MATCH_VERSION = "1"
 LOOKUP_ROUTE_VERSION = "1"
+AGGREGATE_ROUTE_VERSION = "1"
+AGGREGATE_ANSWER_VERSION = "1"
 LOOKUP_EXTRACT_VERSION = "1"
 LOOKUP_CONFIRM_VERSION = "1"
 LOOKUP_ANSWER_VERSION = "1"
@@ -82,6 +84,8 @@ CONTENT_TYPE_RETRIEVAL_SET = "application/x-ask-retrieval-set+json"
 CONTENT_TYPE_ANSWER = "application/x-ask-answer"
 CONTENT_TYPE_OWNER_MATCH = "application/x-ask-owner-match+json"
 CONTENT_TYPE_LOOKUP_ROUTE = "application/x-ask-lookup-route+json"
+CONTENT_TYPE_AGGREGATE_ROUTE = "application/x-ask-aggregate-route+json"
+CONTENT_TYPE_AGGREGATE_ANSWER = "application/x-ask-aggregate-answer+json"
 CONTENT_TYPE_LOOKUP_OBSERVATION = "application/x-ask-lookup-observation+json"
 CONTENT_TYPE_LOOKUP_CONFIRM = "application/x-ask-lookup-confirm+json"
 CONTENT_TYPE_LOOKUP_ANSWER = "application/x-ask-lookup-answer+json"
@@ -243,6 +247,52 @@ def lookup_route_key(question: str, *, model: str, prompt_template: str,
                     producer_version=LOOKUP_ROUTE_VERSION, producer_config={},
                     schema_version=3, inputs=inputs,
                     content_type=CONTENT_TYPE_LOOKUP_ROUTE)
+
+
+def aggregate_route_key(question: str, *, model: str, prompt_template: str,
+                        engine_version: str,
+                        output_schema: dict[str, Any]) -> StageKey:
+    """Key for one second-stage family verdict (design §8, r21): on the declined
+    path, is this a numeric-total aggregate? Own prompt/schema/key — ROUTE_PROMPT
+    stays byte-identical, so lookup admissions never re-mint (the run-8 lesson)."""
+    inputs = {"question": question}
+    input_hash = _sha256(canonical_json(inputs))
+    cache_key = compute_cache_key(
+        input_hash, "life_agent.ask.aggregate_route", AGGREGATE_ROUTE_VERSION, {},
+        schema_version=3,
+        model_identity=instrument_identity(model),
+        engine_version=engine_version,
+        prompt_template_hash=_sha256(prompt_template),
+        output_schema=output_schema,
+    )
+    return StageKey(cache_key=cache_key, input_hash=input_hash,
+                    producer_name="life_agent.ask.aggregate_route",
+                    producer_version=AGGREGATE_ROUTE_VERSION, producer_config={},
+                    schema_version=3, inputs=inputs,
+                    content_type=CONTENT_TYPE_AGGREGATE_ROUTE)
+
+
+def aggregate_answer_key(question: str, addends_hash: str,
+                         registry_hash: str,
+                         params: dict[str, Any]) -> StageKey:
+    """Key for the aggregate family's answer artifact (design §2/§6): deterministic
+    given the projected addends, the registry state (its content hash — §9 replay
+    determinism), and the stated composition parameters. Schema-1, no model
+    identity: the instruments live upstream in the §18.14 artifacts this lineage
+    names."""
+    inputs = {"addends": addends_hash, "question": question,
+              "registry": registry_hash}
+    input_hash = _sha256(canonical_json(inputs))
+    cache_key = compute_cache_key(
+        input_hash, "life_agent.ask.aggregate_answer", AGGREGATE_ANSWER_VERSION,
+        params, schema_version=1,
+    )
+    return StageKey(cache_key=cache_key, input_hash=input_hash,
+                    producer_name="life_agent.ask.aggregate_answer",
+                    producer_version=AGGREGATE_ANSWER_VERSION,
+                    producer_config=params,
+                    schema_version=1, inputs=inputs,
+                    content_type=CONTENT_TYPE_AGGREGATE_ANSWER)
 
 
 def temporal_intent_key(question: str, *, model: str, prompt_template: str,

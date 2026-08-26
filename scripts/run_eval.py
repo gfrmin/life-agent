@@ -602,6 +602,21 @@ def withheld_reason(view: dict, *, available: bool):
                                available=available)
 
 
+def _numeric_gold(gold: str, variants: list[str]) -> float | None:
+    """The first parseable numeric value among gold + variants (commas stripped,
+    currency words ignored) — None when the gold is not numeric (then the token
+    matcher grades as before)."""
+    import re as _re
+    for cand in [gold, *variants]:
+        m = _re.search(r"-?\d[\d,]*(?:\.\d+)?", str(cand))
+        if m:
+            try:
+                return float(m.group(0).replace(",", ""))
+            except ValueError:
+                continue
+    return None
+
+
 def _typed_response_executor(view: dict, q: dict, *, available: bool = True):
     """The typed policy's realised answer when the typed arm runs through the EXECUTOR
     surface (ask.answer_via_executor → the daemon/bridge loop — the surface the priced
@@ -621,6 +636,18 @@ def _typed_response_executor(view: dict, q: dict, *, available: bool = True):
     cost = float(view["spend_usd"] or 0.0)
     eff = str(view["effector"])
     if eff == "report":
+        # r21: an aggregate report with a numeric gold grades through the frozen
+        # Winkler rule (gate.realised_aggregate) — correct = the interval CONTAINS
+        # the gold (its complement is the family's named wrong-commit class), x the
+        # continuous grade realised_utility folds. Every other report row is
+        # byte-identical to before.
+        totals = (view.get("aggregate") or {}).get("totals") or []
+        gv = _numeric_gold(gold, variants)
+        if totals and gv is not None:
+            t = totals[0]
+            x, excludes = GATE.realised_aggregate(float(t["lo"]), float(t["hi"]), gv)
+            return GATE.RealisedResponse(action="report", correct=not excludes,
+                                         cost_usd=cost, x=x)
         return GATE.RealisedResponse(action="report", correct=GATE.realised_report(
             [str(a) for a in view["asserted"]], gold, variants), cost_usd=cost)
     if eff == "hedge":

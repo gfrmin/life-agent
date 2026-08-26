@@ -118,6 +118,9 @@ class RealisedResponse:
     correct: bool | None = None
     cost_usd: float = 0.0
     withheld: str | None = None
+    # r21: the aggregate family's pre-registered Winkler grade in [0, 1] — None on
+    # every other row (byte-identical valuation to before).
+    x: float | None = None
 
     def __post_init__(self) -> None:
         if self.action not in _ALL_ACTIONS:
@@ -161,6 +164,30 @@ def realised_report(asserted: list[str], gold: str, variants: list[str]) -> bool
     return any(answer_matches(gold, variants, a) for a in asserted)
 
 
+_WINKLER_ALPHA = 0.2      # r21 (frozen): the rendered central level is 80%
+_WINKLER_SCALE = 2.0      # r21 (frozen): x = max(0, 1 - W / (SCALE * |gold|))
+
+
+def realised_aggregate(lo: float, hi: float, gold_value: float
+                       ) -> tuple[float, bool]:
+    """The r21 pre-registered interval grade: the Winkler score of the asserted
+    central-80% interval against the numeric gold, affinely mapped onto the assert
+    atom's p-argument. Returns ``(x, excludes_gold)`` — ``excludes_gold`` is the
+    family's named wrong-commit class (categorical, independent of x). A sharp
+    covering interval reads near 1; an interval wider than twice the gold reads 0
+    even when covering; a miss pays in miss distance through the 2/alpha term."""
+    w = hi - lo
+    if gold_value < lo:
+        w += (2.0 / _WINKLER_ALPHA) * (lo - gold_value)
+    if gold_value > hi:
+        w += (2.0 / _WINKLER_ALPHA) * (gold_value - hi)
+    if gold_value == 0.0:
+        return (1.0 if lo <= 0.0 <= hi and w == 0.0 else 0.0,
+                not (lo <= gold_value <= hi))
+    x = max(0.0, 1.0 - w / (_WINKLER_SCALE * abs(gold_value)))
+    return x, not (lo <= gold_value <= hi)
+
+
 def realised_utility(resp: RealisedResponse, u: dict[str, float], *,
                      oracle_p: float) -> float:
     """The realised answer's utility under one sampled (or mean) ``u`` — the stated
@@ -178,7 +205,11 @@ def realised_utility(resp: RealisedResponse, u: dict[str, float], *,
     if a == "ask_clarify":
         return oracle_p * u["u_correct"] - u["lambda_int"] - spend
     if a == "report":
-        # D-1 (M4): the report outcome IS the atom at p ∈ {1, 0} — one written source
+        # D-1 (M4): the report outcome IS the atom at p ∈ {1, 0} — one written source.
+        # r21: an aggregate report carries the pre-registered Winkler x instead (the
+        # frozen interval grade); rows without one are byte-identical to before.
+        if resp.x is not None:
+            return u_assert(resp.x, u) - spend
         return u_assert(1.0 if resp.correct else 0.0, u) - spend
     if a == "hedge":
         return (u["u_hedged"] if resp.correct else u["u_wrong"]) - spend

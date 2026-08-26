@@ -47,7 +47,9 @@ _GROW = [
 def test_the_menu_lives_in_the_table() -> None:
     # one declared MENU in the module that already owns the spend half; the version
     # bumps because the table grew (its identity contract is unchanged)
-    assert P.PRICING_VERSION == 2
+    # v3 (r21): the §18.14 extract_amounts planning-price row joined the table.
+    assert P.PRICING_VERSION == 3
+    assert P.EXTRACT_AMOUNTS_USD == 0.01
     assert {k: v[0] for k, v in _TIERS.items()} == P.TIER_MODEL
     assert {k: v[1] for k, v in _TIERS.items()} == P.TIER_RHO
     assert P.GATHER_RHO == 0.95

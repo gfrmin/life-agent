@@ -258,14 +258,17 @@ def test_ask_once_has_no_dispatch_choice() -> None:
 
 # --- P-IV (A3): the single-writer invariant, drift-gated ------------------------------ #
 
-def test_record_local_callers_are_exactly_the_two_leaves() -> None:
-    """A3: one recorder, two leaf call sites, no third writer and no second spelling."""
+def test_record_local_callers_are_exactly_the_family_leaves() -> None:
+    """A3: one recorder, the declared family leaf call sites, no other writer and no
+    second spelling. r21 (CP-D) added the aggregate leaf — still every write through
+    the ONE recorder."""
     hits = []
     for py in (_SRC).rglob("*.py"):
         text = py.read_text()
         if "REC.record_local(" in text or "recorder.record_local(" in text:
             hits.append(py.relative_to(_SRC).as_posix())
-    assert sorted(hits) == ["core/lookup.py", "core/narrative.py"]
+    assert sorted(hits) == ["core/aggregate.py", "core/lookup.py",
+                            "core/narrative.py"]
 
 
 # --- P-V (L-3): report_scoped_j — the engine picks the scoped value ------------------- #
