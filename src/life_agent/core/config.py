@@ -81,6 +81,14 @@ OUTCOMES_LOG = KB / "calibration" / "outcomes.jsonl"
 # reactions are not readable as choices. Append-only, order-defined, unbackfillable;
 # no EU decision is ever made unlogged.
 DECISIONS_LOG = KB / "calibration" / "decisions.jsonl"
+
+# The aggregate family's generator registry (design §9, r21): the DATA lives out of
+# tree (schedules cite owner documents); the loader/schema are in
+# life_agent.core.aggregate. EVIDENCE_ROOT anchors the entries' citation paths.
+GENERATORS_PATH = Path(
+    os.environ.get("LIFE_AGENT_GENERATORS", str(KB / "generators.yaml"))).expanduser()
+EVIDENCE_ROOT = Path(
+    os.environ.get("LIFE_AGENT_EVIDENCE_ROOT", str(KB))).expanduser()
 # The reaction log (foundations §4.4 reaction loop): owner verdicts on the agent's
 # decisions, joined to DECISIONS_LOG by decision_id. The calibration leg's third
 # append-only log; the utility posterior folds the clean abstain-verdicts from it.

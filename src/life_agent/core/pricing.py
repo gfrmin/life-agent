@@ -25,7 +25,12 @@ from typing import Any
 
 from life_agent.core.llm import LLMResult
 
-PRICING_VERSION = 2
+PRICING_VERSION = 3
+
+# r21 (CP-D): the §18.14 extract_amounts derive's planning price — one haiku call on a
+# head-capped (20k chars) document; the demand-led warm's cap formula reads this row
+# (n_questions x k x this). A per-call REALISED cost still comes from usage x price_of.
+EXTRACT_AMOUNTS_USD = 0.01
 
 
 @dataclass(frozen=True)

@@ -79,6 +79,15 @@ def test_narrative_include_eu_unchanged_by_derivation() -> None:
 def test_family_action_orders_are_subsets_of_the_vocabulary() -> None:
     assert frozenset(DEC.LOOKUP_ACTION_ORDER) <= DEC.ACTIONS
     assert frozenset(DEC.NARRATIVE_ACTION_ORDER) <= DEC.ACTIONS
+    assert frozenset(DEC.AGGREGATE_ACTION_ORDER) <= DEC.ACTIONS
+
+
+def test_aggregate_restriction_matches_narratives() -> None:
+    # r21 (design §2): the narrative restriction, for the same principled reason —
+    # richer actions over an interval posterior are not yet defined.
+    assert DEC.AGGREGATE_ACTION_ORDER == DEC.NARRATIVE_ACTION_ORDER == (
+        "report", "abstain")
+    assert "aggregate" in DEC.FAMILIES
 
 
 def test_lookup_minus_narrative_is_exactly_the_deferred_actions() -> None:

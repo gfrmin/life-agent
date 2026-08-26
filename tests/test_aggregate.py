@@ -9,24 +9,43 @@ Run: uv run --project . python -m pytest tests/test_aggregate.py
 from __future__ import annotations
 
 import hashlib
+import json
 import math
+import statistics
 from datetime import date
 from pathlib import Path
+from typing import Any
 
+import duckdb
 import pytest
 
+from life_agent.core import decisions as DEC
+from life_agent.core import gate as GATE
 from life_agent.core.aggregate import (
     _RECALL_PRIOR,
     UNREADABLE,
+    Addend,
+    AggregateResult,
     Generator,
+    LoadedRegistry,
     PairCovariates,
+    RecallPosterior,
     RegistryError,
     Scope,
+    aggregate_answer,
+    compose_total,
     expected_slots,
     load_registry,
+    pair_covariates,
+    project_amounts,
     recall_posterior,
+    render_aggregate,
+    route_aggregate,
     same_entity_posterior,
 )
+from pkm.cache import write_artifact
+from pkm.catalogue import open_catalogue, run_migrations
+from pkm.producer import ProducerResult
 
 FIXTURE = Path(__file__).parent / "fixtures" / "generators-synthetic.yaml"
 
@@ -360,3 +379,435 @@ def test_unknown_bucket_loud() -> None:
                          kind="same")
     with pytest.raises(ValueError, match="overlapping"):
         same_entity_posterior(TabularBrain(), bad)
+
+
+# ====================================================================================
+# CP-D phase 2 (r21): component 2 — the missing-mass composition (design §6, the
+# prereg's frozen v0: refusals -> dedup -> branch -> interval). Deterministic host
+# composition of recorded observations; the only wire consult is component 3 on the
+# proposal pairs. compose_total returns one TotalPosterior per currency (mixtures are
+# refused as subtotals, §4.3).
+
+
+
+def _addend(**over: Any) -> Addend:
+    base: dict[str, Any] = dict(
+        doc_key="d1", kind="deposit", basis="monthly", as_of="2025-01-31",
+        amount=100.0, currency="ILS", amount_raw="100.00", label_raw="Deposit",
+        entity="fund-a", flagged=False)
+    base.update(over)
+    return Addend(**base)
+
+
+def _series(months: list[int], amount: float = 100.0) -> list[Addend]:
+    return [_addend(doc_key=f"d{m}", as_of=f"2025-{m:02d}-28", amount=amount + m)
+            for m in months]
+
+
+DEPOSIT_SCOPE = Scope(key="deposits", start=date(2025, 1, 1), end=date(2025, 9, 30))
+
+
+def _recall(missed: tuple[str, ...] = (), estimated: bool = True) -> RecallPosterior:
+    return RecallPosterior(mean=0.7, variance=0.01, estimated=estimated,
+                           n_slots=9, n_hits=9 - len(missed), expected=(),
+                           hit=(), missed=missed, extra_hits=(),
+                           prior=_RECALL_PRIOR)
+
+
+# --- the roll-up branch --------------------------------------------------------------
+
+def test_rollup_at_scope_end_is_the_single_observation() -> None:
+    rollup = _addend(doc_key="stmt", basis="other", as_of="2025-09-30",
+                     amount=31937.0, amount_raw="31,937")
+    months = _series([7, 8, 9])
+    [tp] = compose_total(TabularBrain(), [rollup, *months], DEPOSIT_SCOPE,
+                         target_kind="deposit", recall=_recall())
+    assert (tp.point, tp.lo, tp.hi) == (31937.0, 31937.0, 31937.0)
+    assert "roll-up" in tp.basis_note
+    assert tp.k == 1
+
+
+def test_competing_rollups_fall_back_to_the_series_named() -> None:
+    r1 = _addend(doc_key="stmt", basis="other", as_of="2025-09-30", amount=31937.0)
+    r2 = _addend(doc_key="stmt", basis="other", as_of="2025-09-30", amount=283886.0)
+    months = _series([7, 8, 9])
+    [tp] = compose_total(TabularBrain(), [r1, r2, *months], DEPOSIT_SCOPE,
+                         target_kind="deposit", recall=_recall())
+    assert tp.point == pytest.approx(sum(a.amount for a in months))
+    assert "competing" in tp.basis_note
+    assert tp.k == 3
+
+
+# --- the same-doc issuer fold (the stated-total row) ---------------------------------
+
+def test_same_doc_stated_total_is_the_issuer_fold() -> None:
+    parts = [_addend(doc_key="cert", basis="point_in_time", as_of="2025-11-29",
+                     amount=352094.25, kind="balance"),
+             _addend(doc_key="cert", basis="point_in_time", as_of="2025-11-29",
+                     amount=7785.11, kind="balance")]
+    total = _addend(doc_key="cert", basis="point_in_time", as_of="2025-11-29",
+                    amount=359879.36, kind="balance")
+    scope = Scope(key="balances", start=date(2025, 11, 29), end=date(2025, 11, 29))
+    [tp] = compose_total(TabularBrain(), [*parts, total], scope,
+                         target_kind="balance", recall=_recall(estimated=False))
+    assert tp.point == pytest.approx(359879.36)  # the issuer's own fold, once
+    assert tp.k == 1
+    assert "issuer" in tp.basis_note
+
+
+# --- the series branch + imputation --------------------------------------------------
+
+def test_series_imputes_named_missed_slots() -> None:
+    months = _series([1, 2, 3, 4, 5, 6, 7, 8])  # amounts 101..108
+    missed = ("g:2025-09",)
+    [tp] = compose_total(TabularBrain(), months, DEPOSIT_SCOPE,
+                         target_kind="deposit", recall=_recall(missed=missed))
+    s = sum(a.amount for a in months)
+    vals = sorted(a.amount for a in months)
+    q = statistics.quantiles(vals, n=10)
+    assert tp.imputed_slots == missed
+    assert tp.point == pytest.approx(s + statistics.mean(vals))
+    assert tp.lo == pytest.approx(s + q[0]) and tp.hi == pytest.approx(s + q[-1])
+    assert "exchangeab" in tp.basis_note  # the disclosed assumption
+
+
+def test_no_misses_degenerates_to_the_observed_sum() -> None:
+    months = _series([7, 8, 9])
+    [tp] = compose_total(TabularBrain(), months, DEPOSIT_SCOPE,
+                         target_kind="deposit", recall=_recall())
+    s = sum(a.amount for a in months)
+    assert (tp.point, tp.lo, tp.hi) == (s, s, s)
+    assert tp.imputed_slots == ()
+
+
+def test_unmodelled_recall_never_imputes() -> None:
+    months = _series([7, 8])
+    [tp] = compose_total(TabularBrain(), months, DEPOSIT_SCOPE,
+                         target_kind="deposit",
+                         recall=_recall(missed=("g:2025-09",), estimated=False))
+    s = sum(a.amount for a in months)
+    assert (tp.point, tp.lo, tp.hi) == (s, s, s)
+    assert tp.imputed_slots == () and tp.unmodelled_recall
+
+
+# --- refusals ------------------------------------------------------------------------
+
+def test_off_kind_addends_are_excluded_by_name() -> None:
+    months = _series([7, 8])
+    stray = _addend(doc_key="dx", kind="balance", amount=999999.0)
+    [tp] = compose_total(TabularBrain(), [*months, stray], DEPOSIT_SCOPE,
+                         target_kind="deposit", recall=_recall())
+    assert tp.point == pytest.approx(sum(a.amount for a in months))
+    assert ("dx", "balance") in tp.excluded_kind
+
+
+def test_currency_mixture_refused_as_subtotals() -> None:
+    ils = _series([7, 8])
+    usd = [_addend(doc_key="du", as_of="2025-09-28", amount=50.0, currency="USD")]
+    tps = compose_total(TabularBrain(), [*ils, *usd], DEPOSIT_SCOPE,
+                        target_kind="deposit", recall=_recall())
+    assert {t.currency for t in tps} == {"ILS", "USD"}
+    assert len(tps) == 2
+
+
+def test_coarser_leftover_basis_is_excluded_by_name() -> None:
+    months = _series([7, 8, 9])
+    q2 = _addend(doc_key="q2", basis="other", as_of="2025-06-30", amount=16107.0)
+    [tp] = compose_total(TabularBrain(), [*months, q2], DEPOSIT_SCOPE,
+                         target_kind="deposit", recall=_recall())
+    assert tp.point == pytest.approx(sum(a.amount for a in months))
+    assert ("q2", "other") in tp.excluded_basis
+
+
+# --- component-3 integration (dedup on proposal pairs) -------------------------------
+
+def test_equal_value_cross_doc_pair_contributes_once() -> None:
+    a = _addend(doc_key="da", as_of="2025-07-31", amount=500.0, entity="fund-a")
+    b = _addend(doc_key="db", as_of="2025-07-31", amount=500.0, entity="fund-a")
+    [tp] = compose_total(TabularBrain(), [a, b], DEPOSIT_SCOPE,
+                         target_kind="deposit", recall=_recall())
+    assert tp.point == pytest.approx(500.0)  # one latent transaction, counted once
+    assert tp.k == 1 and len(tp.dedup_resolutions) == 1
+
+
+def test_adjacent_period_equal_value_pair_keeps_both() -> None:
+    a = _addend(doc_key="da", as_of="2025-07-31", amount=500.0)
+    b = _addend(doc_key="db", as_of="2025-08-31", amount=500.0)
+    [tp] = compose_total(TabularBrain(), [a, b], DEPOSIT_SCOPE,
+                         target_kind="deposit", recall=_recall())
+    assert tp.point == pytest.approx(1000.0)  # two transactions (period discriminates)
+    assert tp.k == 2 and tp.dedup_resolutions == ()
+
+
+def test_pair_covariates_mapping() -> None:
+    a = _addend(as_of="2025-07-31", entity=None)
+    b = _addend(doc_key="d2", as_of="2025-08-31", entity=None)
+    cov = pair_covariates(a, b)
+    assert cov.period == "adjacent" and cov.amount == "equal"
+    assert cov.entity == UNREADABLE and cov.kind == "same"
+    far = _addend(doc_key="d3", as_of="2024-01-31")
+    assert pair_covariates(a, far).period == "other"
+    undated = _addend(doc_key="d4", as_of=None)
+    assert pair_covariates(a, undated).period == UNREADABLE
+
+
+# ====================================================================================
+# CP-D phase 2: the read-side amounts projection — project_amounts mirrors
+# temporal.project_dates (§18.10 currency, §18.11 demand log, never derives; the
+# underived are NAMED with their pkm-derive remedy — the D2 coverage contract).
+
+@pytest.fixture
+def migrated_root(tmp_path: Path) -> Path:
+    (tmp_path / "cache").mkdir()
+    (tmp_path / "logs").mkdir()
+    run_migrations(tmp_path)
+    return tmp_path
+
+
+def _write_art(root: Path, conn: duckdb.DuckDBPyConnection, *, key: str,
+               input_hash: str, producer: str, content: bytes,
+               lineage: list[dict[str, str]] | None = None) -> None:
+    write_artifact(
+        root, conn, cache_key=key, input_hash=input_hash,
+        producer_name=producer, producer_version="1", producer_config={},
+        result=ProducerResult(status="success", content=content,
+                              content_type="application/json",
+                              content_encoding="utf-8", error_message=None,
+                              producer_metadata={}),
+        lineage=lineage, cache_key_schema_version=1 if lineage is None else 3,
+    )
+
+
+def _amounts_content(items: list[dict[str, Any]], *, unreadable: bool = False,
+                     majority_unlabelled: bool = False) -> bytes:
+    return json.dumps({
+        "format_version": 1, "currency_default": "ILS", "unreadable": unreadable,
+        "majority_unlabelled": majority_unlabelled, "items": items,
+    }).encode("utf-8")
+
+
+def test_project_amounts_partitions_and_names(migrated_root: Path) -> None:
+    a, b, c, d = "aa" * 32, "bb" * 32, "cc" * 32, "dd" * 32
+    item = {"kind": "deposit", "basis": "monthly", "as_of": "2025-07-31",
+            "amount": 500.0, "currency": "ILS", "amount_raw": "500.00",
+            "label_raw": "Deposit", "entity": "fund-a"}
+    with open_catalogue(migrated_root) as conn:
+        for key, ih, producer in ((a, "11" * 32, "docling"), (b, "22" * 32, "docling"),
+                                  (c, "33" * 32, "tesseract"), (d, "44" * 32, "email")):
+            _write_art(migrated_root, conn, key=key, input_hash=ih,
+                       producer=producer, content=b"src")
+        _write_art(migrated_root, conn, key="a1" * 32, input_hash="55" * 32,
+                   producer="extract_amounts_docling",
+                   content=_amounts_content([item], majority_unlabelled=True),
+                   lineage=[{"cache_key": a, "role": "source_text"}])
+        _write_art(migrated_root, conn, key="b1" * 32, input_hash="66" * 32,
+                   producer="extract_amounts_docling",
+                   content=_amounts_content([], unreadable=True),
+                   lineage=[{"cache_key": b, "role": "source_text"}])
+        _write_art(migrated_root, conn, key="d1" * 32, input_hash="77" * 32,
+                   producer="extract_amounts_email",
+                   content=_amounts_content([]),
+                   lineage=[{"cache_key": d, "role": "source_text"}])
+        hits = project_amounts(conn, migrated_root, [a, b, c, d])
+    by_key = {h.artifact_cache_key: h for h in hits}
+    assert by_key[a].state == "amounts"
+    (ad,) = by_key[a].addends
+    assert ad.doc_key == a and ad.amount == 500.0 and ad.flagged is True
+    assert by_key[b].state == "unreadable" and by_key[b].addends == ()
+    assert by_key[c].state == "underived"
+    assert by_key[c].remedy == f"pkm derive extract_amounts_tesseract --input {c}"
+    assert by_key[d].state == "empty"
+
+
+# ====================================================================================
+# CP-D phase 2: the second-stage router + the family body (ONE body — terminals and
+# the bridge both call it). Router: own prompt/schema/cache key, cached via D.record,
+# conservative default (aggregate only on a confident sum-shaped verdict with a kind).
+
+
+
+class DualBrain(ConjugateBrain):
+    """Beta (recall) + categorical (dedup) oracle — the body drives both."""
+
+    def create_state(self, spec: dict) -> str:
+        if spec["type"] == "categorical":
+            self._n += 1
+            sid = f"c_{self._n}"
+            vals = [float(v) for v in spec["space"]["values"]]
+            lw = [float(w) for w in spec.get("log_weights") or [0.0] * len(vals)]
+            self._states[sid] = ("cat", vals, lw)  # type: ignore[assignment]
+            return sid
+        return super().create_state(spec)
+
+    def condition(self, sid: str, *, kernel: dict, observation: float) -> float:
+        st = self._states[sid]
+        if isinstance(st, tuple) and st and st[0] == "cat":
+            _, vals, lw = st
+            ti = [float(t) for t in kernel["target_vals"]].index(float(observation))
+            self._states[sid] = (  # type: ignore[assignment]
+                "cat", vals,
+                [w + float(kernel["densities"][si][ti]) for si, w in enumerate(lw)])
+            self.conditions += 1
+            return 0.0
+        return super().condition(sid, kernel=kernel, observation=observation)
+
+    def weights(self, sid: str) -> list[float]:
+        _, _, lw = self._states[sid]  # type: ignore[misc]
+        mx = max(lw)
+        es = [math.exp(w - mx) for w in lw]
+        return [e / sum(es) for e in es]
+
+
+class _RouteClient:
+    engine_version = "fake-1"
+
+    def __init__(self, output: dict[str, Any]) -> None:
+        self._output = output
+        self.calls = 0
+
+    def complete(self, prompt: str, schema: dict[str, Any]) -> Any:
+        self.calls += 1
+        from pkm.transform import ModelResponse
+        return ModelResponse(raw_text=json.dumps(self._output), input_tokens=1,
+                             output_tokens=1, latency_ms=1, cost_usd=0.001)
+
+
+def test_route_aggregate_caches_and_defaults(migrated_root: Path) -> None:
+    client = _RouteClient({"family": "aggregate", "target_kind": "deposit",
+                           "period_start": "2025-01-01", "period_end": "2025-09-30"})
+    r1 = route_aggregate(migrated_root, "how much was deposited?", client=client)
+    assert r1 is not None and r1.target_kind == "deposit"
+    r2 = route_aggregate(migrated_root, "how much was deposited?", client=client)
+    assert r2 == r1 and client.calls == 1  # cached — the second call is $0
+
+    narr = _RouteClient({"family": "narrative", "target_kind": None,
+                         "period_start": None, "period_end": None})
+    assert route_aggregate(migrated_root, "summarise my week", client=narr) is None
+
+    hollow = _RouteClient({"family": "aggregate", "target_kind": None,
+                           "period_start": None, "period_end": None})
+    # aggregate without a kind is NOT a confident sum-shape — conservative default
+    assert route_aggregate(migrated_root, "what about totals?", client=hollow) is None
+
+
+def _fund_registry() -> LoadedRegistry:
+    gen = Generator(generator_id="g-fund", kind="deposit", cadence="monthly",
+                    active_from=date(2025, 1, 1), active_to=None,
+                    scope_keys=frozenset({"deposit"}), evidence=("cite",))
+    return LoadedRegistry(entries=(gen,), content_hash="f" * 64)
+
+
+def test_aggregate_answer_end_to_end(migrated_root: Path) -> None:
+    a, b = "aa" * 32, "bb" * 32
+    def item(month: int, amount: float) -> dict[str, Any]:
+        return {"kind": "deposit", "basis": "monthly",
+                "as_of": f"2025-{month:02d}-28", "amount": amount,
+                "currency": "ILS", "amount_raw": f"{amount:.2f}",
+                "label_raw": "Deposit", "entity": "fund-a"}
+    with open_catalogue(migrated_root) as conn:
+        _write_art(migrated_root, conn, key=a, input_hash="11" * 32,
+                   producer="docling", content=b"src")
+        _write_art(migrated_root, conn, key=b, input_hash="22" * 32,
+                   producer="docling", content=b"src2")
+        _write_art(migrated_root, conn, key="a1" * 32, input_hash="55" * 32,
+                   producer="extract_amounts_docling",
+                   content=_amounts_content([item(7, 500.0), item(8, 510.0)]),
+                   lineage=[{"cache_key": a, "role": "source_text"}])
+        hits = [{"artifact_cache_key": a}, {"artifact_cache_key": b}]
+        route = route_aggregate(
+            migrated_root, "total deposits Jul-Sep 2025?",
+            client=_RouteClient({"family": "aggregate", "target_kind": "deposit",
+                                 "period_start": "2025-07-01",
+                                 "period_end": "2025-09-30"}))
+        assert route is not None
+        result = aggregate_answer(
+            migrated_root, conn, "total deposits Jul-Sep 2025?", hits, route,
+            brain=DualBrain(), registry=_fund_registry(),
+            decisions_path=migrated_root / "logs" / "decisions.jsonl",
+            run_id="test")
+    assert isinstance(result, AggregateResult)
+    assert result.action == "report"
+    [tp] = result.totals
+    # 2 hit slots of 3 expected (2025-07..09): one missed slot imputed
+    assert tp.k == 2 and tp.s_obs == pytest.approx(1010.0)
+    assert len(tp.imputed_slots) == 1
+    rendered = render_aggregate(result)
+    for block in ("Total", "Coverage", "Recall", "Basis"):
+        assert block in rendered  # the four blocks, always
+    assert "underived" in rendered  # hit b has no projection — named, never dropped
+    # the decision record landed with the family + the registry hash
+    events = [json.loads(line) for line in
+              (migrated_root / "logs" / "decisions.jsonl").read_text().splitlines()]
+    assert events[-1]["family"] == "aggregate"
+    assert events[-1]["posterior_summary"]["registry_content_hash"] == "f" * 64
+    assert events[-1]["chosen_action"] == "report"
+
+
+def test_aggregate_answer_abstains_on_zero_addends(migrated_root: Path) -> None:
+    a = "aa" * 32
+    with open_catalogue(migrated_root) as conn:
+        _write_art(migrated_root, conn, key=a, input_hash="11" * 32,
+                   producer="docling", content=b"src")
+        _write_art(migrated_root, conn, key="a1" * 32, input_hash="55" * 32,
+                   producer="extract_amounts_docling",
+                   content=_amounts_content([], unreadable=True),
+                   lineage=[{"cache_key": a, "role": "source_text"}])
+        route = route_aggregate(
+            migrated_root, "total fees 2025?",
+            client=_RouteClient({"family": "aggregate", "target_kind": "fee",
+                                 "period_start": "2025-01-01",
+                                 "period_end": "2025-12-31"}))
+        assert route is not None
+        result = aggregate_answer(
+            migrated_root, conn, "total fees 2025?",
+            [{"artifact_cache_key": a}], route,
+            brain=DualBrain(), registry=_fund_registry(),
+            decisions_path=migrated_root / "logs" / "decisions.jsonl",
+            run_id="test")
+    assert result.action == "abstain"
+    assert result.abstain_reason == "miss"  # the standing withhold-reason derivation
+    rendered = render_aggregate(result)
+    assert "unreadable" in rendered  # the named indeterminate still renders
+
+
+def test_aggregate_family_is_declared() -> None:
+    assert "aggregate" in DEC.FAMILIES
+    assert DEC.AGGREGATE_ACTION_ORDER == ("report", "abstain")
+
+
+# ====================================================================================
+# CP-D phase 2: the frozen grading rule (gate.realised_aggregate — r21 constants).
+
+
+
+def test_winkler_sharp_covering_reads_near_one() -> None:
+    x, excludes = GATE.realised_aggregate(31900.0, 31980.0, 31937.0)
+    assert not excludes and x > 0.99
+
+
+def test_winkler_width_pays_linearly() -> None:
+    g = 1000.0
+    x_wide, exc = GATE.realised_aggregate(0.0, 2.0 * g, g)  # width == 2|g| ⇒ x = 0
+    assert not exc and x_wide == 0.0
+    x_half, _ = GATE.realised_aggregate(500.0, 1500.0, g)   # width |g| ⇒ x = 0.5
+    assert x_half == pytest.approx(0.5)
+
+
+def test_winkler_miss_is_the_wrong_class_and_pays_distance() -> None:
+    x, excludes = GATE.realised_aggregate(100.0, 200.0, 1000.0)
+    assert excludes and x == 0.0
+    # A near miss still fires the categorical class; its continuous score follows
+    # the frozen arithmetic exactly: W = 9 + 10*1 = 19, x = 1 - 19/2000.
+    x2, exc2 = GATE.realised_aggregate(990.0, 999.0, 1000.0)
+    assert exc2 and x2 == pytest.approx(1.0 - 19.0 / 2000.0)
+
+
+def test_winkler_rides_realised_utility() -> None:
+    u = {"u_correct": 1.0, "u_wrong": -5.0, "u_abstain": 0.0, "u_hedged": 0.4,
+         "u_wrong_scoped": -1.0, "lambda_int": 1.0, "lambda_usd": 0.0}
+    sharp = GATE.RealisedResponse(action="report", correct=True, cost_usd=0.0, x=1.0)
+    assert GATE.realised_utility(sharp, u, oracle_p=0.5) == pytest.approx(1.0)
+    half = GATE.RealisedResponse(action="report", correct=True, cost_usd=0.0, x=0.5)
+    assert GATE.realised_utility(half, u, oracle_p=0.5) == pytest.approx(-2.0)
+    plain = GATE.RealisedResponse(action="report", correct=True, cost_usd=0.0)
+    assert GATE.realised_utility(plain, u, oracle_p=0.5) == pytest.approx(1.0)

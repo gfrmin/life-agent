@@ -47,6 +47,7 @@ import duckdb
 
 from life_agent import owner
 from life_agent.bridge.observations import join_wire_observations, to_abstract_observations
+from life_agent.core import aggregate as AGG
 from life_agent.core import config
 from life_agent.core import corpus as CORPUS
 from life_agent.core import decisions as DEC
@@ -1001,8 +1002,66 @@ def _narrative(deps: BridgeDeps, p: Payload) -> Payload:
                        for c in nv.claims]}
 
 
+def _route_family(deps: BridgeDeps, p: Payload) -> Payload:
+    """The second-stage family verdict on the DECLINED path (design §8, r21): own
+    prompt/schema/cache key — ROUTE_PROMPT stays byte-identical. Conservative:
+    aggregate only on a confident sum-shaped verdict with a target kind."""
+    r = AGG.route_aggregate(deps.root, _req_str(p, "question"), client=deps.client)
+    if r is None:
+        return {"family": "narrative"}
+    return {"family": "aggregate", "target_kind": r.target_kind,
+            "period_start": r.period_start, "period_end": r.period_end}
+
+
+def _aggregate(deps: BridgeDeps, p: Payload) -> Payload:
+    """The aggregate family (design §2, r21) — the THIRD family, run when the second
+    stage admits a numeric-total question. Retrieve with the full recall (expansion +
+    rerank, the narrative handler's shape), then the ONE body: project §18.14 amounts
+    (read-only — underived documents are NAMED, the demand-led warm derives them),
+    refusals + dedup-as-inference + the missing-mass composition, report/abstain
+    derived, recorded through the one recorder with the registry content hash."""
+    question = _req_str(p, "question")
+    k = int(p.get("k", _DEFAULT_K))
+    route = AGG.route_aggregate(deps.root, question, client=deps.client)
+    if route is None:
+        return {"error": "not an aggregate question (second-stage verdict)"}
+    terms = EXP.expand_terms(question, root=deps.root)
+    pool = RET.retrieve_set(deps.conn, RET.build_query(question, terms), RR.RERANK_POOL)
+    hits = RR.rerank_hits(question, pool, k)
+    try:
+        registry, note = (AGG.load_registry(config.GENERATORS_PATH,
+                                            evidence_root=config.EVIDENCE_ROOT), "")
+    except FileNotFoundError:
+        registry, note = None, "generator registry absent — retrieval recall unmodelled"
+    except AGG.RegistryError as e:
+        registry, note = None, f"generator registry inadmissible: {e}"
+    res = AGG.aggregate_answer(deps.root, deps.conn, question, hits, route,
+                               brain=LK.shared_brain(), registry=registry,
+                               registry_note=note,
+                               decisions_path=deps.decisions_path)
+    return {"action": res.action, "asserted": list(res.asserted),
+            "rendered": AGG.render_aggregate(res), "hits": hits,
+            "abstain_reason": res.abstain_reason,
+            "aggregate": {
+                "totals": [{"currency": t.currency, "point": t.point, "lo": t.lo,
+                            "hi": t.hi, "k": t.k, "s_obs": t.s_obs,
+                            "imputed_slots": list(t.imputed_slots)}
+                           for t in res.totals],
+                "recall": {"mean": res.recall.mean,
+                           "estimated": res.recall.estimated,
+                           "n_slots": res.recall.n_slots,
+                           "n_hits": res.recall.n_hits,
+                           "missed": list(res.recall.missed)},
+                "unreadable": list(res.unreadable_docs),
+                "underived": [k_ for k_, _ in res.underived],
+                "registry_content_hash": res.registry_content_hash},
+            "decision_id": res.answer_cache_key}
+
+
 _POST: dict[str, Handler] = {
     "/route": _route,
+    "/route_family": _route_family,
+    "/aggregate": _aggregate,
     "/retrieve": _retrieve,
     "/extract": _extract,
     "/narrative": _narrative,
