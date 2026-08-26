@@ -483,3 +483,22 @@ report-economy latch stands as MEASURED protection under the run-17 ruling, pric
 enacts without a further keypress: mirrors updated, PR/merge, steel deploy, then the
 post-M5 re-record (the 102 DIR-L3-wire fixtures re-recorded servable) and the ladder
 resumes at **M6 — the observation model declared once**.
+
+## RIDER (2026-08-26) — the post-M5 re-record, executed
+
+`m5-base` is recorded and is the ladder's fixture set of record from M6 on
+(`scripts/collapse_replay.py --checkpoint m5-base`): **314 fixtures, 0 absences,
+314/314 replay identically, the live calibration surfaces byte-identical
+before/after, $0.0223 metered of the $8 cap, one `tree_sha` (the deployed master,
+PR #90 + #91).** The 102 DIR-L3-wire fixtures are re-recorded servable, as RESULTS-2
+said they would be; `m2-base` stands as history beside `m0-5`.
+
+**Disclosure (cap-the-arc):** the record's own rehearsal caught a dormant instrument
+defect — under the recorder's seal, `drive_seam_unavailable` read the §6.5 event back
+from the tempdir it handed the leaf, which the seal's `decisions.append` redirect
+leaves empty, so the fixture recorded `effector=None` where the (unsealed) replay
+reads the event's `abstain`. Dormant because the only prior sealed record (`m2-base`)
+ran on the pre-M2 tree, whose §6.5 path appended no event at all — `None` was then
+faithful. Fixed to the `decisions_sink` contract the other drivers already use
+(PR #91, RED-watched test; unsealed behaviour byte-identical), re-rehearsed 4/4, then
+recorded. The rehearsal gate exists for exactly this; it paid.
