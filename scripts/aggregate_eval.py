@@ -56,10 +56,10 @@ def warm(kb: Path, cap_usd: float) -> int:
     """Retrieve per question with the deployed lane's body, derive the underived."""
     import duckdb
 
-    from life_agent.core import aggregate as AGG
-    from life_agent.core import expansion as EXP
-    from life_agent.core import rerank as RR
-    from life_agent.core import retrieval as RET
+    import life_agent.core.aggregate as AGG
+    import life_agent.core.expansion as EXP
+    import life_agent.core.rerank as RR
+    import life_agent.core.retrieval as RET
     from pkm.config import load_config as pkm_load_config
     from pkm.derive import derive as pkm_derive
 
