@@ -88,3 +88,40 @@ STOPS for the Appendix A keypress** — the signature enacts A.1–A.3 on
 PRINCIPLES.md/§14 as a separate owner-authorised commit; declining leaves the
 structure standing and the constitution unchanged (the completion programme's DONE
 item 1 requires the signature, so a decline re-opens the plan at that item).
+
+## RESULTS (read 2026-08-26, appended after the gates ran — nothing above changed)
+
+- **P-I:** `tests/test_m7_register.py` — the census {6.1…6.13} with every pin
+  artefact named; BOTH predicates verified RED by mutation before landing (a fake
+  6.99 census row; a mangled 6.13 needle), then green on the real tree. P2
+  CONFIRMED: thirteen pins present, zero re-listings.
+- **P-II:** `EX._WITHHOLD` now DERIVES (`{"miss"} ∪ (ACTIONS − {report,
+  report_scoped})` — same members, P3 CONFIRMED by its own pin); the membrane
+  mapping domain is drift-gated (`REAL_TO_MEMBRANE` keys == ACTIONS ∪ {gather,
+  miss}; `_ENACT_EFFECTOR` values ⊆ ACTIONS).
+- **P-III:** `DEC.leader_order` is the one label-view; LK (render order), BR (the
+  poster's leader-first convention) and EX (`render_view`) bind it; W's documented
+  `max()` mirror stays measurement-side (§6.2).
+- **P-IV:** the conferral is delivered
+  (`docs/unification/conferrals/appendix-a-conferral.md`) with the three verbatim
+  amendments, their anchors verified against PRINCIPLES.md's live text (A.2's
+  target sentence matches across a line wrap; A.1's insertion sentence found at its
+  §16 home).
+- **Disclosure:** D-13 (M7's config-surface item) landed at M6 as a permitted
+  interleave; D-5 landed at M5. Both verified still in place by their own pins.
+
+### Gate readings
+
+- **G1 (7.1) — GREEN.** 2726 passed, 35 deselected; ruff clean (two auto-fixed
+  style findings); `uv run mypy` (CI's exact invocation) clean, 222 files.
+- **ADVISORY replay — 314/314 pure equality on `m5-base`** (P1 CONFIRMED: the
+  respellings are value-identical).
+- **G5 — GREEN.** No corpus values; hooks armed.
+
+### Verdict
+
+**M7's delegated half is DONE; the checkpoint completes at the signature.** The
+register is pinned by a guard that fails on a new unlisted entry or a rotted pin;
+the vocabulary partitions derive from or gate on the one vocabulary; the leader is
+one label-view. Work STOPS here for the owner's Appendix A keypress — the
+signature is the ladder's last act and is not delegated.
