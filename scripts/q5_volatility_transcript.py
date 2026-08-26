@@ -72,7 +72,8 @@ def main() -> int:
                      "table_time_indexed": bool(hl < VOL.PERMANENT),
                      "half_life_years": hl})
 
-    disagree = [r for r in rows if r["model_time_indexed"] != r["table_time_indexed"]]
+    disagree = [row for row in rows
+                if row["model_time_indexed"] != row["table_time_indexed"]]
     print(f"routed {len(rows)} · narrative-routed {len(narrative)} · cold {len(cold)}")
     if cold:
         print(f"  cold (named absences): {', '.join(cold)}")
@@ -80,13 +81,15 @@ def main() -> int:
           f" ({100.0 * len(disagree) / len(rows):.1f}%)" if rows else "no routed rows")
     print("\n| id | construct | model | table | half-life (y) |")
     print("|---|---|---|---|---|")
-    for r in disagree:
-        print(f"| {r['id']} | {r['construct']} | "
-              f"{'time-indexed' if r['model_time_indexed'] else 'permanent'} | "
-              f"{'time-indexed' if r['table_time_indexed'] else 'permanent'} | "
-              f"{r['half_life_years']:g} |")
-    over = [r for r in disagree if r["table_time_indexed"] and not r["model_time_indexed"]]
-    under = [r for r in disagree if r["model_time_indexed"] and not r["table_time_indexed"]]
+    for row in disagree:
+        print(f"| {row['id']} | {row['construct']} | "
+              f"{'time-indexed' if row['model_time_indexed'] else 'permanent'} | "
+              f"{'time-indexed' if row['table_time_indexed'] else 'permanent'} | "
+              f"{row['half_life_years']:g} |")
+    over = [row for row in disagree
+            if row["table_time_indexed"] and not row["model_time_indexed"]]
+    under = [row for row in disagree
+             if row["model_time_indexed"] and not row["table_time_indexed"]]
     print(f"\ntable overrides model-permanent -> decays (the q-014 protective class): {len(over)}")
     print(f"table overrides model-time-indexed -> permanent (the risk class): {len(under)}")
     return 0
