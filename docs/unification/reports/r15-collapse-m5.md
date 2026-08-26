@@ -431,3 +431,55 @@ same comparison meta (run 16's), and ONE added tree pin asserting the restored l
 ladder pattern (append results, PR, merge, deploy to live) without a further keypress.
 FAIL on any → STOP for an owner ruling; the second-cause reading is cleanly earned;
 nothing further is folded into the same run.
+
+## RESULTS-2 (read 2026-08-26, after A5's gates ran — nothing above changed)
+
+### The A5 revert, executed as frozen
+
+TDD: the new latch pin watched RED against the widened code (two consults where the
+latch demands one), then the exact pre-A2 condition restored (`2a8dda8`); the executor
+fake's overflow rig and both consult budgets reverted with it. **G1:** 2704 passed +
+ruff/mypy clean. **G2:** 212/314 identical — **DIR-E12 EMPTIED exactly as frozen**
+(all 63 A-loop fixtures back to servable equality); DIR-L3-wire's 102 remain the sole
+class, 100% `CassetteMissError`, zero decision divergences.
+
+### Run 18 (`gate-20260826T083356`, fired as `run18-fire.service`, $0.37 of the $8 cap)
+
+**PASS on all four A5 conjuncts:**
+
+- **(a)** P(Δ>0.05) = **0.959** (≥ 0.90); Δ̄ = **+0.514** [+0.077, +0.999].
+- **(b)** zero NEW wrong commits: the typed wrongs are exactly the two standing rows,
+  both wrong in run 16's typed arm; no cold typed rows (104/104 readable, censored 0).
+- **(c)** the hard clause holds at the standing row census: warm-deliberate's one
+  standing row lands WITHHELD and no second row exhibits the class; superset-confirm's
+  wrong count is 0 (its standing row withheld).
+- **(d)** 102/102 gate decision rows `policy="all-to-date"`, `regime="full"`; the fold
+  site pins frozen-elicitations; §6.10's tree digest published with the change list
+  exactly the M5+A5 files (10 changed · `terminals.py` added · `gather.py` removed).
+
+**All three directional claims CONFIRMED:** answer rate 0.49 → **0.61** (toward 0.62);
+dispersed withholds 51 → **39** (toward 37); deliberate firings 71 → **41** (all warm —
+the run-16 census exactly). Accounting: decisions +102 under the run's id, outcomes
++14; both before-fingerprints are exact prefixes of the after-files (append-only; live
+dogfood rows interleave as expected).
+
+### The isolation, read
+
+Run 18 reproduces run 16's reading almost exactly (**0.959/+0.514** vs 0.961/+0.519)
+with ALL of M5 on the tree except A2's enactment — so run 17's collapse (0.743/+0.238)
+is attributed to the grow-offer-at-full-reach alone: the cleanest single-cause
+isolation in the series, bought for $0.37. A2's engine finding stands (§14, the
+hand-priced-VOI arc); its enactment waits for grounded grow priors.
+
+### Verdict
+
+**M5 is DONE.** One argmax owns the decide surface: the dispatch, the gather fork, the
+B-4 pre-emption and the M3 live lane are deleted; the absorbed orchestration lives in
+`core/terminals.py`; drive's down-branch runs the in-process body under a DECLARED
+terminals-only regime (§6.5 kept for no-engine-at-all); L-3's scoped rows are
+engine-picked; D-5's one withhold-reason derivation serves every renderer; and the
+report-economy latch stands as MEASURED protection under the run-17 ruling, priced at
+0.216 of headline and 0.13 of answer rate by its own gate pair. The consequence branch
+enacts without a further keypress: mirrors updated, PR/merge, steel deploy, then the
+post-M5 re-record (the 102 DIR-L3-wire fixtures re-recorded servable) and the ladder
+resumes at **M6 — the observation model declared once**.

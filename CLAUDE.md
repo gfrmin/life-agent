@@ -371,8 +371,28 @@ warm-deliberate row lands withheld this time — the headline's whole move off r
 that one named wobble), $0.60, all-warm deliberates. Q8 DECIDED: the M3 lane deletes at
 M5. The split SIGNED: single M5. Run 16 also settled an ops class: a priced run fired
 as an agent-session background task dies with the session (two clean SIGTERM teardowns,
-~$0) — priced runs launch as transient `systemd --user` units from here on. The ladder
-resumes at M5 — the argmax absorption.** Old D3–D4 stay
+~$0) — priced runs launch as transient `systemd --user` units from here on.
+M5 IS DONE (2026-08-26, `docs/unification/reports/r15-collapse-m5.md`, $4.88 across
+runs 17+18): the argmax absorption — ONE decide surface. Ask's B-4 pre-emption, the
+gather fork + `core/gather.py`, and the M3 live lane (membrane live half, /decide-live,
+GATE_WEAK_RETRIEVAL) are deleted; `core/terminals.py` holds the absorbed orchestration;
+drive's down-branch runs the in-process body under a DECLARED terminals-only regime
+(§6.5 kept for no-engine-at-all); L-3's scoped rows are engine-picked; D-5:
+`decisions.withhold_reason` is THE reason derivation. The arc's finding: A2's $0 probe
+read the engine's preference for re-reads as real (62/63 recorded reports flip when
+shown the grow block) and the frozen consequence landed the every-terminal grow offer —
+which run 17 (`gate-20260826T025059`) then PRICED: **FAIL 0.743/+0.238, answer rate
+0.62→0.49, dispersed 37→51** — the engine's hand-set grow priors over-value re-reads
+(registered §14 as the **hand-priced-VOI arc**, the post-M5 successor: ground the grow
+priors in the gather-outcome stream; the argmax cannot genuinely own recall while VOI
+is hand-priced). Owner ruling (option A, conferral in-tree): revert A2's ENACTMENT
+alone — the report-economy latch returns as measured protection — pre-registered blind
+as A5 with directional claims and conjunct (b) restated CLASS-BASED (prospective only;
+run 17's record untouched). **Run 18 (`gate-20260826T083356`): PASS on all four —
+0.959/+0.514 [+0.077, +0.999], wrongs exactly the two standing rows, the wobble row
+withheld, all three directional claims confirmed, $0.37** — reproducing run 16 almost
+exactly, so run 17's collapse is attributed to the grow-offer alone. The ladder
+resumes at M6 — the observation model declared once.** Old D3–D4 stay
 re-scoped as Ask's
 aggregate/thread families. The doc's §14 open questions are a **live empirical ledger**
 (owner's adoption rider): each entry names the evidence that decides it — keep it
