@@ -1184,7 +1184,8 @@ def decide_and_record(root: Path, question: str, construct: str,
         p_attested, as_of, scoped_value = 0.0, None, None
 
     # posterior order for rendering: candidates by weight, NONE mass separate
-    order = sorted(range(len(candidates)), key=lambda j: weights[j], reverse=True)
+    # (D-4: the one leader label-view)
+    order = DEC.leader_order(weights[:len(candidates)])
     cands = tuple(candidates[j] for j in order)
     creds = tuple(weights[j] for j in order)
     p_none = weights[-1]

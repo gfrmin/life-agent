@@ -232,3 +232,12 @@ def edge_id(kind: str, model: str) -> str:
     bindings of it; a hand-built f-string at a call site would silently split the
     curve namespace."""
     return f"{kind}@{model}"
+
+
+def leader_order(weights: list[float] | tuple[float, ...]) -> list[int]:
+    """D-4 (§5.2): THE leader label-view — candidate indices by weight descending,
+    stable on ties (original order). A VIEW for rendering and record conventions
+    only; the argmax is the engine's, never re-derived from this ordering. The
+    render/poster sites bind this; a fourth host ``sorted`` spelling would be a
+    second view."""
+    return sorted(range(len(weights)), key=lambda j: weights[j], reverse=True)

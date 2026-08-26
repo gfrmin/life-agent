@@ -113,7 +113,10 @@ def menu_transforms(curves: Curves) -> list[dict[str, Any]]:
 
 # A withholding/miss terminal — the daemon declined to assert. It is the SENSOR condition for
 # re-asking WITH the grow block (run_pass), never a body-side decision to grow (E-13/E-14, M1).
-_WITHHOLD = frozenset({"miss", "abstain", "hedge", "ask_clarify"})
+# D-6 (M7): a DERIVED view of the one vocabulary — the non-full-report terminals plus
+# the miss reason (the terminals after which the grow offer may fire; hedge withholds
+# the committed value, so it counts).
+_WITHHOLD = frozenset({"miss"}) | (DEC.ACTIONS - {"report", "report_scoped"})
 
 # The unpriced attribution defaults every no-edge View return site spreads — consumers
 # INDEX these keys (never .get), so a new attribution key is ONE edit here plus the
@@ -633,7 +636,7 @@ def render_view(view: View) -> str:
     # is the leader's credence and `alts` is weight-ordered (as lookup.render + the bridge's
     # /log_decision guard do); else a report shows the first-extracted candidate's probability.
     if creds and len(creds) == len(cands):
-        order = sorted(range(len(cands)), key=lambda j: creds[j], reverse=True)
+        order = DEC.leader_order(creds)   # D-4: the one leader label-view
         cands = [cands[j] for j in order]
         creds = [creds[j] for j in order]
     alts = " · ".join(f"{v} ({p:.3f}) {_cites(v, hits)}".rstrip()

@@ -906,7 +906,7 @@ def _log_decision(deps: BridgeDeps, p: Payload) -> Payload:
     # Leader-first: the daemon returns credences in CANDIDATE order (server.jl `w[1:k]`), but the
     # fold reads ``credences[0]`` as the leader (lookup orders by weight desc). Sort here, or an
     # abstain folds at the first candidate's p rather than the leader's.
-    order = sorted(range(len(credences)), key=lambda j: credences[j], reverse=True)
+    order = DEC.leader_order(credences)   # D-4: the one leader label-view
     creds_sorted = [credences[j] for j in order]
     cands_sorted = ([candidates[j] for j in order]
                     if len(candidates) == len(credences) else candidates)
