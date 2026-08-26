@@ -672,7 +672,7 @@ def observe_hits(root: Path, question: str, hits: list[dict[str, Any]], *,
             n_competing=n_comp,
             competition_factor=competition_factor(n_comp),
         ))
-    # §5 dedup-as-inference at the SHARED shaper: collapse correlated duplicate documents
+    # §5 dedup (correlation collapse) at the SHARED shaper: collapse correlated duplicate documents
     # (identical-quote forward/reply chains, re-filed copies) to one witness here, BEFORE the
     # shaping→deciding split, so a duplicate cannot saturate the posterior on EITHER decider — the
     # host lookup_posterior OR the daemon's reliability_categorical (which consumes this verbatim
@@ -798,7 +798,9 @@ def _quote_key(quote: str) -> str:
 
 def dedup_correlated(observations: list[Observation]) -> list[Observation]:
     """[§3.3 · L-2] The correlation structure — correlated duplicates are one attestation.
-    Collapse correlated DUPLICATE observations to one witness each (§5 dedup-as-inference).
+    Collapse correlated DUPLICATE observations to one witness each (§5 dedup —
+    correlation collapse; the inference half is the aggregate family's component 3,
+    a different object).
 
     Observations carrying a near-identical quote across DIFFERENT documents are the same
     underlying text duplicated (a forwarded/replied email chain, a re-filed copy), not
@@ -897,7 +899,8 @@ def lookup_posterior(brain: Brain, observations: list[Observation],
         "alpha": alpha, "beta": beta,
     })
     keys = [_candidate_key(c) for c in candidates]
-    # NB: correlated-duplicate collapse (§5 dedup-as-inference) happens UPSTREAM in observe_hits,
+    # NB: correlated-duplicate collapse (§5 dedup — correlation collapse) happens
+    # UPSTREAM in observe_hits,
     # the shared shaper both deciders consume — so this builder and the daemon's
     # reliability_categorical see identical, already-deduped evidence. Do not re-dedup here: that
     # asymmetry (host deciding-time temper the daemon lacked) was the regression 546f1a5 half-fixed.

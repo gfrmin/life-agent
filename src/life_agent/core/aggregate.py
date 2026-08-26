@@ -10,6 +10,7 @@ this module — the family plumbing arrives at CP-D under its own pre-registrati
 from __future__ import annotations
 
 import hashlib
+import math
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import date
@@ -182,3 +183,93 @@ def load_registry(path: Path, *, evidence_root: Path) -> LoadedRegistry:
     return LoadedRegistry(
         entries=tuple(_entry(e, evidence_root) for e in data.get("generators") or ()),
         content_hash=hashlib.sha256(raw).hexdigest())
+
+
+# ------------------------------------------------------------------------------------
+# Component 3 (CP-C, r20): dedup-as-inference — design §7. Pairwise same-entity
+# hypothesis comparison under a UNIFORM structure prior (the Occam preference lives in
+# the marginal likelihood, never a tilted prior); the §5 clustering rule in `lookup`
+# stays the proposal generator and is untouched (§6.8 scoping — one rule, two declared
+# roles, no second implementation of either).
+
+_H_ONE, _H_TWO = 1.0, 2.0
+
+UNREADABLE = "unreadable"
+
+# The declared observation model, frozen in r20's pre-registration: per covariate, the
+# bucket vocabulary and P(bucket | one latent transaction) / P(bucket | two). `period`
+# is the designed discriminator; `amount` is deliberately humble under two (recurring
+# instruments repeat amounts by design); `entity`/`kind` are weak-when-same (within one
+# scope most candidate pairs share both under either hypothesis). Byte-distinctness is
+# recorded on pairs but NOT conditioned: the proposal generator only emits
+# byte-distinct pairs, so it is selection-fixed here.
+_PAIR_TABLES: dict[str, tuple[tuple[str, ...],
+                              tuple[tuple[float, ...], tuple[float, ...]]]] = {
+    "period": (("same", "adjacent", "other"),
+               ((0.98, 0.01, 0.01), (0.15, 0.45, 0.40))),
+    "amount": (("equal", "close", "different"),
+               ((0.90, 0.05, 0.05), (0.20, 0.10, 0.70))),
+    "entity": (("same", "different"), ((0.97, 0.03), (0.70, 0.30))),
+    "kind": (("same", "different"), ((0.99, 0.01), (0.80, 0.20))),
+}
+
+
+@dataclass(frozen=True)
+class PairCovariates:
+    """One candidate pair's observed covariates, each a bucket from its closed
+    vocabulary in :data:`_PAIR_TABLES` or :data:`UNREADABLE`."""
+
+    period: str
+    amount: str
+    entity: str
+    kind: str
+
+
+@dataclass(frozen=True)
+class SameEntityPosterior:
+    """P(one latent transaction | pair) vs P(two), with the covariates that were
+    conditioned and the unreadable ones named (skipped: an honest P(unreadable | h) is
+    hypothesis-independent, so the bucket carries zero evidence)."""
+
+    p_one: float
+    p_two: float
+    conditioned: tuple[str, ...]
+    skipped: tuple[str, ...]
+
+
+def same_entity_posterior(brain: Brain, cov: PairCovariates) -> SameEntityPosterior:
+    """One categorical state over {one, two} on the wire, uniform prior, one
+    ``tabular_log_density`` condition per READABLE covariate (the frozen tables are the
+    declared observation model crossing the wire as data), ``weights`` read, state
+    destroyed. No host math."""
+    readable: list[tuple[str, int, tuple[str, ...],
+                         tuple[tuple[float, ...], tuple[float, ...]]]] = []
+    skipped: list[str] = []
+    for name, (buckets, tables) in _PAIR_TABLES.items():
+        bucket = getattr(cov, name)
+        if bucket == UNREADABLE:
+            skipped.append(name)
+            continue
+        if bucket not in buckets:
+            raise ValueError(f"{name}: unknown bucket {bucket!r} "
+                             f"(closed vocabulary: {buckets})")
+        readable.append((name, buckets.index(bucket), buckets, tables))
+    sid = brain.create_state({"type": "categorical",
+                              "space": {"type": "finite",
+                                        "values": [_H_ONE, _H_TWO]},
+                              "log_weights": [0.0, 0.0]})
+    try:
+        for _, bi, buckets, (d_one, d_two) in readable:
+            brain.condition(sid, kernel={
+                "type": "tabular_log_density",
+                "source_vals": [_H_ONE, _H_TWO],
+                "target_vals": [float(i) for i in range(len(buckets))],
+                "densities": [[math.log(p) for p in d_one],
+                              [math.log(p) for p in d_two]],
+            }, observation=float(bi))
+        w = brain.weights(sid)
+    finally:
+        brain.destroy_state(sid)
+    return SameEntityPosterior(p_one=w[0], p_two=w[1],
+                               conditioned=tuple(n for n, _, _, _ in readable),
+                               skipped=tuple(skipped))

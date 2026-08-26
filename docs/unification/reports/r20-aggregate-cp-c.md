@@ -122,4 +122,32 @@ en route are disclosure items here (cap-the-arc).
 
 ## RESULTS
 
-*(appends after the gate and measurement run; nothing above this line changes.)*
+*2026-08-26, same day. TDD held: the six CP-C tests (c-t1..c-t6 with the `TabularBrain`
+oracle) were watched RED — `ImportError: cannot import name 'UNREADABLE'` — before
+component 3 existed; then GREEN with no test edit beyond lint import placement.*
+
+- **The off-gate measurement, on the live engine, all three pre-registered directions
+  MET** — and the magnitudes land on the published paper expectations exactly:
+  `real-duplicate` p_one **0.9181** (expected ≈0.92, conditioned period/entity/kind,
+  amount skipped-and-named); `control-non-duplicate` p_one **0.0367** (≈0.04 — the hard
+  adjacent-month same-template control resolves as two on the period covariate alone);
+  `control-non-duplicate-readable` p_one **0.0027** (≈0.003). The agreement also
+  confirms the `tabular_log_density` semantics reading (`densities[h][b]` as declared
+  log-likelihoods) against the deployed engine, not just the oracle.
+- **Gate, all conjuncts (re-run fresh after lint fixes):** suite **2742 passed**;
+  `ruff check` clean; `mypy` clean (224 files); m5-base replay **314/314 pure
+  equality**; library-only re-verified (no module under `src/life_agent/` imports
+  `aggregate` — tests and the audit script only).
+- **Riders landed:** the three over-broad "§5 dedup-as-inference" labels in `lookup.py`
+  (shared-shaper comment, `dedup_correlated` docstring, `observe_hits` NB) now read
+  "§5 dedup (correlation collapse)" with the inference half named as the aggregate
+  family's component 3; the CRM #4 alias-dedup entry landed in
+  `docs/crm-architecture-decisions.md` as drafted in r18 (#3 stays open).
+- **Deviations: none.** The only post-prereg adjustments were lint-shape (an unused
+  loop variable, comment rewraps, import placement), each followed by a fresh full
+  gate run.
+
+**CP-C is DONE. CP-D (r21) opens** — SPEC §18.14 + the amount transform, component 2,
+family plumbing, the two-stage router, and the priced §8 run under CP-A's ruled
+conjunct structure; its prereg (which may split the checkpoint, M5 precedent) commits
+before any further `src/` change.

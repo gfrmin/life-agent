@@ -11,9 +11,14 @@
 > **#5** — ask (*know* mode) is the CRM read surface; Telegram intents deferred.
 > **#6** — identity/owned-domains knowledge lives life_agent-side (with the owner profile);
 > it never enters pkm.
-> "Awaiting reply" lands as engine phase D4. **#3 (mutable notes/reminders) and #4 (alias
-> dedup) remain open** — if #3 lands as a ledger, it inherits the knowledge-projection
-> pattern (system design §5).
+> "Awaiting reply" lands as engine phase D4. **#3 (mutable notes/reminders) remains
+> open** — if #3 lands as a ledger, it inherits the knowledge-projection pattern
+> (system design §5).
+> **#4 (alias dedup) — resolved by the aggregate family's dedup-as-inference
+> (`docs/aggregate-family-design.md` §7):** "are these two records the same latent
+> entity/transaction?" is hypothesis comparison under a structure prior, not a string
+> rule; the deterministic §5 clustering rule stays the proposal generator. Landed with
+> CP-C (r20).
 
 Context: the attempt to "incorporate the renavon CRM, like email→GTD" first produced a full
 event-sourced `life_agent.crm` faculty, which was then torn down on the principle that **the CRM
