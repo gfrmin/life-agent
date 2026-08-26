@@ -258,7 +258,7 @@ def test_answer_baseline_executor_down_never_falls_back_silently(monkeypatch) ->
 # --- baseline (inprocess) ------------------------------------------------------------------
 
 
-def test_answer_baseline_inprocess_happy_path_turns_gather_on(monkeypatch) -> None:
+def test_answer_baseline_inprocess_happy_path_no_gather_flag(monkeypatch) -> None:
     conn = _FakeConn()
     captured: dict = {}
     monkeypatch.setattr(ask, "connect", lambda: conn)
@@ -267,16 +267,16 @@ def test_answer_baseline_inprocess_happy_path_turns_gather_on(monkeypatch) -> No
         captured["conn"] = c
         captured["kwargs"] = kwargs
         _bill(1)
-        ask.LOOKUP_LAST = _fake_lookup()
-        ask.NARRATIVE_LAST = None
-        ask.STAGES_LAST = {"retrieve": "rk1", "lookup_answer": "lk1"}
-        ask.EFFORT_LAST = {"retrieve_passes": 1, "gather_tiers": 1}
+        ask.TERM.LOOKUP_LAST = _fake_lookup()
+        ask.TERM.NARRATIVE_LAST = None
+        ask.TERM.STAGES_LAST = {"retrieve": "rk1", "lookup_answer": "lk1"}
+        ask.TERM.EFFORT_LAST = {"retrieve_passes": 1, "gather_tiers": 1}
         return ("P123 [1]", [_fake_card(1, "P123 is the ID")], {})
 
     monkeypatch.setattr(ask, "answer", fake_answer)
     out = AB.answer_baseline(_q(), 8, path="inprocess")
     assert captured["conn"] is conn
-    assert captured["kwargs"].get("gather") is True   # the one flag this arm turns on
+    assert "gather" not in captured["kwargs"]   # the flag died with the loop (M5, r15)
     assert out.status == "ok"
     assert out.decision_view is not None and out.decision_view["family"] == "lookup"
     assert out.decision_view["asserted"] is True
@@ -292,10 +292,10 @@ def test_answer_baseline_inprocess_withheld_view_when_no_family_answered(monkeyp
     monkeypatch.setattr(ask, "connect", lambda: _FakeConn())
 
     def fake_answer(c, question, k, **kwargs):
-        ask.LOOKUP_LAST = None
-        ask.NARRATIVE_LAST = None
-        ask.STAGES_LAST = {}
-        ask.EFFORT_LAST = {"retrieve_passes": 1, "gather_tiers": 1}
+        ask.TERM.LOOKUP_LAST = None
+        ask.TERM.NARRATIVE_LAST = None
+        ask.TERM.STAGES_LAST = {}
+        ask.TERM.EFFORT_LAST = {"retrieve_passes": 1, "gather_tiers": 1}
         return (ask.ABSTENTION, [], {})
 
     monkeypatch.setattr(ask, "answer", fake_answer)
@@ -345,12 +345,12 @@ def test_answer_baseline_inprocess_omits_effort_key_families_leave_absent(monkey
     # this call never reached the retrieve seam), the arm reports exactly what ask.py leaves
     # behind, not an invented default.
     monkeypatch.setattr(ask, "connect", lambda: _FakeConn())
-    ask.EFFORT_LAST = {}
+    ask.TERM.EFFORT_LAST = {}
 
     def fake_answer(c, question, k, **kwargs):
-        ask.LOOKUP_LAST = None
-        ask.NARRATIVE_LAST = None
-        ask.STAGES_LAST = {}
+        ask.TERM.LOOKUP_LAST = None
+        ask.TERM.NARRATIVE_LAST = None
+        ask.TERM.STAGES_LAST = {}
         return ("x", [], {})
 
     monkeypatch.setattr(ask, "answer", fake_answer)
@@ -365,10 +365,10 @@ def test_effort_last_does_not_leak_across_questions(monkeypatch) -> None:
     monkeypatch.setattr(ask, "connect", lambda: _FakeConn())
 
     def fake_answer_with_effort(c, question, k, **kwargs):
-        ask.LOOKUP_LAST = None
-        ask.NARRATIVE_LAST = None
-        ask.STAGES_LAST = {}
-        ask.EFFORT_LAST = {"retrieve_passes": 1, "gather_tiers": 1}
+        ask.TERM.LOOKUP_LAST = None
+        ask.TERM.NARRATIVE_LAST = None
+        ask.TERM.STAGES_LAST = {}
+        ask.TERM.EFFORT_LAST = {"retrieve_passes": 1, "gather_tiers": 1}
         return ("text1", [], {})
 
     monkeypatch.setattr(ask, "answer", fake_answer_with_effort)
@@ -383,10 +383,10 @@ def test_effort_last_does_not_leak_across_questions(monkeypatch) -> None:
 
 
 def test_answer_via_executor_itself_resets_effort_last_to_empty(monkeypatch) -> None:
-    ask.EFFORT_LAST = {"retrieve_passes": 3, "gather_tiers": 2}  # stale from a prior call
+    ask.TERM.EFFORT_LAST = {"retrieve_passes": 3, "gather_tiers": 2}  # stale from a prior call
     monkeypatch.setattr(ask, "_executor_ready", lambda: False)
     ask.answer_via_executor("q", 8)
-    assert ask.EFFORT_LAST == {}
+    assert ask.TERM.EFFORT_LAST == {}
 
 
 # --- ask.answer(): the EFFORT_LAST counting seams themselves -----------------------------
@@ -403,54 +403,14 @@ def test_ask_answer_counts_one_retrieve_pass_and_zero_gather_tiers_by_default(
     # _hermetic_lookup (conftest autouse) stubs LK.lookup_answer -> None; _hermetic_narrative
     # stubs N.narrative_answer -> None, so the raw synthesize prose (mocked below) returns
     # unscored — no live LLM/DuckDB touched.
-    monkeypatch.setattr(ask, "_pkm_root", lambda: Path("/fake/root"))
-    monkeypatch.setattr(ask, "_retrieve_set", lambda conn, q, k: [_weak_floor_hit()])
-    monkeypatch.setattr(ask.SYN, "synthesize",
+    monkeypatch.setattr(ask.TERM, "_pkm_root", lambda: Path("/fake/root"))
+    monkeypatch.setattr(ask.TERM, "_retrieve_set", lambda conn, q, k: [_weak_floor_hit()])
+    monkeypatch.setattr(ask.TERM.SYN, "synthesize",
                         lambda *a, **k: ("raw prose [1]", "sk", False))
     text, _cards, _scores = ask.answer(conn=None, question="what is the ID?", k=8,
                                        expand=False)
     assert text == "raw prose [1]"
-    assert ask.EFFORT_LAST == {"retrieve_passes": 1, "gather_tiers": 0}
-
-
-def test_ask_answer_counts_gather_tier_fired_when_gather_true(monkeypatch) -> None:
-    monkeypatch.setattr(ask, "_pkm_root", lambda: Path("/fake/root"))
-    monkeypatch.setattr(ask, "_retrieve_set", lambda conn, q, k: [_weak_floor_hit()])
-    monkeypatch.setattr(ask.GA, "gather_answer", lambda *a, **k: None)
-    monkeypatch.setattr(ask.SYN, "synthesize",
-                        lambda *a, **k: ("raw prose [1]", "sk", False))
-    ask.answer(conn=None, question="what is the ID?", k=8, expand=False, gather=True)
-    assert ask.EFFORT_LAST == {"retrieve_passes": 1, "gather_tiers": 1}
-
-
-def test_ask_answer_gather_tier_stays_zero_when_families_off(monkeypatch) -> None:
-    # families=False (the monolithic instrument) never reaches the `if gather:` line at
-    # all, even when gather=True is passed — 0 is a true fact here, not a placeholder.
-    monkeypatch.setattr(ask, "_pkm_root", lambda: Path("/fake/root"))
-    monkeypatch.setattr(ask, "_retrieve_set", lambda conn, q, k: [_weak_floor_hit()])
-    monkeypatch.setattr(ask.GA, "gather_answer",
-                        lambda *a, **k: (_ for _ in ()).throw(
-                            AssertionError("gather must not run when families=False")))
-    monkeypatch.setattr(ask.SYN, "synthesize",
-                        lambda *a, **k: ("raw prose [1]", "sk", False))
-    ask.answer(conn=None, question="what is the ID?", k=8, expand=False,
-              gather=True, families=False)
-    assert ask.EFFORT_LAST == {"retrieve_passes": 1, "gather_tiers": 0}
-
-
-def test_ask_answer_effort_last_resets_between_calls(monkeypatch) -> None:
-    monkeypatch.setattr(ask, "_pkm_root", lambda: Path("/fake/root"))
-    monkeypatch.setattr(ask, "_retrieve_set", lambda conn, q, k: [_weak_floor_hit()])
-    monkeypatch.setattr(ask.GA, "gather_answer", lambda *a, **k: None)
-    monkeypatch.setattr(ask.SYN, "synthesize",
-                        lambda *a, **k: ("raw prose [1]", "sk", False))
-    ask.answer(conn=None, question="q1", k=8, expand=False, gather=True)
-    assert ask.EFFORT_LAST["gather_tiers"] == 1
-    ask.answer(conn=None, question="q2", k=8, expand=False)  # gather=False this time
-    assert ask.EFFORT_LAST == {"retrieve_passes": 1, "gather_tiers": 0}
-
-
-# --- synthesis arm --------------------------------------------------------------------------
+    assert ask.TERM.EFFORT_LAST == {"retrieve_passes": 1, "gather_tiers": 0}
 
 
 def test_answer_synthesis_calls_ask_answer_with_no_extra_flags(monkeypatch) -> None:
@@ -461,10 +421,10 @@ def test_answer_synthesis_calls_ask_answer_with_no_extra_flags(monkeypatch) -> N
     def fake_answer(c, question, k, **kwargs):
         captured["kwargs"] = kwargs
         _bill(1)
-        ask.LOOKUP_LAST = None
-        ask.NARRATIVE_LAST = _fake_narrative()
-        ask.STAGES_LAST = {"retrieve": "rk", "synthesize": "sk", "narrative_answer": "nk"}
-        ask.EFFORT_LAST = {"retrieve_passes": 1, "gather_tiers": 0}
+        ask.TERM.LOOKUP_LAST = None
+        ask.TERM.NARRATIVE_LAST = _fake_narrative()
+        ask.TERM.STAGES_LAST = {"retrieve": "rk", "synthesize": "sk", "narrative_answer": "nk"}
+        ask.TERM.EFFORT_LAST = {"retrieve_passes": 1, "gather_tiers": 0}
         return ("the claim [1]", [_fake_card(1, "the claim's source text")], {})
 
     monkeypatch.setattr(ask, "answer", fake_answer)
@@ -488,10 +448,10 @@ def test_answer_synthesis_fresh_threads_no_cache_true(monkeypatch) -> None:
 
     def fake_answer(c, question, k, **kwargs):
         captured["kwargs"] = kwargs
-        ask.LOOKUP_LAST = None
-        ask.NARRATIVE_LAST = None
-        ask.STAGES_LAST = {}
-        ask.EFFORT_LAST = {}
+        ask.TERM.LOOKUP_LAST = None
+        ask.TERM.NARRATIVE_LAST = None
+        ask.TERM.STAGES_LAST = {}
+        ask.TERM.EFFORT_LAST = {}
         return ("x", [], {})
 
     monkeypatch.setattr(ask, "answer", fake_answer)
@@ -506,15 +466,15 @@ def test_answer_baseline_inprocess_fresh_threads_no_cache_true(monkeypatch) -> N
 
     def fake_answer(c, question, k, **kwargs):
         captured["kwargs"] = kwargs
-        ask.LOOKUP_LAST = None
-        ask.NARRATIVE_LAST = None
-        ask.STAGES_LAST = {}
-        ask.EFFORT_LAST = {}
+        ask.TERM.LOOKUP_LAST = None
+        ask.TERM.NARRATIVE_LAST = None
+        ask.TERM.STAGES_LAST = {}
+        ask.TERM.EFFORT_LAST = {}
         return ("x", [], {})
 
     monkeypatch.setattr(ask, "answer", fake_answer)
     AB.answer_baseline(_q(), 8, path="inprocess", fresh=True)
-    assert captured["kwargs"].get("gather") is True
+    assert "gather" not in captured["kwargs"]   # died at M5 (r15)
     assert captured["kwargs"].get("no_cache") is True
 
 
@@ -535,10 +495,10 @@ def test_answer_synthesis_declined_derivation_matches_baseline_inprocess(monkeyp
     monkeypatch.setattr(ask, "connect", lambda: _FakeConn())
 
     def fake_answer(c, question, k, **kwargs):
-        ask.LOOKUP_LAST = _fake_lookup(action="abstain", candidates=[], credences=[])
-        ask.NARRATIVE_LAST = None
-        ask.STAGES_LAST = {}
-        ask.EFFORT_LAST = {}
+        ask.TERM.LOOKUP_LAST = _fake_lookup(action="abstain", candidates=[], credences=[])
+        ask.TERM.NARRATIVE_LAST = None
+        ask.TERM.STAGES_LAST = {}
+        ask.TERM.EFFORT_LAST = {}
         return (ask.ABSTENTION, [], {})
 
     monkeypatch.setattr(ask, "answer", fake_answer)

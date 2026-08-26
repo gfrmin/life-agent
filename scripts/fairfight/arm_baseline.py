@@ -12,15 +12,15 @@ uniformly per (arm, question) regardless of which entrypoint answered:
   (``ask._executor_ready``) is checked FIRST and a down stack is a NAMED ``status="error"``
   — never a silent in-process fallback (that would mislabel the arm as the executor's own
   answer when it is really a different path's).
-- ``path="inprocess"`` (arm ``inprocess``) drives ``ask.answer(conn, question, k,
-  gather=True)`` — the in-process typed-families path WITH the gather-augmented lookup loop
-  (foundations §4 gather.py), matching the ``gate_paired_outcomes`` "typed" pass
+- ``path="inprocess"`` (arm ``inprocess``) drives ``ask.answer(conn, question, k)``
+  — the in-process typed-families path (the gather-augmented loop died at M5, r15),
+  matching the ``gate_paired_outcomes`` "typed" pass
   (``scripts/run_eval.py``) and offering the fully-metered $ headline the executor arm
   cannot (its own LLM calls run in THIS process, bracketed by ``core.llm``'s meter).
 
 ``decision_view`` is built the SAME way ``scripts/triage_answers.py``'s ``triage_one`` does
-(``_lookup_view``/``_narrative_view``/``_withheld_view`` over ``ask.LOOKUP_LAST`` /
-``ask.NARRATIVE_LAST`` captured before the next call resets them) for the in-process arm.
+(``_lookup_view``/``_narrative_view``/``_withheld_view`` over ``ask.TERM.LOOKUP_LAST`` /
+``ask.TERM.NARRATIVE_LAST`` captured before the next call resets them) for the in-process arm.
 
 For the executor arm (final-review CRITICAL-1 fix, superseding an earlier "always None"
 design): ``ask.EXECUTOR_VIEW_LAST`` — the structured ``View``
@@ -43,8 +43,8 @@ harness, never a third: a structured view derives it as ``not asserted and not s
 (:func:`_view_declined`); free text (the executor's narrative branch, or a down/errored
 executor) derives it via the hardened ``grading.detect_decline`` over the rendered text.
 
-``lineage_keys`` for the in-process arm is EVERY key ``ask.STAGES_LAST`` recorded this call
-(``tuple(ask.STAGES_LAST.values())``, in call order) — a superset of, and deliberately NOT,
+``lineage_keys`` for the in-process arm is EVERY key ``ask.TERM.STAGES_LAST`` recorded this call
+(``tuple(ask.TERM.STAGES_LAST.values())``, in call order) — a superset of, and deliberately NOT,
 ``scripts/run_eval.py``'s ``synthesis_grade`` 2-key ``("retrieve", "synthesize")`` subset:
 that subset silently drops the ``lookup_answer``/``narrative_answer`` cache key on exactly
 the interesting case (a typed family decided), which would leave this harness's provenance
@@ -103,7 +103,7 @@ class RawAnswer:
     lineage_keys: tuple[str, ...]
     status: str  # "ok" | "error" (timeout is a competitor-arm-only status)
     notes: str
-    effort: dict[str, int]  # ask.EFFORT_LAST snapshot; {} when this arm's effort is unknown
+    effort: dict[str, int]  # ask.TERM.EFFORT_LAST snapshot; {} when this arm's effort is unknown
     cards: tuple[dict[str, Any], ...]
 
 
@@ -159,13 +159,13 @@ def _executor_decision(view: dict[str, Any]) -> dict[str, Any] | None:
 def _inprocess_decision(ask) -> tuple[dict, bool, tuple[str, ...]]:
     """Build (decision_view, declined, lineage_keys) from the just-completed in-process
     ``ask.answer(...)`` call, the same way ``triage_answers.triage_one`` does — captured
-    from ``ask.LOOKUP_LAST``/``ask.NARRATIVE_LAST`` before any later call resets them."""
+    from ``ask.TERM.LOOKUP_LAST``/``ask.TERM.NARRATIVE_LAST`` before any later call resets them."""
     from triage_answers import _lookup_view, _narrative_view, _withheld_view
 
-    lk, nv = ask.LOOKUP_LAST, ask.NARRATIVE_LAST
+    lk, nv = ask.TERM.LOOKUP_LAST, ask.TERM.NARRATIVE_LAST
     view = _lookup_view(lk) if lk is not None else (
         _narrative_view(nv) if nv is not None else _withheld_view())
-    return view, _view_declined(view), tuple(ask.STAGES_LAST.values())
+    return view, _view_declined(view), tuple(ask.TERM.STAGES_LAST.values())
 
 
 def answer_baseline(
@@ -189,7 +189,7 @@ def answer_baseline(
     # function reset): the executor-down branch below raises BEFORE either function runs, so
     # without this a down-daemon question would read the PRIOR question's EFFORT_LAST —
     # exactly the cross-question leak the harness must not have.
-    ask.EFFORT_LAST = {}
+    ask.TERM.EFFORT_LAST = {}
     t0 = time.monotonic()
     text = ""
     declined = False
@@ -219,7 +219,7 @@ def answer_baseline(
             conn = ask.connect()
             try:
                 text, raw_cards, _scores = ask.answer(
-                    conn, q["question"], k, gather=True, no_cache=fresh)
+                    conn, q["question"], k, no_cache=fresh)
                 cards = [{"n": c.n, "text": c.text, "origin": c.origin} for c in raw_cards]
             finally:
                 conn.close()
@@ -233,7 +233,7 @@ def answer_baseline(
         lineage_keys = ()
         cards = []
 
-    effort = dict(ask.EFFORT_LAST)
+    effort = dict(ask.TERM.EFFORT_LAST)
     llm_calls = meter_read()
     latency_s = time.monotonic() - t0
     return RawAnswer(

@@ -532,6 +532,9 @@ def narrative_answer(root: Path, question: str, text: str,
                    },
                    utility_fold_version=utility_fold_version,
                    chosen_action=action, predicted_eu=eu,
+                   # M5 (r15, §2.3): the narrative leaf's per-claim ranking is the
+                   # skin's — terminals-only, DECLARED (see lookup's twin comment).
+                   regime="terminals-only", policy=LK.U_BAR_POLICY, defaulted=(),
                    decision_id=akey.cache_key))
     return result
 

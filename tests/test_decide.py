@@ -57,10 +57,15 @@ def _legacy_action_utilities(weights: list[float], u_bar: dict[str, float],
 
 
 def test_lookup_action_utilities_unchanged_by_derivation() -> None:
+    # D-1: the u_assert-derived rows are value-identical to the legacy spelling; the
+    # scoped rows are per-candidate since M5 (r15 L-3) — each flat at its scoped_eu_j,
+    # numerically the legacy flat row's values.
     for weights in ([0.7, 0.2, 0.1], [0.4, 0.6], [0.34, 0.33, 0.33], [1.0]):
         for scoped_eu in (-2.0, 0.0, 0.16):
-            assert (LK.action_utilities(weights, UB, scoped_eu)
-                    == _legacy_action_utilities(weights, UB, scoped_eu))
+            legacy = _legacy_action_utilities(weights, UB, scoped_eu)
+            now = LK.action_utilities(weights, UB, scoped={0: scoped_eu})
+            assert now["report_scoped_0"] == legacy.pop("report_scoped")
+            assert {k: v for k, v in now.items() if k != "report_scoped_0"} == legacy
 
 
 def test_narrative_include_eu_unchanged_by_derivation() -> None:

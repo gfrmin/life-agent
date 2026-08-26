@@ -361,13 +361,16 @@ def decide_arm(root: Path, question: str, hits: list[dict[str, Any]],
     candidates = LK.candidates_from(observations)
     weights, state_id = LK.lookup_posterior(brain, observations, candidates, rho)
     try:
-        scoped_eu, _p_att, scoped_value, _as_of = LK._scoped_option(
+        scoped_opts = LK._scoped_options(
             brain, observations, candidates, rho, u_bar=u_bar, state_current=state_id,
             weights_current=weights, time_indexed=time_indexed)
-        action, eu = LK.decide(brain, state_id, weights, u_bar, scoped_eu)
+        action, eu, scoped_j = LK.decide(
+            brain, state_id, weights, u_bar,
+            scoped={j: t[0] for j, t in scoped_opts.items()})
     finally:
         brain.destroy_state(state_id)
     order = sorted(range(len(candidates)), key=lambda i: -weights[i])
+    scoped_value = candidates[scoped_j] if scoped_j is not None else None
     leader = (scoped_value or "") if action == "report_scoped" else (
         candidates[order[0]] if candidates else "")
     return Arm(action=action, leader=str(leader), n_obs=len(observations),

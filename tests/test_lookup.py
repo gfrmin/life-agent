@@ -587,25 +587,25 @@ def test_parse_date_unambiguous_and_ambiguous() -> None:
 def test_action_utilities_under_u_bar() -> None:
     ub = {"u_correct": 1.0, "u_abstain": 0.0, "u_wrong": -5.0, "u_wrong_scoped": -2.0,
           "u_hedged": 0.4, "lambda_int": 1.0, "kappa_att": 0.05}
-    # report is now per-candidate report_j (the engine's optimise picks the MAP — no host argmax);
-    # report_scoped is the caller's engine-computed scoped_eu (here 0.16 = the attested-record EU).
-    u = action_utilities([0.7, 0.2, 0.1], ub, 0.16)   # two candidates + NONE
+    # report is per-candidate report_j; report_scoped is per DATED candidate too
+    # (M5/r15 L-3): each row flat at its engine-computed scoped_eu_j.
+    u = action_utilities([0.7, 0.2, 0.1], ub, scoped={1: 0.16})  # two candidates + NONE
     assert u["report_0"] == [1.0, -5.0, -5.0]    # asserts candidate 0; truth elsewhere → wrong
     assert u["report_1"] == [-5.0, 1.0, -5.0]    # asserts candidate 1
     assert u["hedge"] == [0.4, 0.4, -5.0]        # misleads only when truth is NONE
     assert u["ask_clarify"] == [pytest.approx(0.9 * 1.0 - 1.0)] * 3
     assert u["abstain"] == [0.0, 0.0, 0.0]
-    assert u["report_scoped"] == [pytest.approx(0.16)] * 3
+    assert u["report_scoped_1"] == [pytest.approx(0.16)] * 3
+    assert "report_scoped" not in u and "report_scoped_0" not in u
 
 
-def test_action_utilities_scoped_below_abstain_when_no_record() -> None:
-    # no datable record ⇒ the caller passes scoped_eu = u_wrong_scoped (the floor); the flat scoped
-    # row sits strictly below abstain (the gauge zero) — scoped never wins without a dated record.
+def test_action_utilities_no_scoped_rows_without_a_dated_record() -> None:
+    # no datable record ⇒ NO scoped rows at all (M5/r15 L-3: an empty option set has no
+    # EU mass — the old always-present flat row died with the host pick of V_s).
     ub = {"u_correct": 1.0, "u_abstain": 0.0, "u_wrong": -5.0, "u_wrong_scoped": -2.0,
           "u_hedged": 0.4, "lambda_int": 1.0, "kappa_att": 0.05}
-    u = action_utilities([0.6, 0.4], ub, -2.0)
-    assert u["report_scoped"] == [-2.0, -2.0]
-    assert all(s < ab for s, ab in zip(u["report_scoped"], u["abstain"], strict=True))
+    u = action_utilities([0.6, 0.4], ub, scoped={})
+    assert not any(a.startswith("report_scoped") for a in u)
 
 
 # --- render (the credence grammar) --------------------------------------------------------

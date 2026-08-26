@@ -27,6 +27,7 @@ from typing import Any
 
 from life_agent.bridge import observations as SO
 from life_agent.core import calibration as CAL
+from life_agent.core import decisions as DEC
 from life_agent.core import deliberate as DL
 from life_agent.core import gather_outcomes as GO
 from life_agent.core import lookup as LK
@@ -179,7 +180,6 @@ def _obj(post: Post, url: str, payload: dict[str, Any]) -> dict[str, Any]:
 
 def decide_via_loop(question: str, k: int, *, bridge: str, daemon: str, post: Post, get: Get,
                     transforms: list[dict[str, Any]] | None = None,
-                    live: SEAM.LiveFn | None = None,
                     curves: Curves = None) -> View:
     """Drive one question through the live loop: route, then the daemon-priced pass.
 
@@ -193,11 +193,7 @@ def decide_via_loop(question: str, k: int, *, bridge: str, daemon: str, post: Po
     the outcome (``/log_gather`` — the structure-observe stream). There is no body-side
     cascade and no ``p_none >= leader`` gate: P(NONE) enters only as a bucketed *sensor*
     (E-13/E-14 died at M1, and ``LIFE_AGENT_GROW_LANE`` retired with them — this is the lane).
-
-    ``live`` (M3 — the coarse menu live, flag-gated at the caller): the seam consults the
-    proplang engine on every decide tick and the loop enacts the ENGINE's coarse act
-    (abstain/gather/ask/respond, mapped by :mod:`life_agent.membrane.coarse`); ``None``
-    (the default) is the credence daemon's decision, byte-for-byte today's behaviour."""
+    The M3 membrane live consult died at M5 (Q8): the daemon's decision is the act."""
     transforms = DEFAULT_TRANSFORMS if transforms is None else transforms
     route = post(f"{bridge}/route", {"question": question})
     if route is None:
@@ -209,13 +205,12 @@ def decide_via_loop(question: str, k: int, *, bridge: str, daemon: str, post: Po
                 **_UNPRICED_ATTRIBUTION, "edge_events": [], "spend_usd": 0.0}
     return run_pass(question, k, route, bridge=bridge, daemon=daemon, post=post, get=get,
                     rerank=False, expand=False, transforms=transforms,
-                    live=live, curves=curves)
+                    curves=curves)
 
 
 def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemon: str,
              post: Post, get: Get, rerank: bool, expand: bool = False,
              transforms: list[dict[str, Any]] | None = None,
-             live: SEAM.LiveFn | None = None,
              curves: Curves = None) -> View:
     """One retrieve→probe→extract→decide pass at a given recall breadth, enacting each
     scheduled transform the daemon returns. The daemon also prices the grow menu (recall
@@ -335,7 +330,10 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
                            "era_split": False,
                            "indeterminate": ext.get("indeterminate", 0)}
                     break
-    if not ext["candidates"]:  # zero grounded observations → the local edge declined
+    if not ext["candidates"]:
+        # The wire's ENACTMENT CONSTRAINT, not a host decision (r15 A1): the daemon's
+        # /decide hard-errors on empty candidates (server.jl: k >= 1 — verified), so a
+        # k=0 state has no ranking to be inside of. Mechanics, the same logic as §6.5.
         _log_outcomes("miss")
         return {"effector": "miss", "asserted": [], "candidates": [], "credences": [],
                 "p_none": None, "eu": None, "n_obs": 0, "hits": hits, "route": route,
@@ -384,12 +382,10 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
         if sensors is not None and menu is not None:
             payload["sensors"] = sensors
             payload["grow"] = menu
-        # committed through the ONE act seam (roadmap M0). With `live` (M3, flag-gated)
-        # the seam consults the proplang engine and the view is the mapped enactment;
-        # without it the reply view is the daemon's decision verbatim — either way the
-        # loop below reads one view shape and is unchanged.
-        dec = SEAM.commit(SEAM.DaemonDecide(post=post, daemon=daemon, payload=payload,
-                                            live=live)).view
+        # committed through the ONE act seam (roadmap M0); the reply view is the
+        # daemon's decision verbatim.
+        dec = SEAM.commit(SEAM.DaemonDecide(post=post, daemon=daemon,
+                                            payload=payload)).view
         assert dec is not None  # a DaemonDecide commit always carries the reply view
         return dec
 
@@ -581,10 +577,14 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
             dec = _decide(obs, rho, era, applied)
         elif (eff in _WITHHOLD and not grow_asked
               and (grow_probes - set(applied))):
-            # a withholding terminal with unapplied grow actuators: re-ask WITH the grow block
-            # so the daemon prices recall (grow_value self-gates on the terminal EU — skipping
-            # the re-ask after a report is transport economy, not a decision: a confident
-            # report prices at about minus-cost by construction).
+            # a WITHHOLDING terminal with unapplied grow actuators: re-ask WITH the grow
+            # block so the daemon prices recall. The withhold-only latch is MEASURED
+            # protection, not transport economy (r15 A5, the run-17 ruling): offering the
+            # block after every terminal enacted a real engine preference (A2's 62/63)
+            # and the priced gate read the exercised reach as harmful — answer rate
+            # 0.62 -> 0.49, dispersal on marginal reports. The latch stands until the
+            # hand-set grow priors are grounded in the gather-outcome stream
+            # (foundations §14, the hand-priced-VOI arc).
             last_sensors = GO.sensors_from(
                 candidates=candidates, credences=list(dec["credences"] or []),
                 p_none=dec["p_none"], indeterminate=int(ext.get("indeterminate") or 0))
@@ -645,12 +645,15 @@ def render_view(view: View) -> str:
         body = LK.GRAMMAR["hedge"].format(alts=alts)
     elif eff == "ask_clarify":
         body = LK.GRAMMAR["ask_clarify"].format(alts=alts)
-    elif eff == "abstain" and cands:
-        body = LK.GRAMMAR["abstain_withheld"].format(reason=LK.REASON_DISPERSED, alts=alts)
-    else:  # abstain with no candidates, or miss (zero grounded observations)
-        # No posterior existed, so "dispersed" would be a false reason — the interaction
-        # contract requires the named reason to be the true one. Mirrors lookup.render.
-        body = LK.GRAMMAR["abstain"].format(reason=LK.REASON_NO_OBSERVATIONS)
+    else:
+        # D-5 (M5, r15): the reason is the ONE derivation over the decision record;
+        # this render maps it onto the interaction contract's grammar strings.
+        reason = DEC.withhold_reason(effector=eff, candidates=cands)
+        if reason == "dispersed":
+            body = LK.GRAMMAR["abstain_withheld"].format(reason=LK.REASON_DISPERSED,
+                                                         alts=alts)
+        else:  # miss — no posterior ever existed
+            body = LK.GRAMMAR["abstain"].format(reason=LK.REASON_NO_OBSERVATIONS)
     p_none, eu = view["p_none"], view["eu"]
     footer = LK.GRAMMAR["footer"].format(
         n_hits=len(hits), n_obs=view.get("n_obs", 0),

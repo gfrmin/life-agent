@@ -463,10 +463,22 @@ def drive_seam_unavailable(question: str) -> dict[str, Any]:
         sink = Path(tmp) / "decisions.jsonl"
         prior = CFG.DECISIONS_LOG
         CFG.DECISIONS_LOG = sink
+        # This fixture models NO ENGINE AT ALL (§6.5). Since M5 the driver's down
+        # branch first tries the terminals-only regime — and the replay box HAS the
+        # in-process engine, so it must be made unavailable here or the driver would
+        # honestly answer over T (the M5 behaviour, which is NOT this fixture's
+        # situation) and touch the live store from inside the instrument.
+        prior_term = AC._terminals_answer
+
+        def _no_engine(question: str, k: int) -> tuple[str, str | None]:
+            raise RuntimeError("no engine at all (the §6.5 fixture's situation)")
+
+        AC._terminals_answer = _no_engine
         try:
             r = AC.drive(question, ready=lambda: False)
         finally:
             CFG.DECISIONS_LOG = prior
+            AC._terminals_answer = prior_term
         assert r.down and r.decision_id is None
         event = _last_event(sink)
     body = (body_from_event(event, question=question, retrieval_keys=[])

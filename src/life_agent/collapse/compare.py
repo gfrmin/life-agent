@@ -272,6 +272,40 @@ def _pre_collapse_poster_body(outputs: Mapping[str, Any]) -> bool:
     return isinstance(decision, Mapping) and "regime" not in decision
 
 
+
+#: DIR-M5 (r15): the family leaves DECLARE their decision space — the recorded
+#: silently-defaulted ``regime: "full"`` on a B-trace leaf body becomes the declared
+#: ``terminals-only`` (the leaf ranks over T by the skin; §2.3); ``defaulted`` empties.
+_M5_LEAF_REGIME: dict[str, Any] = {"regime": "terminals-only"}
+
+
+def _b_trace_leaf_body(outputs: Mapping[str, Any]) -> bool:
+    """The precise signature of a pre-M5 leaf-shaped output: the B-traces surface
+    ``regime`` at the OUTPUT level (shaped from their ``DecisionEvent``), recorded as
+    the pre-declaration default ``"full"``."""
+    return outputs.get("regime") == "full"
+
+
+def _directed_m5_leaf(expected: Mapping[str, Any],
+                      actual: Mapping[str, Any]) -> list[FieldDiff]:
+    """DIR-M5: ``regime`` moves full→terminals-only at the output level AND inside the
+    ``log_decision.decision`` body; ``defaulted`` (when present) empties; everything
+    else equal — and the change must have HAPPENED (an unchanged replay fails)."""
+    diffs: list[FieldDiff] = []
+    for d in compare_outputs(expected, actual):
+        leaf = d.path.rsplit(".", 1)[-1]
+        if leaf == "regime" and d.expected == "full":
+            if d.actual != "terminals-only":
+                diffs.append(FieldDiff(d.path, "terminals-only", d.actual, "value"))
+            continue
+        if leaf == "defaulted" and d.actual in ((), []):
+            continue
+        diffs.append(d)
+    if actual.get("regime") == "full":
+        diffs.append(FieldDiff("regime", "terminals-only", "full", "unmoved"))
+    return diffs
+
+
 def compare_fixture(fx: Any, actual: Mapping[str, Any]) -> list[FieldDiff]:
     """The one entry point the replay uses: directed where the fixture carries a
     pre-registered ``expected_change`` — or where its recorded body is a pre-collapse
@@ -282,4 +316,6 @@ def compare_fixture(fx: Any, actual: Mapping[str, Any]) -> list[FieldDiff]:
                                 question=fx.question)
     if _pre_collapse_poster_body(fx.outputs):
         return _directed_m2_poster(fx.outputs, actual)
+    if _b_trace_leaf_body(fx.outputs):
+        return _directed_m5_leaf(fx.outputs, actual)
     return compare_outputs(fx.outputs, actual)

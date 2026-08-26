@@ -53,6 +53,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from eval_grading import answer_matches, chunk_matches_any, classify
 
+from life_agent.core import decisions as DEC
+
 # Effectively-unbounded k for the in-corpus set-membership check: we want "does the
 # answer appear ANYWHERE", not a ranked top-k, so we take all FTS matches and confirm
 # with the token-boundary matcher (specific answers match few chunks; this only runs
@@ -208,7 +210,7 @@ def retrieval_outcome(r: dict, q: dict, *, k: int, run_id: str):
 def synthesis_outcome(row: dict, *, run_id: str):
     """One outcome event from a synthesis-grader row: the monolithic answer instrument
     graded end-to-end. Lineage is the answer's §18.9 stage cache keys (captured from
-    ask.STAGES_LAST by synthesis_grade); the synthesize key pins the exact instrument
+    ask.TERM.STAGES_LAST by synthesis_grade); the synthesize key pins the exact instrument
     identity — the dict here is the grouping identity, not a duplicate of every key
     component."""
     import life_agent.core.derivations as D
@@ -594,13 +596,10 @@ def withheld_reason(view: dict, *, available: bool):
     ``available=False`` dominates: if this machine's catalogue cannot answer the question,
     the withholding says nothing about the policy and the row is censored from Δ.
     """
-    import life_agent.core.gate as GATE
-
-    if not available:
-        return GATE.WITHHELD_UNAVAILABLE
-    if str(view.get("effector")) == "miss" or not view.get("candidates"):
-        return GATE.WITHHELD_MISS
-    return GATE.WITHHELD_DISPERSED
+    # D-5 (M5, r15): the chain lives in ONE derivation — decisions.withhold_reason.
+    return DEC.withhold_reason(effector=view.get("effector"),
+                               candidates=view.get("candidates"),
+                               available=available)
 
 
 def _typed_response_executor(view: dict, q: dict, *, available: bool = True):
@@ -1083,9 +1082,8 @@ def gate_paired_outcomes(conn, questions: list[dict], k: int, ask,
                          typed_views: list | None = None,
                          loo: bool = False) -> list:
     """Run the typed policy over the corpus and pair it against the baseline arm per
-    question. The typed pass is the production answer path with the **gather-augmented**
-    lookup loop (gather=True → re-retrieve corroboration on the top candidates, then
-    re-weight by recency + whose-document before deciding) — or, with
+    question. The typed pass is the in-process production answer path (the
+    gather-augmented loop died at M5, r15) — or, with
     ``typed_arm="executor"``, the executor surface (ask.answer_via_executor: the
     daemon/bridge loop the priced transform menu lives on — the ONLY arm that can carry
     the deliberate edge; a mid-run down stack VOIDS the reading loudly, and
@@ -1137,8 +1135,8 @@ def gate_paired_outcomes(conn, questions: list[dict], k: int, ask,
                 if typed_views is not None:
                     typed_views.append((q, view))
             else:
-                typed_text, _, _ = ask.answer(conn, q["question"], k, gather=True)
-                lk, nv = ask.LOOKUP_LAST, ask.NARRATIVE_LAST  # capture before next call
+                typed_text, _, _ = ask.answer(conn, q["question"], k)
+                lk, nv = ask.TERM.LOOKUP_LAST, ask.TERM.NARRATIVE_LAST  # capture before next call
                 typed = _typed_response(lk, nv, typed_text, q, ask.ABSTENTION)
             if replay is not None:
                 mono = _replay_response(replay[str(q["id"])], q)
@@ -1317,10 +1315,10 @@ def synthesis_grade(conn, q: dict, k: int, *, fresh: bool = False) -> dict:
 
     text, cards, _ = ask.answer(conn, q["question"], k, no_cache=fresh)
     # §18.9 stage cache keys of THIS answer (outcome lineage; empty on the pre-key paths)
-    lineage_keys = tuple(ask.STAGES_LAST[s] for s in ("retrieve", "synthesize")
-                         if s in ask.STAGES_LAST)
-    nv = ask.NARRATIVE_LAST  # the §7 claim set behind this answer (None off-path)
-    lk = ask.LOOKUP_LAST
+    lineage_keys = tuple(ask.TERM.STAGES_LAST[s] for s in ("retrieve", "synthesize")
+                         if s in ask.TERM.STAGES_LAST)
+    nv = ask.TERM.NARRATIVE_LAST  # the §7 claim set behind this answer (None off-path)
+    lk = ask.TERM.LOOKUP_LAST
     # the production path's own decision: an EU abstention asserts nothing — the
     # deterministic decline verdict, not the judge, classifies it (classifier v2)
     declined = ((nv is not None and nv.action == "abstain")
@@ -1926,7 +1924,7 @@ def main() -> int:
         events: list = []
         for q in questions:
             ask.answer(conn, q["question"], args.k)
-            lk = ask.LOOKUP_LAST
+            lk = ask.TERM.LOOKUP_LAST
             if lk is None:
                 rows.append({"id": q["id"], "question": q["question"],
                              "routed": False, "action": None, "top": "",

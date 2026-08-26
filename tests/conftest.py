@@ -96,7 +96,7 @@ def _hermetic_pkm_root(request: pytest.FixtureRequest, tmp_path_factory: pytest.
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
     import ask
 
-    monkeypatch.setattr(ask, "_pkm_root", lambda: root)
+    monkeypatch.setattr(ask.TERM, "_pkm_root", lambda: root)
 
 
 @pytest.fixture(autouse=True)

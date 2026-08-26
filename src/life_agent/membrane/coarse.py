@@ -1,59 +1,32 @@
-"""coarse.py — M3: the coarse menu live (gold-standard roadmap, 2026-07-19).
+"""coarse.py — the shadow worker's coarse-act mapping (measurement only).
 
-The proplang engine chooses among this world's four affordances — abstain, gather, ask,
-respond — ON the answer path, flag-gated (``LIFE_AGENT_MEMBRANE_LIVE=1``; absence is the
-default and leaves every caller byte-for-byte on today's behaviour). The daemon still
-computes the posterior each tick; the engine's coarse choice is mapped onto an ENACTABLE
-rewrite of the daemon's own decision view, committed through the one act seam
-(:mod:`life_agent.core.seam` — ``DaemonDecide.live`` is this module's closure).
+The M3 live lane died at M5 (Q8, r15): the engine's coarse choice is never enacted.
+What survives is :func:`map_action` — the PURE mapping from an engine affordance
+(abstain / gather / ask / respond) onto what an enactment WOULD have been, given the
+daemon's decision view. It runs BRIDGE-SIDE inside the shadow worker, so the one
+``enact``-distance record can name both the engine's choice and what the host actually
+did — the shadow's distance from the decision is the measurement (register §6.2).
 
-Two surfaces:
-
-* :func:`map_action` — the pure mapping. Runs BRIDGE-SIDE (inside the shadow worker,
-  :meth:`life_agent.membrane.shadow.MembraneShadow.decide_live`), so the one ``enact``
-  record can name both the engine's choice and what the host actually enacted.
-* :func:`live_decide` — the host-side consult closure: one ``POST /decide-live``
-  round-trip on its own bounded transport; ANY failure (down bridge, dead engine,
-  malformed reply) is the DECLARED :data:`~life_agent.core.seam.GATE_ENGINE_DOWN`
-  abstain, never a silent host guess.
-
-**The transitional rules (every one named, each with its M5 exit):**
+**The mapping rules (measurement semantics, inherited from the retired lane):**
 
 * **Agreement passes through.** When the engine's coarse act matches the daemon's
   effector's coarse class (:data:`~life_agent.membrane.world.REAL_TO_MEMBRANE`), the
-  daemon's view stands unchanged — fine-grained selection (report vs hedge, which
-  probe) is the daemon's until M5's value-indexed acts land.
-* **respond → host MAP.** The engine holds no per-candidate posterior (E1 is the
-  categorical-outcome extension, not yet built), so an engine respond over a daemon
-  withhold asserts the MAP candidate (argmax credence). No candidates ⇒ degradation
-  ``respond_no_value`` ⇒ abstain.
-* **gather → cheapest unapplied voi transform.** The engine's gather is coarse; the
-  fine actuator is chosen transitionally as the first unapplied ``kind: "voi"`` row of
-  the payload's own transform menu (menu order = cost order — the k=0 walk's own
-  precedent). Guards are never selected (they are trigger-conditional and
-  daemon-priced). Exhausted ⇒ degradation ``gather_exhausted``: the enactable remainder
-  {abstain, ask, respond} is argmaxed at the engine's OWN p1 readout under the world's
-  one utility source (:func:`~life_agent.membrane.world.eu_by_action` over the
-  payload's u_bar) — the engine's world, restricted to what the host can still do; a
-  missing p1/u_bar ⇒ ``no_p1`` ⇒ abstain. E3 (engine-held stop-rule) is this rule's
-  exit.
+  daemon's view stands unchanged.
+* **respond → MAP.** The engine holds no per-candidate posterior, so an engine respond
+  over a daemon withhold asserts the MAP candidate (argmax credence). No candidates ⇒
+  degradation ``respond_no_value`` ⇒ abstain.
+* **gather → cheapest unapplied voi transform** from the payload's own transform menu
+  (menu order = cost order). Guards are never selected. Exhausted ⇒ degradation
+  ``gather_exhausted``: the remainder {abstain, ask, respond} argmaxed at the engine's
+  own p1 readout under the world's one utility source
+  (:func:`~life_agent.membrane.world.eu_by_action`); missing p1/u_bar ⇒ ``no_p1`` ⇒
+  abstain.
 """
 from __future__ import annotations
 
-import json
-import urllib.request
 from typing import Any
 
-from life_agent.core import seam as SEAM
-
 from . import world as W
-
-# The live consult's own transport bound. This IS on the answer path (deliberately — the
-# engine is the decider now), but a wedged bridge must cost a bounded wait, never a
-# real-leg 300s timeout: past this, the consult fails into the declared engine-down
-# abstain. Comfortably above the shadow's own bounded wait (shadow._LIVE_WAIT_S), so the
-# bridge's honest "down" reply is what times out last, not first.
-LIVE_TIMEOUT_S = 20.0
 
 # The engine's coarse vocabulary mapped to the effector the host enacts on an OVERRIDE
 # (agreement keeps the daemon's finer effector instead — see map_action).
@@ -120,39 +93,3 @@ def map_action(payload: dict[str, Any], dec: dict[str, Any], action: str,
     assert action == "gather", f"undeclared engine action {action!r}"
     return _gather(payload, dec, readouts)
 
-
-# --- the host-side consult closure (the seam's DaemonDecide.live) ------------------------
-
-
-def _live_post(url: str, payload: dict[str, Any]) -> dict[str, Any] | None:
-    """The consult's own transport — the same urllib idiom as every poster in this
-    codebase, bounded to :data:`LIVE_TIMEOUT_S`. Never a real-leg 300s poster."""
-    req = urllib.request.Request(url, data=json.dumps(payload).encode(),
-                                 headers={"Content-Type": "application/json"}, method="POST")
-    with urllib.request.urlopen(req, timeout=LIVE_TIMEOUT_S) as r:
-        out: dict[str, Any] | None = json.loads(r.read())
-        return out
-
-
-def live_decide(bridge: str, question_id: str, *,
-                post: Any = _live_post) -> SEAM.LiveFn:
-    """The seam's live consult for one question: each call posts the tick's
-    (payload, daemon reply) pair to the bridge's ``/decide-live`` and commits the
-    mapped view it returns. ANY failure — a down bridge, a dead/timed-out engine
-    (``ok: false``), a malformed reply — returns the DECLARED abstain with
-    :data:`~life_agent.core.seam.GATE_ENGINE_DOWN` named, the posterior fields kept so
-    the abstain renders honestly."""
-
-    def consult(payload: dict[str, Any],
-                reply: dict[str, Any]) -> tuple[dict[str, Any], str | None]:
-        try:
-            resp = post(f"{bridge}/decide-live",
-                        {"question_id": question_id, "payload": payload, "dec": reply})
-        except Exception:
-            resp = None
-        if (not isinstance(resp, dict) or not resp.get("ok")
-                or not isinstance(resp.get("dec"), dict)):
-            return _withhold(reply, "abstain"), SEAM.GATE_ENGINE_DOWN
-        return resp["dec"], None
-
-    return consult

@@ -29,7 +29,6 @@ from life_agent.core import lookup as LK
 from life_agent.core import recorder as REC
 from life_agent.core import seam as SEAM
 from life_agent.core import shadow_mirror as SM
-from life_agent.membrane import coarse as CRS
 
 BRIDGE = os.environ.get("LIFE_AGENT_BRIDGE_URL", "http://127.0.0.1:8798")
 DAEMON = os.environ.get("ANSWER_BRAIN_URL", "http://127.0.0.1:8799")
@@ -124,15 +123,16 @@ def _menu(hold_out_question_id: str | None = None
 
 
 class DriveResult:
-    """The one driver's return: the loop's ``view`` (``None`` on a down stack), the
-    ``decision_id`` a verdict can bind to (``None`` when nothing foldable was posted),
-    and the ``down`` fact."""
+    """The one driver's return: the loop's ``view`` (``None`` on a down stack or a
+    terminals-only answer), the ``decision_id`` a verdict can bind to (``None`` when
+    nothing foldable was posted), the ``down`` fact, and — for a terminals-only answer
+    (M5, §2.3) — the leaf-rendered ``text``."""
 
-    __slots__ = ("decision_id", "down", "view")
+    __slots__ = ("decision_id", "down", "text", "view")
 
     def __init__(self, view: dict[str, Any] | None, decision_id: str | None,
-                 down: bool = False) -> None:
-        self.view, self.decision_id, self.down = view, decision_id, down
+                 down: bool = False, text: str | None = None) -> None:
+        self.view, self.decision_id, self.down, self.text = view, decision_id, down, text
 
 
 def post_decision(post: Any, bridge: str, question: str, view: dict[str, Any], *,
@@ -168,6 +168,25 @@ def post_decision(post: Any, bridge: str, question: str, view: dict[str, Any], *
         return None
 
 
+def _terminals_answer(question: str, k: int) -> tuple[str, str | None]:
+    """The terminals-only regime's enactment (M5, §2.3): open the catalogue read-only,
+    run the absorbed in-process body (`life_agent.core.terminals` — lazily imported so
+    the reach surface pays its weight only when the stack is down), and return the
+    leaf-rendered text with the decision_id the leaf recorded (a verdict binds to it
+    exactly as on the full regime). The leaves are the writers — the §18.9 node and the
+    ledger row landed with ``regime: "terminals-only"`` before this returns."""
+    from life_agent.core import terminals as TERM
+    conn = TERM.connect()
+    try:
+        text, _cards, _scores = TERM.answer(conn, question, k)
+    finally:
+        conn.close()
+    lk, nv = TERM.LOOKUP_LAST, TERM.NARRATIVE_LAST
+    decision_id = (lk.answer_cache_key if lk is not None
+                   else nv.answer_cache_key if nv is not None else None)
+    return text, decision_id
+
+
 def drive(question: str, k: int = 20, *, bridge: str | None = None,
           daemon: str | None = None, post: Any = None, get: Any = None,
           run_id: str | None = None, ready: Any = None,
@@ -182,10 +201,17 @@ def drive(question: str, k: int = 20, *, bridge: str | None = None,
     bridge = bridge if bridge is not None else BRIDGE
     daemon = daemon if daemon is not None else DAEMON
     if check_ready and not (ready if ready is not None else _ready)():
-        # A down stack is a DECLARED observation into the one act seam — the seam chooses
-        # abstain and the host obeys, naming the reason (interaction contract). Nothing
-        # but abstain is ENACTABLE against a down stack — an enactment constraint, not a
-        # second decision (test_seam pins the gate contract).
+        # The terminals-only regime (M5/r15, §2.3, Q1 signed): an unavailable daemon
+        # answers over T — the absorbed in-process body runs, its leaves rank by the
+        # skin and RECORD their decision with regime="terminals-only" — rather than
+        # going mute. Only when the terminals body itself cannot run (no catalogue, no
+        # skin) does the §6.5 unavailability record land: there, and only there, no
+        # optimiser ran.
+        try:
+            text, decision_id = _terminals_answer(question, k)
+            return DriveResult(None, decision_id, text=text)
+        except Exception as e:
+            print(f"  (terminals-only regime unavailable: {e})")
         gated = SEAM.commit(None, gates=(SEAM.GATE_EXECUTOR_DOWN,))
         assert gated.action == "abstain"
         # M2 advisory mirror, fail-open: the bridge (which hosts the shadow) may be the
@@ -198,15 +224,10 @@ def drive(question: str, k: int = 20, *, bridge: str | None = None,
     # The ONE question_id derivation — the same key /log_decision stamps on the decision,
     # so a mirrored decide tick and its decision join.
     question_id = DEC.question_id(question)
-    if CFG.membrane_live():
-        # M3: the live consult records its own enact tick — the decide mirror stays off
-        # (one engine, one consult per tick).
-        live, wrapped = CRS.live_decide(bridge, question_id), post
-    else:
-        live, wrapped = None, SM.shadow_wrapped_post(post, bridge, question_id)
+    wrapped = SM.shadow_wrapped_post(post, bridge, question_id)
     transforms, curves = _menu(hold_out_question_id)
     view = EX.decide_via_loop(question, k, bridge=bridge, daemon=daemon,
-                              post=wrapped, get=get, live=live,
+                              post=wrapped, get=get,
                               transforms=transforms, curves=curves)
     return DriveResult(view, post_decision(post, bridge, question, view, run_id=run_id))
 

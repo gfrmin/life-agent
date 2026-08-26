@@ -155,7 +155,7 @@ def test_main_returns_2_on_locked_corpus(monkeypatch, capsys) -> None:
     def _locked() -> None:
         raise duckdb.Error("Could not set lock on file catalogue.duckdb: Conflicting lock")
 
-    monkeypatch.setattr(ask, "_pkm_root", lambda: None)   # hermetic: no reconcile I/O
+    monkeypatch.setattr(ask.TERM, "_pkm_root", lambda: None)   # hermetic: no reconcile I/O
     monkeypatch.setattr(ask, "connect", _locked)
     assert ask.main(["what is my id?"]) == 2
     assert "corpus locked" in capsys.readouterr().err
@@ -232,7 +232,7 @@ def test_tell_records_fact_without_touching_corpus(monkeypatch, tmp_path) -> Non
 
 def test_one_shot_temporal_routing(monkeypatch) -> None:
     # The argv words are joined and parsed by parse_line; the predicate reaches ask_once.
-    monkeypatch.setattr(ask, "_pkm_root", lambda: None)   # hermetic: no reconcile I/O
+    monkeypatch.setattr(ask.TERM, "_pkm_root", lambda: None)   # hermetic: no reconcile I/O
     monkeypatch.setattr(ask, "connect", lambda: None)
     seen: dict = {}
 
@@ -272,31 +272,6 @@ def test_removed_flags_stay_removed() -> None:
 
 # --- reliability: weak-retrieval abstention floor -------------------------- #
 
-def test_retrieval_is_weak_truth_table() -> None:
-    assert ask.retrieval_is_weak({}, floor=4.0, min_hits=1)                  # zero retrieval
-    assert ask.retrieval_is_weak({1: 3.9, 2: 1.0}, floor=4.0, min_hits=1)    # none clear the floor
-    assert not ask.retrieval_is_weak({1: 5.0}, floor=4.0, min_hits=1)        # one strong hit
-    assert ask.retrieval_is_weak({1: 5.0}, floor=4.0, min_hits=2)            # need 2, have 1
-    assert not ask.retrieval_is_weak({1: 9.0, 2: 8.0}, floor=4.0, min_hits=2)
-
-
-def test_answer_abstains_on_weak_retrieval_without_calling_llm(monkeypatch) -> None:
-    monkeypatch.setattr(owner, "load_profile", lambda: "")  # no profile to answer from
-    monkeypatch.setattr(ask, "_pkm_root", lambda: None)     # hermetic: no live cache I/O
-    monkeypatch.setattr(
-        ask, "_retrieve_set",
-        lambda conn, q, k: [{"artifact_cache_key": "a" * 64, "chunk_text": "x",
-                             "score": 1.0, "origin": "/data/a.pdf"}],  # weak score
-    )
-    monkeypatch.setattr(
-        ask.C, "anthropic_complete",
-        lambda *a, **k: (_ for _ in ()).throw(AssertionError("synthesis LLM must not run")),
-    )
-    text, cards, _ = ask.answer(conn=None, question="q", k=8, expand=False)
-    assert text == ask.ABSTENTION
-    assert [c.n for c in cards] == [1]  # weak hits still returned for the dogfood log
-
-
 def test_log_entry_records_unverified_line() -> None:
     e = ask.log_entry("q?", "ID 222222222 [1]", _cards(), {1: 0.5, 2: 0.4},
                       "BAD", when="10:00", unverified="[1] ID 222222222")
@@ -311,11 +286,11 @@ def test_narrative_scored_returns_labeled_render(monkeypatch) -> None:
     fake = SimpleNamespace(rendered="- claim — credence 0.900\n\nfooter",
                            answer_cache_key="nk")
     monkeypatch.setattr(N, "narrative_answer", lambda *a, **k: fake)
-    ask.STAGES_LAST = {"synthesize": "sk"}
+    ask.TERM.STAGES_LAST = {"synthesize": "sk"}
     out = ask._narrative_scored(Path("/fake/root"), "q?", "raw prose [1]", _cards())
     assert out == fake.rendered
-    assert ask.NARRATIVE_LAST is fake
-    assert ask.STAGES_LAST["narrative_answer"] == "nk"
+    assert ask.TERM.NARRATIVE_LAST is fake
+    assert ask.TERM.STAGES_LAST["narrative_answer"] == "nk"
 
 
 def test_narrative_scored_fail_open_is_named(monkeypatch, capsys) -> None:
@@ -325,10 +300,10 @@ def test_narrative_scored_fail_open_is_named(monkeypatch, capsys) -> None:
         raise RuntimeError("fold exploded")
 
     monkeypatch.setattr(N, "narrative_answer", _boom)
-    ask.NARRATIVE_LAST = None
+    ask.TERM.NARRATIVE_LAST = None
     out = ask._narrative_scored(Path("/fake/root"), "q?", "raw prose [1]", _cards())
     assert out == "raw prose [1]"  # the proposal still reaches the owner
-    assert ask.NARRATIVE_LAST is None
+    assert ask.TERM.NARRATIVE_LAST is None
     printed = capsys.readouterr().out
     assert N.GRAMMAR["fallthrough"].format(reason="failed: fold exploded") in printed
 
@@ -480,8 +455,8 @@ def test_record_reaction_binds_verdict_to_executor_decision(monkeypatch, tmp_pat
     # The in-session g/b verdict must bind to the EXECUTOR's logged decision id — else the fold
     # never joins it. Mirrors the legacy path's bind via LOOKUP_LAST.answer_cache_key.
     monkeypatch.setattr(ask, "EXECUTOR_LAST", "ab-deadbeef")
-    monkeypatch.setattr(ask, "LOOKUP_LAST", None)
-    monkeypatch.setattr(ask, "NARRATIVE_LAST", None)
+    monkeypatch.setattr(ask.TERM, "LOOKUP_LAST", None)
+    monkeypatch.setattr(ask.TERM, "NARRATIVE_LAST", None)
     log = tmp_path / "reactions.jsonl"
     monkeypatch.setattr(ask.C, "REACTIONS_LOG", log)
     ask._record_reaction("my passport?", "GOOD")
@@ -502,17 +477,17 @@ def test_ask_once_defaults_to_executor_when_ready(monkeypatch) -> None:
     assert seen["text"] == "EXEC"
 
 
-def test_ask_once_falls_back_to_legacy_when_daemon_down(monkeypatch, capsys) -> None:
-    # The flip is robust: a down daemon falls back to the in-process path, NAMED (never silent).
+def test_ask_once_always_drives_the_one_path(monkeypatch) -> None:
+    # M5 (r15, B-1/B-5): the dispatch died — ask_once drives the executor surface
+    # unconditionally; a down stack is the DRIVER's terminals-only branch, never a
+    # host-side flip here.
     monkeypatch.setattr(ask, "_executor_ready", lambda: False)
     monkeypatch.setattr(ask, "answer_via_executor", lambda q, k: ("EXEC", [], {}))
-    monkeypatch.setattr(ask, "answer", lambda *a, **k: ("LEGACY", [], {}))
     monkeypatch.setattr(ask, "capture", lambda *a, **k: None)
     seen: dict[str, str] = {}
     monkeypatch.setattr(ask, "render", lambda text, *a, **k: seen.update(text=text))
     ask.ask_once(None, "my passport?", 20)
-    assert seen["text"] == "LEGACY"
-    assert "in-process" in capsys.readouterr().out  # the named fallback notice
+    assert seen["text"] == "EXEC"
 
 
 def test_ask_once_clears_stale_executor_decision_on_legacy(monkeypatch) -> None:
@@ -526,18 +501,6 @@ def test_ask_once_clears_stale_executor_decision_on_legacy(monkeypatch) -> None:
     monkeypatch.setattr(ask, "render", lambda *a, **k: None)
     ask.ask_once(None, "q?", 20)
     assert ask.EXECUTOR_LAST is None
-
-
-def test_ask_once_legacy_flag_forces_in_process(monkeypatch) -> None:
-    # --legacy (executor=False) forces the in-process path even when the daemon is up.
-    monkeypatch.setattr(ask, "_executor_ready", lambda: True)
-    monkeypatch.setattr(ask, "answer_via_executor", lambda q, k: ("EXEC", [], {}))
-    monkeypatch.setattr(ask, "answer", lambda *a, **k: ("LEGACY", [], {}))
-    monkeypatch.setattr(ask, "capture", lambda *a, **k: None)
-    seen: dict[str, str] = {}
-    monkeypatch.setattr(ask, "render", lambda text, *a, **k: seen.update(text=text))
-    ask.ask_once(None, "my passport?", 20, executor=False)
-    assert seen["text"] == "LEGACY"
 
 
 def test_the_edge_curves_shim_is_dead() -> None:
