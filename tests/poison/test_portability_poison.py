@@ -18,6 +18,7 @@ use `%h` because each was written that way, with no check anywhere. Two layers h
 """
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -35,6 +36,17 @@ _PATH_DIRECTIVES = ("ExecStart", "ExecStartPre", "ExecStartPost", "ExecStop", "E
 #: ONE machine's filesystem.
 _SYSTEM_PREFIXES = ("/usr/", "/bin/", "/sbin/", "/lib/", "/lib64/", "/etc/", "/opt/",
                     "/run/", "/var/", "/proc/", "/sys/", "/dev/", "/tmp/")
+
+#: Directives whose value carries no path. Every directive appearing in `packaging/` must
+#: be in this set or in `_PATH_DIRECTIVES` — a new one fails the classification census
+#: below rather than being silently unchecked, which is what a bare allowlist would do.
+_NON_PATH_DIRECTIVES = frozenset({
+    "Description", "Documentation", "After", "Wants", "Requires", "Before",
+    "Type", "Restart", "RestartSec", "TimeoutStartSec", "WantedBy", "RequiredBy",
+    "OnCalendar", "OnBootSec", "OnUnitActiveSec", "Persistent", "AccuracySec",
+    "RandomizedDelaySec", "User", "Group", "StandardOutput", "StandardError",
+    "SyslogIdentifier", "RemainAfterExit", "Unit",
+})
 
 _REPO_PREFIX = "%h/git/life-agent"
 
@@ -135,12 +147,48 @@ def test_poison_every_unit_execstart_names_a_file_in_this_repo() -> None:
     assert not missing, f"unit ExecStart(s) naming a file that is not in the repo: {missing}"
 
 
+def test_poison_every_directive_in_use_is_classified() -> None:
+    """The unit rule reads a LIST of path directives, so a directive not on that list is
+    unchecked — a census whose universe is a list (row 22) sitting inside the census that
+    enforces row 24. Closed by requiring every directive actually used in `packaging/` to
+    be classified as path-carrying or not.
+
+    MUST FAIL when a unit starts using a directive neither set names. Killed by appending
+    `BindReadOnlyPaths=/srv/data` to any unit: it is unclassified, so the portability rule
+    would not read it at all, and this census fails until someone decides which set it
+    joins."""
+    unclassified: dict[str, list[str]] = {}
+    known = set(_PATH_DIRECTIVES) | _NON_PATH_DIRECTIVES
+    for unit in sorted(_PACKAGING.glob("*.service")) + sorted(_PACKAGING.glob("*.timer")):
+        for line in unit.read_text(encoding="utf-8").splitlines():
+            s = line.strip()
+            if s.startswith(("#", ";", "[")) or "=" not in s:
+                continue
+            key = s.partition("=")[0].lstrip("-+@:!").strip()
+            if key not in known:
+                unclassified.setdefault(key, []).append(unit.name)
+    assert not unclassified, (
+        f"systemd directive(s) in use that neither set classifies: {unclassified} — decide "
+        f"whether each carries a path (_PATH_DIRECTIVES) or not (_NON_PATH_DIRECTIVES). "
+        f"Until then the portability rule does not read them at all.")
+
+
 # --- the wrappers: behaviour, against a sandbox HOME ----------------------------------
 
-#: Every wrapper that hands off with `uv run --project "$root"`. `answer-brain` is the one
-#: that does not (it starts two services first) and has its own fixture below.
-_WRAPPERS = ("answer-bridge", "ask-live", "daily-digest", "gtd-web", "jarvis",
-             "mail-to-tasks", "production-readout", "trips-web", "verdict-live")
+#: The one wrapper that does NOT hand off with `uv run --project "$root"` (it starts two
+#: background services first) and so has its own fixture below. Declared as an EXCEPTION
+#: rather than by listing the other nine: a hard-coded list of wrappers is a census whose
+#: universe is a list, and a wrapper added later would simply never be checked — the exact
+#: defect (row 22) this milestone exists to close, in the guard that closes it.
+_WRAPPER_EXCEPTIONS = frozenset({"answer-brain"})
+
+
+def wrappers(root: Path) -> tuple[str, ...]:
+    """Every executable in `bin/`, minus the declared exceptions. The DIRECTORY is the
+    universe, so a new wrapper is covered the moment it is added."""
+    return tuple(sorted(
+        p.name for p in (root / "bin").iterdir()
+        if p.is_file() and os.access(p, os.X_OK) and p.name not in _WRAPPER_EXCEPTIONS))
 
 
 def _sandbox(tmp_path: Path) -> tuple[dict[str, str], Path, Path]:
@@ -174,7 +222,11 @@ def test_poison_every_wrapper_resolves_this_repo_from_a_sandbox_home(tmp_path: P
     exact regression this file exists to stop: it is invisible on the box the repo lives on,
     which is every box anyone runs the suite on."""
     env, args_file, linkdir = _sandbox(tmp_path)
-    for name in _WRAPPERS:
+    names = wrappers(_ROOT)
+    assert len(names) >= 9, (
+        f"only {len(names)} wrapper(s) found in bin/ — the census reads the directory, so an "
+        f"empty or unreadable bin/ would silently check nothing: {names}")
+    for name in names:
         wrapper = _ROOT / "bin" / name
         assert wrapper.is_file(), f"bin/{name} is missing"
         link = linkdir / name

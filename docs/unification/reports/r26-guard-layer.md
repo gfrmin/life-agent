@@ -338,3 +338,25 @@ pure equality, so it is scoped to its own pre-registration.
 G1 **2849 passed**, 35 deselected; ruff clean; mypy clean on 226 files; PII exit 0 with
 the name layer live · G2 **314/314 pure equality** on `m5-base` · G3 not bought (C12) · G4 the adversary
 pass, below.
+
+### Post-RESULTS self-audit (same day, before G4 read)
+
+Re-reading the new portability guard against this milestone's own rule 22 found **two
+list-shaped universes inside the guard that enforces it**:
+
+- `_WRAPPERS` was a hard-coded tuple of nine names, so a wrapper added later would simply
+  never be checked. The universe is now the **`bin/` directory** (executables minus one
+  declared exception), with a floor assertion so an empty or unreadable `bin/` cannot
+  silently check nothing.
+- `_PATH_DIRECTIVES` is a list, so a systemd directive not on it is not read at all. Every
+  directive appearing in `packaging/` must now be classified as path-carrying or not, and a
+  new one fails until someone decides which set it joins.
+
+Three further mutations RED: a new wrapper reading its root from `$HOME` is caught without
+editing the test; an unclassified directive appended to a unit fails; narrowing the `bin/`
+census to match nothing fails the floor. C8's mutation count is **ten**, not the seven
+recorded above.
+
+The finding worth keeping is not the two gaps. It is that a milestone whose whole subject is
+*a census whose universe is a string* shipped two of them in its own new guard, and they
+were found by re-reading rather than by any check — the same way K2's adversary found eight.
