@@ -412,18 +412,41 @@ def _recall(missed: tuple[str, ...] = (), estimated: bool = True) -> RecallPoste
 
 # --- the roll-up branch --------------------------------------------------------------
 
-def test_rollup_at_scope_end_is_the_single_observation() -> None:
+def test_rollup_at_scope_end_joins_the_series() -> None:
+    """K2 (r24). This asserted the REPLACE behaviour until 2026-08-27: the roll-up became
+    the single observation at zero width with k=1, and the series was discarded. The two
+    are channels on one belief — the roll-up is the point (the issuer's own fold), the
+    interval spans both reads, k counts both, and the gap is named."""
     rollup = _addend(doc_key="stmt", basis="other", as_of="2025-09-30",
                      amount=31937.0, amount_raw="31,937")
     months = _series([7, 8, 9])
+    series_sum = sum(a.amount for a in months)
     [tp] = compose_total(TabularBrain(), [rollup, *months], DEPOSIT_SCOPE,
                          target_kind="deposit", recall=_recall())
-    assert (tp.point, tp.lo, tp.hi) == (31937.0, 31937.0, 31937.0)
-    assert "roll-up" in tp.basis_note
-    assert tp.k == 1
+    assert tp.point == pytest.approx(31937.0)          # the issuer's fold is the point
+    assert tp.lo <= min(31937.0, series_sum)           # ... but the interval spans
+    assert tp.hi >= max(31937.0, series_sum)           # ... both channels
+    assert tp.k == 1 + len(months)                     # nothing discarded
+    assert "DISAGREES" in tp.basis_note
 
 
-def test_competing_rollups_fall_back_to_the_series_named() -> None:
+def test_rollup_agreeing_with_the_series_is_not_padded() -> None:
+    """K2. Agreement is evidence, not an excuse for width — the gate's Winkler score
+    prices interval width, so the join must not manufacture any."""
+    months = _series([7, 8, 9])
+    agreed = sum(a.amount for a in months)
+    rollup = _addend(doc_key="stmt", basis="other", as_of="2025-09-30", amount=agreed)
+    [tp] = compose_total(TabularBrain(), [rollup, *months], DEPOSIT_SCOPE,
+                         target_kind="deposit", recall=_recall())
+    assert (tp.point, tp.lo, tp.hi) == pytest.approx((agreed, agreed, agreed))
+    assert "agree" in tp.basis_note
+    assert tp.k == 1 + len(months)
+
+
+def test_competing_rollups_keep_the_series_as_the_point_and_span_every_read() -> None:
+    """K2. Competing roll-ups no longer make the series 'the fallback': every read is kept,
+    the series supplies the point (no roll-up can claim it), and the interval spans them
+    all — which is deliberately wide when the reads disagree by two orders of magnitude."""
     r1 = _addend(doc_key="stmt", basis="other", as_of="2025-09-30", amount=31937.0)
     r2 = _addend(doc_key="stmt", basis="other", as_of="2025-09-30", amount=283886.0)
     months = _series([7, 8, 9])
@@ -431,7 +454,8 @@ def test_competing_rollups_fall_back_to_the_series_named() -> None:
                          target_kind="deposit", recall=_recall())
     assert tp.point == pytest.approx(sum(a.amount for a in months))
     assert "competing" in tp.basis_note
-    assert tp.k == 3
+    assert tp.k == 2 + len(months)
+    assert tp.lo <= 31937.0 and tp.hi >= 283886.0
 
 
 # --- the same-doc issuer fold (the stated-total row) ---------------------------------

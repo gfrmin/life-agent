@@ -100,3 +100,82 @@ off the decision path, and J6 is the evidence · G4 the adversary pass closes th
 ## RESULTS
 
 *(appends here; nothing above is edited)*
+
+**Read 2026-08-27, $0. All seven frozen criteria MET. No priced run bought.**
+
+### J1 — no channel is discarded: MET
+
+With one roll-up and a three-document monthly series, `k == 4` (was 1). `s_obs` carries both
+channels. The `if len(candidates) == 1:` early return is gone; nothing in `_compose_one`
+returns while a non-empty series is in scope.
+
+### J2 — the interval spans every channel: MET
+
+Issuer 31937.00 against a series of 324.00 now returns an interval containing both (it was
+`[31937.0, 31937.0]`, excluding the series entirely). Competing roll-ups keep every read:
+`lo <= 31937.00` and `hi >= 283886.00`.
+
+That interval is very wide, and deliberately so. Two reads differing by two orders of
+magnitude is a situation the report should be uncertain about; `gate.realised_aggregate`
+scores by Winkler at a frozen central level, so the width is **priced**, not free. That is
+the check on this rule and the reason the join spans the channels rather than padding
+beyond them.
+
+### J3 — agreement is not padded: MET
+
+Roll-up equal to the series sum with no imputed slots ⇒ `lo == hi == point` at that value
+and `k == 4`. Agreement is evidence: it earns a zero-width interval *and* a four-observation
+count, where the old branch gave zero width on one observation.
+
+### J4 — disagreement is named: MET
+
+`basis_note` reads *"issuer roll-up X DISAGREES with the summed series Y (gap Z) — both
+channels kept, the interval spans them"*, or *"...agree at X (k observations)"*. The old
+note said *"issuer roll-up at the scope end is the single observation; N finer rows are
+slot evidence"* — describing the discard as though it were a finding.
+
+### J5 — the replace branch cannot return: MET
+
+`tests/poison/test_join_poison.py`, six fixtures. **Verified RED by mutation**: restoring
+the `if len(candidates) == 1:` early return fails three of them by name —
+*"the composition kept 1 observation(s) where 4 were grounded"*, *"interval [31937.0,
+31937.0] excludes one of the two channel reads"*, and *"the two channels disagree and the
+basis note does not say so"*.
+
+### J6 — the decision path does not move: MET, pure equality
+
+**314/314 fixtures replay identically**, exit 0. The premise was verified before the prereg
+was frozen (the only importer of `core/aggregate.py` in `src/` or `scripts/` is
+`scripts/aggregate_eval.py`) and the replay confirms it rather than assuming it.
+
+### J7 — every new fixture names its mutation: MET
+
+Enforced by register row 19, landed in r23's follow-on and running in CI.
+
+### Two existing tests encoded the defect and were rewritten
+
+`test_rollup_at_scope_end_is_the_single_observation` asserted
+`(point, lo, hi) == (v, v, v)` and `k == 1` — it pinned the discard as correct behaviour.
+`test_competing_rollups_fall_back_to_the_series_named` asserted `k == 3`, silently accepting
+that two roll-up observations vanished. Both are rewritten to the join, and a third test was
+added for the agreement case, which had no coverage at all.
+
+This is the second time in two days that the tests over a module encoded the very defect the
+module carried (the first: `AMOUNTS_PRODUCERS`' fixtures restating the wrong constant). Both
+were invisible for the same reason — the test was written from the implementation rather
+than from the contract.
+
+### `_issuer_fold` is untouched, and the distinction is load-bearing
+
+A *same-document* stated total genuinely is the issuer's fold of its own parts: one document,
+one arithmetic, no second channel. `_COARSE_BASES` excludes `point_in_time`, so that path
+never enters the roll-up join. Only the **cross-document** roll-up-versus-series case is a
+two-channel situation, and only that case changed.
+
+### Gates
+
+G1 `pytest -m "not llm and not system"` **2815 passed**, 35 deselected; `ruff` clean; `mypy`
+clean on 226 files; PII guard exit 0.
+G2 **314/314 pure equality** on `m5-base`.
+G3 not bought — J6 is the evidence.
+G4 the adversary pass closes the milestone.
