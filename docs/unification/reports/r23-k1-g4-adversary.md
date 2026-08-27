@@ -249,3 +249,38 @@ G4 not re-run: a second adversary pass belongs to the next milestone.
 
 All six are disclosed rather than quietly corrected, because a milestone that converts an
 adversary's findings while hiding its own is doing the thing it was built to stop.
+
+---
+## FOLLOW-ON (2026-08-27, same day, $0) — the consequences of the disclosures above
+
+The six defects disclosed above were recorded and nothing was done with them. That is the
+failure the whole method exists to prevent: *a report is a photograph, the repository is a
+film.* Owner challenge, same day: "no consequences from the learnings?" Correct. This
+section is the consequence, and it is machine-checked, not prose.
+
+**F10 was a CLASS, not a guard.** The adversary named two siblings; a census found **nine**
+`assert "<name>(" in inspect.getsource(...)` assertions across `test_m7_register.py` and
+`test_m6_declaration.py`. One was converted in r23 and eight were left standing — the exact
+"finding is not the deliverable" error, committed while writing the milestone about it.
+
+Landed:
+- `tests/_guard_ast.py` — `calls(obj, name)` resolves a call by AST walk, so a name in a
+  comment or docstring is not a call. All nine assertions converted, each now carrying a
+  marker naming its tooth (verified: removing `DEC.edge_id(` while leaving the name in a
+  comment produces *"EX.extract_edge does not CALL edge_id() — one declaration, one home"*).
+- **Register row 18** — no guard may prove a call with a substring. Mutation: reintroducing
+  `assert "leader_order(" in inspect.getsource(LK)` fails it by file and line.
+- **Register row 19** — every `test_poison_*` fixture must name, in its docstring, the
+  planted violation that kills it. Mutation: a fixture with a docstring naming no kill fails
+  it by name. This is the standing answer to r23's own worst defect — a control that passed
+  its own mutation and would have been recorded as `resolved` on the strength of passing.
+
+Scoped honestly, and both scopings were found by **running the rules against the tree before
+believing them** (r23's own lesson, applied immediately): row 18 anchors at the start of a
+stripped line, because prose *quoting* the forbidden pattern is not a use of it; row 19
+covers `test_poison_*` only, because the precision controls beside them (a rule must NOT
+fire on legitimate content) are a different and equally necessary category with no mutation
+by construction.
+
+Register: **13 resolved / 9 instrumented**. Gates: G1 **2810 passed** + clean lint/type/PII;
+G2 **314/314 pure equality**; G3 not bought.

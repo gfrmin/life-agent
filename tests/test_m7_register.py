@@ -7,8 +7,15 @@ must exist on the tree (an entry whose pin rots fails loudly). Both were verifie
 by mutation before landing (a fake 6.99 entry; a mangled needle)."""
 from __future__ import annotations
 
+import sys
+from pathlib import Path as GuardPath
+
+sys.path.insert(0, str(GuardPath(__file__).resolve().parent))
+
 import re
 from pathlib import Path
+
+import _guard_ast as G
 
 _ROOT = Path(__file__).resolve().parent.parent
 _DESIGN = _ROOT / "docs" / "module-collapse-design.md"
@@ -97,7 +104,6 @@ def test_d6_membrane_mapping_domain_is_gated_on_the_real_vocabulary() -> None:
 def test_d4_the_leader_order_is_one_view() -> None:
     """One stable weight-desc index view (labels only — the argmax is the engine's);
     the three render/poster sites bind it."""
-    import inspect
 
     from life_agent.bridge import server as BR
     from life_agent.core import decisions as DEC
@@ -107,6 +113,12 @@ def test_d4_the_leader_order_is_one_view() -> None:
     assert DEC.leader_order([0.2, 0.5, 0.3]) == [1, 2, 0]
     assert DEC.leader_order([0.5, 0.5]) == [0, 1]   # stable on ties — original order
     assert DEC.leader_order([]) == []
-    assert "leader_order(" in inspect.getsource(LK)
-    assert "leader_order(" in inspect.getsource(EX.render_view)
-    assert "leader_order(" in inspect.getsource(BR)
+    assert G.calls(LK, "leader_order"), (
+        "LK does not CALL leader_order() — one declaration, one home; a "
+        "source substring would be satisfied by a comment (r23 F10)")
+    assert G.calls(EX.render_view, "leader_order"), (
+        "EX.render_view does not CALL leader_order() — one declaration, one home; a "
+        "source substring would be satisfied by a comment (r23 F10)")
+    assert G.calls(BR, "leader_order"), (
+        "BR does not CALL leader_order() — one declaration, one home; a "
+        "source substring would be satisfied by a comment (r23 F10)")
