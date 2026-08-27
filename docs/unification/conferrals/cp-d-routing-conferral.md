@@ -85,3 +85,48 @@ and a second sweep bar before the run.
 ## RULING
 
 *(fills at the interview; nothing above changes.)*
+**Ruled 2026-08-27 by the owner. None of E, A′ or B is taken: the question was
+mis-framed, and the object it argued about is deleted.**
+
+All three options ask which side of a routing boundary the frozen exhibit should read
+on. The boundary itself was the drift. `PRINCIPLES.md` §16 — signed 2026-08-26, before
+this conferral was written — states one argmax over one decision space and rules that a
+mechanism which *selects among alternatives* goes into the argmax or dies. A second
+classifier partitioning questions into families before any argmax runs is
+decision-shaping outside it. So the correct answer to "where should the exhibit read?"
+is that there should be no second stage to read on either side of.
+
+The evidence that the frame was wrong was already inside this document and went
+unread when it was written:
+
+- §1 records that **11 of 15** aggregate questions are admitted by stage 1. A boundary
+  that 11 of 15 cases cross is not a boundary in the world; it is one drawn on the
+  instrument.
+- §4 concedes that the lookup lane answering a roll-up-attested aggregate "is the same
+  §4.2 move the family itself makes". Two paths doing the same move is not a routing
+  problem — it is one channel described twice.
+- `docs/membrane-shadow.md` §11 **i-13** had already classified this exact shape as
+  *"family routing in disguise"* and staged it for the proplang migration, on
+  2026-07-19. This conferral proposed building a second instance of a class already
+  scheduled for removal.
+
+**What was enacted instead (K1, `docs/unification/reports/r22-k1-family-deletion.md`,
+2026-08-27):** the second-stage router, the aggregate family and its plumbing are
+deleted; `decisions.FAMILIES` returns to `{lookup, narrative}`; what remains of the
+split dies with `/route` at migration stage M5. The transformations and inference the
+arc produced are kept — `extract_amounts`, the recall posterior and generator registry,
+the same-entity posterior, `compose_total`/`project_amounts`, and
+`gate.realised_aggregate`. `docs/aggregate-family-design.md`, which prescribed the
+structure, is deleted with it.
+
+**The consequence for the reading:** C0a (the lookup matrix, prompt hash unchanged) and
+C0b (0 narrative→aggregate false positives, 2/2 aggregate recall) remain valid $0
+readings of a router that no longer exists — kept as history, claiming nothing about
+the current tree. No frozen conjunct of r21 was ever read, and none now can be. The
+aborted run 19's partial artifacts stay voided under `VOID-coldlane-*`.
+
+**The lesson recorded, because it is the reusable part.** This conferral asked the owner
+a well-formed question from inside a frame the owner had not been asked to approve. The
+owner ruling on it then read as endorsement of the frame, which it was not. A conferral
+must state the frame it assumes and name what would falsify it — otherwise it spends the
+owner's attention on a detail and launders the assumption underneath.
