@@ -166,3 +166,31 @@ def test_shapes_only_reports_that_its_name_layer_is_empty() -> None:
     assert "name layer not run" in (out.stdout + out.stderr), (
         "the shapes-only leg reported a clean scan without saying its denylist is empty"
     )
+
+
+# --- L6 (r25): the skip set is pinned whole, and every skip is announced ---------------
+
+def test_poison_the_skip_set_is_pinned_whole() -> None:
+    """L6. MUST FAIL if a path is added to `_SKIP_PATHS`. Adding one tracked prose file
+    (`README.md`) exempted the repository's front page from the guard with all five gate
+    legs green. Pinning membership of known-good names cannot see an ADDITION; only
+    equality can. Killed by adding any path to the set."""
+    from pii_check import _SKIP_PATHS
+
+    assert frozenset({"uv.lock"}) == _SKIP_PATHS, (
+        f"_SKIP_PATHS is {sorted(_SKIP_PATHS)} — a skip exempts a whole tracked file from "
+        f"every shape rule, so the set is pinned by equality, not by membership"
+    )
+
+
+def test_poison_a_skip_is_announced(capsys: pytest.CaptureFixture[str]) -> None:
+    """L6. MUST FAIL if a skipped file passes in silence — the property the F5 fixture's
+    own message claimed ("a skipped file is reported, never silent") and which was never
+    implemented. Killed by removing the announce_skips call from gather_paths."""
+    from pii_check import announce_skips
+
+    announce_skips(["uv.lock", "README.md"])
+    err = capsys.readouterr().err
+    assert "uv.lock" in err and "skipped" in err, (
+        f"a declared skip was not announced: {err!r}"
+    )

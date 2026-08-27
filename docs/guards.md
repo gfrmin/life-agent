@@ -36,7 +36,7 @@ transcripts are in `unification/reports/r23-k1-g4-adversary.md`.
 
 | # | Guard | What it claims | State | Killed by |
 |---|---|---|---|---|
-| 0 | Harness positive control (`tests/poison/harness_control.py` + CI) | the test runner can report a failure at all | **resolved** | it IS the seed; the job fails if it passes |
+| 0 | Harness positive control (`tests/poison/harness_control.py` + CI) | the test runner can report a REAL failure — exit 1 AND the named test id in the report | **resolved** | K2-6 defeated the previous form: exit 4 (missing file) and 5 (nothing collected) both read as "went red", so the control could be deleted and CI still recorded it spoke. Now all three codes are distinguished |
 | 1 | The recorded producer name is pinned (`tests/poison/test_oracle_poison.py`) | the amounts projection matches the name the catalogue actually holds | **resolved** | renaming `ExtractAmountsProducer.name` |
 | 2 | K1 deletion re-listing (`test_k1_family_deletion.py`) | no deleted aggregate-family *name* resolves in the tree | **instrumented** | reintroducing `AGGREGATE_ACTION_ORDER` kills it — but it is a NAME census and cannot see the same mechanism renamed (F2). Row 2b is what covers that. |
 | 2b | Dispatch question-consumers (`tests/poison/test_dispatch_poison.py`) | only a declared set of calls may consume the question on the dispatch path | **resolved** | adding `pipeline_verdict(question)` and gating the typed path on it |
@@ -57,7 +57,9 @@ transcripts are in `unification/reports/r23-k1-g4-adversary.md`.
 | 15 | `ruff` / `mypy` | lint and types | **instrumented** | a linter is not a compiler and neither is a test |
 | 16 | The adoption gate's frozen conjuncts (`core/gate.py`) | δ and level are frozen blind before a run reads | **instrumented** | — not attacked; nothing mechanically prevents a conjunct being restated after a read |
 | 18 | No guard proves a call with a substring (`tests/poison/test_guard_shape_poison.py`) | the F10 class, not just its one instance | **resolved** | reintroducing `assert "leader_order(" in inspect.getsource(LK)` |
-| 19 | Every poison fixture names its mutation | a fixture nobody has watched fail is decoration | **resolved** | adding a poison fixture whose docstring names no kill |
+| 19 | Every poison fixture names its mutation, in its OWN docstring | a fixture nobody has watched fail is decoration | **resolved** | K2-8 defeated the previous form (it concatenated the MODULE docstring). The rule is now a pure function over synthetic source, so restoring the concatenation is itself killable |
+| 20 | `_SKIP_PATHS` is pinned whole and every skip announced | a skip exempts a whole tracked file from every rule | **resolved** | K2-16: adding `README.md` to the set exempted the front page with the gate green |
+| 21 | The upstream discard stages join (`tests/poison/test_upstream_join_poison.py`) | no grounded observation leaves the composition silently | **resolved** | narrowing the within-doc key; dropping the fold's alternative reading; dropping the excluded-row note |
 | 17 | D-5: the withhold reason is one derivation (`test_m5_absorption.py`) | the render's wording is the one the derivation selects | **resolved** | re-spelling the chain to disagree while keeping the token in a comment |
 
 **Thirteen rows resolved, nine instrumented.** The register opened at four and twelve, and
