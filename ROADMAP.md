@@ -228,6 +228,68 @@ Bayesian Ask rather than deterministic pipelines. Remaining program, in dependen
    (budget the corpus-wide reclassification), `thread_state` instrument, membership
    recall ("awaiting reply?").
 
+
+#### The completion programme's DONE conditions — reconstructed 2026-08-27 (K3 · r26 C10)
+
+Two owner rulings were taken against this list before it existed anywhere as a list. It is
+reconstructed here from every in-tree site that states, quotes, references or presupposes a
+condition; every quotation below was re-verified against the file it cites, and anything
+marked RECONSTRUCTED is inference from the citing sites, **not** recovered text.
+
+The programme itself is stated once, as prose, in the paragraph above (`ROADMAP.md`, Phase
+1.6 item 3): stage-0 riders → the collapse ladder M2–M7 → items 4–5 below through §8 gates
+→ the proplang graduation, with the MVP exit test running wall-clock-parallel from the
+deploy. Its members are unnumbered there and it is never called the DONE conditions.
+
+| # | Condition | Source | Status |
+|---|---|---|---|
+| 1 | The owner has signed Appendix A at M7 | `docs/unification/conferrals/appendix-a-conferral.md:43` (the only statement of its text, and it sits inside a *decline* branch that was never taken); the requirement itself at `docs/module-collapse-design.md:1066` and `ROADMAP.md:221` | **MET** 2026-08-26 — `appendix-a-conferral.md:72-73`, enacted at `docs/unification/reports/r17-collapse-m7.md:131-138` |
+| 2 | **UNSOURCED.** RECONSTRUCTED: item 4 below (the aggregate family) is not merely built but gated by a priced §8 run — i.e. `docs/bayesian-foundations.md` §12 stage 2 reads met | Referenced by number twice, stated never: `docs/unification/conferrals/cp-a-aggregate-conferral.md:81-82`, `cp-d-routing-conferral.md:74-76` | **OPEN, and its referent was deleted** — the 2026-08-27 ruling deleted the aggregate family and its design doc (`cp-d-routing-conferral.md:113-125`) **without mentioning the programme, item 2, or what becomes of it** |
+| 3 | **UNSOURCED. No in-tree text names a DONE item numbered 3 or higher** — not in reports, conferrals, design docs, root docs, or any commit message in history | — | unknown |
+| 4 | **UNSOURCED**, as above | — | unknown |
+| 5 | **UNSOURCED**, as above | — | unknown |
+
+**The count itself is unsourced.** "Five" appears exactly once in tree, in
+`docs/unification/reports/r26-guard-layer.md:102` — K3's own frozen criterion C10, which
+inherited it from the plan that opened K3 rather than from any earlier text. So C10 asked
+for five conditions on the authority of C10. That is this milestone's own defect class one
+level up (a checker's universe derived from somewhere other than the thing checked), and it
+is recorded rather than quietly rounded off.
+
+What the evidence does support:
+
+- **Only items 1 and 2 are ever referenced.** The complete census of item-numbered
+  references is six lines, listed above plus `r17-collapse-m7.md:89`.
+- **The two attested numbers do not line up with the chain read in order.** In chain order
+  item 1 would be the stage-0 riders; it is in fact the Appendix A signature, which closes
+  the *second* element. Dropping the riders (closed the day the programme was approved)
+  realigns item 1 → the ladder and item 2 → the families, and leaves **four** elements.
+- **Restoring five requires counting the proplang graduation**, which the owner ruled is
+  *not* a completion condition (`docs/membrane-shadow.md:1273-1274`: "the migration is NOT
+  a completion condition of the 2026-08-25 completion programme (Stages 1–2–4 close without
+  it)"), directly contradicting `ROADMAP.md:221-222`, which lists it in the chain. Both
+  texts carry the same date and neither references the other.
+- **RECONSTRUCTED, and the most economical reading:** DONE item *N* is the close of Stage
+  *N*. Item 1 ↔ Stage 1 (the ladder, closed by the signature) and item 2 ↔ Stage 2 (the
+  families) both hold. That makes "five" the *stage* count 0–4, not an item count, and
+  predicts items 3 and 4 exist as Stages 3 and 4. **Stage 3 is named nowhere in tree**;
+  "Stages 1–2–4" appears exactly once, at `membrane-shadow.md:1274`, which implies a Stage
+  3 that those three close without. This is a hypothesis with two confirmations and one
+  gap, not a finding.
+
+**Four further disagreements are unreconciled in tree** and are recorded, not resolved:
+what Stage 0 consisted of (`ROADMAP.md:219-220` names three riders; `CLAUDE.md:326-333`
+declares it DONE citing two, omitting the doc-currency sweep — which is never reported done
+anywhere); item 1's wording (the conferral's quoted string exists nowhere else); which
+numbering discharges the family stage (three labels — "DONE item 2", "foundations §12 stage
+2", "Phase 1.6 item 4 / Stage 2a" — for one referent, with no reconciling text); and what
+opens the proplang migration (three different statements, only one of them enumerated, and
+the "completion audit" the others gate it behind is undefined).
+
+**Owner keypress.** Items 3–5 have no in-tree text and only the owner can say what they
+were — or whether there were four. The completion audit reads against this list, so it
+should not read until this is settled.
+
 ### Phase 2 — Goals/utility model + first agent loop (read-only) · future
 - Design the **goals/utility representation** (the unbuilt faculty) — how the agent learns and
   stores what the owner values. Owed before any write-action (PRINCIPLES §3).

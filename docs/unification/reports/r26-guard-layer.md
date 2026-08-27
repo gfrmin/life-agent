@@ -120,3 +120,221 @@ fixture written by the *next* session and verified RED before landing.
 5. The RESULTS section below — written **before** C5 is checked, because writing this report
    is the most natural way to reintroduce exactly what step 3 removed.
 6. Gates, then `docs/guards.md`.
+
+---
+## RESULTS
+
+**Read 2026-08-27, $0. Eleven of twelve criteria MET; C10 is met in its letter and its
+premise is refuted — see below. G3 not bought (C12), as frozen.**
+
+### C1 — the oracle is controlled end to end: MET
+
+A hermetic two-fixture set is written into a tmpdir and `main` is driven at it through
+`--fixtures`. `trace == "seam"` needs no wire and no snapshot, and omitting
+`provenance.python_hash_seed` skips the seed refusal, so the control runs anywhere the
+suite runs. One fixture matches the truth; the other has its recorded effector and EU
+corrupted. `main` must exit **1** with the corrupted fixture id and the word `mismatched`
+in stdout.
+
+**RED under all three named mutations** — `diffs = []` inside the loop, `if diffs:` → `pass`,
+`bad = len(errored)`. Each leaves both pre-existing controls green and prints `314/314`,
+which is the defect stated as a demonstration rather than as an argument.
+
+### C2 — every control discriminates: MET
+
+`test_gate_legs_are_reachable` (whose sole assertion was `r.returncode is not None`, true
+of every subprocess that completed) is replaced by a clean-input/planted-violation pair per
+leg: `ruff` on a file with a real `F401`, and the PII guard on a file carrying a synthetic
+shape it must reject. The general rule is C4's row 23.
+
+### C3 — no census takes a whole module as its universe: MET, with the residue in English
+
+The three `leader_order` censuses are scoped to the deployed function. The defect was
+demonstrated first: with the bridge handler re-spelled to a divergent `sorted(...)` and the
+call moved to a never-called helper, the module-scoped census still returned `True` while
+the deployed path ordered differently.
+
+**Residue, named rather than papered over** (`docs/guards.md` known-and-uncovered 13): only
+the bridge site was shown to diverge under a planted re-spelling. The other two are pinned
+by a *scoped call census*, which proves the call is on the deployed function's body and not
+that the emitted order matches. A behavioural driver for those two is not written.
+
+### C4 — the two rules are pure functions over synthetic source: MET
+
+Both are exercised on synthetic source first and applied to the real tree second, so each
+can be mutation-tested without touching the thing it guards (r25's L8).
+
+Rule 1 (module-scoped censuses) discriminates on the argument's **syntax** — an `ast.Name`
+is a module or class, an `ast.Attribute` is a named function — so it needs no list of module
+aliases to keep current. Killed by restricting it to ALL-CAPS names, which makes its
+universe a naming convention.
+
+Rule 2 (discrimination) was **narrowed twice against the real fixture set, and both
+narrowings are recorded with their counts** because the discarded breadth is the
+interesting part: including bare truthiness flagged **7** sound census fixtures
+(`assert not offenders` is a claim about a value the test derived); including `is None`
+flagged **1** more, where `is None` is the function's specified return. `is not None` only
+flags **0** today and would still have caught the defect. The written limitation stands in
+the docstring and in the register: `is not None` is not vacuous in general, and the house
+rule is deliberately narrower than the English.
+
+**Numbering disclosure.** This pre-registration calls them "rows 20, 21"; those numbers were
+already taken by r25 (`_SKIP_PATHS`, the upstream join). They land as **22 and 23**. The
+prereg is frozen and is not edited.
+
+### C5 — zero tracked files name an owner host: MET
+
+`git grep -icE` on both names returns **0 files**. 25 occurrences across 15+ files are gone:
+`packaging/`, six reports, one conferral, a design doc, one poison fixture. Each was replaced
+by the **role** it stood for, read in context so that reports distinguishing two machines
+still distinguish them. No report lost a number or a finding.
+
+Checked **after** this section was written, per the order of work fixed above — writing a
+report about a purge is the most natural way to reintroduce what the purge removed.
+
+### C6 — the two layers: MET
+
+*Shape (public, in tree):* the tailnet-host rule fires outside `src/` now — verified live on
+a planted synthetic host in a `docs/` path, and still in `src/`. The owner-id literal rule
+stays `src/`-scoped deliberately: it matches an identity-shaped *binding*, which outside
+`src/` is someone quoting code, and widening it is a separate change with its own
+false-positive question.
+
+*Name (private, never in tree):* the KB denylist went 38 → **40** patterns. Probing every
+alpha-literal pattern in the loaded set: **6 of 6 caught in bare prose**, and **6 of 6 still
+caught when the line carries the marker**. An in-tree denylist of forbidden hostnames would
+publish the hostnames it forbids, which is why this layer has exactly one correct home.
+
+### C7 — the marker exempts shapes only: MET
+
+`PII-OK` had been an unconditional `continue` ahead of every check, so a line marked
+synthetic was never tested against the real-value layer. A synthetic value has a real shape
+by design and can never contain a real name, so there is no legitimate use this breaks.
+Verified live: a marked synthetic shape is still suppressed; the same shape unmarked is
+caught; a marked line carrying a denylist name is caught, with the message saying the marker
+does not exempt the name layer.
+
+**The marker's whole accumulated set was re-scanned — 172 lines across 53 files, the first
+audit of that set in its life.** It came up clean. The marker had been an unreviewed kill
+switch with no trail and no cap for as long as it existed.
+
+### C8 — the tree runs on any box: MET
+
+Split by what can actually be driven. The **wrappers** are behaviour: each is symlinked into
+a scratch directory (the deploy shape) and run with an empty `HOME` and a stubbed `PATH`,
+and must still hand off `uv run --project <this repo>`. The **units** are a rule over the
+file, and that half is disclosed as a spelling census in the register — `systemd` is the
+deployed reader of a unit file and cannot be invoked offline against a fake home.
+
+Seven mutations RED. Two are worth naming: dropping the rule's directive scoping flags the
+install **comment** every unit carries (a rule that flags correct files gets switched off,
+which is how a guard dies), and a unit that stops declaring a repo `ExecStart` at all trips
+the census's own coverage assertion rather than passing silently.
+
+**Found en route:** `production-readout.service` was the one unit with no wrapper — it ran
+a build artefact at a fixed path and never sourced `.env`, so its KB root had to come from a
+unit override. That is exactly the drift trap `jarvis.service`'s own comment warns about,
+sitting in the tree beside the warning. Now `bin/production-readout`.
+
+### C9 — the readout unions roots and reports its own staleness: MET
+
+`--kb` is repeatable and the three streams are unioned. Dedup is on the whole row: the
+streams are append-only and immutable, and **a decision row carries no decision id**, so the
+row is the identity. The report states the window it covered, the age of its newest row, and
+the word STALE when nothing is newer than 8 days or when there are no rows at all. Roots are
+reported **by index and row count**, never by path — a KB root is an owner-specific absolute
+path and this report may be pasted anywhere; a dead root reads `0 rows (EMPTY)`.
+
+The eval-run exclusion now sets the window too, so a gate sweep cannot make a dead
+production stream look fresh. Smoke-run live against two roots, one of them empty.
+
+### C10 — the DONE conditions in `ROADMAP.md`: MET in its letter, and its premise REFUTED
+
+The list is landed with each condition carrying its in-tree source or the word UNSOURCED,
+which is what C10 asks. What the reconstruction found is worse than a missing list:
+
+- **Only items 1 and 2 are ever referenced anywhere in tree** — six item-numbered lines in
+  total, across reports, conferrals, design docs, root docs and every commit message in
+  history. **No text names a DONE item numbered 3 or higher.**
+- **Item 1 is stated exactly once, inside a decline branch that was never taken.** Item 2 is
+  never stated at all — referenced twice by number — and **its referent was deleted** by a
+  ruling that does not mention the programme, the item, or what becomes of it.
+- **The count "five" appears exactly once in tree: in C10 itself.** It came from the plan
+  that opened this milestone, not from any earlier text. So C10 asked for five conditions on
+  the authority of C10.
+
+That is this milestone's own defect class one level up — *a checker's universe derived from
+somewhere other than the thing being checked* — committed in a frozen criterion by the
+session writing the guards against it. It is recorded, not rounded off. Honouring the
+owner's ruling that the proplang graduation is not a completion condition, the chain yields
+**four** elements, not five; the most economical reading (DONE item *N* = the close of Stage
+*N*, which holds for both attested numbers) predicts a Stage 3 that is named nowhere. Four
+further disagreements are unreconciled in tree and are recorded beside the list.
+
+**This is an owner keypress, and it was already on the plan's keypress map.** The completion
+audit reads against this list; it should not read until the owner says what items 3–5 were,
+or that there were four.
+
+### C11 — the replay: MET, PURE EQUALITY
+
+**314/314 fixtures replay identically** on `m5-base` at `PYTHONHASHSEED=0`. No `src/` change
+was necessary, so C11's frozen expectation never re-opened.
+
+### C12 — G3 not bought: HELD
+
+The evidence is C11, exactly as K1/K2/r25. Frozen before the read so it could not be
+renegotiated after it.
+
+### Found beyond the frozen set
+
+**The register's own headline had drifted twice.** `docs/guards.md` said *thirteen resolved,
+nine instrumented*; the rows said fifteen and ten; the report that last touched it said
+sixteen and nine. Three numbers, one register — and the headline is the number a reader
+quotes. It is now recomputed from the rows (`tests/test_guard_register.py`), with row ids
+required unique and every *resolved* row required to name its kill. Four mutations RED.
+True count today: **18 resolved / 11 instrumented**.
+
+**In production, the deployed arm has answered nothing.** The live readout over the deploy
+window reads 22 non-eval decisions, **all abstain**, zero graded outcomes, newest row
+2026-08-26. Two standing wrong-commit rows ride in production and neither has had an
+opportunity to fire. This is a readout, not a diagnosis (the cap): recorded as a disclosure
+item for the owner, not opened as an arc.
+
+**No record carries a deployment origin.** `run_id` names a *lane* (two literals across all
+live traffic), never a box, and a decision row has no decision id. Two deployments' streams
+are therefore indistinguishable in kind as well as unmergeable in principle. C9 delivers the
+honest read-side half; the record-format half moves the replay fixtures, which C11 froze at
+pure equality, so it is scoped to its own pre-registration.
+
+### Defects in this milestone's own instruments, all caught before a verdict
+
+1. **An incomplete mutation reads exactly like a dead guard.** The first mutation script for
+   the PII legs matched only rules whose pattern sits on one line, so two multi-line rules
+   were never neutered and the run reported a false all-clear. Redone with named anchors:
+   neutering the bare rule alone stays green (it is shadowed), neutering the labelled rule
+   goes red, neutering both goes red.
+2. **A frozen criterion's own count was unsourced** — C10, above.
+3. **A new fixture was caught by an existing rule** (row 19) for not naming its mutation in
+   the accepted phrasing. Fixed by rewording, not by exempting.
+4. **The PII guard blocked this milestone's own new fixture**, twice — once for a synthetic
+   mobile shape (correct; marked), once for a home-rooted synthetic path (correct; the S3
+   rule working one day after it landed, on the session that wrote it). Both rule mutations
+   were re-verified RED against the *new* synthetic rather than assumed to survive the edit.
+5. **A test expectation contradicted its own assertion message.** The readout window fixture
+   asserted the eval row's timestamp while its message said an eval row must not set the
+   window. Corrected to the production row, which makes the fixture sharper, not weaker.
+
+### Deviations from the order of work fixed above
+
+- `docs/guards.md` was written before Strand D rather than after the gates. C5 was still
+  checked after every doc landed, which is the constraint the ordering existed to serve.
+- `bin/` was not in the prereg's list of touched directories; `bin/production-readout` is new
+  (C8's finding). No `src/` change, so C11 is unaffected.
+- `tests/test_guard_register.py` is beyond the frozen set, opened by a defect found while
+  editing the register the criteria report into.
+
+### Gates
+
+G1 **2849 passed**, 35 deselected; ruff clean; mypy clean on 226 files; PII exit 0 with
+the name layer live · G2 **314/314 pure equality** on `m5-base` · G3 not bought (C12) · G4 the adversary
+pass, below.
