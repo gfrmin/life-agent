@@ -176,9 +176,14 @@ def test_poison_every_control_discriminates() -> None:
     """Rule 2. MUST FAIL when a control's every assertion is `is not None`. Killed by
     restoring `assert r.returncode is not None` as the sole assertion of a control — the
     shape that let a gate leg be deleted outright with its control still green (K3 D-b).
-    Flags zero fixtures today: it is a forward guard, not a backlog."""
+    Flags zero fixtures today: it is a forward guard, not a backlog.
+
+    Universe widened at K3's self-audit from `tests/poison/` to ALL of `tests/`, which is
+    what criterion C2 says in English ("no assertion in `tests/` reads only that something
+    happened"). Measured before widening: zero offenders outside the poison directory, so
+    the narrower universe was costing coverage and buying nothing."""
     offenders: list[str] = []
-    for py in (_TESTS / "poison").rglob("test_*.py"):
+    for py in _TESTS.rglob("test_*.py"):
         rel = py.relative_to(_TESTS).as_posix()
         if rel == "poison/test_census_universe_poison.py":
             continue

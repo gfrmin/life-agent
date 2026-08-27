@@ -360,3 +360,10 @@ recorded above.
 The finding worth keeping is not the two gaps. It is that a milestone whose whole subject is
 *a census whose universe is a string* shipped two of them in its own new guard, and they
 were found by re-reading rather than by any check — the same way K2's adversary found eight.
+
+**Also closed in the self-audit: C2's rule was narrower than C2's English.** The
+discrimination census walked `tests/poison/` while the criterion says *"no assertion in
+`tests/`"*. Measured first — zero offenders outside the poison directory — then widened to
+all of `tests/`, so the narrower universe was costing coverage and buying nothing. Verified
+RED by planting the vacuous shape in a non-poison test file, which the old universe could
+not see.
