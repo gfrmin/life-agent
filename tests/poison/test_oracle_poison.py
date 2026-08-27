@@ -227,10 +227,13 @@ def _control_set(directory: Path) -> None:
 def test_poison_the_oracle_detects_a_mismatch_end_to_end(tmp_path: Path,
                                                          capsys: pytest.CaptureFixture[str],
                                                          ) -> None:
-    """D-a. Drives `collapse_replay.main` over a two-fixture set through the compare loop.
+    """D-a. MUST FAIL when the comparison never reaches the exit code. Drives
+    `collapse_replay.main` over a two-fixture set — one agreeing, one deliberately
+    divergent — through the real compare loop.
 
-    Verified RED by mutation before landing, against all three survivable mutations named
-    above: each one leaves the two older controls green and this one red.
+    Killed by each of the three survivable mutations named above, every one of which leaves
+    the two older controls green while this one goes red:
+    `diffs = []` in the loop; `if diffs:` -> `pass`; `bad = len(errored)`.
     """
     sys.path.insert(0, str(_ROOT / "scripts"))
     import collapse_replay
