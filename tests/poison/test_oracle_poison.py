@@ -8,13 +8,16 @@ oracle to prove it can still speak.
 """
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from life_agent.collapse import compare as CMP
+from life_agent.collapse import fixture as FX
 
 _ROOT = Path(__file__).resolve().parents[2]
 
@@ -108,12 +111,151 @@ def test_poison_the_demand_log_names_the_same_transform() -> None:
     )
 
 
-@pytest.mark.parametrize("leg", ["ruff", "pii"])
-def test_gate_legs_are_reachable(leg: str) -> None:
-    """A cheap positive control on the gate itself: each leg must actually run and be
-    capable of a non-zero exit. `--help` proves the entry point resolves."""
-    cmd = {"ruff": [sys.executable, "-m", "ruff", "--version"],
-           "pii": [sys.executable, str(_ROOT / ".githooks" / "pii_check.py"),
-                   "--shapes-only", "--nonexistent-flag-probe"]}[leg]
-    r = subprocess.run(cmd, capture_output=True, text=True, check=False)
-    assert r.returncode is not None
+# --- K3 / D-b: a control must DISCRIMINATE ------------------------------------------
+# This asserted `r.returncode is not None` — true of every subprocess that completed, so it
+# could not fail for any input and proved nothing about either leg. `--version` and an
+# unknown-flag probe do not exercise a gate; they exercise argument parsing. Each leg is now
+# driven over a CLEAN input (must pass) and a PLANTED violation (must fail), which is the
+# only pair that distinguishes a working gate from a gate that has been made unable to fail.
+
+#: (leg, clean file body, violating file body, the marker the failure must carry).
+_LEG_CASES: tuple[tuple[str, str, str, str], ...] = (
+    ("ruff", "x = 1\n", "import os\nx = 1\n", "F401"),
+    # A checksum-invalid, synthetic IL mobile in a labelled context — the shape layer's
+    # job, and one that needs no private denylist, so this runs in CI.
+    # PII-OK: synthetic all-zero mobile below, shape only — no real value, no name
+    ("pii", "the number is withheld\n", "mobile: 050-000-0000\n",  # PII-OK: synthetic
+     "pii_check BLOCKED"),
+)
+
+
+@pytest.mark.parametrize(("leg", "clean", "violating", "marker"), _LEG_CASES)
+def test_gate_legs_discriminate(leg: str, clean: str, violating: str, marker: str,
+                                tmp_path: Path) -> None:
+    """D-b. Each gate leg must PASS a clean input and FAIL a planted violation.
+
+    Verified RED by mutation before landing, and the result is narrower than the first
+    attempt claimed — recorded here because the gap is the interesting part:
+
+      * `ruff`  — disabling the selected rule set makes this RED.
+      * `pii`   — the probe carries a LABELLED number, so it is the labelled IL-mobile
+                  rule that is load-bearing. Neutering it: RED. Neutering the *bare*
+                  IL-mobile rule alone: still green, because the labelled rule shadows
+                  this probe. So this control proves the leg RUNS and CAN FAIL; it does
+                  NOT prove every shape is live. Per-shape coverage is row 13's job
+                  (`tests/poison/test_pii_poison.py` removes each of seven individually)
+                  and is deliberately not duplicated here.
+
+    The first mutation attempt reported a false ALL-CLEAR: its regex only reached rules
+    whose pattern sits on the same line as `re.compile(`, so the two multi-line ones were
+    never neutered and the control looked unkillable. The mutation was one spelling wide,
+    not the control — but an incomplete mutation reads exactly like a dead guard, which is
+    why each site is now neutered by name.
+    """
+    def _run(body: str) -> subprocess.CompletedProcess[str]:
+        target = tmp_path / f"{leg}_probe.py"
+        target.write_text(body, encoding="utf-8")
+        cmd = {
+            "ruff": [sys.executable, "-m", "ruff", "check", "--isolated",
+                     "--select", "F", str(target)],
+            "pii": [sys.executable, str(_ROOT / ".githooks" / "pii_check.py"),
+                    "--shapes-only", str(target)],
+        }[leg]
+        return subprocess.run(cmd, capture_output=True, text=True, check=False,
+                              cwd=str(_ROOT))
+
+    ok = _run(clean)
+    assert ok.returncode == 0, (
+        f"the {leg} leg rejected a CLEAN input (exit {ok.returncode}) — it is not "
+        f"discriminating, it is refusing everything:\n{ok.stdout}\n{ok.stderr}"
+    )
+
+    bad = _run(violating)
+    assert bad.returncode != 0, (
+        f"the {leg} leg accepted a planted violation — the leg has been made unable to "
+        f"fail, and every green run of it means nothing:\n{bad.stdout}\n{bad.stderr}"
+    )
+    assert marker in (bad.stdout + bad.stderr), (
+        f"the {leg} leg exited non-zero but never named {marker!r} — it failed for some "
+        f"other reason (a crash, a bad path), not for the planted violation:\n"
+        f"{bad.stdout}\n{bad.stderr}"
+    )
+
+
+# --- K3 / D-a: the oracle's WIRING, not just its parts -------------------------------
+# The two controls above prove the comparator detects a planted mismatch (in isolation) and
+# that `main` can return non-zero (at a missing directory — `collapse_replay.py:122`, three
+# checks BEFORE the compare loop). Neither proves the two are connected. These mutations
+# leave both green and still print "N/N fixtures replay identically":
+#     diffs = []                     # inside the loop, discarding the comparison
+#     if diffs: ...  ->  pass        # the comparison happens and is dropped
+#     bad = len(errored)             # failures counted but not exited on
+# So the control below drives the REAL entry point over a REAL fixture set. A `seam`-trace
+# fixture needs no wire and no snapshot (`collapse_replay.replay_fixture` dispatches it
+# straight to `drive_seam_unavailable`), and `provenance` without `python_hash_seed` skips
+# the seed refusal — so the set can be built in a tmpdir and run anywhere, CI included.
+
+_CONTROL_MATCH = "zzz-control-agrees"
+_CONTROL_MISMATCH = "zzz-control-diverges"
+
+
+def _seam_fixture(fixture_id: str, outputs: dict[str, Any]) -> FX.Fixture:
+    return FX.Fixture(
+        fixture_id=fixture_id, checkpoint="k3-control", trace="seam",
+        classes=("terminal:abstain",), question="what is my declared control value?",
+        question_id=fixture_id, inputs={}, outputs=outputs,
+        # No `python_hash_seed`: this set is not hash-order dependent (no dedup runs), and
+        # recording one would make the control refuse under any other seed.
+        provenance={"engine_version": "control"},
+    )
+
+
+def _control_set(directory: Path) -> None:
+    """One fixture that MUST agree and one that MUST NOT, in a fresh directory."""
+    from life_agent.collapse import drive as DR
+
+    truth = DR.drive_seam_unavailable("what is my declared control value?")
+    FX.write(directory, _seam_fixture(_CONTROL_MATCH, truth))
+
+    diverged = json.loads(json.dumps(truth))          # deep copy, no shared substructure
+    diverged["log_decision"]["decision"]["effector"] = "report"
+    diverged["log_decision"]["decision"]["eu"] = 0.99
+    assert diverged != truth, "the control's planted divergence did not change the body"
+    FX.write(directory, _seam_fixture(_CONTROL_MISMATCH, diverged))
+
+
+def test_poison_the_oracle_detects_a_mismatch_end_to_end(tmp_path: Path,
+                                                         capsys: pytest.CaptureFixture[str],
+                                                         ) -> None:
+    """D-a. MUST FAIL when the comparison never reaches the exit code. Drives
+    `collapse_replay.main` over a two-fixture set — one agreeing, one deliberately
+    divergent — through the real compare loop.
+
+    Killed by each of the three survivable mutations named above, every one of which leaves
+    the two older controls green while this one goes red:
+    `diffs = []` in the loop; `if diffs:` -> `pass`; `bad = len(errored)`.
+    """
+    sys.path.insert(0, str(_ROOT / "scripts"))
+    import collapse_replay
+
+    _control_set(tmp_path)
+    rc = collapse_replay.main(["--checkpoint", "k3-control", "--fixtures", str(tmp_path)])
+    out = capsys.readouterr().out
+
+    assert rc == 1, (
+        f"the oracle replayed a deliberately divergent fixture and exited {rc} — the "
+        f"comparison never reached the exit code, and every N/N reading taken with this "
+        f"oracle is worthless. Output:\n{out}"
+    )
+    assert _CONTROL_MISMATCH in out, (
+        f"the oracle exited non-zero but never named the divergent fixture "
+        f"{_CONTROL_MISMATCH!r} — it failed for some other reason. Output:\n{out}"
+    )
+    assert f"mismatched: {_CONTROL_MISMATCH}" in out, (
+        f"the divergent fixture was not counted as MISMATCHED (it may have ERRORED, which "
+        f"exits non-zero without the comparator having run). Output:\n{out}"
+    )
+    assert _CONTROL_MATCH not in out.split("mismatched:")[-1], (
+        f"the agreeing fixture was also reported as mismatched — the comparator is "
+        f"flagging identical bodies. Output:\n{out}"
+    )

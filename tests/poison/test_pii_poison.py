@@ -133,25 +133,44 @@ def test_shapes_only_cannot_see_a_personal_segment_and_must_say_so() -> None:
 
 # --- F13: owner-specific literals in src/ --------------------------------------------
 
-@pytest.mark.parametrize(("text", "what"), [
-    ('_OWNER_HOST = "steel.tail4f2a1.ts.net"',  # PII-OK: synthetic
-     "tailnet hostname"),
+_SYNTH_HOST = '_OWNER_HOST = "examplebox.tail1a2b.ts.net"'  # PII-OK: synthetic host
+
+
+@pytest.mark.parametrize(("text", "what", "kind"), [
+    (_SYNTH_HOST, "tailnet hostname", "owner-specific host"),
     ("_OWNER_TELEGRAM_ID = 448120973",  # PII-OK: synthetic
-     "9-digit personal id, non-IL-checksum"),
+     "9-digit personal id, non-IL-checksum", "owner-specific literal"),
 ])
-def test_poison_owner_specific_literal_in_src_is_caught(text: str, what: str) -> None:
-    """F13. CLAUDE.md forbids owner-specific hostnames and ids hard-coded in src/. The
-    9-digit rule fired only on values passing the Israeli-ID checksum, so every other
-    9-digit personal id was unenforced by construction."""
-    assert "owner-specific literal" in " ".join(
-        _labels(text, in_src=True)), f"{what} not caught: {text!r}"
+def test_poison_owner_specific_literal_in_src_is_caught(text: str, what: str,
+                                                        kind: str) -> None:
+    """F13. MUST FAIL if src/ stops being checked for owner-specific hostnames and ids.
+    CLAUDE.md forbids both hard-coded there. The 9-digit rule fired only on values passing
+    the Israeli-ID checksum, so every other 9-digit personal id was unenforced by
+    construction. Killed by removing either rule."""
+    assert kind in " ".join(_labels(text, in_src=True)), f"{what} not caught: {text!r}"
 
 
-def test_owner_literal_rule_is_scoped_to_src() -> None:
-    """The same shapes in docs/reports are ordinary prose — this rule is about src/ only,
-    so it must not fire outside it (a noisy guard gets disabled)."""
+def test_poison_the_host_rule_is_not_scoped_to_src() -> None:
+    """K3 S2. MUST FAIL if the hostname rule is scoped back to `src/`.
+
+    This test asserted the OPPOSITE until K3: the rule was src/-only on the reading that a
+    hostname in prose is documentation. It is not — CLAUDE.md forbids owner-specific values
+    "including in docs prose, §14 ledger entries, commit messages, and test fixtures", and
+    25 occurrences of two host names had accumulated across reports, conferrals, a design
+    doc and one poison fixture, with the hook armed the whole time, because nothing looked
+    outside `src/`. Killed by restoring the `in_src and ...` gate on the host rule.
+    """
+    assert "owner-specific host" in " ".join(_labels(_SYNTH_HOST, in_src=False)), (
+        "a tailnet hostname outside src/ was not caught — this is how 25 of them landed"
+    )
+
+
+def test_owner_id_rule_stays_scoped_to_src() -> None:
+    """The ID rule matches an identity-shaped BINDING (`owner_id = 1234567`), which outside
+    src/ is someone quoting code. Widening it is a separate change with its own
+    false-positive question, deliberately not made here."""
     assert "owner-specific literal" not in " ".join(
-        _labels("_OWNER_HOST = \"steel.tail4f2a1.ts.net\"", in_src=False))  # PII-OK: synthetic host
+        _labels("_OWNER_TELEGRAM_ID = 448120973", in_src=False))  # PII-OK: synthetic
 
 
 # --- the CI leg's own universe -------------------------------------------------------
@@ -193,4 +212,40 @@ def test_poison_a_skip_is_announced(capsys: pytest.CaptureFixture[str]) -> None:
     err = capsys.readouterr().err
     assert "uv.lock" in err and "skipped" in err, (
         f"a declared skip was not announced: {err!r}"
+    )
+
+
+# --- K3 D-d: the PII-OK marker may not launder a REAL value --------------------------
+# `scan_text` did `if MARKER in line: continue` before every check, so a line marked
+# synthetic was never tested against the private denylist — the layer that knows real
+# values. The marker's job is to permit a synthetic value with a REAL SHAPE; a synthetic
+# value cannot contain a real NAME, so exempting the name layer buys nothing and cost a
+# real host name being committed to a public repo under a `# PII-OK: synthetic` comment.
+
+_DENY_PROBE = [re.compile(r"NOTAREALNAME")]  # PII-OK: synthetic denylist pattern
+
+
+def test_poison_the_marker_does_not_exempt_the_name_layer() -> None:
+    """K3 D-d. MUST FAIL if `PII-OK` suppresses a private-denylist hit. Killed by restoring
+    the unconditional `if MARKER in line: continue` at the top of the scan loop — under
+    that spelling this line is invisible to the guard, which is how a real host name was
+    committed to a public tree marked as synthetic."""
+    marked = "the box is NOTAREALNAME  # PII-OK: synthetic"
+    kinds = [f.kind for f in scan_text("docs/x.md", marked,
+                                       denylist=_DENY_PROBE, allowed_domains=D)]
+    assert any("private-denylist" in k for k in kinds), (
+        "a PII-OK line was exempted from the private denylist — the marker is a kill "
+        "switch over the layer that knows real values, and laundering is free"
+    )
+
+
+def test_poison_the_marker_still_exempts_a_synthetic_shape() -> None:
+    """K3 D-d's other half. MUST FAIL if the marker stops working for its legitimate use.
+    A guard that rejects every marked line gets the marker deleted, and then real synthetic
+    fixtures cannot exist at all. Killed by dropping the `if marked: continue` that follows
+    the denylist pass."""
+    marked_shape = "mobile: 050-000-0000  # PII-OK: synthetic"  # PII-OK: synthetic
+    assert _labels(marked_shape) == [], (
+        "a marked SYNTHETIC value with a real shape was still flagged — the marker's "
+        "legitimate use is broken and it will be removed, taking the name layer with it"
     )

@@ -20,12 +20,16 @@ import argparse
 import json
 import sys
 from collections import Counter
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 DEPLOY_DATE = "2026-08-25"          # run 14's deploy — the default window start
 EXCLUDED_RUN_PREFIXES = ("gate-", "collapse-")
+#: A weekly timer plus a day of slack. Past this the watch is reporting about a stream
+#: that stopped moving, which before K3 looked exactly like a watch with nothing to say.
+STALE_AFTER_DAYS = 8
 
 
 def _rows(path: Path) -> list[dict[str, Any]]:
@@ -36,6 +40,28 @@ def _rows(path: Path) -> list[dict[str, Any]]:
         line = line.strip()
         if line:
             out.append(json.loads(line))
+    return out
+
+
+def union(*streams: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """One stream from several KB roots, order-preserving, each distinct row once.
+
+    The calibration streams are append-only and every row is immutable, so a row present
+    in two roots is one event seen twice (a copied or re-synced stream) — never two. There
+    is no id to key on: a decision row carries `question_id` + `tx_time` but no decision
+    id, so the row itself is the identity. **That is a K4 finding, not a K3 fix** — no
+    record carries a deployment origin, which is why two roots' rows are indistinguishable
+    in kind as well as unmergeable in principle. This union is exact for copies and honest
+    about everything else.
+    """
+    seen: set[str] = set()
+    out: list[dict[str, Any]] = []
+    for stream in streams:
+        for row in stream:
+            key = json.dumps(row, sort_keys=True)
+            if key not in seen:
+                seen.add(key)
+                out.append(row)
     return out
 
 
@@ -51,9 +77,16 @@ def _instrument(row: dict[str, Any]) -> str:
 
 
 def readout(decisions: list[dict[str, Any]], outcomes: list[dict[str, Any]],
-            reactions: list[dict[str, Any]], *, since: str) -> dict[str, Any]:
+            reactions: list[dict[str, Any]], *, since: str,
+            now: datetime | None = None,
+            sources: Sequence[dict[str, Any]] = ()) -> dict[str, Any]:
     """Reduce the three streams to counts + the watch rows. Ids and instrument names only —
-    a corpus value never leaves this function (the render test pins it)."""
+    a corpus value never leaves this function (the render test pins it).
+
+    `sources` describes the KB roots the rows came from, **by index and row count only**:
+    a KB root is an owner-specific absolute path and this report may be pasted anywhere.
+    A dead root shows up as `0 rows` without naming anybody's filesystem.
+    """
     dec = [r for r in decisions if _production(r, since)]
     out = [r for r in outcomes if _production(r, since)]
     rea = [r for r in reactions if str(r.get("tx_time", "")) >= since]
@@ -62,8 +95,24 @@ def readout(decisions: list[dict[str, Any]], outcomes: list[dict[str, Any]],
               "grader": str(r.get("grader", "")),
               "edge": str((r.get("instrument_identity") or {}).get("edge", ""))}
              for r in out if str(r.get("grade", "")).upper() == "INCORRECT"]
+    stamp = (now or datetime.now(UTC)).astimezone(UTC)
+    newest = max((str(r.get("tx_time", "")) for r in (*dec, *out, *rea)), default="")
+    age_days: int | None = None
+    if newest:
+        try:
+            age_days = (stamp - datetime.fromisoformat(newest)).days
+        except ValueError:                      # an unparseable stamp is not a fresh one
+            age_days = None
     return {
         "since": since,
+        "window": {
+            "since": since,
+            "newest": newest,
+            "age_days": age_days,
+            "as_of": stamp.isoformat(timespec="seconds"),
+            "stale": age_days is None or age_days > STALE_AFTER_DAYS,
+        },
+        "sources": [dict(s) for s in sources],
         "decisions": dict(Counter(str(r.get("chosen_action", "")) for r in dec)),
         "deliberate_commits": sum(
             1 for r in dec if _instrument(r).startswith("deliberate@")),
@@ -73,12 +122,43 @@ def readout(decisions: list[dict[str, Any]], outcomes: list[dict[str, Any]],
     }
 
 
+def _window_line(w: dict[str, Any]) -> str:
+    """What the readout actually covered — so a watch that stopped is visible IN the
+    readout. Before K3 a stopped watch produced no file, and nothing reads an absent file."""
+    if not w["newest"]:
+        return (f"- window: since {w['since']}, as of {w['as_of']} — **STALE: no rows at "
+                f"all.** Either nothing was served in the window, or the stream this "
+                f"readout was pointed at is not the one being written.")
+    age = f"{w['age_days']} day(s) ago" if w["age_days"] is not None else "age unknown"
+    line = (f"- window: since {w['since']} → newest row {w['newest']} ({age}), "
+            f"as of {w['as_of']}")
+    if w["stale"]:
+        line += (f" — **STALE: nothing newer than {STALE_AFTER_DAYS} days.** The watch, "
+                 f"the stream, or the box serving it has stopped.")
+    return line
+
+
+def _sources_line(sources: Sequence[dict[str, Any]]) -> str:
+    """KB roots by INDEX and row count. Never a path: a root is an owner-specific absolute
+    path and this report may be pasted anywhere."""
+    if not sources:
+        return "- sources: (unrecorded — readout() was called without roots)"
+    parts = [f"root {i}: {src.get('rows', 0)} rows"
+             + ("" if src.get("rows", 0) else " (EMPTY)")
+             for i, src in enumerate(sources, start=1)]
+    noun = "root" if len(sources) == 1 else "roots"
+    return f"- sources: {len(sources)} KB {noun} — " + "; ".join(parts)
+
+
 def render(s: dict[str, Any]) -> str:
     lines = [
         f"# Production readout — since {s['since']}",
         "",
         f"_Generated {datetime.now(UTC).isoformat(timespec='seconds')}. A readout,"
         " not a diagnosis (the cap): counts and ids only, no corpus values._",
+        "",
+        _window_line(s["window"]),
+        _sources_line(s["sources"]),
         "",
         f"- decisions by action: {json.dumps(s['decisions'], sort_keys=True)}",
         f"- deliberate-edge commits: {s['deliberate_commits']}",
@@ -101,15 +181,25 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--since", default=DEPLOY_DATE)
+    ap.add_argument("--kb", action="append", default=None, metavar="PATH",
+                    help="a KB root to read (repeatable; default: $LIFE_AGENT_KB). The "
+                         "streams are unioned — the live stream accrues on whichever box "
+                         "served, and this repo names no box.")
     ap.add_argument("--out", default=None,
-                    help="report path (default: $LIFE_AGENT_KB/calibration/readout.md)")
+                    help="report path (default: <first --kb>/calibration/readout.md)")
     args = ap.parse_args(argv)
     from life_agent.core import config as CFG
-    cal = CFG.KB / "calibration"
-    s = readout(_rows(cal / "decisions.jsonl"), _rows(cal / "outcomes.jsonl"),
-                _rows(cal / "reactions.jsonl"), since=args.since)
+    roots = [Path(k).expanduser() for k in (args.kb or [])] or [CFG.KB]
+    cals = [r / "calibration" for r in roots]
+    per_root = [(_rows(c / "decisions.jsonl"), _rows(c / "outcomes.jsonl"),
+                 _rows(c / "reactions.jsonl")) for c in cals]
+    s = readout(union(*[p[0] for p in per_root]),
+                union(*[p[1] for p in per_root]),
+                union(*[p[2] for p in per_root]),
+                since=args.since,
+                sources=[{"rows": sum(len(x) for x in p)} for p in per_root])
     text = render(s)
-    out = Path(args.out) if args.out else cal / "readout.md"
+    out = Path(args.out) if args.out else cals[0] / "readout.md"
     out.write_text(text, encoding="utf-8")
     print(text)
     print(f"→ {out}", file=sys.stderr)

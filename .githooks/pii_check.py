@@ -249,7 +249,23 @@ def scan_text(
     """Return every PII shape / denylist hit in ``text``. Pure; no IO."""
     out: list[Finding] = []
     for lineno, line in enumerate(text.splitlines(), start=1):
-        if MARKER in line:
+        # K3 (D-d): the marker used to `continue` here, skipping EVERY check including the
+        # private denylist — so a line marked synthetic was never tested against the layer
+        # that knows real values, and `PII-OK` became a way to launder one in. It happened:
+        # a real host name under a synthetic tailnet suffix, marked and committed, invisible
+        # to the guard for exactly this reason.
+        #
+        # The marker's job is to permit a SYNTHETIC value that has a REAL SHAPE. A synthetic
+        # value cannot contain a real name, so there is no legitimate use that the denylist
+        # would break. It now suppresses shape findings only; the name layer always runs.
+        marked = MARKER in line
+        for pat in denylist:
+            if pat.search(line):
+                out.append(Finding(path, lineno, "private-denylist"
+                                   + (" (a PII-OK line is NOT exempt from the name layer)"
+                                      if marked else "")))
+                break
+        if marked:
             continue
         for m in _EMAIL_RE.finditer(line):
             if m.group(1).lower() not in allowed_domains:
@@ -282,13 +298,21 @@ def scan_text(
             out.append(Finding(path, lineno, "document-ref-shape"))
         if _OBFUSCATED_EMAIL_RE.search(line):
             out.append(Finding(path, lineno, "email (obfuscated separator)"))
-        # r23 (F13): owner-specific literals, src/ only.
-        if in_src and (_TAILNET_HOST_RE.search(line) or _OWNER_ID_LITERAL_RE.search(line)):
+        # r23 (F13) / K3 (S2): owner-specific literals. The tailnet hostname rule was
+        # scoped to `src/`, on the reading that a hostname in prose is documentation. It is
+        # not — CLAUDE.md forbids owner-specific values "including in docs prose, §14 ledger
+        # entries, commit messages, and test fixtures", and 25 occurrences of two host names
+        # had accumulated across reports, conferrals, a design doc and one poison fixture
+        # with the hook armed the whole time, because nothing looked outside `src/`. A
+        # hostname is PII wherever it appears, so this rule is now tree-wide.
+        #
+        # The ID rule stays `src/`-scoped: it matches an identity-shaped *binding*
+        # (`owner_id = 1234567`), which outside src is someone quoting code, and widening it
+        # is a separate change with its own false-positive question.
+        if _TAILNET_HOST_RE.search(line):
+            out.append(Finding(path, lineno, "owner-specific host (belongs in config/env)"))
+        if in_src and _OWNER_ID_LITERAL_RE.search(line):
             out.append(Finding(path, lineno, "owner-specific literal (belongs in config/env)"))
-        for pat in denylist:
-            if pat.search(line):
-                out.append(Finding(path, lineno, "private-denylist"))
-                break
         for m in _PATH_RE.finditer(line):
             p = m.group(0)
             if any(p == fp or p.startswith(fp.rstrip("/") + "/") for fp in forbidden_prefixes):

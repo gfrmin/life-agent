@@ -136,9 +136,9 @@ exit=0
 
 ### C6 — two-route count with real traffic; `golden compare all --from stream` at T2
 
-**Opened, awaiting traffic.** Per S13/Q6: thinkpad-only; "real traffic" = the owner's ask-path
+**Opened, awaiting traffic.** Per S13/Q6: authoring-box-only; "real traffic" = the owner's ask-path
 use (`bin/ask-live` → decisions, reactions, outcomes, gather) over the settling interval — no
-process on this box writes these stores on a timer (jarvis runs on steel against a different
+process on this box writes these stores on a timer (jarvis runs on the deploy box against a different
 KB, where the mirror is inert by construction). The C6 clock starts with the first hooked
 write. Procedure when the interval has passed (recorded in an appended section):
 `migrate sync all` (the swept sources) → `migrate counts` (tally == segment == legacy on
@@ -194,7 +194,7 @@ every source, mirror rows: `mirror_appends`, `mirror_behind_*`, `mirror_syncs`,
 
 ### Traffic (owner-authorised: the agent drove the deployed ask path)
 
-Window 13:50Z–14:38Z on thinkpad, all through `bin/ask-live` exactly as the owner uses it
+Window 13:50Z–14:38Z on the authoring box, all through `bin/ask-live` exactly as the owner uses it
 (the executor daemon was down, so every ask took the in-process fallback, *named* in its
 output): **8 asks** (two generic, then six owner questions chosen from the eval set by id after
 reading the KB's data map — ids q2-001, q2-005, q2-008, q2-047, q2-096, q2-099; one probe ask
@@ -467,7 +467,7 @@ revision — confirmed present, not duplicated.
 | `core/outcomes.append` | `calibration.outcomes` | no | — | outcomes are written by grading (eval runs, `scripts/verdict.py` fold, regrade); no grading ran |
 | `core/claude_verdicts.append` | `calibration.claude_verdicts` | no | — | `scripts/claude_verdict.py` not run |
 | `core/gather_outcomes.append_outcome` | `calibration.gather_outcomes` | no | — | written via the bridge's `/log_gather` by the executor daemon — down all window (in-process fallback, named) |
-| `tasks/events.append` | `act.tasks` | no | — | GTD commands come from jarvis (steel, other KB) or the mail timer (not on this box); no local command |
+| `tasks/events.append` | `act.tasks` | no | — | GTD commands come from jarvis (the deploy box, other KB) or the mail timer (not on this box); no local command |
 | `trips/events.append` | `act.trips` | no | — | no trips ingest ran |
 | `scripts/answer_labels.append_label` | `eval.labels` | no | — | no labelling session |
 | `scripts/verdict.py` corrections | `calibration.corrections` | no | — | no verdict session |

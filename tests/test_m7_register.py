@@ -113,12 +113,28 @@ def test_d4_the_leader_order_is_one_view() -> None:
     assert DEC.leader_order([0.2, 0.5, 0.3]) == [1, 2, 0]
     assert DEC.leader_order([0.5, 0.5]) == [0, 1]   # stable on ties — original order
     assert DEC.leader_order([]) == []
-    assert G.calls(LK, "leader_order"), (
-        "LK does not CALL leader_order() — one declaration, one home; a "
-        "source substring would be satisfied by a comment (r23 F10)")
+    # K3 (D-c): these were MODULE-scoped — `G.calls(LK, ...)` walks the whole module, so a
+    # call in a never-executed or env-gated branch satisfied it while the deployed function
+    # ordered differently. Each is now scoped to the function that actually runs, which is
+    # the form `EX.render_view` already used. The mutation that motivated it: move the call
+    # out of the deployed function into any other function in the same module — the module
+    # census stays green, these go red.
+    #
+    # The ORDERING ITSELF is behavioural where a driver exists:
+    #   BR  — `test_bridge_server.test_log_decision_sorts_credences_leader_first` posts
+    #         (0.3, 0.5, 0.1)/(A,B,C) and requires [0.5,0.3,0.1]/[B,A,C] on the ledger.
+    #   LK  — no behavioural driver: `decide_and_record` needs a root and an engine, so its
+    #         ordering is pinned by the call alone. Registered known-and-uncovered.
+    #   EX  — `render_view` likewise call-pinned only.
+    assert G.calls(LK.decide_and_record, "leader_order"), (
+        "LK.decide_and_record does not CALL leader_order() — one declaration, one home. "
+        "A module-wide census would be satisfied by a call anywhere in lookup.py, "
+        "including a branch that never runs (r23 F10, K3 D-c)")
     assert G.calls(EX.render_view, "leader_order"), (
         "EX.render_view does not CALL leader_order() — one declaration, one home; a "
         "source substring would be satisfied by a comment (r23 F10)")
-    assert G.calls(BR, "leader_order"), (
-        "BR does not CALL leader_order() — one declaration, one home; a "
-        "source substring would be satisfied by a comment (r23 F10)")
+    assert G.calls(BR._log_decision, "leader_order"), (
+        "BR._log_decision does not CALL leader_order() — one declaration, one home. The "
+        "leader-first parity is load-bearing (the fold reads credences[0] as the leader), "
+        "and a module-wide census would be satisfied by a call in a dead branch "
+        "(r23 F10, K3 D-c)")

@@ -49,4 +49,4 @@ editing its own copy of the unit is how a public repo's PII-free unit and a live
 unit come to disagree — which is exactly what happened, and why the wrappers exist.
 
 If you need the keyring itself unlocked for a scheduled job, `unlock-keyring` in the ops
-repo (`hosts/steel-legend/bin/`) is the escape hatch.
+repo (under its per-host `bin/`) is the escape hatch.

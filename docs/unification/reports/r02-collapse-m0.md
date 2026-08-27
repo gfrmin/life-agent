@@ -466,7 +466,7 @@ chunk sets hit warm derivations.
   reconcile-or-refuse discipline picks them up on the next extract.
 * **The priced baseline was not recorded by me** (DEVIATIONS 2).
 * **The tranche-1 witnesses were not run.** The verified archive name
-  (`travel-thinkpad-2026-08-19_16-37-53`) arrived during this session and unblocks
+  (`travel-<box>-2026-08-19_16-37-53`) arrived during this session and unblocks
   `b2-live-witness.sh` and `a5-witness.sh`, then Q4/Q7 — all owner-executed, and all outside
   this brief.
 

@@ -111,7 +111,7 @@ the atom rewrite is algebraically identical; the lambda_usd defaults are dead-in
 ## Deviations
 
 Disclosure items in the final report; rollback = revert the branch (one PR). After
-green: results appended, mirrors updated, PR/CI/merge, steel deploy, then M5 (single or
+green: results appended, mirrors updated, PR/CI/merge, deploy to the live box, then M5 (single or
 split per item 6) under its own pre-registration.
 
 ## RESULTS (read 2026-08-25/26, appended after the gates ran — nothing above changed)
