@@ -304,6 +304,10 @@ def same_entity_posterior(brain: Brain, cov: PairCovariates) -> SameEntityPoster
 # by the prereg and are the deterministic rules below, disclosed in r21's RESULTS).
 
 _COARSE_BASES = frozenset({"quarterly", "annual", "other"})
+# Two channel reads within this many currency units are treated as agreeing (K2,
+# r24): amounts are rounded to 2dp upstream, so this is an exact-match tolerance,
+# not a fudge factor.
+_AGREE_TOL = 0.005
 _BASIS_RANK = {"point_in_time": 0, "monthly": 0, "quarterly": 1, "annual": 2,
                "other": 3}
 
@@ -441,24 +445,19 @@ def _compose_one(brain: Brain, group: list[Addend], scope: Scope,
         notes.append(fold_note)
     group, resolutions = _dedup_pairs(brain, group)
 
+    # --- channel A: issuer roll-ups stated at the scope end ---------------------------
+    # K2 (r24): these JOIN the series; they do not replace it. Until K2 a single roll-up
+    # returned as THE observation with a zero-width interval and k=1, and the whole
+    # grounded series was demoted to "slot evidence" and discarded — the replace-branch
+    # class r06-r09 spent three checkpoints closing, reintroduced by design. The two are
+    # reads of one latent quantity: the issuer's own fold (one document, high authority,
+    # silent about slots it never listed) and the summed series (more documents, but it
+    # needs the recall term). Disagreement between them is INFORMATION.
     candidates = [a for a in group
                   if a.basis in _COARSE_BASES
                   and a.as_of is not None
                   and date.fromisoformat(a.as_of) == scope.end]
-    if len(candidates) == 1:
-        v = candidates[0].amount
-        notes.append("issuer roll-up at the scope end is the single observation; "
-                     f"{len(group) - 1} finer rows are slot evidence")
-        return TotalPosterior(
-            currency=currency, point=v, lo=v, hi=v, k=1, s_obs=v,
-            imputed_slots=(), basis_note="; ".join(notes),
-            excluded_kind=excluded_kind, excluded_basis=(),
-            dedup_resolutions=resolutions,
-            unmodelled_recall=not recall.estimated)
-    if len(candidates) >= 2:
-        vals = ", ".join(f"{a.amount:.2f}" for a in candidates)
-        notes.append(f"competing roll-up observations at the scope end ({vals}) — "
-                     "summing the series instead")
+    rollups = [a.amount for a in candidates]
 
     remaining = [a for a in group if a not in candidates]
     if remaining:
@@ -486,6 +485,47 @@ def _compose_one(brain: Brain, group: list[Addend], scope: Scope,
         imputed = recall.missed
         notes.append(f"{m} missed slot(s) imputed from the observed series "
                      "(exchangeability within the generator, a disclosed assumption)")
+
+    # --- the join ---------------------------------------------------------------------
+    # The interval SPANS both channels, k counts both, and a disagreement is named. Where
+    # the channels agree the interval is not padded: agreement is evidence, and width is
+    # priced by the gate's Winkler score, so manufacturing it is not the safe direction.
+    if rollups:
+        if summed:
+            series_point = point
+            lo, hi = min(lo, *rollups), max(hi, *rollups)
+            k += len(rollups)
+            s_obs += sum(rollups)
+            if len(rollups) == 1:
+                point = rollups[0]  # the issuer's own fold is the point estimate
+                gap = abs(rollups[0] - series_point)
+                if gap <= _AGREE_TOL:
+                    notes.append(f"issuer roll-up and the summed series agree at "
+                                 f"{rollups[0]:.2f} ({k} observations)")
+                else:
+                    notes.append(
+                        f"issuer roll-up {rollups[0]:.2f} DISAGREES with the summed "
+                        f"series {series_point:.2f} (gap {gap:.2f}) — both channels kept, "
+                        f"the interval spans them")
+            else:
+                vals = ", ".join(f"{v:.2f}" for v in rollups)
+                notes.append(f"competing roll-up observations at the scope end ({vals}) "
+                             f"differ from the summed series {series_point:.2f} — the "
+                             f"series is the point, the interval spans every read")
+        else:
+            # roll-up(s) only: no finer rows to join against.
+            k, s_obs = len(rollups), sum(rollups)
+            lo, hi = min(rollups), max(rollups)
+            if len(rollups) == 1:
+                point = rollups[0]
+                notes.append(f"issuer roll-up at the scope end ({rollups[0]:.2f}); "
+                             "no finer rows retrieved to corroborate it")
+            else:
+                point = statistics.fmean(rollups)
+                vals = ", ".join(f"{v:.2f}" for v in rollups)
+                notes.append(f"competing roll-up observations at the scope end ({vals}) "
+                             "and no finer rows — the interval spans them")
+
     return TotalPosterior(
         currency=currency, point=point, lo=lo, hi=hi, k=k, s_obs=s_obs,
         imputed_slots=imputed, basis_note="; ".join(notes),
