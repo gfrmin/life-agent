@@ -158,7 +158,7 @@ hand-priced-VOI arc (§14, post-M5 — untouched), proplang (deferred).
 ## Consequence branches (frozen)
 
 All gates green → M6 completes on the standing pattern (results appended, mirrors,
-PR/merge, steel deploy) without a further keypress; the ladder resumes at M7 (owner
+PR/merge, deploy to the live box) without a further keypress; the ladder resumes at M7 (owner
 keypress — Appendix A). Any G2 divergence → STOP, publish the finding, blind
 amendment before any further phase. Anomalies en route are disclosure items
 (cap-the-arc).

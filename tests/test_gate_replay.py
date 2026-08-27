@@ -239,7 +239,7 @@ def test_gold_available_reads_the_catalogue_not_the_filesystem() -> None:
     ]
     avail = RE.gold_available(conn, questions)
     # the source file's path is irrelevant — "here" has no file yet answers fine, which is
-    # exactly today's thinkpad (full catalogue, 0 of 16 Downloads sources on disk)
+    # exactly today's authoring box (full catalogue, 0 of 16 Downloads sources on disk)
     assert avail == {"here": True, "absent": False}
 
 

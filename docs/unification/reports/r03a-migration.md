@@ -687,11 +687,11 @@ fixture; CLI `--from stream`.
    interaction contract.
 5. **`LIFE_AGENT_LEDGER_MIRROR=0`** as the rollback switch for the mirror + sweeps
    (default on): acceptable name and semantics?
-6. **What counts as "real traffic" for C6 on this machine** — `jarvis` runs on steel with its
+6. **What counts as "real traffic" for C6 on this machine** — `jarvis` runs on the deploy box with its
    own KB (a different `$LIFE_AGENT_KB` root there), so the tasks writer will not fire
-   here; the thinkpad writers are the ask path (decisions/outcomes/reactions via
+   here; the authoring box's writers are the ask path (decisions/outcomes/reactions via
    `scripts/ask.py`/the bridge), `claude_verdict`, `answer_labels`, `verdict.py`. Does C6 run on
-   thinkpad only, or must the dual-write also be deployed to steel (a code deploy — the KB
+   the authoring box only, or must the dual-write also be deployed to the deploy box (a code deploy — the KB
    there has its own legacy stores and would need its own C0–C2)? Owner directs.
 
 **Reviewer ruling:**
@@ -1058,7 +1058,7 @@ uncommitted checkpoints.
 on Q1–Q6 signed: **7** the writer hooks (C5 proper) → C6 → `r03-merge.md`.
 
 **Waiting on the owner:** signatures Q1 (b, or a naming the messages), Q2, Q3 (append-shaped),
-Q4 (a + `mirror_failures`), Q5 (recorded state), Q6 (thinkpad-only); Q14–Q15 from the
+Q4 (a + `mirror_failures`), Q5 (recorded state), Q6 (authoring-box-only); Q14–Q15 from the
 Addendum D section. **STOP.**
 
 ### Owner signatures — 2026-08-18 (post-review)
@@ -1069,7 +1069,7 @@ The owner approved the reviewer's recommendations as drafted in the section abov
 verified green in a scratch worktree — c1 9 · c2 9 · c3 49 · c5 62 ledger tests — then
 removed); Addendum D folded into the docs commit (4). **S13:** Q2 keep T0 (indefinite) and T1
 (to tranche end); Q3 append-shaped; Q4 (a) fail-open + `mirror_failures` in the manifest; Q5
-`LIFE_AGENT_LEDGER_MIRROR=0`, state recorded (log line + manifest note); Q6 thinkpad-only C6,
+`LIFE_AGENT_LEDGER_MIRROR=0`, state recorded (log line + manifest note); Q6 authoring-box-only C6,
 "real traffic" = the owner's ask-path use over the settling interval. Q14 and Q15 (no
 recommendation was made): the conservative reading is taken — dispositions §6.4 stays as the
 historical injection and the OpenHands row's Verdict cell stays `INPUT + VERIFY`; both are

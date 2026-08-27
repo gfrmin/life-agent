@@ -1698,8 +1698,8 @@ on this list. Answers land here by amendment, citing their evidence.
   no gate report has ever carried the corpus digest, so "the corpus digest held across all
   firings" was an out-of-band operator check, not an artifact property. Measured extent on
   the current corpus: 238 sources / 230 chunked artifacts (~~1.8% of 12 984~~) sit under
-  `<downloads>`, a root whose *content differs per machine* (139 files on thinkpad,
-  425 on steel), and 16 of the 104 eval questions cite provenance under it. Three changes,
+  `<downloads>`, a root whose *content differs per machine* (139 files on the authoring box,
+  425 on the deploy box), and 16 of the 104 eval questions cite provenance under it. Three changes,
   frozen here, binding from run 6:
   **MAGNITUDE CORRECTED 2026-08-17, before any run-6 reading — the registered figure
   understated the exposure 13×.** "1.8% of 12 984" is the *artifact* share; measured by what
@@ -1736,7 +1736,7 @@ on this list. Answers land here by amendment, citing their evidence.
   re-price every archived run, so the censor is a separate flag.
   ~~Named residual, priced: the provenance handle today is the **surrogate** `chunk_id`
   (migration `0005`), comparable across machines only because this catalogue is a byte-copy
-  of steel's. On an independently-chunked box the predicate needs the content-addressed
+  of the deploy box's. On an independently-chunked box the predicate needs the content-addressed
   `artifact_cache_key` (the `artifact_chunks` join column, and what `corpus_digest` itself
   hashes) — named as the fix, not yet landed. Until it is, the censoring rule is sound only
   on catalogues sharing a chunking lineage, and a run on a re-chunked corpus must say so.~~

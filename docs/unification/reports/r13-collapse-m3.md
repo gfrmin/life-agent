@@ -130,7 +130,7 @@ assert their (now-satisfied) M2 directions. A single field diff anywhere is a FA
 
 Anything unexpected is a disclosure item in this report's final form. Rollback: revert
 the branch (one PR). Sequencing after green: report results appended, mirrors updated
-(CLAUDE.md tail + design §8 row), PR, CI, merge, steel deploy, then M4 under its own
+(CLAUDE.md tail + design §8 row), PR, CI, merge, deploy to the live box, then M4 under its own
 pre-registration.
 
 ## AMENDMENT 1 (2026-08-25, blind — before any src change; nothing above edited)

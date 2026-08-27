@@ -255,7 +255,7 @@ about this one.
 ## Deviations
 
 Disclosure items in the final report; rollback = revert the branch (one PR). After
-green: results appended, mirrors updated, PR/CI/merge, steel deploy (executor,
+green: results appended, mirrors updated, PR/CI/merge, deploy to the live box (executor,
 ask_client, lookup, narrative, membrane, bridge, ask all move — bridge + jarvis
 restart), then M6 (E-7 verify-only) under its own pre-registration.
 
@@ -480,7 +480,7 @@ terminals-only regime (§6.5 kept for no-engine-at-all); L-3's scoped rows are
 engine-picked; D-5's one withhold-reason derivation serves every renderer; and the
 report-economy latch stands as MEASURED protection under the run-17 ruling, priced at
 0.216 of headline and 0.13 of answer rate by its own gate pair. The consequence branch
-enacts without a further keypress: mirrors updated, PR/merge, steel deploy, then the
+enacts without a further keypress: mirrors updated, PR/merge, deploy to the live box, then the
 post-M5 re-record (the 102 DIR-L3-wire fixtures re-recorded servable) and the ladder
 resumes at **M6 — the observation model declared once**.
 

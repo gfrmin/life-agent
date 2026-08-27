@@ -32,7 +32,7 @@ M3 (one fold entry point, r13, run 15 PASS) · M4 (one atom + price table, r14, 
 after the A2-revert ruling) · M6 (the observation model declared once, r16, 314/314
 pure equality) · M7's code half (the §6 register pinned by a mutation-verified
 re-listing guard; D-4/D-6 closed as derived views; r17). Live = master, deployed on
-steel. The two standing wrong rows ride priced and published; the §14 ledger
+the deploy box. The two standing wrong rows ride priced and published; the §14 ledger
 carries the open arcs (hand-priced VOI; the volatility latent) with owners.
 
 ## Price and the decline branch
