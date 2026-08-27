@@ -27,60 +27,82 @@ so that the difference between "has a checker" and "is checked" stays visible.
 
 CI (`.github/workflows/ci.yml`) runs on every push to `master` and every PR — an
 un-bypassable job on a host the builder does not control, which is the precondition for any
-row below to reach *resolved*.
+row below to reach *resolved*. Its **first** test step is a deliberately failing positive
+control the job requires to go red, so a green from it comes from a harness that has just
+proved it can speak.
 
-| # | Guard | What it claims | State | Evidence |
+Every *resolved* row below names the mutation that was demonstrated to kill it; the
+transcripts are in `unification/reports/r23-k1-g4-adversary.md`.
+
+| # | Guard | What it claims | State | Killed by |
 |---|---|---|---|---|
-| 1 | `AMOUNTS_PRODUCERS` names the deployed producer (`test_aggregate.py`) | the amounts projection filters on the name pkm actually writes | **resolved** | r22: restoring the declaration-namespace tuple fails both tests with their named markers |
-| 2 | K1 deletion re-listing (`test_k1_family_deletion.py`) | no deleted aggregate-family symbol resolves anywhere in `src/`, `scripts/`, `tests/` | **resolved** | r22: reintroducing `AGGREGATE_ACTION_ORDER` fails naming the symbol and the file |
-| 3 | The offer-set pin (`test_k1_family_deletion.py`) | the daemon's ranked act set is unchanged, so no priced run is owed | **resolved** | r22: adding one menu row fails with "K1 moved the argmax and owes a priced gate run" |
-| 4 | The §6 register re-listing (`test_m7_register.py`) | every §6 named exception has a live artefact pin | **resolved** | r17: a fake `6.99` entry and a mangled needle both fail |
-| 5 | The replay oracle (`scripts/collapse_replay.py`, `m5-base`) | a host change does not move a recorded decision | **instrumented** | fires on real changes; **no planted decision-path defect has ever been replayed against it**, and r06 measured three of four decision-path changes as invisible to it by construction |
-| 6 | The one-recorder leaf census (`test_m5_absorption.py`) | only the declared family leaves write through the recorder | **instrumented** | has now fired on a real change in both directions (a writer added at r21, removed at K1) — real changes, not planted ones |
-| 7 | The price-table pin (`test_pricing_table.py`) | every priced constant that ranks an action has one home | **instrumented** | — |
-| 8 | The gate tree pin (`test_gate_tree_pin.py`, §6.10) | a gate run pins its tree, not just its recipe | **instrumented** | built after run 10 fired a recipe against a drifted tree |
-| 9 | The §3.3 declaration stamps (`test_m6_declaration.py`) | each observation-model clause has one declaration with one home | **instrumented** | — |
-| 10 | Action/family partition invariants (`test_decide.py`, `test_decisions.py`) | the action vocabulary is one closed set and the family orders are subsets | **instrumented** | — |
-| 11 | The act-committing seam census (`test_seam.py`) | one function commits acts | **instrumented** | — |
-| 12 | The instrument's own integrity (`test_collapse_record.py`) | the replay recorder does not lie about what it recorded | **instrumented** | — |
-| 13 | PII guard (`.githooks/pii_check.py`, pre-commit + pre-push + CI `--shapes-only`) | no corpus PII reaches the public tree | **instrumented** | the hook refuses without `LIFE_AGENT_KB`, which is fail-closed; `git commit --no-verify` walks past the local hooks, and the CI leg is shapes-only |
-| 14 | Fresh-clone smoke (`scripts/smoke-fresh-clone.sh`) | a stranger can clone and get cited retrieval with no API key | **instrumented** | — |
+| 0 | Harness positive control (`tests/poison/harness_control.py` + CI) | the test runner can report a failure at all | **resolved** | it IS the seed; the job fails if it passes |
+| 1 | The recorded producer name is pinned (`tests/poison/test_oracle_poison.py`) | the amounts projection matches the name the catalogue actually holds | **resolved** | renaming `ExtractAmountsProducer.name` |
+| 2 | K1 deletion re-listing (`test_k1_family_deletion.py`) | no deleted aggregate-family *name* resolves in the tree | **instrumented** | reintroducing `AGGREGATE_ACTION_ORDER` kills it — but it is a NAME census and cannot see the same mechanism renamed (F2). Row 2b is what covers that. |
+| 2b | Dispatch question-consumers (`tests/poison/test_dispatch_poison.py`) | only a declared set of calls may consume the question on the dispatch path | **resolved** | adding `pipeline_verdict(question)` and gating the typed path on it |
+| 2c | The bridge endpoint set | no undeclared endpoint serves | **resolved** | adding `POST /pipeline` |
+| 3 | The priced offer set, frozen whole | the daemon ranks the same acts at the same prices | **resolved** | setting every menu row's `cost` to `0.0` |
+| 4 | The §6 register re-listing (`test_m7_register.py`) + the no-vacuous-needle rule | every §6 entry pins a specific clause of a live artefact | **resolved** | restoring an existence-only (`""`) needle |
+| 5 | The replay oracle (`scripts/collapse_replay.py`, `m5-base`) | a host change does not move a recorded decision | **instrumented** | its *comparator* and its *non-zero exit* are now both controlled (row 5b), but its **coverage** is not: r06 measured three of four decision-path changes as invisible to it by construction, and the adversary got 314/314 with two live decision-path defects in the tree |
+| 5b | The oracle's own control (`tests/poison/test_oracle_poison.py`) | the comparator finds a planted mismatch, and `main` can exit non-zero | **resolved** | making `main` `return 0` unconditionally |
+| 6 | The one-recorder census (`test_m5_absorption.py`) | only the declared family leaves write through the recorder | **resolved** | a bare `from ...recorder import record_local` (a third spelling) |
+| 7 | The price-table pin (`test_pricing_table.py`) | every priced constant that ranks an action has one home | **instrumented** | — not attacked |
+| 8 | The gate tree pin (`test_gate_tree_pin.py`, §6.10) | a gate run pins its tree, not just its recipe | **instrumented** | — not attacked |
+| 9 | The §3.3 declaration stamps (`test_m6_declaration.py`) | each observation-model clause has one declaration with one home | **instrumented** | — not attacked |
+| 10 | Action/family partition invariants (`test_decide.py`, `test_decisions.py`) | the action vocabulary is one closed set | **instrumented** | — not attacked |
+| 11 | The act-committing seam census (`test_seam.py`) | one function commits acts | **resolved** | a file named `seam.py` elsewhere under `src/life_agent`, calling `.optimise(` |
+| 12 | The instrument's own integrity (`test_collapse_record.py`) | the replay recorder does not lie about what it recorded | **instrumented** | — not attacked |
+| 13 | PII guard — NUL refusal, per-path skips, seven added shapes, src-scoped owner literals | no corpus PII reaches the public tree | **resolved** (four ways) | a NUL byte; a lockfile basename at an arbitrary path; each of seven shapes removed individually; the src-scoped rule removed |
+| 14 | Fresh-clone smoke (`smoke-fresh-clone.sh`) | a stranger can clone and get cited retrieval with no API key | **instrumented** | — not attacked |
 | 15 | `ruff` / `mypy` | lint and types | **instrumented** | a linter is not a compiler and neither is a test |
-| 16 | The adoption gate's frozen conjuncts (`core/gate.py`) | δ and level are frozen blind before a run reads | **instrumented** | frozen-blind by process; nothing mechanically prevents a conjunct being restated after a read |
+| 16 | The adoption gate's frozen conjuncts (`core/gate.py`) | δ and level are frozen blind before a run reads | **instrumented** | — not attacked; nothing mechanically prevents a conjunct being restated after a read |
+| 17 | D-5: the withhold reason is one derivation (`test_m5_absorption.py`) | the render's wording is the one the derivation selects | **resolved** | re-spelling the chain to disagree while keeping the token in a comment |
 
-Twelve of sixteen rows read *instrumented*. That is the honest state, and it is the number
-this programme exists to move.
+**Eleven rows resolved, nine instrumented.** The register opened at four and twelve, and
+three of those four were then defeated — so the honest reading is that this is the first
+time any of these numbers has been earned rather than assumed.
 
 ## Known and uncovered
 
-These are written in English on purpose. There is no coverage metric for an attack surface
-— the denominator is the set of violations someone thought of, and that set is not
-enumerable. Folding these into a count would make the count look better and the tree no
-safer.
+Written in English on purpose. There is no coverage metric for an attack surface — the
+denominator is the set of violations someone thought of, and that set is not enumerable.
+Folding these into a count would make the count look better and the tree no safer.
 
-1. **The gate's universe is smaller than the population it stands for.** The adoption gate
-   reads **104 authored questions**. The live surfaces have already asked **186 distinct
-   questions** (`ask`/`jarvis`) plus **91** more through `answer-brain`. Nothing measures
-   the overlap, and no guard would notice if the corpus and the real asks diverged
-   completely. This is the dominant defect class — a checker whose universe is derived from
-   somewhere other than the thing being checked — sitting inside this programme's own
-   instrument. Owner ruling 2026-08-27: record it here *and* widen the corpus from real
-   asks, tracking the authored-vs-asked fraction as it moves.
-2. **Row 5's blind spot is measured, not suspected.** r06 established that three of four
-   decision-path changes in run 10's tree were invisible to the replay oracle by
-   construction. A 314/314 pure-equality replay is fully compatible with a decision-path
-   change the oracle cannot see.
-3. **Row 13 is bypassable locally.** `git commit --no-verify` and `git push --no-verify`
-   walk past the pre-commit and pre-push hooks. The CI leg runs `--shapes-only` over the
-   tracked tree, so it is the real floor; the hooks are convenience, not enforcement.
-4. **One fixture per guard is not a fraction of anything.** Each resolved row above proves
-   the guard has the one tooth its seed was shaped for. Every other behaviour of that guard
-   is weakenable exactly as before.
-5. **No positive control.** Nothing in CI proves the harness can speak. A green test step is
-   currently indistinguishable from a test step that ran nothing. (Planned: a deliberately
-   failing planted test required to go red as the first step.)
-6. **Two wrong-commit rows ride in production**, priced and published (runs 13–18). They are
-   disclosed, not guarded.
+1. **A personal-name segment under an allowlisted path root cannot be caught by a shape.**
+   `_path_allowed` exempts every segment beneath an allowed root. A shape rule for personal
+   segments was written, tried, and **withdrawn**: a personal name and an ordinary
+   kebab-case slug are structurally identical (`chan-tai-man` vs `life-agent`), and it fired
+   on 20 legitimate paths in this tree. Names are the private denylist's job — which means:
+2. **The CI leg runs with an empty name layer.** `--shapes-only` sets `denylist = []`, so
+   the private-name half does not run in CI at all. It now *says so* on every invocation
+   instead of printing a bare pass, but saying so is not catching. A clean CI PII result is
+   a clean result **for shapes only**.
+3. **The local PII hooks are bypassable.** `git commit --no-verify` and `git push
+   --no-verify` walk past pre-commit and pre-push. The CI leg is the real floor.
+4. **The replay oracle's coverage is unmeasured.** Its comparator and its exit path are now
+   controlled, but nothing measures which decision-path branch sites any fixture reaches.
+   r06 measured three of four decision-path changes as invisible to it by construction, and
+   the G4 adversary obtained **314/314 pure equality with two live decision-path defects in
+   the tree**. A pure-equality replay is not evidence that the decision path is unchanged.
+5. **Six of the adversary's findings were arguable, not reproduced, and are NOT converted**
+   (r23 P7 — an argument is not evidence and does not earn a fixture): the offer-set pin's
+   second assertion is an identity against its own source; `test_only_the_seam_posts_decide`
+   matches a literal `/decide` and any computed URL evades it; the K1 name census walks only
+   `*.py` under `src`/`scripts`/`tests`, so `bin/`, `config/`, `packaging/` and a root-level
+   `conftest.py` are outside its universe; the census regex misses dynamically constructed
+   names; the `PII-OK` marker is a per-line kill switch with no review trail and no cap; and
+   the frozen-conjunct row is self-describing.
+6. **Six register rows were never attacked** (7, 8, 9, 10, 12, 14). Their *instrumented*
+   state reflects the adversary's budget, not their strength — and not their weakness.
+7. **One fixture per guard is not a fraction of anything.** Each resolved row proves the
+   guard has the one tooth its seed was shaped for; every other behaviour of that guard is
+   weakenable exactly as before.
+8. **The gate's universe is smaller than the population it stands for.** The adoption gate
+   reads **104 authored questions**; the live surfaces have asked **186 distinct** ones
+   (`ask`/`jarvis`) plus **91** through `answer-brain`, with the overlap unmeasured. Owner
+   ruling 2026-08-27: record it here *and* widen the corpus from real asks.
+9. **Two wrong-commit rows ride in production**, priced and published (runs 13–18).
+   Disclosed, not guarded.
 
 ## Entry 1 in full — why it is entry 1
 

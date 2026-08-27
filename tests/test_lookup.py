@@ -99,9 +99,9 @@ def test_prompt_templates_are_single_braced() -> None:
 # --- observe (grounding gate, caching, authority) -----------------------------------------
 
 def test_observe_grounded_extraction(migrated_root: Path) -> None:
-    chunk = "Passport No: P1234567 issued 2019"
+    chunk = "Passport No: P1234567 issued 2019"  # PII-OK: synthetic passport
     client = FakeClient({"found": True, "value": "P1234567",
-                         "quote": "Passport No: P1234567"})
+                         "quote": "Passport No: P1234567"})  # PII-OK: synthetic passport
     obs, ind = observe_hits(migrated_root, "passport number?",
                             [_hit("a" * 64, chunk)], client=client)
     assert ind == 0 and len(obs) == 1
@@ -159,7 +159,7 @@ def test_observe_hits_collapses_correlated_duplicate_documents(migrated_root: Pa
     # decouple split shaping from deciding, so a dedup in the host decider never reached the
     # daemon path (bridge /extract → to_abstract_observations) and the q-002/q-014 confident-wrong
     # regression stayed latent in the executor.
-    quote = "Passport No: P1234567"
+    quote = "Passport No: P1234567"  # PII-OK: synthetic passport
     client = FakeClient({"found": True, "value": "P1234567", "quote": quote})
     hits = [_hit("a" * 64, f"{quote} issued 2019"),
             _hit("b" * 64, f"FWD: {quote} issued 2019")]
@@ -187,7 +187,7 @@ def test_daemon_abstract_observations_collapse_correlated_duplicates(
     # witnesses (which saturated the §4.2-less posterior — the regression). This is the daemon-seam
     # lock: it would also fail if to_abstract_observations ever re-expanded a collapsed cluster.
     from life_agent.bridge.observations import to_abstract_observations
-    quote = "Passport No: P1234567"
+    quote = "Passport No: P1234567"  # PII-OK: synthetic passport
     client = FakeClient({"found": True, "value": "P1234567", "quote": quote})
     hits = [_hit("a" * 64, f"{quote} issued 2019"),
             _hit("b" * 64, f"FWD: {quote} issued 2019")]

@@ -134,3 +134,118 @@ pass's findings.
 ## RESULTS
 
 *(appends here; nothing above is edited)*
+
+**Read 2026-08-27, $0. All seven frozen criteria MET. No priced run bought.**
+
+### P1 — every finding has a fixture, every fixture verified RED by mutation: MET
+
+**28 poison fixtures** under `tests/poison/`, all running in CI's ordinary pytest leg.
+Fourteen mutations were applied to the fixed tree and each produced its named marker:
+
+| # | Mutation | Fixture that died | Marker |
+|---|---|---|---|
+| M1 | NUL returns `None` instead of raising | F4 | `contains a NUL byte and was NOT scanned` |
+| M2 | `_skip` matches basename again | F5 | `skips are declared per PATH, not per basename` |
+| M3 | all seven new shape rules removed | F6 (×7, each independently) | one failure per shape |
+| M4 | src-scoped owner-literal rule removed | F13 (×2) | `owner-specific literal` |
+| M5 | the shapes-only announcement removed | F6b | `name layer not run` |
+| M6 | a `seam.py` elsewhere calling `.optimise(` | F8 | `assert [PosixPath('tasks/seam.py')] == []` |
+| M7 | a bare `from ...recorder import record_local` | F9 | `a spelling of the one recorder outside the declared leaves` |
+| M8 | the withhold chain re-spelled to disagree | F10 | `does not CALL decisions.withhold_reason — a source substring is not a call site` |
+| M9 | every menu row's `cost` set to `0.0` | F1 | `a price change moves the argmax and owes a priced gate run` |
+| M10 | `pipeline_verdict(question)` gating the typed path | F2 | `a new call consumes the question on the dispatch path: ['pipeline_verdict']` |
+| M11 | `POST /pipeline` added to the bridge | F2b | `the bridge serves undeclared endpoint(s) ['/pipeline']` |
+| M12 | `ExtractAmountsProducer.name` renamed | F11 | `a rename orphans every derived artifact and needs a migration` |
+| M13 | `collapse_replay.main` made to `return 0` | F12 | `the oracle has been made unable to fail` |
+| M14 | an existence-only (`""`) register needle restored | F12b | `pins with a needle that names nothing specific` |
+
+M6–M11 replant the adversary's own violations verbatim.
+
+### P2 — no new PII shape without a kill: MET
+
+Seven shapes added. M3 removed all seven at once and **each produced its own failure**, so
+every one has an independent tooth. All are context-anchored (a bare 8-digit run collides
+with dates; a bare `[A-Z]\d{7}` collides with hashes) because a noisy guard gets disabled,
+and a disabled guard is what let the 2026-08-18 leak through.
+
+The single-letter passport rule earned its place immediately: on its first run over the
+tracked tree it found **four** synthetic passport literals of exactly the forbidden shape in
+`tests/test_lookup.py`, invisible to the old two-letter rule. They are now marked
+`# PII-OK: synthetic passport` per the repo convention.
+
+### P3 — no tautological guard: MET
+
+`RECORDED_PRODUCER_NAME = "extract_amounts"` is pinned as a literal in
+`tests/poison/test_oracle_poison.py`, so the guard no longer compares an expression with
+itself. M12 confirms a class rename fails it. The demand log's hard-coded `transform_name`
+is pinned to the same constant, closing F11's collateral.
+
+### P4 — the register is updated row by row: MET
+
+`docs/guards.md`: **eleven resolved, nine instrumented**, each resolved row naming the
+mutation that kills it. It opened this morning at four and twelve, and three of those four
+were then defeated — so this is the first time any of these numbers has been earned rather
+than assumed. Nine known-and-uncovered items in English, including the two the fix work
+itself produced (below).
+
+### P5 — the decision path does not move: MET, pure equality
+
+`collapse_replay.py --checkpoint m5-base`, `PYTHONHASHSEED=0`: **314/314 fixtures replay
+identically**, exit 0. All thirteen conversions are guard-side.
+
+### P6 — a positive control that runs in CI: MET
+
+`tests/poison/harness_control.py` is a deliberately failing test, not named `test_*.py` so
+the ordinary suite never collects it (2808 collected, not 2809). CI runs it explicitly as
+the **first** test step and fails the job if it PASSES. A green test step is otherwise
+indistinguishable from a step that ran nothing — a conftest import error, a bad marker
+expression, zero items collected.
+
+### P7 — the arguable six are not converted: MET
+
+Recorded in `docs/guards.md` as known-and-uncovered item 5, in English, unconverted.
+
+### Gates
+
+G1 `pytest -m "not llm and not system"` **2808 passed**, 35 deselected (2780 → 2808 = the
+new fixtures); `ruff check .` clean; `mypy` clean on 226 files; `pii_check --shapes-only`
+exit 0 on the tracked tree.
+G2 **314/314 pure equality** on `m5-base`.
+G3 not bought — P5 is the evidence.
+G4 not re-run: a second adversary pass belongs to the next milestone.
+
+### Defects in this milestone's own work, found while doing it
+
+1. **Two of the fixes were wrong and were withdrawn or corrected after being run against
+   the real tree**, not after being reasoned about. The obfuscated-email rule's `\s+at\s+`
+   branch matched ordinary English prose (8 false positives). The personal-segment shape
+   rule fired on **20 legitimate paths**, because a personal name and a kebab-case slug are
+   structurally identical. The first was narrowed to bracketed forms only; **the second was
+   withdrawn entirely** and recorded as known-and-uncovered rather than shipped as a noisy
+   rule. This is P2's clause working as intended.
+2. **The first version of the oracle control did not go red under its own mutation.** It
+   asserted the *shape* of `main`'s returns by AST; because `main` has other non-zero
+   returns (argument errors), an unconditional early `return 0` slipped past it. Replaced
+   with a behavioural control that drives the real entry point against an absent fixture
+   directory. Found only because P1 requires the mutation to be run — an AST guard that
+   passes on arrival would otherwise have been recorded as *resolved*.
+3. **A fixture built from invented field names "passed" for the wrong reason.** The
+   comparator flags anything unclassified, so a self-comparison of invented keys also
+   diffed; the fixture was rebuilt on `compare.VALUE_COMPARED`'s declared vocabulary.
+4. **An over-wide source slice deleted `il_id_valid` and the skip helpers** while removing
+   the withdrawn rule; caught by the tree scan crashing, restored, and re-verified.
+5. **The D-5 behavioural assertion was initially too wide**, asserting the reason token
+   appears in the render for `hedge` and `ask_clarify` — which have their own contract
+   grammars and render no reason. The guard was scoped to the withhold branch. My
+   expectation was wrong, not the code.
+
+6. **The pre-commit PII hook blocked this milestone's own fixtures**, twice over: the
+   `# PII-OK` marker is LINE-based and had been placed on the parametrize decorator's
+   closing bracket rather than on each line carrying a shape; and the owner's private
+   denylist caught a real company domain inside a value labelled "synthetic". Both were
+   corrected (markers moved onto the shaped lines; the domain replaced with
+   `example.test`). Worth recording plainly: the guard being repaired here caught the
+   repair, and the denylist layer — the one CI does not run — was what caught the domain.
+
+All six are disclosed rather than quietly corrected, because a milestone that converts an
+adversary's findings while hiding its own is doing the thing it was built to stop.

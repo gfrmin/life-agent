@@ -8,6 +8,7 @@ threshold). Deletion pins are drift gates: the absence IS the contract.
 """
 from __future__ import annotations
 
+import ast
 import dataclasses
 import inspect
 import sys
@@ -160,10 +161,51 @@ def test_withhold_reason_is_one_derivation() -> None:
 
 
 def test_reason_consumers_derive_not_respell() -> None:
-    """D-5 drift gate: the named consumers call the one derivation."""
+    """D-5 drift gate: the named consumers CALL the one derivation.
+
+    r23 (F10): this asserted `"withhold_reason" in <file>.read_text()` — a substring, which
+    a COMMENT satisfies. The adversary kept the token in a comment while re-spelling the
+    chain to DISAGREE, rendering a zero-observation miss as a dispersal. A source substring
+    is not a call site, so the guard resolves the call by AST and then pins the behaviour
+    over the whole effector x candidates cross-product."""
     root = Path(__file__).resolve().parent.parent
-    assert "withhold_reason" in (root / "scripts" / "run_eval.py").read_text()
-    assert "withhold_reason" in (_SRC / "core" / "executor.py").read_text()
+    for path in (root / "scripts" / "run_eval.py", _SRC / "core" / "executor.py"):
+        calls = {n.func.attr for n in ast.walk(ast.parse(path.read_text()))
+                 if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)}
+        calls |= {n.func.id for n in ast.walk(ast.parse(path.read_text()))
+                  if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)}
+        assert "withhold_reason" in calls, (
+            f"{path.name} does not CALL decisions.withhold_reason — a source substring is "
+            f"not a call site; a comment satisfies a grep and a re-spelled chain disagrees"
+        )
+    # and the render agrees with the derivation on every combination it can see
+    from life_agent.core import decisions as DEC2
+    from life_agent.core import executor as EX
+    from life_agent.core import lookup as LK2
+    reason_grammar = {"dispersed": LK2.REASON_DISPERSED,
+                       "miss": LK2.REASON_NO_OBSERVATIONS}
+    # Only the withhold branch consumes the derivation: hedge and ask_clarify have their
+    # own contract grammars and render no reason. That is a design choice, not drift.
+    for eff in ("miss", "abstain"):
+        for cands in ([], ["x"]):
+            view = {"effector": eff, "candidates": cands, "credences": [],
+                    "asserted": [], "rendered": None, "hits": [], "eu": None,
+                    "p_none": None, "n_obs": 0, "question": "q", "route": None,
+                    "n_indeterminate": 0}
+            expected = DEC2.withhold_reason(effector=eff, candidates=cands)
+            if expected not in reason_grammar:
+                continue  # a reporting terminal renders no withhold reason
+            rendered = EX.render_view(view)
+            assert reason_grammar[expected] in rendered, (
+                f"render_view disagrees with the one derivation for "
+                f"({eff}, {len(cands)} candidates): the derivation says {expected!r}, "
+                f"whose contract string is absent from the render"
+            )
+            other = "miss" if expected == "dispersed" else "dispersed"
+            assert reason_grammar[other] not in rendered, (
+                f"render_view shows the {other!r} wording for a {expected!r} decision — "
+                f"a re-spelled chain that DISAGREES with the one derivation"
+            )
 
 
 # --- P-III: the terminals-only regime is DECLARED and reachable ----------------------- #
@@ -263,12 +305,31 @@ def test_record_local_callers_are_exactly_the_family_leaves() -> None:
     second spelling. r21 (CP-D) added an aggregate leaf; K1 (r22) deleted the family it
     belonged to, so the census returns to the two leaves. This guard has now fired on a
     real change in BOTH directions — an added writer and a removed one."""
+    # r23 (F9): resolve the SYMBOL by AST. The census used to grep two dotted spellings,
+    # so a bare `from life_agent.core.recorder import record_local` was a third spelling it
+    # did not enumerate — the exact drift this docstring forbids.
     hits = []
     for py in (_SRC).rglob("*.py"):
-        text = py.read_text()
-        if "REC.record_local(" in text or "recorder.record_local(" in text:
+        tree = ast.parse(py.read_text())
+        names = {"record_local"}
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module and \
+                    node.module.endswith("recorder"):
+                names |= {a.asname or a.name for a in node.names}
+        called = False
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            f = node.func
+            if (isinstance(f, ast.Name) and f.id in names) or (
+                    isinstance(f, ast.Attribute) and f.attr == "record_local"):
+                called = True
+        if called:
             hits.append(py.relative_to(_SRC).as_posix())
-    assert sorted(hits) == ["core/lookup.py", "core/narrative.py"]
+    assert sorted(hits) == ["core/lookup.py", "core/narrative.py"], (
+        f"a spelling of the one recorder outside the declared leaves: {sorted(hits)} — "
+        f"the census resolves the symbol, so a direct import is not a way around it"
+    )
 
 
 # --- P-V (L-3): report_scoped_j — the engine picks the scoped value ------------------- #

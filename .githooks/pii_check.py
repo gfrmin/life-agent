@@ -88,6 +88,49 @@ _HKID_RE = re.compile(r"\b[A-Z]{1,2}\d{6}\(\s*[0-9A]\s*\)")
 _HONORIFIC_NAME_RE = re.compile(
     r"\b(?:Mr|Mrs|Ms|Miss|Dr|Prof)\.?\s+[A-Z][A-Za-z'\u2019-]*"
     r"(?:[,\s]+[A-Z][A-Za-z'\u2019-]*){0,3}")
+# --- r23 (F6): seven shapes CLAUDE.md forbids by name that had NO rule at all. Each is
+# CONTEXT-ANCHORED on purpose: a bare 8-digit run collides with dates (20190812) and a bare
+# [A-Z]\d{7} collides with hashes, so an unanchored rule is noise, and a noisy guard gets
+# disabled — which is what let the 2026-08-18 leak through. Every one ships with a poison
+# fixture proving it kills a synthetic violation (P2).
+_CONTACT_WORD = r"(?:tel|telephone|phone|fax|mobile|cell)"
+# The filler real documents put between the keyword and the value.
+_LABEL_GAP = r"(?:\s*(?:no|num|number|nr|ref|#)\.?)?[^A-Za-z0-9]{0,6}"
+# Bare 8-digit HK subscriber number with NO separator, admitted only next to a contact word.
+_HK_PHONE_BARE_RE = re.compile(
+    _CONTACT_WORD + r"[^0-9A-Za-z]{0,8}(?<![A-Za-z0-9])[23569]\d{7}(?![A-Za-z0-9])", re.I)
+# IL mobile written with TWO separators (05x-xxx-xxxx), the common human form.
+_IL_MOBILE_SPLIT_RE = re.compile(
+    r"(?<![A-Za-z0-9])05\d[-\s]\d{3}[-\s]\d{4}(?![A-Za-z0-9])")
+# IL mobile in international form (+972-5x-xxx-xxxx / +972 5x xxxxxxx).
+_IL_MOBILE_INTL_RE = re.compile(
+    r"\+972[-\s]?5\d[-\s]?\d{3}[-\s]?\d{4}(?![A-Za-z0-9])")
+# Passport with a SINGLE letter prefix, admitted only next to the word passport.
+_PASSPORT_ONE_LETTER_RE = re.compile(
+    r"passport" + _LABEL_GAP + r"\b[A-Z]\d{7}\b", re.I)
+# A grouped account number, admitted only next to an account word.
+_ACCOUNT_RE = re.compile(
+    r"(?:account|acct\.?|a/c)" + _LABEL_GAP +
+    r"(?<![A-Za-z0-9])\d{1,4}[-\s]\d{2,6}[-\s]\d{4,8}(?![A-Za-z0-9])", re.I)
+# A document reference of the PREFIX/YEAR/SERIAL form real invoices and files use.
+_DOC_REF_RE = re.compile(r"\b[A-Z]{2,6}/(?:19|20)\d{2}/\d{3,8}\b")
+# An email with the separator obfuscated — [at] / (at) / " at " — which _EMAIL_RE cannot
+# see because it requires a literal @.
+# BRACKETED forms only. A bare " at " matched ordinary English prose ("looked at
+# docs.md") — 8 false positives on this tree when it was tried, so it is not admitted.
+_OBFUSCATED_EMAIL_RE = re.compile(
+    r"\b[A-Za-z0-9._%+-]+\s*(?:\[\s*at\s*\]|\(\s*at\s*\))\s*"
+    r"(?:[A-Za-z0-9-]+\s*(?:\[\s*dot\s*\]|\(\s*dot\s*\)|\.)\s*)+[A-Za-z]{2,}\b", re.I)
+
+# --- r23 (F13): owner-specific literals, scoped to `src/`. CLAUDE.md: "no owner-specific
+# absolute paths, hostnames, or ids hard-coded in src/ — they belong in config/env".
+# A tailnet name is unambiguous. A 9-digit id is admitted only as an integer literal bound
+# to an identity-shaped name, because a bare 9-digit run appears in src docstrings as an
+# illustrative example (verified against the tree before this rule landed).
+_TAILNET_HOST_RE = re.compile(r"\b[a-z0-9-]+\.tail[0-9a-f]{4,}\.ts\.net\b", re.I)
+_OWNER_ID_LITERAL_RE = re.compile(
+    r"\b\w*(?:user|owner|chat|account|telegram)\w*_?id\w*\s*[:=]\s*\(?\s*\d{7,}", re.I)
+
 # A filesystem-path literal worth checking. Home-relative (tilde-rooted, >=1 path
 # segment — inherently personal) OR absolute (slash-rooted, >=2 path segments). The
 # 2-segment floor for absolute paths skips the noise of single-name HTTP routes,
@@ -104,25 +147,55 @@ _PATH_RE = re.compile(
 def _path_allowed(p: str, allow: tuple[str, ...]) -> bool:
     return any(p == a or p.startswith(a.rstrip("/") + "/") for a in allow)
 
-# Machine-generated dependency lockfiles: hashes/sizes/URLs only, no prose and
-# no possible personal data. Scanning them is pure false-positive noise.
-_SKIP_BASENAMES = frozenset(
-    {
-        "uv.lock",
-        "poetry.lock",
-        "Cargo.lock",
-        "package-lock.json",
-        "pnpm-lock.yaml",
-        "yarn.lock",
-        "bun.lockb",
-        "Pipfile.lock",
-        "composer.lock",
-    }
-)
+
+# r23 (F7), WITHDRAWN as a shape: an allowlisted root does exempt every segment beneath
+# it, but a personal-name segment and an ordinary kebab-case slug are structurally
+# identical (`chan-tai-man` vs `life-agent`) — a shape rule fired on 20 legitimate paths
+# on this tree. Names are the private denylist's job (see _HONORIFIC_NAME_RE's note), and
+# the denylist already scans the whole line, path included. What was missing is that the
+# CI leg runs with an EMPTY denylist and said nothing; it now says so. The residual gap is
+# recorded in docs/guards.md as known-and-uncovered, in English, not papered over with a
+# noisy rule.
+
+
+# Machine-generated dependency lockfiles: hashes/sizes/URLs only.
+# r23 (F5): declared by EXACT REPO-RELATIVE PATH, never by basename. `_skip` matched
+# `os.path.basename`, so any file named `uv.lock` — `tests/fixtures/uv.lock`,
+# `docs/poetry.lock` — was exempt anywhere in the tree, forever. Lockfiles are also NOT
+# prose-free: a trailing TOML comment survives every `uv run`, which is how a full contact
+# record rode into the tracked tree past a green gate.
+_SKIP_PATHS = frozenset({"uv.lock"})
+
+# Files whose bytes are legitimately binary. r23 (F4): a NUL byte outside this set is a
+# REFUSAL, never a silent skip — binary-detection used as a skip is indistinguishable from
+# a clean scan, and one NUL byte took five findings to zero. Verified against the tree: the
+# only tracked binaries are pdf/pptx extractor fixtures.
+_BINARY_SUFFIXES = frozenset({
+    ".pdf", ".pptx", ".docx", ".xlsx", ".png", ".jpg", ".jpeg", ".gif", ".ico", ".webp",
+    ".woff", ".woff2", ".ttf", ".zip", ".gz", ".duckdb", ".db", ".bin", ".lockb", ".pyc",
+})
+
+
+def skipped_paths(names: list[str]) -> list[str]:
+    """The subset of ``names`` declared skippable, by exact repo-relative path."""
+    return [n for n in names if n in _SKIP_PATHS]
+
+
+def read_text_or_refuse(name: str, raw: bytes) -> str | None:
+    """Decode ``raw``. ``None`` for a declared-binary path; **raises** for a NUL byte
+    anywhere else. A binary blob in a text tree is a refusal, not a pass."""
+    if os.path.splitext(name)[1].lower() in _BINARY_SUFFIXES:
+        return None
+    if b"\x00" in raw:
+        raise ValueError(
+            f"pii_check: {name} contains a NUL byte and was NOT scanned — a binary blob "
+            f"in a text tree is a refusal, not a pass"
+        )
+    return raw.decode("utf-8", errors="replace")
 
 
 def _skip(name: str) -> bool:
-    return os.path.basename(name) in _SKIP_BASENAMES
+    return name in _SKIP_PATHS
 
 
 def il_id_valid(s: str) -> bool:
@@ -160,6 +233,7 @@ def scan_text(
     allowed_domains: frozenset[str],
     path_allow: tuple[str, ...] = (),
     forbidden_prefixes: tuple[str, ...] = (),
+    in_src: bool = False,
 ) -> list[Finding]:
     """Return every PII shape / denylist hit in ``text``. Pure; no IO."""
     out: list[Finding] = []
@@ -182,6 +256,24 @@ def scan_text(
             out.append(Finding(path, lineno, "hkid-shape"))
         if _HONORIFIC_NAME_RE.search(line):
             out.append(Finding(path, lineno, "personal-name (honorific)"))
+        # r23 (F6): the seven shapes that had no rule. Labels reuse the existing kind
+        # where the shape is the same thing written differently, so a reader sees one
+        # vocabulary, not two.
+        if _HK_PHONE_BARE_RE.search(line):
+            out.append(Finding(path, lineno, "hk-phone-shape"))
+        if _IL_MOBILE_SPLIT_RE.search(line) or _IL_MOBILE_INTL_RE.search(line):
+            out.append(Finding(path, lineno, "israeli-mobile-shape"))
+        if _PASSPORT_ONE_LETTER_RE.search(line):
+            out.append(Finding(path, lineno, "passport-shape"))
+        if _ACCOUNT_RE.search(line):
+            out.append(Finding(path, lineno, "account-number-shape"))
+        if _DOC_REF_RE.search(line):
+            out.append(Finding(path, lineno, "document-ref-shape"))
+        if _OBFUSCATED_EMAIL_RE.search(line):
+            out.append(Finding(path, lineno, "email (obfuscated separator)"))
+        # r23 (F13): owner-specific literals, src/ only.
+        if in_src and (_TAILNET_HOST_RE.search(line) or _OWNER_ID_LITERAL_RE.search(line)):
+            out.append(Finding(path, lineno, "owner-specific literal (belongs in config/env)"))
         for pat in denylist:
             if pat.search(line):
                 out.append(Finding(path, lineno, "private-denylist"))
@@ -301,9 +393,7 @@ def _blob(ref: str, path: str) -> str | None:
     raw = subprocess.run(
         ["git", "show", f"{ref}:{path}"], capture_output=True, check=False
     ).stdout
-    if b"\x00" in raw:
-        return None
-    return raw.decode("utf-8", errors="replace")
+    return read_text_or_refuse(path, raw)
 
 
 def _read_disk(path: str) -> str | None:
@@ -312,9 +402,7 @@ def _read_disk(path: str) -> str | None:
             raw = fh.read()
     except (OSError, IsADirectoryError):
         return None
-    if b"\x00" in raw:
-        return None
-    return raw.decode("utf-8", errors="replace")
+    return read_text_or_refuse(path, raw)
 
 
 def gather_staged() -> list[tuple[str, str]]:
@@ -349,13 +437,13 @@ def _is_ancestor(a: str, b: str) -> bool:
     )
 
 
-def _cat_blob(sha: str) -> str | None:
+def _cat_blob(sha: str, name: str = "") -> str | None:
     raw = subprocess.run(
         ["git", "cat-file", "-p", sha], capture_output=True, check=False
     ).stdout
-    if b"\x00" in raw:
-        return None
-    return raw.decode("utf-8", errors="replace")
+    # The PATH decides whether a NUL is legitimate (r23/F4), so callers pass it; a bare
+    # sha has no suffix and would refuse every binary blob in a pushed range.
+    return read_text_or_refuse(name or sha, raw)
 
 
 def _introduced_blobs(rsha: str, lsha: str) -> list[tuple[str, str]]:
@@ -425,7 +513,7 @@ def gather_prepush(stdin: str) -> list[tuple[str, str]]:
             seen.add(blobsha)
             if _skip(path):
                 continue
-            text = _cat_blob(blobsha)
+            text = _cat_blob(blobsha, path)
             if text is not None:
                 out.append((path, text))
     return out
@@ -461,7 +549,15 @@ def main(argv: list[str]) -> int:
     forbidden = load_forbidden_prefixes()
 
     if shapes_only:
+        # r23 (F6): the CI leg runs with an EMPTY name layer. A check pointed at nothing
+        # cannot tell "clean" from "not looking", so it says which half did not run rather
+        # than printing a bare pass.
         denylist: list[re.Pattern[str]] = []
+        sys.stderr.write(
+            "pii_check: --shapes-only — shapes + email allowlist ONLY; the private "
+            "name layer not run (no denylist). A clean result here is not a clean "
+            "result for names.\n"
+        )
     else:
         loaded = load_denylist(kb_root())
         if loaded is None:
@@ -472,14 +568,18 @@ def main(argv: list[str]) -> int:
             return 2
         denylist = loaded
 
-    if "--staged" in args:
-        files = gather_staged()
-    elif "--prepush" in args:
-        files = gather_prepush(sys.stdin.read())
-    elif paths:
-        files = gather_paths(paths)
-    else:
-        files = gather_tracked()
+    try:
+        if "--staged" in args:
+            files = gather_staged()
+        elif "--prepush" in args:
+            files = gather_prepush(sys.stdin.read())
+        elif paths:
+            files = gather_paths(paths)
+        else:
+            files = gather_tracked()
+    except ValueError as e:  # r23 (F4): an unscannable blob is a refusal, never a pass
+        sys.stderr.write(f"{e}\n")
+        return 2
 
     findings: list[Finding] = []
     for path, text in files:
@@ -491,6 +591,7 @@ def main(argv: list[str]) -> int:
                 allowed_domains=allowed_domains,
                 path_allow=path_allow,
                 forbidden_prefixes=forbidden,
+                in_src=path.startswith("src/"),
             )
         )
 

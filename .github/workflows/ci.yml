@@ -44,6 +44,18 @@ jobs:
       - name: Typecheck (mypy — strict on src, lenient on scripts; see pyproject)
         run: uv run mypy
 
+      # r23 (F12/P6): prove the harness can speak BEFORE believing any green from it.
+      # A green test step is otherwise indistinguishable from a step that ran nothing —
+      # a conftest import error, a bad marker expression, zero items collected. This file
+      # is deliberately failing and the job requires it to go red.
+      - name: Positive control (the harness must be able to fail)
+        run: |
+          if uv run pytest tests/poison/harness_control.py -q; then
+            echo "::error::harness positive control PASSED — the test runner cannot report failures"
+            exit 1
+          fi
+          echo "harness positive control went red as required"
+
       - name: Tests
         # `system`-marked tests need heavy producer runtime (tesseract binary,
         # docling models) not present on a minimal runner; they run locally.
