@@ -1,11 +1,25 @@
-"""Component 1 of the aggregate family — the recall term + generator registry.
+"""Numeric-total inference — the recall term, the generator registry, the same-entity
+posterior and the composition. **Library only: nothing on the decision path imports this
+module.**
 
-``docs/aggregate-family-design.md`` §5 (recall estimated from periodic generators: a
-generator's schedule declares the EXPECTED slots, so retrieving 9 of 12 is nine Bernoulli
-successes and three failures — misses are observations, not absences) and §9 (the registry
-contract: a schedule is a claim about the world; an uncited or malformed entry never
-enters the denominator). Library-only at CP-B (r19): nothing on the decision path imports
-this module — the family plumbing arrives at CP-D under its own pre-registration.
+The aggregate *family* — a second classifier choosing a pipeline — was deleted at K1
+(``unification/reports/r22-k1-family-deletion.md``): decision-shaping outside the argmax
+dies (PRINCIPLES §16). What survives here is the part that was never a family, only
+inference, and its design register died with the plumbing it described:
+
+- the **recall term** — a generator's schedule declares the EXPECTED slots, so retrieving
+  9 of 12 is nine Bernoulli successes and three failures; misses are observations, not
+  absences;
+- the **registry contract** — a schedule is a claim about the world, and an uncited or
+  malformed entry never enters the denominator;
+- the **same-entity posterior** — hypothesis comparison under a structure prior, with the
+  deterministic §5 clustering rule as its proposal generator, never a second
+  implementation of it;
+- the **composition** and the read-side amounts projection.
+
+Re-entry is through the argmax: `extract_amounts` becomes a priced act the optimiser may
+buy at proplang migration stage E3, where the hand-set menu prices it would need are
+grounded in the gather-outcome stream (`membrane-shadow.md` §11 i-8).
 """
 from __future__ import annotations
 

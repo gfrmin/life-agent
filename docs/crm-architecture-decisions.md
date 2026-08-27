@@ -14,8 +14,9 @@
 > "Awaiting reply" lands as engine phase D4. **#3 (mutable notes/reminders) remains
 > open** — if #3 lands as a ledger, it inherits the knowledge-projection pattern
 > (system design §5).
-> **#4 (alias dedup) — resolved by the aggregate family's dedup-as-inference
-> (`docs/aggregate-family-design.md` §7):** "are these two records the same latent
+> **#4 (alias dedup) — resolved by dedup-as-inference
+> (`core/aggregate.same_entity_posterior`; the design register was deleted with the
+> family at K1, r22 — the inference was kept):** "are these two records the same latent
 > entity/transaction?" is hypothesis comparison under a structure prior, not a string
 > rule; the deterministic §5 clustering rule stays the proposal generator. Landed with
 > CP-C (r20).
