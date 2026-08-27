@@ -6,12 +6,14 @@
 #   ln -s "$PWD/packaging/production-readout.service" ~/.config/systemd/user/
 #   ln -s "$PWD/packaging/production-readout.timer"   ~/.config/systemd/user/
 #   systemctl --user daemon-reload && systemctl --user enable --now production-readout.timer
-# LIFE_AGENT_KB comes from the unit override or the box's convention; report lands at
-# $LIFE_AGENT_KB/calibration/readout.md.
+# LIFE_AGENT_KB resolves at runtime from the repo .env via bin/production-readout — put it
+# there, not in a unit override: a copied/overridden unit is free to drift and stops being
+# this file. Report lands at $LIFE_AGENT_KB/calibration/readout.md. To watch more than one
+# box's stream, append `--kb PATH` arguments (the readout unions them and reports each
+# root's row count, so a dead root shows as `0 rows (EMPTY)` in the report itself).
 [Unit]
 Description=life-agent production readout (weekly watch on the deployed arm)
 
 [Service]
 Type=oneshot
-WorkingDirectory=%h/git/life-agent
-ExecStart=%h/git/life-agent/.venv/bin/python scripts/production_readout.py
+ExecStart=%h/git/life-agent/bin/production-readout
