@@ -3,8 +3,12 @@
 > **Status: adopted 2026-06-11 (owner-approved); D3–D4 re-scoped 2026-06-12.** D0–D2 are
 > landed. The old D3/D4 are no longer deterministic pipelines: they are **Ask's aggregate
 > and thread question families** (PRINCIPLES §14; `docs/bayesian-foundations.md` §5/§6,
-> §12 stages 2–3; the aggregate family's build register is
-> [`aggregate-family-design.md`](./aggregate-family-design.md)). This doc's §5/§10/§11
+> §12 stages 2–3). **The aggregate family was deleted at K1 (2026-08-27,
+> `unification/reports/r22-k1-family-deletion.md`) and its build register with it:** a
+> classifier choosing a pipeline is decision-shaping outside the argmax (PRINCIPLES §16).
+> The transformations and inference it produced are kept. Read "family" below as naming a
+> *belief shape*, never a dispatch target — the remaining lookup/narrative split dies with
+> `/route` at proplang migration stage M5 (`membrane-shadow.md` §11 i-6). This doc's §5/§10/§11
 > D3–D4 text remains authoritative for the *mechanisms* the families reuse (the coverage
 > contract, the `assemble` amendment, the reclassification budget), read through that
 > re-scope. The whole-system view this leg belongs to is

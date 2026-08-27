@@ -19,33 +19,29 @@ from typing import Any
 import duckdb
 import pytest
 
-from life_agent.core import decisions as DEC
 from life_agent.core import gate as GATE
 from life_agent.core.aggregate import (
     _RECALL_PRIOR,
+    AMOUNTS_PRODUCERS,
     UNREADABLE,
     Addend,
-    AggregateResult,
     Generator,
-    LoadedRegistry,
     PairCovariates,
     RecallPosterior,
     RegistryError,
     Scope,
-    aggregate_answer,
     compose_total,
     expected_slots,
     load_registry,
     pair_covariates,
     project_amounts,
     recall_posterior,
-    render_aggregate,
-    route_aggregate,
     same_entity_posterior,
 )
 from pkm.cache import write_artifact
 from pkm.catalogue import open_catalogue, run_migrations
 from pkm.producer import ProducerResult
+from pkm.transforms.extract_amounts import ExtractAmountsProducer
 
 FIXTURE = Path(__file__).parent / "fixtures" / "generators-synthetic.yaml"
 
@@ -597,15 +593,15 @@ def test_project_amounts_partitions_and_names(migrated_root: Path) -> None:
             _write_art(migrated_root, conn, key=key, input_hash=ih,
                        producer=producer, content=b"src")
         _write_art(migrated_root, conn, key="a1" * 32, input_hash="55" * 32,
-                   producer="extract_amounts_docling",
+                   producer=ExtractAmountsProducer.name,
                    content=_amounts_content([item], majority_unlabelled=True),
                    lineage=[{"cache_key": a, "role": "source_text"}])
         _write_art(migrated_root, conn, key="b1" * 32, input_hash="66" * 32,
-                   producer="extract_amounts_docling",
+                   producer=ExtractAmountsProducer.name,
                    content=_amounts_content([], unreadable=True),
                    lineage=[{"cache_key": b, "role": "source_text"}])
         _write_art(migrated_root, conn, key="d1" * 32, input_hash="77" * 32,
-                   producer="extract_amounts_email",
+                   producer=ExtractAmountsProducer.name,
                    content=_amounts_content([]),
                    lineage=[{"cache_key": d, "role": "source_text"}])
         hits = project_amounts(conn, migrated_root, [a, b, c, d])
@@ -617,6 +613,48 @@ def test_project_amounts_partitions_and_names(migrated_root: Path) -> None:
     assert by_key[c].state == "underived"
     assert by_key[c].remedy == f"pkm derive extract_amounts_tesseract --input {c}"
     assert by_key[d].state == "empty"
+
+
+# --- C2 (r22): the projection must find what the DEPLOYED producer actually writes ------
+# The standing lesson, applied to a test: a census must read the deployed rule end-to-end
+# and never re-implement the constant it prices. The fixtures above insert the producer
+# name as a literal, so they cannot see a filter that names a producer which does not
+# exist. These two read it off the producer class instead.
+
+def test_amounts_producers_names_the_deployed_producer_class() -> None:
+    """AMOUNTS_PRODUCERS filters `artifacts.producer_name`, which pkm writes as
+    `producer.name` (transform_run: producer_name=producer.name). Every
+    extract_amounts_*.yaml declaration maps to ONE class, so exactly one name can
+    ever be recorded. Compare against `temporal.DOC_DATE_PRODUCERS`, which correctly
+    lists class names for a transform with two classes."""
+    assert set(AMOUNTS_PRODUCERS) == {ExtractAmountsProducer.name}, (
+        "AMOUNTS_PRODUCERS names a producer that cannot exist: the projection filters "
+        "producer_name (a CLASS name) with values from the DECLARATION namespace"
+    )
+
+
+def test_project_amounts_reads_the_name_the_producer_writes(migrated_root: Path) -> None:
+    """End-to-end: an artifact recorded under the name pkm actually writes must project
+    as `amounts`. Under the declaration-namespace filter it reads `underived` forever,
+    and the printed remedy produces this very artifact - a closed loop."""
+    src = "ee" * 32
+    item = {"kind": "deposit", "basis": "monthly", "as_of": "2025-07-31",
+            "amount": 500.0, "currency": "ILS", "amount_raw": "500.00",
+            "label_raw": "Deposit", "entity": "fund-a"}
+    with open_catalogue(migrated_root) as conn:
+        _write_art(migrated_root, conn, key=src, input_hash="88" * 32,
+                   producer="docling", content=b"src")
+        _write_art(migrated_root, conn, key="e1" * 32, input_hash="99" * 32,
+                   producer=ExtractAmountsProducer.name,
+                   content=_amounts_content([item]),
+                   lineage=[{"cache_key": src, "role": "source_text"}])
+        (hit,) = project_amounts(conn, migrated_root, [src])
+    assert hit.state == "amounts", (
+        f"projection missed the deployed producer name "
+        f"{ExtractAmountsProducer.name!r}; read {hit.state!r}"
+    )
+    (ad,) = hit.addends
+    assert ad.amount == 500.0
 
 
 # ====================================================================================
@@ -670,116 +708,6 @@ class _RouteClient:
         from pkm.transform import ModelResponse
         return ModelResponse(raw_text=json.dumps(self._output), input_tokens=1,
                              output_tokens=1, latency_ms=1, cost_usd=0.001)
-
-
-def test_route_aggregate_caches_and_defaults(migrated_root: Path) -> None:
-    client = _RouteClient({"family": "aggregate", "target_kind": "deposit",
-                           "period_start": "2025-01-01", "period_end": "2025-09-30"})
-    r1 = route_aggregate(migrated_root, "how much was deposited?", client=client)
-    assert r1 is not None and r1.target_kind == "deposit"
-    r2 = route_aggregate(migrated_root, "how much was deposited?", client=client)
-    assert r2 == r1 and client.calls == 1  # cached — the second call is $0
-
-    narr = _RouteClient({"family": "narrative", "target_kind": None,
-                         "period_start": None, "period_end": None})
-    assert route_aggregate(migrated_root, "summarise my week", client=narr) is None
-
-    hollow = _RouteClient({"family": "aggregate", "target_kind": "none",
-                           "period_start": None, "period_end": None})
-    # aggregate without a kind is NOT a confident sum-shape — conservative default
-    assert route_aggregate(migrated_root, "what about totals?", client=hollow) is None
-
-
-def _fund_registry() -> LoadedRegistry:
-    gen = Generator(generator_id="g-fund", kind="deposit", cadence="monthly",
-                    active_from=date(2025, 1, 1), active_to=None,
-                    scope_keys=frozenset({"deposit"}), evidence=("cite",))
-    return LoadedRegistry(entries=(gen,), content_hash="f" * 64)
-
-
-def test_aggregate_answer_end_to_end(migrated_root: Path) -> None:
-    a, b = "aa" * 32, "bb" * 32
-    def item(month: int, amount: float) -> dict[str, Any]:
-        return {"kind": "deposit", "basis": "monthly",
-                "as_of": f"2025-{month:02d}-28", "amount": amount,
-                "currency": "ILS", "amount_raw": f"{amount:.2f}",
-                "label_raw": "Deposit", "entity": "fund-a"}
-    with open_catalogue(migrated_root) as conn:
-        _write_art(migrated_root, conn, key=a, input_hash="11" * 32,
-                   producer="docling", content=b"src")
-        _write_art(migrated_root, conn, key=b, input_hash="22" * 32,
-                   producer="docling", content=b"src2")
-        _write_art(migrated_root, conn, key="a1" * 32, input_hash="55" * 32,
-                   producer="extract_amounts_docling",
-                   content=_amounts_content([item(7, 500.0), item(8, 510.0)]),
-                   lineage=[{"cache_key": a, "role": "source_text"}])
-        hits = [{"artifact_cache_key": a}, {"artifact_cache_key": b}]
-        route = route_aggregate(
-            migrated_root, "total deposits Jul-Sep 2025?",
-            client=_RouteClient({"family": "aggregate", "target_kind": "deposit",
-                                 "period_start": "2025-07-01",
-                                 "period_end": "2025-09-30"}))
-        assert route is not None
-        result = aggregate_answer(
-            migrated_root, conn, "total deposits Jul-Sep 2025?", hits, route,
-            brain=DualBrain(), registry=_fund_registry(),
-            decisions_path=migrated_root / "logs" / "decisions.jsonl",
-            run_id="test")
-    assert isinstance(result, AggregateResult)
-    assert result.action == "report"
-    [tp] = result.totals
-    # 2 hit slots of 3 expected (2025-07..09): one missed slot imputed
-    assert tp.k == 2 and tp.s_obs == pytest.approx(1010.0)
-    assert len(tp.imputed_slots) == 1
-    rendered = render_aggregate(result)
-    for block in ("Total", "Coverage", "Recall", "Basis"):
-        assert block in rendered  # the four blocks, always
-    assert "underived" in rendered  # hit b has no projection — named, never dropped
-    # the decision record landed with the family + the registry hash
-    events = [json.loads(line) for line in
-              (migrated_root / "logs" / "decisions.jsonl").read_text().splitlines()]
-    assert events[-1]["family"] == "aggregate"
-    assert events[-1]["posterior_summary"]["registry_content_hash"] == "f" * 64
-    assert events[-1]["chosen_action"] == "report"
-
-
-def test_aggregate_answer_abstains_on_zero_addends(migrated_root: Path) -> None:
-    a = "aa" * 32
-    with open_catalogue(migrated_root) as conn:
-        _write_art(migrated_root, conn, key=a, input_hash="11" * 32,
-                   producer="docling", content=b"src")
-        _write_art(migrated_root, conn, key="a1" * 32, input_hash="55" * 32,
-                   producer="extract_amounts_docling",
-                   content=_amounts_content([], unreadable=True),
-                   lineage=[{"cache_key": a, "role": "source_text"}])
-        route = route_aggregate(
-            migrated_root, "total fees 2025?",
-            client=_RouteClient({"family": "aggregate", "target_kind": "fee",
-                                 "period_start": "2025-01-01",
-                                 "period_end": "2025-12-31"}))
-        assert route is not None
-        result = aggregate_answer(
-            migrated_root, conn, "total fees 2025?",
-            [{"artifact_cache_key": a}], route,
-            brain=DualBrain(), registry=_fund_registry(),
-            decisions_path=migrated_root / "logs" / "decisions.jsonl",
-            run_id="test")
-    assert result.action == "abstain"
-    assert result.abstain_reason == "miss"  # the standing withhold-reason derivation
-    rendered = render_aggregate(result)
-    assert "unreadable" in rendered  # the named indeterminate still renders
-
-
-def test_aggregate_family_is_declared() -> None:
-    assert "aggregate" in DEC.FAMILIES
-    assert DEC.AGGREGATE_ACTION_ORDER == ("report", "abstain")
-
-
-# ====================================================================================
-# CP-D phase 2: the frozen grading rule (gate.realised_aggregate — r21 constants).
-
-
-
 def test_winkler_sharp_covering_reads_near_one() -> None:
     x, excludes = GATE.realised_aggregate(31900.0, 31980.0, 31937.0)
     assert not excludes and x > 0.99

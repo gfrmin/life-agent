@@ -1957,8 +1957,9 @@ here because the schema's stability depends on it being unnecessary to re-key).
 - 0.19.0 (draft): §18.14 (new) — *extract_amounts*, grounded typed line-item amounts
   per document (bounded list, closed `kind`/`basis` enums, §18.5 amount grounding with
   label grounding as the quality discriminator, `unreadable` indeterminate,
-  `majority_unlabelled` flag). The consumer-side aggregate family's observation
-  instrument (life-agent `docs/aggregate-family-design.md` §3, checkpoint r21).
+  `majority_unlabelled` flag). A consumer-side observation instrument: minted for the
+  life-agent aggregate family at r21, and KEPT when that family was deleted at r22 — the
+  transform is a transformation, which is the only kind of thing the consumer has.
 - 0.18.2 (draft): the retrieval SQL's `ORDER BY` becomes a declared total order —
   `round(score, 9) DESC, artifact_cache_key, chunk_text, chunk_id` — so the `LIMIT` cuts a
   declared prefix of the corpus rather than an engine sample of a tie block (life-agent

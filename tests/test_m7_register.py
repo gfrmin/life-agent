@@ -13,11 +13,17 @@ from pathlib import Path
 _ROOT = Path(__file__).resolve().parent.parent
 _DESIGN = _ROOT / "docs" / "module-collapse-design.md"
 
-#: §6 entry → (pin artefact, needle that must appear in it; "" = existence only).
+#: §6 entry → (pin artefact, needle that must appear in it).
+#: r23 (F12): every needle must name something SPECIFIC to its entry. Four pins used to be
+#: satisfiable by existence alone ("") or by the presence of any test ("def test_"), so the
+#: pinned artefact could be gutted — `collapse_replay.main` made to `return 0`
+#: unconditionally — with the guard green. `tests/poison/test_oracle_poison.py` enforces
+#: the no-vacuous-needle rule.
 _REGISTER_PINS: dict[str, tuple[str, str]] = {
     "6.1": ("tests/test_brain.py",
             "def test_live_skin_serves_draw_but_not_for_the_utility_posterior_s_measures"),
-    "6.2": ("tests/test_membrane_world.py", "def test_"),
+    "6.2": ("tests/test_membrane_world.py",
+            "def test_utility_forms_is_said_at_1_only"),
     "6.3": ("src/life_agent/core/reliability.py", "PRIORS"),
     "6.4": ("tests/test_brain.py",
             "def test_live_skin_serves_draw_but_not_for_the_utility_posterior_s_measures"),
@@ -25,10 +31,12 @@ _REGISTER_PINS: dict[str, tuple[str, str]] = {
             "def test_seam_driver_reads_the_event_through_the_seal"),
     "6.6": ("tests/test_collapse_record.py",
             "def test_the_seal_routes_every_recorded_derivation_off_the_passed_root"),
-    "6.7": ("scripts/collapse_replay.py", ""),
-    "6.8": ("tests/test_collapse_compare.py", "def test_"),
+    "6.7": ("scripts/collapse_replay.py", "return 1 if bad else 0"),
+    "6.8": ("tests/test_collapse_compare.py",
+            "def test_a_changed_value_compared_field_is_killed"),
     "6.9": ("tests/test_probes.py", "corroborate"),
-    "6.10": ("tests/test_gate_tree_pin.py", "def test_"),
+    "6.10": ("tests/test_gate_tree_pin.py",
+             "def test_the_digest_moves_when_a_decision_path_file_moves"),
     "6.11": ("scripts/carrier_audit.py", "frozen"),
     "6.12": ("scripts/replace_audit.py", "frozen"),
     "6.13": ("src/pkm/retrieval.py", "round(scored.score, 9)"),

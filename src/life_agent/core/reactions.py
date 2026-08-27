@@ -224,12 +224,6 @@ def load_reactions(reactions_path: Path,
             ev = _lookup_reaction(r, d)
         elif d.family == "narrative":
             ev = _narrative_reaction(r, d)
-        elif d.family == "aggregate":
-            # CP-A ruling (r18, r21): aggregate verdicts are RECORDED, never folded —
-            # the interval-decision fold has no honest likelihood design yet; it is
-            # the family's named successor entry. Inventing one silently is what
-            # PRINCIPLES §16 forbids.
-            ev = None
         else:
             ev = None
         if ev is not None:

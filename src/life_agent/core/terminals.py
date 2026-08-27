@@ -25,7 +25,6 @@ from typing import Any, TypeGuard, cast
 import duckdb
 
 import life_agent.core as C
-import life_agent.core.aggregate as AGG
 import life_agent.core.derivations as D
 import life_agent.core.expansion as EXP
 import life_agent.core.lookup as LK
@@ -189,9 +188,6 @@ LOOKUP_LAST: LK.LookupResult | None = None
 # (named fail-open). run_eval's claim + coverage graders consume it.
 NARRATIVE_LAST: N.NarrativeResult | None = None
 
-# The last answer's aggregate-family result (design §2, r21), or None when another
-# family answered. Verdicts on it are recorded, never folded (the CP-A ruling).
-AGGREGATE_LAST: AGG.AggregateResult | None = None
 
 # --- subject (D2): the owner filter + the same nothing-vanishes contract --- #
 # A first-person possessive question ("my X") filters hits by projected
@@ -455,18 +451,6 @@ def _typed_lookup_applies(lk: LK.LookupResult | None) -> TypeGuard[LK.LookupResu
     as the bare ``is not None`` did — wrapping it in a function must not cost that narrowing."""
     return lk is not None
 
-def _generators() -> tuple[AGG.LoadedRegistry | None, str]:
-    """The generator registry via config paths — inadmissibility is fail-open with the
-    reason NAMED in the render (the §9 refusal guards the denominator, not the answer)."""
-    from life_agent.core import config as _cfg
-    try:
-        return AGG.load_registry(_cfg.GENERATORS_PATH,
-                                 evidence_root=_cfg.EVIDENCE_ROOT), ""
-    except FileNotFoundError:
-        return None, "generator registry absent — retrieval recall unmodelled"
-    except AGG.RegistryError as e:
-        return None, f"generator registry inadmissible: {e}"
-
 
 def answer(conn: duckdb.DuckDBPyConnection, question: str,
            k: int, *, expand: bool = True,
@@ -495,7 +479,7 @@ def answer(conn: duckdb.DuckDBPyConnection, question: str,
     word-overlapping noise (measured: rescues ~7/8 of the eval's addressable retrieval
     misses). Default ``False``. Returns (answer_text, cards, {card_n: score})."""
     global TEMPORAL_LAST, SUBJECT_LAST, STAGES_LAST, LOOKUP_LAST, NARRATIVE_LAST
-    global INTENT_LAST, AGGREGATE_LAST
+    global INTENT_LAST
     global EFFORT_LAST
     TEMPORAL_LAST = None
     SUBJECT_LAST = None
@@ -618,30 +602,6 @@ def answer(conn: duckdb.DuckDBPyConnection, question: str,
             LOOKUP_LAST = lk
             STAGES_LAST["lookup_answer"] = lk.answer_cache_key
             return (lk.rendered, cards, scores)
-
-    # The aggregate family (design §8, r21): the second-stage router runs ONLY on the
-    # declined path — ROUTE_PROMPT stays byte-identical, lookup admissions never
-    # re-mint — and admits to aggregate only on a confident sum-shaped verdict;
-    # anything else (including every failure, named) falls to narrative as today.
-    if families and root is not None:
-        try:
-            ag_route = AGG.route_aggregate(root, question)
-        except Exception as e:  # fail-open by contract, reason printed
-            print(f"aggregate route failed: {e} — narrative answers")
-            ag_route = None
-        if ag_route is not None:
-            try:
-                registry, reg_note = _generators()
-                ag = AGG.aggregate_answer(root, conn, question, hits, ag_route,
-                                          brain=LK.shared_brain(),
-                                          registry=registry,
-                                          registry_note=reg_note)
-            except Exception as e:  # fail-open by contract, reason printed
-                print(f"aggregate failed: {e} — narrative answers")
-            else:
-                AGGREGATE_LAST = ag
-                STAGES_LAST["aggregate_answer"] = ag.answer_cache_key
-                return (AGG.render_aggregate(ag), cards, scores)
 
     # synthesize — keyed on the retrieved CONTENT (early cutoff) and the profile hash; the
     # synthesizer lives in core.synthesis (shared with the bridge). The retrieval_set lineage is

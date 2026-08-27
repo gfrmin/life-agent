@@ -34,9 +34,11 @@ from life_agent.core import jsonl_log
 # defaults claiming nothing.
 FORMAT_VERSION = 3
 
-# Question families with an EU response layer. Grows by edit as families land
-# (aggregate and thread join at bayesian-foundations §12 stages 2-3).
-FAMILIES: frozenset[str] = frozenset({"lookup", "narrative", "aggregate"})
+# Question families with an EU response layer. The aggregate family was deleted at
+# K1 (r22): a classifier choosing a pipeline is decision-shaping outside the argmax
+# (PRINCIPLES §16), and membrane-shadow §11 i-13 already stages that class for the
+# migration. What remains of the split dies with `/route` at migration stage M5.
+FAMILIES: frozenset[str] = frozenset({"lookup", "narrative"})
 
 # The M4 response actions (bayesian-foundations §3). ask-about-U is deliberately absent
 # — utility learning is passive until the governor (§4.4, a stated action-set
@@ -57,10 +59,6 @@ ACTIONS: frozenset[str] = frozenset({"report", "report_scoped", "hedge",
 LOOKUP_ACTION_ORDER: tuple[str, ...] = ("report", "hedge", "ask_clarify", "abstain",
                                         "report_scoped")
 NARRATIVE_ACTION_ORDER: tuple[str, ...] = ("report", "abstain")
-# The aggregate family (foundations §5/§12 stage 2, r21): the narrative
-# restriction, for the same principled reason — richer actions over an
-# interval posterior are not yet defined (design §2).
-AGGREGATE_ACTION_ORDER: tuple[str, ...] = ("report", "abstain")
 
 # The DECLARED DECISION SPACE the act was ranked over (module-collapse-design.md §2.3). One
 # rule, two spaces: `full` = the transformations and the terminals (the daemon up),

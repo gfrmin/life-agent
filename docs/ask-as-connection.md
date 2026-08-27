@@ -6,8 +6,9 @@
 > (report/abstain stays an exact app-side threshold; only the gather VOI is offloaded), making 0-CW
 > *structural*. Realises the owner directive (2026-07-01): *offload as much of the Bayesian
 > machinery to the Credence engine as possible.* Supersedes `docs/autonomous-recall-design.md` (the
-> hand-priced `:grow` menu — now an engine-scheduled actuator) and subsumes `aggregate-family-design.md`
-> §1a–§3 (per-slot extraction — now sensor emission).
+> hand-priced `:grow` menu — now an engine-scheduled actuator). It also subsumed the
+> aggregate design register's §1a–§3 (per-slot extraction — now sensor emission); that
+> register was deleted with the family at K1 (r22).
 
 **Phase-0 baseline (confirmed 2026-07-01, clean run, quota restored):** CORRECT **6/18**,
 **0 confident-wrong** (gate held). Residual is **extraction-dominant**: 6 extraction-misses

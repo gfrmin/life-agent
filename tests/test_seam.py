@@ -44,6 +44,12 @@ class _CannedBrain:
 
 # --- gates: declared observations decide, the engine is not consulted --------------------
 
+# r23 (F8): the exemption is an EXACT repo-relative path, never a basename. `p.name` let
+# a file called `seam.py` ANYWHERE under src/life_agent exempt itself from the guard that
+# says one function commits acts — a fork committing acts outside the seam, invisible.
+_SEAM_EXEMPT = frozenset({"core/brain.py", "core/seam.py"})
+
+
 def test_gate_short_circuits_to_abstain() -> None:
     d = S.commit(None, gates=(S.GATE_EXECUTOR_DOWN,))
     assert d.action == "abstain"
@@ -126,7 +132,7 @@ def test_only_the_seam_calls_optimise() -> None:
     offenders = [
         p.relative_to(SRC)
         for p in SRC.rglob("*.py")
-        if p.name not in {"brain.py", "seam.py"}
+        if p.relative_to(SRC).as_posix() not in _SEAM_EXEMPT
         and re.search(r"\.optimise\(", p.read_text())
     ]
     assert offenders == []
@@ -140,7 +146,8 @@ def test_only_the_seam_posts_decide() -> None:
     offenders = [
         p.relative_to(SRC)
         for p in SRC.rglob("*.py")
-        if p.name != "seam.py" and pat.search(p.read_text())
+        if p.relative_to(SRC).as_posix() != "core/seam.py"
+        and pat.search(p.read_text())
     ]
     assert offenders == []
 
