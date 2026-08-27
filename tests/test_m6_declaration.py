@@ -6,6 +6,12 @@ the one function's behaviour; the behaviour itself is byte-pinned by the m5-base
 from __future__ import annotations
 
 import inspect
+import sys
+from pathlib import Path as GuardPath
+
+sys.path.insert(0, str(GuardPath(__file__).resolve().parent))
+
+import _guard_ast as G
 
 # --- P-I (D-11): the value-join is ONE declaration ------------------------------------
 
@@ -19,8 +25,12 @@ def test_d11_the_lattice_join_is_one_declaration() -> None:
     src = inspect.getsource(BR)
     assert src.count("LK._norm_value(c) == vn") == 1, (
         "the candidate equality scan must have ONE spelling — inside _lattice_join")
-    assert "_lattice_join(" in inspect.getsource(BR._probe_corroborate)
-    assert "_lattice_join(" in inspect.getsource(BR._join_deliberate_value)
+    assert G.calls(BR._probe_corroborate, "_lattice_join"), (
+        "BR._probe_corroborate does not CALL _lattice_join() — one declaration, one home; a "
+        "source substring would be satisfied by a comment (r23 F10)")
+    assert G.calls(BR._join_deliberate_value, "_lattice_join"), (
+        "BR._join_deliberate_value does not CALL _lattice_join() — one declaration, one home; a "
+        "source substring would be satisfied by a comment (r23 F10)")
 
 
 def test_d11_join_exact_normalised_match() -> None:
@@ -88,7 +98,7 @@ def test_d14_the_date_selection_is_one_declaration() -> None:
     from life_agent.core import lookup as LK
 
     assert hasattr(LK, "source_date_iso"), "the one date-selection must exist (D-14)"
-    assert "source_date_iso(" in inspect.getsource(BR._source_time_factor), (
+    assert G.calls(BR._source_time_factor, "source_date_iso"), (
         "the bridge's recency covariate must BIND the declared selection")
 
 
@@ -196,8 +206,12 @@ def test_d12_edge_names_have_one_constructor() -> None:
     assert DEC.edge_id("deliberate", "m") == "deliberate@m"
     assert EX.extract_edge("m") == "extract@m"
     assert DL.instrument("m") == "deliberate@m"
-    assert "edge_id(" in inspect.getsource(EX.extract_edge)
-    assert "edge_id(" in inspect.getsource(DL.instrument)
+    assert G.calls(EX.extract_edge, "edge_id"), (
+        "EX.extract_edge does not CALL edge_id() — one declaration, one home; a "
+        "source substring would be satisfied by a comment (r23 F10)")
+    assert G.calls(DL.instrument, "edge_id"), (
+        "DL.instrument does not CALL edge_id() — one declaration, one home; a "
+        "source substring would be satisfied by a comment (r23 F10)")
 
 
 def test_d13_the_stack_urls_are_read_once() -> None:

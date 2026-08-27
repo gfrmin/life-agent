@@ -56,9 +56,11 @@ transcripts are in `unification/reports/r23-k1-g4-adversary.md`.
 | 14 | Fresh-clone smoke (`smoke-fresh-clone.sh`) | a stranger can clone and get cited retrieval with no API key | **instrumented** | — not attacked |
 | 15 | `ruff` / `mypy` | lint and types | **instrumented** | a linter is not a compiler and neither is a test |
 | 16 | The adoption gate's frozen conjuncts (`core/gate.py`) | δ and level are frozen blind before a run reads | **instrumented** | — not attacked; nothing mechanically prevents a conjunct being restated after a read |
+| 18 | No guard proves a call with a substring (`tests/poison/test_guard_shape_poison.py`) | the F10 class, not just its one instance | **resolved** | reintroducing `assert "leader_order(" in inspect.getsource(LK)` |
+| 19 | Every poison fixture names its mutation | a fixture nobody has watched fail is decoration | **resolved** | adding a poison fixture whose docstring names no kill |
 | 17 | D-5: the withhold reason is one derivation (`test_m5_absorption.py`) | the render's wording is the one the derivation selects | **resolved** | re-spelling the chain to disagree while keeping the token in a comment |
 
-**Eleven rows resolved, nine instrumented.** The register opened at four and twelve, and
+**Thirteen rows resolved, nine instrumented.** The register opened at four and twelve, and
 three of those four were then defeated — so the honest reading is that this is the first
 time any of these numbers has been earned rather than assumed.
 
@@ -94,14 +96,20 @@ Folding these into a count would make the count look better and the tree no safe
    the frozen-conjunct row is self-describing.
 6. **Six register rows were never attacked** (7, 8, 9, 10, 12, 14). Their *instrumented*
    state reflects the adversary's budget, not their strength — and not their weakness.
-7. **One fixture per guard is not a fraction of anything.** Each resolved row proves the
+7. **F10 was a class, and eight further instances were found after r23 shipped.** The
+   adversary named two siblings; a census found nine `assert "<name>(" in
+   inspect.getsource(...)` assertions in total. All are converted to AST call resolution
+   (`tests/_guard_ast.py`) and rows 18/19 stop new ones appearing. The general lesson —
+   **a finding is a class until proven a singleton** — is why r23's own disclosures were
+   re-read for consequences rather than left as prose.
+8. **One fixture per guard is not a fraction of anything.** Each resolved row proves the
    guard has the one tooth its seed was shaped for; every other behaviour of that guard is
    weakenable exactly as before.
-8. **The gate's universe is smaller than the population it stands for.** The adoption gate
+9. **The gate's universe is smaller than the population it stands for.** The adoption gate
    reads **104 authored questions**; the live surfaces have asked **186 distinct** ones
    (`ask`/`jarvis`) plus **91** through `answer-brain`, with the overlap unmeasured. Owner
    ruling 2026-08-27: record it here *and* widen the corpus from real asks.
-9. **Two wrong-commit rows ride in production**, priced and published (runs 13–18).
+10. **Two wrong-commit rows ride in production**, priced and published (runs 13–18).
    Disclosed, not guarded.
 
 ## Entry 1 in full — why it is entry 1
