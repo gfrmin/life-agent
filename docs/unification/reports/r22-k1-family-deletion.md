@@ -115,3 +115,99 @@ is the evidence that it is not needed) · G4 the adversary pass per C6.
 ## RESULTS
 
 *(appends here; nothing above is edited)*
+
+**Read 2026-08-27, $0. All six frozen criteria MET. No priced run bought.**
+
+### C1 — deletion completeness: MET
+
+Deleted: the bridge's `_route_family` / `_aggregate` handlers and their `_POST` rows;
+`aggregate.py`'s `ROUTE2_PROMPT`, `ROUTE2_SCHEMA`, `AggregateRoute`, `route_aggregate`,
+`AggregateResult`, `aggregate_answer`, `render_aggregate` (the module drops 889 → 602
+lines); `decisions.AGGREGATE_ACTION_ORDER` and the `"aggregate"` family; `reactions.py`'s
+third arm; `executor.py`'s declined-path branch; `terminals.py`'s `AGG` import,
+`AGGREGATE_LAST`, `_generators()` and the declined-path hook; `derivations.py`'s
+`aggregate_route_key`, `aggregate_answer_key` and their version/content-type constants;
+`scripts/route2_audit.py`; `docs/aggregate-family-design.md`.
+
+Beyond the frozen list, and disclosed rather than assumed: the four derivation constants
+(`AGGREGATE_ROUTE_VERSION`, `AGGREGATE_ANSWER_VERSION`, `CONTENT_TYPE_AGGREGATE_ROUTE`,
+`CONTENT_TYPE_AGGREGATE_ANSWER`) and `scripts/ask.py`'s `TERM.AGGREGATE_LAST` reset went
+with their subjects.
+
+`tests/test_k1_family_deletion.py` enforces it as a re-listing guard over `src/`,
+`scripts/` and `tests/`. **Verified RED by mutation**: reintroducing
+`AGGREGATE_ACTION_ORDER` into `decisions.py` fails with
+`K1 deleted these but they still resolve: {'AGGREGATE_ACTION_ORDER': [...]} — the
+aggregate family is half-removed`.
+
+Kept, untouched: `extract_amounts` (+ SPEC §18.14 + the dispatch entry), the recall
+posterior and generator registry, the same-entity posterior, `compose_total` /
+`project_amounts` / `pair_covariates`, and `gate.realised_aggregate`.
+
+### C2 — the naming defect is closed and cannot recur: MET
+
+`AMOUNTS_PRODUCERS` is now `(_ExtractAmountsProducer.name,)` — derived from the deployed
+class, never restated. Two tests read the name off the producer: a constant guard and an
+end-to-end projection test.
+
+**Verified RED by mutation**: restoring the suffixed tuple fails with
+`AMOUNTS_PRODUCERS names a producer that cannot exist: the projection filters
+producer_name (a CLASS name) with values from the DECLARATION namespace`, and the
+end-to-end test fails with `projection missed the deployed producer name
+'extract_amounts'; read 'underived'`.
+
+The three pre-existing tests that broke on the fix were exactly the fixtures that had
+encoded the defect (`producer="extract_amounts_docling"` etc.); two died with the family,
+and the third's fixture now uses `ExtractAmountsProducer.name`.
+
+### C3 — no behaviour change on the 104: MET, pure equality
+
+`scripts/collapse_replay.py --checkpoint m5-base`, `PYTHONHASHSEED=0`: **314/314 fixtures
+replay identically**, exit 0. The declined-path aggregate branch was provably never on the
+104's path — which is what C3 predicted and what it would have STOPPED on had it been false.
+
+### C4 — the offer set is unchanged: MET
+
+`menu_transforms(None)` returns the frozen probe sequence, and `GROW_ACTUATORS` is
+unchanged. **Verified RED by mutation**: adding one `extract_amounts` row to
+`DEFAULT_TRANSFORMS` fails with `the transform menu changed — K1 moved the argmax and owes
+a priced gate run`. This is the evidence for buying no priced run, not an assumption.
+
+### C5 — the register lands: MET
+
+`docs/guards.md`. Sixteen guard rows; **four read *resolved*, twelve read *instrumented***
+— the honest state and the number this programme exists to move. Six known-and-uncovered
+items are recorded in English, outside every count, including the measured universe gap:
+the gate reads **104 authored questions** while the live surfaces have already asked **186
+distinct ones** (`ask`/`jarvis`) plus **91** through `answer-brain`, with the overlap
+unmeasured and no guard that would notice divergence.
+
+Two rows earned their state from real events rather than ceremony: the one-recorder leaf
+census has now fired on a real change in **both** directions (a writer added at r21,
+removed here), and the replay oracle is recorded as *instrumented* with r06's measurement
+attached — three of four decision-path changes were invisible to it by construction, so a
+314/314 pure-equality replay is compatible with a decision-path change it cannot see.
+
+### C6 — the adversary pass: fires last, after this section
+
+### Gates
+
+G1 `pytest -m "not llm and not system"` **2780 passed**, 35 deselected; `ruff check .`
+clean; `mypy` clean on 226 files; `pii_check.py --shapes-only` exit 0.
+G2 **314/314 pure equality** on `m5-base`.
+G3 **not bought** — C4 is the evidence.
+G4 below.
+
+### Disclosures
+
+1. **The scope change was made before the work and is recorded above**, not discovered
+   after: the `extract_amounts` menu row moved to migration stage E3 because every menu
+   price today is a hand-set literal and E3 exists to ground them. Adding one now would be
+   built twice — the same argument the owner ruled on for K3/K4.
+2. **The defect in C2 means the aggregate family never worked end to end.** Run 19 aborted
+   on two earlier instrument defects and never reached a leg that would have exercised the
+   projection, so the family was merged, gated and reported without any run in which
+   `project_amounts` could return an addend. This is independent evidence for deleting it
+   rather than repairing it.
+3. **The M5 leaf-census guard fired** on the removed recorder writer and was updated, not
+   waived. A guard that fires on your own change is the guard working.

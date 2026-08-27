@@ -200,23 +200,6 @@ def decide_via_loop(question: str, k: int, *, bridge: str, daemon: str, post: Po
     transforms = DEFAULT_TRANSFORMS if transforms is None else transforms
     route = post(f"{bridge}/route", {"question": question})
     if route is None:
-        # The second-stage router (design §8, r21) splits the declined path:
-        # aggregate on a confident sum-shaped verdict, else narrative as before.
-        # Fail-open by contract: an unserved endpoint (an older daemon, a replay
-        # whose record predates the router) reads as narrative, never a crash.
-        try:
-            fam = _obj(post, f"{bridge}/route_family", {"question": question})
-        except Exception:
-            fam = {"family": "narrative"}
-        if fam.get("family") == "aggregate":
-            av = _obj(post, f"{bridge}/aggregate", {"question": question, "k": k})
-            agg = av.get("aggregate") or {}
-            return {"effector": av["action"], "asserted": av.get("asserted", []),
-                    "candidates": [], "credences": [], "p_none": None, "eu": None,
-                    "n_obs": 0, "hits": av.get("hits", []), "route": None,
-                    "rendered": av.get("rendered"), "n_indeterminate": 0,
-                    "question": question, "aggregate": agg,
-                    **_UNPRICED_ATTRIBUTION, "edge_events": [], "spend_usd": 0.0}
         nv = _obj(post, f"{bridge}/narrative", {"question": question})
         return {"effector": nv["action"], "asserted": nv["asserted"], "candidates": [],
                 "credences": [], "p_none": None, "eu": None, "n_obs": 0,
