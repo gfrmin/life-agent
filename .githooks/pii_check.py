@@ -181,6 +181,17 @@ def skipped_paths(names: list[str]) -> list[str]:
     return [n for n in names if n in _SKIP_PATHS]
 
 
+def announce_skips(names: list[str]) -> None:
+    """r25 (L6): every skip is REPORTED. Adding one tracked prose file to `_SKIP_PATHS`
+    exempted the repository's README from the guard with the whole gate green, and nothing
+    said a word — the property the F5 fixture's own message already claimed ("a skipped
+    file is reported, never silent") and which was never implemented."""
+    skipped = skipped_paths(names)
+    if skipped:
+        sys.stderr.write(f"pii_check: skipped {len(skipped)} declared path(s): "
+                         f"{', '.join(sorted(skipped))}\n")
+
+
 def read_text_or_refuse(name: str, raw: bytes) -> str | None:
     """Decode ``raw``. ``None`` for a declared-binary path; **raises** for a NUL byte
     anywhere else. A binary blob in a text tree is a refusal, not a pass."""
@@ -520,6 +531,7 @@ def gather_prepush(stdin: str) -> list[tuple[str, str]]:
 
 
 def gather_paths(paths: list[str]) -> list[tuple[str, str]]:
+    announce_skips(paths)  # r25 (L6): a skipped file is reported, never silent
     out = []
     for p in paths:
         if _skip(p):

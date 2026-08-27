@@ -375,20 +375,34 @@ def pair_covariates(a: Addend, b: Addend) -> PairCovariates:
     return PairCovariates(period=period, amount=amount, entity=entity, kind=kind)
 
 
-def _collapse_within_doc(group: list[Addend]) -> list[Addend]:
-    # One value is one attestation within a document (the §5 within-doc analogue).
-    seen: set[tuple[str, str, float, str | None]] = set()
-    out = []
+def _collapse_within_doc(group: list[Addend]) -> tuple[list[Addend], tuple[str, ...]]:
+    """One value is one attestation within a document (the §5 within-doc analogue).
+
+    r25 (L1): the key used to be ``(doc_key, kind, amount, as_of)``, which ignored every
+    field that tells two genuine line items apart — so two deposits of the same amount on
+    the same day against two different accounts collapsed to one and the total HALVED, with
+    an empty note and an empty resolution list. Two rows differing in ``entity`` or
+    ``label_raw`` are two observations. And a collapse that does happen is NAMED: the
+    cross-document sibling (:func:`_dedup_pairs`) prices every drop through the §5
+    posterior and reports it, and a silent drop is the defect whether or not the drop is
+    right.
+    """
+    seen: set[tuple[str, str, float, str | None, str | None, str | None]] = set()
+    out: list[Addend] = []
+    resolutions: list[str] = []
     for a in group:
-        key = (a.doc_key, a.kind, round(a.amount, 2), a.as_of)
+        key = (a.doc_key, a.kind, round(a.amount, 2), a.as_of, a.entity, a.label_raw)
         if key in seen:
+            resolutions.append(
+                f"{a.doc_key}: repeat attestation of {a.amount:.2f} "
+                f"({a.as_of or 'undated'}) within the document — counted once")
             continue
         seen.add(key)
         out.append(a)
-    return out
+    return out, tuple(resolutions)
 
 
-def _issuer_fold(group: list[Addend]) -> tuple[list[Addend], str]:
+def _issuer_fold(group: list[Addend]) -> tuple[list[Addend], str, float]:
     # Same-doc stated-total: within one (doc, as_of) cluster of ≥3 rows, a row equal
     # to the sum of the others is the issuer's own fold — keep it, demote the parts.
     by_cluster: dict[tuple[str, str | None], list[Addend]] = {}
@@ -396,17 +410,28 @@ def _issuer_fold(group: list[Addend]) -> tuple[list[Addend], str]:
         by_cluster.setdefault((a.doc_key, a.as_of), []).append(a)
     out: list[Addend] = []
     note = ""
+    alt = 0.0  # the sum-all reading, when a fold was applied
     for cluster in by_cluster.values():
         if len(cluster) >= 3:
             top = max(cluster, key=lambda a: a.amount)
             rest = [a for a in cluster if a is not top]
-            if abs(top.amount - sum(a.amount for a in rest)) <= 0.01:
+            rest_sum = sum(a.amount for a in rest)
+            if abs(top.amount - rest_sum) <= 0.01:
                 out.append(top)
-                note = (f"issuer-stated total row is the fold of {len(rest)} "
-                        "constituent rows (same document)")
+                # r25 (L2): `top == sum(rest)` is a HYPOTHESIS, not proof. In a 3-row
+                # cluster the arithmetic coincidence is ordinary — three independent
+                # deposits of 300/100/200 read identically to a stated total plus its two
+                # parts. The fold stays the likelier reading and supplies the point; the
+                # alternative (every row an independent addend) is carried out so the
+                # interval can span it, exactly as the r24 join spans its two channels.
+                alt += top.amount + rest_sum
+                note = (f"issuer-stated total row read as the fold of {len(rest)} "
+                        f"constituent rows (same document); the competing reading — "
+                        f"{len(cluster)} independent rows totalling {top.amount + rest_sum:.2f}"
+                        f" — is an arithmetic coincidence away and the interval spans it")
                 continue
         out.extend(cluster)
-    return out, note
+    return out, note, alt
 
 
 def _dedup_pairs(brain: Brain, group: list[Addend]
@@ -439,11 +464,13 @@ def _compose_one(brain: Brain, group: list[Addend], scope: Scope,
                  recall: RecallPosterior, currency: str,
                  excluded_kind: tuple[tuple[str, str], ...]) -> TotalPosterior:
     notes: list[str] = []
-    group = _collapse_within_doc(group)
-    group, fold_note = _issuer_fold(group)
+    pool_all = list(group)  # pre-refusal, so an excluded row's value can still be named
+    group, within_doc = _collapse_within_doc(group)
+    group, fold_note, fold_alt = _issuer_fold(group)
     if fold_note:
         notes.append(fold_note)
     group, resolutions = _dedup_pairs(brain, group)
+    resolutions = (*within_doc, *resolutions)
 
     # --- channel A: issuer roll-ups stated at the scope end ---------------------------
     # K2 (r24): these JOIN the series; they do not replace it. Until K2 a single roll-up
@@ -486,6 +513,20 @@ def _compose_one(brain: Brain, group: list[Addend], scope: Scope,
         notes.append(f"{m} missed slot(s) imputed from the observed series "
                      "(exchangeability within the generator, a disclosed assumption)")
 
+    # r25 (L3): a grounded row dropped by kind or by basis must not vanish. It is NOT
+    # widened into the interval — a coarser-basis row may be a partial roll-up, and this
+    # milestone does not invent a coverage model for one — but its value is named, so a
+    # contradicting read is never invisible to the reader.
+    # (`excluded_kind` rows are filtered by compose_total before this function sees them,
+    # so their values are out of scope here; the doc/kind pair already names them.)
+    for doc, basis in excluded_basis:
+        val = next((a.amount for a in pool_all
+                    if a.doc_key == doc and a.basis == basis), None)
+        if val is not None:
+            notes.append(f"excluded from the sum: {doc} carries {val:.2f} on a "
+                         f"{basis} basis — coarser than the finest in scope, and not "
+                         f"recognised as a scope-end roll-up")
+
     # --- the join ---------------------------------------------------------------------
     # The interval SPANS both channels, k counts both, and a disagreement is named. Where
     # the channels agree the interval is not padded: agreement is evidence, and width is
@@ -525,6 +566,10 @@ def _compose_one(brain: Brain, group: list[Addend], scope: Scope,
                 vals = ", ".join(f"{v:.2f}" for v in rollups)
                 notes.append(f"competing roll-up observations at the scope end ({vals}) "
                              "and no finer rows — the interval spans them")
+
+    # r25 (L2): the fold's competing reading is a real alternative, so it widens.
+    if fold_alt:
+        lo, hi = min(lo, fold_alt), max(hi, fold_alt)
 
     return TotalPosterior(
         currency=currency, point=point, lo=lo, hi=hi, k=k, s_obs=s_obs,

@@ -34,8 +34,10 @@ _EXEMPT = {"poison/test_guard_shape_poison.py"}
 
 
 def test_poison_no_guard_proves_a_call_with_a_substring() -> None:
-    """Rule 1. Use `tests/_guard_ast.calls(obj, name)` instead: it resolves the call by
-    AST, so a name in a comment or a docstring is not a call and cannot satisfy it."""
+    """Rule 1. MUST FAIL when a guard proves a call by looking for its spelling in the
+    source. Use `tests/_guard_ast.calls(obj, name)` instead: it resolves the call by AST, so
+    a name in a comment or a docstring is not a call and cannot satisfy it. Killed by
+    reintroducing `assert "leader_order(" in inspect.getsource(LK)`."""
     offenders: list[str] = []
     for py in _TESTS.rglob("*.py"):
         rel = py.relative_to(_TESTS).as_posix()
@@ -51,24 +53,56 @@ def test_poison_no_guard_proves_a_call_with_a_substring() -> None:
     )
 
 
+# r25 (L8): the rule is a PURE FUNCTION over a parsed module, so it can be mutation-tested
+# on synthetic input. As a census over the real tests/ tree it could only be tested by
+# mutating the real tree — which is why its previous defect (concatenating the MODULE
+# docstring, so every fixture in a file whose header carried a trigger phrase passed
+# regardless of its own text) survived undetected.
+
+_MUTATION_PHRASE = re.compile(r"\bF\d+\b|MUST FAIL|kills it|goes red|is the seed")
+
+
+def fixtures_missing_mutation(source: str, label: str = "") -> list[str]:
+    """Every `test_poison_*` in ``source`` whose OWN docstring names no mutation."""
+    tree = ast.parse(source)
+    out: list[str] = []
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+                and node.name.startswith("test_poison_")):
+            continue
+        if not _MUTATION_PHRASE.search(ast.get_docstring(node) or ""):
+            out.append(f"{label}::{node.name}" if label else node.name)
+    return out
+
+
+def test_poison_the_mutation_rule_reads_the_fixtures_own_docstring() -> None:
+    """L8. MUST FAIL if the rule consults anything but the fixture's own docstring. Killed
+    by concatenating the module docstring — under that spelling the synthetic case below
+    passes, because the module header carries a trigger phrase and the fixture does not."""
+    synthetic = (
+        '"""A module whose header says: each names the mutation that kills it."""\n'
+        "def test_poison_named() -> None:\n"
+        '    """MUST FAIL when x. Killed by y."""\n'
+        "    pass\n"
+        "def test_poison_unnamed() -> None:\n"
+        '    """A fixture nobody has watched fail."""\n'
+        "    pass\n")
+    assert fixtures_missing_mutation(synthetic) == ["test_poison_unnamed"], (
+        "the mutation rule accepted a fixture whose own docstring names no kill — it is "
+        "reading the module docstring, so the census's universe is the FILE, not the "
+        "fixture"
+    )
+
+
 def test_poison_every_fixture_names_the_mutation_that_kills_it() -> None:
-    """Rule 2. Every test under tests/poison/ must say, in its docstring, what planted
-    violation makes it fail. A fixture nobody has watched fail is decoration, and its
-    register row cannot honestly read `resolved`."""
+    """Rule 2. MUST FAIL when a poison fixture names no kill. Every `test_poison_*` must
+    say, in its OWN docstring, what planted violation makes it fail — a fixture nobody has
+    watched fail is decoration, and its register row cannot honestly read `resolved`.
+    Killed by adding a poison fixture whose docstring names no mutation."""
     missing: list[str] = []
     for py in (_TESTS / "poison").rglob("test_*.py"):
-        tree = ast.parse(py.read_text())
-        for node in ast.walk(tree):
-            # Scoped to `test_poison_*`: the precision controls beside them (a rule must
-            # NOT fire on legitimate content) are a different and equally necessary
-            # category, and they have no mutation by construction.
-            if not (isinstance(node, ast.FunctionDef)
-                    and node.name.startswith("test_poison_")):
-                continue
-            doc = (ast.get_docstring(node) or "") + (ast.get_docstring(tree) or "")
-            # the docstring must reference a finding id (F<n>) or say what kills it
-            if not re.search(r"\bF\d+\b|MUST FAIL|kills it|goes red|is the seed", doc):
-                missing.append(f"{py.relative_to(_TESTS).as_posix()}::{node.name}")
+        missing += fixtures_missing_mutation(
+            py.read_text(), py.relative_to(_TESTS).as_posix())
     assert not missing, (
         f"poison fixture(s) that do not name what kills them: {missing} — a fixture "
         f"nobody has watched fail proves nothing, and r23's own first oracle control "

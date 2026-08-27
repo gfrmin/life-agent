@@ -115,3 +115,99 @@ class — a control checking a proxy for failure — which has a clear, non-arbi
 G1 suite + ruff + mypy + PII green · G2 the replay per L7 · G3 not bought — the module is off
 the decision path · G4 deferred: this milestone answers a G4, and a third pass belongs after
 the census question is ruled.
+
+---
+## RESULTS
+
+**Read 2026-08-27, $0. All eight frozen criteria MET.**
+
+### L1 — the within-doc collapse: MET
+
+The key gains `entity` and `label_raw`; every collapse is named in `dedup_resolutions`.
+Two distinguishable 250 deposits in one document now compose to `s_obs == 500`, `k == 2`
+(was 250 / `k == 1` / silent). **Mutations:** narrowing the key back fails with *"two
+distinguishable line items collapsed to k=1, s_obs=250.0"*; removing the resolution note
+fails the silence fixture.
+
+### L2 — the issuer fold spans both readings: MET
+
+`top == sum(rest)` stays the point estimate and the sum-all reading now widens the
+interval, with the note naming the competing reading explicitly. 300/100/200 returns
+`point == 300`, `hi >= 600`. **Mutation:** dropping the alternative fails with *"interval
+[300.0, 300.0] excludes the sum-all reading 600.00 — an arithmetic coincidence in a 3-row
+cluster is ordinary, and the fold is a hypothesis"*.
+
+### L3 — nothing leaves unnamed: MET
+
+Every `excluded_basis` row is named with its value. **Mutation:** dropping the note fails
+with *"a grounded row was excluded from the sum and its value is nowhere in the note"*.
+`excluded_kind` rows are filtered by `compose_total` before `_compose_one` sees them, so
+their values are out of scope there; the doc/kind pair already names them — disclosed
+rather than silently narrowed.
+
+### L4 — the CI control requires a reported failure: MET
+
+Measured on this tree: a real assertion failure exits **1**, a missing file **4**, a control
+renamed so nothing is collected **5**. The step now requires exit 1 **and** the expected
+test id in the report, and rejects 4 and 5 with a message naming what each means.
+
+### L5 — the fixtures cover the class: MET
+
+The roll-up fixtures are parametrised over every member of `_COARSE_BASES`, and the set is
+pinned whole. All three pass unchanged, confirming the narrowed K2-1: the deployed join was
+always basis-generic; only the fixtures were one literal wide.
+
+### L6 — `_SKIP_PATHS` pinned and skips announced: MET
+
+Pinned by equality; `announce_skips` prints every skipped path on every run. **Mutation:**
+adding `README.md` fails with the set printed.
+
+### L7 — the decision path does not move: MET, pure equality
+
+**314/314 fixtures replay identically.**
+
+### L8 — the mutation rule reads the fixture's own docstring: MET, and the fix here is the
+interesting one
+
+Tightening the rule immediately caught **its own two fixtures**, which had been relying on
+the module docstring. More importantly, the first attempt at this criterion **failed its own
+mutation**: as a census over the real `tests/` tree it could only be exercised by mutating
+the real tree, so restoring the concatenation went undetected. The rule was extracted as a
+**pure function over synthetic source** (`fixtures_missing_mutation`), and the mutation then
+failed correctly with *"it is reading the module docstring, so the census's universe is the
+FILE, not the fixture"*.
+
+That is the second time in two days that a control passed its own mutation, and both had the
+same cause: **a guard that can only be tested by modifying the thing it guards cannot be
+mutation-tested at all.** Extracting the rule as a pure function is the general fix, and it
+is the one lever this milestone found that generalises beyond its own findings.
+
+### Refuted, and recorded
+
+**K2-3 is not a defect.** Verified: a closing balance recorded as `kind="balance"` is
+excluded by the kind filter and named in `excluded_kind`; the reported case requires a
+balance recorded as `kind="deposit"`, an *extraction* error. Summing a deposit whose basis
+is `point_in_time` is correct — one deposit at one instant. No change made.
+
+**K2-1 is narrowed.** The join is basis-generic across all of `_COARSE_BASES`, verified
+directly. What survived is the coverage complaint, closed by L5.
+
+### Gates
+
+G1 **2828 passed**, 35 deselected; ruff clean; mypy clean on 226 files; PII exit 0.
+G2 **314/314 pure equality** on `m5-base`. G3 not bought. G4 deferred pending the census
+ruling below.
+
+### Register
+
+**16 resolved / 9 instrumented**, with rows 0 and 19 re-earned after being defeated, and
+rows 20/21 new.
+
+### Still open, and NOT patched here
+
+Eight of K2's eleven defeats were **a census whose universe is a string**. Repairing each
+evasion individually (an intermediate binding, a rebound `question`, a computed attribute
+name) produces more string censuses one alias wider. The one general lever found here — make
+the rule a pure function so it can be mutation-tested at all — is landed. Whether the
+remaining censuses should be replaced by behavioural assertions is a design question carried
+to the owner, not answered by reflex.
