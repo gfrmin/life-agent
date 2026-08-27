@@ -367,3 +367,119 @@ discrimination census walked `tests/poison/` while the criterion says *"no asser
 all of `tests/`, so the narrower universe was costing coverage and buying nothing. Verified
 RED by planting the vacuous shape in a non-poison test file, which the old universe could
 not see.
+
+---
+## G4 — the adversary pass
+
+**Method.** Five adversaries, one throwaway detached worktree each at the K3 head, split by
+guard family (the oracle; the census rules; the PII layers; portability; the register + CI).
+Each had to **plant a defect and show the gate green with a transcript** — an argument was
+not admissible (r23 P7). Every claimed finding was then handed to a **different** agent
+starting from its own clean worktree, told to default to *not reproduced* and given the
+common ways a claimed defeat is actually wrong.
+
+**The pass was cut short by an account limit.** 47 findings were claimed; **12 completed
+independent reproduction and all 12 were confirmed**; 35 never reached a verifier. Those 35
+are recorded below as claims with the attacker's transcript, **not as findings**, and the
+rows they touch are marked provisional. This is disclosed rather than smoothed: a pass that
+verified a quarter of its claims is not a pass that found twelve things.
+
+### Verdict
+
+**Six rows the register called *resolved* were defeated, one of them with no plant at all.**
+K3's central claim — *a guard proves behaviour, not spelling* — **does not survive its own
+first adversary pass.** The four defects K3 fixed were real and their fixes hold; what does
+not hold is the generalisation, and the reason is uncomfortable and specific: **the two new
+rules K3 wrote to close the census-universe class are themselves defeated by narrowing their
+universe, in a way their own synthetic mutation tests cannot express.** That is r25's L8
+lesson recurring one level up — the rule was extracted as a pure function so it could be
+mutation-tested, and the mutation test's universe is now the thing that is unguarded.
+
+### Confirmed findings (independently reproduced)
+
+**Row 5b — the oracle's end-to-end control, defeated three ways.** All three leave every
+control green and the replay printing `314/314`.
+1. *The control is structurally distinguishable from every real fixture.* It omits
+   `provenance.python_hash_seed` (deliberately, to skip the seed refusal) and carries a
+   distinct `engine_version`. Gating the compare loop on that tell gives `314/314`, exit 0
+   and a byte-identical transcript with a live poster defect in the tree. The fixture that
+   proves the machinery works is the one that says which inputs to ignore.
+2. *`bad = len(failed)` — the mirror of the mutation row 5b names as its kill.* 103 fixtures
+   that could not be replayed at all exit 0.
+3. *The comparator's field-class list is silently weakenable* (**high**): 5 of the 12
+   value-compared decision fields drop to type-only with the whole guard layer green — and
+   the suite gets *larger*. The verifier's correction is worth keeping: row 5b's literal
+   claim (a planted mismatch reaches the exit code) still holds; what is defeated is the
+   **machinery's input**, which no criterion covered.
+4. *The oracle never reads the manifest that declares its own fixture set*: a doctored
+   314-file set reports `314/314`, exit 0.
+
+**Row 18 — defeated, and LIVE in the tree with no plant.** The no-substring-proof census is a
+one-line spelling census that catches 2 of 7 spellings of the identical proof. An assertion
+already in tree evades it. This row was earned at r23 and re-earned at r25.
+
+**Row 22 — the module-universe rule, defeated three ways.** `G.called_names(MODULE)` (the
+repo's own public helper) restores the whole-module universe because the rule matches the
+identifier `calls`; an `rglob("src/**/*.py")` existence census produces a guard wider than a
+module that neither row 22 nor row 18 sees; and the rule can be narrowed tree-wide while its
+own synthetic mutation test stays green.
+
+**Row 23 — the discrimination rule, defeated two ways.** It is annotation-blind (one line
+makes it skip every real test while the unannotated synthetic fixtures still pass), and it
+matches only the literal `is not None`, so an `isinstance(..., int)`-only control — D-b's
+exact defect in a different spelling — passes the full gate.
+
+**Rows 13 + 20 — a second, unannounced, unpinned skip set** (**high**). `_BINARY_SUFFIXES`
+(20 entries) is checked *before* the NUL refusal, keyed on extension alone, so a plain-ASCII
+`.db` and a real PDF carrying PII ride every leg green. Row 20 pins `_SKIP_PATHS` by
+equality and announces every skip; this second set is pinned by nothing and announced never,
+which restores K2-16's exact defect through a door the pin does not cover.
+
+**Row 12 — the drift gates are substring censuses** and fall to re-spelling.
+
+### The through-line
+
+There is one, and it is not the one K3 fixed. Every confirmed defeat is **a guard whose
+universe is narrower than the property it stands for, where the narrowing is invisible to
+the guard's own test**: a skip set the pin does not cover; a field-class list no criterion
+reads; a spelling the census does not enumerate; a synthetic fixture set that cannot express
+the mutation that would kill the rule. K3 converted *whole-module* universes to
+*function-scoped* ones and called the class closed. The class was never about modules — it
+is about **the checker's universe being derived from somewhere other than the thing being
+checked**, which is entry 1, and K3's own rules are the newest instances of it.
+
+### What held — the part that says which rows are load-bearing
+
+45 attacks were caught by the guards, and the oracle's family is where they concentrate: the
+float tolerance widened to 9e-3, `values_equal`'s list branch stubbed to `True`,
+`retrieval_keys`/`regime`/`n_obs`/`effector`/`credences`/`candidates`/`eu`/`policy` each
+moved to runtime-measured, the whole posted body skipped, the unclassified-field branch
+replaced by `continue`, the M2 poster stubbed — **every one caught, by a named test.** Both
+kills `docs/guards.md` names for rows 18 and 22 were re-verified to still bite. The comparator
+is not decoration; its *classification input* is what nothing covered.
+
+One adversary recorded a methodological failure of its own unprompted: its first mutation
+matrix produced a false all-clear, "because it reads exactly like a dead guard" — the same
+defect this milestone's own RESULTS records at item 1, found independently.
+
+### Not converted
+
+- **35 claims never reached a verifier** (all 14 register/CI claims, 11 portability, 9 PII,
+  1 census). They touch rows 0, 4, 13, 19, 20, 24, 25 and the new register-count guard. Each
+  has an attacker's transcript and none has second-agent reproduction, so **none is a
+  finding** and none earns a fixture. The rows they touch are **provisional**.
+- **28 arguable items**, never reproduced by anyone, are not carried forward at all.
+
+**Two of the unverified portability claims were independently correct** — `_WRAPPERS` as a
+hand-maintained literal, and path directives the rule does not list. Both were found the same
+day by re-reading the guard against rule 22 (the post-RESULTS self-audit above) and both are
+already fixed. That the adversary and the author found the same two gaps by different routes
+is the strongest single piece of evidence in this pass that the class is real.
+
+### Conversion is the next session's work, not this one's
+
+The standing discipline is that findings become poison fixtures written by a **different**
+session and verified RED before landing — the author of a guard is the worst person to write
+its kill. The confirmed twelve are specified above in enough detail to write those fixtures
+without re-deriving the attacks. The 35 unverified claims need verification first, and the
+verification is what the limit interrupted.
