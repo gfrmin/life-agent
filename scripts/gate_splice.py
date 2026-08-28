@@ -46,6 +46,21 @@ def load_paired(path: Path) -> dict[str, dict]:
     return {str(r["question_id"]): r for r in rows}
 
 
+def baseline_of(rows: dict[str, dict], path: Path) -> str:
+    """The comparator arm an archived paired file was recorded against, read from the rows
+    themselves (r28). The baseline is a property of the MONO source, so a splice inherits
+    the mono archive's tag; rows that disagree are a corrupt archive and refuse loudly
+    rather than letting one of them name the report."""
+    tags = {str(r.get("baseline") or "") for r in rows.values()}
+    if len(tags) != 1:
+        raise SystemExit(f"{path}: rows disagree on their baseline arm: {sorted(tags)}")
+    tag = tags.pop()
+    if not tag:
+        raise SystemExit(f"{path}: rows carry no baseline arm; the archive predates the "
+                         "tag and cannot be rendered without naming its comparator")
+    return tag
+
+
 def _resp(arm: dict, *, cost: float | None) -> GATE.RealisedResponse:
     """A paired-row arm → RealisedResponse; ``cost`` None keeps the row's own cost_usd
     (0.0 when the archived row predates the spend field)."""
@@ -166,6 +181,7 @@ def main(argv: list[str] | None = None) -> int:
            "| answer rate t/m | spend t/m |\n|---|---|---|---|---|---|---|---|---|")
     lines: list[str] = []
     results: dict[str, GATE.GateResult] = {}
+    baselines: dict[str, str] = {}   # r28: each rung's comparator, from its mono archive
 
     # sanity pins: an archive's own rows → its published verdict, or refuse everything
     for pin_path, p_want, d_want in args.pin:
@@ -197,6 +213,7 @@ def main(argv: list[str] | None = None) -> int:
         r, line = summarise(label, paired, post)
         lines.append(line)
         results[label] = r
+        baselines[label] = baseline_of(load_paired(Path(mono_path)), Path(mono_path))
         inputs.append(f"- **{label}** — typed `{Path(typed_path).name}` "
                       f"(sha {_sha(Path(typed_path))}) x mono `{Path(mono_path).name}` "
                       f"(sha {_sha(Path(mono_path))}); costs {cost}")
@@ -221,7 +238,8 @@ def main(argv: list[str] | None = None) -> int:
         if pick not in results:
             ap.error(f"--report-for {pick!r} names no rung")
         report += [f"## Full gate report — {pick}", "",
-                   GATE.render_report(results[pick], run_id=pick, elapsed=0.0)]
+                   GATE.render_report(results[pick], run_id=pick, elapsed=0.0,
+                                      baseline=baselines[pick])]
     text = "\n".join(report)
     print(text)
     if args.out:

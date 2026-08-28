@@ -249,6 +249,19 @@ class ActionPairCell:
 
 
 @dataclass(frozen=True)
+class ArmSummary:
+    """r28: one arm's realised outcomes over the rows Δ actually folds (post-censoring).
+    Published beside the Δ decomposition so a reader can see WHICH arm the answer term came
+    from — the split alone does not say whether a positive Δ_answers is one arm reporting
+    well or the other reporting badly."""
+
+    n_correct: int
+    n_wrong: int
+    n_abstain: int
+    mean_spend_usd: float
+
+
+@dataclass(frozen=True)
 class Diagnostics:
     n: int
     n_answerable: int
@@ -268,6 +281,17 @@ class Diagnostics:
     n_censored: int = 0
     censored_mean_d: float | None = None
     withheld_reasons: dict[str, int] = field(default_factory=dict)
+    # r28: the Δ decomposition. `realised_utility` is affine in the sampled latents given
+    # the actions, so Δ = Δ_answers + lambda_usd·(c̄_mono - c̄_typed) holds per draw and
+    # therefore at Ū — the split is arithmetic, not an approximation. All four fold the
+    # Δ-INCLUDED rows (unlike every field above, which folds all of them): the point is to
+    # decompose the headline, and the headline is computed post-censoring. Defaulted so
+    # every pre-r28 construction of this dataclass is unchanged.
+    included_mean_d: float | None = None
+    delta_answers: float | None = None
+    delta_spend: float | None = None
+    typed_arm: ArmSummary | None = None
+    mono_arm: ArmSummary | None = None
 
 
 @dataclass(frozen=True)
@@ -292,6 +316,24 @@ def _mean(xs: list[float]) -> float | None:
     return (sum(xs) / len(xs)) if xs else None
 
 
+def _included(paired: list[PairedOutcome]) -> list[PairedOutcome]:
+    """THE row set Δ folds — availability-censored rows removed (``PairedOutcome.censored``).
+    ONE declaration on purpose: the Δ posterior and r28's decomposition must fold the same
+    rows or the split does not decompose the headline, and a second spelling is exactly how
+    they would drift apart."""
+    return [p for p in paired if not p.censored()]
+
+
+def _arm_summary(rows: list[RealisedResponse]) -> ArmSummary:
+    """One arm's realised outcomes + mean realised spend over the rows handed in."""
+    return ArmSummary(
+        n_correct=sum(1 for r in rows if r.asserts() and r.correct),
+        n_wrong=sum(1 for r in rows if r.asserts() and not r.correct),
+        n_abstain=sum(1 for r in rows if not r.asserts()),
+        mean_spend_usd=_mean([r.cost_usd for r in rows]) or 0.0,
+    )
+
+
 def _diagnostics(paired: list[PairedOutcome], u_bar: dict[str, float],
                  *, oracle_p: float) -> Diagnostics:
     """The at-Ū breakdown (the collapse point): per-question gaps, the disagreement
@@ -308,6 +350,21 @@ def _diagnostics(paired: list[PairedOutcome], u_bar: dict[str, float],
         pairs.setdefault((p.typed.action, p.mono.action), []).append(d_at_bar[p.question_id])
 
     censored = [p for p in paired if p.censored()]
+    # r28: the decomposition, over the rows Δ folds. The answer term is the DEPLOYED
+    # `realised_utility` valued at a zero exchange rate — never a second spelling of the
+    # correctness terms, so a change to the utility model reaches this split automatically
+    # (the standing lesson: a census reads the deployed rule, it does not re-implement the
+    # constant it prices). `lambda_usd` is a REQUIRED latent (E-5); a Ū lacking it raises.
+    included = _included(paired)
+    unpriced = {**u_bar, "lambda_usd": 0.0}
+    typed_arm, mono_arm = (_arm_summary([p.typed for p in included]),
+                           _arm_summary([p.mono for p in included]))
+    delta_spend = (u_bar["lambda_usd"]
+                   * (mono_arm.mean_spend_usd - typed_arm.mean_spend_usd)
+                   ) if included else None
+    delta_answers = _mean([realised_utility(p.typed, unpriced, oracle_p=oracle_p)
+                           - realised_utility(p.mono, unpriced, oracle_p=oracle_p)
+                           for p in included])
     reasons: dict[str, int] = {}
     for p in paired:
         if p.typed.withheld is not None:
@@ -337,6 +394,11 @@ def _diagnostics(paired: list[PairedOutcome], u_bar: dict[str, float],
         # size of the bias being removed, published so the removal is auditable
         censored_mean_d=_mean([d_at_bar[p.question_id] for p in censored]),
         withheld_reasons=reasons,
+        included_mean_d=_mean([d_at_bar[p.question_id] for p in included]),
+        delta_answers=delta_answers,
+        delta_spend=delta_spend,
+        typed_arm=typed_arm,
+        mono_arm=mono_arm,
     )
 
 
@@ -360,7 +422,7 @@ def delta_posterior(paired: list[PairedOutcome], posterior: UtilityPosterior, *,
     """
     u_bar = posterior.u_bar()
     diagnostics = _diagnostics(paired, u_bar, oracle_p=oracle_p)
-    included = [p for p in paired if not p.censored()]
+    included = _included(paired)
     # the guard tests INCLUDED, not paired: a corpus that censors every row has no
     # evidence either, and must fail loudly rather than return a normal-looking result
     if not included:
@@ -400,6 +462,42 @@ def _fmt(x: float | None, places: int = 3) -> str:
     return "n/a" if x is None else f"{x:.{places}f}"
 
 
+def _decomposition_lines(d: Diagnostics, baseline: str) -> list[str]:
+    """r28: Δ split into what the ANSWERS bought and what the SPEND cost, over the rows Δ
+    folds. Emitted whenever the split was computed, including when spend is zero — "the
+    price term is 0.000" is the disclosure, and a block that appeared only when spend bit
+    would make its absence ambiguous (the §14 censoring block's rule, applied here).
+
+    This exists because the headline alone is unreadable. On run 18 the total reads +0.577
+    and the answer term +0.014: the entire margin is the price of the baseline arm, whose
+    spend is imputed from token counts rather than metered. Twelve readings could not show
+    that."""
+    if d.delta_answers is None or d.delta_spend is None:
+        return []
+    assert d.typed_arm is not None and d.mono_arm is not None
+    n_inc = d.n - d.n_censored
+    rows = [("typed", d.typed_arm), (baseline, d.mono_arm)]
+    lines = [
+        "## Δ decomposed — what the answers bought, what the spend cost",
+        "",
+        f"- **Δ_answers = {_fmt(d.delta_answers)}**  ·  "
+        f"**Δ_spend = {_fmt(d.delta_spend)}**  ·  "
+        f"sum {_fmt(d.included_mean_d)} (the at-Ū gap over the {n_inc} row(s) Δ folds)",
+        "- Δ_answers values both arms at a zero exchange rate; Δ_spend is "
+        "`lambda_usd · (mean baseline spend - mean typed spend)`. The split is exact — "
+        "the realised utility is affine in the latents given the actions.",
+        "",
+        "| arm | correct | wrong | abstain | mean $/question | total $ |",
+        "| --- | ---: | ---: | ---: | ---: | ---: |",
+    ]
+    for name, arm in rows:
+        lines.append(
+            f"| {name} | {arm.n_correct} | {arm.n_wrong} | {arm.n_abstain} | "
+            f"${arm.mean_spend_usd:.4f} | ${arm.mean_spend_usd * n_inc:.2f} |")
+    lines.append("")
+    return lines
+
+
 def _censoring_lines(d: Diagnostics) -> list[str]:
     """The availability block (foundations §14). ALWAYS emitted when the typed arm
     reported withholding reasons — including the zero-censored case, because "0 censored"
@@ -427,7 +525,7 @@ def _censoring_lines(d: Diagnostics) -> list[str]:
 
 
 def render_report(result: GateResult, *, run_id: str, elapsed: float,
-                  baseline: str = "monolithic") -> str:
+                  baseline: str) -> str:
     """The published gate report (`$LIFE_AGENT_KB/eval/gate/report.md`) — the
     blind-comparison discipline applied to ourselves (SPEC-comparison.md precedent).
 
@@ -437,8 +535,15 @@ def render_report(result: GateResult, *, run_id: str, elapsed: float,
     against the monolithic single-call instrument when the baseline was in fact the
     raw-deliberative replay (Claude Code with corpus access, the owner's outside option).
     The paired rows carried the right tag throughout; only the prose was wrong, and the
-    prose is what gets quoted into the ledger. Default kept as "monolithic" so a caller
-    that does not pass it renders exactly as before.
+    prose is what gets quoted into the ledger.
+
+    r28: the "monolithic" DEFAULT is removed and ``baseline`` is REQUIRED. K4 fixed the
+    value at the one call site it looked at; `scripts/gate_splice.py` and
+    `scripts/membrane/p3_gate.py` were still rendering through the default, so the
+    identical defect survived in two further instruments reading the same archives. A
+    default is the vector - a report that does not know which arm it ran against must not
+    render at all. Structural, so no census has to keep finding call sites (guards.md
+    entry 1: the checker's universe came from somewhere other than the thing checked).
     """
     d = result.diagnostics
     verdict = "PASS" if result.passed else "FAIL"
@@ -468,6 +573,7 @@ def render_report(result: GateResult, *, run_id: str, elapsed: float,
         f"- mean per-question gap at Ū: {_fmt(d.overall_mean_d)}",
         "",
         *_censoring_lines(d),
+        *_decomposition_lines(d, baseline),
         "## The disagreement region (where the action changes)",
         "",
         f"- {d.disagreement_n} of {d.n} questions; mean gap there "
