@@ -102,4 +102,82 @@ as a void, not as a result.
 ---
 ## RESULTS
 
-*(appended after the run; nothing above this line is edited)*
+**Read 2026-08-28, $0. The pre-registration's central premise is REFUTED, the pilot is
+VOID as designed, and nothing was bought.**
+
+### The premise was false
+
+The prereg asserts, in bold, that "**Δ2 has not been re-read once**" since 2026-08-06, and
+builds all four predictions on it. That is wrong.
+
+Read off the deployed artefacts: `paired-gate-20260826T083356.jsonl` and
+`paired-gate-20260825T102725.jsonl` both carry `"baseline": "raw-deliberative-replay"`, and
+run 18's console header reads *"baseline = raw-deliberative replay
+(…/ff-v2-delib-20260719)"*. **Runs 6 through 18 are all Δ2 readings against π\*.** The
+series has been measuring the owner's outside option the entire time.
+
+### What the most recent reading actually says
+
+**Run 18 (`gate-20260826T083356`, 2026-08-26) — against Claude Code with corpus access:**
+
+| | typed | π\* (Claude Code + corpus) |
+|---|---:|---:|
+| answer rate | 0.61 | 0.97 |
+| correct-report rate | 0.59 | 0.91 |
+
+**PASS: P(Δ > 0.05) = 0.959, Δ̄ = +0.514 [+0.077, +0.999].**
+
+So the owner's belief — that a general coding agent does the same job — **is refuted by a
+two-day-old measurement**, and the −1.058 of 2026-08-06 has been turned into +0.514 by the
+work since. On the disagreement region: of the 39 questions where typed abstains and π\*
+answers, the mean gap is **+0.264 in typed's favour** — π\* is wrong there often enough
+that `u_wrong = −9` outweighs the reach it gains.
+
+### Why I believed otherwise, and it is this milestone's own defect class
+
+`gate.render_report` hard-coded **"monolithic"** into the report title, into the Δ
+definition line, into both rate labels and into the disagreement table header, while the
+caller chose the arm and wrote the correct tag into every paired row. So every gate report
+since run 6 has been *titled* as a comparison against the monolithic single-call
+instrument while running against π\*. `CLAUDE.md`'s §14 summaries quote the prose
+("vs mono 0.97 at $39.01"), and I read the summaries.
+
+**The paired rows were right the whole time; only the label was wrong, and the label is
+what gets quoted.** That is a checker's universe derived from somewhere other than the
+thing being checked — entry 1, in the reporting layer, and it cost twelve runs of
+mis-titled evidence. Fixed here: `render_report` takes the baseline it ran against, both
+directions mutation-verified (naming the wrong arm fails; a renderer that simply never says
+"monolithic" also fails).
+
+### The four frozen predictions, dispositioned
+
+| | prediction | outcome |
+|---|---|---|
+| 1 | P1's Δ̄ > −1.058 | **CONFIRMED** by run 18 (+0.514), not by this read |
+| 2 | P1's Δ̄ still negative | **REFUTED** — it is positive, and has been since at least run 14 |
+| 3 | P1's typed answer rate > 0.21 | **CONFIRMED** — 0.61 |
+| 4 | typed answers fewer real asks than authored ones | **CONFIRMED** at A1, independently — 21% of 189 real asks vs 0.61 authored |
+
+Prediction 2 is the one that mattered and it is refuted. Predictions 1 and 3 are confirmed
+by evidence that already existed, which is the point: **the read was unnecessary.**
+
+### The finding that replaces the pilot
+
+Run 18's utility posterior sets `u_correct = +1` and **`u_abstain = 0`** — the two points
+that fix the gauge. Every quantity is measured relative to abstaining, so **the model
+cannot represent a cost of not answering.** Under it, an abstention is free.
+
+It is not free. An abstention costs the owner a context switch to another tool, and the
+exit test is precisely the owner declining to pay that cost 39% of the time. So the gate
+and the owner are not in fact disagreeing about π\*'s accuracy — they are disagreeing about
+a term the gauge cannot express. **That is a structural limitation of the utility model,
+found at $0, and it is a far better use of the next dollar than re-measuring something
+measured two days ago.**
+
+### What was NOT bought
+
+The $25 cap is untouched. P1 was unnecessary; P2 (π\* on real asks) is still uncovered and
+still worth doing, but its design assumed a comparison the correction re-frames, and its
+correctness column has no gold. **Re-scoping it is an owner keypress, not an inference** —
+the prereg's frozen consequence forbids this read from adopting or re-scoping anything, and
+that binds hardest when the read has just overturned its own premise.

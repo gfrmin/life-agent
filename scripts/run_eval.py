@@ -1877,7 +1877,8 @@ def main() -> int:
                                     compare_run_id=(compare_meta or {}).get("run_id"))
                     + corpus_note(conn, questions, corpus=corpus))
         (gate_dir / "report.md").write_text(
-            preamble + GATE.render_report(result, run_id=run_id, elapsed=elapsed),
+            preamble + GATE.render_report(result, run_id=run_id, elapsed=elapsed,
+                                          baseline=baseline_tag),
             encoding="utf-8")
         (gate_dir / "paired.jsonl").write_text(
             "".join(json.dumps(_paired_to_dict(
