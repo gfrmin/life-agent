@@ -19,6 +19,7 @@ asked for): not failures, but the sort of thing a checkpoint's report should say
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 import tempfile
@@ -123,7 +124,29 @@ def main(argv: list[str] | None = None) -> int:
     if not directory.is_dir():
         print(f"no fixture set at {directory}", file=sys.stderr)
         return 2
-    fixtures = [f for f in FX.read_all(directory)
+    on_disk = FX.read_all(directory)
+
+    # r27 (C7): reconcile the set against the manifest that RECORDED it. `read_all` globs
+    # `*.json` and explicitly skips `manifest.json`, and `n_fixtures`/`fixture_ids` were
+    # never compared to the glob — so a doctored set of the same size reported a full pass.
+    # An ABSENT manifest is a refusal too: deleting it is the cheapest evasion of a
+    # manifest check, and a set nobody published is a set nobody recorded.
+    man_path = directory / "manifest.json"
+    if not man_path.is_file():
+        print(f"refusing: no manifest.json in {directory}. The fixture set on disk is not "
+              "reconcilable with any recorded set, so N/N would mean 'the files present "
+              "agree with themselves'.", file=sys.stderr)
+        return 2
+    declared = set(json.loads(man_path.read_text(encoding="utf-8")).get("fixture_ids", []))
+    present = {f.fixture_id for f in on_disk}
+    if declared != present:
+        print(f"refusing: fixture set does not match its manifest.\n"
+              f"  missing (declared, absent): {sorted(declared - present)}\n"
+              f"  extra (present, undeclared): {sorted(present - declared)}",
+              file=sys.stderr)
+        return 2
+
+    fixtures = [f for f in on_disk
                 if args.only is None or f.fixture_id == args.only]
     if not fixtures:
         print(f"no fixtures{' matching --only' if args.only else ''} in {directory}",
@@ -142,6 +165,7 @@ def main(argv: list[str] | None = None) -> int:
 
     failed: list[str] = []
     errored: list[str] = []
+    compared: list[str] = []
     for fx in fixtures:
         try:
             outputs, cassette = replay_fixture(fx, snapshot)
@@ -150,6 +174,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{fx.fixture_id}: replay raised {type(e).__name__}: {e}")
             continue
         diffs = CMP.compare_fixture(fx, outputs)
+        compared.append(fx.fixture_id)
         if fx.expected_change is not None:
             print(f"{fx.fixture_id}: expected-change fixture "
                   f"({fx.expected_change.get('checkpoint')}) — "
@@ -166,7 +191,22 @@ def main(argv: list[str] | None = None) -> int:
 
     total = len(fixtures)
     bad = len(failed) + len(errored)
-    print(f"\n{total - bad}/{total} fixtures replay identically"
+
+    # r27 (C4): the summary used to print `total - bad`, which counts NOT-FAILED, not
+    # COMPARED. Any branch that declined to compare a fixture — gating on a control-only
+    # tell, on an id, on anything — printed N/N and exited 0, because a fixture nobody
+    # looked at is not a fixture that failed. Every fixture must have been compared or
+    # have errored; the reconciliation is over the ID SET, not a count, so a skip that
+    # happens to be balanced by a double-compare cannot hide in it.
+    unaccounted = {f.fixture_id for f in fixtures} - set(compared) - set(errored)
+    if unaccounted:
+        print(f"\nrefusing: {len(unaccounted)} fixture(s) were neither compared nor "
+              f"errored — the loop skipped them and a skipped fixture is not a passing "
+              f"one: {sorted(unaccounted)}", file=sys.stderr)
+        return 2
+
+    print(f"\n{total - bad}/{total} fixtures replay identically "
+          f"({len(compared)} compared, {len(errored)} errored)"
           f"{'' if not failed else '  ·  mismatched: ' + ', '.join(failed)}"
           f"{'' if not errored else '  ·  errored: ' + ', '.join(errored)}")
     return 1 if bad else 0

@@ -378,3 +378,76 @@ def test_compare_fixture_null_body_stays_null_under_dir1() -> None:
     assert CMP.compare_fixture(fx, same) == []
     posts_now = dict(same, log_decision=_body())
     assert CMP.compare_fixture(fx, posts_now)  # a new post where none was = FAIL
+
+
+# --- r27 C6: the class list's universe is the RECORDER, not a hand-written twin ---------
+# `_body()` above is a hand-written dict, and the only checks over the class list were
+# disjointness and subset-of-union. Nothing constrained WHICH class a field lands in, so
+# five of the twelve value-compared decision fields could drop to type-only with the whole
+# guard layer green — and, because `RUNTIME_MEASURED` is parametrized over, the suite got
+# LARGER while the oracle got weaker.
+
+def _recorder_body() -> dict:
+    """The body the DEPLOYED recorder emits. Read end to end from `core.recorder.body`
+    rather than restated here: a census that re-implements the constant it prices is the
+    defect this register's entry 1 records."""
+    from life_agent.core import recorder as RC
+    return RC.body(
+        question="q", retrieval_keys=["k"], effector="report", credences=[1.0],
+        candidates=["A"], p_none=0.0, eu=0.5, n_obs=1, n_indeterminate=0, n_competing=0,
+        instrument="", cost_usd=0.0, latency_s=0.0, run_id="r", regime="full",
+        policy="all-to-date")
+
+
+def test_every_field_the_recorder_emits_is_classified() -> None:
+    """r27 C6. The universe is what the poster actually posts. `_body()` is a twin, and a
+    twin drifts silently: a field the recorder adds and the twin does not would be
+    unclassified in production and invisible here."""
+    emitted = {"question", "retrieval_keys"} | {
+        f"decision.{k}" for k in _recorder_body()["decision"]}
+    unclassified = emitted - (FX.VALUE_COMPARED | FX.RUNTIME_MEASURED)
+    assert not unclassified, (
+        f"the recorder emits {sorted(unclassified)}, which the comparator classifies "
+        f"nowhere — an unclassified field is a mismatch by design, so this is a live "
+        f"oracle break, not a style point")
+    stale = (FX.VALUE_COMPARED | FX.RUNTIME_MEASURED) - emitted
+    assert not stale, (
+        f"the class list names {sorted(stale)}, which the recorder never emits — a stale "
+        f"entry excuses a field that later appears under that name")
+
+
+def test_the_value_compared_class_is_pinned_whole() -> None:
+    """r27 C6. MUST FAIL if any field moves out of `VALUE_COMPARED`. `fixture.py`'s own
+    docstring already states the rule — a field may move from measured to value-compared,
+    NEVER the other way — and nothing enforced it. Killed by moving any field to
+    `RUNTIME_MEASURED`, which is exactly the weakening that passed the whole gate while
+    growing the suite."""
+    assert frozenset({
+        "question", "retrieval_keys", "decision.effector", "decision.credences",
+        "decision.candidates", "decision.p_none", "decision.eu", "decision.n_obs",
+        "decision.n_indeterminate", "decision.n_competing", "decision.instrument",
+        "decision.run_id", "decision.regime", "decision.policy",
+    }) == FX.VALUE_COMPARED, (
+        f"VALUE_COMPARED is {sorted(FX.VALUE_COMPARED)} — never-silently-weaken is a "
+        f"stated rule of this module and this is where it is enforced")
+
+
+@pytest.mark.parametrize("path,differing", [
+    ("decision.p_none", 0.99),
+    ("decision.n_obs", 99),
+    ("decision.n_indeterminate", 99),
+    ("decision.n_competing", 99),
+    ("decision.instrument", "deliberate@some-model"),
+])
+def test_each_value_compared_field_is_compared_by_value(path: str,
+                                                        differing: object) -> None:
+    """r27 C6. MUST FAIL if this field stops being compared by VALUE. These five had no
+    value-pinning test of their own: `instrument` was pinned only by an ABSENCE test,
+    which `RUNTIME_MEASURED` also satisfies, and the other four by nothing at all. Killed
+    by moving the named field to `RUNTIME_MEASURED` — same type, different value, which a
+    type-only comparison cannot see."""
+    _, _, tail = path.partition(".")
+    diffs = CMP.compare_body(_body(), _body(**{f"decision__{tail}": differing}))
+    assert [(d.path, d.reason) for d in diffs] == [(path, "value")], (
+        f"{path} differing in value produced {[(d.path, d.reason) for d in diffs]} — a "
+        f"type-only comparison cannot tell two values of the same type apart")

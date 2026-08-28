@@ -9,6 +9,7 @@ oracle to prove it can still speak.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -199,15 +200,61 @@ _CONTROL_MATCH = "zzz-control-agrees"
 _CONTROL_MISMATCH = "zzz-control-diverges"
 
 
+_CONTROL_ERROR = "zzz-control-cannot-replay"
+
+
+def _provenance() -> dict[str, Any]:
+    """r27 (C4): the control records the SAME provenance keys a real fixture carries.
+
+    It used to omit `python_hash_seed` — deliberately, to skip the seed refusal — which
+    made every control fixture distinguishable from every real one by a field the compare
+    loop can read. Gating the loop on that tell gave a full pass, exit 0 and a
+    byte-identical transcript with a live defect in the tree. Recording the seed the
+    process actually has satisfies the refusal under any seed while leaving no tell.
+    """
+    return {"python_hash_seed": os.environ.get("PYTHONHASHSEED"),
+            "engine_version": "control"}
+
+
 def _seam_fixture(fixture_id: str, outputs: dict[str, Any]) -> FX.Fixture:
     return FX.Fixture(
         fixture_id=fixture_id, checkpoint="k3-control", trace="seam",
         classes=("terminal:abstain",), question="what is my declared control value?",
         question_id=fixture_id, inputs={}, outputs=outputs,
-        # No `python_hash_seed`: this set is not hash-order dependent (no dedup runs), and
-        # recording one would make the control refuse under any other seed.
-        provenance={"engine_version": "control"},
+        provenance=_provenance(),
     )
+
+
+def _erroring_fixture() -> FX.Fixture:
+    """A fixture that CANNOT be replayed: an `A-poster` trace with no recorded view, so
+    `replay_fixture` raises before the comparator is reached. The control set had none, so
+    the mirror of row 5b's named kill — counting only `failed` — left every control green
+    while unreplayable fixtures exited 0."""
+    return FX.Fixture(
+        fixture_id=_CONTROL_ERROR, checkpoint="k3-control", trace="A-poster",
+        classes=("terminal:abstain",), question="what is my declared control value?",
+        question_id=_CONTROL_ERROR, inputs={}, outputs={},
+        provenance=_provenance(),
+    )
+
+
+def _publish(directory: Path, fixtures: list[FX.Fixture]) -> None:
+    """Write the set AND its manifest. r27 (C7): the replay reads the manifest, so a
+    control set that did not publish one would be exempt from the very check being added
+    — the control's own shape must not be the reason it passes."""
+    for fx in fixtures:
+        FX.write(directory, fx)
+    man = FX.manifest("k3-control", fixtures, {"source": "poison control"})
+    (directory / "manifest.json").write_text(json.dumps(man, indent=1, sort_keys=True),
+                                             encoding="utf-8")
+
+
+def _diverge(truth: dict[str, Any]) -> dict[str, Any]:
+    diverged = json.loads(json.dumps(truth))          # deep copy, no shared substructure
+    diverged["log_decision"]["decision"]["effector"] = "report"
+    diverged["log_decision"]["decision"]["eu"] = 0.99
+    assert diverged != truth, "the control's planted divergence did not change the body"
+    return diverged
 
 
 def _control_set(directory: Path) -> None:
@@ -215,13 +262,17 @@ def _control_set(directory: Path) -> None:
     from life_agent.collapse import drive as DR
 
     truth = DR.drive_seam_unavailable("what is my declared control value?")
-    FX.write(directory, _seam_fixture(_CONTROL_MATCH, truth))
+    _publish(directory, [_seam_fixture(_CONTROL_MATCH, truth),
+                         _seam_fixture(_CONTROL_MISMATCH, _diverge(truth))])
 
-    diverged = json.loads(json.dumps(truth))          # deep copy, no shared substructure
-    diverged["log_decision"]["decision"]["effector"] = "report"
-    diverged["log_decision"]["decision"]["eu"] = 0.99
-    assert diverged != truth, "the control's planted divergence did not change the body"
-    FX.write(directory, _seam_fixture(_CONTROL_MISMATCH, diverged))
+
+def _agreeing_plus_erroring_set(directory: Path) -> None:
+    """Every fixture either agrees or cannot run — so the ONLY thing that can make this
+    set fail is counting the unreplayable one."""
+    from life_agent.collapse import drive as DR
+
+    truth = DR.drive_seam_unavailable("what is my declared control value?")
+    _publish(directory, [_seam_fixture(_CONTROL_MATCH, truth), _erroring_fixture()])
 
 
 def test_poison_the_oracle_detects_a_mismatch_end_to_end(tmp_path: Path,
@@ -259,3 +310,81 @@ def test_poison_the_oracle_detects_a_mismatch_end_to_end(tmp_path: Path,
         f"the agreeing fixture was also reported as mismatched — the comparator is "
         f"flagging identical bodies. Output:\n{out}"
     )
+
+
+# --- r27 B: the oracle's accounting, its inputs, and its own set ----------------------
+# G4 obtained a full pass with two live decision-path defects in the tree. The literal
+# claim of row 5b (a planted mismatch reaches the exit code) held; what nothing covered was
+# the machinery's INPUT — which fixtures the loop looks at, which fields the comparator
+# values, and whether the set on disk is the set that was recorded.
+
+def _replay(argv: list[str]) -> tuple[int, str]:
+    sys.path.insert(0, str(_ROOT / "scripts"))
+    import contextlib
+    import io
+
+    import collapse_replay
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+        rc = collapse_replay.main(argv)
+    return rc, buf.getvalue()
+
+
+def test_poison_an_unreplayable_fixture_cannot_exit_zero(tmp_path: Path) -> None:
+    """r27 C5. MUST FAIL if a fixture that could not be replayed counts as a pass. Every
+    other fixture in this set AGREES, so the only thing that can fail it is counting the
+    one that raised. Killed by `bad = len(failed)` — the mirror of the mutation row 5b
+    names as its kill, which the old control set could not express because it contained no
+    fixture that raises."""
+    _agreeing_plus_erroring_set(tmp_path)
+    rc, out = _replay(["--checkpoint", "k3-control", "--fixtures", str(tmp_path)])
+    assert rc != 0, (
+        f"a fixture that could not be replayed at all exited {rc} — 'errored' is being "
+        f"read as 'fine'. Output:\n{out}")
+    assert _CONTROL_ERROR in out, f"the unreplayable fixture was not named. Output:\n{out}"
+
+
+def test_poison_a_skipped_fixture_cannot_be_reported_as_passing(tmp_path: Path) -> None:
+    """r27 C4. MUST FAIL if the loop can decline to compare a fixture and still report a
+    full pass. `total - bad` counted NOT-FAILED, not COMPARED, so any branch that skipped
+    fixtures — gating on a control-only tell, on an id, on anything — printed N/N and
+    exited 0. Killed by `continue`-ing any fixture before `compare_fixture`, and by
+    dropping the compared-set reconciliation."""
+    _control_set(tmp_path)
+    rc, out = _replay(["--checkpoint", "k3-control", "--fixtures", str(tmp_path),
+                       "--only", _CONTROL_MATCH])
+    assert rc == 0 and "1/1" in out, (
+        f"control: an explicit single-fixture selection must still pass. Output:\n{out}")
+    assert "compared" in out, (
+        f"the summary does not say how many fixtures were COMPARED, so a skipped fixture "
+        f"is indistinguishable from a passing one. Output:\n{out}")
+
+
+def test_poison_a_doctored_fixture_set_is_refused(tmp_path: Path) -> None:
+    """r27 C7. MUST FAIL if the replay never checks the set it was handed against the set
+    that was recorded. `read_all` globs `*.json` and explicitly skips `manifest.json`, and
+    `n_fixtures`/`fixture_ids` were never compared to the glob — so a doctored set of the
+    same size reported a full pass. Killed by removing the manifest reconciliation."""
+    _control_set(tmp_path)
+    swapped = tmp_path / f"{_CONTROL_MISMATCH}.json"
+    body = swapped.read_text(encoding="utf-8").replace(_CONTROL_MISMATCH, "zzz-substitute")
+    swapped.unlink()
+    (tmp_path / "zzz-substitute.json").write_text(body, encoding="utf-8")
+
+    rc, out = _replay(["--checkpoint", "k3-control", "--fixtures", str(tmp_path)])
+    assert rc == 2, (
+        f"a fixture set that does not match its own manifest exited {rc}; the oracle "
+        f"compared whatever it was handed. Output:\n{out}")
+    assert "manifest" in out.lower(), f"the refusal did not name the manifest. Output:\n{out}"
+
+
+def test_poison_a_set_without_a_manifest_is_refused(tmp_path: Path) -> None:
+    """r27 C7, the discriminating half (row 23). MUST FAIL if deleting the manifest is
+    the way past the manifest check — a reconciliation whose evasion is `rm` reconciles
+    nothing. Killed by treating an absent manifest as 'nothing to reconcile'."""
+    _control_set(tmp_path)
+    (tmp_path / "manifest.json").unlink()
+    rc, out = _replay(["--checkpoint", "k3-control", "--fixtures", str(tmp_path)])
+    assert rc == 2, (
+        f"a fixture set with no manifest exited {rc} — deleting the manifest is the "
+        f"cheapest possible evasion of a manifest check. Output:\n{out}")

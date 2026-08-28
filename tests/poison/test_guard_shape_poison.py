@@ -161,10 +161,12 @@ def substring_proofs(source: str, label: str = "") -> list[str]:
             elif isinstance(node, ast.Call):
                 hit = _matcher_over_source(node, tainted, outputs)
             if hit:
-                where = f"{label}::{fn.name}" if label else fn.name
-                line = getattr(node, "lineno", 0)
-                out.append(f"{where}:{line}")
-    return sorted(set(out))
+                # Identified by FUNCTION, not line: a line number is not an identity, and
+                # keying the baseline on one made an unrelated import above a pinned site
+                # break the pin. Counted, so a second proof added to a function already on
+                # the baseline is still an addition.
+                out.append(f"{label}::{fn.name}" if label else fn.name)
+    return sorted(out)
 
 
 def _matcher_over_source(node: ast.expr, tainted: frozenset[str],
@@ -195,50 +197,35 @@ _EXEMPT = {"poison/test_guard_shape_poison.py"}
 # intuition is precisely how every census in this register acquired a universe narrower
 # than its property. For a RATCHET a false positive costs one pinned line; a false negative
 # is a guard that cannot see the next violation. The measured set is pinned as measured.
-_SUBSTRING_PROOF_BASELINE: frozenset[str] = frozenset({
-    "poison/test_oracle_poison.py::test_poison_the_demand_log_names_the_same_transform:109",
-    "test_collapse_record.py::test_only_the_collapse_instrument_installs_a_shared_brain:145",
-    "test_guard_register.py::test_the_headline_count_equals_the_rows_it_counts:38",
-    "test_k1_family_deletion.py::test_deleted_family_symbols_resolve_nowhere:43",
-    "test_loss_ledger.py::test_write_outputs_lands_both_files_under_run_dir:195",
-    "test_m5_absorption.py::test_ask_has_no_gather_fork:83",
-    "test_m5_absorption.py::test_ask_has_no_weak_retrieval_predicate:100",
-    "test_m5_absorption.py::test_ask_has_no_weak_retrieval_predicate:98",
-    "test_m5_absorption.py::test_ask_has_no_weak_retrieval_predicate:99",
-    "test_m5_absorption.py::test_ask_once_has_no_dispatch_choice:298",
-    "test_m5_absorption.py::test_bridge_has_no_decide_live_endpoint:64",
-    "test_m5_absorption.py::test_bridge_has_no_decide_live_endpoint:65",
-    "test_m5_absorption.py::test_drive_has_no_live_branch:58",
-    "test_m5_absorption.py::test_drive_has_no_live_branch:59",
-    "test_m5_absorption.py::test_shadow_keeps_the_feed_not_the_live_half:70",
-    "test_m5_absorption.py::test_shadow_keeps_the_feed_not_the_live_half:71",
-    "test_m6_declaration.py::test_d11_the_lattice_join_is_one_declaration:26",
-    "test_m6_declaration.py::test_d13_the_stack_urls_are_read_once:223",
-    "test_m6_declaration.py::test_d13_the_stack_urls_are_read_once:224",
-    "test_m6_declaration.py::test_d13_the_stack_urls_are_read_once:225",
-    "test_m6_declaration.py::test_d13_the_stack_urls_are_read_once:226",
-    "test_m6_declaration.py::test_d15_the_declaration_names_every_branch:138",
-    "test_m6_declaration.py::test_d15_the_declaration_names_every_branch:139",
-    "test_m6_declaration.py::test_d15_the_declaration_names_every_branch:140",
-    "test_m6_declaration.py::test_d15_the_declaration_names_every_branch:141",
-    "test_m7_register.py::test_d6_executor_withhold_derives_from_the_one_vocabulary:85",
-    "test_m7_register.py::test_the_register_headings_equal_the_census:55",
-    "test_pricing_table.py::test_lambda_usd_has_one_source_and_fails_loud:121",
-    "test_pricing_table.py::test_no_priced_constant_is_declared_outside_the_table:93",
-    "test_pricing_table.py::test_no_priced_constant_is_declared_outside_the_table:94",
-    "test_pricing_table.py::test_realised_utility_report_branch_is_spelled_through_the_atom:102",
-    "test_recorder.py::test_the_family_leaves_do_not_append_the_decision_ledger_themselves:134",
-    "test_reliability.py::test_the_fold_lives_once:100",
-    "test_reliability.py::test_the_fold_lives_once:101",
-    "test_reliability.py::test_the_fold_lives_once:102",
-    "test_reliability.py::test_the_fold_lives_once:103",
-    "test_replay_audit.py::test_the_arms_of_one_question_share_a_retrieval_draw:442",
-    "test_seam.py::test_only_the_seam_calls_optimise:136",
-    "test_seam.py::test_only_the_seam_posts_decide:150",
-})
+_SUBSTRING_PROOF_BASELINE: dict[str, int] = {
+    "poison/test_oracle_poison.py::test_poison_the_demand_log_names_the_same_transform": 1,
+    "test_collapse_record.py::test_only_the_collapse_instrument_installs_a_shared_brain": 1,
+    "test_guard_register.py::test_the_headline_count_equals_the_rows_it_counts": 1,
+    "test_k1_family_deletion.py::test_deleted_family_symbols_resolve_nowhere": 1,
+    "test_loss_ledger.py::test_write_outputs_lands_both_files_under_run_dir": 1,
+    "test_m5_absorption.py::test_ask_has_no_gather_fork": 1,
+    "test_m5_absorption.py::test_ask_has_no_weak_retrieval_predicate": 3,
+    "test_m5_absorption.py::test_ask_once_has_no_dispatch_choice": 1,
+    "test_m5_absorption.py::test_bridge_has_no_decide_live_endpoint": 2,
+    "test_m5_absorption.py::test_drive_has_no_live_branch": 2,
+    "test_m5_absorption.py::test_shadow_keeps_the_feed_not_the_live_half": 2,
+    "test_m6_declaration.py::test_d11_the_lattice_join_is_one_declaration": 2,
+    "test_m6_declaration.py::test_d13_the_stack_urls_are_read_once": 4,
+    "test_m6_declaration.py::test_d15_the_declaration_names_every_branch": 5,
+    "test_m7_register.py::test_d6_executor_withhold_derives_from_the_one_vocabulary": 1,
+    "test_m7_register.py::test_the_register_headings_equal_the_census": 1,
+    "test_pricing_table.py::test_lambda_usd_has_one_source_and_fails_loud": 1,
+    "test_pricing_table.py::test_no_priced_constant_is_declared_outside_the_table": 2,
+    "test_pricing_table.py::test_realised_utility_report_branch_is_spelled_through_the_atom": 1,
+    "test_recorder.py::test_the_family_leaves_do_not_append_the_decision_ledger_themselves": 1,
+    "test_reliability.py::test_the_fold_lives_once": 5,
+    "test_replay_audit.py::test_the_arms_of_one_question_share_a_retrieval_draw": 1,
+    "test_seam.py::test_only_the_seam_calls_optimise": 1,
+    "test_seam.py::test_only_the_seam_posts_decide": 1,
+}
 
 
-def _tree_substring_proofs() -> list[str]:
+def _tree_substring_proofs() -> dict[str, int]:
     found: list[str] = []
     for root in (_TESTS, _ROOT / "scripts", _ROOT / "src"):
         for py in root.rglob("*.py"):
@@ -249,7 +236,7 @@ def _tree_substring_proofs() -> list[str]:
             if rel in _EXEMPT:
                 continue
             found += substring_proofs(py.read_text(encoding="utf-8"), rel)
-    return sorted(found)
+    return {k: found.count(k) for k in sorted(set(found))}
 
 
 def test_poison_no_guard_proves_a_call_with_a_substring() -> None:
@@ -258,10 +245,14 @@ def test_poison_no_guard_proves_a_call_with_a_substring() -> None:
     a name in a comment or a docstring is not a call and cannot satisfy it. Killed by
     reintroducing `assert "leader_order(" in inspect.getsource(LK)` — and, unlike the regex
     this replaced, by any of the six other in-tree spellings of the same proof."""
-    found = frozenset(_tree_substring_proofs())
+    found = _tree_substring_proofs()
+    both = set(found) & set(_SUBSTRING_PROOF_BASELINE)
+    moved = sorted(k for k in both if found[k] != _SUBSTRING_PROOF_BASELINE[k])
     assert found == _SUBSTRING_PROOF_BASELINE, (
-        f"substring-proof census moved.\n  added: {sorted(found - _SUBSTRING_PROOF_BASELINE)}"
-        f"\n  removed: {sorted(_SUBSTRING_PROOF_BASELINE - found)}\n"
+        f"substring-proof census moved.\n"
+        f"  added: {sorted(set(found) - set(_SUBSTRING_PROOF_BASELINE))}\n"
+        f"  removed: {sorted(set(_SUBSTRING_PROOF_BASELINE) - set(found))}\n"
+        f"  count changed: {moved}\n"
         f"A COMMENT satisfies a substring while the chain underneath is re-spelled to "
         f"disagree (r23 F10). Assert the call with _guard_ast.calls(), or assert the "
         f"behaviour. If you CONVERTED a site, update the baseline in the same commit."
