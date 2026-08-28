@@ -426,13 +426,24 @@ def _censoring_lines(d: Diagnostics) -> list[str]:
     return lines
 
 
-def render_report(result: GateResult, *, run_id: str, elapsed: float) -> str:
+def render_report(result: GateResult, *, run_id: str, elapsed: float,
+                  baseline: str = "monolithic") -> str:
     """The published gate report (`$LIFE_AGENT_KB/eval/gate/report.md`) — the
-    blind-comparison discipline applied to ourselves (SPEC-comparison.md precedent)."""
+    blind-comparison discipline applied to ourselves (SPEC-comparison.md precedent).
+
+    r27: ``baseline`` NAMES THE ARM THIS RUN ACTUALLY RAN AGAINST. It used to be
+    hard-coded "monolithic" in the title and in both rate labels, while the caller chose
+    the arm — so every report in the §14 series from run 6 on was titled as a comparison
+    against the monolithic single-call instrument when the baseline was in fact the
+    raw-deliberative replay (Claude Code with corpus access, the owner's outside option).
+    The paired rows carried the right tag throughout; only the prose was wrong, and the
+    prose is what gets quoted into the ledger. Default kept as "monolithic" so a caller
+    that does not pass it renders exactly as before.
+    """
     d = result.diagnostics
     verdict = "PASS" if result.passed else "FAIL"
     lines = [
-        "# Adoption gate — typed families vs the monolithic instrument",
+        f"# Adoption gate — typed families vs the {baseline} baseline",
         "",
         f"Decision-weighted gate (bayesian-foundations §8). run_id={run_id}  "
         f"elapsed={elapsed:.1f}s  draws={result.n_draws}",
@@ -440,7 +451,7 @@ def render_report(result: GateResult, *, run_id: str, elapsed: float) -> str:
         f"## Verdict: **{verdict}**",
         "",
         f"- P(Δ > δ) = **{result.p_delta_gt:.3f}**  (gate: >= {result.level:.2f})",
-        "- Δ = EU(typed) - EU(monolithic), per-question mean, gauge units "
+        f"- Δ = EU(typed) - EU({baseline}), per-question mean, gauge units "
         "(u_correct = 1)",
         f"- Δ posterior: mean **{_fmt(result.delta_mean)}**, "
         f"90% interval [{_fmt(result.delta_lo)}, {_fmt(result.delta_hi)}]",
@@ -451,9 +462,9 @@ def render_report(result: GateResult, *, run_id: str, elapsed: float) -> str:
         "",
         f"- questions: {d.n} ({d.n_answerable} answerable)",
         f"- **answer rate** — typed {_fmt(d.typed_answer_rate, 2)} · "
-        f"monolithic {_fmt(d.mono_answer_rate, 2)}  (asserts / answerable)",
+        f"{baseline} {_fmt(d.mono_answer_rate, 2)}  (asserts / answerable)",
         f"- correct-report rate — typed {_fmt(d.typed_correct_rate, 2)} · "
-        f"monolithic {_fmt(d.mono_correct_rate, 2)}",
+        f"{baseline} {_fmt(d.mono_correct_rate, 2)}",
         f"- mean per-question gap at Ū: {_fmt(d.overall_mean_d)}",
         "",
         *_censoring_lines(d),
@@ -462,7 +473,7 @@ def render_report(result: GateResult, *, run_id: str, elapsed: float) -> str:
         f"- {d.disagreement_n} of {d.n} questions; mean gap there "
         f"{_fmt(d.disagreement_mean_d)} (agreement set {_fmt(d.agreement_mean_d)})",
         "",
-        "| typed x monolithic | n | mean Δ at Ū |",
+        f"| typed x {baseline} | n | mean Δ at Ū |",
         "| --- | ---: | ---: |",
     ]
     for (ta, ma), cell in d.action_pairs.items():

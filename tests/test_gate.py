@@ -309,3 +309,38 @@ def test_render_report_names_the_verdict_and_diagnostics() -> None:
     assert "answer rate" in md.lower()
     assert "disagreement" in md.lower()
     assert "frozen" in md.lower()               # the blind-comparison note
+
+
+# --- r27: the report must name the baseline arm it ACTUALLY ran against -----------------
+# `render_report` hard-coded "monolithic" in its title and in both diagnostic labels while
+# the baseline arm is chosen by the caller. Every gate report in the §14 series since run 6
+# ran against the raw-deliberative replay — Claude Code with corpus access, the owner's own
+# outside option — and every one of them was TITLED as a comparison against the monolithic
+# single-call instrument. The paired rows carried the right tag the whole time; only the
+# prose lied, and the prose is what gets quoted.
+
+def test_the_report_names_the_baseline_arm_it_ran_against() -> None:
+    """r27. MUST FAIL if the report can name a baseline the run did not use. Killed by
+    restoring the hard-coded 'monolithic' in the title or either rate label."""
+    post = _posterior(u_wrong=-2.0)
+    paired = [_pair("a", _resp("abstain"), _resp("report", False)),
+              _pair("b", _resp("report", True), _resp("report", True))]
+    res = G.delta_posterior(paired, post, oracle_p=0.9, n_draws=2000, seed=9)
+
+    md = G.render_report(res, run_id="gate-test", elapsed=1.0,
+                         baseline="raw-deliberative-replay")
+    assert "raw-deliberative-replay" in md, "the report did not name its baseline arm"
+    assert "monolithic" not in md.lower(), (
+        "the report names 'monolithic' while running against a different arm — the label "
+        "is what gets quoted into the ledger, and this one was quoted for twelve runs")
+
+
+def test_the_monolithic_baseline_is_still_named_when_it_is_the_one_used() -> None:
+    """r27, the discriminating half (row 23): the fix must name the arm, not delete the
+    word. A renderer that never says 'monolithic' would pass the test above while being
+    just as wrong on a monolithic run. Killed by hard-coding any single arm name."""
+    post = _posterior(u_wrong=-2.0)
+    paired = [_pair("a", _resp("abstain"), _resp("report", False))]
+    res = G.delta_posterior(paired, post, oracle_p=0.9, n_draws=500, seed=9)
+    md = G.render_report(res, run_id="gate-test", elapsed=1.0, baseline="monolithic")
+    assert "monolithic" in md.lower()

@@ -125,3 +125,31 @@ def test_sources_are_index_labelled_never_paths() -> None:
     text = PR.render(s)
     assert "root 1: 5 rows" in text and "root 2: 0 rows (EMPTY)" in text
     assert "/" not in text.split("## Watch")[0].split("- sources:")[1].split("\n")[0]
+
+
+# --- r27 C10: a DECLARED root that is absent is a failure, not a quiet zero -------------
+# Row 25's staleness signal can see a stale source but not an ABSENT one: `_rows` returns
+# [] for a missing file, so a root that was never there is indistinguishable from a root
+# with no traffic. Measured on the authoring box: the readout reported "1 KB root, 4660
+# rows, newest 1 day ago" over a stream containing no production traffic at all, with no
+# staleness flag, because the only deployment that matters was never declared to it.
+
+def test_a_declared_root_that_is_absent_fails_the_run(tmp_path: Path) -> None:
+    """r27 C10. MUST FAIL if a declared root can be missing and the run still succeed.
+    Killed by restoring the silent `[]` for an absent root."""
+    good = tmp_path / "kb"
+    (good / "calibration").mkdir(parents=True)
+    rc = PR.main(["--kb", str(good), "--kb", str(tmp_path / "nope"),
+                  "--out", str(tmp_path / "r.md")])
+    assert rc != 0, "a declared KB root that does not exist did not fail the run"
+
+
+def test_a_declared_root_that_is_present_but_empty_succeeds(tmp_path: Path) -> None:
+    """r27 C10, the discriminating half (row 23): the check must tell an ABSENT root from
+    a root with no traffic yet, or it is a gate that rejects everything. A fresh
+    deployment has a root and no stream, and that is a legitimate zero.
+    Killed by failing on a missing stream file rather than a missing root."""
+    good = tmp_path / "kb"
+    (good / "calibration").mkdir(parents=True)
+    rc = PR.main(["--kb", str(good), "--out", str(tmp_path / "r.md")])
+    assert rc == 0, "a declared root that exists with no stream yet was treated as absent"

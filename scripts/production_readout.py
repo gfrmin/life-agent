@@ -190,6 +190,26 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     from life_agent.core import config as CFG
     roots = [Path(k).expanduser() for k in (args.kb or [])] or [CFG.KB]
+
+    # r27 (C10): a DECLARED root that is absent is a failure, not a quiet zero. `_rows`
+    # returns [] for a missing file, so a root that was never there reads exactly like a
+    # root with no traffic — and a watch that cannot tell "nothing happened" from "I was
+    # not looking there" is the failure mode row 25 exists to end. Measured on the
+    # authoring box: this reported a fresh, unflagged, single-root window over a stream
+    # carrying no production traffic at all.
+    #
+    # The ROOT is the declaration; what is inside it is data. A root that exists with no
+    # stream yet is a fresh deployment and a legitimate zero.
+    absent = [r for r in roots if not r.is_dir()]
+    if absent:
+        sys.stderr.write(
+            f"production_readout: {len(absent)} declared KB root(s) absent or unreadable: "
+            f"{', '.join(str(r) for r in absent)}\n"
+            "A declared root that is not there is not an empty stream. Fix the "
+            "declaration or the mount; a readout over the roots that happen to exist is "
+            "a confident answer about a population it cannot see.\n"
+        )
+        return 2
     cals = [r / "calibration" for r in roots]
     per_root = [(_rows(c / "decisions.jsonl"), _rows(c / "outcomes.jsonl"),
                  _rows(c / "reactions.jsonl")) for c in cals]

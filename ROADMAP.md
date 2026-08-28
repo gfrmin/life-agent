@@ -290,6 +290,64 @@ the "completion audit" the others gate it behind is undefined).
 were — or whether there were four. The completion audit reads against this list, so it
 should not read until this is settled.
 
+#### The stage map, resolved — 2026-08-28 (K4 · r27)
+
+The reconstruction above stood on two attested item numbers and called items 3–5
+unsourced. Four further sites, none of which it used, resolve the numbering — and they
+agree with each other:
+
+- `docs/membrane-shadow.md:1274` — the migration "is NOT a completion condition … **(Stages
+  1–2–4 close without it)**". So the programme's stages run to at least 4, and one of them
+  is the migration itself.
+- `docs/unification/reports/r12-collapse-m2.md:14` — "**Stage 0 closed**: m2-base recorded".
+- `docs/unification/reports/r18-aggregate-cp-a.md:3` — the aggregate family is "the
+  completion programme's **Stage 2a**".
+- `ROADMAP.md:161` — "**MVP exit test:** a week of the owner asking Jarvis instead of the
+  incumbent harnesses for life-data questions + morning triage, misses logged to
+  FAILURES.md", which `:223` places at the end of the chain, wall-clock-parallel from the
+  deploy.
+
+| Stage | What | Status |
+|---|---|---|
+| **0** | the riders — baseline re-record, doc-currency sweep, production readout | **DONE** (r11) |
+| **1** | the collapse ladder M2–M7; Appendix A signed at M7 | **DONE** 2026-08-26 (r12–r17) |
+| **2** | Phase 1.6 items 4–5 — the aggregate (2a) and thread families | **DEFERRED by owner ruling 2026-08-28** (below) |
+| **3** | the proplang graduation | ruled **not** a completion condition; deferred |
+| **4** | the MVP exit test | **open** — see below |
+
+That is five stages, 0–4, which is where "five DONE conditions" came from; item *N* is the
+close of Stage *N* once the riders are dropped, exactly as the reconstruction's most
+economical reading predicted. **The one thing it could not have known** is that Stage 3 is
+the migration — the sentence naming it is in `membrane-shadow.md`, which never says
+"programme stage".
+
+**Stage 2 — DEFERRED, and why the deferral is the ruling.** As written Stage 2 cannot
+close: it was specified as *builds* (the two families) while `bayesian-foundations.md` §12
+gives it *gates*; K1 deleted the aggregate family as "family routing in disguise" while
+keeping its transformations; and `cp-d-routing-conferral.md` says the remainder "dies with
+`/route` at migration stage M5" — inside Stage 3, the stage ruled out of the programme. No
+ruling about the thread family alone repairs that. The owner ruled on 2026-08-28 to **wait
+for the exit-test measurement** rather than decide on a premise it may overturn. The three
+live options are recorded for that ruling: read Stage 2 by its §12 gate and build only the
+thread *transformations* with no family; re-point it at the fixed-pipeline property and
+pull migration-M5 out of Stage 3; or retire it from the programme, capability work being
+continuous and eval-gated under PRINCIPLES §9 as amended.
+
+**Stage 4 — the owner is not running it, and the comparator has been measured all along.**
+Asked on 2026-08-28, the owner said the exit test is not used, because a general coding
+agent does the same job. That comparator is π\* (`scripts/fairfight/arm_claude.py`, ruled
+the gold standard 2026-07-19), and `run_eval --gate-replay` has been reading against it
+since run 6 — **every gate run in the §14 series is Δ2 against π\***, which no report said
+because the renderer hard-coded the other arm's name (fixed at r27; register row 28).
+**Run 18 (2026-08-26) reads PASS at P(Δ>0.05) = 0.959, Δ̄ = +0.514** — typed ahead of
+Claude-Code-with-corpus-access on the owner's utility, up from −1.058 on 2026-08-06.
+
+So Stage 4's open question is no longer "is the agent as good as the outside option" but
+**why a system that measures better is not the one being reached for**. The gauge fixes
+`u_abstain = 0`, so the utility model cannot represent the cost of *not* answering — and
+declining to pay that cost is exactly what the owner did. That is the named next question,
+recorded rather than answered.
+
 ### Phase 2 — Goals/utility model + first agent loop (read-only) · future
 - Design the **goals/utility representation** (the unbuilt faculty) — how the agent learns and
   stores what the owner values. Owed before any write-action (PRINCIPLES §3).

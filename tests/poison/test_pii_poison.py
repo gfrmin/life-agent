@@ -249,3 +249,77 @@ def test_poison_the_marker_still_exempts_a_synthetic_shape() -> None:
         "a marked SYNTHETIC value with a real shape was still flagged — the marker's "
         "legitimate use is broken and it will be removed, taking the name layer with it"
     )
+
+
+# --- r27 C8: ONE skip registry, and the BYTES decide ---------------------------------
+# `read_text_or_refuse` returned "skip" on file EXTENSION *before* the NUL refusal, so the
+# bytes were never consulted. `_BINARY_SUFFIXES` (20 entries) was a second skip set pinned
+# by nothing and announced never, restoring the exact defect `_SKIP_PATHS`' equality pin
+# was written to close, through a door that pin does not cover.
+
+def test_poison_a_text_file_with_a_declared_binary_suffix_is_scanned(tmp_path: Path) -> None:
+    """r27 C8. MUST FAIL if an extension alone can unscan a file. A declared suffix is
+    PERMISSION to be binary, not an assertion that the file is one — a plain-text `.db`
+    or a PDF with an uncompressed text layer carries readable PII and rode every gate leg
+    green. Killed by restoring the suffix check ahead of the NUL check."""
+    body = "Tel: 2345 6789 and Mr Chan Tai Man\n"  # PII-OK: synthetic HK phone + name
+    disguised = tmp_path / "catalogue.db"
+    disguised.write_bytes(body.encode())
+
+    text = read_text_or_refuse(str(disguised), disguised.read_bytes())
+    assert text is not None, (
+        "a file with NO binary bytes was skipped on its extension alone — the guard "
+        "declined to read a file it could read"
+    )
+    assert _labels(text), "the disguised file decoded but its shaped values were not flagged"
+
+
+def test_poison_a_binary_skip_is_announced(tmp_path: Path,
+                                           capsys: pytest.CaptureFixture[str]) -> None:
+    """r27 C8. MUST FAIL if a binary skip passes in silence. `announce_skips` reported
+    `_SKIP_PATHS` only, so every skip taken on a suffix was invisible in every transcript
+    the gate has ever produced. Killed by dropping the stderr write from the skip branch."""
+    genuine = tmp_path / "sample.pdf"
+    genuine.write_bytes(b"%PDF-1.4\x00binary")
+
+    assert read_text_or_refuse(str(genuine), genuine.read_bytes()) is None
+    err = capsys.readouterr().err
+    assert "sample.pdf" in err and "skipped" in err, (
+        f"a binary skip was taken in silence: {err!r}"
+    )
+
+
+def test_poison_the_whole_skip_registry_is_pinned() -> None:
+    """r27 C8. MUST FAIL if EITHER skip set gains an entry. The register's own lesson is
+    that a pin whose universe is one of two sets is not a pin; `SKIP_REGISTRY` is the one
+    declared universe and it is pinned whole. Killed by adding any path or any suffix."""
+    from pii_check import SKIP_REGISTRY
+
+    assert {
+        "paths": frozenset({"uv.lock"}),
+        "binary_suffixes": frozenset({
+            ".pdf", ".pptx", ".docx", ".xlsx", ".png", ".jpg", ".jpeg", ".gif", ".ico",
+            ".webp", ".woff", ".woff2", ".ttf", ".zip", ".gz", ".duckdb", ".db", ".bin",
+            ".lockb", ".pyc",
+        }),
+    } == SKIP_REGISTRY, (
+        f"the skip registry changed: {SKIP_REGISTRY!r} — every way this guard may decline "
+        f"to read a tracked file is pinned by equality, in ONE place"
+    )
+
+
+def test_poison_the_registry_is_announced_on_every_run() -> None:
+    """r27 C8. MUST FAIL if a RUN can complete without stating what it is allowed to skip.
+    Announcing only the skips that HAPPENED cannot show a reader an entry that was added
+    and never exercised. Killed by removing the announce_registry call from `main`.
+
+    This drives the real entry point on purpose. Calling `announce_registry()` from the
+    test would prove the function exists and nothing about whether a run reaches it — the
+    census-universe defect this milestone exists to stop."""
+    out = subprocess.run(
+        [sys.executable, str(_HOOKS / "pii_check.py"), "--shapes-only", __file__],
+        capture_output=True, text=True, check=False)
+    err = out.stdout + out.stderr
+    assert "skip registry" in err and "uv.lock" in err and ".pdf" in err, (
+        f"the run did not state its declared skip registry: {err!r}"
+    )

@@ -175,6 +175,12 @@ _BINARY_SUFFIXES = frozenset({
     ".woff", ".woff2", ".ttf", ".zip", ".gz", ".duckdb", ".db", ".bin", ".lockb", ".pyc",
 })
 
+#: THE declared skip registry: every way this guard may decline to read a tracked file.
+#: r27 (C8): there used to be two sets and only one of them was pinned or announced, so
+#: `_BINARY_SUFFIXES` restored the exact defect `_SKIP_PATHS`' equality pin closes, through
+#: a door that pin does not cover. One universe, pinned whole, announced whole.
+SKIP_REGISTRY = {"paths": _SKIP_PATHS, "binary_suffixes": _BINARY_SUFFIXES}
+
 
 def skipped_paths(names: list[str]) -> list[str]:
     """The subset of ``names`` declared skippable, by exact repo-relative path."""
@@ -192,17 +198,39 @@ def announce_skips(names: list[str]) -> None:
                          f"{', '.join(sorted(skipped))}\n")
 
 
+def announce_registry() -> None:
+    """r27 (C8): state the declared skip registry on EVERY run. Announcing only the skips
+    that happened cannot show a reader an entry that was added and never exercised — and
+    an entry nobody exercises is exactly how a skip set grows unnoticed."""
+    sys.stderr.write(
+        f"pii_check: skip registry — paths: {', '.join(sorted(_SKIP_PATHS))}; "
+        f"binary suffixes: {', '.join(sorted(_BINARY_SUFFIXES))}\n"
+    )
+
+
 def read_text_or_refuse(name: str, raw: bytes) -> str | None:
-    """Decode ``raw``. ``None`` for a declared-binary path; **raises** for a NUL byte
-    anywhere else. A binary blob in a text tree is a refusal, not a pass."""
+    """Decode ``raw``. ``None`` for a file the registry declines to read; **raises** for a
+    NUL byte the registry does not cover. A binary blob in a text tree is a refusal, not a
+    pass.
+
+    r27 (C8): the suffix check used to run BEFORE the NUL refusal, so the bytes were never
+    consulted and a text file carrying a declared-binary suffix — a plain-text ``.db``, a
+    PDF with an uncompressed text layer — was skipped unread and unannounced. **The bytes
+    decide.** A declared suffix is PERMISSION to be binary, not an assertion that the file
+    is one. Measured on the tree when this landed: all four tracked declared-binary files
+    carry NUL, so the reorder is a no-op today and closes the gap prospectively.
+    """
+    if b"\x00" not in raw:
+        return raw.decode("utf-8", errors="replace")
     if os.path.splitext(name)[1].lower() in _BINARY_SUFFIXES:
-        return None
-    if b"\x00" in raw:
-        raise ValueError(
-            f"pii_check: {name} contains a NUL byte and was NOT scanned — a binary blob "
-            f"in a text tree is a refusal, not a pass"
+        sys.stderr.write(
+            f"pii_check: skipped {name} — declared-binary suffix, NUL bytes present\n"
         )
-    return raw.decode("utf-8", errors="replace")
+        return None
+    raise ValueError(
+        f"pii_check: {name} contains a NUL byte and was NOT scanned — a binary blob "
+        f"in a text tree is a refusal, not a pass"
+    )
 
 
 def _skip(name: str) -> bool:
@@ -579,6 +607,7 @@ def main(argv: list[str]) -> int:
     paths = [a for a in argv if not a.startswith("--")]
     shapes_only = "--shapes-only" in args
 
+    announce_registry()  # r27 (C8): every run states what it is allowed to skip
     repo_root = _git(["rev-parse", "--show-toplevel"]).strip()
     allowed_domains = load_allowed_domains(repo_root)
     path_allow = load_path_allow(repo_root)
