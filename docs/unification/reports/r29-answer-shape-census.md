@@ -137,3 +137,216 @@ questions:
 **G3** the census reproduced twice, counts identical · **G4** every criterion whose mutation
 is expressible demonstrated RED then restored; any criterion whose mutation cannot be
 expressed is disclosed as such rather than claimed.
+
+---
+
+# RESULTS (read 2026-08-28, $0, nothing adopted)
+
+> Chronology, for C2: the pre-registration above is commit `3d075b9`. The blind manual
+> reference (50 labels, digest `4fb00490…`) was written next, before `scripts/answer_shape_census.py`
+> existed. The instrument was then built under TDD (RED first: a collection error, the module
+> absent) and only then pointed at the records. Nothing above this line was edited after the
+> instrument ran.
+
+**Verdict: the frozen consequence's middle branch — PROCEED with r30 as the plan describes.**
+Owner-origin `exact ∧ verbatim` reads **0.753**, under the 0.85 bar, and read 2's prediction
+holds. Both hold under the classifier's own measured bias, which runs one way only.
+
+## Read 1 — the census
+
+**The harvest is 42% eval corpus.** All 104 gate questions appear verbatim in the 250-row
+harvest of "real asks", so the owner-origin population is exactly 146. This is not an estimate:
+the match is textual and total. Any reading of "what does the owner ask?" taken off the pooled
+file would have been reading the eval instrument back to itself for two-fifths of its evidence.
+
+| population | n | exact | quantity | threshold | set | verbatim | computed | `exact ∧ verbatim` |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| gate set | 104 | 82 | 19 | 1 | 2 | 104 | 0 | 82 (**0.79**) |
+| owner-origin | 146 | 110 | 29 | 0 | 7 | 136 | 10 | 110 (**0.75**) |
+
+The gate set carries **zero** `computed` questions. That is not a fact about the corpus; it is
+a fact about how the gate set was built — from corpus spans chosen because they are
+answerable. It is reported for contrast and must never be read as evidence about the owner's
+questions (C4).
+
+**C5 — measured agreement, and the bias runs one way.** Against the blind manual reference:
+
+| axis | agreement | flagged | direction of every disagreement |
+|---|---|---|---|
+| answer space | 37/50 = **0.74** | **BOUNDS-ONLY** | 11 of 13 are *X → exact* (quantity 5 · set 4 · threshold 2); 2 run the other way |
+| truth provenance | 40/50 = **0.80** | not flagged (bar is `< 0.80`) | **10 of 10 are `computed` → `verbatim`** |
+
+The direction matters more than the rate. On provenance the classifier **never once**
+over-called `computed`: its 10 is a floor, not an estimate. On answer space it under-calls
+non-`exact` 11 times against 2 the other way. So **0.753 is an upper bound** on owner-origin
+`exact ∧ verbatim`, exactly as C3's conservative default was designed to guarantee. The blind
+manual reference puts the same quantity at **12/25 = 0.48** on the owner sample. The frozen
+0.85 bar is cleared with room under either figure, which is why the verdict does not turn on
+the classifier's accuracy.
+
+## Read 2 — the structural-abstention prediction: CONFIRMED, on a small sample
+
+Owner-origin, decided rows only (61 of 146 carry no recorded action and are counted, not
+dropped):
+
+| class | n | abstained | rate |
+|---|---:|---:|---:|
+| `computed` | 8 | 8 | **1.00** |
+| `verbatim` | 77 | 48 | 0.62 |
+| by space — `exact` | 63 | 35 | 0.56 |
+| by space — `quantity` | 19 | 18 | **0.95** |
+| by space — `set` | 3 | 3 | **1.00** |
+| by space — `threshold` | 0 | — | — |
+
+Both pre-stated conjuncts hold: the rate is at 0.95 (it is 1.00) and it is materially above
+the `verbatim` rate. Under the `verbatim` rate as null, P(all 8 abstain) = **0.023**.
+
+**Disclosed against the finding:** n = 8. The 95% one-sided Clopper–Pearson lower bound on the
+`computed` abstention rate is **0.688** — the sample cannot exclude a true rate as low as 0.69,
+which would not clear the pre-stated 0.95 as a *bound*. The prediction is confirmed on the
+point estimate and on the comparison, not on the bound. The by-space gradient (0.56 → 0.95 →
+1.00) is the more robust half of the read, and it says the same thing: **abstention tracks
+answer shape**, and it does so most sharply exactly where the claim space cannot represent the
+answer.
+
+## Read 3 — run 17's collapse: candidate (a) refuted, (b) unrefuted, and a third cause found
+
+**The flip set (C8).** Run 17 against run 18 on the same 104 rows, censored dropped:
+
+| | run 17 (A2 enacted) | run 18 (latch restored) |
+|---|---:|---:|
+| asserts | 51 | 63 |
+| answer rate | 0.490 | 0.606 |
+| mean spend / question | **$0.0433** | $0.0036 |
+
+17 rows flip: **report → abstain 14**, report → hedge 1, abstain → hedge 1, abstain → report 1.
+Run 17 paid **12× more** for **12 fewer answers**. On the 17 flipped rows it spent $0.0203
+against run 18's $0.0013 — *below* its own per-question average, so the harm is diffuse, not
+concentrated in the heaviest spenders.
+
+**Candidate (a) — the hand-set cold priors — is REFUTED as the operative cause.** Read against
+the fold run 17's decisions actually saw (every row written before the run began):
+
+| probe | cost | cold prior mean | realised, pre-run-17 | warm posterior at run 17 | prior weight | g / cost |
+|---|---:|---:|---:|---:|---:|---:|
+| `retrieve_rerank` | 0.004 | 0.300 | 17/390 = 0.044 | **0.050** | 2.5% | **12.5×** |
+| `retrieve_expand` | 0.006 | 0.350 | 14/382 = 0.037 | **0.045** | 2.6% | 7.4× |
+| `re_extract_strong` | 0.020 | 0.400 | 16/378 = 0.042 | **0.052** | 2.6% | 2.6× |
+
+By run 17 the stream held ~380 rows per probe, so the declared cold prior (strength 10) carried
+**2.5–2.6%** of each fold and the daemon's `g` was ≈ 0.05, not 0.35. Per context the same
+holds where it matters: 269 of run 17's 292 enactments fell in the three well-populated
+contexts, prior weight 2.3–4.3%. The prior was not what scheduled those gathers.
+
+**The priors are nevertheless wrong — in level and in order.** They sit 6.9× / 9.6× / 9.5×
+above the realised rates, and their *ranking is inverted*: the table prices the most expensive
+actuator (`re_extract_strong`, 5× the cheapest) as the most likely to recover, and it is in
+fact the least. A cold start on this table buys the worst actuator first. That is a real defect
+with a real price; it simply was not the one that fired at run 17.
+
+**Candidate (b) — flat units — is consistent with the record and unrefuted.** With `g` ≈ 0.05
+against an actuator cost of 0.004 utility units, and `u_correct ≡ 1` for **every** question,
+gathering pays by 2.6–12.5× everywhere. That is the flat gauge's exact signature: one trigger,
+uniform across questions, indifferent to what an answer is worth. **It is not isolated** — that
+would need the engine re-run under rescaled units, which is neither free nor readable from
+records, and r29 does not claim it (the pre-registration said so before the read).
+
+**The third cause, which neither candidate named: the gather-outcome proxy is one-sided, and
+the stream is now contaminated by a policy that no longer exists.**
+
+| stream segment | rows | recovered | rate |
+|---|---:|---:|---:|
+| before run 16 | 1019 | 38 | 0.037 |
+| run 16 — withhold-only latch | 131 | 9 | 0.069 |
+| **run 17 — A2's every-terminal offer** | **292** | **126** | **0.432** |
+| run 18 — latch restored | 126 | 6 | 0.048 |
+
+Two things follow. First, `recovered = (evidence changed) ∧ (final effector == report)` cannot
+express harm: a grow that *destroys* a report and one that was merely useless both record
+`False`, and — under an every-terminal offer — a grow after a terminal that was already going
+to report records `True`. The rate tracks the A2 enactment exactly (0.069 → **0.432** → 0.048);
+the stream carries no terminal field, so the mechanism is inferred from A2's semantics rather
+than measured, and is stated as an inference.
+
+Second, the stream is **append-only with no run or policy segmentation**, so those 292 rows are
+permanent. The pooled realised rate now reads **0.1133**; excluding run 17's rows it reads
+**0.0411**. One reverted policy's single run inflates the quantity by **2.8×** — and that
+quantity is precisely what the plan's r30 proposes to ground the grow priors in. Grounding them
+on the stream as it stands would teach the agent that gathering works three times better than
+it does, using evidence from a policy the owner ruled out.
+
+`gather_outcomes.py` states its own safety argument: a `g` learned from this proxy "can at
+worst over-try gathers, never mis-report, because reporting stays the exact app-side
+threshold". The threshold did hold. Run 17 falsifies the consequence anyway: over-trying
+gathers cost **14 correct reports**, because the bought evidence joins the channel (r09
+semantics) and disperses the posterior *before* the unchanged threshold is applied to it. The
+protection was never the threshold; it was the report-economy latch that stopped the gather
+from happening.
+
+## Criterion verdicts
+
+| | verdict |
+|---|---|
+| **C1** adopts nothing | **MET** — `git diff --stat master -- src/` empty; the branch adds one script, one test file, this report |
+| **C2** criteria before labels | **MET** — prereg `3d075b9`, then the manual reference, then the instrument |
+| **C3** conservative default | **MET** — and load-bearing: the measured bias runs one way, which is what makes 0.753 an upper bound. RED under M1 |
+| **C4** contamination named | **MET** — 104 of 250 eval-derived; every headline published on the owner subset. RED under M4 |
+| **C5** measured accuracy | **MET, with a disclosure** — space 0.74 flagged BOUNDS-ONLY; provenance lands on **exactly** 0.80 and so is not flagged, one disagreement from being so. RED under M5 |
+| **C6** falsifiable prediction | **MET** — stated before the read, confirmed on the point estimate, its bound published against it |
+| **C7** deployed constants | **MET** — `PRC.GROW_ACTUATORS` imported, the fold cross-checked against `GO.warm_counts`. RED under M2 and M3 |
+| **C8** flip beside rate | **MET** — 17 flips published beside 51-vs-63 asserts and both answer rates |
+| **C9** PII | **MET** — `pii_check.py` exit 0 with the private name layer live; no question text, gold, value, id or path in tree |
+| **C10** G2 | **MET** — 314/314 pure equality on `m5-base` |
+| **C11** reproduced twice | **MET** — passes 1 and 2 byte-identical (`ef37de68…`); a third pass after the lint fixes is identical again |
+
+## Deviations, disclosed
+
+1. **The window defect that inverted read 3, caught before the verdict.** The first pass placed
+   each gate run's window by parsing its `run_id` — which carries **local** time, while
+   `created_at` is UTC. Every run landed 8 hours from its own rows, and the instrument reported
+   that **run 17 wrote zero gather outcomes**: the exact opposite of the truth, which is that
+   run 17 wrote the largest single block in the stream. It was caught by noticing that rows
+   existed on run days but never inside a run window. Fixed, pinned by a named test, and RED
+   under M6. This is the r05/r10 lesson recurring in a new place: *the instrument re-derived a
+   quantity the records already carried*, and got it wrong.
+2. **The window attribution is an extension beyond C7's frozen text**, added after the first
+   reading in response to (1). C7 asked for the cold prior, the warm posterior at the stream
+   head, and the realised rate; the per-run split is more than that, and it is what changed the
+   verdict on candidate (a). Named as an extension rather than folded in silently.
+3. **The first real-data run crashed at the write** — tuple keys in the direction tallies made
+   the whole result unserialisable. A census that cannot write its own record is not a read;
+   pinned by a serialisability test rather than fixed in place.
+4. **The manual reference is not perfectly blind.** ~36 questions were read while the frozen
+   rule table was being designed; **7 of those fall inside the 50-question C5 sample**. The
+   priming can only have pulled the manual labels *toward* the rules, i.e. toward agreement,
+   so the measured 0.74 / 0.80 are if anything optimistic — which strengthens rather than
+   weakens the "0.753 is an upper bound" conclusion.
+5. **`threshold` is effectively invisible to the frozen rules**: 1 hit in 104 gate questions,
+   0 in 146 owner asks, against 2 in the manual reference's 25-question owner sample. The
+   frozen comparator list wants a numeric token, and the owner's comparison questions
+   ("how do these two compare?") carry none. Named, not fixed — the rules were frozen.
+
+## What this read does NOT settle
+
+- **Whether (b) caused run 17.** Consistent, unrefuted, and the only candidate left standing
+  is not the same as isolated. Isolation needs the engine re-run under rescaled units.
+- **Whether `computed` questions abstain at ~1.00 in general.** n = 8, bound 0.69.
+- **Whether the answer would be *right* if the shapes were representable.** The census reads
+  what is asked and what was decided, never whether a wider claim space would have been
+  correct. That is r30's question and r31's price.
+
+## Consequence, as frozen
+
+`0.753 < 0.85` and read 2's prediction holds ⇒ **PROCEED with r30 as the plan describes.**
+Three riders the read attaches, none of them renegotiations:
+
+1. **r30 step 4 ("ground the grow priors in the gather-outcome stream") must not read the
+   stream as it stands.** Run 17's 292 rows are a reverted policy's evidence and inflate the
+   realised rate 2.8×. Either segment the stream by policy, or exclude that window, and say
+   which — before the priors are refit.
+2. **A one-sided proxy cannot price a two-sided decision.** No refit of `g` on `recovered`
+   would have prevented run 17, because `recovered` has no way to say "this gather cost an
+   answer". Whatever r30 builds for the quantity-parameterised experiment needs a harm term.
+3. **The grow price table's ordering is inverted against realised recovery** and is worth
+   fixing on its own evidence, independent of the units work — but under the standing hard
+   clause it ships only with its wrong-commit classes published.

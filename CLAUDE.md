@@ -69,7 +69,33 @@ outside option) and every paired row records `baseline: raw-deliberative-replay`
 **0.019 + 0.495 = 0.514**, so 96% of the adoption margin is the price of the baseline
 arm — whose $39.01 is imputed from token counts, not metered. On delivered answers the
 arms are level and π\* returns 95 correct to typed's 61. Quote the split, never the
-total alone.) Six
+total alone.
+**r29 (2026-08-28, `docs/unification/reports/r29-answer-shape-census.md`, $0) is the
+answer-shape census** — criteria, rule table and a three-branch numeric consequence frozen
+before any label existed. Three reads, nothing adopted, no `src/` change. (1) **The harvest
+of "real asks" is 42% eval corpus** — all 104 gate questions appear verbatim in it, so the
+owner-origin population is exactly 146 and the gate set is a census of the eval instrument,
+never of the owner's questions (it carries **zero** questions whose answer must be
+computed — an artefact of how it was built). Owner-origin reads `exact ∧ verbatim` **0.753**
+against a frozen 0.85 bar, and that is an **upper** bound: the classifier's measured
+disagreement with a blind manual reference runs one way (10 of 10 provenance disagreements
+are computed→verbatim; 11 of 13 space disagreements are X→exact), the reference itself
+putting the same quantity at 0.48. (2) **Abstention tracks answer shape:** `computed` 8/8 =
+1.00 vs `verbatim` 0.62 (P = 0.023 under the verbatim null; the 95% one-sided lower bound is
+0.688, so n=8 cannot carry the 0.95 conjunct as a *bound* — disclosed), and by space
+exact 0.56 · quantity 0.95 · set 1.00. (3) **Run 17's collapse: the hand-set grow priors are
+REFUTED as its cause** — by run 17 each probe's warm fold held ~380 rows, so the declared
+cold prior carried 2.5-2.6% and the daemon's g was ~0.05, not 0.30-0.40. The priors are
+wrong anyway in level (6.9-9.6x) and in **order** (the costliest actuator is priced as the
+likeliest to recover and is the least). Flat units stay consistent and unrefuted (g/cost
+2.6-12.5x, uniform by construction) but are NOT isolated at $0. The finding neither
+candidate named: **the gather-outcome stream is contaminated and its proxy is one-sided** —
+run 17 wrote 292 rows at recovered-rate 0.432 vs 0.069/0.048 for the latched runs, lifting
+the pooled rate to 0.1133 from 0.0411, permanently, in an append-only stream with no policy
+segmentation; and `recovered` cannot express harm, so no refit of g on it could have
+prevented run 17's 14 report→abstain flips. Two riders bind any successor: **segment or
+exclude that window before refitting**, and **a harm term is a precondition, not a
+refinement**. Consequence enacted: PROCEED with the utility replan's r30.) Six
 runs so far (§14 ledger has each): the executor series read 0.002 → 0.010 → 0.065 →
 0.092 → 0.098, then **run 6 (2026-08-17: judge-graded arms, λ_usd spend on both arms,
 the post-Ollama cloud instruments): FAIL at P(Δ>0.05)=0.678, Δ̄=+0.180 [−0.244, +0.661]

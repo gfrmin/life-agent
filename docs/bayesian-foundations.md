@@ -3212,3 +3212,22 @@ on this list. Answers land here by amendment, citing their evidence.
   measured protection (the A2 revert, r15 A5) — the same structural lesson as run 13's
   "dispersal was the protection". Decided by: the arc's own frozen criteria and a
   §8-class gate run.
+  **r29 (2026-08-28, $0) reads the arc's premise and REDIRECTS it.** Against the fold run
+  17's decisions actually saw, each actuator's declared cold prior carried 2.5-2.6% of its
+  probe's warm fold and the daemon's g was ~0.05, not the hand-set 0.30-0.40 — so the cold
+  priors are **not** what scheduled run 17's gathers (269 of its 292 enactments fell in
+  contexts with prior weight 2.3-4.3%). They are wrong anyway, in level (6.9x/9.6x/9.5x
+  above realised) and in **order** (the table prices the costliest actuator as the most
+  likely to recover; it is the least), which is a cold-start defect worth its own fix. Two
+  riders now bind the arc: (1) the outcome stream is append-only with no policy
+  segmentation and carries **292 rows written by run 17 under the reverted every-terminal
+  offer** at a recovered-rate of 0.432 against 0.069/0.048 for the latched runs — pooled
+  0.1133, or 0.0411 without them, so refitting g on the stream as it stands would learn a
+  2.8x-inflated recovery from a policy the owner ruled out; and (2) `recovered` is
+  **one-sided** — a gather that destroys a report and one that was merely useless both
+  record `False` — so no refit of g on this proxy could have prevented run 17, whose 14
+  report→abstain flips came from bought evidence dispersing the posterior before the
+  unchanged threshold was applied. A harm term is a precondition of the arc, not a
+  refinement of it. What r29 does NOT settle: whether the flat utility gauge caused run 17.
+  It is consistent and unrefuted (g/cost 2.6x-12.5x, uniform across questions by
+  construction) but isolating it needs the engine re-run under rescaled units.
