@@ -185,10 +185,14 @@ Folding these into a count would make the count look better and the tree no safe
    narrowing the rule until it matched intuition is how every census here acquired a
    universe narrower than its property.
 17. **Twelve gate reports carry a wrong baseline label in the published record.** Row 28
-   fixes the renderer, but the reports already written — and `CLAUDE.md`'s §14 summaries
-   quoting them — still describe runs 6–18 as comparisons against the monolithic
-   instrument when the baseline was π\*. Rewriting published reports is not done here; the
-   correction is recorded in `unification/reports/r27-pilot-preregistration.md`.
+   fixes the renderer, but the reports already written still describe runs 6–18 as
+   comparisons against the monolithic instrument when the baseline was π\*. **r28 closed
+   the in-tree half**: `CLAUDE.md`'s §14 summaries and `module-collapse-design.md` now name
+   π\*, and the §8 sentence carries the Δ split. Rewriting the published out-of-tree reports
+   is still not done — they are append-only records of what was read at the time, and
+   editing them would falsify the record rather than correct it. What remains uncovered is
+   therefore deliberate. Corrections recorded in
+   `unification/reports/{r27-pilot-preregistration,r28-delta-decomposition}.md`.
 18. **35 of K3's G4 claims were never verified, and the rows they touch are
    PROVISIONAL.** The pass was cut short by an account limit after 12 of 47 claimed findings
    completed independent reproduction (all 12 confirmed). The unverified 35 touch rows **0,

@@ -60,12 +60,20 @@ as amended: one utility, the agent has none of its own); the **lookup family**
 cells, population-calibrated per-cell from the eval_claim stream, per-claim EU inclusion
 under Ū, the proposal-coverage tail named); and the **§8 decision-weighted adoption
 gate** (`core/gate.py`, `run_eval --gate` → `$LIFE_AGENT_KB/eval/gate/`: a posterior
-over Δ = EU(typed) − EU(monolithic) by MC over P(U) × the Bayesian bootstrap, P(Δ>δ)≥
-level with δ/level frozen blind; the disagreement region + answer rates published). Six
+over Δ = EU(typed) − EU(baseline) by MC over P(U) × the Bayesian bootstrap, P(Δ>δ)≥
+level with δ/level frozen blind; the disagreement region + answer rates published.
+**Since run 6 the baseline is π\*, not the monolithic instrument** — `--gate-replay`
+swaps in the raw-deliberative replay (Claude Code with corpus access, the owner's
+outside option) and every paired row records `baseline: raw-deliberative-replay`.
+**r28 (2026-08-28) publishes the split** `Δ = Δ_answers + Δ_spend`: on run 18 it reads
+**0.019 + 0.495 = 0.514**, so 96% of the adoption margin is the price of the baseline
+arm — whose $39.01 is imputed from token counts, not metered. On delivered answers the
+arms are level and π\* returns 95 correct to typed's 61. Quote the split, never the
+total alone.) Six
 runs so far (§14 ledger has each): the executor series read 0.002 → 0.010 → 0.065 →
 0.092 → 0.098, then **run 6 (2026-08-17: judge-graded arms, λ_usd spend on both arms,
 the post-Ollama cloud instruments): FAIL at P(Δ>0.05)=0.678, Δ̄=+0.180 [−0.244, +0.661]
-— the first positive mean;** typed answer rate 0.47 (47 ✓ / 2 ✗) vs monolithic 0.97,
+— the first positive mean;** typed answer rate 0.47 (47 ✓ / 2 ✗) vs π\* 0.97,
 withholdings split miss 18 · dispersed 37 (the reach lever's first *direction*). The
 run-5 attribution counterfactual (`scripts/gate_splice.py`, same day, not a reading)
 settled what carried the sign: run 5's cautious typed arm, judge-graded and priced, reads
@@ -79,7 +87,7 @@ unset in the launcher) and blind declines were cached as evidence (voided; guard
 `deliberate.answer`, the bridge cfg, and the gate preflight). **Run 7 (same day,
 `gate-20260817T160244`: the run-6 recipe with a working deliberate, corrected golds,
 regraded curves) — the series' first PASS: P(Δ>0.05)=0.945, Δ̄=+0.429 [+0.040,
-+0.884]**, typed 50 ✓ / 1 ✗ / 53 withheld (miss 18 · dispersed 35) at $5.56 vs mono
++0.884]**, typed 50 ✓ / 1 ✗ / 53 withheld (miss 18 · dispersed 35) at $5.56 vs π\*
 0.97 at $39.01. **Run 8 (router v2,
 `gate-20260817T164427`): FAIL 0.857, Δ̄ +0.344 [−0.109, +0.841]** — the router worked
 (16 newly admitted: 6 ✓ / 10 dispersed / 0 wrong; miss 18→2; answer rate 0.57; $3.25)
@@ -308,7 +316,7 @@ splice registered PASS 0.977 / Δ̄ +0.583 as the expectation. **Run 14
 Δ̄ +0.421 [−0.046, +0.920]; the run-10 blocking row commits correct; zero NEW wrong commits
 (the three wrongs are all run-13 rows: the two standing wrongs + the warm-deliberate row);
 no named class worse (the superset-confirm row converts wrong → withheld).** Typed 60 ✓ +
-2 ✓hedge / 3 ✗ / 39 withheld (miss 2 · dispersed 37) at $0.69 vs mono 0.97 at $39.01. The
+2 ✓hedge / 3 ✗ / 39 withheld (miss 2 · dispersed 37) at $0.69 vs π\* 0.97 at $39.01. The
 live read sits under the registered expectation (0.907 vs 0.977); the gap is the
 warm-deliberate row reporting wrong live where the warmed re-read had it withheld — a
 run-13 row, carried not new; disclosed, not renegotiated. **Ruling 4's PASS branch is

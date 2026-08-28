@@ -901,7 +901,7 @@ The ruled tail — warm (with the rerank-lane warm-instrument fix, disclosed in 
 PASS 0.977 / Δ̄ +0.583) — then the live run: **PASS on all four conjuncts. P(Δ>0.05)=0.907;
 Δ̄ +0.421 [−0.046, +0.920]; the blocking row commits correct; zero NEW wrong commits (the
 three wrongs are all run-13 rows); no named class worse.** Typed 62 asserts (60 report +
-2 hedge, 3 wrong) / 39 withheld at $0.69 vs mono 0.97 at $39.01. The live 0.907 sits under
+2 hedge, 3 wrong) / 39 withheld at $0.69 vs π\* 0.97 at $39.01. The live 0.907 sits under
 the 0.977 expectation — the warm-deliberate row reports wrong live where the warmed re-read
 withheld; a carried run-13 row, disclosed. **This deployment block is CLOSED: the parked
 tree is merged to master and master deploys to live.** The two standing wrongs
