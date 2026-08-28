@@ -308,7 +308,8 @@ def _load_v2_questions(path: Path) -> list[dict[str, Any]]:
 
 def run_differential(rows: Sequence[HeldoutTick], *, variant: str,
                      families: Sequence[str], h2q: Mapping[str, str],
-                     baseline_rows: Sequence[dict[str, Any]], posterior: Any,
+                     baseline_rows: Sequence[dict[str, Any]], baseline_arm: str,
+                     posterior: Any,
                      oracle_p: float, out: Path, draws: int, seed: int,
                      log: Callable[[str], None] = print) -> Any:
     """One A3 differential gate (membrane held-out acts vs the credence baseline) for one
@@ -335,7 +336,10 @@ def run_differential(rows: Sequence[HeldoutTick], *, variant: str,
 
     out.mkdir(parents=True, exist_ok=True)
     (out / f"a3_gate-{variant}.md").write_text(
-        GATE.render_report(gate, run_id=f"p3-heldout-{variant}", elapsed=0.0),
+        # r28: the comparator is NAMED — this report's mono arm is the fair-fight
+        # baseline arm the rows were loaded from, never the module's old default.
+        GATE.render_report(gate, run_id=f"p3-heldout-{variant}", elapsed=0.0,
+                           baseline=baseline_arm),
         encoding="utf-8")
     (out / f"a3_paired-{variant}.jsonl").write_text(
         # `withheld`/`censored` ride here too (§14 availability registration): the A3 gate
@@ -473,7 +477,8 @@ def main(argv: list[str] | None = None) -> int:
               f"vs credence baseline ===")
         run_differential(rows_by_variant[name], variant=name,
                          families=variants[name], h2q=h2q,
-                         baseline_rows=baseline_rows, posterior=posterior,
+                         baseline_rows=baseline_rows, baseline_arm=args.baseline_arm,
+                         posterior=posterior,
                          oracle_p=LK._ORACLE_P, out=args.out,
                          draws=args.draws, seed=args.seed)
     print(f"\nWrote → {args.out}")

@@ -41,8 +41,9 @@ def _posterior(*, u_wrong: float, u_hedged: float = 0.3, lambda_int: float = 0.5
 
 
 def _resp(action: str, correct: bool | None = None,
-          withheld: str | None = None) -> G.RealisedResponse:
-    return G.RealisedResponse(action=action, correct=correct, withheld=withheld)
+          withheld: str | None = None, cost_usd: float = 0.0) -> G.RealisedResponse:
+    return G.RealisedResponse(action=action, correct=correct, withheld=withheld,
+                              cost_usd=cost_usd)
 
 
 def _pair(qid: str, typed: G.RealisedResponse, mono: G.RealisedResponse,
@@ -271,7 +272,7 @@ def test_report_publishes_what_delta_was_computed_over() -> None:
               _pair("z", _resp("abstain", withheld=G.WITHHELD_UNAVAILABLE),
                     _resp("report", True))]
     md = G.render_report(G.delta_posterior(paired, post, oracle_p=0.9, n_draws=500, seed=3),
-                         run_id="gate-test", elapsed=1.0)
+                         run_id="gate-test", elapsed=1.0, baseline="monolithic")
     assert "censored from Δ: 1" in md
     assert "Δ was computed over 1 question(s)" in md
 
@@ -283,7 +284,7 @@ def test_report_discloses_zero_censoring_when_reasons_are_recorded() -> None:
     paired = [_pair("a", _resp("abstain", withheld=G.WITHHELD_MISS), _resp("report", True)),
               _pair("b", _resp("report", True), _resp("report", True))]
     md = G.render_report(G.delta_posterior(paired, post, oracle_p=0.9, n_draws=500, seed=3),
-                         run_id="gate-test", elapsed=1.0)
+                         run_id="gate-test", elapsed=1.0, baseline="monolithic")
     assert "censored from Δ: 0" in md and "miss 1" in md
 
 
@@ -303,7 +304,7 @@ def test_render_report_names_the_verdict_and_diagnostics() -> None:
     paired = [_pair("a", _resp("abstain"), _resp("report", False)),
               _pair("b", _resp("report", True), _resp("report", True))]
     res = G.delta_posterior(paired, post, oracle_p=0.9, n_draws=2000, seed=9)
-    md = G.render_report(res, run_id="gate-test", elapsed=1.0)
+    md = G.render_report(res, run_id="gate-test", elapsed=1.0, baseline="monolithic")
     assert "PASS" in md or "FAIL" in md
     assert "P(Δ" in md and "0.05" in md         # materiality named
     assert "answer rate" in md.lower()
@@ -344,3 +345,142 @@ def test_the_monolithic_baseline_is_still_named_when_it_is_the_one_used() -> Non
     res = G.delta_posterior(paired, post, oracle_p=0.9, n_draws=500, seed=9)
     md = G.render_report(res, run_id="gate-test", elapsed=1.0, baseline="monolithic")
     assert "monolithic" in md.lower()
+
+
+# --- r28: the Δ decomposition -----------------------------------------------------------
+# The §8 headline is a single number and twelve runs have been read from it. Recomputed on
+# run 18's own rows at the elicited latents, Δ reads +0.577 as run and +0.014 with the
+# baseline arm's spend uncharged: the entire margin is the price term, and the arms are
+# level on delivered answers. A report that publishes only the total cannot show that, so
+# every reading since run 6 has been unable to separate an answer-quality effect from a
+# price effect. These tests pin the split.
+#
+# The decomposition is exact rather than approximate: `realised_utility` is affine in the
+# sampled latents given the actions, so Δ = Δ_answers + lambda_usd·(c̄_mono - c̄_typed)
+# holds per draw and therefore at Ū.
+
+def _decomposition_fixture() -> tuple[list[G.PairedOutcome], UT.UtilityPosterior]:
+    """Three rows, one of them CENSORED, with spend on every arm. Built so that the
+    included-set mean (5.70) differs from the all-rows mean (3.80) — the row set is
+    therefore observable, and a decomposition computed over the wrong one fails the
+    identity rather than passing quietly."""
+    post = UT.UtilityPosterior(
+        gauge={"u_correct": 1.0, "u_abstain": 0.0},
+        latents={"u_wrong": _point("u_wrong", -2.0),
+                 "u_hedged": _point("u_hedged", 0.3),
+                 "lambda_int": _point("lambda_int", 0.5),
+                 "kappa_att": _point("kappa_att", 0.05),
+                 "lambda_usd": _point("lambda_usd", 2.0)},
+        n_events=0, fold_version="test", policy="frozen-elicitations")
+    paired = [
+        # censored: this machine's catalogue cannot answer it, so Δ never sees it
+        _pair("a", _resp("abstain", withheld=G.WITHHELD_UNAVAILABLE, cost_usd=0.5),
+              _resp("report", True, cost_usd=1.0)),
+        _pair("b", _resp("report", True, cost_usd=0.1),
+              _resp("report", False, cost_usd=2.0)),
+        _pair("c", _resp("abstain", withheld=G.WITHHELD_DISPERSED, cost_usd=0.2),
+              _resp("report", True, cost_usd=3.0)),
+    ]
+    return paired, post
+
+
+def test_decomposition_terms_are_each_independently_correct() -> None:
+    """r28 C2. Three pins, each against a hand-computed value, so an error in ANY one term
+    fails — a single identity assertion would pass with two compensating errors.
+
+    Included rows are b and c (a is censored).
+      spend:   typed (0.1+0.2)/2 = 0.15   mono (2.0+3.0)/2 = 2.50
+               Δ_spend = lambda_usd·(2.50 - 0.15) = 2.0 · 2.35 = 4.70
+      answers: b  typed +1.0, mono -2.0 → +3.0
+               c  typed  0.0, mono +1.0 → -1.0
+               Δ_answers = (3.0 - 1.0)/2 = 1.00
+      total:   5.70
+
+    MUST FAIL on a wrong sign in the spend term, on using one arm's cost for both, and on
+    computing any term over all three rows instead of the two Δ actually folds.
+    """
+    paired, post = _decomposition_fixture()
+    d = G.delta_posterior(paired, post, oracle_p=0.9, n_draws=200, seed=1).diagnostics
+    assert d.typed_arm is not None and d.mono_arm is not None
+    assert d.typed_arm.mean_spend_usd == pytest.approx(0.15)
+    assert d.mono_arm.mean_spend_usd == pytest.approx(2.50)
+    assert d.delta_spend == pytest.approx(4.70)
+    assert d.delta_answers == pytest.approx(1.00)
+    assert d.included_mean_d == pytest.approx(5.70)
+
+
+def test_decomposition_is_folded_over_the_rows_delta_folds() -> None:
+    """r28 C1, the discriminating half. The split must be computed over the SAME rows Δ is
+    computed over — post-censoring. Diagnostics deliberately fold every row elsewhere, so
+    reusing that set here is the natural mistake. MUST FAIL if any term is folded over all
+    three rows: the all-rows gap is 3.80 against the included set's 5.70."""
+    paired, post = _decomposition_fixture()
+    d = G.delta_posterior(paired, post, oracle_p=0.9, n_draws=200, seed=1).diagnostics
+    assert d.overall_mean_d == pytest.approx(3.80), "the all-rows diagnostic moved"
+    assert d.included_mean_d == pytest.approx(5.70)
+    assert d.included_mean_d != d.overall_mean_d
+    assert d.delta_answers is not None and d.delta_spend is not None
+    assert d.delta_answers + d.delta_spend == pytest.approx(d.included_mean_d)
+
+
+def test_arm_summaries_count_outcomes_over_the_included_rows() -> None:
+    """r28 C1: each arm's correct / wrong / abstain counts, published beside the split so a
+    reader can see WHICH arm the answer term came from. Included rows b and c: typed reports
+    once (correct) and abstains once; the baseline reports twice, one right one wrong.
+    MUST FAIL if the counts fold the censored row or read the wrong arm."""
+    paired, post = _decomposition_fixture()
+    d = G.delta_posterior(paired, post, oracle_p=0.9, n_draws=200, seed=1).diagnostics
+    assert d.typed_arm is not None and d.mono_arm is not None
+    assert (d.typed_arm.n_correct, d.typed_arm.n_wrong, d.typed_arm.n_abstain) == (1, 0, 1)
+    assert (d.mono_arm.n_correct, d.mono_arm.n_wrong, d.mono_arm.n_abstain) == (1, 1, 0)
+
+
+def test_the_answer_term_is_the_deployed_rule_with_the_rate_zeroed() -> None:
+    """r28: the standing lesson — a census reads the deployed rule end to end, never
+    re-implements the constant it prices. Δ_answers must be `realised_utility` valued at
+    lambda_usd = 0, so a change to the deployed utility model reaches it automatically.
+    Pinned by construction: a second spelling of the answer term would not track a change
+    to u_hedged, which no other assertion in this file exercises through the split.
+    MUST FAIL if the answer term is written out separately from realised_utility."""
+    post = UT.UtilityPosterior(
+        gauge={"u_correct": 1.0, "u_abstain": 0.0},
+        latents={"u_wrong": _point("u_wrong", -2.0),
+                 "u_hedged": _point("u_hedged", 0.75),   # the tracked latent
+                 "lambda_int": _point("lambda_int", 0.5),
+                 "kappa_att": _point("kappa_att", 0.05),
+                 "lambda_usd": _point("lambda_usd", 2.0)},
+        n_events=0, fold_version="test", policy="frozen-elicitations")
+    paired = [_pair("h", _resp("hedge", True, cost_usd=0.1),
+                    _resp("abstain", withheld=None, cost_usd=0.6))]
+    d = G.delta_posterior(paired, post, oracle_p=0.9, n_draws=200, seed=1).diagnostics
+    # answers: typed hedge-correct = u_hedged = 0.75, mono abstain = 0.0 → +0.75
+    assert d.delta_answers == pytest.approx(0.75)
+    # spend: 2.0 * (0.6 - 0.1) = 1.0
+    assert d.delta_spend == pytest.approx(1.0)
+
+
+def test_the_report_publishes_the_decomposition() -> None:
+    """r28 C1. The split is what a reader quotes; a Diagnostics field nobody renders is not
+    published. MUST FAIL if the decomposition block is dropped from the report."""
+    paired, post = _decomposition_fixture()
+    res = G.delta_posterior(paired, post, oracle_p=0.9, n_draws=200, seed=1)
+    md = G.render_report(res, run_id="gate-test", elapsed=1.0,
+                         baseline="raw-deliberative-replay")
+    low = md.lower()
+    assert "answers" in low and "spend" in low
+    assert "+4.700" in md or "4.700" in md, "the spend term is not in the report"
+    assert "1.000" in md, "the answer term is not in the report"
+    assert "$" in md, "the arms' realised dollars are not published"
+
+
+def test_a_report_cannot_render_without_naming_its_baseline() -> None:
+    """r28 C3, structural. K4 fixed the VALUE at the one call site it looked at and left
+    the "monolithic" default in place; two further instruments — `scripts/gate_splice.py`
+    and `scripts/membrane/p3_gate.py` — were still rendering through that default, so the
+    r27 defect survived in both. Removing the default kills the class rather than censusing
+    for it. MUST FAIL if any default is restored."""
+    post = _posterior(u_wrong=-2.0)
+    res = G.delta_posterior([_pair("a", _resp("report", True), _resp("abstain"))],
+                            post, oracle_p=0.9, n_draws=200, seed=1)
+    with pytest.raises(TypeError, match="baseline"):
+        G.render_report(res, run_id="gate-test", elapsed=1.0)   # type: ignore[call-arg]

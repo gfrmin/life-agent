@@ -213,7 +213,8 @@ def test_run_differential_writes_variant_suffixed_artifacts(tmp_path: Path) -> N
     for variant, fams in (("FULL", tuple(P3.LR.ALL_FAMILIES)),
                           ("leader-credence-only", ("leader-credence",))):
         P3.run_differential(rows, variant=variant, families=fams, h2q=h2q,
-                            baseline_rows=baseline_rows, posterior=_posterior(),
+                            baseline_rows=baseline_rows, baseline_arm="deliberative",
+                            posterior=_posterior(),
                             oracle_p=0.9, out=tmp_path, draws=400, seed=7,
                             log=lambda _m: None)
     names = sorted(p.name for p in tmp_path.iterdir())
@@ -230,7 +231,8 @@ def test_run_differential_matches_the_inline_gate_it_replaced(tmp_path: Path) ->
     rows, h2q, baseline_rows = _p3b_fixture()
     gate = P3.run_differential(rows, variant="FULL",
                                families=tuple(P3.LR.ALL_FAMILIES), h2q=h2q,
-                               baseline_rows=baseline_rows, posterior=_posterior(),
+                               baseline_rows=baseline_rows, baseline_arm="deliberative",
+                               posterior=_posterior(),
                                oracle_p=0.9, out=tmp_path, draws=400, seed=7,
                                log=lambda _m: None)
     acts = P3.question_acts(rows)
@@ -251,7 +253,8 @@ def test_run_differential_meta_names_the_lattice_under_test(tmp_path: Path) -> N
     rows, h2q, baseline_rows = _p3b_fixture()
     P3.run_differential(rows, variant="leader-credence-only",
                         families=("leader-credence",), h2q=h2q,
-                        baseline_rows=baseline_rows, posterior=_posterior(),
+                        baseline_rows=baseline_rows, baseline_arm="deliberative",
+                        posterior=_posterior(),
                         oracle_p=0.9, out=tmp_path, draws=400, seed=7,
                         log=lambda _m: None)
     meta = _json.loads((tmp_path / "a3_meta-leader-credence-only.json").read_text())

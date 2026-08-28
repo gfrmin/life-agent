@@ -867,3 +867,66 @@ def test_apply_judge_verdicts_flip_names_the_hedge_arm() -> None:
     _regraded, flips, unjudged = RE.apply_judge_verdicts(paired, items)
     assert unjudged == []
     assert [(f["question_id"], f["arm"]) for f in flips] == [("q2-004", "typed-hedge")]
+
+
+# --- r28 C3: the report's baseline and the paired rows' baseline are ONE value -----------
+# The r27 defect was a divergence: `render_report` hard-coded "monolithic" while
+# `_paired_to_dict` was handed the caller's tag, so twelve reports named an arm the rows
+# contradicted. K4 fixed the value; nothing yet stops the two from drifting apart again.
+# A value test cannot see this — both call sites are correct today — so the guard is a rule
+# over the source, in the AST idiom row 18 uses (a regex census would match a spelling, not
+# the property).
+
+def _baseline_arguments(source: str) -> dict[str, str]:
+    """Map call-name -> the NAME passed as its `baseline=` keyword, for the two calls that
+    must agree. A `baseline=` given as a literal or an expression is recorded as a repr
+    that cannot equal another call's name, so drift shows up as a mismatch rather than
+    slipping through."""
+    import ast
+    found: dict[str, str] = {}
+    for node in ast.walk(ast.parse(source)):
+        if not isinstance(node, ast.Call):
+            continue
+        fn = node.func
+        name = (fn.attr if isinstance(fn, ast.Attribute)
+                else fn.id if isinstance(fn, ast.Name) else None)
+        if name not in ("render_report", "_paired_to_dict"):
+            continue
+        for kw in node.keywords:
+            if kw.arg != "baseline":
+                continue
+            found[name] = (kw.value.id if isinstance(kw.value, ast.Name)
+                           else f"<non-name: {ast.dump(kw.value)}>")
+    return found
+
+
+def test_report_and_paired_rows_take_their_baseline_from_one_value() -> None:
+    """r28 C3. MUST FAIL if either call site is handed a literal or a second variable —
+    that divergence is exactly what made twelve §14 summaries quote the wrong arm."""
+    from pathlib import Path
+    src = Path(__file__).resolve().parents[1] / "scripts" / "run_eval.py"
+    args = _baseline_arguments(src.read_text(encoding="utf-8"))
+    assert set(args) == {"render_report", "_paired_to_dict"}, (
+        f"expected both baseline-carrying call sites in run_eval.py, found {sorted(args)}")
+    assert args["render_report"] == args["_paired_to_dict"], (
+        f"the report and the paired rows name their baseline from different values: {args}")
+
+
+def test_the_baseline_guard_catches_a_planted_divergence() -> None:
+    """r28 C3, the discriminating half (row 23): a guard that passes on today's tree proves
+    nothing unless a violation is shown to fail it. Plants both defect shapes in synthetic
+    source — a literal at one site, and a second variable — and requires each to be seen."""
+    literal = ('GATE.render_report(result, baseline="monolithic")\n'
+               '_paired_to_dict(p, baseline=tag)\n')
+    a = _baseline_arguments(literal)
+    assert a["render_report"] != a["_paired_to_dict"], "a hard-coded literal went unseen"
+
+    two_vars = ("GATE.render_report(result, baseline=report_tag)\n"
+                "_paired_to_dict(p, baseline=row_tag)\n")
+    b = _baseline_arguments(two_vars)
+    assert b["render_report"] != b["_paired_to_dict"], "a second variable went unseen"
+
+    agreeing = ("GATE.render_report(result, baseline=baseline_tag)\n"
+                "_paired_to_dict(p, baseline=baseline_tag)\n")
+    c = _baseline_arguments(agreeing)
+    assert c["render_report"] == c["_paired_to_dict"], "the rule rejects the correct shape"
