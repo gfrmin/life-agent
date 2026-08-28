@@ -136,4 +136,71 @@ background task dies with the session) · **G4** deferred to K5 with the census 
 ---
 ## RESULTS
 
-*(appended after the work; nothing above this line is edited)*
+**Read 2026-08-28. Eleven of twelve criteria MET; C2 met by what was already in tree
+rather than by anything built. $0 spent against a $25 cap.**
+
+### The criteria
+
+| | verdict |
+|---|---|
+| **C1** | **MET.** 250 distinct real questions harvested from 33,267 cached derivations, out of tree; the summary's PII property is mutation-verified (leaking one example fails the suite), and both directions of the gate-row filter are tested |
+| **C2** | **MET, by discovery not construction.** The arm exists as `scripts/fairfight/arm_claude.py` (π\*, owner-ruled 2026-07-19) and is already priced per row through `usage.estimated_cost_usd`. Building a third arm would have duplicated it |
+| **C3** | **MET.** The pilot's frame, δ, level, four directional predictions and its sizing-only consequence were committed before it read — and the read then refuted its own premise, which is what a pre-registration is for |
+| **C4** | **MET,** and wider than the finding: the loop reconciles the compared+errored ID set against the fixture set, so *any* skip is a refusal, not a pass |
+| **C5** | **MET.** The control set has a fixture that raises; `bad = len(failed)` is expressible and kills |
+| **C6** | **MET.** The class universe is `recorder.body`; `VALUE_COMPARED` pinned whole; the five unpinned fields each have a value kill test |
+| **C7** | **MET.** Manifest reconciliation, with an absent manifest a refusal |
+| **C8** | **MET.** One registry, the bytes deciding, pinned and announced whole |
+| **C9** | **MET in substance, with the interpretation disclosed.** The rule is an AST rule over `tests/`+`src/`+`scripts/` and sees all the named spellings. It does not *require zero*: the 42 live sites are pinned as a ratchet, because converting them is the census-method question deferred to K5. Recorded as known-and-uncovered 16 rather than counted as coverage |
+| **C10** | **MET,** both directions |
+| **C11** | **MET. 314/314 PURE EQUALITY**, re-run after every `src/` change |
+| **C12** | **MET, and it fired twice on this milestone's own work** — see below |
+
+### C12 caught its author twice, which is the only reason to have it
+
+1. The mutation-naming rule (row 19) rejected one of r27's own new poison fixtures whose
+   docstring said "Killed by …" but never entered the phrase vocabulary.
+2. The substring ratchet (row 18) went red on r27's own Strand B commits — and the reason
+   was a defect in the ratchet, not in the commits: it was keyed on **line numbers**, so
+   adding one `import` broke a pin with no semantic change. Re-keyed to `file::function`
+   with a per-function count, then verified that an addition still fails and a pure line
+   move does not.
+
+### A defect in this report's own pre-registration
+
+**V9 is wrong.** It states the four tracked declared-binary files "merely contain no NUL
+byte". They all contain NUL. The check behind V9 was a shell `grep -qP '\x00'`, which is
+unreliable on binary input; the guard's own predicate says otherwise. The prereg is frozen
+and stays as written.
+
+The correction **strengthens** C8: because every declared-binary file does carry NUL,
+running the NUL check first is a provable no-op on today's tree, so the fix closes the gap
+prospectively with zero behaviour change. And the way the error was made is the standing
+lesson — *a census must read the deployed rule end to end, never re-implement the constant
+it prices* — committed here by the person quoting it.
+
+### Deviations from the fixed order of work
+
+- **A2 was not built.** Step 7 says "the agent arm ($0 to build)". The arm already existed,
+  as did the gate path that reads against it. Found by looking before building
+  (PRINCIPLES §4); the milestone's plan had assumed otherwise.
+- **The pilot did not fire.** Steps 8–9 were pre-registered and then voided by their own
+  premise. Recorded in `r27-pilot-preregistration.md`, not smoothed.
+- **D2, deployment origin, is deferred** with its reason on the record: it moves all 314
+  fixtures and has no reader while one deployment serves and the exit test is not being run
+  by hand. It was the headline of the option the owner chose, so it is flagged, not dropped.
+- **One `src/` change beyond Strand B**: `gate.render_report` now names its baseline arm.
+  C11 re-opened as its own clause requires; the replay was re-run and reads pure equality.
+
+### What is left standing, deliberately
+
+Register rows **12, 22 and 23** remain defeated. They are the census-method question — row
+22's own discriminator is a one-line spelling census of exactly the kind row 22 forbids —
+and patching them would be the fourth consecutive pass over one class. K5 is a ruling to be
+taken, not a fix to be reflexed.
+
+### Gates
+
+G1 **2886 passed**, 35 deselected; ruff clean; mypy clean on 227 files; PII guard exit 0
+with the private name layer live. G2 **314/314 pure equality** on `m5-base`, twice. G3 not
+bought — and the reason it was not bought is a finding, not a budget decision.
