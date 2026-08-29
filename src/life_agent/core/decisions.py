@@ -40,6 +40,20 @@ FORMAT_VERSION = 3
 # migration. What remains of the split dies with `/route` at migration stage M5.
 FAMILIES: frozenset[str] = frozenset({"lookup", "narrative"})
 
+# Families that ONCE wrote to this stream and no longer may (r31). An append-only ledger
+# outlives the vocabulary that wrote it: `aggregate` was a declared family when run 19 wrote
+# two rows on 2026-08-26, and K1 deleted it (`r22`) afterwards. A reader that dies on its own
+# history cannot read an append-only log — two rows of 3,391 made the whole stream unreadable,
+# which killed the utility fold and with it every executor pass (found by firing r31).
+#
+# Tolerance is READ-side and ENUMERATED, deliberately, on both counts: a writer still cannot
+# emit one (`DecisionEvent.__post_init__` refuses), and a label that is neither declared nor
+# retired — a typo, a corrupted row — still raises. A blanket skip-unknown would swallow those
+# too. **Retiring a family means adding it here in the same change**: that is the fact this
+# set exists to record, and the registered class it belongs to (foundations §14) is that every
+# vocabulary retirement must say what happens to the history that used it.
+RETIRED_FAMILIES: frozenset[str] = frozenset({"aggregate"})
+
 # The M4 response actions (bayesian-foundations §3). ask-about-U is deliberately absent
 # — utility learning is passive until the governor (§4.4, a stated action-set
 # coarsening). report_scoped is the time-scoped assertion ("as of <date>, X" — scoped-claims
@@ -186,6 +200,15 @@ def _to_line(event: DecisionEvent) -> str:
     return json.dumps(payload, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
 
 
+def _line_family(line: str) -> str:
+    """The family a raw line CLAIMS, read without constructing the event — the constructor
+    refuses a retired label by design (R2), so the skip has to happen before it."""
+    try:
+        return str(json.loads(line).get("family") or "")
+    except Exception:
+        return ""      # a malformed line is _from_line's business; it raises there
+
+
 def _from_line(line: str) -> DecisionEvent:
     obj = json.loads(line)
     obj["action_set"] = tuple(obj.get("action_set", ()))
@@ -205,9 +228,24 @@ def append(path: Path, event: DecisionEvent) -> None:
 
 
 def read(path: Path) -> list[DecisionEvent]:
-    """Every decision in file order — the canonical replay order. Malformed lines
-    raise; a missing file means no decisions yet."""
-    return [_from_line(line) for line in jsonl_log.read_lines(path)]
+    """Every readable decision in file order — the canonical replay order. Malformed lines
+    raise; a missing file means no decisions yet.
+
+    Rows written by a RETIRED family (above) are skipped and the count is NAMED on stdout —
+    never silently, because a reader that quietly drops rows is how a stream loses its own
+    history. Any other unrecognised family still raises: the tolerance is enumerated, not
+    blanket."""
+    out: list[DecisionEvent] = []
+    retired = 0
+    for line in jsonl_log.read_lines(path):
+        if _line_family(line) in RETIRED_FAMILIES:
+            retired += 1
+            continue
+        out.append(_from_line(line))
+    if retired:
+        print(f"decisions: skipped {retired} row(s) from retired families "
+              f"{sorted(RETIRED_FAMILIES)} — history this vocabulary no longer declares")
+    return out
 
 
 def withhold_reason(*, effector: object, candidates: object,
