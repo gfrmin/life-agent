@@ -364,7 +364,7 @@ def decide_arm(root: Path, question: str, hits: list[dict[str, Any]],
         scoped_opts = LK._scoped_options(
             brain, observations, candidates, rho, u_bar=u_bar, state_current=state_id,
             weights_current=weights, time_indexed=time_indexed)
-        action, eu, scoped_j = LK.decide(
+        action, eu, scoped_j, _interval = LK.decide(
             brain, state_id, weights, u_bar,
             scoped={j: t[0] for j, t in scoped_opts.items()})
     finally:

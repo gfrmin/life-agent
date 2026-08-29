@@ -38,7 +38,7 @@ import dataclasses
 import hashlib
 import json
 import math
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -46,6 +46,7 @@ from typing import Any
 
 from life_agent.core import answer_shape as AS
 from life_agent.core import config
+from life_agent.core import decide as DEC_ATOM
 from life_agent.core import decisions as DEC
 from life_agent.core import derivations as D
 from life_agent.core import instrument as INSTR
@@ -262,6 +263,11 @@ GRAMMAR: dict[str, str] = {
     "report_scoped": ("As of {as_of}: {value} — credence {p:.3f} {cites}\n"
                       "  — the most recent record I found; I may be missing a newer one. "
                       "A confirmed current figure would need a costlier check."),
+    # r30b: the `quantity` shape's claim — a RANGE, asserted at its own coverage credence.
+    # The endpoints are the candidates' own display strings (never a reformatted float: no
+    # invented precision, no currency the corpus did not carry), and the credence is the
+    # posterior mass the range covers, so a wider claim visibly buys its confidence.
+    "report_interval": "Between {lo} and {hi} — credence {p:.3f} {cites}",
     "hedge": "Unresolved — candidates: {alts}",
     "ask_clarify": "Worth asking you directly — the evidence does not settle it: {alts}",
     "abstain": "No answer asserted ({reason}).",
@@ -393,6 +399,11 @@ class LookupResult:
     as_of: str | None = None
     scoped_value: str | None = None
     scoped_p: float = 0.0
+    # r30b: the interval claim the engine chose, and its coverage credence. Both None/0.0 on
+    # every other decision, so a reader that ignores them sees the pre-r30b result exactly.
+    # ``interval_p`` is display + record only — nothing selects an action by reading it (C8).
+    interval: DEC_ATOM.IntervalOption | None = None
+    interval_p: float = 0.0
     # the route's time-indexing of the construct (a volatile attribute decays with document age;
     # a permanent one does not). Surfaced so a downstream edge (the joint extractor) can apply the
     # same recency model the single-pass path applies via its per-hit covariates.
@@ -923,7 +934,9 @@ def lookup_posterior(brain: Brain, observations: list[Observation],
 
 
 def action_utilities(weights: list[float], u_bar: dict[str, float], *,
-                     scoped: dict[int, float] | None = None) -> dict[str, list[float]]:
+                     scoped: dict[int, float] | None = None,
+                     intervals: Sequence[DEC_ATOM.IntervalOption] = (),
+                     ) -> dict[str, list[float]]:
     """Per-action utility vectors over the hypothesis atoms (K candidates + NONE), derived from
     :func:`life_agent.core.decide.u_assert` (the one written atom). `report_j` (one per candidate)
     asserts candidate j — ``u_assert(1)`` at j, ``u_assert(0)`` = u_wrong elsewhere incl NONE — so
@@ -936,7 +949,12 @@ def action_utilities(weights: list[float], u_bar: dict[str, float], *,
     so each row is **flat** at its ``scoped[j]`` — the attested-record EU computed
     SERVER-SIDE off the recency-off posterior (``expect`` in :func:`_scoped_options`),
     never a host ``p_attested*u_hedged + …``. No dated candidate ⇒ NO scoped rows (an
-    empty option set, no EU mass — the censused endpoint)."""
+    empty option set, no EU mass — the censused endpoint).
+
+    ``intervals`` (r30b) places one row per priced interval proposal VERBATIM — the row was
+    built once by :func:`life_agent.core.decide.interval_options` and is not re-derived here
+    (C3: one declaration, two lanes). Empty off the ``quantity`` shape, so the returned table
+    is byte-identical to pre-r30b on every other question (C2)."""
     k = len(weights) - 1
     u_correct = u_assert(1.0, u_bar)
     u_wrong = u_assert(0.0, u_bar)
@@ -948,6 +966,8 @@ def action_utilities(weights: list[float], u_bar: dict[str, float], *,
     out["abstain"] = [u_bar["u_abstain"]] * (k + 1)
     for j, eu_j in sorted((scoped or {}).items()):
         out[f"report_scoped_{j}"] = [eu_j] * (k + 1)
+    for opt in intervals:
+        out[opt.name] = list(opt.values)
     return out
 
 
@@ -957,7 +977,8 @@ _LOOKUP_ACTIONS: dict[str, Any] = {"type": "finite", "values": [0.0]}
 
 def decide(brain: Brain, state_id: str, weights: list[float],
            u_bar: dict[str, float], scoped: dict[int, float] | None = None,
-           ) -> tuple[str, float, int | None]:
+           intervals: Sequence[DEC_ATOM.IntervalOption] = (),
+           ) -> tuple[str, float, int | None, DEC_ATOM.IntervalOption | None]:
     """`optimise` over the response actions on the live rho-latent state, committed through
     the ONE act seam (:func:`life_agent.core.seam.commit` — roadmap M0). `report` expands into
     a per-candidate `report_j` so the engine picks the asserted candidate (no host argmax); a
@@ -965,8 +986,13 @@ def decide(brain: Brain, state_id: str, weights: list[float],
     ``candidates[0]`` the caller renders — a render label, not a second decision).
     ``scoped`` prices one ``report_scoped_j`` row per dated candidate (M5/r15 L-3 — the
     engine picks the scoped value too); a ``report_scoped_j`` winner maps to
-    ``("report_scoped", eu, j)`` so the caller renders THAT candidate's claim."""
-    utilities = action_utilities(weights, u_bar, scoped=scoped)
+    ``("report_scoped", eu, j, None)`` so the caller renders THAT candidate's claim.
+
+    ``intervals`` (r30b) prices one row per interval proposal. An ``interval_a_b`` winner maps
+    to ``("report", eu, None, option)``: an interval is the SAME speech act at a different
+    precision, not a new action, so the response vocabulary does not grow (C5) — what changes
+    is the claim the caller renders and records."""
+    utilities = action_utilities(weights, u_bar, scoped=scoped, intervals=intervals)
     preference = {
         "type": "functional_per_action",
         "actions": {name: {"type": "tabular", "values": vec} for name, vec in utilities.items()},
@@ -976,12 +1002,24 @@ def decide(brain: Brain, state_id: str, weights: list[float],
     action, eu = dec.action, dec.eu
     assert eu is not None  # a SkinOptimise commit always carries the engine's EU
     scoped_j: int | None = None
+    chosen = DEC_ATOM.interval_by_name(intervals, action)
+    if chosen is not None:
+        return "report", eu, None, chosen
     if isinstance(action, str) and action.startswith("report_scoped_"):
         scoped_j = int(action.rsplit("_", 1)[1])
         action = "report_scoped"
     elif isinstance(action, str) and action.startswith("report_"):
         action = "report"  # report_j → report; the asserted value is the weight-MAP candidate
-    return action, eu, scoped_j
+    return action, eu, scoped_j, None
+
+
+def interval_coverage(candidates: Sequence[str], credences: Sequence[float], *,
+                      lo: float, hi: float) -> float:
+    """The interval claim's own credence: the posterior mass on the candidates the range
+    covers. The ONE derivation (C8) — a SUM over the belief, for the render and the record.
+    Nothing selects an action by reading it; the engine already chose (Invariant 1)."""
+    return sum(p for c, p in zip(candidates, credences, strict=True)
+               if (v := AS.numeric_value(c)) is not None and lo <= v <= hi)
 
 
 # --- render (deterministic — the render IS the claim set) -------------------------------
@@ -1000,7 +1038,17 @@ def render(result: LookupResult) -> str:
     alts = " · ".join(
         f"{v} ({p:.3f}) {_cites(v)}".rstrip()
         for v, p in zip(result.candidates, result.credences, strict=True))
-    if result.action == "report":
+    if result.action == "report" and result.interval is not None:
+        # r30b: the claim is a RANGE — cite every covered candidate's cards, so the reader
+        # sees what the range is standing on, not just its endpoints.
+        iv = result.interval
+        covered = [c for c in result.candidates
+                   if (num := AS.numeric_value(c)) is not None and iv.lo <= num <= iv.hi]
+        ns = sorted({n for c in covered for n in by_value.get(_candidate_key(c), [])})
+        body = GRAMMAR["report_interval"].format(
+            lo=iv.lo_label, hi=iv.hi_label, p=result.interval_p,
+            cites="".join(f"[{n}]" for n in ns)).rstrip()
+    elif result.action == "report":
         v = result.candidates[0]
         body = GRAMMAR["report"].format(value=v, p=result.credences[0],
                                         cites=_cites(v))
@@ -1175,18 +1223,24 @@ def decide_and_record(root: Path, question: str, construct: str,
     b = brain if brain is not None else shared_brain()
     # r30 (C5): the question's own answer shape prices its own decision — never a
     # separate rescoring, always through current_u_bar's one seam.
-    u_bar, fold_ver, _policy = current_u_bar(b, shape=AS.answer_space(question))
+    shape = AS.answer_space(question)
+    u_bar, fold_ver, _policy = current_u_bar(b, shape=shape)
     rho = rho_override if rho_override is not None else extractor_reliability(b)
     candidates = candidates_from(observations)
     weights, state_id = lookup_posterior(b, observations, candidates, rho)
+    # r30b: the `quantity` shape's claim space — one priced row per interval proposal,
+    # built ONCE by the shared declaration and ranked by the same optimise call. Empty on
+    # every other shape, so the action set is byte-identical there (C2/C3).
+    intervals = DEC_ATOM.interval_options(candidates, u_bar, shape=shape)
     try:
         scoped_opts = _scoped_options(
             b, observations, candidates, rho,
             u_bar=u_bar, state_current=state_id,
             weights_current=weights, time_indexed=time_indexed)
-        action, eu, scoped_j = decide(
+        action, eu, scoped_j, interval = decide(
             b, state_id, weights, u_bar,
-            scoped={j: t[0] for j, t in scoped_opts.items()})
+            scoped={j: t[0] for j, t in scoped_opts.items()},
+            intervals=intervals)
     finally:
         b.destroy_state(state_id)
     # The recorded scoped triple (the deferred upgrade governor's evidence — the true
@@ -1207,6 +1261,8 @@ def decide_and_record(root: Path, question: str, construct: str,
     cands = tuple(candidates[j] for j in order)
     creds = tuple(weights[j] for j in order)
     p_none = weights[-1]
+    interval_p = (interval_coverage(cands, creds, lo=interval.lo, hi=interval.hi)
+                  if interval is not None else 0.0)
 
     # the answer artifact (§18.9): claim set + posterior + decision inputs, lineage to
     # every observation — the lookup family's computation stays on the ledger. The
@@ -1238,6 +1294,10 @@ def decide_and_record(root: Path, question: str, construct: str,
         # governor's evidence (scoped-claims design §6): the true partial that was available.
         "scoped": {"value": scoped_value, "as_of": as_of,
                    "p_attested": round(p_attested, 6)},
+        # r30b: the chosen interval claim, present ONLY when one was chosen — a key added
+        # unconditionally would move every recorded artefact's bytes for nothing.
+        **({"interval": {**interval.claim(), "p": round(interval_p, 6)}}
+           if interval is not None else {}),
     }, sort_keys=True, ensure_ascii=False).encode("utf-8")
     # unique inputs, first-occurrence order: two observations can share one extract key
     # (identical chunk text — observe_hits keys on the chunk, not the artefact); the
@@ -1249,7 +1309,7 @@ def decide_and_record(root: Path, question: str, construct: str,
         n_indeterminate=indeterminate, utility_fold_version=fold_ver,
         answer_cache_key=akey.cache_key, rendered="",
         as_of=as_of, scoped_value=scoped_value, scoped_p=p_attested,
-        time_indexed=time_indexed)
+        time_indexed=time_indexed, interval=interval, interval_p=interval_p)
     result = dataclasses.replace(result, rendered=render(result))
 
     # M2 (design §5.1): the decision's two records — the §18.9 answer node and the ledger

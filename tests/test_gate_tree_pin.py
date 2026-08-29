@@ -221,3 +221,40 @@ def test_the_note_flags_moved_decision_logic(tmp_path: Path) -> None:
     assert "src/life_agent/core/executor.py" in note
     # the honest claim: attributable only insofar as this list IS the intended change
     assert "intended change" in note.lower()
+
+
+# --- r30b: the DECIDER's tree, not only the body's --------------------------------------
+
+def test_the_run_meta_pins_the_decider_tree(monkeypatch, tmp_path: Path) -> None:
+    """r30b: §6.10's declaration covers only this repo, but the gate's typed arm decides in
+    the answer-brain daemon — a different tree. A run that cannot name the tree that produced
+    its decisions cannot attribute its own reading, which is the whole point of §6.10."""
+    import argparse
+    import subprocess
+    repo = tmp_path / "decider"
+    repo.mkdir()
+    (repo / "f.jl").write_text("x\n", encoding="utf-8")
+    for cmd in (["init", "-q", "-b", "master"], ["add", "-A"]):
+        subprocess.run(["git", "-C", str(repo), *cmd], check=True)
+    subprocess.run(["git", "-C", str(repo), "-c", "user.email=t@t", "-c", "user.name=t",
+                    "commit", "-qm", "x"], check=True)
+    monkeypatch.setenv("CREDENCE_DIR", str(repo))
+    meta = RE.build_gate_run_meta(
+        run_id="gate-test", args=argparse.Namespace(k=20), questions=[],
+        questions_path=None, corpus={"digest": "d", "pin_status": "matched"},
+        availability={}, baseline="monolithic")
+    assert len(meta["decider_git"]["sha"]) == 40
+    assert meta["decider_git"]["dirty"] is False
+
+
+def test_an_unlocatable_decider_is_named_not_silent(monkeypatch) -> None:
+    """A missing checkout records a stated reason — never an absent key a reader would
+    mistake for 'the decider did not move'."""
+    import argparse
+    monkeypatch.delenv("CREDENCE_DIR", raising=False)
+    meta = RE.build_gate_run_meta(
+        run_id="gate-test", args=argparse.Namespace(k=20), questions=[],
+        questions_path=None, corpus={"digest": "d", "pin_status": "matched"},
+        availability={}, baseline="monolithic")
+    assert meta["decider_git"]["sha"] is None
+    assert "CREDENCE_DIR" in meta["decider_git"]["note"]

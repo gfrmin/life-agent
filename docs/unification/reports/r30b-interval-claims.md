@@ -186,3 +186,170 @@ gains the row in the credence-rendering table in the same commit as the string.
 **G1** suite + ruff + mypy, both repos · **G2** `collapse_replay --checkpoint m5-base` under C10 ·
 **G3** the $0 off-gate sweep (r31a) — no priced run fires until its predicted assert set is on
 the record.
+
+---
+
+# r30b — RESULTS (2026-08-29, $0)
+
+> Read against the criteria frozen above, committed at `84d105e` before any `src/` change.
+> **Nothing is deployed by this checkpoint (C12).** No priced run was bought.
+
+## What landed
+
+**One declaration, two decide surfaces.** `core/decide.py` — already the home of the assert
+atom `u_assert` and r30's `shaped_u_bar` — gains the `quantity` shape's loss and its claim
+space: `realised_aggregate` (moved, not copied — `core/gate.py` now BINDS it), `IntervalOption`,
+and `interval_options`, which builds one tabular row per interval proposal over the same K+1
+atoms every other action ranks. Both surfaces bind that one construction:
+
+- **terminals-only lane** — the rows enter `lookup.action_utilities`; `lookup.decide` maps an
+  `interval_a_b` winner to `("report", eu, None, option)`.
+- **executor/daemon lane** — the rows ride a new optional `/decide` field `extra_actions`
+  (`[{name, act, values}]`); `executor.run_pass` maps the winner back the same way and lands the
+  claim in the r21 `aggregate.totals` shape the frozen grader already reads.
+
+**The daemon change is generic, not aggregate-specific** (credence
+`apps/answer-brain`, PR alongside): body-priced terminal rows, ranked by the same `optimise`
+call, with the engine doing no arithmetic on them. That asymmetry is the point — the Winkler
+grade is declared once, on the side that also grades it, so the agent can never be graded on a
+loss it did not decide under. `act` names the SPEECH ACT a row belongs to, so the transform
+registry's eligibility predicates (the owner-scoped attribution guard, the §2-A rescue gate)
+keep asking "did this commit?" rather than matching a wire name; VOI is priced over the same
+action set the terminal decision is taken over, extras included.
+
+**The response vocabulary did not grow** (C5). An interval is a `report` at a lower precision,
+so `DEC.ACTIONS`, `LOOKUP_ACTION_ORDER`, `gate.ASSERT_ACTIONS` and the bridge's
+`_TERMINAL_ACTIONS` are untouched, and r21's frozen grading branch received the claim with no
+change at all.
+
+## The finding — the pinned corpus can barely exhibit this lever
+
+Measured off the m5-base fixtures' own recorded candidate sets, on both lanes:
+
+| | count |
+|---|---|
+| pinned questions | 104 |
+| classify `quantity` | 19 |
+| …of which carry **≥2 distinct numeric candidates** | **5** |
+| …carry exactly one distinct numeric candidate | 13 |
+| …carry none | 1 |
+
+**The lever can fire on 5 of 104 questions**, identically on the A-loop and B-lookup lanes
+(`q2-004`, `q2-029`, `q2-056`, `q2-059`, `q2-090`). On 14 of the 19 quantity questions there is
+no range to claim, because the evidence never produced two different numbers.
+
+This is the plan's defect 1 measured rather than argued, and it binds r31: against the §6.13
+commit-wobble floor of 2, a 5-row population is not a reading. **r31's Pop B — the 15 computed
+questions of `$LIFE_AGENT_KB/eval/aggregate-questions.yaml`, run through `run_eval`'s gate
+machinery as its own pinned series — is a precondition for reading this lever, not an
+enhancement to a reading that would otherwise stand.**
+
+## Gates
+
+**G1.** `TMPDIR=~/.cache/tmp uv run pytest -m "not llm and not system" -q` → **2998 passed,
+35 deselected** (250s). `ruff check .` → all checks passed. `uv run mypy` → **no issues in 229
+source files**. `.githooks/pii_check.py` → **exit 0** with the private name layer live.
+Credence side: `test_extra_actions.jl` 18 checks, plus all five existing suites unmodified
+(69 · 79 · 14 · 12 · 16).
+
+*Harness note, disclosed:* an earlier run of the same suite reported one failure in
+`test_m7_register.py::test_d4_the_leader_order_is_one_view`. It was self-inflicted — three of
+this session's own verification runs were rewriting the same `src/` files concurrently (the
+mutation pass mutates in place), and that test reads source. Re-run serialized with nothing
+else touching the tree, the suite is green; the counts above are from that run, not the racing
+one.
+
+**G2 — the replay, under C10's attributed-delta criterion.** `PYTHONHASHSEED=0
+scripts/collapse_replay.py --checkpoint m5-base`, two draws, plus the same command on master:
+
+| tree | compared | errored |
+|---|---|---|
+| master `456dd54` (baseline) | 293/314 | 21 |
+| r30b, draw 1 | 288/314 | 26 |
+| r30b, draw 2 | 288/314 | 26 (**byte-identical errored set**) |
+
+The 21 are carried, not new: every one is an A-loop fixture missing `GET /utility?shape=…`, the
+**r30** wire-only artefact a pre-r30 cassette cannot contain, and the baseline run reproduces
+exactly that set on master. The 5 new ones are all B-lookup fixtures whose recorded `optimise`
+request now carries `interval_*` rows.
+
+**The changed set is predicted exactly.** Applying the declared gate — `quantity` ∧ ≥2 distinct
+numeric candidates — to every fixture's own recorded candidate set predicts the replay's changed
+set on **104/104** fixtures, in both directions: all 5 changed fixtures satisfy both conjuncts,
+and all 99 unchanged ones fail at least one. Zero deltas outside the declared population, so
+C10 is met as frozen, with the direction asserted rather than asserted-by-absence.
+
+**Mutation transcript — every frozen criterion demonstrated RED by its named mutation, then
+restored** (nine mutations, plus the build-once mutation under disclosure 8):
+
+| | mutation | test driven RED |
+|---|---|---|
+| C1 | width pays inside the action → 0-1 containment | `test_width_pays_inside_the_action_so_the_widest_does_not_dominate` |
+| C2 | drop the shape gate | `test_no_interval_rows_off_shape` |
+| C3a | lookup re-derives a row instead of placing it | `test_action_utilities_carries_the_options_verbatim` |
+| C3b | the wire re-derives the rows the in-process lane ranks | `test_the_daemon_receives_the_same_rows_the_in_process_lane_ranks` |
+| C4 | fork the Winkler constant in the grader | `test_the_winkler_constants_have_one_home` |
+| C5 | grow the response vocabulary | `test_the_response_vocabulary_does_not_grow` |
+| C6 | the wrong-commit class stops being expressible | `test_the_interval_excludes_gold_class_is_visible_from_birth` |
+| C7 | the grader keeps a second numeric parser | `test_numeric_value_is_the_only_parser_the_graders_use` |
+| C8 | coverage becomes an argmax instead of a sum | `test_the_coverage_credence_is_the_covered_mass` |
+
+The credence-side change was verified RED the same way, by reverting the two source files and
+re-running its suite (`MethodError: no method matching decision_fpa(...; extra=...)`).
+
+## Deviations and disclosures
+
+1. **The build site was re-scoped before any `src/` change**, for the reason recorded in the
+   pre-registration above: the approved plan named `lookup.action_utilities` as "the one decide
+   surface", and the gate's typed arm plus the deployed read path both decide in the credence
+   daemon instead. Disclosed in the frozen document, not after the fact.
+2. **TDD order was not clean on the credence side.** The Julia tests were written after the
+   Julia implementation and their RED state established retroactively, by reverting the
+   implementation and re-running. The Python side was red-first throughout. Recorded as a
+   deviation rather than presented as compliance.
+3. **`voi_gather` now prices over the extended action set.** This is a deliberate behaviour
+   change on the gather lane: VOI is the expected gain in `value`, and `value` must be taken
+   over the action set the terminal decision is taken over, or a probe is priced against a
+   decision the agent is not solving. `provisional_leader` is deliberately NOT extended — it
+   answers "which candidate would you report if forced", which remains a `report_j` question.
+4. **A capability check was added that the pre-registration did not name.** A daemon predating
+   `extra_actions` ignores the key silently, so the body would price rows nothing ranks and a
+   gate run would measure the pre-r30b action set while believing otherwise. The daemon now
+   echoes `n_extra_actions` and the executor **raises** when it sent rows and got no echo. This
+   is an addition beyond the frozen scope, made because silent degradation is the one failure a
+   gate reading cannot survive; it is disclosed here rather than folded in quietly.
+5. **`aggregate.totals[].point` is the interval midpoint** — a record/display field only. In
+   r21's shape it was the composed total's point estimate; nothing reads it to decide.
+6. **The proposal grid is capped** at `MAX_INTERVAL_VALUES = 8` distinct values (28 rows),
+   coarsened by evenly spaced order statistics keeping both endpoints. The coarsening is
+   posterior-blind by construction (`interval_options` never receives a credence), and when it
+   binds every option built off the coarsened grid carries `grid_coarsened`, which the recorded
+   claim carries too — a bound cap nothing records would read as "these were all the proposals
+   there were". The cap did not bind anywhere in this checkpoint's data: the largest observed
+   candidate set is 4 distinct numeric values.
+7. **§6.10 rider landed:** `run_meta.json` now carries `decider_git` — the answer-brain
+   daemon's tree, located by `CREDENCE_DIR`, with an unlocatable checkout recorded as a stated
+   reason rather than an absent key. Without it r31 could not attribute its own reading to the
+   tree that produced its decisions.
+8. **A defect this checkpoint's own tests caught, disclosed rather than quietly fixed.** The
+   first implementation built the interval rows ONCE, before the executor's decide loop. But
+   the loop can MINT a candidate mid-question (`re_extract_strong` naming a new value), and a
+   row spans the K+1 atoms of the posterior it is ranked against — so the second decide would
+   have posted rows spanning the wrong space, and a live daemon would have refused them by the
+   length check the credence side deliberately fails loud on. Found by writing the test for
+   "the rows track a candidate the loop mints", which was RED against the build-once
+   implementation and is kept as a mutation-verified guard. The rows are now rebuilt per
+   decide from the current candidate list.
+9. `GETTING_STARTED.md`'s status paragraph was three items stale (it still described the
+   collapse ladder as remaining work and pointed at `questions.yaml`); corrected as
+   doc-currency, no new claims.
+
+## What this checkpoint does NOT claim
+
+It does not claim the lever helps. It builds it, proves it is one declaration ranked by one
+argmax on both surfaces, and measures that the pinned corpus can exercise it on 5 rows. Whether
+it earns its place is r31's question, on the two populations the roadmap names — and by C12,
+merging this does not deploy it.
+
+**Next:** r31a (the $0 evidence pack — splice, both-utilities reading, off-gate sweep), then
+Conferral 1, then r31.

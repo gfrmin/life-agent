@@ -375,10 +375,11 @@ def test_scoped_rows_are_per_dated_candidate_and_engine_picked() -> None:
                                 state_current="s1", weights_current=[0.5, 0.4, 0.1],
                                 time_indexed=False)
     assert set(scoped) == {0, 1}
-    action, _eu, j = LK.decide(_Brain(), "s1", [0.5, 0.4, 0.1],
-                              {"u_correct": 1.0, "u_wrong": -9.0, "u_hedged": 0.5,
-                               "u_abstain": 0.0, "lambda_int": 0.1},
-                              scoped={jj: t[0] for jj, t in scoped.items()})
+    action, _eu, j, _iv = LK.decide(
+        _Brain(), "s1", [0.5, 0.4, 0.1],
+        {"u_correct": 1.0, "u_wrong": -9.0, "u_hedged": 0.5,
+         "u_abstain": 0.0, "lambda_int": 0.1},
+        scoped={jj: t[0] for jj, t in scoped.items()})
     assert "report_scoped_0" in captured["rows"] and "report_scoped_1" in captured["rows"]
     assert "report_scoped" not in captured["rows"]  # the flat host-picked row died
     assert (action, j) == ("report_scoped", 1)

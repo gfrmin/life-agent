@@ -28,6 +28,7 @@ from typing import Any
 from life_agent.bridge import observations as SO
 from life_agent.core import answer_shape as AS
 from life_agent.core import calibration as CAL
+from life_agent.core import decide as DEC_ATOM
 from life_agent.core import decisions as DEC
 from life_agent.core import deliberate as DL
 from life_agent.core import gather_outcomes as GO
@@ -382,8 +383,18 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
 
     cand_comp = _cand_comp(ext, candidates)
 
+    # r30b: the `quantity` shape's claim space, rebuilt per decide from the CURRENT candidate
+    # list — the loop may mint one mid-question, and a row spans the K+1 atoms of the posterior
+    # it is ranked against, so a stale row spans the wrong space. Built by the SAME declaration
+    # the in-process family ranks (C3): the daemon receives finished tabular rows and supplies
+    # no utility arithmetic of its own, so the Winkler grade is never re-spelled off this repo.
+    # Empty off-shape ⇒ the wire carries no `extra_actions` key at all (C2).
+    intervals: tuple[DEC_ATOM.IntervalOption, ...] = ()
+
     def _decide(observations: list[Any], r: float, era_split: bool, applied: list[str],
                 sensors: dict[str, str] | None = None) -> View:
+        nonlocal intervals
+        intervals = DEC_ATOM.interval_options(candidates, u_bar, shape=shape)
         payload: dict[str, Any] = {
             # r09 D1: the correlation key (quote, doc_key) is wire-only — the brain stays
             # string-blind, so the decide post strips it while the loop's channel keeps it
@@ -391,6 +402,12 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
             "rho": r, "u_bar": u_bar,
             "era_split": era_split, "owner_scoped": owner, "applied_probes": applied,
             "transforms": transforms}
+        if intervals:
+            # `act` names the SPEECH ACT the row belongs to, so the daemon's eligibility
+            # predicates (the owner-scoped attribution guard, the §2-A rescue gate) keep
+            # asking "did this commit?" instead of matching a wire name (C5).
+            payload["extra_actions"] = [{"name": o.name, "act": "report",
+                                         "values": list(o.values)} for o in intervals]
         if sensors is not None and menu is not None:
             payload["sensors"] = sensors
             payload["grow"] = menu
@@ -399,6 +416,15 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
         dec = SEAM.commit(SEAM.DaemonDecide(post=post, daemon=daemon,
                                             payload=payload)).view
         assert dec is not None  # a DaemonDecide commit always carries the reply view
+        if intervals and "n_extra_actions" not in dec:
+            # A decider predating `extra_actions` ignores unknown request keys, so the body
+            # would price rows nothing ranks and every reading would silently measure the
+            # pre-r30b action set. Silent degradation is the one outcome a gate reading
+            # cannot survive — fail loud, naming the requirement.
+            raise RuntimeError(
+                "the decider did not rank this question's extra_actions (no n_extra_actions "
+                "in its reply): it predates the body-priced terminal rows r30b requires. "
+                "Point CREDENCE_DIR at a checkout carrying them and restart the daemon.")
         return dec
 
     dec = _decide(obs, rho, era, applied)
@@ -605,8 +631,16 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
             dec = _decide(obs, rho, era, applied, sensors=last_sensors)
         else:
             break
+    # r30b: an `interval_a_b` winner IS a report — the same speech act at a different
+    # precision (C5) — carrying its claim in the r21 `aggregate.totals` shape the frozen
+    # grader already reads. The wire name never escapes this seam.
+    chosen = DEC_ATOM.interval_by_name(intervals, dec["effector"])
+    if chosen is not None:
+        dec = {**dec, "effector": "report", "value": None}
     _log_outcomes(dec["effector"])
     asserted = [dec["value"]] if dec["effector"] == "report" and dec["value"] else []
+    if chosen is not None:
+        asserted = [chosen.lo_label, chosen.hi_label]
     return {"effector": dec["effector"], "asserted": asserted, "candidates": candidates,
             "credences": dec["credences"], "p_none": dec["p_none"], "eu": dec["eu"],
             "n_obs": len(obs), "hits": hits, "route": route, "question": question,
@@ -615,17 +649,25 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
             "instrument": edge_instrument, "cost_usd": edge_cost,
             "latency_s": edge_latency, "instrument_value": edge_value,
             "instrument_confidence": edge_conf, "instrument_lineage": edge_lineage,
-            "edge_events": edge_events, "spend_usd": spend_usd}
+            "edge_events": edge_events, "spend_usd": spend_usd,
+            **({"aggregate": {"claim": "interval", "totals": [chosen.claim()],
+                              "p": round(LK.interval_coverage(
+                                  candidates, [float(c) for c in (dec["credences"] or [])],
+                                  lo=chosen.lo, hi=chosen.hi), 6)}}
+               if chosen is not None else {})}
 
 
 # --- render (the executor's decision in the shared credence grammar) --------------------
 
+def _cite_ns(value: str, hits: list[dict[str, Any]]) -> list[int]:
+    """The 1-based hit cards whose text carries the value, in hit order (the same numbering
+    the card render uses), via the shared date/number-aware matcher."""
+    return [i + 1 for i, h in enumerate(hits)
+            if MATCH.answer_matches(value, [], str(h.get("chunk_text", "")))]
+
+
 def _cites(value: str, hits: list[dict[str, Any]]) -> str:
-    """Cite the hit cards whose text carries the value — 1-based, in hit order (the same
-    numbering the card render uses), via the shared date/number-aware matcher."""
-    ns = [i + 1 for i, h in enumerate(hits)
-          if MATCH.answer_matches(value, [], str(h.get("chunk_text", "")))]
-    return "".join(f"[{n}]" for n in ns)
+    return "".join(f"[{n}]" for n in _cite_ns(value, hits))
 
 
 def render_view(view: View) -> str:
@@ -650,7 +692,22 @@ def render_view(view: View) -> str:
         creds = [creds[j] for j in order]
     alts = " · ".join(f"{v} ({p:.3f}) {_cites(v, hits)}".rstrip()
                       for v, p in zip(cands, creds, strict=False))
-    if eff == "report" and asserted:
+    claim = (view.get("aggregate") or {}).get("totals") or []
+    if eff == "report" and claim:
+        # r30b: the claim is a RANGE — the SAME contract string the in-process family renders
+        # (one grammar across surfaces), with the endpoints echoed as the candidates' own
+        # display strings and the credence the range's own coverage mass.
+        t = claim[0]
+        lo, hi = float(t["lo"]), float(t["hi"])
+        covered = [c for c in cands
+                   if (v := AS.numeric_value(c)) is not None and lo <= v <= hi]
+        ns = sorted({n for c in covered for n in _cite_ns(c, hits)})
+        body = LK.GRAMMAR["report_interval"].format(
+            lo=(asserted[0] if asserted else t["lo"]),
+            hi=(asserted[-1] if asserted else t["hi"]),
+            p=float((view.get("aggregate") or {}).get("p") or 0.0),
+            cites="".join(f"[{n}]" for n in ns)).rstrip()
+    elif eff == "report" and asserted:
         v = asserted[0]
         body = LK.GRAMMAR["report"].format(value=v, p=(creds[0] if creds else 0.0),
                                            cites=_cites(v, hits))

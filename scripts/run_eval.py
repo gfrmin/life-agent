@@ -53,6 +53,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from eval_grading import answer_matches, chunk_matches_any, classify
 
+from life_agent.core import answer_shape as AS
 from life_agent.core import decisions as DEC
 
 # Effectively-unbounded k for the in-corpus set-membership check: we want "does the
@@ -603,17 +604,15 @@ def withheld_reason(view: dict, *, available: bool):
 
 
 def _numeric_gold(gold: str, variants: list[str]) -> float | None:
-    """The first parseable numeric value among gold + variants (commas stripped,
-    currency words ignored) — None when the gold is not numeric (then the token
-    matcher grades as before)."""
-    import re as _re
+    """The first parseable numeric value among gold + variants — None when the gold is not
+    numeric (then the token matcher grades as before). A FOLD over the one parser
+    (`answer_shape.numeric_value`, r30b C7), never a second regex: the number the argmax
+    priced its interval claim against and the number this grades it against must be read
+    out of the same string by the same rule."""
     for cand in [gold, *variants]:
-        m = _re.search(r"-?\d[\d,]*(?:\.\d+)?", str(cand))
-        if m:
-            try:
-                return float(m.group(0).replace(",", ""))
-            except ValueError:
-                continue
+        value = AS.numeric_value(cand)
+        if value is not None:
+            return value
     return None
 
 
@@ -1047,6 +1046,11 @@ def build_gate_run_meta(*, run_id: str, args, questions: list[dict], questions_p
         "created_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "life_agent_git": _git_info(Path(__file__).resolve().parent.parent),
         "decision_path_tree": decision_path_tree(),
+        # r30b: §6.10's declaration covers THIS repo, but the typed arm's argmax runs in the
+        # answer-brain daemon — a different tree. A run that cannot name the tree that
+        # produced its decisions cannot attribute its own reading, which is what §6.10 is
+        # for. Located by CREDENCE_DIR (never a hard-coded path); unlocatable is NAMED.
+        "decider_git": _decider_git(),
         "corpus": corpus,
         "questions": {
             "path": str(questions_path) if questions_path else None,
@@ -1085,6 +1089,18 @@ def build_gate_run_meta(*, run_id: str, args, questions: list[dict], questions_p
             "ANSWER_BRAIN_URL": os.environ.get("ANSWER_BRAIN_URL"),
         },
     }
+
+
+def _decider_git() -> dict:
+    """The DECIDER's tree — the answer-brain daemon's checkout, located by ``CREDENCE_DIR``.
+    Unset or unreadable is recorded with a stated reason, never as an absent key a reader
+    could mistake for "the decider did not move"."""
+    import os
+    root = os.environ.get("CREDENCE_DIR")
+    if not root:
+        return {"sha": None, "dirty": None,
+                "note": "CREDENCE_DIR unset — the decider's tree is unpinned for this run"}
+    return _git_info(Path(root))
 
 
 def _git_info(repo_dir: Path) -> dict:
