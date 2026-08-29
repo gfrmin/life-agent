@@ -67,6 +67,29 @@ SPACE_RULES: list[tuple[str, list[str]]] = [
 ]
 
 
+# The ONE numeric parse on the decision path AND in the graders (r30b · C7). Transcribed
+# verbatim from the pre-r30b grading regex (`run_eval._numeric_gold`,
+# `aggregate_eval._numeric`), which now BIND this function rather than hold a second and a
+# third copy: a claim about a quantity and the grade of that claim must read the same number
+# out of the same string, or the lever is measured against a different quantity than it
+# asserted (the standing lesson — never re-implement the constant you price).
+NUMERIC_RE = re.compile(r"-?\d[\d,]*(?:\.\d+)?")
+
+
+def numeric_value(text: object) -> float | None:
+    """The first parseable number in ``text`` (thousands commas stripped), or None. Deliberately
+    permissive about what surrounds it — a candidate reads "ILS 1,234.50" or "3 months" — and
+    deliberately NOT a quantity detector: the ``quantity`` shape gate is what decides whether a
+    number in a candidate denotes the answer's magnitude (:func:`answer_space`)."""
+    m = NUMERIC_RE.search(str(text if text is not None else ""))
+    if m is None:
+        return None
+    try:
+        return float(m.group(0).replace(",", ""))
+    except ValueError:  # pragma: no cover — the pattern only matches parseable literals
+        return None
+
+
 def answer_space(text: str) -> str:
     """The question's answer shape — first SPACE_RULES pattern to match, in the frozen
     precedence order threshold > set > quantity > exact; DEFAULT_SHAPE on no match."""

@@ -3252,3 +3252,25 @@ on this list. Answers land here by amendment, citing their evidence.
   that stated design or invent a second correction shape (barred by C7); re-ask detection
   has no frozen similarity/window parameters to fold against. Both are named open items for
   a future checkpoint with its own pre-registration, not silently dropped.
+
+  **r30b (2026-08-29, `docs/unification/reports/r30b-interval-claims.md`, $0) builds the
+  claim space the units lever needed something to scale: the INTERVAL claim.** On a
+  `quantity` question the answer may be a range, priced as one more tabular row over the
+  same K+1 atoms — `u_assert(x_j, Ū)` at candidate j, where `x_j` is the r21-frozen Winkler
+  grade of `[lo, hi]` against candidate j's value — ranked by the same `optimise` call as
+  every crisp report, hedge and withholding. Width is paid for INSIDE the row, so a wider
+  claim buys its coverage rather than dominating for free; a crisp `report_j` is not the
+  degenerate case (a point interval still pays the 2/α miss term against a nearby value,
+  where `report_j` pays flat `u_wrong`), and that difference IS the lever. The response
+  vocabulary does not grow: an interval is a `report` at a lower precision, so the frozen
+  r21 grading branch received it unchanged. Landed on BOTH decide surfaces from one
+  declaration — `core.decide.interval_options` — because the gate's typed arm and the
+  deployed read path decide in the answer-brain daemon, not in `lookup.action_utilities`;
+  the daemon gained a generic `extra_actions` wire (body-priced rows, engine-ranked,
+  zero arithmetic daemon-side) so the Winkler grade is never re-spelled off the side that
+  grades it. **The finding that binds r31: the lever can fire on 5 of the pinned 104
+  questions.** 19 classify `quantity`, but 13 of those carry exactly one distinct numeric
+  candidate and 1 carries none — on 14 of 19 there is no range to claim. Against the §6.13
+  commit-wobble floor of 2, a 5-row population is not a reading, so **the 15 computed
+  questions of `eval/aggregate-questions.yaml` are a precondition for reading this lever,
+  not an enhancement.** Nothing deployed; no priced run bought.

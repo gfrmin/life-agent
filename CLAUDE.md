@@ -111,7 +111,34 @@ population. Step 5 (streams 3/5) was investigated and DEFERRED, not built: the r
 `calibration.corrections` writer (`scripts/verdict.py`) carries free-text claim
 corrections with no `decision_id`/credence and states "NEVER force-folded... prose
 steers"; re-ask detection has no frozen similarity/window parameters. Both are named open
-items for their own future pre-registration. Next: r30b (steps 3-4, the claim space).) Six
+items for their own future pre-registration. Next: r30b (steps 3-4, the claim space).)
+**r30b (2026-08-29, `docs/unification/reports/r30b-interval-claims.md`, $0) builds the
+claim space — the INTERVAL claim, priced inside the argmax.** Step 4 ("extract k more") is
+scoped OUT with reasons (r29 rider 2 froze a harm term as a precondition; it would be a
+second lever on one gate reading). On a `quantity` question with >=2 distinct numeric
+candidates, each contiguous range over the candidate order statistics is one more tabular
+row over the same K+1 atoms — `u_assert(x_j, U)` with `x_j` the r21-frozen Winkler grade —
+ranked by the same optimise call. Width pays INSIDE the row; the response vocabulary does
+NOT grow (an interval is a `report` at lower precision, so r21's frozen grading branch took
+it unchanged). **The build site was re-scoped before any src change, and the finding is
+structural: the gate's typed arm and the deployed read path both decide in the credence
+answer-brain daemon, not in `lookup.action_utilities`** — a lever built only in-process
+would be invisible to r31 and absent from production. So `core.decide.interval_options` is
+the ONE declaration and both surfaces bind it; the daemon gained a generic `extra_actions`
+wire (body-priced rows, engine-ranked, zero arithmetic daemon-side, `act` naming the speech
+act so the guards still ask "did this commit?") and echoes `n_extra_actions` so a daemon
+predating it fails loud instead of silently measuring the old action set. Replay under an
+ATTRIBUTED-delta criterion (not pure equality — the lever moves the argmax by design):
+288/314 vs the master baseline's 293/314, the 21 carried r30 artefacts identical, the 5 new
+ones predicted exactly by the declared gate on 104/104 fixtures in both directions, two
+draws identical. Nine mutations RED. **The finding that binds r31: the lever can fire on 5
+of the pinned 104** — 19 classify `quantity` but 13 carry exactly one distinct numeric
+candidate and 1 carries none, so on 14 of 19 there is no range to claim. Against the §6.13
+wobble floor of 2 that is not a reading: **`eval/aggregate-questions.yaml`'s 15 computed
+questions are a precondition for r31, not an enhancement.** Merge != deploy (the run-14
+precedent): the deploy gates on r31. Also landed: `run_meta.decider_git` (§6.10 covered only
+this repo; a run that cannot name the tree that decided cannot attribute its own reading).
+Next: r31a (the $0 evidence pack), Conferral 1, then r31. Six
 runs so far (§14 ledger has each): the executor series read 0.002 → 0.010 → 0.065 →
 0.092 → 0.098, then **run 6 (2026-08-17: judge-graded arms, λ_usd spend on both arms,
 the post-Ollama cloud instruments): FAIL at P(Δ>0.05)=0.678, Δ̄=+0.180 [−0.244, +0.661]

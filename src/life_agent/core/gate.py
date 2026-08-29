@@ -62,6 +62,7 @@ import random
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from life_agent.core import decide as _DECIDE
 from life_agent.core.decide import u_assert
 from life_agent.core.matching import answer_matches
 
@@ -164,28 +165,15 @@ def realised_report(asserted: list[str], gold: str, variants: list[str]) -> bool
     return any(answer_matches(gold, variants, a) for a in asserted)
 
 
-_WINKLER_ALPHA = 0.2      # r21 (frozen): the rendered central level is 80%
-_WINKLER_SCALE = 2.0      # r21 (frozen): x = max(0, 1 - W / (SCALE * |gold|))
-
-
-def realised_aggregate(lo: float, hi: float, gold_value: float
-                       ) -> tuple[float, bool]:
-    """The r21 pre-registered interval grade: the Winkler score of the asserted
-    central-80% interval against the numeric gold, affinely mapped onto the assert
-    atom's p-argument. Returns ``(x, excludes_gold)`` — ``excludes_gold`` is the
-    family's named wrong-commit class (categorical, independent of x). A sharp
-    covering interval reads near 1; an interval wider than twice the gold reads 0
-    even when covering; a miss pays in miss distance through the 2/alpha term."""
-    w = hi - lo
-    if gold_value < lo:
-        w += (2.0 / _WINKLER_ALPHA) * (lo - gold_value)
-    if gold_value > hi:
-        w += (2.0 / _WINKLER_ALPHA) * (gold_value - hi)
-    if gold_value == 0.0:
-        return (1.0 if lo <= 0.0 <= hi and w == 0.0 else 0.0,
-                not (lo <= gold_value <= hi))
-    x = max(0.0, 1.0 - w / (_WINKLER_SCALE * abs(gold_value)))
-    return x, not (lo <= gold_value <= hi)
+# r30b (C4): the Winkler grade has ONE home — `core.decide`, beside the assert atom it feeds,
+# because it is the `quantity` shape's LOSS, not a grading convention. These are BINDINGS
+# (drift-gated in tests/test_interval_claims.py), never a second spelling: the interval the
+# argmax priced and the interval this module grades are the same rule, or the agent is graded
+# on a loss it did not decide under. `realised_aggregate` keeps its name here because r21's
+# frozen grading branch (`run_eval`, `aggregate_eval`) reads it by that name.
+_WINKLER_ALPHA = _DECIDE._WINKLER_ALPHA
+_WINKLER_SCALE = _DECIDE._WINKLER_SCALE
+realised_aggregate = _DECIDE.realised_aggregate
 
 
 def realised_utility(resp: RealisedResponse, u: dict[str, float], *,

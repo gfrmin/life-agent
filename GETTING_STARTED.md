@@ -14,10 +14,14 @@ operating manual) first; [`ROADMAP.md`](./ROADMAP.md) has the full plan.
 **`bin/ask-live`**. The GTD act layer is live and event-sourced (`life_agent.tasks`), reached
 over Telegram (`life_agent.reach`); email→GTD auto-files cited tasks off a timer.
 **Active phase = the derivation framework (Phase 1.6):** the typed Bayesian ask arm is
-the **deployed default since 2026-08-25** (run 14 PASS; ROADMAP item 3f). What remains is
-the approved completion programme: the collapse ladder M2–M7
-(`docs/module-collapse-design.md` §8), then the aggregate + thread families (ROADMAP items
-4–5), then the proplang graduation — each eval-gated; dogfood misses still go to
+the **deployed default since 2026-08-25** (run 14 PASS; ROADMAP item 3f). The completion
+programme's stage map is resolved and **only Stage 4 — the MVP exit test — is open**: the
+collapse ladder M2–M7 is CLOSED (`docs/module-collapse-design.md`), Stage 2 (the aggregate +
+thread families) is DEFERRED by owner ruling pending that exit-test measurement, and Stage 3
+(the proplang graduation) is committed follow-on work gated on the completion audit. Current
+build: the r28–r31 arc — the answer as a claim about a quantity, aimed at the measured cause
+of the exit test not being run (r28: 96% of run 18's adoption margin is the price term; r29:
+the agent abstains on 8 of 8 computed questions). Dogfood misses go to
 `$LIFE_AGENT_KB/FAILURES.md` as evidence, but no longer gate the next phase (PRINCIPLES §9
 as amended). The agent loop / brain / spine are later phases (spine = open decision,
 PRINCIPLES §15).
@@ -44,14 +48,19 @@ are read via `secret-tool`, never from `.env`.
 
 1. **Execute the program** in order ([`docs/system-design.md`](./docs/system-design.md) §8);
    each phase lands SPEC-first/TDD where it touches pkm and must pass its eval gate
-   ([`docs/derivation-engine-design.md`](./docs/derivation-engine-design.md) §11).
+   ([`docs/derivation-engine-design.md`](./docs/derivation-engine-design.md) §11). Every
+   decision-path checkpoint pre-registers first: criteria frozen and COMMITTED before any
+   `src/` change, each demonstrated RED by its own mutation
+   (`docs/unification/reports/` is the append-only ledger of those readings).
 2. **Keep asking real questions** (`bin/ask-live "…"`) and **log every miss** to
    `$LIFE_AGENT_KB/FAILURES.md` per the template
    ([`docs/failures-template.md`](./docs/failures-template.md)) — evidence, not a gate
    (PRINCIPLES §9): it shapes priorities within the program and verifies phases against
    reality.
 3. **Measure**: `uv run python scripts/run_eval.py` grades answers against the eval set
-   (`$LIFE_AGENT_KB/eval/questions.yaml`); add a question when a new answer shape appears.
+   (`$LIFE_AGENT_KB/eval/questions_v2.yaml` — 104 questions, sha256-pinned into every gate
+   run's `run_meta.json`; do not edit it, the hash anchors the whole run series). A new
+   answer shape wants a NEW set with its own pinned series, not an edit to this one.
 4. Anything outside the adopted design goes to the backlog, not the tree.
 
 Useful side-tools: `scripts/needle.sh "<term>"` (OCR+grep document finder, works on scans);

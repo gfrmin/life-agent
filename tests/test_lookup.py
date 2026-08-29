@@ -673,6 +673,7 @@ def test_grammar_templates_all_render() -> None:
     # drift gate: every template formats with its declared slots
     LK.GRAMMAR["report"].format(value="v", p=0.5, cites="[1]")
     LK.GRAMMAR["report_scoped"].format(value="v", as_of="2019-01-01", p=0.5, cites="[1]")
+    LK.GRAMMAR["report_interval"].format(lo="lo", hi="hi", p=0.5, cites="[1]")
     LK.GRAMMAR["hedge"].format(alts="a")
     LK.GRAMMAR["ask_clarify"].format(alts="a")
     LK.GRAMMAR["abstain"].format(reason="r")
