@@ -26,6 +26,7 @@ from collections.abc import Callable
 from typing import Any
 
 from life_agent.bridge import observations as SO
+from life_agent.core import answer_shape as AS
 from life_agent.core import calibration as CAL
 from life_agent.core import decisions as DEC
 from life_agent.core import deliberate as DL
@@ -344,7 +345,15 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
                 "n_competing": int(ext.get("n_competing", 0) or 0),
                 **_UNPRICED_ATTRIBUTION, "edge_events": edge_events,
                 "spend_usd": spend_usd}
-    u_bar = get(f"{bridge}/utility")["u_bar"]
+    # r30 (C5): this question's own answer shape prices its own grow-menu pricing too —
+    # the SAME seam current_u_bar's other callers route through. The anchor shape omits
+    # the query param entirely (never a wire change for the majority-`exact` case r29
+    # measured — C10's replay is the check: a recorded cassette's plain `/utility` still
+    # matches byte-for-byte whenever the question classifies `exact`).
+    shape = AS.answer_space(question)
+    utility_url = (f"{bridge}/utility" if shape == AS.ANCHOR_SHAPE
+                   else f"{bridge}/utility?shape={shape}")
+    u_bar = get(utility_url)["u_bar"]
     # price the menu in the OWNER'S utility (plan item C): transform rows and grow
     # actuators are AUTHORED in USD; the elicited exchange rate (lambda_usd, gauge
     # units per dollar — a learned latent, never a constant invented here) converts

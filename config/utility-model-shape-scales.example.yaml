@@ -1,0 +1,27 @@
+# The six OPTIONAL per-shape utility-scale latents (r30,
+# `docs/unification/reports/r30-units-lever.md`) — `voi_scale_<shape>` and
+# `regret_scale_<shape>` for each of `answer_shape.SCALED_SHAPES` (quantity/set/threshold;
+# `exact` is the anchor and needs no scale). NOT part of `config/utility-model.example.yaml`
+# on purpose: they are optional (`core/utility.py`'s `SHAPE_LATENT_NAMES`, the
+# `tau_narrative` precedent — an owner file that omits a name here is unaffected, and
+# `core/decide.py`'s `shaped_u_bar` defaults an undeclared scale to 1.0). Merging this block
+# wholesale into `config/utility-model.example.yaml` would make every test fixture that
+# copies that file (`tests/conftest.py`'s `ledger_kb`) and the owner's real deployed file
+# declare all six the moment either is refreshed from the example — moving pinned
+# fold_version hashes and replay fixtures for no reason. This file exists so the numbers are
+# FROZEN (git history, computed truncated means verified in `tests/test_answer_shape.py`)
+# without being ACTIVE anywhere until an owner deliberately opts a shape in by copying the
+# two lines for it into their real `$LIFE_AGENT_KB/utility/model.yaml`.
+#
+# Grid/prior shape reused verbatim from `lambda_usd` (the other positive-by-domain "rate"
+# latent, `config/utility-model.example.yaml`): N(1.0, 0.35) on [0, 8], TRUNCATED MEAN
+# ≈1.002 (computed, not assumed — the #67-review lesson). A scale of 1.0 is the anchor's
+# own value, so this prior says "no scale correction, until evidence narrows it" for every
+# shape, symmetrically.
+latents:
+  voi_scale_quantity:    {grid: {lo: 0.0, hi: 8.0, n: 33}, prior: {type: gaussian, mu: 1.0, sigma: 0.35}}
+  regret_scale_quantity: {grid: {lo: 0.0, hi: 8.0, n: 33}, prior: {type: gaussian, mu: 1.0, sigma: 0.35}}
+  voi_scale_set:         {grid: {lo: 0.0, hi: 8.0, n: 33}, prior: {type: gaussian, mu: 1.0, sigma: 0.35}}
+  regret_scale_set:      {grid: {lo: 0.0, hi: 8.0, n: 33}, prior: {type: gaussian, mu: 1.0, sigma: 0.35}}
+  voi_scale_threshold:    {grid: {lo: 0.0, hi: 8.0, n: 33}, prior: {type: gaussian, mu: 1.0, sigma: 0.35}}
+  regret_scale_threshold: {grid: {lo: 0.0, hi: 8.0, n: 33}, prior: {type: gaussian, mu: 1.0, sigma: 0.35}}

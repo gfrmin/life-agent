@@ -303,6 +303,26 @@ def _answer_fixture(tmp_path: Path) -> tuple[str, list[Card], Path, Path]:
     return (text, cards, tmp_path / "outcomes.jsonl", tmp_path / "decisions.jsonl")
 
 
+def test_narrative_answer_classifies_the_question_when_u_bar_is_not_supplied(
+        migrated_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # r30 (C5): when the caller does not pre-supply u_bar, narrative_answer classifies
+    # its OWN question and asks current_u_bar for that shape — never a second scale
+    # computation. (Every other test in this file passes u_bar= explicitly, bypassing
+    # this branch entirely — the production path this pins.)
+    from life_agent.core import lookup as LK
+    seen_shapes: list[str] = []
+
+    def _spy(brain, *, shape: str = "exact"):
+        seen_shapes.append(shape)
+        return dict(U), "fold-spy", "all-to-date"
+
+    monkeypatch.setattr(LK, "current_u_bar", _spy)
+    text, cards, opath, dpath = _answer_fixture(tmp_path)
+    narrative_answer(migrated_root, "how many registration numbers do I have in total?",
+                     text, cards, outcomes_path=opath, decisions_path=dpath)
+    assert seen_shapes == ["quantity"]
+
+
 def test_narrative_answer_abstains_at_priors(migrated_root: Path,
                                              tmp_path: Path) -> None:
     # the honest §7 prediction: with an empty evidence stream the verified cell sits

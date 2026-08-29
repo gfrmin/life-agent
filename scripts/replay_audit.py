@@ -647,8 +647,8 @@ def make_transport(deps: Any, daemon: str, meter: SpendMeter, tape: list[Call], 
 
 def build_deps(root: Path, conn: Any, client: Any) -> Any:
     """The bridge's own deps, with the REFUSING client and the staging sinks."""
-    def _u_bar() -> dict[str, float]:
-        u_bar, _v, _p = LK.current_u_bar(LK.shared_brain())
+    def _u_bar(shape: str) -> dict[str, float]:
+        u_bar, _v, _p = LK.current_u_bar(LK.shared_brain(), shape=shape)
         return u_bar
 
     def _fold_version() -> str:

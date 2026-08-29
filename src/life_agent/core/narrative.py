@@ -454,11 +454,15 @@ def narrative_answer(root: Path, question: str, text: str,
     credences → per-claim EU decision → answer artifact (§18.9) → decision logged
     (no EU decision is ever made unlogged) → labeled render. Pure given its inputs
     except the folds (outcomes log) and the two appends."""
+    from life_agent.core import answer_shape as AS
     from life_agent.core import lookup as LK
     # the wire holds every cell/coverage Beta; the body conditions + decides through it
     b = LK.shared_brain()
     if u_bar is None or utility_fold_version is None:
-        u_bar, utility_fold_version, _policy = LK.current_u_bar(b)
+        # r30 (C5): this question's own answer shape prices its own decision — never a
+        # separate rescoring, always through current_u_bar's one seam.
+        u_bar, utility_fold_version, _policy = LK.current_u_bar(
+            b, shape=AS.answer_space(question))
 
     opath = outcomes_path if outcomes_path is not None else config.OUTCOMES_LOG
     cards = list(cards)

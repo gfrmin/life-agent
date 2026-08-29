@@ -39,6 +39,10 @@ latents:
   # is computed, never assumed). Frozen BEFORE any elicitation; the owner's one line
   # ("how many correct answers is a dollar worth to me?") in elicitations.jsonl narrows it.
   lambda_usd:      {grid: {lo: 0.0, hi: 8.0, n: 33},   prior: {type: gaussian, mu: 1.0, sigma: 0.35}}
+  # Six OPTIONAL per-shape utility-scale latents (r30, question-dependent units) live in
+  # config/utility-model-shape-scales.example.yaml, NOT here — copy the two lines for a
+  # shape into this block to opt it in; omitting all six (the state every file is in
+  # today) is a working default, never an error.
 tau:
   grid: {lo: 0.2, hi: 5.0, n: 8}
   prior: {type: gaussian, mu: 1.0, sigma: 1.0}

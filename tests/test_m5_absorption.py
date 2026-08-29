@@ -225,7 +225,8 @@ def test_leaf_decision_declares_the_terminals_regime(
     model_path.write_text(MODEL_YAML, encoding="utf-8")
     monkeypatch.setattr(CFG2, "UTILITY_MODEL", model_path)
     monkeypatch.setattr(CFG2, "UTILITY_ELICITATIONS", tmp_path / "elicit.jsonl")
-    monkeypatch.setattr(LK, "_U_BAR", None)
+    monkeypatch.setattr(LK, "_U_BAR_RAW", None)
+    monkeypatch.setattr(LK, "_U_BAR_SHAPED", {})
 
     events: list[DEC2.DecisionEvent] = []
 

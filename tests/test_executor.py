@@ -93,7 +93,7 @@ class FakeServices:
 
     def get(self, url: str) -> dict[str, Any]:
         self.calls.append((url, None))
-        if url.endswith("/utility"):
+        if url.split("?")[0].endswith("/utility"):  # r30: a shape= query string may follow
             return {"u_bar": self.utility}
         if url.endswith("/grow_menu"):
             return {"grow": _GROW_MENU}
@@ -133,6 +133,29 @@ def test_typed_report_is_terminal() -> None:
     assert view["asserted"] == ["P123"]
     assert view["candidates"] == ["P123"]
     assert view["n_obs"] == 1  # the footer's grounded-observation count is faithful
+
+
+def test_run_pass_requests_utility_shaped_for_the_question() -> None:
+    # r30 (C5): the grow-menu pricing the daemon argmaxes over is shaped too — the same
+    # seam current_u_bar's other callers route through, reached via /utility?shape=<shape>.
+    fake = FakeServices(route={"construct": "the total", "time_indexed": False},
+                        decides=[{"effector": "report", "value": "12",
+                                  "credences": [0.95, 0.05], "p_none": 0.05, "eu": 0.9}])
+    _loop(fake, question="how many passports do I have in total?")
+    utility_calls = [u for u, _ in fake.calls if u.split("?")[0].endswith("/utility")]
+    assert utility_calls == [f"{B}/utility?shape=quantity"]
+
+
+def test_run_pass_omits_the_query_string_at_the_anchor_shape() -> None:
+    # the wire request is BYTE-IDENTICAL to pre-r30 for the majority-`exact` case (r29's
+    # census) — no shape= param at all, so a cassette recorded before this checkpoint
+    # still matches (collapse_replay.py's m5-base check).
+    fake = FakeServices(route={"construct": "passport number", "time_indexed": False},
+                        decides=[{"effector": "report", "value": "P123",
+                                  "credences": [0.95, 0.05], "p_none": 0.05, "eu": 0.9}])
+    _loop(fake)  # default question classifies "exact"
+    utility_calls = [u for u, _ in fake.calls if u.split("?")[0].endswith("/utility")]
+    assert utility_calls == [f"{B}/utility"]
 
 
 def test_extract_miss_never_consults_the_daemon() -> None:

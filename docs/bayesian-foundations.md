@@ -3231,3 +3231,24 @@ on this list. Answers land here by amendment, citing their evidence.
   refinement of it. What r29 does NOT settle: whether the flat utility gauge caused run 17.
   It is consistent and unrefuted (g/cost 2.6x-12.5x, uniform across questions by
   construction) but isolating it needs the engine re-run under rescaled units.
+  **r30 (2026-08-29, `docs/unification/reports/r30-units-lever.md`) builds the units
+  lever the gauge critique named — question-dependent VOI/regret scales — as a documented
+  no-op.** `core/decide.shaped_u_bar` is the one seam: `exact` is the anchor
+  (u_correct/u_wrong pass through unscaled, the standing §4.4 convention), each other
+  declared answer shape (`quantity`/`threshold`/`set`, `core/answer_shape.py`, promoting
+  r29's own frozen classifier) carries an optional `voi_scale_<shape>`/`regret_scale_<shape>`
+  pair defaulting to 1.0 when the owner's model file has not declared it — which is every
+  file today, so every scale is 1.0 everywhere and the change ships inert. Verified, not
+  merely asserted: a $0 splice re-read run 18's own 104-question archive end to end on the
+  r30 tree and reproduced 0.959/+0.514 [+0.077, +0.999] to the printed precision, with the
+  live Ū carrying none of the six latents. The replay corpus shows the same shape at
+  smaller grain: 293 of 314 fixtures compare byte-identical (0 mismatches); the other 21
+  are `aloop` fixtures whose question classifies non-`exact` and whose control flow reaches
+  the now-added `?shape=` query parameter a pre-r30 cassette cannot contain — verified to
+  be exactly that population, nothing else. **Step 5 (streams 3/5) is deferred, not built**:
+  `calibration.corrections`'s real writer (`scripts/verdict.py`) already carries free-text
+  claim-level corrections with no `decision_id` and no credence, and its own code states
+  "NEVER force-folded... prose steers" — an automatic Ū fold there would either contradict
+  that stated design or invent a second correction shape (barred by C7); re-ask detection
+  has no frozen similarity/window parameters to fold against. Both are named open items for
+  a future checkpoint with its own pre-registration, not silently dropped.
