@@ -112,11 +112,15 @@ def sweep(run_id: str, questions_path: Path | None) -> dict:
     qs = load_questions(questions_path or pinned_questions(run_id))
     by_qid = {DEC.question_id(q["question"]): q for q in qs}
 
-    control_ok, control_bad, unreadable = [], [], []
-    reach, displaced, excludes = [], [], []
+    control_ok: list[str] = []
+    control_bad: list[dict] = []
+    unreadable: list[dict] = []
+    reach: list[dict] = []
+    displaced: list[dict] = []
+    excludes: list[str] = []
     on_shape = 0
     for r in decisions_for(run_id):
-        q = by_qid.get(r.get("question_id"))
+        q = by_qid.get(str(r.get("question_id") or ""))
         ps = r.get("posterior_summary") or {}
         cands = [str(c) for c in (ps.get("candidates") or [])]
         creds = [float(c) for c in (ps.get("credences") or [])]
