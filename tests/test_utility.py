@@ -20,7 +20,9 @@ import math
 from pathlib import Path
 
 import pytest
+import yaml
 
+from life_agent.core import answer_shape as AS
 from life_agent.core import brain as B
 from life_agent.core import utility as U
 
@@ -114,6 +116,91 @@ def test_load_model_wrong_gauge_is_loud(tmp_path: Path) -> None:
 def test_grid_values_are_inclusive_and_evenly_spaced() -> None:
     g = U.Grid(lo=-1.0, hi=1.0, n=5)
     assert g.values() == (-1.0, -0.5, 0.0, 0.5, 1.0)
+
+
+# --- r30 step 2: the six OPTIONAL per-shape utility-scale latents -------------------------
+# docs/unification/reports/r30-units-lever.md — an optional latent block (the tau_narrative
+# precedent), not REQUIRED_LATENTS: an owner model file that omits them still loads, and
+# shaped_u_bar defaults the missing scale to 1.0 (core/decide.py).
+
+def test_shape_latent_names_names_exactly_the_six_optional_latents() -> None:
+    expected = tuple(f"{kind}_scale_{shape}" for shape in AS.SCALED_SHAPES
+                     for kind in ("voi", "regret"))
+    assert expected == U.SHAPE_LATENT_NAMES
+    assert len(U.SHAPE_LATENT_NAMES) == 2 * len(AS.SCALED_SHAPES)
+
+
+def test_a_model_file_omitting_the_six_latents_still_loads(model: U.UtilityModel) -> None:
+    # the MODEL_YAML fixture above declares none of them — every existing fixture in this
+    # repo is in this state today, and load_model must not require them (C4/C10's no-op).
+    assert set(model.latents) == set(U.REQUIRED_LATENTS)
+    assert not (set(U.SHAPE_LATENT_NAMES) & set(model.latents))
+
+
+def test_a_declared_shape_latent_is_parsed_like_any_other(tmp_path: Path) -> None:
+    p = tmp_path / "model.yaml"
+    extra_latent = ("  voi_scale_quantity: {grid: {lo: 0.0, hi: 4.0, n: 9}, "
+                    "prior: {type: gaussian, mu: 1.0, sigma: 0.3}}\n")
+    yaml_text = MODEL_YAML.replace(
+        "  lambda_usd: {grid: {lo: 0.0, hi: 8.0, n: 9},   "
+        "prior: {type: gaussian, mu: 1.0, sigma: 1.0}}\n",
+        "  lambda_usd: {grid: {lo: 0.0, hi: 8.0, n: 9},   "
+        "prior: {type: gaussian, mu: 1.0, sigma: 1.0}}\n" + extra_latent)
+    p.write_text(yaml_text, encoding="utf-8")
+    model = U.load_model(p)
+    assert set(model.latents) == set(U.REQUIRED_LATENTS) | {"voi_scale_quantity"}
+    spec = model.latents["voi_scale_quantity"]
+    assert spec.grid.lo == 0.0 and spec.grid.hi == 4.0 and spec.prior_mu == 1.0
+
+
+def test_undeclared_shape_latents_are_absent_from_u_bar(model: U.UtilityModel) -> None:
+    t = SeqTransport()
+    post = U.posterior(B.Brain(t), model, [], policy="all-to-date")
+    assert not (set(U.SHAPE_LATENT_NAMES) & set(post.u_bar()))
+
+
+# --- C6: the six latents' frozen priors (config/utility-model-shape-scales.example.yaml) --
+# NOT merged into config/utility-model.example.yaml (disclosed deviation,
+# docs/unification/reports/r30-units-lever.md RESULTS) — that file is copied wholesale by
+# tests/conftest.py's ledger_kb fixture and used as the template for the owner's real
+# deployed file, so declaring all six there would move pinned ledger golden hashes and the
+# owner's live fold_version for no reason. This file freezes the numbers without activating
+# them anywhere.
+
+def test_shape_scale_priors_file_names_exactly_the_six_optional_latents() -> None:
+    example = (Path(__file__).resolve().parent.parent
+              / "config/utility-model-shape-scales.example.yaml")
+    spec = yaml.safe_load(example.read_text(encoding="utf-8"))["latents"]
+    assert set(spec) == set(U.SHAPE_LATENT_NAMES)
+
+
+def test_shape_scale_priors_are_computed_at_the_anchors_own_value() -> None:
+    # each TRUNCATED mean sits within 1% of 1.0 (computed, not assumed — the #67-review
+    # lesson that first caught a silent 29% re-pricing in lambda_usd's own prior).
+    example = (Path(__file__).resolve().parent.parent
+              / "config/utility-model-shape-scales.example.yaml")
+    spec = yaml.safe_load(example.read_text(encoding="utf-8"))["latents"]
+    phi = lambda z: math.exp(-z * z / 2) / math.sqrt(2 * math.pi)  # noqa: E731
+    cdf = lambda z: 0.5 * (1 + math.erf(z / math.sqrt(2)))  # noqa: E731
+    for name, raw in spec.items():
+        mu, sigma = float(raw["prior"]["mu"]), float(raw["prior"]["sigma"])
+        lo, hi = float(raw["grid"]["lo"]), float(raw["grid"]["hi"])
+        a, b = (lo - mu) / sigma, (hi - mu) / sigma
+        trunc_mean = mu + sigma * (phi(a) - phi(b)) / (cdf(b) - cdf(a))
+        assert abs(trunc_mean - 1.0) < 0.01, (name, trunc_mean)
+
+
+def test_shape_scale_priors_parse_through_load_model_like_any_other_latent(
+        tmp_path: Path) -> None:
+    example = (Path(__file__).resolve().parent.parent
+              / "config/utility-model-shape-scales.example.yaml")
+    extra = "\n".join(f"  {name}: {yaml.safe_dump(raw, default_flow_style=True).strip()}"
+                      for name, raw in yaml.safe_load(
+                          example.read_text(encoding="utf-8"))["latents"].items())
+    p = tmp_path / "model.yaml"
+    p.write_text(MODEL_YAML.replace("tau:\n", extra + "\ntau:\n"), encoding="utf-8")
+    model = U.load_model(p)
+    assert set(model.latents) == set(U.REQUIRED_LATENTS) | set(U.SHAPE_LATENT_NAMES)
 
 
 # (The host helpers gaussian_weights/elicitation_log_density/reaction_probability were the

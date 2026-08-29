@@ -1,4 +1,4 @@
-# r30 — the units lever — PRE-REGISTRATION (2026-08-29)
+# r30 — the units lever (2026-08-29)
 
 > **This document is the pre-registration. It is committed BEFORE any `src/` change; git
 > history is the proof.** r30 builds under the frozen consequence r29 read
@@ -133,3 +133,126 @@ byte-for-byte.** This is not asserted; it is what G2's replay checks.
 **G3b** the $0 splice against these frozen conjuncts, before any priced run (none is bought
 in this checkpoint — the units lever ships as a no-op until the owner's model file opts a
 shape in, so there is nothing a priced run would newly measure yet).
+
+---
+
+## RESULTS (2026-08-29)
+
+**Built: steps 1 and 2, exactly as scoped.** `core/answer_shape.py` (new — the closed
+vocabulary, r29's own classification rules imported by `scripts/answer_shape_census.py`,
+never retyped); `core/decide.py:shaped_u_bar` (the one seam); `core/utility.py`'s six
+optional per-shape latents; `current_u_bar`'s `shape` parameter threaded through
+`lookup.decide_and_record`, `narrative.narrative_answer`, the bridge's `GET /utility`, and
+`core/executor.py:run_pass`'s grow-menu pricing. Step 5 stayed out of scope for the reasons
+the pre-registration already named (`corrections.jsonl`'s real writer carries no
+`decision_id`/credence and is explicitly "NEVER force-folded"; re-ask detection has no
+frozen similarity/window parameters) — nothing new to disclose there.
+
+### C1–C6, each demonstrated RED by its named mutation, then restored
+
+All six ran clean: `git add -A` before mutating (so `git checkout --` restores from the
+index), one targeted mutation per criterion, the specific test(s) run to confirm the
+failure, then restore + `git diff --stat` against the index showed empty before moving on.
+
+- **C1** (`answer_shape.DEFAULT_SHAPE` → `quantity`): 2 tests failed, restored.
+- **C2** (the census script copies the rule table instead of importing it): the identity
+  assertion failed, restored.
+- **C3** (the anchor scales too, `*1.1`): the identity test failed on the delta, restored.
+  *(First attempt at this mutation — removing the short-circuit alone — did NOT fail,
+  because `1.0 * x == x`; the mutation had to force a real value change to be a genuine
+  test of the anchor's behaviour, not just its code path. Disclosed since it is exactly
+  the kind of weak-mutation trap this discipline exists to catch.)*
+- **C4** (undeclared scales default to `0.0`, not `1.0`): failed on `0.0 == 1.0`, restored.
+- **C5** (`decide_and_record` bypasses `current_u_bar`'s `shape=` and re-implements the
+  scale arithmetic inline after the call): the seam-spy test
+  (`test_decide_and_record_classifies_the_question_and_asks_for_that_shape`) caught it —
+  `seen_shapes == ['exact']` instead of `['quantity']`, because the mutation still asked
+  for the anchor shape and scaled by hand afterward. Restored.
+- **C6** (one shape-scale prior's `mu` moved from 1.0 to 3.0): the computed-truncated-mean
+  test failed (`assert 2.0 < 0.01`), restored.
+
+Full suite re-run after every restore: 2952 passed / 35 deselected (up from 2919 at r29 —
+net new tests across the six wiring points). ruff and mypy clean on the committed tree.
+`uv run python .githooks/pii_check.py` exit 0 with the private name layer live.
+
+### Two disclosed deviations from the pre-registration's literal text
+
+1. **C6's latents are NOT merged into `config/utility-model.example.yaml` or the owner's
+   deployed file**, as the pre-registration said they would be. Found before writing any
+   YAML: `tests/conftest.py`'s `ledger_kb` fixture copies the example file wholesale, and
+   several ledger tests build on it — declaring six new latents there would have moved
+   parsed latent sets and `fold_version` hashes for tests that have nothing to do with
+   r30, for no reason (the six are optional; nothing requires them to be active anywhere
+   yet). The frozen priors live instead in a new, inert file,
+   `config/utility-model-shape-scales.example.yaml` — never read by `load_model` unless an
+   owner copies two lines from it into their real file. This is a stricter reading of "no
+   lever ships while it makes something worse" than the pre-registration explicitly
+   stated, not a weaker one: it is the reason G2 below reads 293/314 rather than a smaller
+   number, and the reason the owner's live deployed model is untouched.
+2. **The loss-shape classifier is not cached**, though the pre-registration's design
+   section (inherited from the original plan, before this checkpoint's own scoping)
+   described it as "an instrument under the §2 contract... cached and content-addressed."
+   It is a pure regex predicate, hermetic, in the same family as `terminals.owner_question`
+   — there is no model call to make caching worth its complexity, and adding a cache
+   layer over a sub-millisecond pure function would be exactly the kind of unused
+   machinery this codebase's discipline exists to prevent.
+
+### G2 — 293/314, not 314/314, fully attributed
+
+The first read showed 102 fixtures erroring (not merely mismatched) with
+`CassetteMissError: no recorded http exchange for 'GET /utility?shape=...'` — `run_pass`'s
+new query string does not appear in any cassette recorded before this checkpoint existed.
+The fix: the wire request now omits the query string entirely at the anchor shape
+(`f"{bridge}/utility"`, byte-identical to pre-r30), adding `?shape=<shape>` only for the
+three non-anchor shapes. This is a real design improvement, not a workaround chosen to
+make a test pass — sending no parameter for the default case is ordinary REST hygiene, and
+it makes the request's blast radius match the change's actual semantic blast radius.
+
+After the fix: **293/314 compared identically, 0 mismatches among them, 21 errored** —
+still `CassetteMissError`, now confined to the `aloop` fixtures whose question classifies
+non-`exact` AND whose control flow reaches the `/utility` fetch at all. Verified, not
+assumed: a script cross-referenced every errored fixture's recorded `question` field
+against `answer_shape.answer_space` — **all 21 classify `quantity` (18), `set` (2) or
+`threshold` (1)**; the one further aloop fixture that also classifies non-`exact`
+(`m5-base-aloop-q2-007`) did not error, because its own recorded trace never reaches the
+`/utility` call (a `miss` before any candidate grounds). Zero exact-shape fixtures errored;
+zero non-exact-shape fixtures silently mismatched. The delta is real, disclosed, and
+attributed to exactly the population r30 changes — never absorbed into a false 314/314.
+Reproduced: the same 21 IDs, same order, on a second run.
+
+This resolves the apparent tension with C4/C10's "no-op by construction" claim: the DECISION
+VALUE is unaffected (confirmed directly — the recorded snapshot's `utility_model.snapshot`
+declares none of the six latents, so `shaped_u_bar` returns the identity for every shape
+there), but the WIRE REPRESENTATION for non-`exact` questions is not, because a new query
+parameter now exists to omit or include. A cassette recorded before this checkpoint cannot
+already contain a parameter that did not exist yet. No further code change is warranted —
+the alternative (loosening the cassette matcher to ignore query strings) would be a change
+to shared replay infrastructure, out of scope and its own risk, for a class of fixture the
+census already fully explains.
+
+### The $0 splice (G3b) — run 18's own record, re-read on the r30 tree
+
+`scripts/gate_splice.py --splice r30-reread <run-18-paired> <run-18-paired> archived --pin
+<run-18-paired> 0.959 0.514` — both arms from run 18's own archive
+(`paired-gate-20260826T083356.jsonl`), costs archived (each row's own recorded spend), pin
+checked against run 18's own published verdict.
+
+**Reproduced exactly: P(Δ>0.05) = 0.959, Δ̄ = +0.514 [+0.077, +0.999], Δ_answers = 0.019,
+Δ_spend = 0.495, typed 61 correct / 2 wrong / 41 abstain at $0.37, the comparator arm 95 /
+6 / 3 at $39.01 — identical to run 18's published numbers to the printed precision.** The
+printed Ū carries no `voi_scale_*`/`regret_scale_*` entries (confirming, on the live
+production model file rather than a unit-test fixture, that none of the six latents are
+declared there today). This is the strongest form of the C4/C10 no-op claim available at
+$0: not a synthetic fixture, but run 18's actual 104-question record, re-read end to end on
+the r30 tree, landing on the exact number already published.
+
+### Verdict
+
+**PROCEED to r30b** (steps 3–4, the claim space) per the sequencing decision. r30's units
+lever is built, tested, wired through every caller C5 named, and verified as a documented
+no-op on both the synthetic replay corpus (293/293 compared fixtures match; the 21 errors
+are a fully attributed wire-format artifact, not a decision change) and the live production
+gate record (byte-identical reproduction of run 18). It ships inert: nothing changes for
+the owner until they opt a shape in by copying lines from
+`config/utility-model-shape-scales.example.yaml` into their real model file — a keypress-map
+item, not a consequence of this merge.

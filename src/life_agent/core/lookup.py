@@ -44,6 +44,7 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
+from life_agent.core import answer_shape as AS
 from life_agent.core import config
 from life_agent.core import decisions as DEC
 from life_agent.core import derivations as D
@@ -57,7 +58,7 @@ from life_agent.core import seam as SEAM
 from life_agent.core import utility as UT
 from life_agent.core.brain import Brain
 from life_agent.core.dates import parse_date as _parse_date
-from life_agent.core.decide import u_assert
+from life_agent.core.decide import shaped_u_bar, u_assert
 
 # The route + extract instrument model (local Ollama deprecated 2026-08-17 — owner
 # directive, §14-registered; both verdicts are cached, so call counts are bounded by
@@ -1029,7 +1030,12 @@ def render(result: LookupResult) -> str:
 # --- the shared brain + utility fold (per-process, lazily) -------------------------------
 
 _BRAIN: Brain | None = None
-_U_BAR: tuple[str, dict[str, float]] | None = None  # (fold_version, u_bar)
+# r30 (`docs/unification/reports/r30-units-lever.md`): the engine fold is memoised per
+# fold_version (unchanged cost — one engine round trip per evidence movement); the cheap,
+# pure per-shape scaling (decide.shaped_u_bar) is memoised separately per (fold_version,
+# shape), so a second question's DIFFERENT shape never re-runs the engine fold.
+_U_BAR_RAW: tuple[str, dict[str, float]] | None = None       # (fold_version, raw u_bar)
+_U_BAR_SHAPED: dict[tuple[str, str], dict[str, float]] = {}  # (fold_version, shape) -> Ū
 
 
 def shared_brain() -> Brain:
@@ -1068,13 +1074,18 @@ def set_shared_brain(brain: Brain | None) -> None:
 U_BAR_POLICY = "all-to-date"  # the decider's declared evidence regime (design §3.1, Q-O5)
 
 
-def current_u_bar(brain: Brain) -> tuple[dict[str, float], str, str]:
+def current_u_bar(brain: Brain, *,
+                  shape: str = AS.DEFAULT_SHAPE) -> tuple[dict[str, float], str, str]:
     """Ū from the utility posterior (fold of model + elicitations + the verdict→evidence
-    projection — the ``all-to-date`` regime, declared once above), cached per fold version
-    within the process — the fold is recomputed only when evidence moves. Returns
+    projection — the ``all-to-date`` regime, declared once above), SCALED for one
+    question's answer ``shape`` (r30, `decide.shaped_u_bar` — the ONLY place a scale
+    applies; C5). The engine fold is cached per fold version within the process — it is
+    recomputed only when evidence moves, never when only ``shape`` changes, so every
+    caller (lookup, narrative, the bridge's grow-menu pricing) can classify its own
+    question and ask for its own shape at no extra engine cost. Returns
     ``(u_bar, fold_version, policy)``: the policy the fold ACTUALLY ran under, so a record
     stamps what was used, never an independent literal (M3, r13)."""
-    global _U_BAR
+    global _U_BAR_RAW
     model = UT.load_model(config.UTILITY_MODEL)
     events: list[UT.Evidence] = list(
         UT.load_elicitations(config.UTILITY_ELICITATIONS, model))
@@ -1082,13 +1093,15 @@ def current_u_bar(brain: Brain) -> tuple[dict[str, float], str, str]:
     # condition u(wrong). fold_version covers them, so a new verdict re-folds Ū demand-led.
     events += R.load_reactions(config.REACTIONS_LOG, config.DECISIONS_LOG)
     version = UT.fold_version(model, events, U_BAR_POLICY)
-    if _U_BAR is not None and _U_BAR[0] == version:
-        return _U_BAR[1], version, U_BAR_POLICY
-    post = UT.posterior(brain, model, events, policy=U_BAR_POLICY)
-    for warning in post.endpoint_warnings(model.endpoint_mass_warn):
-        print(f"  ⚠ {warning}")
-    _U_BAR = (version, post.u_bar())
-    return _U_BAR[1], version, U_BAR_POLICY
+    if _U_BAR_RAW is None or _U_BAR_RAW[0] != version:
+        post = UT.posterior(brain, model, events, policy=U_BAR_POLICY)
+        for warning in post.endpoint_warnings(model.endpoint_mass_warn):
+            print(f"  ⚠ {warning}")
+        _U_BAR_RAW = (version, post.u_bar())
+    cache_key = (version, shape)
+    if cache_key not in _U_BAR_SHAPED:
+        _U_BAR_SHAPED[cache_key] = shaped_u_bar(_U_BAR_RAW[1], shape)
+    return _U_BAR_SHAPED[cache_key], version, U_BAR_POLICY
 
 
 # --- the family, end to end --------------------------------------------------------------
@@ -1160,7 +1173,9 @@ def decide_and_record(root: Path, question: str, construct: str,
     produced by a DIFFERENT instrument (the ``extract@<model>`` joint edge folds its calibrated
     confidence here, not the local ``extractor_reliability``)."""
     b = brain if brain is not None else shared_brain()
-    u_bar, fold_ver, _policy = current_u_bar(b)
+    # r30 (C5): the question's own answer shape prices its own decision — never a
+    # separate rescoring, always through current_u_bar's one seam.
+    u_bar, fold_ver, _policy = current_u_bar(b, shape=AS.answer_space(question))
     rho = rho_override if rho_override is not None else extractor_reliability(b)
     candidates = candidates_from(observations)
     weights, state_id = lookup_posterior(b, observations, candidates, rho)

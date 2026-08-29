@@ -220,13 +220,18 @@ def installed(rig: Rig, snapshot: KBSnapshot) -> Iterator[Rig]:
 
     _set(EX, "decide_via_loop", _capturing_loop)
 
-    prior_brain, prior_u_bar = LK._BRAIN, LK._U_BAR
+    prior_brain = LK._BRAIN
+    prior_u_bar_raw, prior_u_bar_shaped = LK._U_BAR_RAW, LK._U_BAR_SHAPED
     LK.set_shared_brain(rig.brain)
-    LK._U_BAR = None       # the per-process Ū memo is keyed on a fold version, not a KB
+    # the per-process Ū memo (both the engine-fold cache and its per-shape scalings — r30)
+    # is keyed on a fold version, not a KB, so a snapshot swap must clear both.
+    LK._U_BAR_RAW = None
+    LK._U_BAR_SHAPED = {}
     try:
         yield rig
     finally:
-        LK._U_BAR = prior_u_bar
+        LK._U_BAR_RAW = prior_u_bar_raw
+        LK._U_BAR_SHAPED = prior_u_bar_shaped
         LK.set_shared_brain(prior_brain)
         for obj, name, value in reversed(saved):
             setattr(obj, name, value)

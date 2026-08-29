@@ -53,26 +53,18 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from life_agent.core import answer_shape as AS
+
 # --- the frozen classification rules -----------------------------------------------------
-# Ordered; first match wins; no match falls to the conservative default. These patterns ARE
-# the pre-registration's table, transcribed once. Editing one is a new checkpoint, not a fix.
+# Axis 1 (answer space) is promoted to life_agent.core.answer_shape (r30, C2 — one rule
+# table, never retyped): SPACE_RULES/DEFAULT_SPACE/normalise/answer_space are imported, not
+# redefined, so this instrument and the decision-path classifier can never drift apart.
+# Axis 2 (truth provenance) stays here — r30 does not use it.
 
-_COMPARATORS = (
-    r"\bmore than\b", r"\bless than\b", r"\bat least\b", r"\bat most\b",
-    r"\bexceed(s|ed|ing)?\b", r"\bgreater than\b", r"\bhigher than\b", r"\blower than\b",
-    r"\bover\s+\d", r"\bunder\s+\d", r"\babove\s+\d", r"\bbelow\s+\d",
-)
-_YES_NO = r"^(did|is|was|were|does|do|has|have|had|are|am|will|can)\b"
-
-SPACE_RULES: list[tuple[str, list[str]]] = [
-    ("threshold", list(_COMPARATORS)),
-    ("set", [r"\blist\b", r"\bwhich ones\b", r"\ball of the\b", r"\bwhat are the\b",
-             r"\bwho are the\b", r"\bname the\b", r"\benumerate\b", r"\bevery\s+\w+s\b"]),
-    ("quantity", [r"\bhow many\b", r"\bhow much\b", r"\btotal\b", r"\bsum\b", r"\baverage\b",
-                  r"\bmean of\b", r"\bcount of\b", r"\bnumber of\b", r"\bamount\b",
-                  r"\bbalances?\b", r"\baggregate\b"]),
-]
-DEFAULT_SPACE = "exact"
+SPACE_RULES = AS.SPACE_RULES
+DEFAULT_SPACE = AS.DEFAULT_SHAPE
+normalise = AS.normalise
+answer_space = AS.answer_space
 
 COMPUTED_CUES: list[str] = [
     r"\bacross all\b", r"\bacross my\b", r"\bacross every\b", r"\bin total\b",
@@ -84,23 +76,6 @@ COMPUTED_CUES: list[str] = [
 DEFAULT_PROVENANCE = "verbatim"
 
 AGREEMENT_BAR = 0.80  # C5: below this an axis publishes bounds, not point estimates
-
-
-def normalise(text: str) -> str:
-    """Lowercase, whitespace-collapsed. The one normalisation, shared by the classifier and
-    the population split, so a question cannot be eval-derived for one and not the other."""
-    return re.sub(r"\s+", " ", str(text).strip().lower())
-
-
-def answer_space(text: str) -> str:
-    """Axis 1, in the frozen precedence order threshold > set > quantity > exact."""
-    t = normalise(text)
-    for label, patterns in SPACE_RULES:
-        if any(re.search(p, t) for p in patterns):
-            return label
-        if label == "threshold" and re.search(_YES_NO, t) and re.search(r"\d", t):
-            return "threshold"
-    return DEFAULT_SPACE
 
 
 def truth_provenance(text: str) -> str:

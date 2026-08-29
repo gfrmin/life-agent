@@ -43,6 +43,7 @@ from typing import Any
 
 import yaml
 
+from life_agent.core import answer_shape as AS
 from life_agent.core.brain import Brain
 from life_agent.core.decisions import POLICIES
 
@@ -64,6 +65,17 @@ GAUGE: dict[str, float] = {"u_correct": 1.0, "u_abstain": 0.0}
 # -rate*cost_usd spend term (run-6, pre-registered in bayesian-foundations §14).
 REQUIRED_LATENTS: tuple[str, ...] = ("u_wrong", "u_wrong_scoped", "u_hedged",
                                      "lambda_int", "kappa_att", "lambda_usd")
+
+# r30 (`docs/unification/reports/r30-units-lever.md`): the six OPTIONAL per-shape utility
+# scale latents — `voi_scale_<shape>`/`regret_scale_<shape>` for each of
+# `answer_shape.SCALED_SHAPES` (never retyped here — the shape vocabulary has one
+# spelling). Deliberately NOT in REQUIRED_LATENTS: unlike lambda_usd, which the gate's
+# spend term needs unconditionally, these six default to 1.0 in `decide.shaped_u_bar`
+# when absent, so a model file may opt a shape in without every other model file (every
+# test fixture, the owner's live deployed copy) being forced to declare it the day this
+# merges — the `tau_narrative` precedent, not the `lambda_usd` one.
+SHAPE_LATENT_NAMES: tuple[str, ...] = tuple(
+    f"{kind}_scale_{shape}" for shape in AS.SCALED_SHAPES for kind in ("voi", "regret"))
 
 @dataclass(frozen=True)
 class Grid:
@@ -130,6 +142,12 @@ def load_model(path: Path) -> UtilityModel:
             "(additive and deploy-order-safe; a file without lambda_usd predates plan "
             "item C, 2026-08-08)")
     latents = {name: _latent_spec(name, latents_raw[name]) for name in REQUIRED_LATENTS}
+    # r30: each optional shape-scale latent parses through the SAME generic path iff the
+    # owner's file declares it — absent ones simply never enter `model.latents`, and
+    # `decide.shaped_u_bar` supplies their 1.0 default at read time (never here).
+    for name in SHAPE_LATENT_NAMES:
+        if name in latents_raw:
+            latents[name] = _latent_spec(name, latents_raw[name])
     tau = _latent_spec("tau", raw["tau"])
     tau_narrative = (_latent_spec("tau_narrative", raw["tau_narrative"])
                      if "tau_narrative" in raw else tau)

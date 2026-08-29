@@ -754,13 +754,99 @@ endpoint_mass_warn: 0.01
 """
 
 
+# --- r30 step 2: current_u_bar shapes per question and folds the engine posterior ONCE ------
+
+def test_current_u_bar_defaults_to_the_anchor_shape(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    model_path = tmp_path / "model.yaml"
+    model_path.write_text(MODEL_YAML, encoding="utf-8")
+    monkeypatch.setattr(config, "UTILITY_MODEL", model_path)
+    monkeypatch.setattr(config, "UTILITY_ELICITATIONS", tmp_path / "elicit.jsonl")
+    monkeypatch.setattr(LK, "_U_BAR_RAW", None)
+    monkeypatch.setattr(LK, "_U_BAR_SHAPED", {})
+    brain = Brain(ScriptedTransport())
+    u_bar, _version, policy = LK.current_u_bar(brain)
+    assert policy == LK.U_BAR_POLICY
+    assert u_bar == LK.current_u_bar(brain, shape="exact")[0]
+
+
+def test_current_u_bar_folds_the_engine_posterior_once_across_shapes(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    model_path = tmp_path / "model.yaml"
+    model_path.write_text(MODEL_YAML, encoding="utf-8")
+    monkeypatch.setattr(config, "UTILITY_MODEL", model_path)
+    monkeypatch.setattr(config, "UTILITY_ELICITATIONS", tmp_path / "elicit.jsonl")
+    monkeypatch.setattr(LK, "_U_BAR_RAW", None)
+    monkeypatch.setattr(LK, "_U_BAR_SHAPED", {})
+    transport = ScriptedTransport()
+    brain = Brain(transport)
+
+    LK.current_u_bar(brain, shape="exact")
+    n_creates_after_first = sum(1 for r in transport.sent if r["method"] == "create_state")
+    assert n_creates_after_first > 0  # the engine fold really ran once
+
+    LK.current_u_bar(brain, shape="quantity")  # a DIFFERENT shape, same fold_version
+    n_creates_after_second = sum(1 for r in transport.sent if r["method"] == "create_state")
+    # the raw engine posterior is memoised per fold_version — a second SHAPE must not
+    # re-fold it; only decide.shaped_u_bar's cheap host arithmetic runs again.
+    assert n_creates_after_second == n_creates_after_first
+
+
+def test_current_u_bar_undeclared_scales_give_the_same_u_bar_for_every_shape(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # MODEL_YAML declares none of the six optional latents — every shape must read
+    # byte-identically until the owner's file opts one in (C4/C10's no-op claim).
+    model_path = tmp_path / "model.yaml"
+    model_path.write_text(MODEL_YAML, encoding="utf-8")
+    monkeypatch.setattr(config, "UTILITY_MODEL", model_path)
+    monkeypatch.setattr(config, "UTILITY_ELICITATIONS", tmp_path / "elicit.jsonl")
+    monkeypatch.setattr(LK, "_U_BAR_RAW", None)
+    monkeypatch.setattr(LK, "_U_BAR_SHAPED", {})
+    brain = Brain(ScriptedTransport())
+    from life_agent.core import answer_shape as AS
+    exact, version_e, _ = LK.current_u_bar(brain, shape="exact")
+    for shape in AS.SCALED_SHAPES:
+        shaped, version_s, _ = LK.current_u_bar(brain, shape=shape)
+        assert shaped == exact
+        assert version_s == version_e
+
+
+def test_decide_and_record_classifies_the_question_and_asks_for_that_shape(
+        migrated_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # C5: decide_and_record classifies its OWN question and routes it through
+    # current_u_bar's shape parameter — never a second scale computation.
+    model_path = tmp_path / "model.yaml"
+    model_path.write_text(MODEL_YAML, encoding="utf-8")
+    monkeypatch.setattr(config, "UTILITY_MODEL", model_path)
+    monkeypatch.setattr(config, "UTILITY_ELICITATIONS", tmp_path / "elicit.jsonl")
+    monkeypatch.setattr(LK, "_U_BAR_RAW", None)
+    monkeypatch.setattr(LK, "_U_BAR_SHAPED", {})
+    seen_shapes: list[str] = []
+    real_current_u_bar = LK.current_u_bar
+
+    def _spy(brain: Brain, *, shape: str = "exact"):
+        seen_shapes.append(shape)
+        return real_current_u_bar(brain, shape=shape)
+
+    monkeypatch.setattr(LK, "current_u_bar", _spy)
+    route = FakeClient({"lookup": True, "construct": "the total"})
+    extract = FakeClient({"found": True, "value": "12345", "quote": "total 12345"})
+    brain = Brain(ScriptedTransport(optimise_action="report_0"))
+    hits = [_hit("a" * 64, "your total 12345 is recorded")]
+    lookup_answer(migrated_root, "how many items in total do I have?", hits,
+                 brain=brain, route_client=route, extract_client=extract,
+                 decisions_path=tmp_path / "decisions.jsonl", run_id="test")
+    assert seen_shapes == ["quantity"]
+
+
 def test_lookup_answer_end_to_end(migrated_root: Path, tmp_path: Path,
                                   monkeypatch: pytest.MonkeyPatch) -> None:
     model_path = tmp_path / "model.yaml"
     model_path.write_text(MODEL_YAML, encoding="utf-8")
     monkeypatch.setattr(config, "UTILITY_MODEL", model_path)
     monkeypatch.setattr(config, "UTILITY_ELICITATIONS", tmp_path / "elicit.jsonl")
-    monkeypatch.setattr(LK, "_U_BAR", None)  # no cross-test fold cache
+    monkeypatch.setattr(LK, "_U_BAR_RAW", None)  # no cross-test fold cache
+    monkeypatch.setattr(LK, "_U_BAR_SHAPED", {})
     decisions_path = tmp_path / "decisions.jsonl"
 
     route = FakeClient({"lookup": True, "construct": "the ID"})
@@ -813,7 +899,8 @@ def test_lookup_answer_lineage_inputs_are_unique(migrated_root: Path, tmp_path: 
     model_path.write_text(MODEL_YAML, encoding="utf-8")
     monkeypatch.setattr(config, "UTILITY_MODEL", model_path)
     monkeypatch.setattr(config, "UTILITY_ELICITATIONS", tmp_path / "elicit.jsonl")
-    monkeypatch.setattr(LK, "_U_BAR", None)
+    monkeypatch.setattr(LK, "_U_BAR_RAW", None)
+    monkeypatch.setattr(LK, "_U_BAR_SHAPED", {})
     route = FakeClient({"lookup": True, "construct": "the ID"})
     extract = FakeClient({"found": True, "value": "12345", "quote": "12345"})  # value-only quote
     brain = Brain(ScriptedTransport(optimise_action="report_0"))

@@ -95,7 +95,23 @@ the pooled rate to 0.1133 from 0.0411, permanently, in an append-only stream wit
 segmentation; and `recovered` cannot express harm, so no refit of g on it could have
 prevented run 17's 14 report→abstain flips. Two riders bind any successor: **segment or
 exclude that window before refitting**, and **a harm term is a precondition, not a
-refinement**. Consequence enacted: PROCEED with the utility replan's r30.) Six
+refinement**. Consequence enacted: PROCEED with the utility replan's r30.)
+**r30 (2026-08-29, `docs/unification/reports/r30-units-lever.md`, $0) builds the units
+lever as a documented no-op:** `core/decide.shaped_u_bar` is the one seam every
+`current_u_bar` caller (lookup, narrative, the bridge's grow-menu pricing) now routes
+through; `exact` stays the anchor, each other declared shape carries an optional
+`voi_scale`/`regret_scale` pair defaulting to 1.0 until the owner opts one in via
+`config/utility-model-shape-scales.example.yaml` (kept OUT of the example file the
+ledger's own test fixtures copy, to avoid moving pinned hashes for nothing). A $0 splice
+re-read run 18's own archive end to end on the r30 tree and reproduced 0.959/+0.514
+[+0.077, +0.999] to the printed precision; the replay corpus reads 293/314 with 0
+mismatches, the other 21 a fully attributed wire-only artefact (a `?shape=` query param a
+pre-r30 cassette cannot contain), verified against exactly the non-`exact`-classified
+population. Step 5 (streams 3/5) was investigated and DEFERRED, not built: the real
+`calibration.corrections` writer (`scripts/verdict.py`) carries free-text claim
+corrections with no `decision_id`/credence and states "NEVER force-folded... prose
+steers"; re-ask detection has no frozen similarity/window parameters. Both are named open
+items for their own future pre-registration. Next: r30b (steps 3-4, the claim space).) Six
 runs so far (§14 ledger has each): the executor series read 0.002 → 0.010 → 0.065 →
 0.092 → 0.098, then **run 6 (2026-08-17: judge-graded arms, λ_usd spend on both arms,
 the post-Ollama cloud instruments): FAIL at P(Δ>0.05)=0.678, Δ̄=+0.180 [−0.244, +0.661]

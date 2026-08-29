@@ -264,7 +264,7 @@ def main(argv: list[str] | None = None) -> int:
     scratch.mkdir(parents=True, exist_ok=True)
     deps = BS.BridgeDeps(
         root=root, conn=conn, client=LK._client(),
-        profile="", u_bar=lambda: {},
+        profile="", u_bar=lambda shape: {},  # r30: u_bar takes the requested answer shape
         decisions_path=scratch / "decisions.jsonl",
         reactions_path=scratch / "reactions.jsonl",
         fold_version=lambda: "corroborate-audit",
