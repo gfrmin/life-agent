@@ -52,3 +52,56 @@ finding.
 The typed arm cost $0.37 on run 18 and the comparator arm is a pre-recorded replay. **Cap $3.**
 Fired as a transient `systemd --user` unit (the run-16 lesson: a priced run launched as an
 agent-session background task dies with the session).
+
+---
+
+## BLOCKING DEFECT, found by firing r31 — and its frozen criteria
+
+**Committed BEFORE the `src/` change that fixes it.** r31's first firing crashed on its first
+question at `GET /utility` with
+
+```
+ValueError: unknown family 'aggregate' (declared: ['lookup', 'narrative'])
+```
+
+**It is not r30b's.** A plain `GET /utility` — no shape parameter, the pre-r30 URL — 500s
+identically. The cause is in the ledger, not the tree under test:
+
+- `$LIFE_AGENT_KB/calibration/decisions.jsonl` holds **3,391 rows: 2,459 `lookup`, 930
+  `narrative`, and 2 `aggregate`** — written 2026-08-26 by run 19's aggregate arm.
+- K1 (`r22`) then deleted `aggregate` from `decisions.FAMILIES`.
+- `DecisionEvent.__post_init__` raises on an undeclared family, and `decisions.read()` builds
+  every row eagerly — so **two rows of history make the whole log unreadable**, the utility
+  fold dies, `/utility` 500s, and since that is the **first call of every executor pass**, the
+  executor lane is dead on this box for every question.
+
+Production may be unaffected — those rows were written here — but r27 V2 (production is
+unobservable from the authoring box) means that is stated as unverified, not as reassurance.
+
+**This is the integration value r31 was pre-registered to buy, delivered before it read a
+single question:** no $0 instrument in this arc could have found it, because every one of them
+reads archived artefacts rather than driving the live stack.
+
+### The fix, ruled by the owner 2026-08-29
+
+A **declared retired vocabulary**: the reader accepts it, no writer may emit it, and the skip is
+NAMED. Chosen over a blanket skip-unknown because tolerance should be *enumerated* — a blanket
+rule would also swallow typos and corruption — and over quarantining the rows, which would mean
+mutating an append-only ledger, the one thing the event-sourcing discipline forbids.
+
+| | Criterion |
+|---|---|
+| **R1** | `RETIRED_FAMILIES` is a declared closed set, DISJOINT from `FAMILIES`. RED under a mutation that lets a label sit in both. |
+| **R2** | A writer still cannot emit one: `DecisionEvent(family="aggregate", …)` raises at construction. RED under a mutation that admits retired families at construction. |
+| **R3** | `decisions.read()` accepts a retired-family row, skips it, and **names the count** — never silently. RED under a mutation that drops either the skip or the naming. |
+| **R4** | A genuinely unknown family still raises on read. Tolerance is enumerated, not blanket. RED under a mutation that skips every unrecognised label. |
+| **R5** | On the live log: 3,391 rows read as 3,389 folded + 2 named skips, and `GET /utility` returns 200. |
+
+### The class, registered
+
+This is the **second** append-only stream in this arc poisoned by a vocabulary that was retired
+after the rows were written — r29's rider names the same shape for the gather-outcome stream,
+contaminated by run 17 and pooled permanently with no policy segmentation. Registered as a named
+open item with both instances as its evidence: **an append-only stream outlives the vocabulary
+that wrote it, so every retirement must say what happens to the history that used it.** The next
+retirement is to be designed, not discovered.

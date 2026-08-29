@@ -194,3 +194,51 @@ def test_unavailability_is_a_regime_not_an_action() -> None:
     abstain verdict (R-3 folds abstains as utility evidence)."""
     assert "unavailable" in D.REGIMES
     assert "unavailable" not in D.ACTIONS
+
+
+# --- r31: an append-only stream outlives the vocabulary that wrote it --------------------
+
+def test_retired_families_are_declared_and_disjoint() -> None:
+    """R1 — the retired vocabulary is a CLOSED declared set, and a label cannot be both
+    writable and retired."""
+    assert D.RETIRED_FAMILIES
+    assert not (D.FAMILIES & D.RETIRED_FAMILIES)
+    assert "aggregate" in D.RETIRED_FAMILIES     # K1 deleted it; run 19 had already written it
+
+
+def test_a_writer_still_cannot_emit_a_retired_family() -> None:
+    """R2 — tolerance is READ-side only. Nothing may write one again."""
+    with pytest.raises(ValueError, match="aggregate"):
+        D.DecisionEvent(tx_time="2026-01-01T00:00:00Z", run_id="r", question_id="q",
+                          family="aggregate", action_set=("report", "abstain"),
+                          posterior_summary={}, utility_fold_version="v",
+                          chosen_action="abstain", predicted_eu=0.0, decision_id="d")
+
+
+def test_read_skips_a_retired_family_row_and_names_the_count(tmp_path, capsys) -> None:
+    """R3 — two rows of history must not make a 3,391-row log unreadable. The skip is
+    NAMED: a reader that silently drops rows is how a stream loses its own history."""
+    p = tmp_path / "decisions.jsonl"
+    good = {"format_version": 3, "tx_time": "2026-01-01T00:00:00Z", "run_id": "r",
+            "question_id": "q1", "family": "lookup", "action_set": ["report", "abstain"],
+            "posterior_summary": {}, "utility_fold_version": "v",
+            "chosen_action": "abstain", "predicted_eu": 0.0, "decision_id": "d1"}
+    retired = {**good, "question_id": "q2", "family": "aggregate", "decision_id": "d2"}
+    p.write_text("\n".join(json.dumps(r) for r in (good, retired, good)) + "\n",
+                 encoding="utf-8")
+    rows = D.read(p)
+    assert [r.family for r in rows] == ["lookup", "lookup"]
+    assert "1" in capsys.readouterr().out          # the skipped count is named, not silent
+
+
+def test_read_still_raises_on_a_genuinely_unknown_family(tmp_path) -> None:
+    """R4 — tolerance is ENUMERATED. A typo or a corrupted row is still a hard error."""
+    p = tmp_path / "decisions.jsonl"
+    p.write_text(json.dumps(
+        {"format_version": 3, "tx_time": "2026-01-01T00:00:00Z", "run_id": "r",
+         "question_id": "q", "family": "lookkup", "action_set": ["report", "abstain"],
+         "posterior_summary": {}, "utility_fold_version": "v",
+         "chosen_action": "abstain", "predicted_eu": 0.0, "decision_id": "d"}) + "\n",
+        encoding="utf-8")
+    with pytest.raises(ValueError, match="lookkup"):
+        D.read(p)
