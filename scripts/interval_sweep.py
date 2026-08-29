@@ -80,6 +80,20 @@ def _label(action: str) -> str:
     return action
 
 
+def pinned_questions(run_id: str) -> Path:
+    """The population the archived run ACTUALLY read, from its own `run_meta` pin — never a
+    default. Guessing the question file is how a sweep silently reads a different population
+    than the run it claims to predict (found by this instrument's own control, S0, before any
+    verdict: the module default is a 20-question legacy set that shares 0 ids with run 18)."""
+    for d in (LCFG.KB / "eval" / "gate-outside-option", LCFG.KB / "eval" / "gate"):
+        meta = d / f"run_meta-{run_id}.json"
+        if meta.is_file():
+            path = (json.loads(meta.read_text()).get("questions") or {}).get("path")
+            if path:
+                return Path(path)
+    raise SystemExit(f"no run_meta pin for {run_id!r} — pass --questions explicitly")
+
+
 def decisions_for(run_id: str) -> list[dict]:
     rows = []
     for line in (LCFG.KB / "calibration" / "decisions.jsonl").read_text().splitlines():
@@ -95,7 +109,7 @@ def decisions_for(run_id: str) -> list[dict]:
 def sweep(run_id: str, questions_path: Path | None) -> dict:
     post = production_posterior()
     raw = post.u_bar()
-    qs = load_questions(questions_path) if questions_path else load_questions()
+    qs = load_questions(questions_path or pinned_questions(run_id))
     by_qid = {DEC.question_id(q["question"]): q for q in qs}
 
     control_ok, control_bad, unreadable = [], [], []
@@ -152,7 +166,8 @@ def sweep(run_id: str, questions_path: Path | None) -> dict:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--run-id", required=True)
-    ap.add_argument("--questions", type=Path, default=None)
+    ap.add_argument("--questions", type=Path, default=None,
+                    help="override the run_meta pin (normally unnecessary and unwise)")
     ap.add_argument("--out", type=Path, default=None)
     args = ap.parse_args(argv)
     out = sweep(args.run_id, args.questions)
