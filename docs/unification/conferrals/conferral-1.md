@@ -148,3 +148,46 @@ protocol, for sign-off:
   if a different class dominates, that class is the next arc's evidence.
 
 **Options.** (a) Sign as proposed. (b) Sign with changes. (c) Change the trigger conditions.
+
+---
+
+# RULINGS — taken 2026-08-29 (owner, interviewed against the evidence above)
+
+**1 · The `quantity` scale opt-in is DECLINED for now.** Every shape stays at 1.0. The units
+lever therefore continues to ship inert, and r31 measures the claim space at the anchor price.
+The reason this is the right call even though the table retrodicts 4 rescues: the belief has not
+been formed yet, and the only thing that would have formed it here is the table itself — which
+is tuning. **The exit week is what forms it**: a week of real questions is evidence about how
+much a wrong number actually costs you, and that is the input the elicitation needs. Re-opens at
+Conferral 2 with the week's misses classed by shape.
+
+**2 · K5 is PARKED until after the exit week.** Guard rows 12, 22 and 23 stay defeated and G4
+stays blocked, both already published. The rationale is proportionality: the guard layer protects
+a tree whose *behaviour* is about to be measured directly for seven days, which is a stronger
+check than any census, and ruling the method now would be the fourth consecutive pass over one
+class with no new evidence. The method gets ruled at Conferral 2.
+
+**3 · The completion-audit definition and DONE items 3–5 were NOT put to the owner in this
+sitting.** Not an oversight to be quietly absorbed: it blocks nothing today (Stage 3 is deferred
+by its own ruling, and the audit gates only that), and it is the one item where the evidence does
+not improve by waiting. **Carried to Conferral 2**, where it must be settled before the proplang
+ladder opens.
+
+**4 · P2 is PARKED — the exit week supersedes it.** ~$6 not spent. The week measures the same
+population for $0, with the owner's own judgement instead of a judge, and its FAILURES entries
+give the miss *classes* P2 could only approximate. Re-opens at Conferral 2 only if the week's
+evidence is ambiguous.
+
+**5 · The exit-test protocol is SIGNED as proposed.** Seven days from the r31 deploy; life-data
+questions and morning triage through Jarvis first; misses to `$LIFE_AGENT_KB/FAILURES.md` in the
+existing shape **plus the `which tool answered it instead` field**; `g`/`b` reactions used as they
+occur; measurement = decision-log rows + FAILURES entries; the two disclosures (nothing asserts on
+the readout — known-and-uncovered 12; production unobservable from the authoring box — r27 V2)
+stand as stated. Conferral 2 reads the verdict with misses classed by answer shape, which fires or
+parks the composition arc.
+
+## What these rulings mean for r31
+
+Unchanged: r31 fires on Pop A, at scales 1.0, as an **integration and do-no-harm gate**, with the
+registered expectation from r31a on the page before it runs — **one changed row, a displacement,
+Δ moving by roughly −0.001**. It is not a proof of benefit and may not be reported as one.
