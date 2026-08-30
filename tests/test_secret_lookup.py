@@ -23,7 +23,7 @@ def test_secret_lookup_times_out_loudly(
     from pathlib import Path
 
     fake = Path(str(tmp_path)) / "secret-tool"
-    fake.write_text("#!/bin/sh\nexec /usr/bin/sleep 3\n")  # absolute: PATH is stripped below  # PII-OK: /usr/bin is a system path (PATH is stripped in this test)
+    fake.write_text("#!/bin/sh\nexec /usr/bin/sleep 3\n")  # PII-OK: system path
     fake.chmod(0o755)
     monkeypatch.setenv("PATH", str(tmp_path))
     monkeypatch.delenv("LLM_TEST_TIMEOUT_KEY", raising=False)
