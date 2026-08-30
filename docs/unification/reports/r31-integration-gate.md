@@ -192,3 +192,29 @@ and shipped a lever that never fires.
    also produced an owner interview framed on a premise that did not exist.
 3. K3 passes **vacuously**. It must not be quoted as evidence that interval claims are safe;
    nothing exercised the class.
+
+## RULINGS (owner, 2026-08-30)
+
+1. **r30b's disposition: KEPT in tree, measured-dormant.** The interval rows keep entering
+   the action set on shape-eligible questions and keep losing the argmax — this run is the
+   record of that. The `extra_actions` wire is generic infrastructure any future
+   body-priced row reuses. Nothing reverts; nothing deploys; the frozen consequence
+   (STOP, nothing deployed) stands enacted.
+2. **The Stage 4 exit week runs with TWO users.** The owner granted the coding agent
+   standing use of every surface the owner is invited to use; the agent routes its
+   owner-corpus questions through the ask surface first in every session and logs misses
+   under the signed protocol (FAILURES entries carry "which tool answered it instead").
+   The first invited-user session ran the same day: three asks, three abstains, three
+   *distinct* attributed causes (narrative inclusion calibration; value-normalisation
+   dispersal — the answer found twice as two date spellings and scored as competitors;
+   the computed class with no composition path). Those three causes are candidate
+   post-week arcs and, by the standing sequencing, wait for the week to read.
+3. **The week starts after the reach fix, which landed the same day.** The production
+   role moved to the box that holds the KB of record ("a service runs only where its data
+   is" — the live box had been asleep for days with a stale local KB, its poller hung on
+   a post-resume locked keyring while its unit read active). The transport layer now
+   fails loud instead of hanging (bounded keyring lookups, a dead-man heartbeat pinged by
+   the poll loop itself — PR #118, transport-only, no decide-path change), and the
+   watchdog asserts the role's units. The hang class that ate the poller is the ops-side
+   counterpart of disclosure 2's lesson: state that reports healthy is not evidence of
+   liveness.
