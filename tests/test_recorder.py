@@ -134,3 +134,36 @@ def test_the_family_leaves_do_not_append_the_decision_ledger_themselves() -> Non
         assert "DEC.append(" not in src, (
             f"{leaf} appends the decision ledger itself — the one recorder "
             "(core/recorder.py) is the only writer since M2 (r12)")
+
+
+# --- r33 RC-1: the miss row — a coverage failure the reaction stream can finally see ----
+
+def test_record_miss_appends_a_reactable_lookup_row(tmp_path: Path) -> None:
+    """A lookup that grounds nothing writes ONE local row: regime "miss", chosen_action
+    "abstain" (the §6.5 precedent — the action vocabulary stays closed), a REAL
+    content-addressed id (the ONE rule) so the owner's verdict can bind, and an empty
+    fold version — no /decide ran."""
+    dpath = tmp_path / "decisions.jsonl"
+    did = REC.record_miss("what is my X?", retrieval_keys=["d1", "d0"],
+                          n_indeterminate=3, decisions_path=dpath)
+    assert did == DEC.decision_id_for("what is my X?", ["d1", "d0"], [], 0.0)
+    assert did.startswith("ab-")
+    rows = [json.loads(line) for line in dpath.read_text().splitlines()]
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["family"] == "lookup" and row["chosen_action"] == "abstain"
+    assert row["regime"] == "miss"
+    assert row["decision_id"] == did
+    assert row["utility_fold_version"] == ""            # no fold ran
+    assert row["posterior_summary"]["n_obs"] == 0
+    assert row["posterior_summary"]["n_indeterminate"] == 3
+    assert row["posterior_summary"]["credences"] == []
+    assert row["cost_usd"] == 0.0 and row["instrument"] == ""
+    assert tuple(row["defaulted"]) == ("policy",)       # the writer states the regime
+
+
+def test_the_bridge_binds_the_one_id_rule() -> None:
+    """DEC.decision_id_for is THE declaration (r33 promoted it from the bridge); the
+    bridge's `_decision_id` must BE it — a second spelling cannot exist."""
+    from life_agent.bridge import server as BS
+    assert BS._decision_id is DEC.decision_id_for

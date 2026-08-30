@@ -83,6 +83,38 @@ def record_local(root: Path, akey: Any, content: bytes, *,
     DEC.append(decisions_path, event)
 
 
+def record_miss(question: str, *, retrieval_keys: list[str],
+                n_indeterminate: int = 0, run_id: str | None = None,
+                decisions_path: Path | None = None) -> str:
+    """The miss row (r33 RC-1): the engine was up, the lookup grounded NOTHING, the loop
+    returned before ``/decide`` — for 69 measured asks this lane wrote no row at all, so
+    the class was invisible to the reaction stream in both directions. One local
+    ``lookup``-family row: ``regime: "miss"`` (a coverage failure, stated — and what keeps
+    a verdict on it OUT of the utility fold), ``chosen_action: "abstain"`` (the §6.5
+    precedent: the action vocabulary stays closed), an empty fold version (no fold ran),
+    and a REAL content-addressed ``decision_id`` — the ONE rule, over the empty posterior —
+    returned so the reply can name it and the owner's verdict can bind. Local append, not a
+    bridge post: the bridge derives ids for RANKED decisions and stamps the CURRENT fold
+    version, both wrong for a miss."""
+    decision_id = DEC.decision_id_for(question, retrieval_keys, [], 0.0)
+    DEC.append(
+        decisions_path if decisions_path is not None else config.DECISIONS_LOG,
+        DEC.DecisionEvent(
+            tx_time=O.now_iso(), run_id=run_id or RUN_ID_DEFAULT,
+            question_id=DEC.question_id(question),
+            family="lookup", action_set=DEC.LOOKUP_ACTION_ORDER,
+            posterior_summary={"candidates": [], "credences": [], "p_none": 0.0,
+                               "n_obs": 0, "n_indeterminate": n_indeterminate,
+                               "n_competing": 0},
+            utility_fold_version="",  # no fold ran — the loop returned before /decide
+            chosen_action="abstain", predicted_eu=0.0, decision_id=decision_id,
+            instrument="", cost_usd=0.0, latency_s=0.0,
+            regime="miss", policy=DEC.POLICY_DEFAULT,
+            # the writer STATES the regime; it cannot state a policy no fold used
+            defaulted=("policy",)))
+    return decision_id
+
+
 def record_unavailable(question: str, *, run_id: str | None = None,
                        decisions_path: Path | None = None) -> None:
     """The §6.5 unavailability event. Returns ``None`` — there is nothing to bind a

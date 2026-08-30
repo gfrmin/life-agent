@@ -134,9 +134,11 @@ def test_sources_are_index_labelled_never_paths() -> None:
 # rows, newest 1 day ago" over a stream containing no production traffic at all, with no
 # staleness flag, because the only deployment that matters was never declared to it.
 
-def test_a_declared_root_that_is_absent_fails_the_run(tmp_path: Path) -> None:
+def test_a_declared_root_that_is_absent_fails_the_run(tmp_path: Path,
+                                                      monkeypatch) -> None:
     """r27 C10. MUST FAIL if a declared root can be missing and the run still succeed.
     Killed by restoring the silent `[]` for an absent root."""
+    monkeypatch.setattr(PR, "bar_summary", lambda **k: {"error": "stubbed (hermetic)"})
     good = tmp_path / "kb"
     (good / "calibration").mkdir(parents=True)
     rc = PR.main(["--kb", str(good), "--kb", str(tmp_path / "nope"),
@@ -144,12 +146,62 @@ def test_a_declared_root_that_is_absent_fails_the_run(tmp_path: Path) -> None:
     assert rc != 0, "a declared KB root that does not exist did not fail the run"
 
 
-def test_a_declared_root_that_is_present_but_empty_succeeds(tmp_path: Path) -> None:
+def test_a_declared_root_that_is_present_but_empty_succeeds(tmp_path: Path,
+                                                            monkeypatch) -> None:
     """r27 C10, the discriminating half (row 23): the check must tell an ABSENT root from
     a root with no traffic yet, or it is a gate that rejects everything. A fresh
     deployment has a root and no stream, and that is a legitimate zero.
-    Killed by failing on a missing stream file rather than a missing root."""
+    Killed by failing on a missing stream file rather than a missing root.
+    (bar_summary is stubbed — A6's watch reaches for the live brain, and a hermetic
+    test may not; its own guard is pinned separately below.)"""
+    monkeypatch.setattr(PR, "bar_summary", lambda **k: {"error": "stubbed (hermetic)"})
     good = tmp_path / "kb"
     (good / "calibration").mkdir(parents=True)
     rc = PR.main(["--kb", str(good), "--out", str(tmp_path / "r.md")])
     assert rc == 0, "a declared root that exists with no stream yet was treated as absent"
+
+
+# --- r33 A6 (owner-ruled MONITOR ONLY): the p† line — the bar drift, made visible -------
+
+def _summary_with_bar(bar: dict) -> dict:
+    s = PR.readout(DEC, [], [], since="2026-08-25",
+                   now=datetime(2026, 8, 27, tzinfo=UTC), sources=({"rows": 3},))
+    s["bar"] = bar
+    return s
+
+
+def test_render_carries_the_deployed_bar_beside_the_declared_one() -> None:
+    out = PR.render(_summary_with_bar(
+        {"p_dagger": 0.8369, "declared": 0.9000, "n_events": 55}))
+    assert "p† 0.8369" in out                    # the DEPLOYED bar (r32: not 0.90)
+    assert "declared prior 0.9000" in out        # ...never quoted alone
+    assert "55 folded events" in out
+    assert "drift" in out                        # the direction is named, not implied
+
+
+def test_render_names_an_unavailable_bar_instead_of_failing() -> None:
+    # the readout is a WATCH, never a dependency: a dead daemon renders a named
+    # unavailability — the rest of the report still lands
+    out = PR.render(_summary_with_bar({"error": "brain unreachable"}))
+    assert "p† unavailable (brain unreachable)" in out
+    assert "decisions by action" in out          # the report itself survived
+
+
+def test_render_without_a_bar_key_is_unchanged() -> None:
+    # back-compat: a summary predating A6 renders exactly as before
+    s = PR.readout(DEC, [], [], since="2026-08-25",
+                   now=datetime(2026, 8, 27, tzinfo=UTC), sources=({"rows": 3},))
+    out = PR.render(s)
+    assert "p†" not in out
+
+
+def test_bar_summary_never_raises(monkeypatch) -> None:
+    # the computation itself is guarded: any failure becomes {"error": ...}
+    from life_agent.core import lookup as LK
+
+    def _boom() -> None:
+        raise RuntimeError("daemon down")
+
+    monkeypatch.setattr(LK, "shared_brain", _boom)
+    out = PR.bar_summary()
+    assert set(out) == {"error"} and "daemon down" in out["error"]

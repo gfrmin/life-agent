@@ -86,7 +86,14 @@ NARRATIVE_ACTION_ORDER: tuple[str, ...] = ("report", "abstain")
 # there is no ranking to be inside of, so the record is an unavailability event. Keeping it
 # in this vocabulary — rather than spelling it `abstain` — is what stops it folding as an
 # abstain verdict, which reactions §4.4 reads as utility evidence.
-REGIMES: frozenset[str] = frozenset({"full", "terminals-only", "unavailable"})
+#
+# `miss` is the fourth (r33 RC-1): the engine was UP but the lookup grounded nothing, so
+# the loop returned before /decide — a coverage failure under a live engine, distinct from
+# `unavailable` (no engine at all). Unlike §6.5 it carries a REAL decision_id (the owner
+# can react; the Stage-4 measurement was blind to the class in both directions), and like
+# §6.5 the regime is what keeps the reaction OUT of the utility fold — a verdict on a
+# coverage failure is not evidence about u(wrong) (`reactions.load_reactions` skips it).
+REGIMES: frozenset[str] = frozenset({"full", "terminals-only", "unavailable", "miss"})
 REGIME_DEFAULT = "full"
 
 #: What ``defaulted`` says when a writer stated NEITHER field — the honest default, so a
@@ -103,6 +110,21 @@ POLICIES: frozenset[str] = frozenset({"all-to-date", "frozen-elicitations"})
 POLICY_DEFAULT = "all-to-date"
 
 QUESTION_ID_CHARS = 16
+
+
+def decision_id_for(question: str, retrieval_keys: list[str],
+                    credences: list[float], p_none: float) -> str:
+    """A stable, content-addressed id for one answer-brain decision: the question, the
+    retrieval set it was grounded on, and the posterior it was taken under. Namespaced
+    (``ab-``) so it never collides with the lookup family's §18.9 answer keys; the reaction
+    loop binds verdicts to it (``core.reactions`` join key). Identical re-runs coalesce.
+    THE one id rule (r33 promoted it verbatim from ``bridge/server._decision_id``, which
+    now binds it): the bridge's ranked rows and the miss rows share one spelling."""
+    payload = json.dumps({"source": "answer-brain", "question": question,
+                          "retrieval_keys": sorted(retrieval_keys),
+                          "credences": credences, "p_none": p_none},
+                         sort_keys=True, ensure_ascii=False)
+    return "ab-" + hashlib.sha256(payload.encode("utf-8")).hexdigest()[:32]
 
 
 def question_id(question: str) -> str:

@@ -18,6 +18,7 @@ from typing import Any
 
 import life_agent.core as C
 from life_agent.core import derivations as D
+from life_agent.core import pricing as PR
 from pkm.hashing import canonical_json
 
 ANSWER_SYSTEM = (
@@ -57,12 +58,19 @@ def set_content(hits: Sequence[dict[str, Any]]) -> bytes:
     return canonical_json({"format_version": 1, "hits": list(hits)}).encode("utf-8")
 
 
+#: The proposal instrument's one spelling (r33 RC-2) — the REQUESTED model, available on
+#: both the live and the cached branch (a cached serve's row still names its instrument).
+INSTRUMENT = f"synthesize@{C.DEFAULT_ANSWER_MODEL}"
+
+
 def synthesize(root: Path | None, question: str, hits: Sequence[dict[str, Any]], profile: str, *,
                no_cache: bool = False,
-               extra_lineage: Sequence[dict[str, str]] = ()) -> tuple[str, str, bool]:
-    """Synthesize a cited answer over the retrieved sources. Returns ``(text, cache_key, cached)``
-    (``cached`` = served from the derivation cache). Content-addressed (key = retrieval-set
-    content +
+               extra_lineage: Sequence[dict[str, str]] = ()) -> tuple[str, str, bool, float]:
+    """Synthesize a cited answer over the retrieved sources. Returns
+    ``(text, cache_key, cached, cost_usd)`` (``cached`` = served from the derivation cache;
+    ``cost_usd`` = the call's realised price through the ONE price rule, ``pricing.cost_usd``
+    — a cached serve prices 0.0, an unpriced model records the honest 0.0 of the never-absent
+    rule; r33 RC-2). Content-addressed (key = retrieval-set content +
     profile hash + prompt + model). Fail-open: the caller decides what to do with the prose; the
     narrative scorer audits it downstream."""
     cards = cards_from_hits(hits)
@@ -73,7 +81,7 @@ def synthesize(root: Path | None, question: str, hits: Sequence[dict[str, Any]],
     if root is not None and not no_cache:
         cached = D.lookup(root, skey.cache_key)
         if cached is not None:
-            return cached.decode("utf-8"), skey.cache_key, True
+            return cached.decode("utf-8"), skey.cache_key, True, 0.0
     blocks = []
     if profile:
         blocks.append(f'OWNER (authoritative — who "I"/"my" refers to):\n{profile}')
@@ -87,4 +95,5 @@ def synthesize(root: Path | None, question: str, hits: Sequence[dict[str, Any]],
         D.record(root, skey, text.encode("utf-8"), lineage=lineage,
                  metadata={"in_tokens": r.in_tokens, "out_tokens": r.out_tokens,
                            "seconds": round(r.seconds, 3)})
-    return text, skey.cache_key, False
+    cost = PR.cost_usd(r)
+    return text, skey.cache_key, False, (cost if cost is not None else 0.0)

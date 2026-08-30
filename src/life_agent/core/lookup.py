@@ -251,7 +251,8 @@ _ACTION_ORDER: tuple[str, ...] = DEC.LOOKUP_ACTION_ORDER
 # this machine's catalogue, so no amount of thinking here would have found it.
 REASON_DISPERSED = "dispersed posterior"
 REASON_NO_OBSERVATIONS = "no admitted evidence"
-REASON_UNAVAILABLE = "corpus unavailable"
+# (REASON_UNAVAILABLE was retired at r33 A4: defined since M5 and never bound by any
+# render branch — the §6.5 reply is ask_client.DOWN, its own contract string.)
 
 # One grammar table for every rendered string (drift-gated; interaction contract).
 # Credences render at three decimals: two rounded 0.997 up to "1.00" on the first live
@@ -275,9 +276,12 @@ GRAMMAR: dict[str, str] = {
     # held-back "thinking" that makes the decision verdictable (is that value right?) rather
     # than a blind "should you have answered?". Used when the posterior held >=1 candidate.
     "abstain_withheld": "No answer asserted ({reason}). Held back: {alts}",
+    # r33 RC-3: {p_none}/{eu} arrive PRE-FORMATTED — a number only when a posterior
+    # produced one; a miss (None) renders "—", never a fabricated 0.000 (an "I found
+    # nothing" must not print identically to "zero mass on NONE").
     "footer": ("lookup: {n_hits} hits → {n_obs} grounded observations"
-               " · {n_ind} indeterminate · none-of-retrieved {p_none:.3f}"
-               " · decision {action} (EU {eu:.2f})"),
+               " · {n_ind} indeterminate · none-of-retrieved {p_none}"
+               " · decision {action} (EU {eu})"),
     "fallthrough": "(lookup: {reason} — narrative path)",
 }
 
@@ -1070,8 +1074,8 @@ def render(result: LookupResult) -> str:
         body = GRAMMAR["abstain"].format(reason=REASON_NO_OBSERVATIONS)
     footer = GRAMMAR["footer"].format(
         n_hits=result.n_hits, n_obs=len(result.observations),
-        n_ind=result.n_indeterminate, p_none=result.p_none,
-        action=result.action, eu=result.eu)
+        n_ind=result.n_indeterminate, p_none=f"{result.p_none:.3f}",
+        action=result.action, eu=f"{result.eu:.2f}")
     return f"{body}\n\n{footer}"
 
 

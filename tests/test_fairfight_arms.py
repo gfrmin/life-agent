@@ -406,7 +406,7 @@ def test_ask_answer_counts_one_retrieve_pass_and_zero_gather_tiers_by_default(
     monkeypatch.setattr(ask.TERM, "_pkm_root", lambda: Path("/fake/root"))
     monkeypatch.setattr(ask.TERM, "_retrieve_set", lambda conn, q, k: [_weak_floor_hit()])
     monkeypatch.setattr(ask.TERM.SYN, "synthesize",
-                        lambda *a, **k: ("raw prose [1]", "sk", False))
+                        lambda *a, **k: ("raw prose [1]", "sk", False, 0.0))
     text, _cards, _scores = ask.answer(conn=None, question="what is the ID?", k=8,
                                        expand=False)
     assert text == "raw prose [1]"

@@ -122,6 +122,28 @@ def readout(decisions: list[dict[str, Any]], outcomes: list[dict[str, Any]],
     }
 
 
+def bar_summary(*, now_iso: str | None = None) -> dict[str, Any]:
+    """r33 A6 (owner-ruled MONITOR ONLY): the DEPLOYED assert bar p† beside the
+    declared-prior bar, both through ``scripts/bar_audit.py``'s machinery — the fold and
+    the bisection of the imported ``decide.u_assert``, never a re-implementation, so
+    neither 0.90 nor the live value is ever hard-coded here. r32 priced the drift
+    (0.900 → 0.837, monotone: only abstain-verdicts fold and nothing pushes back until a
+    wrong commit); this line is its watch. GUARDED: the computation needs the live brain,
+    and a watch must never be a dependency — any failure returns ``{"error": ...}`` and
+    the report renders the unavailability by name."""
+    try:
+        import bar_audit as BA
+        from life_agent.core import lookup as LK
+        brain = LK.shared_brain()
+        stamp = now_iso or datetime.now(UTC).isoformat()
+        u_now, _version, n_events = BA.u_bar_as_of(brain, stamp)
+        declared = BA.indifference_point(BA.u_bar_from(brain, []))
+        return {"p_dagger": BA.indifference_point(u_now), "declared": declared,
+                "n_events": n_events}
+    except Exception as e:  # the watch degrades to a named line, never a dead report
+        return {"error": str(e)[:200]}
+
+
 def _window_line(w: dict[str, Any]) -> str:
     """What the readout actually covered — so a watch that stopped is visible IN the
     readout. Before K3 a stopped watch produced no file, and nothing reads an absent file."""
@@ -150,6 +172,19 @@ def _sources_line(sources: Sequence[dict[str, Any]]) -> str:
     return f"- sources: {len(sources)} KB {noun} — " + "; ".join(parts)
 
 
+def _bar_line(bar: dict[str, Any] | None) -> list[str]:
+    """The p† bullet (A6): absent bar key = a pre-A6 summary, no line (back-compat);
+    an error = the named unavailability; else the deployed bar BESIDE the declared one
+    (r32's rule: never quote either alone) with the drift direction stated."""
+    if bar is None:
+        return []
+    if "p_dagger" not in bar:
+        return [f"- assert bar p† unavailable ({bar.get('error', 'unknown')})"]
+    return [f"- assert bar p† {bar['p_dagger']:.4f} (declared prior {bar['declared']:.4f}; "
+            f"{bar['n_events']} folded events — one-way drift downward until a wrong "
+            f"commit folds, r32)"]
+
+
 def render(s: dict[str, Any]) -> str:
     lines = [
         f"# Production readout — since {s['since']}",
@@ -164,6 +199,7 @@ def render(s: dict[str, Any]) -> str:
         f"- deliberate-edge commits: {s['deliberate_commits']}",
         f"- graded outcomes: {json.dumps(s['graded'], sort_keys=True)}",
         f"- owner reactions: {json.dumps(s['reactions'], sort_keys=True)}",
+        *_bar_line(s.get("bar")),
         "",
         "## Watch: wrong outcomes (the carried-risk classes ride here)",
         "",
@@ -218,6 +254,7 @@ def main(argv: list[str] | None = None) -> int:
                 union(*[p[2] for p in per_root]),
                 since=args.since,
                 sources=[{"rows": sum(len(x) for x in p)} for p in per_root])
+    s["bar"] = bar_summary()   # A6: the drift watch — guarded, never a dependency
     text = render(s)
     out = Path(args.out) if args.out else cals[0] / "readout.md"
     out.write_text(text, encoding="utf-8")

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date as _date
@@ -607,19 +608,25 @@ def answer(conn: duckdb.DuckDBPyConnection, question: str,
     # synthesizer lives in core.synthesis (shared with the bridge). The retrieval_set lineage is
     # ask-side (rerank has no retrieve key), threaded through as extra lineage.
     extra = [{"cache_key": rkey.cache_key, "role": "retrieval_set"}] if rkey else []
-    text, scache, scached = SYN.synthesize(root, question, hits, profile, no_cache=no_cache,
-                                           extra_lineage=extra)
+    t0 = time.monotonic()
+    text, scache, scached, scost = SYN.synthesize(root, question, hits, profile,
+                                                  no_cache=no_cache, extra_lineage=extra)
+    s_latency = time.monotonic() - t0
     if root is not None:  # caching telemetry only when a cache is in play (root resolved)
         _count("synthesize", hit=scached)
     STAGES_LAST["synthesize"] = scache
     if not families:  # the monolithic instrument: raw synthesize prose, unscored
         return (text, cards, scores)
     return (_narrative_scored(root, question, text, cards,
-                              scope=INTENT_LAST or "unscoped"), cards, scores)
+                              scope=INTENT_LAST or "unscoped",
+                              cost_usd=scost, latency_s=s_latency,
+                              instrument=SYN.INSTRUMENT), cards, scores)
 
 
 def _narrative_scored(root: Path | None, question: str, text: str,
-                      cards: list[C.SourceCard], *, scope: str = "unscoped") -> str:
+                      cards: list[C.SourceCard], *, scope: str = "unscoped",
+                      cost_usd: float | None = None, latency_s: float | None = None,
+                      instrument: str = "") -> str:
     """The narrative family's scorer (foundations §7) over the synthesize proposal:
     parse → audit cells → population credences → per-claim EU decision → labeled
     render. Read-side policy — the proposal artifact and its keys are untouched —
@@ -633,7 +640,9 @@ def _narrative_scored(root: Path | None, question: str, text: str,
         # cast: the seam may be stubbed to None (the conftest hermetic fixture)
         nv = cast("N.NarrativeResult | None",
                   N.narrative_answer(root, question, text, cards, scope=scope,
-                                     synthesize_cache_key=STAGES_LAST.get("synthesize")))
+                                     synthesize_cache_key=STAGES_LAST.get("synthesize"),
+                                     cost_usd=cost_usd, latency_s=latency_s,
+                                     instrument=instrument))
     except Exception as e:  # fail-open by contract, reason printed
         print(N.GRAMMAR["fallthrough"].format(reason=f"failed: {e}"))
         return text
