@@ -179,3 +179,26 @@ successor may reshape.
 
 **Unchanged and binding on everything above:** the hard clause — *no lever ships while it makes
 a named wrong-commit class worse* — against a baseline of zero wrong commits in 69 asks.
+
+---
+
+## 7. RULING 2 RESOLVES — r32 read the same day
+
+[`r32-bar-reading.md`](../reports/r32-bar-reading.md): **PRICED**, $0. The deployed bar is
+**p† = 0.8522** at the rows in question (0.8369 today), not the declared 0.90 — reproduced
+3/3 on fold version, action and EU, with all four attenuation candidates refuted. The
+declared 10:1 rate reproduces 0.9000 exactly *at the model prior*; the reaction stream is the
+whole difference.
+
+**Ruling 2 therefore resolves: C gets no lever.** Not because the bar is sacred, but because
+the census says a bar move cannot reach the class — the window's highest abstained leader is
+0.8282, below the deployed bar; the median is 0.3688; only 2 of 70 abstains sit within 0.05 of
+it. **C is a dispersion problem, not a threshold problem**, which is the norm class's finding
+arrived at from the other side. The lever that reaches C is candidate 1 (value-norm
+canonicalisation), and the two classes are one problem, not two.
+
+Registered by r32 and carried into ruling 3's work: **the measurement moved the bar it was
+measuring** (0.900 → 0.837 while the ledger was collected), and the drift is monotone downward
+because only abstain-verdicts fold and dogfood reacts `bad` to silence far more than `good`.
+Its only brake is a wrong commit. This is a sixth item for §3's list, found after it was
+written.
