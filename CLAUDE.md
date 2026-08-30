@@ -24,8 +24,10 @@ a **derive → project → reach** shape (PRINCIPLES §6):
 - **reach (`src/life_agent/reach`):** Telegram as a dumb transport; "Jarvis" is just the persona.
 
 The GTD is event-sourced: an append-only ledger is truth, the SQLite read-model is a fold of it
-(PRINCIPLES §7; `docs/act-layer-events.md`). **email→GTD runs off a `systemd --user` timer**
-(`bin/mail-to-tasks` is the timer/debug entrypoint): the `action_items` transform (haiku,
+(PRINCIPLES §7; `docs/act-layer-events.md`). **email→GTD is built but NOT deployed** --
+`bin/mail-to-tasks` is the intended timer/debug entrypoint, but no `systemd --user`
+timer runs it anywhere today (wiring one in after the mail sync, or retiring the
+entrypoint, is a recorded follow-up): the `action_items` transform (haiku,
 grounded quotes) auto-files cited tasks; the grounding gate is the safety; triage
 happens in Telegram. The ask-anything read path is `scripts/ask.py`, dogfooded via
 `bin/ask-live`; its temporal mode (`/recent`, `/since`, `/until`, `/derive` — one line
@@ -583,10 +585,15 @@ dogfood) live in [`PRINCIPLES.md`](./PRINCIPLES.md) — they are not restated he
   owner-specific absolute paths, hostnames, or ids hard-coded in `src/` — they belong
   in config/env (`$LIFE_AGENT_KB`, `PKM_CONFIG`, `JARVIS_USER_ID`).
 - **In `pkm`:** obey its SPEC-first + TDD + idempotency rules (see Governance above).
-- **Secrets** live in **gnome-keyring**, never in `.env`. Read one with
-  `secret-tool lookup service env key VARNAME`; load all into a shell with
-  `load_secrets_from_keyring`. Fastmail tokens: keyring `service=carddav` / `service=jmap`;
-  sending email: `~/.msmtprc` (passwordeval).
+- **Secrets are two-tier** (packaging/README.md is the governing write-up):
+  **interactive tools read gnome-keyring** (`secret-tool lookup service env key
+  VARNAME`; load all into a shell with `load_secrets_from_keyring`), while
+  **linger-started `systemd --user` services read the gitignored `.env` (mode 0600)**
+  -- under `loginctl enable-linger` the keyring is LOCKED at boot, so a
+  keyring-only value fails exactly when a deployed unit needs it. Anything a
+  unit needs at boot therefore lives in `.env`, with the keyring as the
+  interactive source of truth (see `.env.example`). Fastmail tokens: keyring
+  `service=carddav` / `service=jmap`; sending email: `~/.msmtprc` (passwordeval).
 - **Tooling preferences:** `rclone` (not s3cmd) for R2; `gh` (not a GitHub MCP) for GitHub;
   don't pipe long-running commands through `head`/`tail` (use native verbosity).
 - **Commit/push only when the owner asks.**
@@ -603,9 +610,11 @@ dogfood) live in [`PRINCIPLES.md`](./PRINCIPLES.md) — they are not restated he
   (FTS5), `pandoc`, `jq`. (No `fd`/`fzf`/`recoll`.) **DuckDB 1.5.2.**
 - **Langs:** Python 3.14 system-wide, but **this project pins 3.13** via `uv`
   (`pyproject.toml` `requires-python`); Node 26 + `pnpm`/`bun`; Julia (for credence).
-- **Running services:** `jarvis.service`, PhotoPrism, Tuwunel + mautrix bridges +
-  `matrix-archiver`, n8n, miniflux, invidious; timers `mbsync` (mail) + `renavon-inbox-ingest`;
-  bi-hourly borg backup.
+- **Running services:** the life-agent surfaces `jarvis.service`,
+  `life-agent-bridge.service`, `gtd-web.service`, `trips-web.service` (+ credence's
+  `answer-brain-daemon.service`); timers `daily-digest`, `production-readout`,
+  `mbsync` (mail); alongside the box's self-hosted stack (PhotoPrism, Tuwunel +
+  mautrix bridges + `matrix-archiver`, miniflux, n8n) and a daily borg backup.
 
 ## Start here
 

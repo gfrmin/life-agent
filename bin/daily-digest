@@ -17,4 +17,20 @@ if [ -z "${JARVIS_USER_ID:-}" ]; then
   JARVIS_USER_ID="$(secret-tool lookup service env key JARVIS_USER_ID || true)"
   export JARVIS_USER_ID
 fi
-exec uv run --project "$root" python -m life_agent.reach.digest
+# Optional dead-man (generic): when HC_PING_URL is set (e.g. by a systemd drop-in
+# on the deploying box), ping <url>/start before the run, <url> on success,
+# <url>/fail on failure. Every ping is `|| true` on purpose: monitoring must
+# never be a hard dependency of the work it monitors, so a dead or unreachable
+# monitor cannot fail the digest itself.
+if [ -n "${HC_PING_URL:-}" ]; then
+  curl -fsS -m 10 --retry 2 -o /dev/null "$HC_PING_URL/start" || true
+  if uv run --project "$root" python -m life_agent.reach.digest; then
+    curl -fsS -m 10 --retry 2 -o /dev/null "$HC_PING_URL" || true
+  else
+    rc=$?
+    curl -fsS -m 10 --retry 2 -o /dev/null "$HC_PING_URL/fail" || true
+    exit "$rc"
+  fi
+else
+  exec uv run --project "$root" python -m life_agent.reach.digest
+fi

@@ -16,4 +16,20 @@ set -euo pipefail
 # Resolve through symlinks (e.g. ~/.local/bin/production-readout) so root is always the repo.
 root="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
 set -a; [ -f "$root/.env" ] && source "$root/.env"; set +a
-exec uv run --project "$root" python "$root/scripts/production_readout.py" "$@"
+# Optional dead-man (generic): when HC_PING_URL is set (e.g. by a systemd drop-in
+# on the deploying box), ping <url>/start before the run, <url> on success,
+# <url>/fail on failure. Every ping is `|| true` on purpose: monitoring must
+# never be a hard dependency of the work it monitors, so a dead or unreachable
+# monitor cannot fail the readout itself.
+if [ -n "${HC_PING_URL:-}" ]; then
+  curl -fsS -m 10 --retry 2 -o /dev/null "$HC_PING_URL/start" || true
+  if uv run --project "$root" python "$root/scripts/production_readout.py" "$@"; then
+    curl -fsS -m 10 --retry 2 -o /dev/null "$HC_PING_URL" || true
+  else
+    rc=$?
+    curl -fsS -m 10 --retry 2 -o /dev/null "$HC_PING_URL/fail" || true
+    exit "$rc"
+  fi
+else
+  exec uv run --project "$root" python "$root/scripts/production_readout.py" "$@"
+fi
