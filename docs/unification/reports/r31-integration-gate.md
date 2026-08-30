@@ -218,3 +218,38 @@ and shipped a lever that never fires.
    watchdog asserts the role's units. The hang class that ate the poller is the ops-side
    counterpart of disclosure 2's lesson: state that reports healthy is not evidence of
    liveness.
+
+## AMENDMENT (owner, 2026-08-30) — the exit measurement stops on VOI, not on the calendar
+
+Ruled after day 1's second invited-user round (ten questions with golds verified from the
+corpus and frozen before any ask; retrieval placed the gold document in the top sources on
+all ten; one correct report, nine abstains, zero wrong commits — every failure
+decision-side). Day 1's evidence is concentrated enough that a fixed seven-day window is a
+prior, not a design: the measurement's purpose is "which failure class does the next arc
+fix", and that read converges on information gathered, not days elapsed.
+
+**The frozen stopping rule replacing ruling 2's calendar:** the measurement CLOSES when two
+consecutive rounds of ≥8 mixed-class asks (a) surface no new failure signature and (b) do
+not change the dominant-class ranking. Owner-side traffic through the reach surface counts
+toward rounds. 2026-09-05 stays as a hard cap, not a target. Conferral 2 reads the moment
+the rule fires.
+
+The signature ledger the rule ranks over, as of day 1 (13 lifetime asks):
+
+- **A — lookup admits nothing** (3 instances, new on day 1): hits → 0 grounded
+  observations, all indeterminate, none-of-retrieved 0.000 — the engine is certain the
+  answer is in the retrieved set and grounds none of it. This lane emits the §6.5
+  unavailability record with an empty decision id, which the bridge refuses to fold — so
+  the worst failure mode is structurally invisible to the reaction stream. Rider carried
+  to Conferral 2 regardless of ranking.
+- **B — narrative inclusion at a constant** (6 instances — the dominant class): N claims
+  proposed → 0 included at identical coverage and identical calibration cells every time;
+  it gates out verbatim table values, not just synthesis.
+- **C — dispersed-withhold with the gold leading** (2 instances): the correct value leads
+  below the bar; in one, the diluter is a template document (another person's sample
+  paperwork) the subject filter is specified to exclude by name and did not.
+
+Zero trap values were asserted across both rounds — the run-9 temper's protection is real
+and is the price side of B. Deferred owner verdicts were filed per decision id through the
+reach surface's `/react`; only abstain verdicts fold, and signature A's rows cannot be
+verdicted at all (the empty-id pin) — that asymmetry is itself a Conferral 2 item.
