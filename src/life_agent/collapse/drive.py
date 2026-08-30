@@ -220,6 +220,25 @@ def installed(rig: Rig, snapshot: KBSnapshot) -> Iterator[Rig]:
 
     _set(EX, "decide_via_loop", _capturing_loop)
 
+    # r33 RC-1's second lesson, learned live: a PATH-LESS ledger writer (record_miss falls
+    # through to config) appended into the checkpoint's decisions.snapshot on the first
+    # replay of the r33 tree — the fold input every later run reads. Redirecting the
+    # config PATH points reads at the snapshot, so it points path-less WRITES at it too;
+    # `sealed`'s docstring names the covering form — sink the append itself. PATH-AWARE,
+    # unlike `sealed`'s blanket sink: only a write aimed at the frozen snapshot file is
+    # diverted to staging; the leaf drivers pass explicit tmp paths and READ THEM BACK
+    # (`_last_event`), so those must land exactly where they were addressed.
+    snapshot.staging.mkdir(parents=True, exist_ok=True)
+    inner_dec_append = DEC.append
+    frozen_decisions = snapshot.path("decisions")
+
+    def _staged_append(path: Any, event: Any) -> Any:
+        if Path(path) == frozen_decisions:
+            return inner_dec_append(snapshot.staging / "decisions.jsonl", event)
+        return inner_dec_append(path, event)
+
+    _set(DEC, "append", _staged_append)
+
     prior_brain = LK._BRAIN
     prior_u_bar_raw, prior_u_bar_shaped = LK._U_BAR_RAW, LK._U_BAR_SHAPED
     LK.set_shared_brain(rig.brain)
@@ -426,7 +445,12 @@ def drive_ask_poster(question: str, view: dict[str, Any], *,
                      run_id: str | None) -> dict[str, Any]:
     """The ONE poster's body from a recorded view (`ask_client.post_decision` — since M2
     the CLI's `_log_executor_decision` and the reach surface's inline poster are this one
-    function, r12 D2). Hermetic: it needs only a recorded View; the transport is a capture."""
+    function, r12 D2). Hermetic: it needs only a recorded View; the transport is a capture.
+    r33 RC-1: a MISS view now appends a local ledger row through the poster, and this
+    trace runs OUTSIDE `installed()`'s sink redirection — the append lands in a discarded
+    temp sink, because a replay may never write the ambient ledger."""
+    import tempfile
+
     from life_agent.core import ask_client as AC
 
     captured: list[dict[str, Any]] = []
@@ -435,7 +459,13 @@ def drive_ask_poster(question: str, view: dict[str, Any], *,
         captured.append({"url": url, "payload": payload})
         return {"decision_id": "captured"}
 
-    AC.post_decision(_capture, "http://bridge", question, view, run_id=run_id)
+    with tempfile.TemporaryDirectory(prefix="collapse-poster-") as tmp:
+        prior = CFG.DECISIONS_LOG
+        CFG.DECISIONS_LOG = Path(tmp) / "decisions.jsonl"
+        try:
+            AC.post_decision(_capture, "http://bridge", question, view, run_id=run_id)
+        finally:
+            CFG.DECISIONS_LOG = prior
     body = captured[-1]["payload"] if captured else None
     return {"effector": view.get("effector"), "asserted": list(view.get("asserted") or []),
             "candidates": list(view.get("candidates") or []),

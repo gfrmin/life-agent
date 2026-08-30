@@ -30,7 +30,6 @@ source of that mapping, so the brain stays string-blind.
 from __future__ import annotations
 
 import contextlib
-import hashlib
 import os
 import re
 import signal

@@ -133,6 +133,7 @@ def bar_summary(*, now_iso: str | None = None) -> dict[str, Any]:
     the report renders the unavailability by name."""
     try:
         import bar_audit as BA
+
         from life_agent.core import lookup as LK
         brain = LK.shared_brain()
         stamp = now_iso or datetime.now(UTC).isoformat()

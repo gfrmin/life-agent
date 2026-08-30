@@ -18,9 +18,9 @@ import duckdb
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
-import carrier_census as CC  # noqa: E402
+import carrier_census as CC
 
-from life_agent.core import lookup as LK  # noqa: E402
+from life_agent.core import lookup as LK
 
 
 def _db(tmp_path: Path, rows: list[tuple[str, str]]) -> duckdb.DuckDBPyConnection:

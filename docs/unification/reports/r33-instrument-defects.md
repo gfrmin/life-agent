@@ -131,3 +131,79 @@ untouched; any fold reform is its own future pre-registration.
 All gates green → PR onto the conferral2-r32 branch chain (this arc stacks on PR #125,
 which carries `scripts/bar_audit.py`); the owner merges. Any gate red → fix or STOP and
 disclose; no gate is renegotiated after it reads.
+
+---
+
+## RESULTS (read 2026-08-31; appended after the gates, per the declaration above)
+
+Every item built under TDD — each pin observed RED on the pre-r33 tree before its fix.
+
+| # | landed as | pinned by |
+|---|---|---|
+| A1 | `ask_client._retrying` — 2 retries, backoff, 5xx/`URLError`/timeout only; 4xx never; `post_json` + `_get` | 5 tests (`tests/test_ask_client.py`); classifier mutation (`<500`→`<400`) KILLED |
+| A2 | `recorder.record_miss` (local, real id via `DEC.decision_id_for` — promoted verbatim from the bridge, which now BINDS it); `regime: "miss"` declared; poster's miss branch; fold exclusion in `load_reactions` | recorder/bridge-binding/poster/fold tests; fold-guard mutation KILLED; identity pinned `is` |
+| A3 | `synthesize` → `(text, key, cached, cost_usd)` through `pricing.cost_usd`; both callers thread cost/latency/`SYN.INSTRUMENT`; the leaf applies the never-absent normalisation | synthesis price + cached-zero tests; leaf row tests (priced + honest-zero default) |
+| A4 | footer renders `—` for a `None` posterior (grammar takes pre-formatted fields); the never-bound `REASON_UNAVAILABLE` RETIRED (deviation 1) | miss-footer + real-zero-control tests; footer mutation KILLED |
+| A5 | `scripts/carrier_census.py` — sweeps all spellings, word-boundary substring exclusion, engine grouping via `engine_key is LK._candidate_key` | 4 tests incl. the round-8 defect reproduced and the identity pin |
+| A6 | `production_readout.bar_summary` + the p† bullet — both bars through `bar_audit`'s machinery, guarded (a dead brain renders a named unavailability) | 4 render/guard tests; live cross-check below |
+| A7 | `shaped_u_bar` docstring corrected (declared prior 0.90 vs the live drifting bar; measure with `bar_audit`) | prose |
+| A8 | `ledger/migrate.py` I001 autofixed — the repo lint gate is green again | `ruff check .` clean |
+
+**Gates.** G1: full suite **3050 passed, 0 failed** (35 deselected); `ruff check .` clean
+repo-wide; mypy clean (232 files). G2: the m5-base replay reads **288/314 with 26 errored on
+BOTH the r33 tree and its parent** — the errored sets are element-identical, so the replay
+delta of this arc is **ZERO**. The 26 are the standing master artefacts, named: 21 A-loop
+`?shape=` wire artefacts (r30) + the 5 interval-lever questions r30b:238 names
+(q2-004/029/056/059/090 — a request a pre-r30b cassette cannot serve). The three declared
+directions each landed TIGHTER than declared: RC-1 is invisible to the comparator (the miss
+append is isolated outside the fixture's outputs), RC-2's null→number falls inside DIR-1's
+standing never-absent direction (the B-narrative fixture replays `ok`), RC-3's footer never
+appears in any fixture's compared outputs. G4: the readout's p† on the live stream equals
+`bar_audit`'s to full precision — **0.836894 (55 folded events), declared prior 0.9000** —
+computed through one import path, `CROSS-CHECK: MATCH`.
+
+**Deviations, all disclosed:**
+
+1. **A4's `REASON_UNAVAILABLE` clause named a render branch that does not exist.** The §6.5
+   reply is `ask_client.DOWN`, its own contract string; the constant was defined at M5 and
+   never bound by anything. Enacted as retirement, not binding — the standing re-read-every-
+   frozen-clause lesson, this arc's own instance.
+2. **The first replay of this tree CONTAMINATED the m5-base snapshot** — aloop-q2-094's miss
+   append landed in `decisions.snapshot` (the fold input every later run reads), because
+   `installed()` redirects the config PATH and `record_miss` writes through it. Found when
+   the parent-tree baseline read 124 errors (`unknown regime 'miss'`) — the old vocabulary
+   refusing the new row; nearly missed because a spaced-separator grep read the compact JSONL
+   as clean (a silent-wrong-grep of exactly the CLAUDE.md keyring class). Restored by
+   removing the one line under assertions (3369 lines, zero miss rows; contaminated copy
+   kept at `~/.cache/life-agent/r33/decisions.snapshot.contaminated.bak`); the live stream
+   was never touched (verified 0 miss rows); root-fixed with a PATH-AWARE append sink in
+   `installed()` (only a write aimed at the frozen snapshot diverts to staging — the leaf
+   drivers' explicitly-addressed appends stay where `_last_event` reads them back), pinned
+   by two hermetic tests either side. `drive_ask_poster` (outside `installed()`) got its own
+   discarded temp sink. Verified end-to-end: both post-fix full replays leave the snapshot
+   byte-frozen.
+3. **Three old pins were re-pointed at the declared directions** (never silently): the
+   `test_ask` miss pin now asserts the local row + no bridge post; the `test_ask_cache` LLM
+   stub gained the `LLMResult` fields the priced seam reads; the fairfight synthesize stub
+   returns the 4-tuple.
+4. **The first miss-fold pin was shape-shadowed** — the mutation that disables the regime
+   guard SURVIVED it, because a writer-shaped miss row (empty credences) is excluded by
+   accident of shape. Sharpened to a foldable-looking row so the REGIME is the operative
+   exclusion; mutation now KILLED.
+5. **Process:** a `git checkout` used to restore two mutation edits also reverted the then-
+   uncommitted A1/A2 work; re-applied from the reproducible edit scripts and re-verified
+   green. Mutations run only against committed trees from here on.
+6. **One diagnostic-side observation, noted and not chased (the r07 cap):** after the
+   concurrent gate rerun (suite + both replays sharing the box), the DIVERTED staged copy
+   of the miss row was absent from `snapshots/staging/` even though the snapshot itself
+   stayed byte-frozen; a solo full replay immediately after left both properties correct
+   (staged copy present, snapshot frozen, same 288/314). The invariant that matters — the
+   frozen fold input — is pinned hermetically and held in every run; the staged copy is a
+   diagnostic by-product only.
+
+**Verdict: ruling 3 is ENACTED.** All five conferral-2 §3 defects fixed, the sixth item
+landed as the ruled monitor, the docstring corrected, the lint gate un-red. The r31 report
+carries its correction note in place; FAILURES.md (out of tree) retires the "§6.5 empty-id"
+class name with a dated correction. Nothing in this arc changes an argmax; no priced run
+was bought. Deploy note: the live box's weekly readout gains the p† line when master merges
+and the live checkout updates — the deployment rides the PR, nothing else to install.

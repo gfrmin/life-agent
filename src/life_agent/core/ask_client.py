@@ -21,7 +21,7 @@ import time
 import urllib.error
 import urllib.request
 from collections.abc import Callable
-from typing import Any, TypeVar
+from typing import Any
 
 from life_agent.core import calibration as CAL
 from life_agent.core import config as CFG
@@ -51,10 +51,9 @@ _SLOW_TIMEOUT = 900
 # transport now retries transient failures with bounded backoff. A 4xx is the bridge
 # SPEAKING (a named refusal), never retried; retrying it would re-ask a settled question.
 _RETRY_SLEEPS = (0.5, 2.0)
-_T = TypeVar("_T")
 
 
-def _retrying(attempt: Callable[[], _T]) -> _T:
+def _retrying[T](attempt: Callable[[], T]) -> T:
     """Run ``attempt``; on a TRANSIENT failure (HTTP 5xx, connection error, timeout)
     sleep and retry, once per entry in :data:`_RETRY_SLEEPS`; the final attempt's error
     propagates with its own name. HTTPError < 500 re-raises immediately."""

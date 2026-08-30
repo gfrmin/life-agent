@@ -263,7 +263,7 @@ def main(argv: list[str] | None = None) -> int:
                     ap.error(f"unknown source(s): {', '.join(unknown)}")
                 order = tuple(args.sources)
             elif args.mirrored:
-                from .mirror import MIRRORED     # lazy, like the mirror's own imports
+                from .mirror import MIRRORED  # lazy, like the mirror's own imports
                 order = MIRRORED
             else:
                 order = SRC.MIGRATION_ORDER

@@ -28,7 +28,7 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from life_agent.core import lookup as LK  # noqa: E402
+from life_agent.core import lookup as LK
 
 #: The deployed candidate-identity rule — a BINDING (the census reads the engine's own
 #: grouping; a second spelling of this rule is how round 10's audit flipped a verdict).
@@ -101,7 +101,6 @@ def main() -> int:
               + ", ".join(sorted(out["substring_only"])))
     print("engine groups (deployed candidate key):")
     for key, members in out["groups"].items():
-        tag = "" if len(out["groups"]) == 1 else "  <- the engine SPLITS these spellings"
         print(f"  {key}: {members!r}")
     if len(out["groups"]) > 1:
         print("  NOTE: >1 group — the engine reads these spellings as DIFFERENT "
