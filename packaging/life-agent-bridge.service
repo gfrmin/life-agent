@@ -13,6 +13,12 @@ Description=life-agent capability bridge (:8798) — answer-brain read path (rou
 Documentation=https://github.com/gfrmin/life-agent
 After=network-online.target
 Wants=network-online.target
+# Ordering only, deliberately no Wants=: where answer-brain-daemon.service exists
+# (the engine daemon the bridge fronts), start the bridge after it so the first
+# requests do not race a cold engine. On installs without that unit this line is
+# inert -- systemd ignores ordering against units it does not know -- and the
+# daemon stays enabled independently; this must not pull it in.
+After=answer-brain-daemon.service
 
 [Service]
 Type=simple

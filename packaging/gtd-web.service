@@ -14,7 +14,10 @@
 # the repo is at %h/git/life-agent — edit it if the repo lives elsewhere.
 [Unit]
 Description=life-agent GTD webapp
-After=network.target
+# network-online (not network.target, which says nothing about addresses), matching
+# jarvis/bridge -- a bind to a specific address needs the interface actually up.
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=simple

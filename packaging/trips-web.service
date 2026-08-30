@@ -9,7 +9,10 @@
 # elsewhere. The trips ledger is single-owner, so there is no JARVIS_USER_ID here (unlike gtd-web).
 [Unit]
 Description=life-agent trips timeline (read-only reach channel)
-After=network.target
+# network-online (not network.target, which says nothing about addresses), matching
+# jarvis/bridge -- a bind to a specific address needs the interface actually up.
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=simple
