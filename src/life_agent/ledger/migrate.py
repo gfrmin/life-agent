@@ -226,6 +226,12 @@ def main(argv: list[str] | None = None) -> int:
         s.add_argument("source", nargs="?", default="all")
     k = sub.add_parser("counts")
     k.add_argument("--baseline", default=None, help="a census JSON to reconcile against")
+    k.add_argument("--mirrored", action="store_true",
+                   help="reconcile only the live-mirrored sources (mirror.MIRRORED) — the three "
+                        "swept sources reconcile only at manual sweeps and read MISMATCH between "
+                        "them, so a scheduled dead-man over all sources would never go green")
+    k.add_argument("sources", nargs="*", metavar="source",
+                   help="explicit source ids to reconcile (overrides --mirrored)")
     args = ap.parse_args(argv)
     paths = Paths.from_config()
     store = LedgerStore(stream_root())
@@ -251,7 +257,17 @@ def main(argv: list[str] | None = None) -> int:
             sync(paths, store, sources=srcs)
         elif args.cmd == "counts":
             base = json.loads(Path(args.baseline).read_text()) if args.baseline else None
-            return 0 if counts(paths, store, baseline=base)["ok"] else 1
+            if args.sources:
+                unknown = sorted(set(args.sources) - set(SRC.MIGRATION_ORDER))
+                if unknown:
+                    ap.error(f"unknown source(s): {', '.join(unknown)}")
+                order = tuple(args.sources)
+            elif args.mirrored:
+                from .mirror import MIRRORED     # lazy, like the mirror's own imports
+                order = MIRRORED
+            else:
+                order = SRC.MIGRATION_ORDER
+            return 0 if counts(paths, store, order=order, baseline=base)["ok"] else 1
     except LedgerConflictError as exc:
         print(f"CONFLICT {exc}", file=sys.stderr)
         return 1

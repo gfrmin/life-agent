@@ -1,0 +1,12 @@
+# Daily reconciliation of the unified-ledger mirror (ledger-freshness.service).
+# 12:30 stays clear of the 07:00 digest; Persistent=true catches up a missed
+# fire (laptop asleep) on the next boot rather than skipping the day.
+[Unit]
+Description=life-agent ledger freshness, daily at 12:30
+
+[Timer]
+OnCalendar=*-*-* 12:30
+Persistent=true
+
+[Install]
+WantedBy=timers.target

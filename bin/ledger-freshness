@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# ledger-freshness — the two-route counts as a dead-man: proves the unified ledger's
+# mirror segments still reconcile with their legacy sources (tally == segment ==
+# legacy) instead of trusting any process's liveness. The live mirror is FAIL-OPEN
+# by design — a conflicted segment keeps every service green while failures only
+# count up in the manifest (seen live 2026-08-30: 1113 silent mirror failures over
+# 11 days behind a green readiness endpoint). Freshness must be checked from the
+# DATA. Meant to run unattended from a systemd --user timer
+# (packaging/ledger-freshness.timer); by hand it is a read-only reconciliation report.
+#   ledger-freshness                     # reconcile the live-mirrored sources
+#   ledger-freshness pkm.demand          # reconcile explicit sources instead
+# Default scope is --mirrored: the three swept sources reconcile only at manual
+# sweeps (`python -m life_agent.ledger.migrate sync all`) and read MISMATCH
+# between them by design — a dead-man that can never go green is one nobody reads.
+set -euo pipefail
+# Resolve through symlinks (e.g. ~/.local/bin/ledger-freshness) so root is always the repo.
+root="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+set -a; [ -f "$root/.env" ] && source "$root/.env"; set +a
+# Optional dead-man (generic): when HC_PING_URL is set (e.g. by a systemd drop-in
+# on the deploying box), ping <url>/start before the run, <url> on success,
+# <url>/fail on failure. Every ping is `|| true` on purpose: monitoring must
+# never be a hard dependency of the work it monitors, so a dead or unreachable
+# monitor cannot fail the reconciliation itself.
+if [ -n "${HC_PING_URL:-}" ]; then
+  curl -fsS -m 10 --retry 2 -o /dev/null "$HC_PING_URL/start" || true
+  if uv run --project "$root" python -m life_agent.ledger.migrate counts --mirrored "$@"; then
+    curl -fsS -m 10 --retry 2 -o /dev/null "$HC_PING_URL" || true
+  else
+    rc=$?
+    curl -fsS -m 10 --retry 2 -o /dev/null "$HC_PING_URL/fail" || true
+    exit "$rc"
+  fi
+else
+  exec uv run --project "$root" python -m life_agent.ledger.migrate counts --mirrored "$@"
+fi

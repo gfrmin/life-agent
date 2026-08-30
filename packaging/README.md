@@ -11,6 +11,15 @@ paths, ports and ids, and the wrapper does the environment resolution.
 | `trips-web.service` | `bin/trips-web` | the trips timeline, read-only (`:8800`) |
 | `life-agent-bridge.service` | `bin/answer-bridge` | the answer-brain read path (`:8798`) |
 | `daily-digest.{service,timer}` | `bin/daily-digest` | the scheduled briefing |
+| `production-readout.{service,timer}` | `bin/production-readout` | the weekly calibration readout |
+| `ledger-freshness.{service,timer}` | `bin/ledger-freshness` | the daily mirror reconciliation (two-route counts) |
+
+`ledger-freshness` is a dead-man over the DATA, not a liveness check: the unified
+ledger's live mirror is fail-open by design, so a conflicted segment keeps every
+service green while failures only count up in the manifest (2026-08-30: 1113
+silent mirror failures over 11 days). The three timer wrappers share an optional
+`HC_PING_URL` hook — when set, they ping `<url>/start` / `<url>` / `<url>/fail`
+around the run, and a ping failure never fails the job.
 
 ## Install: symlink, never copy
 
