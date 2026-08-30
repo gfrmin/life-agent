@@ -1,0 +1,18 @@
+# life-agent ledger freshness — the daily two-route reconciliation of the unified
+# ledger's live-mirrored segments against their legacy sources, fired by
+# ledger-freshness.timer. Exists because the mirror is FAIL-OPEN by design: a
+# conflicted segment keeps every liveness endpoint green while mirror failures
+# only count up in the manifest (2026-08-30: 1113 silent failures over 11 days).
+# Same lesson as any freshness check: ask the data, not the process.
+# Install:
+#   ln -s "$PWD/packaging/ledger-freshness.service" ~/.config/systemd/user/   # run from the repo root
+#   ln -s "$PWD/packaging/ledger-freshness.timer"   ~/.config/systemd/user/
+#   systemctl --user daemon-reload && systemctl --user enable --now ledger-freshness.timer
+# LIFE_AGENT_KB resolves at runtime from the repo .env via bin/ledger-freshness;
+# nothing sensitive or owner-specific lives in this file.
+[Unit]
+Description=life-agent ledger freshness (two-route counts over the mirrored segments)
+
+[Service]
+Type=oneshot
+ExecStart=%h/git/life-agent/bin/ledger-freshness

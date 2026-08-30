@@ -194,6 +194,10 @@ def test_cli_smoke_census_migrate_counts(ledger_kb: tuple[Path, G.Paths],
     assert M.main(["migrate", "act.tasks"]) == 0
     assert M.main(["sync", "all"]) == 0
     assert M.main(["counts", "--baseline", str(root / "ledger" / "census.json")]) == 0
+    assert M.main(["counts", "--mirrored"]) == 0                  # the scheduled dead-man's scope
+    assert M.main(["counts", "act.tasks", "pkm.artifact"]) == 0   # explicit sources
+    with pytest.raises(SystemExit):                               # unknown ids are refused
+        M.main(["counts", "no.such_source"])
     monkeypatch.setenv(M.MIRROR_ENV, "0")
     assert M.main(["sync", "all"]) == 2
     out = capsys.readouterr().out
