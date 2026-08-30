@@ -308,3 +308,81 @@ def test_digest_sections_drift_gate() -> None:
     for key, template in reach_digest.SECTIONS.items():
         head = template.split("{")[0].strip()
         assert head and head in out, key
+
+
+# --- the jarvis heartbeat: env-gated, rate-limited, never fatal ------------------------
+#
+# "Active (running)" cannot distinguish a polling jarvis from a hung one (2026-08-30: a
+# locked keyring hung the poller for 15+ minutes while systemd reported healthy). The
+# heartbeat pings a dead-man check after each successful poll cycle; the monitor pages on
+# silence. Absence of JARVIS_HEARTBEAT_URL disables it (the membrane convention), and a
+# monitoring outage must never take reach down with it.
+
+class _BeatResp:
+    def __enter__(self) -> _BeatResp:
+        return self
+
+    def __exit__(self, *a: object) -> bool:
+        return False
+
+
+def test_heartbeat_absent_env_is_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("JARVIS_HEARTBEAT_URL", raising=False)
+    monkeypatch.setattr(jarvis, "_last_beat", None)
+    calls: list[str] = []
+    monkeypatch.setattr(jarvis, "urlopen",
+                        lambda url, timeout=0: calls.append(url) or _BeatResp())
+    jarvis._heartbeat()
+    assert calls == []
+
+
+def test_heartbeat_pings_then_rate_limits(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("JARVIS_HEARTBEAT_URL", "http://monitor.invalid/ping/x")
+    monkeypatch.setattr(jarvis, "_last_beat", None)
+    calls: list[str] = []
+    monkeypatch.setattr(jarvis, "urlopen",
+                        lambda url, timeout=0: calls.append(url) or _BeatResp())
+    jarvis._heartbeat()
+    jarvis._heartbeat()  # immediately again: inside the min interval, no second ping
+    assert calls == ["http://monitor.invalid/ping/x"]
+
+
+def test_heartbeat_failure_never_raises_and_rate_limits_retries(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("JARVIS_HEARTBEAT_URL", "http://monitor.invalid/ping/x")
+    monkeypatch.setattr(jarvis, "_last_beat", None)
+    calls: list[str] = []
+
+    def _boom(url: str, timeout: float = 0) -> _BeatResp:
+        calls.append(url)
+        raise OSError("monitor unreachable")
+
+    monkeypatch.setattr(jarvis, "urlopen", _boom)
+    jarvis._heartbeat()  # must not raise
+    jarvis._heartbeat()  # attempt-rate-limited: no immediate retry spam
+    assert calls == ["http://monitor.invalid/ping/x"]
+
+
+def test_poll_loop_beats_after_each_successful_cycle(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Stop(BaseException):
+        """Escapes poll_loop's retry net (deliberately BaseException, like SystemExit)."""
+
+    batches = iter([[], []])
+
+    def fake_poll(offset: int, timeout: int = 0) -> list[dict[str, Any]]:
+        try:
+            return next(batches)
+        except StopIteration:
+            raise _Stop from None
+
+    monkeypatch.setattr(telegram, "poll_updates", fake_poll)
+    monkeypatch.setattr(jarvis, "_user_id", lambda: 1)
+    monkeypatch.setattr(store, "init_db", lambda: None)
+    beats: list[int] = []
+    monkeypatch.setattr(jarvis, "_heartbeat", lambda: beats.append(1))
+    with pytest.raises(_Stop):
+        jarvis.poll_loop()
+    assert len(beats) == 2  # one beat per completed cycle, none for the aborted third

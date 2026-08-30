@@ -24,14 +24,28 @@ DEFAULT_ANSWER_MODEL = "claude-sonnet-4-6"
 TEMPERATURE = 0.0
 
 
+# Bounded: against a LOCKED keyring (post-boot/resume under linger) secret-tool blocks
+# forever on an unlock prompt no service can answer — a hung unit systemd reports as
+# healthy. A bounded lookup exits loudly instead, so Restart=on-failure and the watchdog
+# see a failed unit rather than nothing.
+_SECRET_TOOL_TIMEOUT_S = 10.0
+
+
 def secret(name: str) -> str:
     key = os.environ.get(name)
     if key:
         return key
-    out = subprocess.run(
-        ["secret-tool", "lookup", "service", "env", "key", name],
-        capture_output=True, text=True, check=False,
-    )
+    try:
+        out = subprocess.run(
+            ["secret-tool", "lookup", "service", "env", "key", name],
+            capture_output=True, text=True, check=False, timeout=_SECRET_TOOL_TIMEOUT_S,
+        )
+    except subprocess.TimeoutExpired:
+        raise SystemExit(
+            f"secret-tool lookup for {name} timed out after {_SECRET_TOOL_TIMEOUT_S:.0f}s"
+            " — the gnome-keyring is likely locked (boot/resume under linger);"
+            f" unlock it or set {name} in the environment"
+        ) from None
     if out.returncode == 0 and out.stdout.strip():
         return out.stdout.strip()
     raise SystemExit(f"{name} not found in env or gnome-keyring")

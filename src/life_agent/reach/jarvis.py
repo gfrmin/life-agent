@@ -18,6 +18,7 @@ import time
 from datetime import date
 from typing import Any
 from urllib.error import HTTPError, URLError
+from urllib.request import urlopen
 
 from life_agent.core import ask_client, executor, secret
 from life_agent.reach import telegram
@@ -248,6 +249,31 @@ def handle_action(parsed: dict[str, Any], user_id: int) -> str:
     return "I'm not sure what to do with that. Try 'help' for options."
 
 
+# Dead-man heartbeat: "active (running)" cannot distinguish a polling jarvis from a hung
+# one, so after each completed poll cycle we ping a monitor URL whose silence pages.
+# Env-gated (absence = disabled, the membrane convention); attempts are rate-limited; a
+# monitoring outage must never take reach down with it.
+HEARTBEAT_ENV = "JARVIS_HEARTBEAT_URL"
+_HEARTBEAT_MIN_INTERVAL_S = 60.0
+_last_beat: float | None = None
+
+
+def _heartbeat() -> None:
+    url = os.environ.get(HEARTBEAT_ENV)
+    if not url:
+        return
+    global _last_beat
+    now = time.monotonic()
+    if _last_beat is not None and now - _last_beat < _HEARTBEAT_MIN_INTERVAL_S:
+        return
+    _last_beat = now
+    try:
+        with urlopen(url, timeout=5):
+            pass
+    except Exception as e:  # deliberately broad: monitoring can never be fatal to reach
+        log.warning("Heartbeat ping failed: %s", e)
+
+
 def poll_loop() -> None:
     global LAST_DECISION_ID
     store.init_db()
@@ -285,6 +311,7 @@ def poll_loop() -> None:
                 except Exception:
                     log.exception("Error processing message")
                     telegram.send_message(chat_id, "Something went wrong. Try again?")
+            _heartbeat()
 
         except (HTTPError, URLError, TimeoutError) as e:
             log.warning("Poll error: %s — retrying in 5s", e)
