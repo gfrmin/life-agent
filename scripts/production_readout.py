@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from collections import Counter
 from collections.abc import Sequence
@@ -30,6 +31,9 @@ EXCLUDED_RUN_PREFIXES = ("gate-", "collapse-")
 #: A weekly timer plus a day of slack. Past this the watch is reporting about a stream
 #: that stopped moving, which before K3 looked exactly like a watch with nothing to say.
 STALE_AFTER_DAYS = 8
+#: The repo whose governance registers A0.5 reports on. Module-level so a test can
+#: point it at an absent tree and exercise the guard.
+REPO = Path(__file__).resolve().parent.parent
 
 
 def _rows(path: Path) -> list[dict[str, Any]]:
@@ -186,6 +190,35 @@ def _bar_line(bar: dict[str, Any] | None) -> list[str]:
             f"commit folds, r32)"]
 
 
+def governance_summary() -> dict[str, Any]:
+    """Arc 0 A0.5 — the delegation's own watch, read off the two registers.
+
+    ``D-3`` replaced the interview with decide-and-publish, which is only auditable if
+    someone can see it happening: how many forks were decided, how many are still awaiting
+    a reaction, and how many reached the owner anyway (``RULINGS.md`` §4). Counts only —
+    this is a readout, never a diagnosis (the cap). Guarded like :func:`bar_summary`: any
+    failure becomes a named absence, because a watch must never break the report."""
+    try:
+        decisions = (REPO / "docs" / "unification" / "DECISIONS.md").read_text(
+            encoding="utf-8")
+        rulings = (REPO / "docs" / "unification" / "RULINGS.md").read_text(encoding="utf-8")
+        return {"decisions": len(re.findall(r"^## GD-", decisions, re.M)),
+                "open": len(re.findall(r"\*\(open", decisions)),
+                "escalated": len(re.findall(r"^\| \*\*U-", rulings, re.M))}
+    except Exception as e:  # the watch degrades to a named line, never a dead report
+        return {"error": str(e)[:200]}
+
+
+def _governance_line(gov: dict[str, Any] | None) -> list[str]:
+    """The delegation bullet: absent key = a pre-A0.5 summary, no line (back-compat)."""
+    if gov is None:
+        return []
+    if "decisions" not in gov:
+        return [f"- governance unavailable ({gov.get('error', 'unknown')})"]
+    return [f"- governance: {gov['decisions']} decided · {gov['open']} awaiting a reaction "
+            f"· {gov['escalated']} escalated to the owner (docs/unification/DECISIONS.md)"]
+
+
 def render(s: dict[str, Any]) -> str:
     lines = [
         f"# Production readout — since {s['since']}",
@@ -201,6 +234,7 @@ def render(s: dict[str, Any]) -> str:
         f"- graded outcomes: {json.dumps(s['graded'], sort_keys=True)}",
         f"- owner reactions: {json.dumps(s['reactions'], sort_keys=True)}",
         *_bar_line(s.get("bar")),
+        *_governance_line(s.get("governance")),
         "",
         "## Watch: wrong outcomes (the carried-risk classes ride here)",
         "",
@@ -256,6 +290,7 @@ def main(argv: list[str] | None = None) -> int:
                 since=args.since,
                 sources=[{"rows": sum(len(x) for x in p)} for p in per_root])
     s["bar"] = bar_summary()   # A6: the drift watch — guarded, never a dependency
+    s["governance"] = governance_summary()   # A0.5: the delegation watch
     text = render(s)
     out = Path(args.out) if args.out else cals[0] / "readout.md"
     out.write_text(text, encoding="utf-8")

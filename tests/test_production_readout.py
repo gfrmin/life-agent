@@ -205,3 +205,37 @@ def test_bar_summary_never_raises(monkeypatch) -> None:
     monkeypatch.setattr(LK, "shared_brain", _boom)
     out = PR.bar_summary()
     assert set(out) == {"error"} and "daemon down" in out["error"]
+
+
+# --- Arc 0 (r34) A0.5: the governance line ------------------------------------------
+
+
+def test_governance_summary_reads_the_two_registers() -> None:
+    """The delegation is only auditable if the readout reports it: entries decided,
+    reactions still open, and forks escalated to the owner."""
+    g = PR.governance_summary()
+    assert g["decisions"] >= 3, "the GD entries in DECISIONS.md must be counted"
+    assert g["open"] >= 1, "an entry with an open reaction slot must be counted"
+    assert g["escalated"] >= 2, "RULINGS.md §4's carried-and-unsettled rows are escalations"
+
+
+def test_governance_summary_never_raises(monkeypatch) -> None:
+    # guarded exactly like bar_summary: a missing register is a named absence, not a crash
+    monkeypatch.setattr(PR, "REPO", Path("/nonexistent-repo-for-this-test"))
+    out = PR.governance_summary()
+    assert set(out) == {"error"}
+
+
+def test_governance_line_renders_beside_the_bar() -> None:
+    line = PR._governance_line({"decisions": 3, "open": 2, "escalated": 2})
+    assert len(line) == 1
+    assert "3 decided" in line[0] and "2 awaiting" in line[0] and "2 escalated" in line[0]
+
+
+def test_governance_line_absent_key_is_back_compat() -> None:
+    assert PR._governance_line(None) == []
+
+
+def test_governance_line_names_its_own_unavailability() -> None:
+    line = PR._governance_line({"error": "no register"})
+    assert len(line) == 1 and "unavailable" in line[0] and "no register" in line[0]
