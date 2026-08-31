@@ -595,26 +595,28 @@ def _lattice_join(value: str, candidates: list[str], allow_new: bool,
     both edges (corroborate and deliberate bind it). Returns ``(idx, new_candidate)``.
 
     Exact match on the identity ``key`` first. **The deployed identity is the DEFAULT
-    argument** (``LK._norm_value``) and every call on the decision path takes it; ``key`` is
-    parameterised only so r37's tap can ask what the declared §4.2 identity would have
-    returned by re-running THIS rule instead of writing a second copy of it (`M-7`). A
-    non-default ``key`` never reaches the argmax — it is the counterfactual arm, and the tap
-    call below is gated on the default so the two cannot recurse.
+    argument** — since r38, ``LK._candidate_key``, the §4.2 declared key — and every call on
+    the decision path takes it; ``key`` is parameterised only so the tap can ask what the
+    RETIRED ``_norm_value`` identity would have returned, by re-running THIS rule instead of
+    writing a second copy of it (`M-7`). A non-default ``key`` never reaches the argmax — it
+    is the counterfactual arm, and the tap call below is gated on the default so the two
+    cannot recurse.
 
-    **r34 bound `lookup._candidate_key` here and r36 REVERTED it** — not because the merge
-    was wrong (run 21 shows it converting q2-027 from a split 0.346+0.146 lattice to a
-    correct report at 0.863) but because r36's K3 killed on attribution: the census that
-    enumerated its firing surface read
-    RECORDED wire, so its surface is a lower bound and two live rows moved outside it. r37
-    carries the successor. The standing defect this site still has: it tests
-    `_norm_value` while `candidates_from`, `render`, `era_split`, the
-    S2 grow join and the confirm probe all used `_candidate_key`, so the edges minted
-    spelling variants the rest of the lattice considers one candidate. `_candidate_key`
-    falls back to `_norm_value`, so binding it is a monotone COARSENING: it merges more,
-    never splits more, and it inherits rather than widens the confident-wrong boundary
-    (values with different significant digits never merge). `_joined_observation` keeps
-    `_norm_value` deliberately — that is the §5 dedup key, a different relation, and a
-    derivation-cache key component. Else unique token-boundary containment — the join
+    **The arc, because the shape of it constrains anyone who touches this line.** This site
+    is M6's ONE declaration of the value-join, and until r38 it tested identity with
+    ``_norm_value`` while `candidates_from`, `render`, `era_split`, the S2 grow join and the
+    confirm probe all used ``_candidate_key`` — two declarations of one relation, numbered
+    under different clauses, which is how it survived M6. r34 bound the declared key and r36
+    REVERTED it, not because the merge was wrong (run 21 converted q2-027 from a split
+    0.346+0.146 lattice to a correct report at 0.863) but on a K3 attribution kill; r37 then
+    showed K3's baseline, not its surface, was the defect (`M-18`), and measured the lever's
+    whole effect as ONE correct row — **below the wobble floor, so this ships as a defect
+    repair and never on its row count** (`GD-8`). ``_candidate_key`` falls back to
+    ``_norm_value``, so the binding is a monotone COARSENING: it merges more, never splits
+    more, and it inherits rather than widens the confident-wrong boundary (values with
+    different significant digits never merge). `_joined_observation` keeps ``_norm_value``
+    deliberately — that is the §5 dedup key, a different relation, and a derivation-cache
+    key component. Else unique token-boundary containment — the join
     must not read a CONFIRMING sentence as a disagreement (the q-011 pooling loss),
     but nor may it read a CORRECTING sentence as a confirmation: containment alone
     cannot tell confirm from correct-while-mentioning, so a competing same-shaped
