@@ -354,8 +354,14 @@ eliminated as the mechanism, `chooseEU` is confirmed to be running (an empty opt
 emit no `act` key at all), and the insensitivity is **extreme** — arm B still picks `abstain`
 where abstain is worth −100 and respond +25. So item 4 is not a tie-break convention or a
 near-tie: on this world at HEAD the declared utility does not enter selection at all. The
-mechanism remains unidentified; the `reindexUtility` step over the atom codebook — which this
-world never declares — is where the successor should start.
+mechanism is then pinned behaviourally: permuting the **menu grid** shows arm B returns the
+**first grid point in every case** (abstain / respond / ask / gather as each is placed at the
+head) while arm A returns `respond` throughout. So HEAD fires the option-space head — the
+structural `wait` — irrespective of the declared utility, which is the policy `Host.hs`
+documents for a world that declared *no* utility. Three candidate mechanisms eliminated
+(`cgrid`, an empty option list, the atom codebook via `obs_arity`); the code path is not
+identified, and one Haskell-level reading is the successor's first step — after which it also
+decides whether to file upstream.
 
 **Standing under.** `D-2` defaults, no keypress: this is scope, not objective. Registered
 alongside it: `M-22` (read every reply, not the last one), earned by r42's own instrument.
