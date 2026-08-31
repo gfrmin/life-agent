@@ -249,3 +249,31 @@ declarations of candidate identity in tree, with the defect pinned live by a tes
 outlive anyone's memory of why.
 
 **Reaction.** *(open)*
+
+## GD-9 · 2026-08-31 · what follows the Stage-4 lever arc
+
+**The fork.** `A-1` says *"levers from the Stage-4 measurement first, then proplang"*, while
+conferral 2's ruling 4 scoped *the next arc* narrowly to the **decide-layer equivalence
+problem** — C + norm, half of all classified misses. With C closed (`A-3`) and norm closed and
+deployed (r38), does another Stage-4 class open a lever, or does the queue advance to Arc C?
+
+**Decided by $0 evidence, not by preference.** r39 read the one remaining decide-layer
+candidate on conferral 2's table — B, narrative inclusion, 9 instances — and it **closes as
+C's second face**: the binding constant is `u_wrong`, not `κ_att` and not the cell
+calibration. So the equivalence arc is spent, and **the queue advances to Arc C (proplang)**.
+
+**Why this is not a judgement call dressed as evidence.** The consequence was frozen in r39's
+pre-registration *before* the instrument existed, in both directions: a calibration finding
+would have opened a successor lever under `M-1`'s hard clause; a threshold finding opens
+nothing. The read came back threshold, so nothing opens. The remaining Stage-4 classes —
+pollution (retrieval, 7), computed (4), E (1) — are not decide-layer equivalence and were
+never inside ruling 4's arc; they remain available as their own pre-registered work whenever
+evidence calls for them, which is `A-10`'s continuous-sequencing rule, not a queue position.
+
+**Alternatives rejected.** *Open a B lever anyway* — it would have to move `κ_att` negative or
+the exchange rate 3.3×, and the second is a change to the objective (§5 residue), not a lever.
+*Open a pollution/retrieval arc first* — nothing rules it ahead of a gated-mandatory migration,
+and `A-2` makes proplang mandatory-but-deferred, which stops being a reason to defer once the
+thing it was deferred behind is finished.
+
+**Reaction.** *(open)*
