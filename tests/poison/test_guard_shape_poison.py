@@ -218,6 +218,12 @@ _SUBSTRING_PROOF_BASELINE: dict[str, int] = {
     "test_pricing_table.py::test_no_priced_constant_is_declared_outside_the_table": 2,
     "test_pricing_table.py::test_realised_utility_report_branch_is_spelled_through_the_atom": 1,
     "test_recorder.py::test_the_family_leaves_do_not_append_the_decision_ledger_themselves": 1,
+    # r34 A0.3: an ABSENCE proof, the opposite polarity to the class this rule polices. It
+    # asserts NO src/ module mentions the governance log; a mention in a comment makes it
+    # FAIL, never pass, so the r23 F10 failure mode (a comment satisfying the substring while
+    # the chain is re-spelled) cannot apply. An AST call-check would be strictly weaker here —
+    # it cannot see the comment that is itself the first step toward a fold input.
+    "test_rulings_register.py::test_the_governance_log_is_unfoldable": 1,
     "test_reliability.py::test_the_fold_lives_once": 5,
     "test_replay_audit.py::test_the_arms_of_one_question_share_a_retrieval_draw": 1,
     "test_seam.py::test_only_the_seam_calls_optimise": 1,

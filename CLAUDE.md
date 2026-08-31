@@ -596,7 +596,8 @@ dogfood) live in [`PRINCIPLES.md`](./PRINCIPLES.md) — they are not restated he
   `service=carddav` / `service=jmap`; sending email: `~/.msmtprc` (passwordeval).
 - **Tooling preferences:** `rclone` (not s3cmd) for R2; `gh` (not a GitHub MCP) for GitHub;
   don't pipe long-running commands through `head`/`tail` (use native verbosity).
-- **Commit/push only when the owner asks.**
+- **Commit/push only when the owner asks** — except where a standing ruling delegates it
+  (`RULINGS.md` `D-1`/`D-2`: a PASS on frozen conjuncts ships without a keypress).
 
 ## Environment (Arch Linux, this machine)
 
@@ -618,6 +619,15 @@ dogfood) live in [`PRINCIPLES.md`](./PRINCIPLES.md) — they are not restated he
 
 ## Start here
 
+0. **Before escalating any choice, read
+   [`docs/unification/RULINGS.md`](./docs/unification/RULINGS.md)** — the standing-ruling
+   register. A fork it determines is execution, not a question. A fork it does not determine
+   is resolved by $0 evidence, then by the current utility posterior, then **decided and
+   published** in [`docs/unification/DECISIONS.md`](./docs/unification/DECISIONS.md) (silence
+   is assent; that stream is recorded, never folded). **Exactly one class still reaches the
+   owner: changes to the objective** — PRINCIPLES, the kernel, the utility gauge. Every
+   conferral or report that takes a ruling registers it in the same commit; a guard test
+   fails otherwise.
 1. Read [`PRINCIPLES.md`](./PRINCIPLES.md), then [`ROADMAP.md`](./ROADMAP.md) (phases), then
    `$LIFE_AGENT_KB/docs/data-seams.md` (the verified, machine-specific data map — out of tree;
    saves you a re-exploration).
