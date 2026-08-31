@@ -132,3 +132,21 @@ as §18's "the bars pace the swap" requires.
 
 **P0 closes.** The next rung is the world-declaration repair, pre-registered on its own, and
 only then P1's accrual.
+
+### What the successor must establish first — `theta` is not a formality
+
+Bounded $0 look, so the next pre-registration starts from evidence rather than from the word
+"codebook". At HEAD, `thetaG` is threaded straight into the world enumeration —
+`enumerateWith nsN obsC thetaG gs mRhoG fragFull` — and `Membrane.hs` orders lattice children
+by it (`sortOn nodeTheta (childrenOf n)`, with the path bits reading *"False = low-theta child,
+True = high"*).
+
+So **`theta` is the emission codebook's parameter grid, and it shapes the lattice the engine
+enumerates over.** Declaring it is declaring the engine's emission hypothesis space: a
+different grid is a different set of worlds considered, hence different decisions. `rho` is
+optional and its absence means *no walk family* — itself a modelling choice, not a default.
+
+That is why the repair is not a one-line plumbing fix and does not ride along with P0. Its
+pre-registration has to say what grid is declared **and why that one**, with §18's bars
+measuring the answer — which is exactly the discipline that made arm A's exact reproduction
+worth having.
