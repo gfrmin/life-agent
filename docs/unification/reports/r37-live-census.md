@@ -140,7 +140,7 @@ claims have to name both.
 *(L2's host-side leg, run for the record: the m5-base replay with the flag ARMED reads the
 same `288/314` and the same 26, and wrote `0` tap rows — the log was never created.)*
 
-## 5 · The priced run — run 22 (`gate-20260831T190914`, $0.22, 24 min)
+## 5 · The priced run — run 22 (`gate-20260831T190924`, $0.22, 24 min)
 
 Fired on the **reverted** tree (master `e63751f`), tap armed, as a transient `systemd --user`
 unit with the live stack stopped. All four fire gates passed, including the two r37 pins (tap

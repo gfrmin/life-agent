@@ -33,7 +33,7 @@ Two different things, and r36 conflated them:
 
 ## Frozen criteria
 
-Baseline for every row-level criterion is **run 22** (`gate-20260831T190914`), whose tree is
+Baseline for every row-level criterion is **run 22** (`gate-20260831T190924`), whose tree is
 this arm's minus the lever and nothing else.
 
 | id | criterion | kill? |
