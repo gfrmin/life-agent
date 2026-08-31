@@ -130,3 +130,41 @@ attributed (P0-3).
 
 **Not done, deliberately:** nothing installed, nothing enabled, no proplang issue filed. P0-5
 stands.
+
+## Addendum — what `t` is, and the one thing that can still spoil the replay
+
+Two facts the replay's correctness turns on. Both settled by reading the code, because the
+ledger alone does not settle either and guessing at them is how a replay silently compares the
+wrong states (`M-20`).
+
+**`t` is a count of verdicts, and it is a FEATURE of the decide.** The ledger's decides sit at
+`t = 13` (2 200 of them) and `t = 193` (1 561), while the boot records show `n_source_records`
+climbing 867 → 2 188 across eighteen boots. Those do not reconcile, and the reason is in
+`membrane/session.py`: `self._t` increments **only in `observe_verdict`**, never in `decide`,
+and `decide(s)` sends `shadow_features(s, float(self._t))`. So `t` is **the number of verdict
+observations the session has absorbed**, and it is passed into the decide's own feature vector
+— not an ambient counter the replay may approximate. The 867–2 188 are raw source rows; only
+those decoding through `verdict_y` become observations, which is why the joined counts are
+13 and 193.
+
+Consequence: a faithful replay warms a session with **exactly** N verdicts from
+`boot_snapshot`'s `verdict_replay` and then decides. Reproducing `t` is not a nicety — a
+different `t` is a different input.
+
+**The warm sources are append-only, but the verdicts are not.** `boot_snapshot` supersedes on
+`decision_id` (latest reaction per decision wins, file order is replay order). So *today's*
+first-13 verdicts are not necessarily *July's* first-13: a later reaction on an early decision
+rewrites that decision's `y` in any replay built now. The logs only grew; the derived verdict
+stream did not necessarily stay fixed.
+
+This does not block P0-2, and it must not be papered over either. The replay:
+
+1. builds `verdict_replay` from today's logs and **reports its length**;
+2. takes the first N and **checks whether any of those N carry a reaction newer than the boot
+   epoch being reproduced** — if any do, the divergence is disclosed **before** the comparison,
+   not offered afterwards as an explanation for a mismatch;
+3. only then compares `action` + `readouts`.
+
+A replay that assumed append-only would compare a different warm state and report the
+difference as an engine regression. That is r36's mistake in a new costume, and it is written
+down here so the successor does not have to rediscover it at the price of a wrong verdict.
