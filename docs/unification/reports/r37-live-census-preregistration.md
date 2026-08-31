@@ -66,3 +66,38 @@ itself be the finding, and is why L3 is a kill in both directions.
 ## Cost
 
 One typed arm, ~$0.20, plus $0 replays.
+
+---
+
+## Amendment 1 — L1/L2's verifier, added blind before the build (2026-08-31)
+
+Recorded in full at [`DECISIONS.md` `GD-7`](../DECISIONS.md). **The criteria above are
+unchanged**; what follows is added to their verification, prospectively and in public (`M-4`),
+before any `src/` change.
+
+L1 and L2 name the m5-base replay as their verifier. Re-read against the artefact it names
+(`M-3`), `scripts/collapse_replay.py` is hermetic and serves `/probe/deliberate` and
+`/probe/corroborate` from cassettes — the very fact that forced `scripts/join_census.py` to
+exist — so **it never enters `_lattice_join` and cannot distinguish tap-on from tap-off there.**
+As frozen, L1/L2 would pass vacuously.
+
+> **Added verifier (L1, L2).** The m5-base replay is retained as the host-side check (288/314,
+> the same 26 named artefacts). It is joined by a **paired equivalence over the census
+> population**: every `(value, candidates, allow_new)` triple recoverable from the 314 fixtures
+> is put through `engine_join` with the flag ON and with it OFF, and every returned
+> `(idx, minted)` must be **byte-identical**. The size of that population is reported with the
+> result, and an empty population fails the check (`G-3`).
+
+## Amendment 2 — the isolation arm, declared before the run (2026-08-31)
+
+r37's priced run fires on the **reverted** tree, which is run 21's tree minus the lever **and
+nothing else** — r33 and #127 are in both. It is therefore also the isolation arm run 21 could
+not provide, at no additional cost, and the following is registered **before** it fires:
+
+- **If q2-046 and q2-049 read as they did in run 21**, the lever did not move them; K3's
+  failure was the recorded-wire census's blindness, as `r36-c5-reading.md` states.
+- **If either moves back to its run-20 reading**, the lever *did* move it and r36's stated
+  cause is incomplete. That is a finding against r36, published as such.
+
+This is a **registered expectation, not a criterion** — it adds no kill to L1–L5. It is
+declared here so the successor's K3 can cite an attribution rather than an inference.

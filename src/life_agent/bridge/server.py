@@ -36,6 +36,7 @@ import signal
 import sys
 import time
 from collections.abc import Callable
+from contextvars import ContextVar
 from dataclasses import asdict, dataclass
 from datetime import date, datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -525,16 +526,84 @@ def _deliberate_cfg() -> DL.DeliberateConfig:
     )
 
 
-def _lattice_join(value: str, candidates: list[str], allow_new: bool
+# --- r37: the value-join tap ------------------------------------------------------------
+#
+# r36 killed r34's lever on K3 because the census that enumerated its firing surface read
+# RECORDED wire, so the surface was a lower bound rather than an enumeration. The tap makes
+# the LIVE surface readable. It is OFF unless `LIFE_AGENT_JOIN_TAP` is set, and — the whole
+# safety argument, pinned by tests/test_join_tap.py — **the decision is always the deployed
+# predicate's, flag on or flag off**. The tap only computes what the DECLARED identity would
+# have returned and writes the pair aside.
+
+#: The one flag. Absence is the off state; there is no config file and no default-on path.
+_JOIN_TAP_ENV = "LIFE_AGENT_JOIN_TAP"
+
+#: (url, question) for the request in flight, set once by :func:`dispatch`. The join itself
+#: is several frames below the handler and has no question; a per-handler wiring would be a
+#: second declaration of the same context, so the dispatcher is its one home. The row keys on
+#: ``DEC.question_id`` — the ONE derivation of a question's identity — so the live surface and
+#: the recorded one align without a second hash. (The tap first grew its own sha256; the
+#: drift gate in tests/test_decisions.py caught it, which is what that gate is for.)
+_TAP_CONTEXT: ContextVar[tuple[str, str]] = ContextVar("_TAP_CONTEXT", default=("", ""))
+
+
+def _tap_context(path: str, payload: Payload) -> None:
+    """Publish the in-flight request to the tap. Cheap and unconditional: the flag is read
+    at the write, so arming the tap never depends on when this ran."""
+    _TAP_CONTEXT.set((path, str(payload.get("question") or "")))
+
+
+def _join_tap(value: str, candidates: list[str], allow_new: bool,
+              deployed: tuple[int | None, str | None]) -> None:
+    """Record one value-join call: the deployed verdict beside the counterfactual the
+    DECLARED §4.2 identity would have given. Never raises — a diagnostic that can take the
+    decide path down is not a diagnostic — and never decides.
+
+    The counterfactual re-runs :func:`_lattice_join` under the other key rather than
+    re-implementing its rule: `M-7` is the standing lesson at five instances, and its
+    signature is exactly an instrument that prices a constant it re-spelled itself.
+
+    The stream is unfoldable by construction (`M-14`): no ``decision_id``, no credence, no
+    writer into the calibration path. Non-firings are recorded too — a log of firings alone
+    has no denominator, and `G-3` requires an instrument to name the universe it checked."""
+    if not os.environ.get(_JOIN_TAP_ENV):
+        return
+    try:
+        d_idx, d_minted = _lattice_join(value, candidates, allow_new,
+                                        key=LK._candidate_key)
+        url, question = _TAP_CONTEXT.get()
+        row = {"question_id": DEC.question_id(question), "url": url,
+               "fires": (d_idx, d_minted) != deployed,
+               "allow_new": allow_new, "n_candidates": len(candidates),
+               "value": value, "candidates": candidates,
+               "deployed": {"idx": deployed[0], "minted": deployed[1]},
+               "declared": {"idx": d_idx, "minted": d_minted}}
+        log = config.JOIN_TAP_LOG
+        log.parent.mkdir(parents=True, exist_ok=True)
+        with log.open("a", encoding="utf-8") as fh:
+            fh.write(dumps(row) + "\n")
+    except Exception:
+        return
+
+
+def _lattice_join(value: str, candidates: list[str], allow_new: bool,
+                  *, key: Callable[[str], str] = LK._norm_value
                   ) -> tuple[int | None, str | None]:
     """[§3.3 · D-11/BR-2] (with L-4): THE value-join — the observation-equivalence rule
     mapping an instrument's bare value onto the candidate lattice, one declaration for
     both edges (corroborate and deliberate bind it). Returns ``(idx, new_candidate)``.
 
-    Exact normalised match first. **r34 bound `lookup._candidate_key` (the §4.2 declared
-    identity) here and r36 REVERTED it** — not because the merge was wrong (run 21 shows it
-    converting q2-027 from a split 0.346+0.146 lattice to a correct report at 0.863) but
-    because r36's K3 killed on attribution: the census that enumerated its firing surface read
+    Exact match on the identity ``key`` first. **The deployed identity is the DEFAULT
+    argument** (``LK._norm_value``) and every call on the decision path takes it; ``key`` is
+    parameterised only so r37's tap can ask what the declared §4.2 identity would have
+    returned by re-running THIS rule instead of writing a second copy of it (`M-7`). A
+    non-default ``key`` never reaches the argmax — it is the counterfactual arm, and the tap
+    call below is gated on the default so the two cannot recurse.
+
+    **r34 bound `lookup._candidate_key` here and r36 REVERTED it** — not because the merge
+    was wrong (run 21 shows it converting q2-027 from a split 0.346+0.146 lattice to a
+    correct report at 0.863) but because r36's K3 killed on attribution: the census that
+    enumerated its firing surface read
     RECORDED wire, so its surface is a lower bound and two live rows moved outside it. r37
     carries the successor. The standing defect this site still has: it tests
     `_norm_value` while `candidates_from`, `render`, `era_split`, the
@@ -555,19 +624,25 @@ def _lattice_join(value: str, candidates: list[str], allow_new: bool
     contained``: a read that MENTIONS a known candidate (ambiguous or
     correction-shaped) must not be minted wholesale, the sentence is not a value.
     Else no join."""
-    vn = LK._norm_value(value)
-    idx = next((i for i, c in enumerate(candidates) if LK._norm_value(c) == vn), None)
+    vk = key(value)
+    idx = next((i for i, c in enumerate(candidates) if key(c) == vk), None)
+    out: tuple[int | None, str | None]
     if idx is not None:
-        return idx, None
-    contained = [i for i, c in enumerate(candidates)
-                 if MATCH.answer_matches(str(c), [], value)]
-    if (len(contained) == 1
-            and not _competing_value_shape(value, candidates[contained[0]])
-            and not _superset_extension(value, candidates[contained[0]])):
-        return contained[0], None
-    if not contained and allow_new:
-        return len(candidates), value
-    return None, None
+        out = idx, None
+    else:
+        contained = [i for i, c in enumerate(candidates)
+                     if MATCH.answer_matches(str(c), [], value)]
+        if (len(contained) == 1
+                and not _competing_value_shape(value, candidates[contained[0]])
+                and not _superset_extension(value, candidates[contained[0]])):
+            out = contained[0], None
+        elif not contained and allow_new:
+            out = len(candidates), value
+        else:
+            out = None, None
+    if key is LK._norm_value:      # the deployed call; the tap's own re-run must not recurse
+        _join_tap(value, candidates, allow_new, out)
+    return out
 
 
 def _joined_observation(idx: int, candidates: list[str], new_candidate: str | None,
@@ -1074,7 +1149,9 @@ def dispatch(deps: BridgeDeps, method: str, path: str,
             handler = _POST.get(path)
             if handler is None:
                 raise BridgeError(404, f"no POST endpoint {path!r}")
-            return 200, handler(deps, _parse_body(body))
+            payload = _parse_body(body)
+            _tap_context(path, payload)     # r37: the tap's one context home
+            return 200, handler(deps, payload)
         raise BridgeError(405, f"method {method!r} not allowed")
     except BridgeError as e:
         return e.status, {"error": e.message}

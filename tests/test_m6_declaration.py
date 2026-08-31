@@ -21,14 +21,21 @@ def test_d11_the_lattice_join_is_one_declaration() -> None:
     """Both edge joins bind the one lattice join; the exact-norm-match idiom appears
     exactly once in the bridge (a second spelling cannot exist)."""
     from life_agent.bridge import server as BR
+    from life_agent.core import lookup as LK
 
     assert hasattr(BR, "_lattice_join"), "the one join function must exist (D-11)"
     src = inspect.getsource(BR)
-    # word-bounded: a bare substring also matches the confirm probe's `== vkey` at :464
-    assert len(re.findall(r"LK\._norm_value\(c\) == vn\b", src)) == 1, (
+    # word-bounded: a bare substring also matches the confirm probe's `== vkey`
+    assert len(re.findall(r"\bkey\(c\) == vk\b", src)) == 1, (
         "the candidate equality scan must have ONE spelling — inside _lattice_join. r34 "
-        "moved it from _norm_value to _candidate_key (the §4.2 declared identity); the pin "
-        "follows the spelling because its job is to forbid a SECOND one, not to freeze which")
+        "moved it from _norm_value to _candidate_key (the §4.2 declared identity), r36 "
+        "reverted it, and r37 parameterised it so the tap's counterfactual re-runs THIS "
+        "rule; the pin follows the spelling because its job is to forbid a SECOND scan, "
+        "not to freeze which key the scan uses")
+    assert inspect.signature(BR._lattice_join).parameters["key"].default is LK._norm_value, (
+        "the DEPLOYED identity is the default argument — r36's revert. r37 made the key a "
+        "parameter for the tap's counterfactual only; if the default moves, the lever has "
+        "shipped, and it may only ship through its own pre-registration")
     assert G.calls(BR._probe_corroborate, "_lattice_join"), (
         "BR._probe_corroborate does not CALL _lattice_join() — one declaration, one home; a "
         "source substring would be satisfied by a comment (r23 F10)")
@@ -275,3 +282,33 @@ def test_r34_distinct_significant_digits_still_never_merge() -> None:
 
     idx, minted = BR._lattice_join("HKD 99999.99", ["HKD 12345.67"], allow_new=True)  # PII-OK
     assert idx == 1 and minted == "HKD 99999.99"   # unchanged by r36's revert
+
+
+def test_r37_no_call_site_overrides_the_joins_identity_except_the_tap() -> None:
+    """r37 parameterised the value-join's identity so the tap's counterfactual re-runs the
+    deployed rule instead of copying it (`M-7`). That parameter is a back door to a SECOND
+    declared identity on the decision path, so it is gated: `_join_tap` is the only caller
+    in `src/` allowed to pass `key=`."""
+    import ast
+
+    repo = GuardPath(__file__).resolve().parent.parent
+    offenders: list[str] = []
+    for path in (repo / "src").rglob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        enclosing: dict[ast.AST, str] = {}
+        for fn in ast.walk(tree):
+            if isinstance(fn, ast.FunctionDef):
+                for node in ast.walk(fn):
+                    enclosing[node] = fn.name
+        for node in ast.walk(tree):
+            if not (isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Name)
+                    and node.func.id == "_lattice_join"):
+                continue
+            if not any(kw.arg == "key" for kw in node.keywords):
+                continue
+            if enclosing.get(node) != "_join_tap":
+                offenders.append(f"{path.name}:{node.lineno} in {enclosing.get(node)}")
+    assert not offenders, (
+        "a non-default identity key reached the value-join outside the tap — that is a "
+        f"second declaration of candidate identity by the back door: {offenders}")
