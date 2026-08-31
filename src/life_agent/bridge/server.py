@@ -556,7 +556,8 @@ def _tap_context(path: str, payload: Payload) -> None:
 def _join_tap(value: str, candidates: list[str], allow_new: bool,
               deployed: tuple[int | None, str | None]) -> None:
     """Record one value-join call: the deployed verdict beside the counterfactual the
-    DECLARED §4.2 identity would have given. Never raises — a diagnostic that can take the
+    RETIRED `_norm_value` identity would have given (r38 flipped which side is deployed;
+    the disagreement measured is the same one). Never raises — a diagnostic that can take the
     decide path down is not a diagnostic — and never decides.
 
     The counterfactual re-runs :func:`_lattice_join` under the other key rather than
@@ -569,15 +570,15 @@ def _join_tap(value: str, candidates: list[str], allow_new: bool,
     if not os.environ.get(_JOIN_TAP_ENV):
         return
     try:
-        d_idx, d_minted = _lattice_join(value, candidates, allow_new,
-                                        key=LK._candidate_key)
+        c_idx, c_minted = _lattice_join(value, candidates, allow_new,
+                                        key=LK._norm_value)
         url, question = _TAP_CONTEXT.get()
         row = {"question_id": DEC.question_id(question), "url": url,
-               "fires": (d_idx, d_minted) != deployed,
+               "fires": (c_idx, c_minted) != deployed,
                "allow_new": allow_new, "n_candidates": len(candidates),
                "value": value, "candidates": candidates,
                "deployed": {"idx": deployed[0], "minted": deployed[1]},
-               "declared": {"idx": d_idx, "minted": d_minted}}
+               "counterfactual": {"idx": c_idx, "minted": c_minted}}
         log = config.JOIN_TAP_LOG
         log.parent.mkdir(parents=True, exist_ok=True)
         with log.open("a", encoding="utf-8") as fh:
@@ -587,33 +588,35 @@ def _join_tap(value: str, candidates: list[str], allow_new: bool,
 
 
 def _lattice_join(value: str, candidates: list[str], allow_new: bool,
-                  *, key: Callable[[str], str] = LK._norm_value
+                  *, key: Callable[[str], str] = LK._candidate_key
                   ) -> tuple[int | None, str | None]:
     """[§3.3 · D-11/BR-2] (with L-4): THE value-join — the observation-equivalence rule
     mapping an instrument's bare value onto the candidate lattice, one declaration for
     both edges (corroborate and deliberate bind it). Returns ``(idx, new_candidate)``.
 
     Exact match on the identity ``key`` first. **The deployed identity is the DEFAULT
-    argument** (``LK._norm_value``) and every call on the decision path takes it; ``key`` is
-    parameterised only so r37's tap can ask what the declared §4.2 identity would have
-    returned by re-running THIS rule instead of writing a second copy of it (`M-7`). A
-    non-default ``key`` never reaches the argmax — it is the counterfactual arm, and the tap
-    call below is gated on the default so the two cannot recurse.
+    argument** — since r38, ``LK._candidate_key``, the §4.2 declared key — and every call on
+    the decision path takes it; ``key`` is parameterised only so the tap can ask what the
+    RETIRED ``_norm_value`` identity would have returned, by re-running THIS rule instead of
+    writing a second copy of it (`M-7`). A non-default ``key`` never reaches the argmax — it
+    is the counterfactual arm, and the tap call below is gated on the default so the two
+    cannot recurse.
 
-    **r34 bound `lookup._candidate_key` here and r36 REVERTED it** — not because the merge
-    was wrong (run 21 shows it converting q2-027 from a split 0.346+0.146 lattice to a
-    correct report at 0.863) but because r36's K3 killed on attribution: the census that
-    enumerated its firing surface read
-    RECORDED wire, so its surface is a lower bound and two live rows moved outside it. r37
-    carries the successor. The standing defect this site still has: it tests
-    `_norm_value` while `candidates_from`, `render`, `era_split`, the
-    S2 grow join and the confirm probe all used `_candidate_key`, so the edges minted
-    spelling variants the rest of the lattice considers one candidate. `_candidate_key`
-    falls back to `_norm_value`, so binding it is a monotone COARSENING: it merges more,
-    never splits more, and it inherits rather than widens the confident-wrong boundary
-    (values with different significant digits never merge). `_joined_observation` keeps
-    `_norm_value` deliberately — that is the §5 dedup key, a different relation, and a
-    derivation-cache key component. Else unique token-boundary containment — the join
+    **The arc, because the shape of it constrains anyone who touches this line.** This site
+    is M6's ONE declaration of the value-join, and until r38 it tested identity with
+    ``_norm_value`` while `candidates_from`, `render`, `era_split`, the S2 grow join and the
+    confirm probe all used ``_candidate_key`` — two declarations of one relation, numbered
+    under different clauses, which is how it survived M6. r34 bound the declared key and r36
+    REVERTED it, not because the merge was wrong (run 21 converted q2-027 from a split
+    0.346+0.146 lattice to a correct report at 0.863) but on a K3 attribution kill; r37 then
+    showed K3's baseline, not its surface, was the defect (`M-18`), and measured the lever's
+    whole effect as ONE correct row — **below the wobble floor, so this ships as a defect
+    repair and never on its row count** (`GD-8`). ``_candidate_key`` falls back to
+    ``_norm_value``, so the binding is a monotone COARSENING: it merges more, never splits
+    more, and it inherits rather than widens the confident-wrong boundary (values with
+    different significant digits never merge). `_joined_observation` keeps ``_norm_value``
+    deliberately — that is the §5 dedup key, a different relation, and a derivation-cache
+    key component. Else unique token-boundary containment — the join
     must not read a CONFIRMING sentence as a disagreement (the q-011 pooling loss),
     but nor may it read a CORRECTING sentence as a confirmation: containment alone
     cannot tell confirm from correct-while-mentioning, so a competing same-shaped
@@ -640,7 +643,7 @@ def _lattice_join(value: str, candidates: list[str], allow_new: bool,
             out = len(candidates), value
         else:
             out = None, None
-    if key is LK._norm_value:      # the deployed call; the tap's own re-run must not recurse
+    if key is LK._candidate_key:   # the deployed call; the tap's own re-run must not recurse
         _join_tap(value, candidates, allow_new, out)
     return out
 
