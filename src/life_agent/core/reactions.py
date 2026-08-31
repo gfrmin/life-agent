@@ -219,6 +219,11 @@ def load_reactions(reactions_path: Path,
         d = decisions.get(r.decision_id)
         if d is None or d.chosen_action != "abstain":
             continue  # unrouted, or a report row (recorded-not-folded)
+        if d.regime == "miss":
+            # r33 RC-1: a verdict on a COVERAGE failure is not utility evidence — folding
+            # it would read "bad, you found nothing" as "wrongness costs me less" and feed
+            # the one-sided bar drift r32 priced (0.900 → 0.837). Recorded, never folded.
+            continue
         ev: UT.Reaction | UT.MarginReaction | None
         if d.family == "lookup":
             ev = _lookup_reaction(r, d)

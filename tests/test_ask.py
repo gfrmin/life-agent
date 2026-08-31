@@ -347,8 +347,11 @@ def test_answer_via_executor_renders_logs_and_binds(monkeypatch) -> None:
     assert ask.EXECUTOR_LAST == "ab-cafef00d"
 
 
-def test_answer_via_executor_skips_log_for_miss(monkeypatch) -> None:
-    # A miss (zero grounded observations) is not a lookup decision — nothing to log or verdict.
+def test_answer_via_executor_logs_a_miss_locally_never_by_wire(monkeypatch) -> None:
+    # r33 RC-1: a miss (zero grounded observations) now writes ONE local regime="miss"
+    # row with a reactable id — still never a /log_decision post (the bridge derives ids
+    # for RANKED decisions; a miss has no posterior to rank).
+    from life_agent.core import config as CFG
     monkeypatch.setattr(ask, "_executor_ready", lambda: True)
     view = {"effector": "miss", "asserted": [], "candidates": [], "credences": [],
             "p_none": None, "eu": None, "n_obs": 0,
@@ -358,8 +361,10 @@ def test_answer_via_executor_skips_log_for_miss(monkeypatch) -> None:
     calls: list[str] = []
     monkeypatch.setattr(ask, "_http_post", lambda url, payload: calls.append(url) or None)
     ask.answer_via_executor("my passport?", 20)
-    assert not any(u.endswith("/log_decision") for u in calls)
-    assert ask.EXECUTOR_LAST is None
+    assert not any(u.endswith("/log_decision") for u in calls)   # never a bridge post
+    import json as _json
+    rows = [_json.loads(line) for line in CFG.DECISIONS_LOG.read_text().splitlines()]
+    assert [r["regime"] for r in rows] == ["miss"]               # ...but the row exists
 
 
 def test_answer_via_executor_tags_run_id_when_set(monkeypatch) -> None:

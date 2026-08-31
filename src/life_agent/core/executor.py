@@ -730,6 +730,8 @@ def render_view(view: View) -> str:
         # the extractor's own indeterminate count, carried on the View (was hard-coded 0 —
         # a footer that claimed "0 indeterminate" on every executor answer)
         n_ind=view.get("n_indeterminate", 0),
-        p_none=p_none if p_none is not None else 0.0,
-        action=eff, eu=eu if eu is not None else 0.0)
+        # r33 RC-3: None = no posterior ever existed (the miss) — render "—", never a
+        # fabricated 0.000 indistinguishable from a genuine zero-mass-on-NONE
+        p_none=(f"{p_none:.3f}" if p_none is not None else "—"),
+        action=eff, eu=(f"{eu:.2f}" if eu is not None else "—"))
     return f"{body}\n\n{footer}"

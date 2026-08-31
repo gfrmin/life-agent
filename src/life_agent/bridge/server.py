@@ -30,11 +30,11 @@ source of that mapping, so the brain stays string-blind.
 from __future__ import annotations
 
 import contextlib
-import hashlib
 import os
 import re
 import signal
 import sys
+import time
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from datetime import date, datetime
@@ -835,17 +835,10 @@ def _gate_support(deps: BridgeDeps, p: Payload) -> Payload:
     return {"ok": True}
 
 
-def _decision_id(question: str, retrieval_keys: list[str],
-                 credences: list[float], p_none: float) -> str:
-    """A stable, content-addressed id for one answer-brain decision: the question, the
-    retrieval set it was grounded on, and the posterior it was taken under. Namespaced
-    (``ab-``) so it never collides with the lookup family's §18.9 answer keys; the reaction
-    loop binds verdicts to it (``core.reactions`` join key). Identical re-runs coalesce."""
-    payload = dumps({"source": "answer-brain", "question": question,
-                     "retrieval_keys": sorted(retrieval_keys),
-                     "credences": credences, "p_none": p_none},
-                    sort_keys=True, ensure_ascii=False)
-    return "ab-" + hashlib.sha256(payload.encode("utf-8")).hexdigest()[:32]
+#: [r33 RC-1] the ONE content-addressed decision-id rule — declared in
+#: ``core.decisions.decision_id_for``; the bridge BINDS it (a second spelling cannot
+#: exist — the miss recorder derives ids through the same declaration).
+_decision_id = DEC.decision_id_for
 
 
 def _req_float_list(d: Payload, key: str) -> list[float]:
@@ -998,11 +991,15 @@ def _narrative(deps: BridgeDeps, p: Payload) -> Payload:
     terms = EXP.expand_terms(question, root=deps.root)
     pool = RET.retrieve_set(deps.conn, RET.build_query(question, terms), RR.RERANK_POOL)
     hits = RR.rerank_hits(question, pool, k)
-    text, _key, _cached = SYN.synthesize(deps.root, question, hits, deps.profile)
+    t0 = time.monotonic()
+    text, _key, _cached, s_cost = SYN.synthesize(deps.root, question, hits, deps.profile)
+    s_latency = time.monotonic() - t0
     dates = P.probe_recency(deps.conn, deps.root,
                             list(dict.fromkeys(h["artifact_cache_key"] for h in hits)))
     cards = SYN.cards_from_hits(hits, dates)
-    nv = NARR.narrative_answer(deps.root, question, text, cards)
+    nv = NARR.narrative_answer(deps.root, question, text, cards,
+                               cost_usd=s_cost, latency_s=s_latency,
+                               instrument=SYN.INSTRUMENT)
     asserted = [c.text for c in nv.claims if c.included]
     return {"action": nv.action, "asserted": asserted, "rendered": nv.rendered,
             "hits": hits,  # the synthesis context, so the grader's channel diagnostics stay honest

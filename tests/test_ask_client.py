@@ -57,9 +57,12 @@ def test_answer_renders_and_binds_the_decision(monkeypatch: Any) -> None:
     assert dec["regime"] == "full" and dec["policy"] == "all-to-date"
 
 
-def test_answer_narrative_or_miss_binds_nothing(monkeypatch: Any) -> None:
+def test_answer_route_null_binds_nothing(monkeypatch: Any) -> None:
+    # the route-null question's decision is the NARRATIVE family's, recorded by that leaf —
+    # the poster stays silent. (The routed miss used to sit here too; since r33 RC-1 it
+    # binds a reactable regime="miss" row — pinned below.)
     view = _fake_view("miss")
-    view["candidates"], view["credences"] = [], []
+    view["candidates"], view["credences"], view["route"] = [], [], None
     monkeypatch.setattr(EX, "decide_via_loop", lambda *a, **k: view)
     reply, decision_id = _answer("q?", post=lambda u, p: {"decision_id": "x"},
                                    get=lambda u: {}, check_ready=False)
@@ -259,3 +262,113 @@ def test_the_m2_shims_are_dead() -> None:
     # r13 mandate 3 (as amended): AC.answer and ask._edge_curves are deleted — callers
     # take the one driver directly; no old-poster spelling survives in core
     assert not hasattr(AC, "answer")
+
+
+# --- r33 A1: the transport retries transient failures (signature E) ----------------------
+# One live 5xx killed a whole ask during the Stage-4 measurement (conferral 2 §3.5). The
+# transport retries 5xx / connection errors / timeouts with bounded backoff; a 4xx is the
+# bridge speaking and is NEVER retried.
+
+class _FakeResp:
+    def __init__(self, body: bytes) -> None:
+        self._body = body
+
+    def __enter__(self) -> _FakeResp:
+        return self
+
+    def __exit__(self, *a: Any) -> bool:
+        return False
+
+    def read(self) -> bytes:
+        return self._body
+
+
+def _urlopen_seq(monkeypatch: Any, outcomes: list[Any]) -> tuple[dict[str, int], list[float]]:
+    """Serve `outcomes` in order (an Exception raises, bytes answer); record sleeps."""
+    calls = {"n": 0}
+    sleeps: list[float] = []
+
+    def urlopen(req: Any, timeout: Any = None) -> _FakeResp:
+        out = outcomes[min(calls["n"], len(outcomes) - 1)]
+        calls["n"] += 1
+        if isinstance(out, Exception):
+            raise out
+        return _FakeResp(out)
+
+    import urllib.request as _ur
+    monkeypatch.setattr(_ur, "urlopen", urlopen)
+    monkeypatch.setattr("time.sleep", lambda s: sleeps.append(s))
+    return calls, sleeps
+
+
+def _http_err(code: int) -> Exception:
+    import urllib.error
+    return urllib.error.HTTPError("http://x/decide", code, "boom", None, None)
+
+
+def test_post_json_retries_5xx_then_succeeds(monkeypatch: Any) -> None:
+    calls, sleeps = _urlopen_seq(
+        monkeypatch, [_http_err(500), _http_err(503), b'{"ok": true}'])
+    assert AC.post_json("http://x/decide", {}) == {"ok": True}
+    assert calls["n"] == 3                       # two retries bought the answer
+    assert len(sleeps) == 2 and sleeps == sorted(sleeps)   # bounded, backing off
+
+
+def test_post_json_never_retries_4xx(monkeypatch: Any) -> None:
+    import urllib.error
+
+    import pytest
+    calls, sleeps = _urlopen_seq(monkeypatch, [_http_err(400)])
+    with pytest.raises(urllib.error.HTTPError):
+        AC.post_json("http://x/decide", {})
+    assert calls["n"] == 1 and sleeps == []      # the bridge spoke; that is the answer
+
+
+def test_post_json_exhaustion_reraises_the_5xx(monkeypatch: Any) -> None:
+    import urllib.error
+
+    import pytest
+    calls, _ = _urlopen_seq(monkeypatch, [_http_err(502)] * 9)
+    with pytest.raises(urllib.error.HTTPError) as ei:
+        AC.post_json("http://x/decide", {})
+    assert ei.value.code == 502
+    assert calls["n"] == 3                       # bounded: never an unbounded loop
+
+
+def test_post_json_retries_connection_error_and_timeout(monkeypatch: Any) -> None:
+    import urllib.error
+    calls, _ = _urlopen_seq(
+        monkeypatch, [urllib.error.URLError("refused"), TimeoutError(), b'{"ok": true}'])
+    assert AC.post_json("http://x/decide", {}) == {"ok": True}
+    assert calls["n"] == 3
+
+
+def test_get_retries_5xx_then_succeeds(monkeypatch: Any) -> None:
+    calls, _ = _urlopen_seq(monkeypatch, [_http_err(500), b'{"pong": 1}'])
+    assert AC._get("http://x/state") == {"pong": 1}
+    assert calls["n"] == 2
+
+
+# --- r33 RC-1: the poster mints the miss row (the lane that was silent for 69 asks) -----
+
+def _miss_view() -> dict[str, Any]:
+    return {"effector": "miss", "asserted": [], "candidates": [], "credences": [],
+            "p_none": None, "eu": None, "n_obs": 0, "n_indeterminate": 2,
+            "hits": [{"artifact_cache_key": "d0", "chunk_text": "irrelevant"}],
+            "route": {"construct": "passport number"}}
+
+
+def test_a_miss_writes_a_local_row_and_returns_its_id(monkeypatch: Any) -> None:
+    from life_agent.core import config as CFG
+    monkeypatch.setattr(EX, "decide_via_loop", lambda *a, **k: _miss_view())
+    posted: list[Any] = []
+    r = AC.drive("what is my passport number?",
+                 post=lambda u, p: posted.append((u, p)),
+                 get=lambda u: {}, check_ready=False)
+    assert r.decision_id and r.decision_id.startswith("ab-")
+    assert not posted                                    # local append, never a bridge post
+    import json as _json
+    rows = [_json.loads(line) for line in CFG.DECISIONS_LOG.read_text().splitlines()]
+    assert [row["regime"] for row in rows] == ["miss"]
+    assert rows[0]["decision_id"] == r.decision_id
+    assert rows[0]["posterior_summary"]["n_indeterminate"] == 2

@@ -42,7 +42,9 @@ class Harness:
         stage = "expand" if system == ask.EXPAND_SYSTEM else "synthesize"
         self.llm_calls.append(stage)
         text = "income salary invoice" if stage == "expand" else "the answer [1]"
-        return SimpleNamespace(text=text, in_tokens=10, out_tokens=5, seconds=0.01)
+        return SimpleNamespace(text=text, in_tokens=10, out_tokens=5, seconds=0.01,
+                               served_model="", cache_read_tokens=0,
+                               cache_write_tokens=0)
 
     def retrieve_set(self, conn: Any, query: str, k: int) -> list[dict[str, Any]]:
         self.search_calls += 1

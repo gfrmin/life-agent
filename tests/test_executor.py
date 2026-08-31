@@ -1576,3 +1576,25 @@ def test_s2_grow_that_grounds_nothing_still_leaves_the_channel_alone() -> None:
     post_grow = fake.posted("/decide")[2]
     assert post_grow["candidates"] == ["P123"]
     assert len(post_grow["observations"]) == 1
+
+
+def test_render_view_miss_footer_never_fabricates_a_posterior_number() -> None:
+    # r33 RC-3: the miss view carries p_none=None / eu=None (no posterior ever existed);
+    # coercing them to 0.000 printed "I found nothing" identically to a genuine posterior
+    # that put ZERO mass on NONE — the honesty trap came out right for the wrong reason.
+    view = {"effector": "miss", "asserted": [], "candidates": [], "credences": [],
+            "p_none": None, "eu": None, "n_obs": 0, "n_indeterminate": 2,
+            "hits": [{"artifact_cache_key": "d0", "chunk_text": "irrelevant"}],
+            "route": {"construct": "passport number"}}
+    out = EX.render_view(view)
+    assert "none-of-retrieved —" in out and "(EU —)" in out
+    assert "0.000" not in out and "0.00" not in out
+
+
+def test_render_view_real_posterior_still_prints_numbers() -> None:
+    # ...and a REAL zero stays a number: only None (no posterior) renders as —
+    view = {"effector": "abstain", "asserted": [], "candidates": ["A", "B"],
+            "credences": [0.5, 0.4], "p_none": 0.1, "eu": 0.0, "n_obs": 2,
+            "hits": [], "route": {}}
+    out = EX.render_view(view)
+    assert "none-of-retrieved 0.100" in out and "(EU 0.00)" in out

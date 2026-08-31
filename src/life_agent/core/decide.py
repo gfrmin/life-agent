@@ -85,8 +85,11 @@ def shaped_u_bar(u_bar: Mapping[str, float], shape: str) -> dict[str, float]:
     second construction path is a drift-gate failure, not a refinement.
 
     Chow's rule falls out of this at the `exact` special case: report iff
-    ``p > R(q)/(VOI(q)+R(q))``; today's uniform 0.90 bar is that formula with
-    VOI≡1/R≡const held constant across every question.
+    ``p > R(q)/(VOI(q)+R(q))``; the owner's DECLARED PRIOR (10:1) puts that bar at
+    exactly 0.90 — but the LIVE bar moves with the reaction fold and is not 0.90
+    (r32 priced it at 0.852 on 2026-08-30, drifting monotonically as abstain-verdicts
+    fold; the weekly readout watches it). Measure the current bar with
+    ``scripts/bar_audit.py``; never quote 0.90 as today's value.
     """
     if shape not in AS.SHAPES:
         raise ValueError(f"unknown answer shape {shape!r} (declared: {sorted(AS.SHAPES)})")

@@ -242,6 +242,13 @@ The signature ledger the rule ranks over, as of day 1 (13 lifetime asks):
   unavailability record with an empty decision id, which the bridge refuses to fold — so
   the worst failure mode is structurally invisible to the reaction stream. Rider carried
   to Conferral 2 regardless of ranking.
+  *[CORRECTED at r33, 2026-08-31: the mechanism named here is WRONG — the miss lane
+  emitted NOTHING at all (`ask_client.post_decision` returns before any write; the §6.5
+  record fires only on a down stack). The two mechanisms are observationally equivalent
+  at the reaction stream, which is how the claim survived four rounds unchecked — the
+  standing end-to-end lesson's fifth instance, in re-narrating form. The consequence
+  ("invisible to the reaction stream") was true either way. Since r33 RC-1 a miss writes
+  a real `regime: "miss"` row with a reactable id, excluded from the fold.]*
 - **B — narrative inclusion at a constant** (6 instances — the dominant class): N claims
   proposed → 0 included at identical coverage and identical calibration cells every time;
   it gates out verbatim table values, not just synthesis.

@@ -540,3 +540,30 @@ def test_narrative_answer_non_present_scope_matches_unscoped(migrated_root: Path
     hist = narrative_answer(migrated_root, "q?", text, cards, scope="historical", u_bar=U,
                             utility_fold_version="f", outcomes_path=opath, decisions_path=dpath)
     assert hist.claims[0].credence == un.claims[0].credence  # historical does NOT decay
+
+
+# --- r33 RC-2: the narrative row is PRICED (cost_usd was null for 69 measured asks) -----
+
+def test_narrative_row_carries_its_price(migrated_root: Path, tmp_path: Path) -> None:
+    text, cards, opath, dpath = _answer_fixture(tmp_path)
+    narrative_answer(migrated_root, "what is my registration number?", text, cards,
+                     u_bar=U, utility_fold_version="fold-1",
+                     outcomes_path=opath, decisions_path=dpath,
+                     cost_usd=0.0123, latency_s=1.5, instrument="synthesize@test-model")
+    row = json.loads(dpath.read_text().splitlines()[-1])
+    assert row["cost_usd"] == pytest.approx(0.0123)
+    assert row["latency_s"] == pytest.approx(1.5)
+    assert row["instrument"] == "synthesize@test-model"
+
+
+def test_narrative_row_default_price_is_honest_zero(migrated_root: Path,
+                                                    tmp_path: Path) -> None:
+    # the poster's never-absent normalisation now binds the leaf too: an unpriced firing
+    # records 0.0 with an empty instrument — never null (RC-2; every round's cost was a
+    # lower bound while narrative rows read null)
+    text, cards, opath, dpath = _answer_fixture(tmp_path)
+    narrative_answer(migrated_root, "what is my registration number?", text, cards,
+                     u_bar=U, utility_fold_version="fold-1",
+                     outcomes_path=opath, decisions_path=dpath)
+    row = json.loads(dpath.read_text().splitlines()[-1])
+    assert row["cost_usd"] == 0.0 and row["latency_s"] == 0.0 and row["instrument"] == ""

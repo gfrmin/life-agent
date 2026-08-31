@@ -449,6 +449,8 @@ def narrative_answer(root: Path, question: str, text: str,
                      outcomes_path: Path | None = None,
                      decisions_path: Path | None = None,
                      synthesize_cache_key: str | None = None,
+                     cost_usd: float | None = None, latency_s: float | None = None,
+                     instrument: str = "",
                      run_id: str = "ask") -> NarrativeResult:
     """Score the synthesize proposal end-to-end: parse → audit cells → population
     credences → per-claim EU decision → answer artifact (§18.9) → decision logged
@@ -538,6 +540,13 @@ def narrative_answer(root: Path, question: str, text: str,
                    },
                    utility_fold_version=utility_fold_version,
                    chosen_action=action, predicted_eu=eu,
+                   # r33 RC-2: the poster's never-absent normalisation binds the leaf —
+                   # an unpriced firing records 0.0/"" honestly, never null (narrative
+                   # rows read cost_usd: null for 69 measured asks, so every round's
+                   # cost was a lower bound).
+                   instrument=instrument,
+                   cost_usd=cost_usd if cost_usd is not None else 0.0,
+                   latency_s=latency_s if latency_s is not None else 0.0,
                    # M5 (r15, §2.3): the narrative leaf's per-claim ranking is the
                    # skin's — terminals-only, DECLARED (see lookup's twin comment).
                    regime="terminals-only", policy=LK.U_BAR_POLICY, defaulted=(),

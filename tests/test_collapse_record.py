@@ -342,3 +342,85 @@ def test_seam_driver_reads_the_event_through_the_seal(tmp_path: Path) -> None:
     assert out["effector"] == "abstain"
     assert out["regime"] == "unavailable"
     assert out["log_decision"] is not None
+
+
+# --- r33 RC-1 write isolation: the poster driver may NEVER touch the ambient ledger -----
+
+def test_drive_ask_poster_on_a_miss_view_leaves_the_ambient_ledger_untouched() -> None:
+    """Since RC-1 a miss view appends a local regime="miss" row through the poster. The
+    A-poster trace runs OUTSIDE `installed()`'s sink redirection, so without its own
+    isolation a replay of a miss fixture would append to the LIVE decisions ledger —
+    the one class of write a $0 replay is forbidden. The append lands in a discarded
+    temp sink; the driver's outputs stay transport-side."""
+    from life_agent.collapse import drive as DR
+    from life_agent.core import config as CFG
+    miss_view = {"effector": "miss", "asserted": [], "candidates": [], "credences": [],
+                 "p_none": None, "eu": None, "n_obs": 0, "n_indeterminate": 1,
+                 "hits": [{"artifact_cache_key": "d0", "chunk_text": "x"}],
+                 "route": {"construct": "anything"}}
+    out = DR.drive_ask_poster("q?", miss_view, run_id="collapse-test")
+    assert out["log_decision"] is None            # a miss never posts a bridge body
+    assert not CFG.DECISIONS_LOG.exists()         # ...and never writes the ambient ledger
+
+
+def test_installed_sinks_a_pathless_ledger_append_into_staging(tmp_path: Path) -> None:
+    """The replay boundary (RC-1's second lesson, learned live: the first m5-base replay
+    of the r33 tree APPENDED a miss row into the checkpoint's decisions.snapshot — the
+    fold input every later baseline run reads — because `installed()` redirected the
+    CONFIG PATH and record_miss writes through it). `sealed`'s own docstring names the
+    only covering form: sink the append itself. Under `installed()`, a path-less
+    DEC.append lands in the snapshot's staging dir; the snapshot file stays byte-frozen."""
+    from life_agent.collapse import drive as DR
+    from life_agent.core import ask_client as AC
+    from life_agent.core import decisions as DEC
+
+    snapdir = tmp_path / "snapshots"
+    snapdir.mkdir()
+    frozen = b'{"pinned": "fold-input"}\n'
+    (snapdir / "decisions.snapshot").write_bytes(frozen)
+    snapshot = DR.KBSnapshot(snapdir)
+
+    class _Dummy:
+        def __call__(self, *a: object, **k: object) -> None:
+            raise AssertionError("no wire may be touched by a local append")
+
+    rig = DR.Rig(brain=object(), post=_Dummy(), get=_Dummy(),
+                 client=object(), cache=_Dummy())
+    miss_view = {"effector": "miss", "asserted": [], "candidates": [], "credences": [],
+                 "p_none": None, "eu": None, "n_obs": 0, "n_indeterminate": 0,
+                 "hits": [{"artifact_cache_key": "d0", "chunk_text": "x"}],
+                 "route": {"construct": "anything"}}
+    with DR.installed(rig, snapshot):
+        did = AC.post_decision(_Dummy(), "http://bridge", "q?", miss_view, run_id="rp")
+    assert did and did.startswith("ab-")
+    assert (snapdir / "decisions.snapshot").read_bytes() == frozen   # byte-frozen
+    staged = snapshot.staging / "decisions.jsonl"
+    assert staged.exists() and b'"regime":"miss"' in staged.read_bytes().replace(b" ", b"")
+    rows = DEC.read(staged)
+    assert [r.regime for r in rows] == ["miss"]
+
+
+def test_installed_leaves_explicitly_addressed_appends_where_the_driver_reads_them(
+        tmp_path: Path) -> None:
+    """The sink is PATH-AWARE: the leaf drivers append to explicit tmp paths and read
+    them back (`_last_event`) to build the fixture's log_decision — a blanket sink would
+    null every B-leaf fixture's body. Only the frozen snapshot file diverts."""
+    from life_agent.collapse import drive as DR
+    from life_agent.core import decisions as DEC
+
+    snapdir = tmp_path / "snapshots"
+    snapdir.mkdir()
+    (snapdir / "decisions.snapshot").write_bytes(b"")
+    snapshot = DR.KBSnapshot(snapdir)
+    rig = DR.Rig(brain=object(), post=object(), get=object(),
+                 client=object(), cache=object())
+    explicit = tmp_path / "leaf" / "decisions.jsonl"
+    event = DEC.DecisionEvent(
+        tx_time="t", run_id="rp", question_id="q", family="lookup",
+        action_set=DEC.LOOKUP_ACTION_ORDER, posterior_summary={"credences": [1.0]},
+        utility_fold_version="fv", chosen_action="report", predicted_eu=0.5,
+        decision_id="d1")
+    with DR.installed(rig, snapshot):
+        DEC.append(explicit, event)
+    assert explicit.exists() and len(DEC.read(explicit)) == 1   # where it was addressed
+    assert not (snapshot.staging / "decisions.jsonl").exists()  # nothing diverted

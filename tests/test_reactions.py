@@ -229,3 +229,25 @@ def test_narrative_no_claims_does_not_fold(tmp_path: Path) -> None:
         [R.ReactionEvent(tx_time="t", question_id="q", decision_id="d1",
                          kind="verdict", valence="good")])
     assert R.load_reactions(rpath, dpath) == []
+
+
+# --- r33 RC-1 rider: regime="miss" rows never fold (a coverage failure is not
+# utility evidence — without this, every `bad` on a miss would drag the bar down) -------
+
+def test_a_reacted_miss_row_folds_nothing(tmp_path: Path) -> None:
+    # The miss row is given a FOLDABLE-looking summary on purpose: the writer records
+    # empty credences (which the lookup producer also declines), so an empty-summary miss
+    # would be excluded by accident of shape — this pin makes the REGIME the operative
+    # exclusion, so the rule survives any future change to the summary's shape.
+    import dataclasses
+    full = _abstain_decision("d-full", 0.6)
+    miss = dataclasses.replace(_abstain_decision("d-miss", 0.55), regime="miss")
+    rpath, dpath = _write(
+        tmp_path, [full, miss],
+        [R.ReactionEvent(tx_time="1", question_id="q", decision_id="d-full",
+                         kind="verdict", valence="bad"),
+         R.ReactionEvent(tx_time="2", question_id="q", decision_id="d-miss",
+                         kind="verdict", valence="bad")])
+    out = R.load_reactions(rpath, dpath)
+    assert len(out) == 1                                 # ONLY the ranked abstain folds
+    assert out[0].threshold == pytest.approx(0.6 / 0.4)  # ...and it is d-full's, at ITS p

@@ -17,8 +17,10 @@ from __future__ import annotations
 
 import json
 import os
+import time
 import urllib.error
 import urllib.request
+from collections.abc import Callable
 from typing import Any
 
 from life_agent.core import calibration as CAL
@@ -45,6 +47,27 @@ FATE_RECORDED = "recorded — not folded (only abstain verdicts move the fold)"
 _SLOW_ENDPOINTS = ("/narrative",)
 _SLOW_TIMEOUT = 900
 
+# r33 A1 (conferral 2 §3.5, signature E): one live 5xx used to kill a whole ask — the ONE
+# transport now retries transient failures with bounded backoff. A 4xx is the bridge
+# SPEAKING (a named refusal), never retried; retrying it would re-ask a settled question.
+_RETRY_SLEEPS = (0.5, 2.0)
+
+
+def _retrying[T](attempt: Callable[[], T]) -> T:
+    """Run ``attempt``; on a TRANSIENT failure (HTTP 5xx, connection error, timeout)
+    sleep and retry, once per entry in :data:`_RETRY_SLEEPS`; the final attempt's error
+    propagates with its own name. HTTPError < 500 re-raises immediately."""
+    for delay in _RETRY_SLEEPS:
+        try:
+            return attempt()
+        except urllib.error.HTTPError as e:
+            if e.code < 500:
+                raise
+        except (urllib.error.URLError, TimeoutError):
+            pass
+        time.sleep(delay)
+    return attempt()
+
 
 def post_json(url: str, payload: dict[str, Any], *,
               timeout: int | None = None) -> dict[str, Any] | None:
@@ -58,15 +81,19 @@ def post_json(url: str, payload: dict[str, Any], *,
         timeout = _SLOW_TIMEOUT if url.endswith(_SLOW_ENDPOINTS) else 300
     req = urllib.request.Request(url, data=json.dumps(payload).encode(),
                                  headers={"Content-Type": "application/json"}, method="POST")
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            out: dict[str, Any] | None = json.loads(r.read())
-            return out
-    except urllib.error.HTTPError as e:
-        detail = e.read().decode("utf-8", errors="replace") if e.fp else ""
-        raise urllib.error.HTTPError(
-            req.full_url, e.code, f"{e.reason} — {detail}" if detail else str(e.reason),
-            e.hdrs, None) from e
+
+    def attempt() -> dict[str, Any] | None:
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                out: dict[str, Any] | None = json.loads(r.read())
+                return out
+        except urllib.error.HTTPError as e:
+            detail = e.read().decode("utf-8", errors="replace") if e.fp else ""
+            raise urllib.error.HTTPError(
+                req.full_url, e.code, f"{e.reason} — {detail}" if detail else str(e.reason),
+                e.hdrs, None) from e
+
+    return _retrying(attempt)
 
 
 def _post(url: str, payload: dict[str, Any]) -> dict[str, Any] | None:
@@ -74,9 +101,12 @@ def _post(url: str, payload: dict[str, Any]) -> dict[str, Any] | None:
 
 
 def _get(url: str) -> dict[str, Any]:
-    with urllib.request.urlopen(url, timeout=300) as r:
-        out: dict[str, Any] = json.loads(r.read())
-        return out
+    def attempt() -> dict[str, Any]:
+        with urllib.request.urlopen(url, timeout=300) as r:
+            out: dict[str, Any] = json.loads(r.read())
+            return out
+
+    return _retrying(attempt)
 
 
 def _ready() -> bool:
@@ -140,10 +170,22 @@ def post_decision(post: Any, bridge: str, question: str, view: dict[str, Any], *
     """The one poster (M2, design §5.1): post the committed lookup-family terminal with
     the ONE body — every accounting key present (0.0/"" honest defaults), ``regime`` and
     ``policy`` STATED. Posts iff the loop committed a lookup terminal through the seam
-    (route ran, terminal effector, a ranked posterior): a miss commits no decision (no
-    posterior — the loop returns before ``/decide``) and a route-null question's decision
-    is the narrative family's, recorded by that leaf. Fail-open by contract and NAMED: a
-    calibration-log write never breaks the answer."""
+    (route ran, terminal effector, a ranked posterior). A MISS (route ran, nothing
+    grounded, the loop returned before ``/decide``) appends the r33 RC-1 row LOCALLY —
+    ``regime: "miss"``, a real id the verdict can bind to, excluded from the fold — never
+    a bridge post (the bridge derives ids for ranked decisions and stamps the current
+    fold version, both wrong here). A route-null question's decision is the narrative
+    family's, recorded by that leaf. Fail-open by contract and NAMED: a calibration-log
+    write never breaks the answer."""
+    if view["route"] is not None and view["effector"] == "miss":
+        try:
+            return REC.record_miss(
+                question,
+                retrieval_keys=[h["artifact_cache_key"] for h in view["hits"]],
+                n_indeterminate=view.get("n_indeterminate", 0), run_id=run_id)
+        except Exception as e:  # fail-open: the verdict simply has nothing to bind to
+            print(f"  (decision not logged: {e})")
+            return None
     if (view["route"] is None or view["effector"] not in DEC.LOOKUP_ACTION_ORDER
             or not view["credences"]):
         return None
