@@ -98,3 +98,35 @@ different bytes. That is expected and is recorded as a standing fact rather than
 **a Haskell binary is not byte-reproducible across machines and toolchains**, so a sha is a
 *provenance record* (P0-1) and never an identity test across hosts. P0-2's behavioural check is
 what carries identity — which is precisely why amendment 1's substitution is not a downgrade.
+
+## Status note — where P0 stands (2026-08-31, recorded before the work continues)
+
+Three things are established, and the fourth is specified but not executed.
+
+**1. Arm A exists and compiles.** `proplang-host` at `1a0cea7`, GHC 9.10.3, built 2026-08-17
+(amendment 2). No compile risk remains.
+
+**2. `1a0cea7` and the current HEAD are both present** in the local checkout, and arm B's
+worktree is prepared at the pinned current commit. Nothing is built for arm B yet and nothing
+is installed for either.
+
+**3. P0-2's replay needs a warm session, and the ledger's decides are all warm.** Measured:
+**0 of 3 761** recorded decides are cold-start — every one sits at `t = 13` (2 200) or
+`t = 193` (1 561), i.e. after a warm replay of that many source records. So no recorded decide
+is reproducible from its `summary` alone, and a replay that pretended otherwise would compare
+a cold engine against a warm record and call the difference a regression.
+
+**4. The warm history is reconstructible, so P0-2 is readable — it is not blocked.** The source
+records live under the fair-fight run directories (`shadow_calibration/decisions.jsonl`), which
+is exactly what `shadow.boot()` replays; the last boot record names its own count (**2 188**).
+The replay must therefore **drive `shadow.boot()`**, not re-implement the warm-up — `M-7` is at
+seven instances and every one of them is a re-implementation of a rule that was already
+available to call.
+
+**Next step, specified:** spawn a session against arm A, warm it through the shadow's own boot
+path from the named source records, replay a recorded decide at its recorded `t`, and compare
+`action` + `readouts` against the record. Then the same for arm B, with every difference
+attributed (P0-3).
+
+**Not done, deliberately:** nothing installed, nothing enabled, no proplang issue filed. P0-5
+stands.
