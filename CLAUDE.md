@@ -514,7 +514,9 @@ material for that candidate only.
   credence at the decide seam — the migration is MANDATORY, gated-mandatory
   (membrane-shadow §18: the frozen bars pace the swap and a FAIL means iterate-and-re-run,
   never park; refusal is retired as an endpoint) and DEFERRED (not a completion-programme
-  condition; opens post-M7 after the completion audit). Nothing in tree may presuppose the
+  condition). **The completion audit is DEFINED and READ** (owner ruling 2026-08-31,
+  `RULINGS.md` `G-2`; `docs/unification/reports/r35-completion-audit.md`), so **Arc C is
+  UNBLOCKED**; the programme itself closes at Stages 0, 1 and 4 with Stage 2 RETIRED (`G-1`). Nothing in tree may presuppose the
   swap until it lands.**
 
 ## `src/pkm` — the KB core (Python, uv, DuckDB): key files

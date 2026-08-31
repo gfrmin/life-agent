@@ -311,8 +311,8 @@ agree with each other:
 |---|---|---|
 | **0** | the riders — baseline re-record, doc-currency sweep, production readout | **DONE** (r11) |
 | **1** | the collapse ladder M2–M7; Appendix A signed at M7 | **DONE** 2026-08-26 (r12–r17) |
-| **2** | Phase 1.6 items 4–5 — the aggregate (2a) and thread families | **DEFERRED by owner ruling 2026-08-28** (below) |
-| **3** | the proplang graduation | ruled **not** a completion condition; deferred |
+| **2** | Phase 1.6 items 4–5 — the aggregate (2a) and thread families | **RETIRED from the programme by owner ruling 2026-08-31** (below) |
+| **3** | the proplang graduation | ruled **not** a completion condition; opens after the completion audit (owner ruling 2026-08-31, `RULINGS.md` `G-2`) |
 | **4** | the MVP exit test | **open** — see below |
 
 That is five stages, 0–4, which is where "five DONE conditions" came from; item *N* is the
@@ -321,7 +321,9 @@ economical reading predicted. **The one thing it could not have known** is that 
 the migration — the sentence naming it is in `membrane-shadow.md`, which never says
 "programme stage".
 
-**Stage 2 — DEFERRED, and why the deferral is the ruling.** As written Stage 2 cannot
+**Stage 2 — RETIRED 2026-08-31 (owner ruling, `RULINGS.md` `G-1`).** The deferral below waited on the exit-test measurement; that measurement closed 2026-08-30 at 69 asks, the question was put, and the ruling is **retire, not redefine** — capability work is continuous and eval-gated under PRINCIPLES §9 as amended, so it needs no programme stage, and the thread transformations may still be built when evidence calls for them, never as a completion condition. **The programme closes at Stages 0, 1 and 4.** The original deferral and its three options stand below as the record they were.
+
+**Stage 2 — the deferral, as it stood.** As written Stage 2 cannot
 close: it was specified as *builds* (the two families) while `bayesian-foundations.md` §12
 gives it *gates*; K1 deleted the aggregate family as "family routing in disguise" while
 keeping its transformations; and `cp-d-routing-conferral.md` says the remainder "dies with

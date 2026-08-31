@@ -212,11 +212,34 @@ def test_bar_summary_never_raises(monkeypatch) -> None:
 
 def test_governance_summary_reads_the_two_registers() -> None:
     """The delegation is only auditable if the readout reports it: entries decided,
-    reactions still open, and forks escalated to the owner."""
+    reactions still open, and forks escalated to the owner.
+
+    `escalated` is deliberately NOT pinned to a number — §4 empties as carried items get
+    ruled (it went 2 -> 0 on 2026-08-31), and a guard that fails when the work succeeds is
+    a guard nobody keeps. Its pattern is positive-controlled separately instead, per the
+    ruled guard method (`RULINGS.md` `G-3`): name the universe, and prove the rule can
+    match rather than asserting the count it happens to return today."""
     g = PR.governance_summary()
     assert g["decisions"] >= 3, "the GD entries in DECISIONS.md must be counted"
     assert g["open"] >= 1, "an entry with an open reaction slot must be counted"
-    assert g["escalated"] >= 2, "RULINGS.md §4's carried-and-unsettled rows are escalations"
+    assert isinstance(g["escalated"], int) and g["escalated"] >= 0
+
+
+def test_the_escalation_pattern_can_match(tmp_path: Path, monkeypatch) -> None:
+    """G-3's control clause: remove what the rule controls for and it must go RED. A §4 row
+    is planted and the count must move — otherwise `escalated: 0` means "the pattern is
+    broken", which reads identically to "nothing is escalated"."""
+    docs = tmp_path / "docs" / "unification"
+    docs.mkdir(parents=True)
+    (docs / "DECISIONS.md").write_text("## GD-1 x\n*(open)*\n", encoding="utf-8")
+    (docs / "RULINGS.md").write_text("## S4\n| id |\n", encoding="utf-8")
+    monkeypatch.setattr(PR, "REPO", tmp_path)
+    assert PR.governance_summary()["escalated"] == 0
+
+    (docs / "RULINGS.md").write_text(
+        "## S4\n| id |\n| **U-9 a carried item** | src | UNSETTLED | why |\n",
+        encoding="utf-8")
+    assert PR.governance_summary()["escalated"] == 1
 
 
 def test_governance_summary_never_raises(monkeypatch) -> None:

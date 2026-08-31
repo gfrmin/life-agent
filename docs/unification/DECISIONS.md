@@ -121,3 +121,52 @@ reading it as "green is enough" would weaken a standing ruling by interpretation
 owner to review* — the instruction exists precisely to stop that.
 
 **Reaction.** *(open)*
+
+---
+
+## GD-5 · 2026-08-31 · the register's own first census was wrong, and the correction is published
+
+**The fork.** `RULINGS.md` §4 claimed `U-1` (the completion-audit definition) was wholly
+unsettled and blocked Arc C. Preparing the unblocking interview showed that **`r27` (K4) had
+resolved the stage map on 2026-08-28** and `ROADMAP.md` carried the resolved table. Correct the
+entry silently, or publish the error?
+
+**Decided.** Published — in the register, in `r35`'s §0, and to the owner before the interview
+was put, because the wrong claim had already been reported to them.
+
+**Why.** `M-4` forbids silently weakening a frozen claim, and the same discipline binds a claim
+that turns out too strong. The failure was `M-7` in miniature and on day one, by the instrument
+built to prevent it: the census read conferral 1's carry-forward and Conferral 2's silence, and
+inferred the state of a third source it never opened. A register whose errors are edited out is
+worth less than one whose errors are visible.
+
+**Alternatives rejected.** *Correct in place* — leaves no record that the register can be wrong
+in this specific way, which is the reusable part. *Leave it and let the rulings supersede it* —
+a knowingly false row is worse than no row (`r05` ruling 1's reasoning, applied to this
+register).
+
+**Reaction.** *(open)*
+
+---
+
+## GD-6 · 2026-08-31 · what the completion audit reads, given `G-2` defined it
+
+**The fork.** `G-2` defines the audit as "a $0 reconciliation of the four disagreements `r26`
+recorded, read against this register". Three of the four are discharged by the rulings taken in
+the same sitting. Does the audit still get written, or is it absorbed?
+
+**Decided.** Written as its own report (`r35-completion-audit.md`), including the one
+disagreement the rulings do NOT discharge — what Stage 0 consisted of — which is resolved on the
+evidence: `ROADMAP.md:219` says "**this** doc-currency sweep", and the deictic makes the rider
+the roadmap revision that names it, self-discharging when written.
+
+**Why.** `G-2` freezes a consequence on the audit reading ("once it reads, Arc C opens"). A
+consequence that fires on an artefact nobody wrote is a consequence that fires on nothing. It
+also names what the audit does **not** close — Stage 4's question about `u_abstain = 0` — so
+that "the programme is closed" is never read as "the question is answered".
+
+**Alternatives rejected.** *Absorb it into the rulings* — leaves `G-2`'s trigger undefined.
+*Reconstruct DONE item 1's wording* — would manufacture an authority no text carries; the
+referent is attested and the quotation is not, so the audit records it as unrecoverable.
+
+**Reaction.** *(open)*
