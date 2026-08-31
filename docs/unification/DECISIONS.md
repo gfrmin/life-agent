@@ -170,3 +170,43 @@ that "the programme is closed" is never read as "the question is answered".
 referent is attested and the quotation is not, so the audit records it as unrecoverable.
 
 **Reaction.** *(open)*
+
+## GD-7 · 2026-08-31 · r37's L1/L2 name a verifier that cannot see what they verify
+
+**The fork.** r37's pre-registration freezes L1 and L2 — the tap is inert with the flag off,
+and observes-never-decides with it on — and names **one** verifier for both: *"verified by the
+m5-base replay reading its standing 288/314 with the same 26 named artefacts."*
+
+Re-read against the artefact it names (`M-3`), that clause does not hold.
+`scripts/collapse_replay.py` is hermetic and serves `/probe/deliberate` and
+`/probe/corroborate` from recorded cassettes — **which is the exact fact that forced
+`scripts/join_census.py` to exist** (r34 pre-registration §2b). The replay therefore never
+enters `_lattice_join` at all, and cannot distinguish tap-on from tap-off at that site. As
+frozen, L1 and L2 would pass **vacuously**: green for a reason unrelated to the claim.
+
+**Decided.** The criteria are **not weakened and not re-scoped**. A second verifier is added,
+blind, prospectively and in public (`M-4`), before the tap is built:
+
+> The m5-base replay is retained as the host-side check (288/314, the same 26). It is joined by
+> a **paired equivalence over the census population**: every `(value, candidates, allow_new)`
+> triple recoverable from the 314 fixtures is put through `engine_join` with the flag ON and
+> with it OFF, and every returned `(idx, minted)` must be **byte-identical**.
+
+**Why.** That population is the one r34 was actually read on, so the check runs on real inputs
+rather than invented ones, and it exercises the one code path the replay structurally cannot
+reach. A kill criterion that cannot fail is not a kill criterion — `G-3`'s universe clause
+("a guard must name the universe it checked") applied to r37's own pre-registration rather than
+to its instrument.
+
+**Alternatives rejected.** *Leave L1/L2 as frozen and note the limitation in the report* — that
+is `M-4`-compliant on its face and still ships a vacuous kill; the whole point of freezing a
+criterion is that it can fire. *Replace the replay verifier* — the replay does check something
+real (no host-side breakage from the new import and the new config constant), and removing a
+check while adding one is a re-scope, not an amendment. *Defer to the successor's
+pre-registration* — the amendment must be blind, and after the read it is not.
+
+**A note on where this came from.** r36's K3 killed r34 on a clause whose population had never
+been re-read against the instrument that produced it. This is the same failure mode, caught one
+step earlier because the re-read is now a step.
+
+**Reaction.** *(open)*
