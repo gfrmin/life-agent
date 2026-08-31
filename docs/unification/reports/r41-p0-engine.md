@@ -67,3 +67,68 @@ The instrument's own ladder: **9/9 mutations RED**, run before the reading.
 Arm B (build the pinned current commit, replay the same row, attribute every difference), then
 P0-4's smokes on whatever is installed. Both are cheap now that the control holds — which is
 the only reason the control was worth buying first.
+
+---
+
+## P0-3 — arm B refuses the handshake, and the cause is named
+
+Arm B built cleanly from the pinned current commit in ~2 minutes (sha `71998f65…`, GHC 9.10.3).
+Driven with the **same** replay, against the same recorded decide:
+
+```
+arm A 1a0cea7: ok=True  proto=1  error=None
+arm B 94fd4eb: ok=None  proto=None  error='bad hello'
+```
+
+The identical world declaration is accepted by the ledger's commit and **refused** by the
+current one. Because arm A reproduces exactly (above), the refusal is **the engine's, not the
+harness's** — which is the whole return on buying a control arm.
+
+**The named change.** HEAD's `hello` parser requires a key the shadow does not send:
+
+```haskell
+-- THE WORLD'S CODEBOOKS (E3: the emission codebook is world data;
+-- theta REQUIRED, rho optional — absent means no walk family)
+cbs <- oGet "codebooks" w
+thetaG <- pairGridNamed "theta" =<< oGet "theta" cbs
+```
+
+`oGet "codebooks" w` runs in the `Maybe` monad, so an absent `codebooks` collapses the whole
+parse and yields `bad hello`. `codebooks` appears **0 times** in `1a0cea7`'s `Host.hs` and
+**once** in `94fd4eb`'s. The shadow's `handshake_decl` sends exactly
+`{guards, menu, namespace, utility}`.
+
+So: **E3's emission codebook became required world data in the handshake between the two
+commits, and the shadow's world declaration predates it.**
+
+*One hypothesis tested and refuted en route*, recorded because a discarded guess is cheaper to
+publish than to re-form: the diff shows `parseSaid` moving and a new *"unknown form = bad hello,
+fail-closed"* comment, which suggested `said@1` had been retired. It has not — `said@1` is
+still the only declared form at HEAD, and `Membrane.hs` gained a mention of it. The guess was
+wrong and is not in the finding.
+
+### What this means for Arc C
+
+**Adopting HEAD is not a drop-in, and the work is host-side — which is the good news.** The fix
+is `membrane/world.py`'s `handshake_decl` declaring `codebooks.theta` (and optionally `rho`).
+That is this repo, not the proplang repo, so it needs no issue filed and no engine ask (§11's
+constraint is not engaged).
+
+**It is not plumbing, and it does not get done here.** A codebook is *world data* — it declares
+what the engine believes about emissions, and `theta` is a grid the engine will condition on.
+Choosing it changes the decisions the engine makes. So it gets its own pre-registration with
+its own bars, exactly as `P0-5` demands of anything that would change behaviour, and exactly
+as §18's "the bars pace the swap" requires.
+
+### Criteria, closed
+
+| id | verdict | evidence |
+|---|---|---|
+| **P0-1** | **PASS** | arm A `1a0cea7` sha `1d008643…`; arm B `94fd4eb` sha `71998f65…`, both recorded |
+| **P0-2** | **PASS** on the readable row | exact action + readouts at `t=13` |
+| **P0-3** | **PASS** | the one difference is enumerated and attributed to a named change: `codebooks` became required |
+| **P0-4** | **not reached** | nothing installed — and on this evidence nothing *should* be, until the declaration is repaired |
+| **P0-5** | **PASS** | nothing enabled, no issue filed |
+
+**P0 closes.** The next rung is the world-declaration repair, pre-registered on its own, and
+only then P1's accrual.
