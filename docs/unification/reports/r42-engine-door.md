@@ -169,10 +169,35 @@ the second utility form our declaration does not use (`utility.cgrid`, routing t
 So the finding is not a near-tie or a tie-break convention: **at HEAD, on this world, the
 declared utility does not enter selection at all.** It is parsed, validated, and inert.
 
-**The remaining mechanism is not identified**, and identifying it is the successor's with its
-own bounded look — the `reindexUtility atomG` step and the atom codebook (which this world never
-declares, having no `obs_arity`/carrier) is where the next reading should start. What is
-established here is that it is **real, reproducible, extreme, and silent.**
+### The mechanism, identified behaviourally: HEAD fires the option-space head
+
+`obs_arity` was the third candidate — the atom codebook the utility is reindexed onto. It is
+**eliminated too**: declaring `obs_arity` 2, 3 and 4 changes `models` (345 / 690 / 1035, so the
+key is read) and leaves the choice at `abstain`.
+
+The decisive test is structural rather than another guess. Permute the **menu grid** — which
+affordance sits at the head — holding a `u_bar` where respond dominates by 125:
+
+| declared `act` grid | head | arm A | arm B |
+|---|---|---|---|
+| `[1, 2, 3, 4]` | abstain | respond | **abstain** |
+| `[4, 3, 2, 1]` | respond | respond | **respond** |
+| `[3, 1, 2, 4]` | ask | respond | **ask** |
+| `[2, 4, 1, 3]` | gather | respond | **gather** |
+
+**Arm B returns the first grid point in every case.** Arm A returns `respond` in every case —
+utility-driven and order-invariant, as declared.
+
+So the behaviour is now pinned exactly: at HEAD, on this world, **selection is the option
+space's head** — the structural `wait` — irrespective of the declared utility. That is
+precisely the policy `Host.hs` documents for a world that declared *no* utility, arrived at
+with a utility that was parsed and validated. Three candidate mechanisms were tested and
+eliminated (`cgrid`, an empty option list, the atom codebook via `obs_arity`); the *code* path
+that produces it is not identified here, and that is where a successor with a Haskell-level
+reading starts.
+
+What this settles for the migration: an §18 bar taken in this state does not compare two
+policies. It compares arm A's policy against **"always wait"**.
 
 ## What this changes
 
@@ -200,11 +225,14 @@ never clearing, and its error grows under data. A rung at the operating rate is 
 cure. That is a claim about the engine repo's own evidence, cited here and **not** re-measured
 in this reading; the successor should re-execute it on our world before relying on it.
 
-**No upstream issue is filed.** It is not established that this is an engine defect rather
-than a declaration of ours that HEAD no longer accepts in the way we intend — the `cgrid` form
-alone is enough to make that live. Filing before the diagnosis would spend someone else's
-attention on our unfinished work. It stays an in-tree finding, and filing is an option the
-successor holds once item 4 is understood, not a step skipped here.
+**No upstream issue is filed — and the case for one has strengthened.** Three candidate
+mechanisms are eliminated and the behaviour is pinned to head-firing, so "our declaration is
+simply wrong for HEAD" is a weaker reading than it was. But it is not excluded: the world
+declares no `clock` and no carrier, and nothing here has checked whether HEAD requires a
+property of the guards or menu that this world stopped satisfying. Filing on a
+three-eliminations-and-a-behaviour is still filing someone else's diagnosis. **It stays an
+in-tree finding, and whether to file is the successor's first call** — made after one
+Haskell-level reading, not skipped.
 
 ## Deviations, disclosed
 
