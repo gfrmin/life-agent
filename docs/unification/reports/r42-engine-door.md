@@ -147,12 +147,32 @@ So on this world, at HEAD, the engine **parses and validates a utility declarati
 selects as though it had none.** Both grid size and belief entropy are irrelevant to it
 (`abstain` at `|θ|` = 1, 2, 3, 5 and 9, at `entropy_bits` from 0.0 to 3.78).
 
-**Not diagnosed here, deliberately** — that is the successor's, with its own bounded look. Two
-mechanisms are visible in the source without running anything: the selection path is
-`maybe o0 fst picked`, so a `chooseEU` returning `Nothing` fires the head indistinguishably
-from an absent utility; and the parser accepts a second form our declaration does not use
-(`utility.cgrid`, routing to `parseSaidIn` over an explicit constant grid). Either would
-explain it. What is established here is that **it is real, reproducible, and silent.**
+### How far the characterisation goes
+
+Two mechanisms were visible in the source: `chooseEU` returning `Nothing` (the selection path
+is `maybe o0 fst picked`, so that fires the head indistinguishably from an absent utility), and
+the second utility form our declaration does not use (`utility.cgrid`, routing to
+`parseSaidIn` over an explicit constant grid). Both were tested rather than reasoned about:
+
+- **`cgrid` is eliminated.** Declaring it — the sentence's own constant set, extracted from the
+  built sentence — changes nothing: `abstain` on all three `u_bar`s tried.
+- **`chooseEU` is running.** An empty option list would take `Host.hs`'s earlier
+  `Just [] -> Right (Left [])` branch and emit *no* `act` key at all; every reply carries
+  `{"act": {"act": 1}}`. So the chooser is reached and returns `abstain` as its pick.
+- **And it is insensitive to the utility at any magnitude.** Pushed to extremes:
+
+  | `u_bar` | EU at `p1 = 0.5` | host | arm A | arm B |
+  |---|---|---|---|---|
+  | `u_abstain = −100` | abstain −100 · respond −4 | respond | **respond** | abstain |
+  | abstain −100, respond **+25**, info actions −105/−115 | respond by 125 | respond | **respond** | abstain |
+
+So the finding is not a near-tie or a tie-break convention: **at HEAD, on this world, the
+declared utility does not enter selection at all.** It is parsed, validated, and inert.
+
+**The remaining mechanism is not identified**, and identifying it is the successor's with its
+own bounded look — the `reindexUtility atomG` step and the atom codebook (which this world never
+declares, having no `obs_arity`/carrier) is where the next reading should start. What is
+established here is that it is **real, reproducible, extreme, and silent.**
 
 ## What this changes
 
