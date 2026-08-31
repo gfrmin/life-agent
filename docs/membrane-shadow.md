@@ -95,6 +95,17 @@ in the report's §1b) and check the engine against it, which is now done on ever
    singleton flags `era-split=1`/`owner-scoped=1`/`grow-pass=1`. Every guard is declared
    with a singleton `[0.5]` grid (a plain is-this-bucket-set boolean); an unset bucket is
    simply omitted from the tick rather than sent at `0.0` (dormancy is free on the wire).
+
+> **Correction of record (2026-08-31, [`r42-engine-door`](./unification/reports/r42-engine-door.md)).**
+> *"Dormancy is free on the wire"* describes the tree the shadow was written against
+> (`1a0cea7`) and is **false at engine HEAD**. There the door requires the declared namespace
+> covered exactly, and an under-specified tick is an error reply — measured:
+> `{"error": "tick refused: missing declared [...13 names...]"}`. Sending every absent bucket
+> explicitly at `0.0` is **provably a no-op on the old tree** (byte-identical reply), so this is
+> a safe forward repair — but it is a repair, not a property. Two further door changes are
+> measured in the same reading: `hello` requires `world.codebooks.theta`, and **evidence ticks
+> are refused outright** for want of the writable name, which takes the shadow's whole learning
+> path with them. §18's bars cannot be read until all three are repaired; see `GD-11`.
 4. **Why no integer/ordinal codes.** Bucketing to one-hot indicators, rather than an
    ordinal integer per family (e.g. `leader_credence_bucket: 0..4`), avoids asserting a
    metric the guard learner would otherwise exploit: nothing here claims that
