@@ -6,6 +6,7 @@ the one function's behaviour; the behaviour itself is byte-pinned by the m5-base
 from __future__ import annotations
 
 import inspect
+import re
 import sys
 from pathlib import Path as GuardPath
 
@@ -23,8 +24,11 @@ def test_d11_the_lattice_join_is_one_declaration() -> None:
 
     assert hasattr(BR, "_lattice_join"), "the one join function must exist (D-11)"
     src = inspect.getsource(BR)
-    assert src.count("LK._norm_value(c) == vn") == 1, (
-        "the candidate equality scan must have ONE spelling — inside _lattice_join")
+    # word-bounded: a bare substring also matches the confirm probe's `== vkey` at :464
+    assert len(re.findall(r"LK\._candidate_key\(c\) == vk\b", src)) == 1, (
+        "the candidate equality scan must have ONE spelling — inside _lattice_join. r34 "
+        "moved it from _norm_value to _candidate_key (the §4.2 declared identity); the pin "
+        "follows the spelling because its job is to forbid a SECOND one, not to freeze which")
     assert G.calls(BR._probe_corroborate, "_lattice_join"), (
         "BR._probe_corroborate does not CALL _lattice_join() — one declaration, one home; a "
         "source substring would be satisfied by a comment (r23 F10)")
@@ -224,3 +228,47 @@ def test_d13_the_stack_urls_are_read_once() -> None:
     assert 'os.environ.get("ANSWER_BRAIN_URL"' not in ask_src
     assert "EXECUTOR_BRIDGE = AC.BRIDGE" in ask_src
     assert "EXECUTOR_DAEMON = AC.DAEMON" in ask_src
+
+
+# --- r34: the value-join binds the DECLARED candidate identity -------------------------
+
+
+def test_r34_the_join_binds_the_declared_candidate_key() -> None:
+    """r34: `_lattice_join` is M6's one value-join, but it tested identity with
+    `_norm_value` (whitespace+casefold) while `candidates_from`, `render`, `era_split`, the
+    S2 grow join and the confirm probe all use `_candidate_key` (the §4.2 canonical key).
+    Two declarations of one relation, numbered under different clauses. The edges therefore
+    MINTED spelling variants the rest of the lattice considers one candidate."""
+    from life_agent.bridge import server as BR
+    from life_agent.core import lookup as LK
+
+    # PII-OK: synthetic amount, the shape of the round-8 three-spelling split
+    base, variants = "HKD 12345.67", ["HKD 12,345.67", "12345.67 HKD"]
+    assert len({LK._candidate_key(c) for c in [base, *variants]}) == 1, (
+        "premise: the declared key already calls these one candidate")
+
+    cands = [base]
+    for v in variants:
+        idx, minted = BR._lattice_join(v, cands, allow_new=True)
+        assert minted is None, f"{v!r} was MINTED as a new atom beside {cands!r}"
+        assert idx == 0
+    assert len(cands) == 1
+
+
+def test_r34_the_join_is_a_monotone_coarsening() -> None:
+    """Whatever `_norm_value` joined, the declared key still joins — `_candidate_key` falls
+    back to it. The change can only merge MORE, never split more; that property is what makes
+    the lever's risk surface enumerable (C1)."""
+    from life_agent.bridge import server as BR
+
+    idx, minted = BR._lattice_join("  p123 ", ["Q999", "P123"], allow_new=True)  # PII-OK
+    assert (idx, minted) == (1, None), "the whitespace+case join must survive unchanged"
+
+
+def test_r34_distinct_significant_digits_still_never_merge() -> None:
+    """The confident-wrong boundary is `_candidate_key`'s, and binding it here inherits it
+    rather than widening it: two genuinely different numbers stay two candidates."""
+    from life_agent.bridge import server as BR
+
+    idx, minted = BR._lattice_join("HKD 99999.99", ["HKD 12345.67"], allow_new=True)  # PII-OK
+    assert idx == 1 and minted == "HKD 99999.99"
