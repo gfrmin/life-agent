@@ -60,3 +60,41 @@ commit as "the" engine beyond recording which one was installed and why.
 ## Cost
 
 $0 in model spend; local compile time only.
+
+---
+
+## Amendment 1 — P0-2's comparison, changed blind before any run (2026-08-31)
+
+**P0-2 names an artefact that does not contain what it asks for.** It requires the recorded
+handshake and decide **replies** to compare byte-for-byte under sorted-JSON. The shadow ledger
+records **outcomes, not the wire**: a `decide` record carries `action`, `readouts`, `summary`,
+`t`, `question_id` and `latency_ms`, and its `raw_internal` field is a **boolean flag**, not a
+payload. No request and no reply is stored anywhere in the 6 683 records.
+
+This is `GD-7` again, one arc later: a criterion frozen against an artefact without checking
+that the artefact carries the quantity. Amended the same way — **blind, prospectively, in
+public, and without weakening what is being asked**:
+
+> **P0-2, amended.** The check is **behavioural reproduction**, not byte equality. The recorded
+> `summary` **is** `world.DecideSummary` — `n_candidates`, `leader_credence`, `p_none`,
+> `n_obs`, `era_split`, `owner_scoped`, `grow_pass` — which is the engine's own input. So a
+> recorded decide is replayed by submitting its recorded summary through the shadow's own
+> submission path against the binary, and comparing the **`action` and the `readouts`**
+> (`p1`, `entropy_bits`) with the recorded ones. Arm A must reproduce them.
+
+This is **stronger than the byte compare it replaces**, and the report must not pretend
+otherwise: byte equality tests a serialization, while this tests the decision. It is also the
+only form the evidence supports.
+
+## Amendment 2 — arm A is already built, and its sha does not match (2026-08-31)
+
+Checked before compiling anything (`M-20`): a `proplang-host` built from **`1a0cea7` already
+exists on this machine**, under GHC 9.10.3, dated 2026-08-17, in a pre-existing proplang
+worktree. So the pre-registration's declared "arm A may not compile under GHC 9.10.3" risk is
+**retired by evidence** — it does compile, and did.
+
+Its sha256 is **`1d008643…`**, and the ledger's boot records carry **`ebc06c81…`**. Same commit,
+different bytes. That is expected and is recorded as a standing fact rather than a discrepancy:
+**a Haskell binary is not byte-reproducible across machines and toolchains**, so a sha is a
+*provenance record* (P0-1) and never an identity test across hosts. P0-2's behavioural check is
+what carries identity — which is precisely why amendment 1's substitution is not a downgrade.
