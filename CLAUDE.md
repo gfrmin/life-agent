@@ -114,6 +114,28 @@ population. Step 5 (streams 3/5) was investigated and DEFERRED, not built: the r
 corrections with no `decision_id`/credence and states "NEVER force-folded... prose
 steers"; re-ask detection has no frozen similarity/window parameters. Both are named open
 items for their own future pre-registration. Next: r30b (steps 3-4, the claim space).)
+**The value-join arc is CLOSED and DEPLOYED (r34 → r36 → r37 → r38, 2026-08-31).**
+`bridge/server._lattice_join` — M6's ONE declaration of the value-join — tested identity
+with `_norm_value` while `candidates_from`, `render`, `era_split`, the S2 grow join and
+the confirm probe all used `_candidate_key`: two declarations of one relation, surviving
+M6 because they carried different §-numbers. **r34** bound the declared key and **run 21**
+PASSED the gate while **K3** killed it on attribution; **r36** reverted it. **r37** built
+an observation-only tap over the join (off unless `LIFE_AGENT_JOIN_TAP` is set; the
+decision is always the deployed predicate's; recorded never folded) and **run 22** measured
+the live firing surface — larger than the recorded-wire one, so r36's stated cause is true
+— **but found the real defect: K3 baselined on run 20, whose tree differed by the lever
+AND r33 AND #127, and two of its three changed rows belonged to the other two.**
+Registered **`M-18`: pin the comparison tree, not just the deciding tree.** **r38**
+re-landed against run 22 (differs by the lever alone): **run 23 PASS on all five frozen
+criteria — exactly one row differs (q2-027, abstain → correct report at leader 0.863 vs
+0.346), the wrong set is byte-identical across runs 21/22/23, and run 23 agrees with run
+21 on all 104 rows.** Merged and deployed. **`GD-8` binds the reading: the benefit is ONE
+row, below §6.13's wobble floor of 2 — it shipped as a defect repair, never on its row
+count.** Two further lessons: a merge is **not additive** (r34 predicted 0.346+0.146=0.493
+and called it inert; re-running the posterior reads 0.863, because a merge removes a
+competing atom and re-normalises `p_none`) — folded into `M-7`; and **`M-19`**, a
+measurement launcher restores the tree it found.
+
 **r30b (2026-08-29, `docs/unification/reports/r30b-interval-claims.md`, $0) builds the
 claim space — the INTERVAL claim, priced inside the argmax.** Step 4 ("extract k more") is
 scoped OUT with reasons (r29 rider 2 froze a harm term as a precondition; it would be a
