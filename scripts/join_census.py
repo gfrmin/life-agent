@@ -29,6 +29,7 @@ import json
 import os
 import sys
 import tempfile
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -81,9 +82,12 @@ def c1_identity_violation(d: dict[str, Any]) -> str | None:
     return "joined a DIFFERENT answer" if o is not None else None
 
 
-def census(root: Path) -> list[dict[str, Any]]:
-    """Replay every recorded join in every fixture under ``root``, in a stable order."""
-    rows: list[dict[str, Any]] = []
+def recorded_joins(root: Path) -> Iterator[dict[str, Any]]:
+    """Every recorded join under ``root``, in a stable order — the ONE walk of the wire.
+
+    `census` and the equivalence population both consume this. Two walks would be two
+    definitions of "the recorded population", and the whole reason r37 exists is a surface
+    that turned out to be defined by its instrument rather than by the world."""
     for fx in sorted(Path(root).glob("*.json")):
         try:
             doc = json.loads(fx.read_text(encoding="utf-8"))
@@ -94,13 +98,12 @@ def census(root: Path) -> list[dict[str, Any]]:
             continue
         qid = str(doc.get("question_id") or fx.stem)
         for n, ex in enumerate(wire):
-            if ex.get("seam") != "http":
+            if not isinstance(ex, dict) or ex.get("seam") != "http":
                 continue
             req = ex.get("request") or {}
             url = str(req.get("url") or "")
             if url not in JOIN_URLS:
                 continue
-            payload = req.get("payload") or {}
             rsp = ex.get("response")
             if not isinstance(rsp, dict):
                 continue
@@ -109,16 +112,26 @@ def census(root: Path) -> list[dict[str, Any]]:
                 # no value came back — there is no join to replay, and inventing one
                 # would put the instrument's guess into the arm it is measuring
                 continue
-            candidates = [str(c) for c in (payload.get("candidates") or [])]
-            allow_new = bool(payload.get("allow_new", False))
-            (idx, minted), (d_idx, d_minted) = both_arms(
-                str(value).strip(), candidates, allow_new)
-            rows.append({"key": f"{fx.name}#{n}", "fixture": fx.name, "question_id": qid,
-                         "url": url, "n_candidates": len(candidates),
-                         "allow_new": allow_new, "idx": idx, "minted": minted,
-                         "joined_key": joined_key(idx, minted, candidates),
-                         "declared": {"idx": d_idx, "minted": d_minted},
-                         "fires": (d_idx, d_minted) != (idx, minted)})
+            payload = req.get("payload") or {}
+            yield {"key": f"{fx.name}#{n}", "fixture": fx.name, "question_id": qid,
+                   "url": url, "value": str(value).strip(),
+                   "candidates": [str(c) for c in (payload.get("candidates") or [])],
+                   "allow_new": bool(payload.get("allow_new", False))}
+
+
+def census(root: Path) -> list[dict[str, Any]]:
+    """Replay every recorded join through BOTH identities, in a stable order."""
+    rows: list[dict[str, Any]] = []
+    for j in recorded_joins(root):
+        (idx, minted), (d_idx, d_minted) = both_arms(
+            j["value"], j["candidates"], j["allow_new"])
+        rows.append({"key": j["key"], "fixture": j["fixture"],
+                     "question_id": j["question_id"], "url": j["url"],
+                     "n_candidates": len(j["candidates"]),
+                     "allow_new": j["allow_new"], "idx": idx, "minted": minted,
+                     "joined_key": joined_key(idx, minted, j["candidates"]),
+                     "declared": {"idx": d_idx, "minted": d_minted},
+                     "fires": (d_idx, d_minted) != (idx, minted)})
     return rows
 
 
@@ -203,12 +216,14 @@ def equivalence(root: Path) -> dict[str, Any]:
     so never enters the join at all — it cannot tell tap-on from tap-off. This can: every
     recorded triple through the deployed join with the flag ON and with it OFF, byte-identical
     verdicts required. An empty population fails (`G-3`'s universe clause)."""
-    triples = [(r["value"], r["candidates"], r["allow_new"]) for r in _triples(root)]
+    triples = [(j["value"], j["candidates"], j["allow_new"])
+               for j in recorded_joins(root)]
     if not triples:
         return {"population": 0, "ok": False,
                 "reason": "empty population — nothing was checked"}
     os.environ.pop(_JOIN_TAP_ENV, None)
     off = [engine_join(v, c, a) for v, c, a in triples]
+    declared_log = CFG.JOIN_TAP_LOG
     with tempfile.TemporaryDirectory() as tmp:
         CFG.JOIN_TAP_LOG = Path(tmp) / "join-tap.jsonl"
         os.environ[_JOIN_TAP_ENV] = "1"
@@ -217,35 +232,13 @@ def equivalence(root: Path) -> dict[str, Any]:
             written = (sum(1 for _ in CFG.JOIN_TAP_LOG.open(encoding="utf-8"))
                        if CFG.JOIN_TAP_LOG.exists() else 0)
         finally:
+            # the declared path is module state — leaving it pointed at a deleted
+            # tempdir would silently disarm the tap for anything later in this process
             os.environ.pop(_JOIN_TAP_ENV, None)
+            CFG.JOIN_TAP_LOG = declared_log
     bad = [i for i, (o, n) in enumerate(zip(off, on, strict=True)) if o != n]
     return {"population": len(triples), "divergences": len(bad),
             "tap_rows_written": written, "ok": not bad and written == len(triples)}
-
-
-def _triples(root: Path) -> list[dict[str, Any]]:
-    """The (value, candidates, allow_new) triples the fixtures recorded — the population
-    r34 was actually read on, so the equivalence check runs on real inputs."""
-    out: list[dict[str, Any]] = []
-    for fx in sorted(Path(root).glob("*.json")):
-        try:
-            doc = json.loads(fx.read_text(encoding="utf-8"))
-        except (ValueError, OSError):
-            continue
-        for ex in doc.get("wire") or []:
-            if not isinstance(ex, dict) or ex.get("seam") != "http":
-                continue
-            req, rsp = ex.get("request") or {}, ex.get("response")
-            if str(req.get("url") or "") not in JOIN_URLS or not isinstance(rsp, dict):
-                continue
-            value = rsp.get("value")
-            if value is None or str(value).strip() == "":
-                continue
-            out.append({"value": str(value).strip(),
-                        "candidates": [str(c) for c in (req.get("payload") or {}).get(
-                            "candidates") or []],
-                        "allow_new": bool((req.get("payload") or {}).get("allow_new", False))})
-    return out
 
 
 def main(argv: list[str] | None = None) -> int:

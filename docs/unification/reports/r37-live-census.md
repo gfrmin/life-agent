@@ -36,7 +36,7 @@ The tap is **off unless `LIFE_AGENT_JOIN_TAP` is set**, writes to `config.JOIN_T
 `(url, question)` once per request so the join — several frames below the handler — can key
 its rows by question without a per-handler wiring.
 
-## 2 · L5 — the mutation ladder (17/17 RED)
+## 2 · L5 — the mutation ladder (18/18 RED)
 
 Run before any reading, per the frozen criterion. Each row: the predicate, the mutation, and
 the test that turned RED.
@@ -60,6 +60,7 @@ the test that turned RED.
 | M15 | the equivalence comparison | `bad = [...]` → `bad = []` | detects an injected divergence |
 | M16 | the `key=` drift gate | plant `key=` at a decision-path call site | no call site overrides the identity |
 | M17 | no second question hash | key → a local `sha256(question)` | the existing `test_no_other_site_hashes_a_question_itself`; and r37's own AST proof |
+| M18 | equivalence restores module state | drop the `JOIN_TAP_LOG` restore | the restore test |
 
 **M15 is the one worth reading twice.** Its first form was GREEN: the test asserted
 `divergences == 0`, which a comparison that always returns "no divergence" satisfies. ON and
@@ -78,6 +79,15 @@ alignment this buys is exact rather than incidental: `DEC.question_id` reproduce
 `question_id` of **all 308** m5-base probe exchanges from the payload question, with **0**
 disagreements — so the recorded side computes no key at all, and there is nothing for the two
 surfaces to drift apart on.
+
+**Two findings from reviewing this PR before merging it**, both fixed in the same branch and
+both now pinned (M18 and a same-population test). The instrument walked the recorded wire
+**twice** — once in `census`, once to build the equivalence population — which is two
+definitions of "what was recorded", the r37 defect one level up; there is now one
+`recorded_joins` walk that both consume. And `equivalence` borrowed two pieces of module state
+(the flag and the declared log path) and restored only one, so anything later in the process
+would have had its tap silently disarmed. Neither changed a number: the equivalence still
+reads 234/0/234 and the census still reads 234 joins · 5 firings after the refactor.
 
 ## 3 · L1 and L2 — the tap is inert, and it does not decide
 

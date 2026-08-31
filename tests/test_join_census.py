@@ -284,3 +284,41 @@ def test_equivalence_actually_detects_a_divergence(tmp_path: Path, monkeypatch) 
     ])
     res = JC.equivalence(root)
     assert res["divergences"] == 1 and res["ok"] is False
+
+
+def test_equivalence_restores_the_module_state_it_borrowed(tmp_path: Path) -> None:
+    """`equivalence` arms the tap and points its declared path at a tempdir. Both are module
+    state: left pointed at a deleted directory, the tap is silently disarmed for everything
+    later in the process — a diagnostic that quietly stops recording is worse than one that
+    was never armed."""
+    import os
+
+    from life_agent.core import config as CFG
+
+    before = CFG.JOIN_TAP_LOG
+    root = _fixture(tmp_path, [
+        {"seam": "http",
+         "request": {"url": "/probe/deliberate",
+                     "payload": {"candidates": ["P123"], "allow_new": True}},
+         "response": {"value": "P123"}},                    # PII-OK: synthetic id
+    ])
+    JC.equivalence(root)
+    assert CFG.JOIN_TAP_LOG == before
+    assert os.environ.get(BR._JOIN_TAP_ENV) is None
+
+
+def test_one_walk_of_the_wire_feeds_both_readers(tmp_path: Path) -> None:
+    """`census` and the equivalence population are the SAME population by construction. Two
+    walks would be two definitions of 'what was recorded' — which is the defect r37 exists to
+    repair, one level up."""
+    root = _fixture(tmp_path, [
+        {"seam": "http",
+         "request": {"url": "/probe/deliberate",
+                     "payload": {"candidates": ["P123"], "allow_new": True}},
+         "response": {"value": "P123"}},                    # PII-OK: synthetic id
+        {"seam": "http",                                    # no value: not a join
+         "request": {"url": "/probe/corroborate", "payload": {"candidates": []}},
+         "response": {"value": ""}},
+    ])
+    assert len(JC.census(root)) == len(list(JC.recorded_joins(root))) == 1
+    assert JC.equivalence(root)["population"] == 1
