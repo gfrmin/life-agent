@@ -70,20 +70,27 @@ not cited below.
 | **A-9 · shape scales stay at 1.0** | 2026-08-29 | `conferral-1` ruling 1 | The `quantity` scale opt-in is declined; every shape ships inert. The units-lever arc (r28–r31) subsequently **closed** — r31 FAIL on K6, nothing deployed. |
 | **A-10 · sequencing is continuous** | — | PRINCIPLES §9 as amended | Eval-gated, not dogfood-gated. Open the next checkpoint as soon as its preconditions are met. |
 
-## §4 CARRIED AND UNSETTLED — the register's first finding
+## §4 CARRIED AND UNSETTLED — RESOLVED 2026-08-31
 
-Conferral 1 (2026-08-29) carried two items to Conferral 2 by name. **Conferral 2 (2026-08-30)
-took four rulings and addressed neither.** Recorded here rather than quietly dropped, because
-one of them gates an arc that is two places away in the queue.
+Conferral 1 (2026-08-29) carried two items to Conferral 2 by name; Conferral 2 (2026-08-30)
+took four rulings and addressed neither. Both were put to the owner on **2026-08-31** and both
+are now ruled — see `G-1`…`G-3` below.
 
-| id | carried from | status | why it matters |
+**A correction to this register's own first census, recorded rather than edited away.** The
+first version of this section said `U-1` — the completion-audit definition and "DONE items 3–5"
+— was wholly unsettled and blocked Arc C. **That was wrong.** It read conferral 1's
+carry-forward and Conferral 2's silence, and did not check whether an intervening report had
+closed it: **`r27` (K4) resolved the stage map on 2026-08-28** and `ROADMAP.md` carries the
+resolved table (Stages 0–4; items 3–5 are Stages 3 and 4; "five" is the stage count, not an
+item count). The register's own failure mode on day one was `M-7` in miniature — a census that
+read two sources and inferred the state of a third. What was genuinely open was narrower, and
+is ruled below.
+
+| id | date | source | what it determines |
 |---|---|---|---|
-| **U-1 · the completion-audit definition + DONE items 3–5** | `conferral-1` ruling 3 | **UNSETTLED.** Conferral 1: *"Carried to Conferral 2, where it must be settled **before the proplang ladder opens**."* Conferral 2 does not mention it. | **This blocks A-1's second half.** Proplang cannot open until the completion audit is defined. It must be settled before Arc C, and it is the one item conferral 1 noted "does not improve by waiting". |
-| **U-2 · K5, the guard-layer method** | `conferral-1` ruling 2 | **UNSETTLED.** Conferral 1 parked K5 until after the exit week and said *"the method gets ruled at Conferral 2."* The exit week closed 2026-08-30; Conferral 2 does not mention K5. | Guard rows 12, 22 and 23 stay defeated and G4 stays blocked, both published. Not blocking, but it is now the **fourth** consecutive pass over one class with no new evidence — the exact condition conferral 1 gave for ruling it. |
-
-Both are §5-class questions (they set what the system is for and what "complete" means), so they
-are the owner's. They are raised here once, at the point where the queue reaches them, rather
-than interrupting the arc in front.
+| **G-1 · Stage 2 is RETIRED from the completion programme** | 2026-08-31 | owner, interviewed | Stage 2 (Phase 1.6 items 4–5, the aggregate and thread families) is retired, not redefined. As written it could not close: specified as *builds* while `bayesian-foundations.md` §12 gives it *gates*; K1 deleted the aggregate family as "family routing in disguise"; the remainder dies with `/route` at migration M5, inside a stage ruled out of the programme. **Capability work is continuous and eval-gated under PRINCIPLES §9 as amended, so it needs no programme stage.** The thread transformations may still be built when evidence calls for them — never as a completion condition. The programme closes at Stages 0, 1 and 4. |
+| **G-2 · the completion audit is DEFINED, and proplang opens after it** | 2026-08-31 | owner, interviewed | The completion audit is **a $0 reconciliation of the four disagreements `r26` recorded** — what Stage 0 consisted of; DONE item 1's wording; which numbering discharges the family stage; and what opens the proplang migration — read against this register, leaving one definition of record for each. It is not a new instrument and buys nothing. Once it reads, **Arc C opens** under membrane-shadow §18's own frozen bars (`A-2`). |
+| **G-3 · the guard method is RULED** | 2026-08-31 | owner, interviewed | **A guard must name the universe it checked and fail when that universe is empty; and a control counts as a control only if removing what it controls for turns it RED — demonstrated by mutation, never asserted by shape.** Rows 12, 22 and 23 follow from it mechanically and G4 (the adversary pass) is unblocked. The rule is deliberately *semantic*, because all three of row 22's defeats worked by re-spelling a syntactic narrowing while the guard stayed green: a universe that must be **named and non-empty** cannot be silently widened or narrowed, since both change a reported number. |
 
 ## §5 The residue — what still reaches the owner
 
