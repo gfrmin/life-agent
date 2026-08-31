@@ -104,6 +104,14 @@ CLAUDE_VERDICTS_LOG = KB / "calibration" / "claude_verdicts.jsonl"
 # from (core/gather_outcomes.py). The calibration leg's fourth append-only log.
 GATHER_OUTCOMES_LOG = KB / "calibration" / "gather_outcomes.jsonl"
 
+# --- r37: the value-join tap's diagnostic stream ---
+# Where `bridge/server._lattice_join`'s observation-only tap writes when
+# LIFE_AGENT_JOIN_TAP is set (absent = off; the tap is never on by default). Deliberately
+# NOT under calibration/: this is a diagnostic stream, recorded and NEVER folded (RULINGS
+# `M-14`) — it carries no decision_id and no credence, so there is nothing in it a fold
+# could mistake for evidence about the owner. It lives beside the other run artefacts.
+JOIN_TAP_LOG = KB / "eval" / "join-tap.jsonl"
+
 # --- The utility posterior (foundations §4.4 — utility as inference) ---
 # Gauge pins + grid priors (owner-editable; schema example in
 # config/utility-model.example.yaml) and the append-only elicitation evidence
