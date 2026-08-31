@@ -210,3 +210,42 @@ been re-read against the instrument that produced it. This is the same failure m
 step earlier because the re-read is now a step.
 
 **Reaction.** *(open)*
+
+## GD-8 · 2026-08-31 · whether to re-land a lever whose measured benefit is one row
+
+**The fork.** r37 measured the value-join lever's entire effect on the 104 gate questions, on a
+tree differing by the lever alone: **exactly one row, q2-027, abstain → correct report.**
+§6.13's commit-wobble floor is **2**. So the lever's benefit sits *below the floor at which a
+row count is a reading at all*. Does it ship?
+
+**Decided. r38 opens and re-lands it** — under criteria frozen first, and with the benefit
+published as sub-floor.
+
+**Why.** The lever is not a tuning knob whose value is its row count; it is a **defect repair**.
+`bridge/server._lattice_join` is stamped `[§3.3 · D-11/BR-2]` as M6's ONE declaration of the
+value-join, and it tests identity with `_norm_value` while `candidates_from`, `render`,
+`era_split`, the S2 grow join and the confirm probe all use `_candidate_key`. Two declarations
+of one relation, numbered under different clauses — the thing M6 exists to forbid, surviving
+because the two carry different §-numbers. It is a **monotone coarsening** (`_candidate_key`
+falls back to `_norm_value`), so its risk surface is enumerable, and r37 enumerated it live.
+The row count is corroboration, not the case.
+
+**What is published alongside it, so no later reader mistakes the claim.** *The lever's
+measured benefit is at or below the wobble floor.* "+1 correct row" is **not** a statistical
+result and must never be quoted as one. Two independent draws (runs 21 and 22) agree on which
+row and in which direction, which is what a structural change should look like; it is not a
+power calculation.
+
+**What still binds.** `M-1`'s hard clause is untouched: K1/K2 kill on any new wrong commit or
+any named class made worse, and those criteria do not care how small the benefit is. If the
+lever harms anything, it does not ship, defect repair or not.
+
+**Alternatives rejected.** *Park it as measured-dormant (`A-7`'s r30b pattern)* — r30b's
+interval lever was a new claim in the action set that lost the argmax; this is an existing
+declaration disagreeing with itself, which dormancy does not fix. *Widen the lever until the
+benefit clears the floor* — that is `B2`, scoped out at r34 for breaching the confident-wrong
+boundary, and chasing a row count is the wrong reason to reopen it. *Drop it* — leaves two
+declarations of candidate identity in tree, with the defect pinned live by a test that will
+outlive anyone's memory of why.
+
+**Reaction.** *(open)*
