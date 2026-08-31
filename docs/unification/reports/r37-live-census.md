@@ -5,7 +5,7 @@ Pre-registration (committed before any `src/` change, with its two blind amendme
 Instrument: `bridge/server._join_tap` + `scripts/join_census.py --live/--superset/--equivalence`.
 Consequence: `D-2`'s defaults, no keypress.
 
-*(sections filled in as they read — the build and the $0 legs first, the priced run last)*
+**Verdict: all five criteria PASS. Nothing is bought.** The reading that matters is in §6: the lever's whole effect is one correct row, and the two rows K3 killed r34 on move with the lever absent — so K3's operative defect was its baseline, not the census. Registered as `M-18`.
 
 ## 0 · What r37 is for
 
@@ -139,3 +139,99 @@ claims have to name both.
 
 *(L2's host-side leg, run for the record: the m5-base replay with the flag ARMED reads the
 same `288/314` and the same 26, and wrote `0` tap rows — the log was never created.)*
+
+## 5 · The priced run — run 22 (`gate-20260831T190914`, $0.22, 24 min)
+
+Fired on the **reverted** tree (master `e63751f`), tap armed, as a transient `systemd --user`
+unit with the live stack stopped. All four fire gates passed, including the two r37 pins (tap
+present, lever absent) and the tap gate (the log writable **and empty**, so no prior run's rows
+could enter this reading).
+
+Gate verdict, for the record — r37 buys no lever, so this is a regression reading, not a
+consequence: **PASS, P(Δ>0.05) = 0.965, Δ̄ +0.534 [+0.095, +1.018]**, typed answer rate 0.62.
+Run 21, the same tree *plus* the lever, read 0.969 / +0.544 / 0.63.
+
+### L4 — the surface, with its size
+
+**219 join calls over 98 questions · 8 firings over 4 questions.** Non-empty, so the run does
+not fail its own universe clause.
+
+| | recorded wire | live |
+|---|---|---|
+| calls | 234 | 219 |
+| questions covered | 97 | 98 |
+| **firing questions** | **2** — q2-027, q2-090 | **4** — q2-027, q2-028, **q2-029**, q2-090 |
+
+### L3 — superset: PASS
+
+On the **95** questions both instruments cover, `missing_live` is **empty**: every firing the
+cassettes found also fires live. And the live set is strictly larger — q2-028 and q2-029 fire
+live and are invisible to the recorded wire.
+
+**So r36's stated cause is CONFIRMED as a fact about the instrument.** The recorded-wire
+census *is* a lower bound, and r37's registered expectation (a larger live surface) is met. The
+kill in the other direction did not fire.
+
+The eight firings by shape: five `no-join → join` on `/probe/corroborate` (the deployed key
+finds nothing and yields **no observation at all**, where the declared key joins an existing
+index), two `mint → join` on `/probe/deliberate` (the merge run 21 demonstrated), one other.
+The lever supplies evidence at least as often as it merges evidence — the mechanism named in §4,
+now confirmed live and in the majority.
+
+## 6 · The isolation arm — and a correction to r36
+
+Amendment 2, registered before the run: run 22's tree is run 21's **minus the lever and nothing
+else**. Diffing all 104 rows:
+
+| comparison | trees differ by | rows whose action differs |
+|---|---|---|
+| **run 21 vs run 22** | **the lever, alone** | **exactly one: q2-027** (✓report → abstain) |
+| run 20 vs run 22 | r33 + #127, no lever in either | exactly two: **q2-046, q2-049** (abstain → ✓report) |
+
+**The lever's entire measured effect on the 104 is one row, and it is a correct report.** Zero
+other rows move. And q2-046 and q2-049 — the two rows K3 killed r34 on — **move with the lever
+absent**. They were never the lever's rows.
+
+**This corrects r36, and the correction is against my own report.** r36 recorded the cause of
+K3's failure as the census's lower-bound property. That property is real (§5 just proved it),
+but **it is not what killed K3.** K3 compared run 21 against **run 20**, and those two trees
+differed by *three* things — the lever, r33, and #127. Two of the three changed rows belong to
+the other two. The operative defect was the **baseline**, not the census.
+
+Registered as the lesson, and it generalises past this arc:
+
+> **A criterion of the form "rows whose action differs from run X must lie in set S" is only
+> about the lever if run X's tree differs from the arm's by the lever alone.** Pin the
+> comparison tree the way `M-11` pins the deciding tree. r36's K3 named a set and a baseline
+> and checked only the set.
+
+Neither r34's revert nor r36's FAIL is renegotiated: K3 was frozen, it failed as frozen, and
+`M-4` means a kill is not re-read once the numbers are in. What changes is what the successor
+inherits — a *measured* surface **and** a correctly-pinned baseline.
+
+## 7 · Criteria
+
+| id | verdict | evidence |
+|---|---|---|
+| **L1** | **PASS** | replay 288/314 with the standing 26, tap OFF; and the paired equivalence, 234 triples / 0 divergences |
+| **L2** | **PASS** | 0 divergences ON vs OFF over 234 real triples, 234 tap rows written; replay tap-ARMED reads the same 288/314 |
+| **L3** | **PASS** | 95 shared questions, `missing_live` empty, live surface strictly larger (4 ⊋ 2) |
+| **L4** | **PASS** | 8 firings over 219 calls, reported with its size, non-empty |
+| **L5** | **PASS** | 18/18 mutations RED before the read |
+
+## 8 · Consequence, and what the successor gets
+
+`D-2`'s defaults: r37 passes its own criteria, ships, and **buys no lever**. The tap stays in
+tree, off by default, with its own drift gate.
+
+r38 — the re-land — now has both things r34 lacked, and they are different things:
+
+1. **A measured live firing surface**: `{q2-027, q2-028, q2-029, q2-090}`. q2-028 and q2-029
+   fire but their action is `abstain` in all three runs, so the lever is *correct but inert*
+   there — the r30b category, named in advance this time.
+2. **A baseline that differs by the lever alone**: **run 22**. Not run 20.
+
+The run-21/run-22 pair is published here as *motivating* evidence and is deliberately **not**
+read as r38's result: those runs are already fired, and freezing a criterion against numbers
+already seen is the one thing `M-3` exists to prevent. r38 pre-registers first and fires its
+own arm.
