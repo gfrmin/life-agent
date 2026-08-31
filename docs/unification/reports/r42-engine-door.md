@@ -46,10 +46,26 @@ Reproduced identically on a second pass. Two things follow, both measured rather
 
 - **The grid is priced in models, not in namespace bits** — `namespace_bits` is invariant
   across every grid. Declaring more rungs does not cost namespace; it multiplies the world set.
-- **No grid tried here restores arm A.** Nine even points reach 1233 against arm A's baked
-  2393. So "declare the obvious grid" is not a restoration to the control's behaviour — it is a
-  strictly smaller hypothesis space, chosen by us. That is the substance behind r41's claim
-  that this is world data, now with numbers on it.
+- **The grid's price is exactly quadratic.** Swept over even grids `n = 1…16`, the world count
+  is `models = n(17n − 16)` with **zero residual** at every point (1, 36, 105, 208, 345, 516,
+  721, 960, 1233, 1540, 1881, 2256, 2665, 3108, 3585, 4096). So a rung is not a rounding
+  decision: the eleventh costs 341 worlds and the sixteenth costs 511.
+- **No even grid reproduces arm A's world count.** 2393 falls strictly between `n = 12` (2256)
+  and `n = 13` (2665), so arm A's baked structure is not a member of this family at all —
+  "declare the obvious grid" is not a restoration to the control's behaviour under any `n`. It
+  is a hypothesis space we choose. That is the substance behind r41's claim that this is world
+  data, now with numbers on it.
+
+  *Caveat on that comparison:* `models` from the two arms is reported by two different
+  enumerators, so the 2393 is an order-of-magnitude reference, not a target to hit. The
+  quadratic and the "no exact member" statement stand on their own; the successor should pick a
+  grid from what the rungs must represent, never by fitting this number.
+- **Cost depends on the grid's size alone, not on where the rungs sit.** The two sweeps used
+  different point sets at the same sizes — `[0.1, 0.9]` and `[0.333, 0.667]` both read 36,
+  `[0.1, 0.5, 0.9]` and `[0.25, 0.5, 0.75]` both read 105 — so **size and placement are
+  separable levers**: size buys world count, placement buys whether the rungs can represent the
+  operating rate. The engine repo's false-clear failure is entirely a *placement* failure, and
+  no amount of the cheap lever fixes it.
 
 And the degenerate case is the one a hurried fix would reach for: `theta: [0.5]` handshakes
 green with **`models: 1`** and `entropy_bits: 0.0` — a single-world engine that cannot learn
