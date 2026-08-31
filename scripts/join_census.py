@@ -43,17 +43,18 @@ engine_join = _lattice_join
 #: The endpoints whose payload carries a candidate lattice and whose reply carries a value.
 JOIN_URLS = ("/probe/deliberate", "/probe/corroborate")
 
-#: The DECLARED §4.2 identity — the counterfactual arm. Imported, never re-spelled (`M-7`).
-DECLARED_KEY = LK._candidate_key
+#: The RETIRED identity — the counterfactual arm since r38 made the declared §4.2 key the
+#: deployed one. Imported, never re-spelled (`M-7`).
+COUNTERFACTUAL_KEY = LK._norm_value
 
 
 def both_arms(value: str, candidates: list[str], allow_new: bool
               ) -> tuple[tuple[int | None, str | None], tuple[int | None, str | None]]:
-    """``(deployed, declared)`` — the one join asked under both identities. Both arms run
-    the same function; the only difference is the key, which is why this can be trusted to
-    price the lever rather than the instrument."""
+    """``(deployed, counterfactual)`` — the one join asked under both identities. Both arms
+    run the same function; the only difference is the key, which is why this can be trusted
+    to price the lever rather than the instrument."""
     return (engine_join(value, candidates, allow_new),
-            engine_join(value, candidates, allow_new, key=DECLARED_KEY))
+            engine_join(value, candidates, allow_new, key=COUNTERFACTUAL_KEY))
 
 
 def joined_key(idx: int | None, minted: str | None,
@@ -123,15 +124,15 @@ def census(root: Path) -> list[dict[str, Any]]:
     """Replay every recorded join through BOTH identities, in a stable order."""
     rows: list[dict[str, Any]] = []
     for j in recorded_joins(root):
-        (idx, minted), (d_idx, d_minted) = both_arms(
+        (idx, minted), (c_idx, c_minted) = both_arms(
             j["value"], j["candidates"], j["allow_new"])
         rows.append({"key": j["key"], "fixture": j["fixture"],
                      "question_id": j["question_id"], "url": j["url"],
                      "n_candidates": len(j["candidates"]),
                      "allow_new": j["allow_new"], "idx": idx, "minted": minted,
                      "joined_key": joined_key(idx, minted, j["candidates"]),
-                     "declared": {"idx": d_idx, "minted": d_minted},
-                     "fires": (d_idx, d_minted) != (idx, minted)})
+                     "counterfactual": {"idx": c_idx, "minted": c_minted},
+                     "fires": (c_idx, c_minted) != (idx, minted)})
     return rows
 
 
@@ -181,7 +182,7 @@ def live(tap_log: Path) -> list[dict[str, Any]]:
                      "n_candidates": r.get("n_candidates", len(cands)),
                      "allow_new": r.get("allow_new", False), "idx": idx, "minted": minted,
                      "joined_key": joined_key(idx, minted, cands),
-                     "declared": r["declared"], "fires": bool(r["fires"])})
+                     "counterfactual": r["counterfactual"], "fires": bool(r["fires"])})
     return rows
 
 

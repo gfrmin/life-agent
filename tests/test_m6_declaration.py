@@ -32,10 +32,11 @@ def test_d11_the_lattice_join_is_one_declaration() -> None:
         "reverted it, and r37 parameterised it so the tap's counterfactual re-runs THIS "
         "rule; the pin follows the spelling because its job is to forbid a SECOND scan, "
         "not to freeze which key the scan uses")
-    assert inspect.signature(BR._lattice_join).parameters["key"].default is LK._norm_value, (
-        "the DEPLOYED identity is the default argument — r36's revert. r37 made the key a "
-        "parameter for the tap's counterfactual only; if the default moves, the lever has "
-        "shipped, and it may only ship through its own pre-registration")
+    assert inspect.signature(BR._lattice_join).parameters["key"].default is LK._candidate_key, (
+        "the DEPLOYED identity is the default argument, and since r38 it is the §4.2 declared "
+        "key — the same one candidates_from/render/era_split/the S2 join/the confirm probe "
+        "use. One declaration of candidate identity. If this moves, the lever has been "
+        "reverted, and that may only happen through a pre-registered consequence")
     assert G.calls(BR._probe_corroborate, "_lattice_join"), (
         "BR._probe_corroborate does not CALL _lattice_join() — one declaration, one home; a "
         "source substring would be satisfied by a comment (r23 F10)")
@@ -240,12 +241,12 @@ def test_d13_the_stack_urls_are_read_once() -> None:
 # --- r34: the value-join binds the DECLARED candidate identity -------------------------
 
 
-def test_r34_join_binding_is_reverted_and_the_defect_is_pinned_live() -> None:
-    """r34: `_lattice_join` is M6's one value-join, but it tested identity with
-    `_norm_value` (whitespace+casefold) while `candidates_from`, `render`, `era_split`, the
-    S2 grow join and the confirm probe all use `_candidate_key` (the §4.2 canonical key).
-    Two declarations of one relation, numbered under different clauses. The edges therefore
-    MINTED spelling variants the rest of the lattice considers one candidate."""
+def test_r38_the_two_declarations_of_candidate_identity_are_one() -> None:
+    """The defect r34 found, r36 reverted, r37 measured and r38 repaired: `_lattice_join` is
+    M6's one value-join, and it tested identity with `_norm_value` while `candidates_from`,
+    `render`, `era_split`, the S2 grow join and the confirm probe all use `_candidate_key`.
+    Two declarations of one relation, numbered under different clauses — so the edges MINTED
+    spelling variants the rest of the lattice considers one candidate. They no longer do."""
     from life_agent.bridge import server as BR
     from life_agent.core import lookup as LK
 
@@ -254,18 +255,17 @@ def test_r34_join_binding_is_reverted_and_the_defect_is_pinned_live() -> None:
     assert len({LK._candidate_key(c) for c in [base, *variants]}) == 1, (
         "premise: the declared key already calls these one candidate")
 
-    # r36 REVERTED the binding on a K3 attribution kill, so the defect is live again and
-    # PINNED as live: each variant is still minted as its own atom. r37 carries the successor.
+    # r38: every variant now JOINS the atom the declared key already considered it to be,
+    # so the lattice does not grow and no spelling splits the posterior.
     cands = [base]
     for v in variants:
-        _idx, minted = BR._lattice_join(v, cands, allow_new=True)
-        assert minted == v, "r36's revert is in force — the variant is still minted"
-        cands = [*cands, minted]
-    assert len({LK._candidate_key(c) for c in cands}) == 1, (
-        "the declared identity still calls them ONE candidate — this is the standing defect")
+        idx, minted = BR._lattice_join(v, cands, allow_new=True)
+        assert minted is None and idx == 0, (
+            "the lever is in force — the variant joins the atom it always was")
+    assert len(cands) == 1, "the lattice does not grow on a re-spelling"
 
 
-def test_r34_the_join_is_a_monotone_coarsening() -> None:
+def test_r38_the_join_is_a_monotone_coarsening() -> None:
     """Whatever `_norm_value` joined, the declared key still joins — `_candidate_key` falls
     back to it. The change can only merge MORE, never split more; that property is what makes
     the lever's risk surface enumerable (C1)."""
@@ -275,7 +275,7 @@ def test_r34_the_join_is_a_monotone_coarsening() -> None:
     assert (idx, minted) == (1, None), "the whitespace+case join must survive unchanged"
 
 
-def test_r34_distinct_significant_digits_still_never_merge() -> None:
+def test_r38_distinct_significant_digits_still_never_merge() -> None:
     """The confident-wrong boundary is `_candidate_key`'s, and binding it here inherits it
     rather than widening it: two genuinely different numbers stay two candidates."""
     from life_agent.bridge import server as BR

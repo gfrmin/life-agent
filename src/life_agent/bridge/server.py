@@ -556,7 +556,8 @@ def _tap_context(path: str, payload: Payload) -> None:
 def _join_tap(value: str, candidates: list[str], allow_new: bool,
               deployed: tuple[int | None, str | None]) -> None:
     """Record one value-join call: the deployed verdict beside the counterfactual the
-    DECLARED §4.2 identity would have given. Never raises — a diagnostic that can take the
+    RETIRED `_norm_value` identity would have given (r38 flipped which side is deployed;
+    the disagreement measured is the same one). Never raises — a diagnostic that can take the
     decide path down is not a diagnostic — and never decides.
 
     The counterfactual re-runs :func:`_lattice_join` under the other key rather than
@@ -569,15 +570,15 @@ def _join_tap(value: str, candidates: list[str], allow_new: bool,
     if not os.environ.get(_JOIN_TAP_ENV):
         return
     try:
-        d_idx, d_minted = _lattice_join(value, candidates, allow_new,
-                                        key=LK._candidate_key)
+        c_idx, c_minted = _lattice_join(value, candidates, allow_new,
+                                        key=LK._norm_value)
         url, question = _TAP_CONTEXT.get()
         row = {"question_id": DEC.question_id(question), "url": url,
-               "fires": (d_idx, d_minted) != deployed,
+               "fires": (c_idx, c_minted) != deployed,
                "allow_new": allow_new, "n_candidates": len(candidates),
                "value": value, "candidates": candidates,
                "deployed": {"idx": deployed[0], "minted": deployed[1]},
-               "declared": {"idx": d_idx, "minted": d_minted}}
+               "counterfactual": {"idx": c_idx, "minted": c_minted}}
         log = config.JOIN_TAP_LOG
         log.parent.mkdir(parents=True, exist_ok=True)
         with log.open("a", encoding="utf-8") as fh:
@@ -587,7 +588,7 @@ def _join_tap(value: str, candidates: list[str], allow_new: bool,
 
 
 def _lattice_join(value: str, candidates: list[str], allow_new: bool,
-                  *, key: Callable[[str], str] = LK._norm_value
+                  *, key: Callable[[str], str] = LK._candidate_key
                   ) -> tuple[int | None, str | None]:
     """[§3.3 · D-11/BR-2] (with L-4): THE value-join — the observation-equivalence rule
     mapping an instrument's bare value onto the candidate lattice, one declaration for
@@ -640,7 +641,7 @@ def _lattice_join(value: str, candidates: list[str], allow_new: bool,
             out = len(candidates), value
         else:
             out = None, None
-    if key is LK._norm_value:      # the deployed call; the tap's own re-run must not recurse
+    if key is LK._candidate_key:   # the deployed call; the tap's own re-run must not recurse
         _join_tap(value, candidates, allow_new, out)
     return out
 

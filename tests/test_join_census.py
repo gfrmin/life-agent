@@ -145,12 +145,12 @@ def test_c1_identity_still_kills_a_real_change_of_answer() -> None:
 
 
 def _tap_row(q: str, fires: bool, *, url: str = "/probe/deliberate") -> dict:
-    dep = {"idx": 1, "minted": "HKD 12,345.67"} if fires else {"idx": 1, "minted": None}
-    dec = {"idx": 0, "minted": None} if fires else {"idx": 1, "minted": None}
+    dep = {"idx": 0, "minted": None}
+    cf = {"idx": 1, "minted": "HKD 12,345.67"} if fires else {"idx": 0, "minted": None}
     return {"question_id": DEC.question_id(q), "url": url, "fires": fires,
             "allow_new": True, "n_candidates": 1,
             "value": "HKD 12,345.67", "candidates": ["HKD 12345.67"],  # PII-OK: synthetic
-            "deployed": dep, "declared": dec}
+            "deployed": dep, "counterfactual": cf}
 
 
 def _tap_log(tmp_path: Path, rows: list[dict]) -> Path:
@@ -179,7 +179,8 @@ def test_live_reads_the_tap_into_the_census_row_shape(tmp_path: Path) -> None:
     assert len(rows) == 2
     assert sum(r["fires"] for r in rows) == 1
     assert rows[0]["joined_key"] is not None, "a mint's joined key is the minted value's"
-    assert {"key", "question_id", "url", "idx", "minted", "declared", "fires"} <= set(rows[0])
+    assert {"key", "question_id", "url", "idx", "minted",
+            "counterfactual", "fires"} <= set(rows[0])
 
 
 def test_superset_names_a_recorded_firing_absent_live(tmp_path: Path) -> None:
@@ -261,7 +262,7 @@ def test_census_rows_carry_the_firing_verdict(tmp_path: Path) -> None:
     ])
     row = JC.census(root)[0]
     assert row["fires"] is True
-    assert row["declared"] == {"idx": 0, "minted": None}
+    assert row["counterfactual"] == {"idx": 1, "minted": "HKD 12,345.67"}  # PII-OK
     assert row["question_id"] == "q9-999", (
         "the recorded side already carries the declared id — it computes no hash of its own")
 

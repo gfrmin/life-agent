@@ -86,28 +86,29 @@ def test_the_tap_never_changes_the_decision(
     assert on == off, "the tap changed a decision — it observes, it does not decide"
 
 
-def test_the_deployed_identity_is_still_norm_value() -> None:
-    """The revert stays in force. The tap parameterises the key so the counterfactual runs
-    the SAME rule rather than a second copy of it (M-7) — which makes the default the thing
-    that now carries the deployed identity, so the default is what gets pinned."""
+def test_the_deployed_identity_is_the_declared_key() -> None:
+    """r38's lever, and the whole of it: the value-join's identity default is now the §4.2
+    declared key that `candidates_from`, `render`, `era_split`, the S2 grow join and the
+    confirm probe already use. One declaration of candidate identity, not two."""
     import inspect
 
     default = inspect.signature(BR._lattice_join).parameters["key"].default
-    assert default is LK._norm_value, (
-        "the deployed value-join must still test identity with _norm_value — r36's revert")
+    assert default is LK._candidate_key, (
+        "the deployed value-join must test identity with the declared §4.2 key — r38")
 
 
 def test_a_disagreement_is_recorded_as_a_firing(tap_log: Path) -> None:
-    """The lever's own case: one declared key, two normal forms. Deployed mints a second
-    atom; the declared key joins the first."""
+    """The lever's own case: one declared key, two normal forms. Since r38 the DEPLOYED join
+    merges them; the counterfactual is the retired `_norm_value`, which would have minted a
+    second atom. The tap still measures the same disagreement, from the other side."""
     idx, minted = BR._lattice_join("HKD 12,345.67", ["HKD 12345.67"], True)  # PII-OK
-    assert (idx, minted) == (1, "HKD 12,345.67"), "the deployed decision is unchanged"
+    assert (idx, minted) == (0, None), "the lever is in force — the variant joins"
 
     rows = _rows(tap_log)
     assert len(rows) == 1
     assert rows[0]["fires"] is True
-    assert rows[0]["deployed"] == {"idx": 1, "minted": "HKD 12,345.67"}
-    assert rows[0]["declared"] == {"idx": 0, "minted": None}
+    assert rows[0]["deployed"] == {"idx": 0, "minted": None}
+    assert rows[0]["counterfactual"] == {"idx": 1, "minted": "HKD 12,345.67"}
 
 
 def test_an_agreement_is_recorded_as_a_non_firing(tap_log: Path) -> None:
@@ -117,7 +118,7 @@ def test_an_agreement_is_recorded_as_a_non_firing(tap_log: Path) -> None:
 
     rows = _rows(tap_log)
     assert len(rows) == 1 and rows[0]["fires"] is False
-    assert rows[0]["deployed"] == rows[0]["declared"] == {"idx": 1, "minted": None}
+    assert rows[0]["deployed"] == rows[0]["counterfactual"] == {"idx": 1, "minted": None}
 
 
 def test_every_call_is_recorded_so_the_surface_has_a_denominator(tap_log: Path) -> None:
@@ -138,7 +139,7 @@ def test_the_row_carries_no_decision_id_and_no_credence(tap_log: Path) -> None:
 
     assert set(_rows(tap_log)[0]) == {
         "question_id", "url", "fires", "allow_new", "n_candidates",
-        "value", "candidates", "deployed", "declared"}
+        "value", "candidates", "deployed", "counterfactual"}
 
 
 def test_the_question_is_recorded_as_its_declared_id_not_as_text(
