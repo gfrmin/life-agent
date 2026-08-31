@@ -310,3 +310,44 @@ P0/P1 with pins and byte-compat checks recorded, not as a side effect of looking
 generating policy changed mid-way is segmented or excluded, never silently pooled.
 
 **Reaction.** *(open)*
+
+## GD-11 · 2026-08-31 · the world-declaration repair is four items, and P1 moves behind item 3
+
+**The fork.** r41 closed naming one successor — *"the world-declaration repair"* — and P1
+(restoring shadow accrual) behind it. Before writing that pre-registration, `M-20` says verify
+the claim it stands on. The claim was **"`hello` needs `codebooks.theta`"**, read from engine
+source.
+
+**What decided it.** [`r42`](./reports/r42-engine-door.md), $0, against the two engine binaries
+r41 already built. The claim is true and incomplete: HEAD's door differs in **four** ways, and
+only the first was named. Ticks now require full namespace coverage; **evidence ticks are
+refused outright** for want of the writable name; and HEAD **parses the declared utility
+sentence, validates it, and then decides as though it were absent** — byte-identical replies
+with the utility block present and removed, `abstain` (the option-space head) under four
+different `u_bar`s where arm A tracks the host prediction on all four.
+
+**Decision.**
+
+1. The successor's pre-registration covers **four items**, not one. Items 1–2 are
+   backwards-compatible (arm A ignores `codebooks`, and accepts a full-coverage tick with a
+   byte-identical reply), so they can be verified *before* the swap; items 3–4 cannot.
+2. **P1 is re-sequenced behind item 3, not item 1.** Restoring accrual against HEAD would
+   accrue nothing — every evidence tick is refused. Item 3 is not plumbing: an evidence tick
+   that must name an act is a full experience tuple, and what act a recorded verdict is claimed
+   to have been taken under is a modelling choice.
+3. **Item 4 is a precondition for the §18 bars, not a curiosity.** A bar read in this state
+   compares arm A's utility-driven policy against a **constant `abstain`** and books the gap to
+   the migration. The whole shadow rests on the engine acting on the declared utility; measured,
+   it does not. `M-18` one level up: pin what the comparison arm decides *with*, not only which
+   tree it is on.
+4. **Nothing is built, installed or enabled by this.** r42 is a re-scope.
+
+**Rejected alternative — ship the one-line fix now.** Declaring `codebooks.theta` alone is
+measured to yield a green handshake (`ok: true`), silently refused evidence, a belief pinned at
+the prior, and a **constant `abstain` policy**. Green lights over a dead engine. The tempting
+version of this is `theta: [0.5]`, which handshakes at `models: 1` and `entropy_bits: 0.0`.
+That is precisely the tail-end convenience declined at the close of P0, and it is now declined
+with numbers rather than on principle.
+
+**Standing under.** `D-2` defaults, no keypress: this is scope, not objective. Registered
+alongside it: `M-22` (read every reply, not the last one), earned by r42's own instrument.
