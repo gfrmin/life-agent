@@ -1,7 +1,8 @@
 """The credence seam (src/life_agent/core/brain.py) — bayesian-foundations §11.
 
-Three strata, hermetic by default:
+Four strata, hermetic by default:
 
+0. The production spawn argv built by `_docker_argv` — pure, no subprocess, no docker.
 1. Protocol tests against a scripted in-memory transport (no subprocess): request
    envelopes, result extraction, error mapping.
 2. Transport tests against a *Python* fake skin speaking the real wire protocol over
@@ -128,6 +129,39 @@ def test_destroy_state() -> None:
     B.Brain(t).destroy_state("s_1")
     assert t.sent[0] == {"jsonrpc": "2.0", "id": 1, "method": "destroy_state",
                          "params": {"state_id": "s_1"}}
+
+
+# --- the production spawn argv (no subprocess, no docker) --------------------------------
+# `_docker_argv` reads $CREDENCE_SKIN_RUN_ARGS at CALL time, so a plain `monkeypatch.setenv`
+# is observable here — unlike B.CREDENCE_SKIN_IMAGE / B._DEV_REPO, which freeze at import and
+# would need an importlib.reload. Same shape as tests/test_config_membrane.py's
+# membrane_command trio (unset / shell-split / empty string). Until now the `docker run`
+# branch was exercised by no test at all.
+
+def test_docker_argv_is_bare_when_run_args_unset(monkeypatch) -> None:
+    monkeypatch.delenv(B.CREDENCE_SKIN_RUN_ARGS_ENV, raising=False)
+    assert B._docker_argv("img:1") == ["docker", "run", "--rm", "-i", "img:1"]
+
+
+def test_docker_argv_shell_splits_run_args_before_the_image(monkeypatch) -> None:
+    monkeypatch.setenv(B.CREDENCE_SKIN_RUN_ARGS_ENV,
+                       "--memory=4g --label managed-by=example")
+    assert B._docker_argv("img:1") == [
+        "docker", "run", "--rm", "-i",
+        "--memory=4g", "--label", "managed-by=example", "img:1"]
+
+
+def test_docker_argv_empty_run_args_is_bare(monkeypatch) -> None:
+    monkeypatch.setenv(B.CREDENCE_SKIN_RUN_ARGS_ENV, "")
+    assert B._docker_argv("img:1") == ["docker", "run", "--rm", "-i", "img:1"]
+
+
+def test_docker_argv_never_names_the_container(monkeypatch) -> None:
+    """No ``--name``: engines are spawned concurrently from several processes and ``--rm``
+    cleanup is not guaranteed on SIGKILL, so a fixed name would collide with nothing
+    anywhere to reconcile it. Attribution is ``--label``, which the deployment passes in."""
+    monkeypatch.delenv(B.CREDENCE_SKIN_RUN_ARGS_ENV, raising=False)
+    assert "--name" not in B._docker_argv("img:1")
 
 
 # --- stratum 2: the subprocess transport over real pipes (Python fake skin) -------------

@@ -25,6 +25,7 @@ import json
 import logging
 import os
 import select
+import shlex
 import subprocess
 import time
 from pathlib import Path
@@ -57,6 +58,34 @@ _DEV_SERVER = os.environ.get("CREDENCE_SKIN_SERVER")
 # Julia cold-compile (or `docker pull`) on first spawn is slow (minutes on a cold run); the
 # generous ceiling is the skin client's proven default.
 STARTUP_TIMEOUT = 120.0
+
+# Extra `docker run` flags for the engine container, shell-split from this env var —
+# the deployment's knob, empty by default. See `_docker_argv`.
+CREDENCE_SKIN_RUN_ARGS_ENV = "CREDENCE_SKIN_RUN_ARGS"
+
+
+def _docker_argv(image: str) -> list[str]:
+    """The production spawn argv: ``docker run --rm -i [extras…] <image>``.
+
+    Extras are ``$CREDENCE_SKIN_RUN_ARGS``, shell-split (unset or empty → none, so the
+    default argv is exactly ``docker run --rm -i <image>``). The engine container runs in
+    its OWN cgroup scope, outside whatever bounds the spawning process, so a deployment
+    that wants it bounded or attributable — ``--memory=…``, ``--label …`` — has nowhere
+    else to say so. Keeping it an env var keeps the value (a site's chosen ceiling) out of
+    this repo, which only ships the mechanism.
+
+    Read at CALL time, not import time: a module-level ``os.environ.get`` is frozen at
+    first import, which both defeats ``monkeypatch.setenv`` in tests and would ignore an
+    env var set by whatever supervises the process after import.
+
+    Deliberately NO ``--name``. Engines are spawned from several processes concurrently
+    (the bridge, the ask path, ledger tooling), and ``--rm`` cleanup is not guaranteed when
+    a caller is SIGKILLed, so a fixed name is a collision hazard with nothing anywhere to
+    reconcile it. ``--label`` buys the same attribution with none of that risk.
+    """
+    raw = os.environ.get(CREDENCE_SKIN_RUN_ARGS_ENV)
+    extra = shlex.split(raw) if raw else []
+    return ["docker", "run", "--rm", "-i", *extra, image]
 
 
 class BrainError(Exception):
@@ -170,7 +199,8 @@ class Brain:
 
         Production: ``docker run --rm -i <image>`` — the pinned, versioned artifact, the
         only sanctioned consumption surface (state stays server-side as opaque IDs, so the
-        body cannot do probability arithmetic). Dev: if $CREDENCE_REPO or
+        body cannot do probability arithmetic); ``$CREDENCE_SKIN_RUN_ARGS`` adds the
+        deployment's own flags (see :func:`_docker_argv`). Dev: if $CREDENCE_REPO or
         $CREDENCE_SKIN_SERVER is set, spawn a local ``julia server.jl`` against an
         unpublished engine instead."""
         if _DEV_SERVER:
@@ -182,7 +212,7 @@ class Brain:
             argv = [julia, f"--project={_DEV_REPO}",
                     str(Path(_DEV_REPO) / "apps" / "skin" / "server.jl")]
         else:
-            argv = ["docker", "run", "--rm", "-i", image]
+            argv = _docker_argv(image)
         return cls(SubprocessTransport(argv, startup_timeout=startup_timeout))
 
     def __enter__(self) -> Self:
