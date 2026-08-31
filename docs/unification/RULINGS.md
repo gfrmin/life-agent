@@ -53,6 +53,7 @@ not cited below.
 | **D-3 · decide, do not ask** | 2026-08-31 | r34 | A fork is resolved by this register → $0 evidence → the current utility posterior. A fork surviving all three is **decided and published** in `DECISIONS.md`, not escalated. Supersedes the "interview for every owner-side choice" practice. |
 | **D-4 · the agent is a user** | 2026-08-30 | `r31-integration-gate` ruling 2 | The owner granted the coding agent **standing use of every surface the owner is invited to use**. Agent-origin asks are first-class evidence. |
 | **D-5 · spend** | 2026-08-31 | owner, r34 | Spend is capped externally by Anthropic. Per-arc budget caps are retired; a priced run needs no budget keypress. |
+| **D-6 · merge green PRs** | 2026-08-31 | owner, standing instruction | **A green PR that has been reviewed positively with no blockers may be merged without a keypress.** All three conjuncts bind: CI green, a review actually taken, and no blocker outstanding. A review is a review — a PR is not merged on green CI alone, and "no blockers" is a finding, not an assumption. |
 
 ## §3 Arc dispositions — standing
 

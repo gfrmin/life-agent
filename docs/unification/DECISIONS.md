@@ -91,3 +91,33 @@ immediately* — `U-1` blocks Arc C, which is two places away; raising it now wo
 for a decision that is not yet due, against `A-10`'s sequencing.
 
 **Reaction.** *(open — due before Arc C opens)*
+
+---
+
+## GD-4 · 2026-08-31 · reviewing PRs #130 and #131 before merging them
+
+**The fork.** The owner's standing instruction (`D-6`) permits merging a green PR after a
+positive review with no blockers. Both PRs were authored in this session. Does a self-review
+satisfy "a review actually taken"?
+
+**Decided.** Yes, but only as an adversarial pass with recorded findings — not a green-CI
+rubber stamp. The review targeted the two things most likely to bite on a decide-path change
+and recorded what it found:
+
+- **`_candidate_key`'s date branch is conservative** — `_parse_date` declines ambiguous forms
+  (`05/08/2019` → `None`), so no bare number or slash-date can collapse onto a date key.
+- **The confident-wrong boundary holds** — values with different significant digits still
+  never merge (`Ref 99887` does not join `99,887.00`).
+- **The one genuine widening is the intended one** — `12345 kg` now joins `Invoice 12345` at
+  the join site, which is exactly what `candidates_from` already does with that pair. The join
+  site was the outlier; that is the change's whole argument, and it is recorded rather than
+  glossed.
+
+**Why not escalate.** `D-6` is explicit, all three conjuncts are met, and the residue is
+changes to the objective — which this is not.
+
+**Alternatives rejected.** *Merge on green CI alone* — `D-6` names a review as a conjunct, and
+reading it as "green is enough" would weaken a standing ruling by interpretation. *Ask the
+owner to review* — the instruction exists precisely to stop that.
+
+**Reaction.** *(open)*
