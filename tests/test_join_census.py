@@ -303,7 +303,7 @@ def test_equivalence_restores_the_module_state_it_borrowed(tmp_path: Path) -> No
          "response": {"value": "P123"}},                    # PII-OK: synthetic id
     ])
     JC.equivalence(root)
-    assert CFG.JOIN_TAP_LOG == before
+    assert before == CFG.JOIN_TAP_LOG
     assert os.environ.get(BR._JOIN_TAP_ENV) is None
 
 
