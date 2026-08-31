@@ -349,5 +349,13 @@ version of this is `theta: [0.5]`, which handshakes at `models: 1` and `entropy_
 That is precisely the tail-end convenience declined at the close of P0, and it is now declined
 with numbers rather than on principle.
 
+**Sharpened after the first reading.** Item 4 was characterised further at $0: `cgrid` is
+eliminated as the mechanism, `chooseEU` is confirmed to be running (an empty option list would
+emit no `act` key at all), and the insensitivity is **extreme** — arm B still picks `abstain`
+where abstain is worth −100 and respond +25. So item 4 is not a tie-break convention or a
+near-tie: on this world at HEAD the declared utility does not enter selection at all. The
+mechanism remains unidentified; the `reindexUtility` step over the atom codebook — which this
+world never declares — is where the successor should start.
+
 **Standing under.** `D-2` defaults, no keypress: this is scope, not objective. Registered
 alongside it: `M-22` (read every reply, not the last one), earned by r42's own instrument.
