@@ -209,7 +209,10 @@ _SUBSTRING_PROOF_BASELINE: dict[str, int] = {
     "test_m5_absorption.py::test_bridge_has_no_decide_live_endpoint": 2,
     "test_m5_absorption.py::test_drive_has_no_live_branch": 2,
     "test_m5_absorption.py::test_shadow_keeps_the_feed_not_the_live_half": 2,
-    "test_m6_declaration.py::test_d11_the_lattice_join_is_one_declaration": 2,
+    # r34 CONVERTED one of this guard's two substring proofs to a word-bounded regex:
+    # the bare substring `LK._candidate_key(c) == vk` also matches the confirm probe's
+    # `== vkey`, so the old spelling would have passed on the wrong line. 2 -> 1.
+    "test_m6_declaration.py::test_d11_the_lattice_join_is_one_declaration": 1,
     "test_m6_declaration.py::test_d13_the_stack_urls_are_read_once": 4,
     "test_m6_declaration.py::test_d15_the_declaration_names_every_branch": 5,
     "test_m7_register.py::test_d6_executor_withhold_derives_from_the_one_vocabulary": 1,

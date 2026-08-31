@@ -531,7 +531,15 @@ def _lattice_join(value: str, candidates: list[str], allow_new: bool
     mapping an instrument's bare value onto the candidate lattice, one declaration for
     both edges (corroborate and deliberate bind it). Returns ``(idx, new_candidate)``.
 
-    Exact normalised match first. Else unique token-boundary containment — the join
+    Exact match on the DECLARED candidate identity (`lookup._candidate_key`, §4.2) first —
+    r34: this site tested `_norm_value` while `candidates_from`, `render`, `era_split`, the
+    S2 grow join and the confirm probe all used `_candidate_key`, so the edges minted
+    spelling variants the rest of the lattice considers one candidate. `_candidate_key`
+    falls back to `_norm_value`, so binding it is a monotone COARSENING: it merges more,
+    never splits more, and it inherits rather than widens the confident-wrong boundary
+    (values with different significant digits never merge). `_joined_observation` keeps
+    `_norm_value` deliberately — that is the §5 dedup key, a different relation, and a
+    derivation-cache key component. Else unique token-boundary containment — the join
     must not read a CONFIRMING sentence as a disagreement (the q-011 pooling loss),
     but nor may it read a CORRECTING sentence as a confirmation: containment alone
     cannot tell confirm from correct-while-mentioning, so a competing same-shaped
@@ -542,8 +550,8 @@ def _lattice_join(value: str, candidates: list[str], allow_new: bool
     contained``: a read that MENTIONS a known candidate (ambiguous or
     correction-shaped) must not be minted wholesale, the sentence is not a value.
     Else no join."""
-    vn = LK._norm_value(value)
-    idx = next((i for i, c in enumerate(candidates) if LK._norm_value(c) == vn), None)
+    vk = LK._candidate_key(value)
+    idx = next((i for i, c in enumerate(candidates) if LK._candidate_key(c) == vk), None)
     if idx is not None:
         return idx, None
     contained = [i for i, c in enumerate(candidates)
