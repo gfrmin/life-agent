@@ -277,3 +277,36 @@ and `A-2` makes proplang mandatory-but-deferred, which stops being a reason to d
 thing it was deferred behind is finished.
 
 **Reaction.** *(open)*
+
+## GD-10 · 2026-08-31 · Arc C opens on preconditions, not on E1
+
+**The fork.** `GD-9` advanced the queue to Arc C. membrane-shadow §17.6 names the re-earn path
+— E1, a per-candidate posterior the engine can sharpen — so the obvious first step is E1 work.
+Is it?
+
+**Decided: no. Arc C opens on P0 (the engine, pinned and provenanced) and P1 (accrual restored,
+the gap declared), and reaches E1 only after.** Recorded in
+[`r40-arc-c-preconditions.md`](../reports/r40-arc-c-preconditions.md).
+
+**Why — measured, not argued.** On this machine: **no `proplang-host` binary exists at all**;
+the shadow is **disabled** (no `MEMBRANE_COMMAND` anywhere); and it **stopped accruing
+2026-08-10**, twenty-one days ago, against §18's standing *"the shadow keeps accruing."* The
+proplang tree has moved `1a0cea7` → `94fd4eb`. Every bar §18 freezes reads against a shadow
+ledger; there is currently no engine to produce one. E1 asks filed as proplang issues would
+target a binary nobody here can run, and their effect would be unmeasurable.
+
+**What is deliberately left open.** *Why* the stream stops on 2026-08-10 is **not**
+established. The tempting explanation — the production role moving to this machine — is
+contradicted by the dates (the move was 2026-08-30). Recorded as an open question rather than
+inferred, because inferring a cause from an adjacent fact is precisely what r36 got wrong and
+r39 got wrong in a different register.
+
+**Alternatives rejected.** *File the E1 issues now and restore the engine later* — the issues
+are public and permanent (§11), and filing an engine ask you cannot measure the effect of wastes
+someone else's attention, not just mine. *Rebuild the binary as part of this stocktake* —
+installing an engine and re-enabling a shadow are changes to a live machine; they belong inside
+P0/P1 with pins and byte-compat checks recorded, not as a side effect of looking. *Treat the
+21-day hole as a nuisance and pool across it* — `M-14` and r29 both forbid it: a stream whose
+generating policy changed mid-way is segmented or excluded, never silently pooled.
+
+**Reaction.** *(open)*

@@ -1277,3 +1277,14 @@ What "gated-mandatory" binds, precisely:
 - **Unchanged**: nothing in tree may presuppose the swap until it lands; the shadow keeps
   accruing; the proplang repo is never edited from here — engine asks are filed as issues
   on the public proplang repo.
+
+> **Correction of record (2026-08-31, `r40-arc-c-preconditions`).** The "the shadow keeps
+> accruing" clause above **is not true on this machine** and has not been since
+> **2026-08-10T16:06:47**. Measured the day Arc C opened: no `proplang-host` binary exists
+> here at all (§15's `ebc06c81…` is absent), the shadow is env-disabled, the stream ends at
+> 6 683 records, and the local proplang checkout has moved `1a0cea7` → `94fd4eb`. Why it stops on that
+> date is **open** — the production-role move was 2026-08-30, twenty days later, so that is
+> not the cause. The ruling itself is untouched; what changed is the first rung. Arc C opens
+> on **P0** (the engine, pinned, byte-compat-checked per §15's own procedure) and **P1**
+> (accrual restored with the 21-day gap declared as a segmentation boundary — `M-14`), and
+> reaches §17.6's E1 re-earn path only after. See `GD-10`.
