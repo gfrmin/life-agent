@@ -531,8 +531,13 @@ def _lattice_join(value: str, candidates: list[str], allow_new: bool
     mapping an instrument's bare value onto the candidate lattice, one declaration for
     both edges (corroborate and deliberate bind it). Returns ``(idx, new_candidate)``.
 
-    Exact match on the DECLARED candidate identity (`lookup._candidate_key`, §4.2) first —
-    r34: this site tested `_norm_value` while `candidates_from`, `render`, `era_split`, the
+    Exact normalised match first. **r34 bound `lookup._candidate_key` (the §4.2 declared
+    identity) here and r36 REVERTED it** — not because the merge was wrong (run 21 shows it
+    converting q2-027 from a split 0.346+0.146 lattice to a correct report at 0.863) but
+    because r36's K3 killed on attribution: the census that enumerated its firing surface read
+    RECORDED wire, so its surface is a lower bound and two live rows moved outside it. r37
+    carries the successor. The standing defect this site still has: it tests
+    `_norm_value` while `candidates_from`, `render`, `era_split`, the
     S2 grow join and the confirm probe all used `_candidate_key`, so the edges minted
     spelling variants the rest of the lattice considers one candidate. `_candidate_key`
     falls back to `_norm_value`, so binding it is a monotone COARSENING: it merges more,
@@ -550,8 +555,8 @@ def _lattice_join(value: str, candidates: list[str], allow_new: bool
     contained``: a read that MENTIONS a known candidate (ambiguous or
     correction-shaped) must not be minted wholesale, the sentence is not a value.
     Else no join."""
-    vk = LK._candidate_key(value)
-    idx = next((i for i, c in enumerate(candidates) if LK._candidate_key(c) == vk), None)
+    vn = LK._norm_value(value)
+    idx = next((i for i, c in enumerate(candidates) if LK._norm_value(c) == vn), None)
     if idx is not None:
         return idx, None
     contained = [i for i, c in enumerate(candidates)

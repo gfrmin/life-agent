@@ -25,7 +25,7 @@ def test_d11_the_lattice_join_is_one_declaration() -> None:
     assert hasattr(BR, "_lattice_join"), "the one join function must exist (D-11)"
     src = inspect.getsource(BR)
     # word-bounded: a bare substring also matches the confirm probe's `== vkey` at :464
-    assert len(re.findall(r"LK\._candidate_key\(c\) == vk\b", src)) == 1, (
+    assert len(re.findall(r"LK\._norm_value\(c\) == vn\b", src)) == 1, (
         "the candidate equality scan must have ONE spelling — inside _lattice_join. r34 "
         "moved it from _norm_value to _candidate_key (the §4.2 declared identity); the pin "
         "follows the spelling because its job is to forbid a SECOND one, not to freeze which")
@@ -233,7 +233,7 @@ def test_d13_the_stack_urls_are_read_once() -> None:
 # --- r34: the value-join binds the DECLARED candidate identity -------------------------
 
 
-def test_r34_the_join_binds_the_declared_candidate_key() -> None:
+def test_r34_join_binding_is_reverted_and_the_defect_is_pinned_live() -> None:
     """r34: `_lattice_join` is M6's one value-join, but it tested identity with
     `_norm_value` (whitespace+casefold) while `candidates_from`, `render`, `era_split`, the
     S2 grow join and the confirm probe all use `_candidate_key` (the §4.2 canonical key).
@@ -247,12 +247,15 @@ def test_r34_the_join_binds_the_declared_candidate_key() -> None:
     assert len({LK._candidate_key(c) for c in [base, *variants]}) == 1, (
         "premise: the declared key already calls these one candidate")
 
+    # r36 REVERTED the binding on a K3 attribution kill, so the defect is live again and
+    # PINNED as live: each variant is still minted as its own atom. r37 carries the successor.
     cands = [base]
     for v in variants:
-        idx, minted = BR._lattice_join(v, cands, allow_new=True)
-        assert minted is None, f"{v!r} was MINTED as a new atom beside {cands!r}"
-        assert idx == 0
-    assert len(cands) == 1
+        _idx, minted = BR._lattice_join(v, cands, allow_new=True)
+        assert minted == v, "r36's revert is in force — the variant is still minted"
+        cands = [*cands, minted]
+    assert len({LK._candidate_key(c) for c in cands}) == 1, (
+        "the declared identity still calls them ONE candidate — this is the standing defect")
 
 
 def test_r34_the_join_is_a_monotone_coarsening() -> None:
@@ -271,4 +274,4 @@ def test_r34_distinct_significant_digits_still_never_merge() -> None:
     from life_agent.bridge import server as BR
 
     idx, minted = BR._lattice_join("HKD 99999.99", ["HKD 12345.67"], allow_new=True)  # PII-OK
-    assert idx == 1 and minted == "HKD 99999.99"
+    assert idx == 1 and minted == "HKD 99999.99"   # unchanged by r36's revert
