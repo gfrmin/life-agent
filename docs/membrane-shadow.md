@@ -1371,3 +1371,11 @@ What "gated-mandatory" binds, precisely:
 >    no longer conditional: see **`GD-17`** for the measurement that attributes it to depth and
 >    for why the grid rule still does not change today. Nothing user-facing waits on it —
 >    `submit_decide` is enqueue-only, off the decision path, with overflow counted as drops.
+> 6. **Confirmed by unprompted traffic, not only by probes.** Within twelve minutes of the
+>    enable, **14 `kind: "gate"` rows from 5 distinct real `question_id`s** arrived through the
+>    seam's declared pre-emption path — owner traffic, nothing r45 sent. Their latencies
+>    (**23.3 – 35.0 s**) run *above* the probe range measured minutes earlier on the same tree,
+>    so item 5's figure is conservative for production rather than an upper bound. Open and
+>    named: `drops`/`submit_errors` under real load are **not yet readable** — a `stats` row
+>    fires on a processed-item threshold this window has not reached, and the newest one in the
+>    stream predates the outage. The first `stats` row of the new era answers it.
