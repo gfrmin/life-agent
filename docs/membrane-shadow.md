@@ -1313,3 +1313,38 @@ What "gated-mandatory" binds, precisely:
 > belief. Until both land in the declaration, **a §18 bar compares arm A's policy against a
 > constant `abstain`.** The engine's own register carried the mechanism as `OB-24` throughout
 > (`M-23`).
+>
+> **Third correction (2026-09-01, `r45-evidence-path`; `GD-16`).** Three things above are now
+> measured rather than supposed, and two of them are corrections to the corrections.
+>
+> 1. **Why the stream stops is no longer open.** The first correction's *"why it stops on that
+>    date is open"* is answered, and its framing was wrong: the stack did **not** keep running.
+>    `decisions.jsonl` has a hole from **08-10 to 08-16** and resumes on **08-17** — stack and
+>    shadow stopped **together** on 08-09. The shadow alone never returned, because its only
+>    enablement was an environment variable held in no `.env`, no unit and no dotfile, and
+>    absent from `.env.example` and `packaging/`. The 08-17 restart restored everything that
+>    was written down. The former production box is still reachable and still carries
+>    `ebc06c81…` byte-identically, so nothing was lost with the role move — which remains, as
+>    `GD-10` suspected, not the cause. `.env.example` now documents the variable.
+> 2. **The `act` guard row does NOT by itself restore act-conditionable belief.** The second
+>    correction states it as "a second, independent repair restoring act-conditionable
+>    belief". Measured: adding the guard row while `act` stays in the menu leaves `p1`
+>    **byte-identical** across all four pinned acts on both arms. Act-conditioning needs the
+>    guard on a **discriminating** grid (thresholds *between* the act values — a `[0.5]` grid
+>    copied from the indicator rows cannot separate values 1–4) **and** `act` removed from the
+>    menu, and that world has no writable name left, so it cannot decide. `act` is either
+>    written or observed, never both.
+> 3. **"A §18 bar compares arm A's policy against a constant `abstain`" is repaired but not
+>    dissolved.** r44's clock made the engine track its declared utility; r45 then measured
+>    what that utility fires: `gather` on **250 of 250** replayed rows, because `gather` is
+>    the argmax across **96–98%** of the credence range under both the declared defaults and
+>    the deployed `u_bar`. So the bar now compares against a near-constant **`gather`**
+>    instead of a near-constant `abstain`. This is `world.utility_by_action`'s own flagged
+>    bake-in — information priced as myopic perfect information, "OVERVALUES information,
+>    deliberately and namedly", with the docstring naming it an **empirical** question whether
+>    the v2 shadow dissolves the v1 gather-bar pathology. **It does not.** Note the raw
+>    affordance is not what an enactment reads: `coarse.map_action` sends `gather` to the
+>    cheapest unapplied VOI transform and, when exhausted, to a restricted argmax over
+>    `{abstain, ask, respond}`. A bar reading the raw affordance compares against a constant;
+>    one reading through `map_action` does not. **Which of those a §18 bar reads is now a
+>    precondition for reading it**, and is registered here rather than discovered mid-run.
