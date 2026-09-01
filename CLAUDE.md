@@ -570,9 +570,34 @@ material for that candidate only.
   sixteenths. Not repaired by reflex: it contradicts two clauses r44 froze (a rung AT the
   operating rate; a crossing survives the collision) and reintroduces `#19`'s placement hazard,
   and depth — the multiplier — only accrues once P1 lands. Registered: **`M-24` — a conditional
-  in the register is a trigger you own.** Next: **r45** — the evidence path (the act can never be
-  a tick feature, so the engine picks what the fold conditions on), the `act` guard row, P1's
-  accrual, and the grid-precision item with its bar and lattice frozen before any `src/` change.
+  in the register is a trigger you own.**
+  **`r45` IS READ (2026-09-01, `r45-evidence-path.md`, `GD-16`, $0): item 3 was never one
+  thing, and the modelling worry was moot.** (a) A door rule — an evidence tick must supply
+  every declared name, and since `shadow_features` never emits `act`, the **menu** is its only
+  supplier; a menu-less tick is refused, which is why `session.boot()` could not replay a
+  single row against HEAD. (b) A non-question — **the recorded act does not enter the fold on
+  either arm** (four pinned acts, byte-identical `p1`), so no option could corrupt
+  act-conditioning because there has never been any. (c) A capability that *does* exist, but
+  only with a **discriminating** guard grid AND `act` out of the menu — and that world has no
+  writable name, so it cannot decide. **`act` is either written or observed, never both**, so
+  r43's "never a tick feature" holds only while it is in the menu. **C3 FAILS at 0/250**: the
+  engine chose `gather` on every row, because `gather` is the argmax across **96–98% of the
+  credence range** under both the declared and deployed `u_bar` — `world.utility_by_action`'s
+  own flagged myopic-perfect-information bake-in, whose docstring named it an *empirical*
+  question whether v2 dissolves the v1 gather-bar pathology. **It does not**, and that is now a
+  precondition on reading any §18 bar. `GD-16` records the decision C3 forces (backfill pooled;
+  C3 stands FAIL; reverses if act-conditioning ever lands). **C8 answered and falsified a fact
+  r45 itself froze**: the stack did NOT keep running — it and the shadow stopped *together* on
+  08-09; only the stack returned on 08-17, because the shadow's enablement lived in an env var
+  no `.env`, unit or dotfile carried (now in `.env.example`). Registered: **`M-25` — a mutation
+  control must vary the dimension the null is about** (r45's own act-null shipped a RED control
+  that varied the *evidence*, certifying a null its `[0.5]` guard grid had manufactured). Also
+  landed: `client.request` raises `MembraneError` on an unparsable reply (HEAD's refusals are
+  invalid JSON), and **`session.evidence_tick_body` is the ONE evidence-tick declaration** —
+  the body had been spelled three times (session, `lattice_replay`, `p3_gate`), all menu-less,
+  which would have left r46's own grid leg dead on arrival. Next: **r46** — the act-conditioning
+  question as r45 reframes it (not "add a guard row"), `GD-15`'s grid precision, and the
+  categorical twin, still the fourth and only menu-less sender.
 
 ## `src/pkm` — the KB core (Python, uv, DuckDB): key files
 
