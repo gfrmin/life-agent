@@ -365,3 +365,57 @@ decides whether to file upstream.
 
 **Standing under.** `D-2` defaults, no keypress: this is scope, not objective. Registered
 alongside it: `M-22` (read every reply, not the last one), earned by r42's own instrument.
+
+## GD-12 · 2026-09-01 · item 4 was ours, and the clock row is the repair
+
+**The fork.** `GD-11` made item 4 — HEAD parsing our declared utility and then deciding as
+though it were absent — a **precondition for every §18 bar**, and left the code path
+unidentified. r42 closed naming the successor's first call: read it at source, then decide
+whether to file upstream.
+
+**Decided: branch 1 of r43's frozen three. The defect is in our world declaration, and no
+upstream issue is filed.** Recorded in
+[`r43-selection-contract.md`](./reports/r43-selection-contract.md).
+
+**What decided it, measured on both engine arms at $0.** HEAD's `Membrane.chooseEU` folds the
+option list pairwise and builds **one** environment, from the *challenger*, so both sides of
+every comparison read the same utility row and per-action **levels** never enter — only the
+beliefs can differ. Our world's beliefs cannot: `act` is one of exactly **two** names in a
+19-name namespace whose value does not move the predictive (the other is `t`), because
+`handshake_decl` declares guard rows only for the indicators, and fragments enumerate over the
+guard grids. Every option therefore ties and the option-space head fires — which is precisely
+r42's table.
+
+`Host.hs` routes to `chooseEU` **only when no `clock` is declared**; with one it calls
+`pickWire`, the substitution route. Declaring a clock row makes arm B track the host's own
+`argmax_action` on **5 of 5** cases, **three of whose winners are not the head** — so the
+control r42 lacked is now in the table. Measured minimality: the **clock row alone** restores
+utility-driven selection; the **act guard row** is a second, independent repair, without which
+the belief can never acquire act structure.
+
+**Why no issue is filed — the case collapsed rather than strengthened.** The engine has already
+registered this exact behaviour as **`OB-24`** ("under the shipped `chooseEU` fold both sides of
+every comparison are served the CHALLENGER's assignment, so action-dependent utilities degenerate
+to ties"), pinned by a passing oracle row, with the substitution route named as the remedy and
+the migration deliberately deferred. Filing would have reported the maintainer's own registered
+obligation back to them. `GD-10` declined to file an ask whose effect could not be measured;
+this is the sharper form — **an unread one wastes the same attention.**
+
+**Also settled, and it tightens `GD-11` item 3.** The writable name may **never** appear in a
+tick's features (`feature/assignment collision`, both arms), so the only satisfiable evidence
+tick carries a **menu** and the fold conditions on the act the *engine* picks. A replay can pin
+the act only by declaring a one-point menu grid, which a mixed-act verdict stream cannot use in
+one session. Unrepaired, this composes with item 4 into a **lock**: the engine always chooses the
+head, so it only ever conditions on the head, so the beliefs never acquire act structure, so the
+head keeps winning. `GD-11`'s H2 is confirmed, and repairing item 4 is a precondition for item 3
+being worth anything.
+
+**Rejected alternatives.** *File anyway, to be safe* — `OB-24` makes it noise, and the register
+is public and permanent. *Land the two declared rows now* — r43 makes no `src/` change by
+construction; the repair search was **not** pre-named, so it carries no frozen prediction and
+r44 must freeze it properly first (`M-3`). *Treat C1's wrong named act as a refutation* — its
+frozen escape clause required the belief separation be **measured**, and it was: byte-identical
+predictives across all four acts, 16 readouts. The mechanism the prediction came from is
+confirmed; the act it named is not. Both are published (`M-4`).
+
+**Reaction.** *(open)*
