@@ -62,6 +62,23 @@ def test_non_dict_reply_raises_membrane_error() -> None:
         client.request({"tick": {}})
 
 
+def test_unparsable_reply_line_raises_membrane_error() -> None:
+    """A reply line that is not valid JSON is a WIRE failure, not a caller bug.
+
+    r45 measured this live: HEAD refuses a tick whose declared names are not covered
+    with ``{"error": "tick refused: missing declared ["act"]"}`` — the engine builds
+    that message with Haskell ``show`` on the name list, so the inner quotes reach the
+    wire unescaped (against the engine's own membrane-wire.md §1 "strings escape "").
+    Before this test, ``request`` let ``json.JSONDecodeError`` escape, so a caller that
+    correctly handled every documented ``MembraneError`` still died on a REFUSAL — the
+    one reply a backfill most needs to read and report.
+    """
+    line = '{"error": "tick refused: missing declared ["act"]"}'
+    client = MembraneClient(lambda _s: None, lambda: line)
+    with pytest.raises(MembraneError, match="unparsable reply"):
+        client.request({"tick": {}})
+
+
 def test_reader_exception_propagates_as_membrane_error() -> None:
     def boom() -> str:
         raise RuntimeError("wire broke")

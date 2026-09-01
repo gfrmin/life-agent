@@ -138,9 +138,8 @@ def probe_heldout(
                 continue
             t = 0
             for tick in train:
-                client.request({"tick": {
-                    "features": LR.features_for(tick.summary, float(t), families),
-                    "evidence": int(tick.y)}})
+                client.request(
+                    LR.evidence_tick_for(tick.summary, float(t), families, tick.y))
                 t += 1
             for tick in probe:
                 dec = client.request({"tick": {
