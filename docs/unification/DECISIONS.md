@@ -460,9 +460,6 @@ r45's pre-registration must say whether the two worlds share one declaration of 
 
 **Reaction.** *(open)*
 
-
----
-
 ## GD-14 · 2026-09-01 · filing the demand upstream anyway, against `GD-12`
 
 **The fork.** `GD-12` decided **no upstream issue is filed**, and `M-23` recorded the lesson
