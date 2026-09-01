@@ -379,3 +379,28 @@ Every reaction that survives dedup routes to a decision and decodes through `VER
 every Claude verdict either routes or is superseded by a declared-precedence owner verdict.
 Nothing is dropped silently. `outcome_replay` is empty because no warm-vectors directory is
 passed — named here rather than left to look like an absence of outcomes.
+
+### B3 — C7: **PASS**
+
+With the replay path repaired, the backfill runs clean and deterministic:
+
+```
+DOUBLE RUN
+  run 1: 251 wire exchanges, t=250, digest=6ac80708eec83dafdc6913c8…
+  run 2: 251 wire exchanges, t=250, digest=6ac80708eec83dafdc6913c8…
+  byte-identical double run: YES        C7: PASS
+```
+
+251 = one handshake + 250 evidence ticks; `t` lands on 250, so every folded row advanced the
+evidence clock exactly once and none was silently skipped. Both halves of C7 are met: **0
+unexplained skips and a byte-identical double run**, verified before anything touched the
+deployed box.
+
+**Two operational costs, published rather than discovered later.** The replay takes minutes,
+not seconds — the C3 pass over the same 250 rows ran ~12 min wall at ~85% CPU with the
+engine's resident set climbing throughout — and `session.boot()` pays it on **every service
+start**, growing with the stream. It is safe (the supervisor boots inside its daemon worker;
+`submit_*` is `put_nowait` on a bounded 1024 queue, overflow counted as drops, so a caller
+never blocks on a slow boot) but it is not free, and it is the same fold-depth quantity
+`GD-15` is about. Second, the clock r44 declared forces a preposterior on every decide —
+297 ms against 135 ms — paid on the worker, never in jarvis's reply.
