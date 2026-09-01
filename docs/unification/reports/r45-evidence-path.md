@@ -450,3 +450,32 @@ menu-only fix would repair one third of a world that still cannot boot. It is en
 subject** under the carried `GD-13` obligation. Named here so nobody reads the one
 declaration as already covering both worlds — it covers the binary world's three senders,
 and the twin is the fourth, outstanding.
+
+## Verdict
+
+| id | criterion | verdict |
+|---|---|---|
+| **C1** | reachability measured on the built binaries, replies quoted | **PASS** — 18 replies over 3 variants × 2 arms; all three options reachable, refusal quoted verbatim |
+| **C2** | the chosen option named before the run that justifies it | **PASS** — `GD-16` committed before the backfill ran |
+| **C3** | option 2 admissible only at ≥ 95% act agreement over ≥ 100 rows | **FAIL — 0/250.** Recorded as frozen. See `GD-16` for what it does and does not decide |
+| **C4** | every load-bearing predicate RED by mutation | **PASS with a correction** — the act-inertness control was RED but on the wrong axis (A3); re-done, and registered as **`M-25`** |
+| **C5** | every reply stream read whole | **PASS** — raw-line capture throughout, which is how the malformed refusal was found at all |
+| **C6** | every universe named with its size | **PASS** — 250 joined rows / 3 865 decisions / 70 deduped reactions / 180 Claude verdicts / 4 116 source records |
+| **C7** | 0 unexplained skips ∧ byte-identical double run, before any production change | **PASS** — 0 skips, digests identical, scope disclosed in B4 |
+| **C8** | `GD-10`'s question answered from evidence consulted, or re-recorded | **PASS — answered**, and it falsified a fact this pre-registration had frozen |
+| **C9** | live enable reversible, launcher restores what it found, rows appear or roll back | *(below)* |
+| **C10** | the gap declared a segmentation boundary, recorded in the stream | *(below)* |
+
+**Item 3 is resolved, and it was never one thing.** It is (a) a door rule — an evidence tick
+must supply every declared name, and the menu is the only supplier for `act`; (b) a modelling
+non-question — the act does not enter the fold on either arm, so which act a recorded verdict
+is "claimed to have been taken under" changes nothing; and (c) a **capability** that does
+exist but not in a world that can also decide (A4). r42 saw only the refusal; r43 narrowed it
+to the collision; r45 finds the collision is menu-vs-feature and that the whole modelling
+worry was moot.
+
+**Three defects were found in this checkpoint's own instruments**, all published: a guard
+grid that could not express the distinction it was testing (A3, → `M-25`), an ordering
+confound from probing twice in one session (A3), and a raw-string comparison standing in for
+a declared projection (C3). The first would have shipped a false null; it was caught because
+the number reversed under a grid that could actually separate the values.
