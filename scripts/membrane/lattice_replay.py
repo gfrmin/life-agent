@@ -77,6 +77,9 @@ def handshake_for(u_bar: Mapping[str, float], families: Sequence[str]) -> dict[s
             "namespace": ["t", *names, W.ACT_NAME],
             "guards": [{"name": n, "grid": [0.5]} for n in names],
             "menu": [{"name": W.ACT_NAME, "grid": list(W.ACT_GRID)}],
+            "codebooks": {"theta": W.theta_grid(u_bar)},
+            "clock": [{"name": W.CLOCK_NAME, "price": W.clock_price(u_bar),
+                       "batch": W.CLOCK_BATCH}],
             "utility": {"form": "said@1", "said": W.utility_said(u_bar)},
         },
     }
@@ -86,7 +89,10 @@ def features_for(s: W.DecideSummary, t: float, families: Sequence[str]) -> dict[
     """`world.shadow_features` filtered to the chosen families. With `families == ALL_FAMILIES`
     this equals it exactly (the drift test pins this)."""
     fam = set(families)
-    feats: dict[str, float] = {"t": t}
+    # r44 item 2: every DECLARED name is covered (0.0 where it does not fire) — the wire's
+    # door requires exact coverage. Narrowing still drops whole families from the namespace.
+    feats: dict[str, float] = {n: 0.0 for n in indicator_names_for(families)}
+    feats["t"] = t
     if "n-candidates" in fam:
         feats[f"n-candidates={W._candidates_bucket(s.n_candidates)}"] = 1.0
     if "leader-credence" in fam and s.leader_credence is not None:

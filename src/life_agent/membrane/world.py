@@ -189,12 +189,20 @@ def indicator_names() -> list[str]:
 
 
 def shadow_features(s: DecideSummary, t: float) -> dict[str, float]:
-    """The canonical per-tick feature encoding: ``{"t": t}`` plus one-hot indicators,
-    bucketed per :func:`indicator_names`. Absent names read 0.0 on the wire (dormancy is
-    free — membrane-wire.md §4), so a bucket that doesn't apply (an unknown
-    ``leader_credence``/``p_none``, or a False flag) is simply omitted rather than
-    emitted at 0.0."""
-    feats: dict[str, float] = {"t": t}
+    """The canonical per-tick feature encoding: ``{"t": t}`` plus EVERY declared indicator,
+    the applicable ones at 1.0 and the rest at 0.0.
+
+    **r44 item 2 — the dormancy contract is dead.** The wire once defaulted absent names to
+    0.0 (membrane-wire.md §4), so an inapplicable bucket could simply be omitted. The
+    engine's door (`Eval.mkEnvIn`) now requires the declared namespace covered EXACTLY:
+    missing names, undeclared names and duplicates are three named refusals. Measured free
+    on the control (r42: a full-coverage tick answers byte-identically).
+
+    The one name never emitted is the writable ``act``: r43 measured that padding it in is
+    refused (`feature/assignment collision`, on both arms), so the tick covers
+    ``namespace - menu names`` and the menu assignment supplies the rest."""
+    feats: dict[str, float] = {n: 0.0 for n in indicator_names()}
+    feats["t"] = t
     feats[f"n-candidates={_candidates_bucket(s.n_candidates)}"] = 1.0
     if s.leader_credence is not None:
         feats[f"leader-credence={_credence_bucket(s.leader_credence)}"] = 1.0
@@ -322,6 +330,94 @@ def respond_threshold(u_bar: Mapping[str, float]) -> float | None:
     return max(thresholds) if thresholds else None
 
 
+# --- r44 item 1: the emission codebook's grid (E3 — the grid IS the hypothesis space) --
+
+# The measured operating rate of this world's predicate y = "asserting now would be
+# correct": the y=1 frequency over the reaction stream joined to the decision log through
+# `core.reactions.VERDICT_Y`, deduplicated on `decision_id` (latest reaction wins — the
+# supersession rule r41 read). Read once, 2026-09-01: 60 of 70 declared-y reactions, zero
+# unmapped. FROZEN-BLIND — a rung's PLACEMENT is the lever the engine repo's #19 record
+# warns about (a rung near but not at the rate lets the posterior settle on the KL-nearest
+# rung and false-clear a consumer threshold, with error that GROWS under data), so this is
+# re-measured deliberately and never nudged to make a reading come out.
+OPERATING_RATE: float = 0.857
+
+# The recorded shadow's own predictive, p05 / median / p95 over 6 610 `readouts.p1` rows
+# (`$LIFE_AGENT_KB/membrane/shadow.jsonl`, read 2026-09-01). These say where the belief
+# actually lives, which is where resolution is worth paying for.
+_SHADOW_P1_QUANTILES: tuple[float, ...] = (0.180, 0.339, 0.864)
+
+# Endpoints, so the family can represent a near-certain world in either direction.
+_GRID_ENDPOINTS: tuple[float, ...] = (0.05, 0.95)
+
+# Two rungs closer than this are one rung; a CROSSING always survives the collision
+# (r44 amendment 1 — rounding a rung off the crossing is exactly #19's hazard).
+_GRID_COLLISION: float = 5e-4
+
+
+def argmax_crossings(u_bar: Mapping[str, float]) -> list[float]:
+    """The p1 values in (0, 1) at which :func:`argmax_action` changes its mind — this
+    world's consumer thresholds, derived from the declared rows rather than assumed.
+
+    Every row is linear in p1, so a pair crosses at most once; the pair's crossing counts
+    only where the WHOLE argmax changes there (a crossing between two dominated rows is
+    not a threshold). Returned at full precision."""
+    rows = list(utility_by_action(u_bar).values())
+    out: list[float] = []
+    for i, (a0, a1) in enumerate(rows):
+        for b0, b1 in rows[i + 1:]:
+            denom = (a1 - a0) - (b1 - b0)
+            if denom == 0.0:
+                continue
+            p = (b0 - a0) / denom
+            eps = 1e-6
+            if not 0.0 + eps < p < 1.0 - eps:
+                continue
+            if argmax_action(u_bar, p - eps) != argmax_action(u_bar, p + eps):
+                out.append(p)
+    return sorted(set(out))
+
+
+def theta_grid(u_bar: Mapping[str, float]) -> list[float]:
+    """The emission codebook's parameter grid — REQUIRED by the wire since the engine made
+    the codebook world data (`Host.hs`: `codebooks.theta`, a bare non-empty array).
+
+    The grid is the hypothesis space, and its SIZE is priced quadratically (r42 measured
+    `models = n(17n - 16)` exactly for n = 1..16), so it is chosen by a declared rule and
+    never fitted to a world count: the union of the measured :data:`OPERATING_RATE`, every
+    :func:`argmax_crossings` threshold, the recorded shadow's p05/median/p95, and the
+    endpoints. Crossings enter at full precision and win any collision within
+    :data:`_GRID_COLLISION`."""
+    fixed = sorted({*_SHADOW_P1_QUANTILES, *_GRID_ENDPOINTS, OPERATING_RATE})
+    grid = list(argmax_crossings(u_bar))
+    for x in fixed:
+        if 0.0 < x < 1.0 and all(abs(x - g) > _GRID_COLLISION for g in grid):
+            grid.append(x)
+    return sorted(grid)
+
+
+# --- r44 item 4: the clock row (the seam that routes selection to the substitution route)
+
+# `Host.hs` reaches the substituting chooser (`pickWire`/`policyPick`, which evaluates each
+# candidate's utility row under ITS OWN assignment) only when a clock is declared; without
+# one it uses `chooseEU`, whose two comparands share the challenger's environment, so
+# per-action LEVELS never enter and the option space's head always fires. That is the
+# engine's own registered `OB-24`, and r43 measured it end to end on this world.
+CLOCK_NAME = "think"
+CLOCK_BATCH = 1
+
+
+def clock_price(u_bar: Mapping[str, float]) -> float:
+    """`think` is NOT an affordance this world models — it exists only because the clock row
+    is the seam to the substituting chooser. Its price is therefore DERIVED to make it
+    unreachable under this world's own utility rather than raised until it stops firing:
+    `pickWire` ranks the think row at `thinkValue - price`, and `thinkValue` is bounded above
+    by the best achievable row value, so a price one unit beyond the utility's full span puts
+    the think row strictly below the worst row EU at every belief."""
+    values = [v for pair in utility_by_action(u_bar).values() for v in pair]
+    return (max(values) - min(values)) + 1.0
+
+
 def handshake_decl(u_bar: Mapping[str, float], *, utility_form: str = "said@1") -> dict[str, Any]:
     """The full handshake line (membrane-wire.md §2 as amended through step-10):
     ``namespace`` = ``["t"] + indicator_names() + [ACT_NAME]`` (RIDER 2: every writable
@@ -343,6 +439,9 @@ def handshake_decl(u_bar: Mapping[str, float], *, utility_form: str = "said@1") 
             "namespace": ["t", *names, ACT_NAME],
             "guards": [{"name": n, "grid": [0.5]} for n in names],
             "menu": [{"name": ACT_NAME, "grid": list(ACT_GRID)}],
+            "codebooks": {"theta": theta_grid(u_bar)},
+            "clock": [{"name": CLOCK_NAME, "price": clock_price(u_bar),
+                       "batch": CLOCK_BATCH}],
             "utility": {"form": "said@1", "said": utility_said(u_bar)},
         },
     }

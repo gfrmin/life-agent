@@ -199,14 +199,17 @@ def test_shadow_features_n_candidates_buckets(n: int, bucket: str) -> None:
 def test_shadow_features_leader_credence_boundaries(credence: float, bucket: str) -> None:
     feats = W.shadow_features(_summary(leader_credence=credence), t=0.0)
     assert feats[f"leader-credence={bucket}"] == 1.0
-    # exactly one leader-credence indicator fires
-    fired = [k for k in feats if k.startswith("leader-credence=")]
+    # exactly one leader-credence indicator fires; r44 item 2: the rest are emitted at 0.0
+    # rather than omitted, because HEAD's door requires exact namespace coverage.
+    fired = [k for k, v in feats.items() if k.startswith("leader-credence=") and v == 1.0]
     assert fired == [f"leader-credence={bucket}"]
 
 
-def test_shadow_features_leader_credence_none_emits_no_indicator() -> None:
+def test_shadow_features_leader_credence_none_fires_no_indicator() -> None:
+    """r44 item 2: the family is still DECLARED (coverage), but nothing in it fires."""
     feats = W.shadow_features(_summary(leader_credence=None), t=0.0)
-    assert not any(k.startswith("leader-credence=") for k in feats)
+    family = {k: v for k, v in feats.items() if k.startswith("leader-credence=")}
+    assert family and not any(v == 1.0 for v in family.values())
 
 
 @pytest.mark.parametrize("p_none,bucket", [
@@ -217,13 +220,14 @@ def test_shadow_features_leader_credence_none_emits_no_indicator() -> None:
 def test_shadow_features_p_none_boundaries(p_none: float, bucket: str) -> None:
     feats = W.shadow_features(_summary(p_none=p_none), t=0.0)
     assert feats[f"p-none={bucket}"] == 1.0
-    fired = [k for k in feats if k.startswith("p-none=")]
+    fired = [k for k, v in feats.items() if k.startswith("p-none=") and v == 1.0]
     assert fired == [f"p-none={bucket}"]
 
 
-def test_shadow_features_p_none_none_emits_no_indicator() -> None:
+def test_shadow_features_p_none_none_fires_no_indicator() -> None:
     feats = W.shadow_features(_summary(p_none=None), t=0.0)
-    assert not any(k.startswith("p-none=") for k in feats)
+    family = {k: v for k, v in feats.items() if k.startswith("p-none=")}
+    assert family and not any(v == 1.0 for v in family.values())
 
 
 @pytest.mark.parametrize("n,bucket", [(0, "0"), (1, "1to2"), (2, "1to2"), (3, "3plus"),
@@ -233,16 +237,17 @@ def test_shadow_features_n_obs_buckets(n: int, bucket: str) -> None:
     assert feats[f"n-obs={bucket}"] == 1.0
 
 
-def test_shadow_features_flags_present_only_when_true() -> None:
+def test_shadow_features_flags_fire_only_when_true() -> None:
     on = W.shadow_features(_summary(era_split=True, owner_scoped=True, grow_pass=True), t=0.0)
     off = W.shadow_features(_summary(era_split=False, owner_scoped=False, grow_pass=False), t=0.0)
 
     assert on["era-split=1"] == 1.0
     assert on["owner-scoped=1"] == 1.0
     assert on["grow-pass=1"] == 1.0
-    assert "era-split=1" not in off
-    assert "owner-scoped=1" not in off
-    assert "grow-pass=1" not in off
+    # r44 item 2: declared for coverage, at 0.0 — never absent.
+    assert off["era-split=1"] == 0.0
+    assert off["owner-scoped=1"] == 0.0
+    assert off["grow-pass=1"] == 0.0
 
 
 def test_shadow_features_t_passthrough() -> None:
@@ -463,3 +468,92 @@ def test_handshake_decl_unknown_utility_form_raises_value_error() -> None:
         W.handshake_decl({}, utility_form="table@1")
     with pytest.raises(ValueError):
         W.handshake_decl({}, utility_form="bogus@1")
+
+
+# --- r44: the world-declaration repair (items 1, 2, 4) ---------------------------------
+
+
+def test_theta_grid_contains_the_measured_operating_rate() -> None:
+    """Item 1's first rung. #19's false clear is a PLACEMENT failure — a rung near but not
+    at the operating rate lets the posterior settle on the KL-nearest rung."""
+    grid = W.theta_grid({})
+    assert W.OPERATING_RATE in grid
+
+
+def test_theta_grid_contains_every_finite_argmax_crossing() -> None:
+    """The same argument applied to this world's actual consumer: the p1 values at which the
+    declared utility changes its mind are where a threshold sits."""
+    u_bar = {"u_correct": 1.0, "u_abstain": 0.0, "u_wrong": -9.0,
+             "lambda_int": 0.1, "kappa_att": 0.02}
+    crossings = W.argmax_crossings(u_bar)
+    assert crossings, "a utility with four distinct rows must cross somewhere in (0, 1)"
+    grid = W.theta_grid(u_bar)
+    for c in crossings:
+        assert c in grid, f"crossing {c} is not a declared rung"
+
+
+def test_argmax_crossings_are_where_the_argmax_actually_changes() -> None:
+    u_bar = {"u_correct": 1.0, "u_abstain": 0.0, "u_wrong": -9.0,
+             "lambda_int": 0.1, "kappa_att": 0.02}
+    for c in W.argmax_crossings(u_bar):
+        assert 0.0 < c < 1.0
+        assert W.argmax_action(u_bar, c - 1e-6) != W.argmax_action(u_bar, c + 1e-6)
+
+
+def test_theta_grid_is_sorted_unique_and_strictly_inside_the_unit_interval() -> None:
+    for u_bar in ({}, {"u_wrong": 0.0}, {"u_correct": 100.0, "u_abstain": 90.0}):
+        grid = W.theta_grid(u_bar)
+        assert grid, "an empty grid is refused by the wire (pairGridNamed)"
+        assert grid == sorted(grid) and len(grid) == len(set(grid))
+        assert all(0.0 < x < 1.0 for x in grid)
+
+
+def test_handshake_declares_codebooks_theta_equal_to_the_grid_rule() -> None:
+    u_bar = {"u_correct": 1.0, "u_abstain": 0.0, "u_wrong": -9.0}
+    world = W.handshake_decl(u_bar)["world"]
+    assert world["codebooks"]["theta"] == W.theta_grid(u_bar)
+
+
+def test_handshake_declares_the_clock_row() -> None:
+    world = W.handshake_decl({})["world"]
+    assert world["clock"] == [{"name": W.CLOCK_NAME, "price": W.clock_price({}),
+                              "batch": W.CLOCK_BATCH}]
+    assert W.CLOCK_BATCH >= 1
+
+
+def test_the_clock_name_is_not_a_namespace_name() -> None:
+    """The wire refuses a clock whose internal name collides with the namespace."""
+    assert W.CLOCK_NAME not in W.handshake_decl({})["world"]["namespace"]
+
+
+def test_the_clock_price_strictly_dominates_the_utility_span() -> None:
+    """`think` is not an affordance this world models. Its price is DERIVED so that
+    `thinkValue - price` is strictly below the worst achievable row EU — never raised
+    until it stops firing."""
+    for u_bar in ({}, {"u_correct": 100.0, "u_abstain": 90.0, "u_wrong": 0.0}):
+        pairs = W.utility_by_action(u_bar)
+        vals = [v for pair in pairs.values() for v in pair]
+        assert W.clock_price(u_bar) > max(vals) - min(vals)
+
+
+def test_shadow_features_covers_the_declared_namespace_minus_the_writable_name() -> None:
+    """Item 2: HEAD's door requires EXACT coverage, and r43 measured that padding the
+    writable name in is refused (feature/assignment collision), not conservative."""
+    s = W.DecideSummary(2, None, None, 3, False, False, False)
+    feats = W.shadow_features(s, 7.0)
+    ns = W.handshake_decl({})["world"]["namespace"]
+    assert set(feats) == set(ns) - {W.ACT_NAME}
+
+
+def test_shadow_features_never_emits_the_writable_name() -> None:
+    for credence in (None, 0.9):
+        s = W.DecideSummary(2, credence, None, 3, True, False, True)
+        assert W.ACT_NAME not in W.shadow_features(s, 0.0)
+
+
+def test_shadow_features_emits_inapplicable_buckets_at_zero() -> None:
+    """The old contract ('dormancy is free — absent names read 0.0') is dead at HEAD."""
+    s = W.DecideSummary(2, None, None, 3, False, False, False)
+    feats = W.shadow_features(s, 0.0)
+    absent = [n for n in W.indicator_names() if n.startswith("leader-credence=")]
+    assert absent and all(feats[n] == 0.0 for n in absent)

@@ -43,7 +43,7 @@ def test_full_handshake_is_byte_identical_to_the_frozen_world() -> None:
 def test_full_features_match_the_frozen_world_across_shapes() -> None:
     for s in (
         _summary(),
-        _summary(leader_credence=None),          # unknown leader → omitted, not 0.0
+        _summary(leader_credence=None),          # unknown leader → declared at 0.0 (r44)
         _summary(p_none=None),
         _summary(era_split=True, owner_scoped=True, grow_pass=True),
         _summary(n_candidates=0, n_obs=0, leader_credence=0.2, p_none=0.9),
@@ -55,7 +55,9 @@ def test_full_features_match_the_frozen_world_across_shapes() -> None:
 def test_narrowing_drops_the_other_families() -> None:
     s = _summary(leader_credence=0.95, p_none=0.3, n_candidates=2, n_obs=3)
     feats = L.features_for(s, 0.0, ["leader-credence"])
-    assert set(feats) == {"t", "leader-credence=ge90"}  # no p-none/n-candidates/n-obs/flags
+    # no p-none/n-candidates/n-obs/flags in the NAMESPACE; the kept family is fully covered
+    assert set(feats) == {"t", *L.indicator_names_for(["leader-credence"])}
+    assert [k for k, v in feats.items() if v == 1.0] == ["leader-credence=ge90"]
     names = L.indicator_names_for(["leader-credence"])
     assert names == [f"leader-credence={b}" for b in W._CREDENCE_BUCKETS]
 

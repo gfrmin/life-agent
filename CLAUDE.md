@@ -550,9 +550,17 @@ material for that candidate only.
   routes selection to the substitution path and arm B tracks `argmax_action` on 5/5 cases
   (three winners not the head); an **`act` guard row** is a second, independent repair.
   Registered: **`M-23` — read the counterparty's own register first** (the engine had it as
-  `OB-24` all along, remedy named, so no issue was filed). Next: **r44**, the world-declaration
-  pre-registration and repair; P1 stays blocked behind the evidence path, which is narrower
-  than r42 could see — the act can never be a tick feature, so the engine picks it.
+  `OB-24` all along, remedy named, so no issue was filed). **`r44` LANDED the repair**
+  (items 1, 2, 4; no decide-path change): a declared grid rule (rungs at the measured
+  operating rate, every `argmax_action` crossing, the shadow's p05/median/p95 and the
+  endpoints → n=8, 960 worlds), full-coverage ticks with the writable name EXCLUDED, and the
+  clock row at a derived price. **59/59 battery cases track `argmax_action` at the engine's
+  own belief across 27 distinct p1 and all four affordances**; all three rows byte-identical
+  on the control; `think` never fires; 8/8 mutations RED. Disclosed costs: the clock forces a
+  preposterior every decide (**297 ms vs 135 ms**), and `#19`'s placement effect is real but
+  small and neighbourhood-driven, not single-rung. **No §18 bar is read — one is now
+  READABLE.** Next: **r45** — the evidence path (the act can never be a tick feature, so the
+  engine picks what the fold conditions on), the `act` guard row, and P1's accrual.
 
 ## `src/pkm` — the KB core (Python, uv, DuckDB): key files
 
