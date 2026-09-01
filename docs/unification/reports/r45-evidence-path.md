@@ -583,6 +583,26 @@ keep the shadow enabled (branch 1 is frozen, and nothing user-facing waits on it
 change no rule today, because `GD-15`'s other two grounds are unmoved and `M-4` forbids
 picking between two registered rules on anything less than a reading.
 
+### Real accrual, unprompted — the last thing a probe cannot show
+
+Within the twelve minutes after the enable finished, **fourteen `kind: "gate"` rows arrived
+from five distinct 16-hex `question_id`s** — real owner traffic through the seam's declared
+pre-emption path, nothing this checkpoint sent. That is the claim membrane-shadow §18 makes
+and the one r40 struck: *the shadow keeps accruing*. Four synthetic probes could establish
+that the wire works; only unprompted rows establish that it is **being used**, and they are
+distinguishable from the probes by the same hex rule.
+
+They also sharpen the cost. Those rows record **23.3 – 35.0 s**, above the probe range of
+18.8 – 21.4 s measured minutes earlier on the same tree — the box had grown busier, and a
+gate row pays the clock like any other decide. So `GD-17`'s figure is **conservative for
+production**, not an upper bound. Every one chose `gather`.
+
+**Not yet readable: whether anything is being dropped.** A `stats` row carries `drops` and
+`submit_errors`, and it fires on a processed-item threshold this window has not reached — the
+newest one in the stream predates the outage entirely. So the queue's health under real load
+is an **open quantity**, named here rather than assumed benign; the first `stats` row of the
+new era answers it.
+
 ## Verdict
 
 | id | criterion | verdict |
