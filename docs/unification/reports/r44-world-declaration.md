@@ -129,6 +129,26 @@ without clock : 135 ms
 on arm A at 2393 models. This is the price of a utility that decides, and it is stated here so
 that a later "the shadow got slow" is not a mystery.
 
+## Found en route — the repair has an untouched twin
+
+`M-6` says an anomaly found en route is a disclosure item in the checkpoint that finds it, never
+a new arc, so this is named and **not built**:
+
+**`life_agent.membrane.categorical` declares a second world** — `handshake_decl_cat` /
+`cat_features`, the E1 stage-1 categorical mirror (`obs_arity = K + 1`, value-indexed acts) —
+and it carries **all three** of the defects r44 just repaired in the binary world:
+
+- no `codebooks` key ⇒ `bad hello` at HEAD (item 1);
+- `cat_features` emits the applicable indicators only, on a docstring that still states the dead
+  contract verbatim — *"absent names read 0.0 on the wire — dormancy is free"* (item 2);
+- no `clock` row ⇒ `chooseEU` ⇒ the option-space head, whatever the utility says (item 4).
+
+It is env-gated and disabled (`config.membrane_categorical`), so nothing is broken today. But it
+is **exactly the world §17.6's E1 re-earn path runs on**, so E1 cannot open until it is repaired,
+and repairing it is not a copy-paste: its menu grid is per-question (`act_grid_cat(k)`), so its
+crossings — and therefore its theta grid under r44's rule — are per-`K`. **Scoped to r45**, whose
+own pre-registration must state whether the two worlds share one declaration of the rule or two.
+
 ## Deviations, disclosed
 
 - **Amendment 1's ordering.** It was written during the build, after the pre-registration was
