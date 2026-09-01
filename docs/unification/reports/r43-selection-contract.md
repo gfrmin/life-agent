@@ -185,7 +185,12 @@ in assuming only the head's belief would move; all four move together, ordered b
 ### The repair, and which row is load-bearing
 
 `Host.hs` routes to `chooseEU` **only when no `clock` is declared**; with one it calls
-`pickWire` — `OB-24`'s named substitution route. r42 noted our world declares no `clock` and did
+`pickWire`, which is `policyPick` — and that identification is **read, not inferred**:
+`policyPick`'s own header calls it *"chooseEU's K-ary successor … the whole menu compared
+inside a single standing sentence with every candidate's belief bound in one env — the
+charter's single chooser"*, and it builds each row as `Expect (Var Z) (substW asn uB)` —
+**`substW asn`, each candidate's own assignment substituted in**, which is `OB-24`'s
+remedy verbatim. `chooseEU` is left as "the frozen binary special case". r42 noted our world declares no `clock` and did
 not pursue it. Declaring one (`{"name": "think", "price": p, "batch": 1}`; `think` is not a
 namespace name, so it is admitted) reproduces r42's dead table alive:
 
