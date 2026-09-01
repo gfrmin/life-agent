@@ -111,3 +111,24 @@ Stated before the build so the reading can be checked against them (`M-4`: these
 ## Cost
 
 **$0.** Both engine binaries already exist; no model calls; no priced run.
+
+---
+
+## Amendment 1 — crossings enter at full precision (blind, before any reading)
+
+**Disclosure of ordering first:** this amendment was written while the repair was being built,
+**after** the pre-registration was committed and **before** any battery ran. It is prospective
+with respect to every reading below, but it was not committed as a separate act beforehand, and
+that is a deviation from `M-4`'s cleanest form. It is recorded here rather than folded silently
+into the rule.
+
+The rule above says the grid is the union of its four sources "deduplicated ... at 3 decimal
+places". Re-read against the artefact it names (`M-3`), that clause **defeats the rule's own
+purpose**: an `argmax_crossings` threshold rounded to 3 dp is a rung *near* the crossing rather
+than *at* it, which is exactly the `#19` hazard the placement argument exists to avoid.
+
+> **Amended.** Crossings enter the grid at **full precision**. The other three sources are
+> already stated at 3 dp. Two rungs closer than **5 × 10⁻⁴** are one rung, and a **crossing
+> always survives** that collision.
+
+No criterion changes; the rule becomes the thing it was written to be.
