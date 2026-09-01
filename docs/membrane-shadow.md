@@ -1346,5 +1346,9 @@ What "gated-mandatory" binds, precisely:
 >    affordance is not what an enactment reads: `coarse.map_action` sends `gather` to the
 >    cheapest unapplied VOI transform and, when exhausted, to a restricted argmax over
 >    `{abstain, ask, respond}`. A bar reading the raw affordance compares against a constant;
->    one reading through `map_action` does not. **Which of those a §18 bar reads is now a
->    precondition for reading it**, and is registered here rather than discovered mid-run.
+>    one reading through `map_action` **need not** — but whether it actually varies is
+>    **unmeasured**, because it depends on each payload's transform menu and on how often
+>    the menu is exhausted, and r45 measured neither. Stated as the open quantity it is
+>    rather than as the reassurance it would be convenient to be. **Which surface a §18 bar
+>    reads, and what that surface's distribution actually is, are now preconditions for
+>    reading it** — registered here rather than discovered mid-run.
