@@ -442,6 +442,8 @@ precisely how the value-join defect survived M6 (r34–r38). So
 with a drift test pinning each (`tests/test_lattice_replay.py`). The scripts' change is free
 on the control by the same arm-A measurement as the session's.
 
+One check the refactor needed and got: `request_json` serialises **without** `sort_keys`, so key order is on the wire, and a helper that re-ordered the dict would have changed the bytes and silently invalidated C7's digest. Verified byte-identical to the pre-refactor spelling rather than assumed.
+
 **The categorical twin is deliberately NOT touched.** `categorical.py:266` still sends a
 menu-less evidence tick, and that is left standing on purpose: the categorical world also
 has no `codebooks` key (so it cannot handshake at HEAD at all) and no clock row, so a
