@@ -154,7 +154,17 @@ class MembraneClient:
             raise MembraneError(f"membrane read failed: {exc}") from exc
         if line == "":
             raise MembraneError("membrane driver closed the wire (EOF)")
-        reply = json.loads(line)
+        try:
+            reply = json.loads(line)
+        except ValueError as exc:
+            # A reply line that will not parse is a WIRE failure like any other, and
+            # this class's contract says every wire failure surfaces as MembraneError.
+            # It is not hypothetical: HEAD's tick refusals are built with Haskell `show`
+            # on the offending name list, so `["act"]` reaches the wire with its inner
+            # quotes unescaped -- invalid JSON, against the engine's own wire rule that
+            # strings escape `"`. Letting JSONDecodeError escape means a caller that
+            # handles every documented failure still dies on a REFUSAL.
+            raise MembraneError(f"unparsable reply line: {line!r}") from exc
         if not isinstance(reply, dict):
             raise MembraneError(f"malformed reply (not a JSON object): {reply!r}")
         return reply
