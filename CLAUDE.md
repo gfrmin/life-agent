@@ -563,8 +563,16 @@ material for that candidate only.
   on the control; `think` never fires; 8/8 mutations RED. Disclosed costs: the clock forces a
   preposterior every decide (**297 ms vs 135 ms**), and `#19`'s placement effect is real but
   small and neighbourhood-driven, not single-rung. **No §18 bar is read — one is now
-  READABLE.** Next: **r45** — the evidence path (the act can never be a tick feature, so the
-  engine picks what the fold conditions on), the `act` guard row, and P1's accrual.
+  READABLE.** **`GD-15` (2026-09-01) then found r44 had fired a registered conditional without
+  discharging it:** `r04-stocktake` §3(ii) held that *if* the swap discretises, the fold-depth
+  bench's "sixteenths" rule applies from day one — r44 discretised, and the frozen grid rule
+  emits 49–56-bit denominators, the bench's own P3 regime at 13–100× the fold-growth of
+  sixteenths. Not repaired by reflex: it contradicts two clauses r44 froze (a rung AT the
+  operating rate; a crossing survives the collision) and reintroduces `#19`'s placement hazard,
+  and depth — the multiplier — only accrues once P1 lands. Registered: **`M-24` — a conditional
+  in the register is a trigger you own.** Next: **r45** — the evidence path (the act can never be
+  a tick feature, so the engine picks what the fold conditions on), the `act` guard row, P1's
+  accrual, and the grid-precision item with its bar and lattice frozen before any `src/` change.
 
 ## `src/pkm` — the KB core (Python, uv, DuckDB): key files
 

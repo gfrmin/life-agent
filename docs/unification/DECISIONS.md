@@ -507,3 +507,54 @@ scope is unchanged — the workaround is landed and working, so nothing here blo
 is "wait for the boundary", we hold the clock and its 2.2× and record the price.
 
 **Reaction.** *(open)*
+
+## GD-15 · 2026-09-01 · r44 fired a registered conditional and did not discharge it
+
+**The fork.** `r04-stocktake` §3(ii) answered the fold-depth bench's owner-question Q3 with a
+conditional: *"No grid values are declared on today's wire … **if the swap discretises**, the
+bench's 'sixteenths' rule applies from day one, and P3's 100× lever is avoidable by
+declaration."* **`r44` discretised** — HEAD's door requires `codebooks.theta`, so the grid is no
+longer optional — and the rule it froze emits crossings and quantiles at full double precision:
+`0.05 0.1 0.18 0.339 0.857 0.864 0.95 0.9888888888888889`, carrying **49–56-bit denominators**.
+That is the bench's own P3 regime, whose grid is the non-dyadic `{0.1,0.3,0.5,0.7,0.9}` and whose
+measured rate is *"~107 bits per weight per fold vs ~4–8 for sixteenths"* — **13–100×** on how
+fast a session's belief state grows. The antecedent came true and nothing discharged the
+consequent, because the sentence was never read at the moment it started to bind.
+
+**Decided: correct the register now; price the lever in r45; change no rule today.** Three
+things settle it, and all three were checked rather than assumed.
+
+1. **Depth is the multiplier, and depth is small.** The streams P1 would replay are 3 867
+   decisions / 71 reactions / 6 683 shadow rows. The bench's own P1 curve reads `α_raw` **0.36 at
+   10³** → 1.09 at 10⁴ → 1.47 at 3.9·10⁴: below ~10³ folds cost is `c0`-dominated and nearly
+   flat. The lever is real and is very likely not yet biting.
+2. **The fix contradicts a frozen rule, so it is not free.** `r44` froze *a rung **at** the
+   measured operating rate* and *a crossing always survives the collision*. Snapping 0.857 to
+   55/64 = 0.859375 breaks both by construction, and a rung near-but-not-at the operating rate is
+   exactly engine `#19`'s false-clear hazard — which `r44`'s own W6 measured as real, with the
+   gap **growing** under data (0.0014 → 0.0027 → 0.0032). **Sixteenths and placement pull
+   opposite ways**; that conflict is a measurement, not a preference.
+3. **`M-4` forbids the reflex, not the repair.** Applying a pre-existing, independently
+   registered rule is not tuning to a result — but deciding *between two registered rules* on a
+   citation, with no number for our own world, would be. So the branch that re-declares is
+   available to r45 and is closed to today.
+
+**Scoped to r45** (`M-6` — an anomaly found en route is a disclosure in its finder and an item in
+its successor), which already owns P1 and the `membrane.categorical` twin whose grid is
+per-question and therefore per-`K`, inheriting the same lever. r45's pre-registration must carry,
+frozen before any `src/` change: the dyadic lattice, the bar, a $0 depth sweep to ~4·10³ folds on
+the already-built binaries, and a decision-equality leg on the pinned 104 through
+`scripts/membrane/lattice_replay.py` (which binds `theta_grid`, so it moves with the rule and
+cannot silently disagree).
+
+**Alternatives rejected.** *Snap the grid now* — a change to a frozen rule on a citation rather
+than a measurement, against a clause its own reading tested. *Treat it as a new arc* — `M-6`; it
+is one item in the checkpoint that already owns the rung it depends on. *Re-run the bench's
+P2@10⁴* — r04 recommended against it (its Q6) and that reasoning is unchanged: our folds are
+rebuilt per ask at depth ≤ ~10³, not one always-on 10⁴ session. *Say nothing until r45* — the
+premise is false in the register **now**, and a false premise there is precisely what `M-20`
+exists to stop.
+
+**Registered alongside:** `M-24` — a conditional in the register is a trigger you own.
+
+**Reaction.** *(open)*
