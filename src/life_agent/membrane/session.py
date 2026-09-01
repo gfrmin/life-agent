@@ -150,8 +150,18 @@ class MembraneSession:
     def observe_verdict(self, s: DecideSummary, y: int) -> None:
         """One human verdict: a single untagged evidence tick (the `stream`-tagged
         double-feed was latent@1 machinery — historical with the old wire). `_t` then
-        advances by exactly one."""
-        self._tick({"features": shadow_features(s, float(self._t)), "evidence": int(y)})
+        advances by exactly one.
+
+        **The menu rides along (r45).** HEAD requires the declared namespace covered
+        exactly; ``act`` is in it, and ``shadow_features`` never emits ``act`` (padding it
+        in is a ``feature/assignment collision`` on both arms), so the menu is the only
+        supplier left and a menu-less evidence tick is refused outright — which made
+        :meth:`boot` unable to replay a single row. Measured free on the control: arm A
+        folds byte-identically with and without it. The act the engine then picks is
+        DISCARDED, and nothing is lost by discarding it — r45 measured that the act does
+        not enter the fold on either arm."""
+        self._tick({"features": shadow_features(s, float(self._t)),
+                    "evidence": int(y), "menu": [ACT_NAME]})
         self._t += 1
 
     def observe_outcome(self, event_id: str, s: DecideSummary, y: int) -> None:
@@ -163,5 +173,6 @@ class MembraneSession:
         if event_id in self.seen_outcomes:
             return
         self.seen_outcomes.add(event_id)
-        self._tick({"features": shadow_features(s, float(self._t)), "evidence": int(y)})
+        self._tick({"features": shadow_features(s, float(self._t)),
+                    "evidence": int(y), "menu": [ACT_NAME]})
         self._t += 1

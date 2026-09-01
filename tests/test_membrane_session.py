@@ -240,6 +240,31 @@ def test_observe_verdict_single_untagged_tick_and_advances_t_once() -> None:
     assert _tick_body(client.sent[2])["features"]["t"] == 1.0  # type: ignore[index]
 
 
+def test_evidence_ticks_carry_the_menu_so_the_door_serves_them() -> None:
+    """An evidence tick must name the writable name, or HEAD refuses the whole replay.
+
+    r45 measured this end to end: HEAD requires the declared namespace covered exactly,
+    `act` is in the namespace, and `shadow_features` deliberately never emits it (padding
+    it in is a `feature/assignment collision` on both arms). The only remaining supplier
+    is the menu -- so a menu-less evidence tick is refused with
+    `tick refused: missing declared ["act"]`, and `session.boot()` could not replay a
+    single row against HEAD.
+
+    Carrying the menu is a measured no-op on the control: six evidence ticks then a
+    decide return a byte-identical `p1` and `entropy_bits` on arm A with and without it,
+    so this restores the replay rather than re-writing what it folds. The engine's
+    resulting act choice is discarded -- r45's A2 measured the act does not enter the
+    fold on either arm.
+    """
+    s = _summary()
+    client, sess = _make([HANDSHAKE_OK, {"observed": 1}, {"observed": 0}])
+    sess.boot()
+    sess.observe_verdict(s, 1)
+    sess.observe_outcome("evt-1", s, 0)
+    for i in (1, 2):
+        assert _tick_body(client.sent[i])["menu"] == [W.ACT_NAME]
+
+
 def test_observe_verdict_error_reply_raises_membrane_error() -> None:
     s = _summary()
     _client, sess = _make([HANDSHAKE_OK, {"error": "impossible-evidence"}])
