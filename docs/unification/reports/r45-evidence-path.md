@@ -422,3 +422,31 @@ Disclosed rather than left implicit:
 - **The bridge disables the shadow on any construction failure** (`server.py`'s
   `except Exception … return None`), and `submit_*` is `put_nowait` on a bounded queue with
   overflow counted as drops. A slow or failing boot degrades the shadow, never the ask path.
+
+### B5 — the review finding: one relation, three declarations
+
+Reviewing the session repair before merge turned up the thing the repair itself had missed.
+The menu-less evidence tick was **not** one bug in one place — the same body was spelled
+three times:
+
+| sender | role |
+|---|---|
+| `session.observe_verdict` / `observe_outcome` | the live and backfill path |
+| `scripts/membrane/lattice_replay.py` | **r46's own grid-precision leg runs through this** |
+| `scripts/membrane/p3_gate.py` | the P3 held-out gate instrument |
+
+Fixing only the session would have left r46's replay tooling dead on arrival against HEAD —
+and one relation surviving with several declarations, each defensible in isolation, is
+precisely how the value-join defect survived M6 (r34–r38). So
+**`session.evidence_tick_body` is now the ONE declaration** and all three senders bind it,
+with a drift test pinning each (`tests/test_lattice_replay.py`). The scripts' change is free
+on the control by the same arm-A measurement as the session's.
+
+**The categorical twin is deliberately NOT touched.** `categorical.py:266` still sends a
+menu-less evidence tick, and that is left standing on purpose: the categorical world also
+has no `codebooks` key (so it cannot handshake at HEAD at all) and no clock row, so a
+menu-only fix would repair one third of a world that still cannot boot. It is env-disabled
+(`LIFE_AGENT_MEMBRANE_CAT` unset), nothing on any path reaches it, and it is **r46's whole
+subject** under the carried `GD-13` obligation. Named here so nobody reads the one
+declaration as already covering both worlds — it covers the binary world's three senders,
+and the twin is the fourth, outstanding.

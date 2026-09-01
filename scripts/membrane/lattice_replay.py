@@ -39,6 +39,7 @@ import membrane.report as R
 from life_agent.core import config as C
 from life_agent.membrane import world as W
 from life_agent.membrane.client import MembraneClient
+from life_agent.membrane.session import evidence_tick_body
 from life_agent.membrane.shadow import boot_snapshot
 
 DEFAULT_ENGINE = str(Path.home() / ".local/bin/proplang-host")
@@ -111,6 +112,13 @@ def features_for(s: W.DecideSummary, t: float, families: Sequence[str]) -> dict[
     return feats
 
 
+def evidence_tick_for(s: W.DecideSummary, t: float, families: Sequence[str],
+                     y: int) -> dict[str, Any]:
+    """One evidence tick, narrowed features + the ONE declared body
+    (`session.evidence_tick_body`). Never re-spelled here — a drift test pins it."""
+    return {"tick": evidence_tick_body(features_for(s, t, families), y)}
+
+
 def commits_respond(u_bar: Mapping[str, float], p1: float) -> bool:
     """The engine's actual exhaustion commit (`coarse._gather` restricted argmax): respond iff
     it wins `{abstain, ask, respond}` at this p1 under the world's one utility."""
@@ -136,8 +144,7 @@ def run_variant(
         models = hs.get("models")
         t = 0
         for s, y in replay:
-            client.request({"tick": {"features": features_for(s, float(t), families),
-                                     "evidence": int(y)}})
+            client.request(evidence_tick_for(s, float(t), families, y))
             t += 1
         rows: list[tuple[float, float | None, int]] = []
         for s, y in replay:

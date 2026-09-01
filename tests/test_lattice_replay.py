@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 import membrane.lattice_replay as L
 
+from life_agent.membrane import session as SS
 from life_agent.membrane import world as W
 
 U_BAR = {
@@ -67,3 +68,29 @@ def test_commits_respond_matches_the_break_even() -> None:
     be = (0.0 - U_BAR["u_wrong"]) / (U_BAR["u_correct"] - U_BAR["u_wrong"])
     assert not L.commits_respond(U_BAR, be - 0.01)
     assert L.commits_respond(U_BAR, be + 0.01)
+
+
+def test_evidence_tick_is_the_session_declaration_not_a_second_spelling() -> None:
+    """One relation, ONE declaration (`M6`).
+
+    r45 found `session.observe_verdict` sending a menu-less evidence tick that HEAD
+    refuses outright, and then found the SAME body re-spelled in this script and in
+    `p3_gate.py` — one relation with three declarations, which is exactly how the
+    value-join defect survived M6 (r34-r38). Repairing only the session would have left
+    r46's own replay tooling silently broken on HEAD. This pins every sender to the one
+    declaration, so the next change cannot fix one and miss two.
+    """
+    s = _summary()
+    for families in (L.ALL_FAMILIES, ["leader-credence"]):
+        for t, y in ((0.0, 1), (7.0, 0)):
+            assert L.evidence_tick_for(s, t, families, y) == {
+                "tick": SS.evidence_tick_body(L.features_for(s, t, families), y)}
+
+
+def test_the_evidence_tick_declaration_carries_the_menu() -> None:
+    """The reason the declaration exists: HEAD requires the declared namespace covered
+    exactly, `act` is in it, and `shadow_features` never emits `act` -- so the menu is the
+    only supplier and a menu-less evidence tick is refused."""
+    body = SS.evidence_tick_body({"t": 0.0}, 1)
+    assert body["menu"] == [W.ACT_NAME]
+    assert body["evidence"] == 1

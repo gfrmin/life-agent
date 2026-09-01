@@ -67,6 +67,27 @@ def verdict_y(chosen_action: str, valence: str) -> int | None:
     return _VERDICT_Y.get((chosen_action, valence))
 
 
+def evidence_tick_body(features: Mapping[str, float], y: int) -> dict[str, object]:
+    """**THE evidence tick body — one declaration, bound by every sender** (`M6`).
+
+    r45 found this relation spelled three times: here, in
+    ``scripts/membrane/lattice_replay.py`` and in ``scripts/membrane/p3_gate.py``. All
+    three sent a MENU-LESS tick, which HEAD refuses outright (``tick refused: missing
+    declared ["act"]``) — so ``boot()`` could not replay a single row, and r46's own
+    replay tooling would have been dead on arrival. One relation with three declarations
+    is how the value-join defect survived M6 (r34-r38); a drift test now pins each sender
+    to this function.
+
+    The menu is load-bearing: HEAD requires the declared namespace covered exactly,
+    ``act`` is a namespace member, and :func:`shadow_features` never emits ``act``
+    (padding it in is a ``feature/assignment collision`` on both arms), so the menu is the
+    only supplier left. Measured free on the control — arm A folds byte-identically with
+    and without it. The act the engine then picks is DISCARDED: r45 measured that the act
+    does not enter the fold on either arm.
+    """
+    return {"features": dict(features), "evidence": int(y), "menu": [ACT_NAME]}
+
+
 class MembraneSession:
     """One booted world, driving decide/verdict/outcome ticks over `client`."""
 
@@ -160,8 +181,7 @@ class MembraneSession:
         folds byte-identically with and without it. The act the engine then picks is
         DISCARDED, and nothing is lost by discarding it — r45 measured that the act does
         not enter the fold on either arm."""
-        self._tick({"features": shadow_features(s, float(self._t)),
-                    "evidence": int(y), "menu": [ACT_NAME]})
+        self._tick(evidence_tick_body(shadow_features(s, float(self._t)), y))
         self._t += 1
 
     def observe_outcome(self, event_id: str, s: DecideSummary, y: int) -> None:
@@ -173,6 +193,5 @@ class MembraneSession:
         if event_id in self.seen_outcomes:
             return
         self.seen_outcomes.add(event_id)
-        self._tick({"features": shadow_features(s, float(self._t)),
-                    "evidence": int(y), "menu": [ACT_NAME]})
+        self._tick(evidence_tick_body(shadow_features(s, float(self._t)), y))
         self._t += 1
