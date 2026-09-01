@@ -481,3 +481,37 @@ grid that could not express the distinction it was testing (A3, → `M-25`), an 
 confound from probing twice in one session (A3), and a raw-string comparison standing in for
 a declared projection (C3). The first would have shipped a false null; it was caught because
 the number reversed under a grid that could actually separate the values.
+
+## What this hands forward
+
+**To r46, with r45's measurements changing two of its three items:**
+
+1. **The `act` guard row is not the lever r43 described.** As stated — a guard row added
+   while `act` stays in the menu — it is measured **inert** for conditioning (byte-identical
+   `p1` across all four acts). The lever that works needs a **discriminating grid** (r45 used
+   `[1.5, 2.5, 3.5]`; the `[0.5]` spelling copied from the indicator rows cannot separate
+   values 1–4) **and** `act` out of the menu — and that world cannot decide. So r46's first
+   item is not "add a guard row and price it" but **"can one world both condition on the act
+   and choose it, and if not, what two-world arrangement is admissible?"** Its bar has to be
+   written against that question, not the old one. `GD-16` binds: if act-conditioning lands,
+   C3's premise goes live and `GD-16` must be re-read before any further backfill.
+2. **`GD-15`'s grid precision** — unchanged by r45, still carrying its own bar and lattice.
+   Note `lattice_replay.py`, the tool its decision-equality leg runs through, was **broken on
+   HEAD until this checkpoint** (B5) and is now bound to the one evidence-tick declaration.
+3. **The categorical twin** (carried `GD-13`) — now with a third defect named: it is the
+   fourth evidence-tick sender and the only one still menu-less (B5).
+
+**To whichever checkpoint reads a §18 bar** — a precondition, not a nicety: the engine's raw
+affordance is a near-constant `gather` (250/250; argmax across 96–98% of the credence range).
+A bar must state **which surface it reads** — the raw affordance or `coarse.map_action` — and
+must establish that surface's distribution first. r45 measured the raw one and not the mapped
+one.
+
+**Not filed, deliberately.** The engine's refusal replies are invalid JSON
+(`Eval.hs:40-43` builds them with Haskell `show`, so `["act"]` reaches the wire with
+unescaped quotes, against `membrane-wire.md`'s own rule that strings escape `"`). It is not
+in their register (`M-23` checked — `exact-author-pack.md:206-208` documents the message
+*content*, not its encoding). **r45's pre-registration froze "no new upstream issue is
+filed", so none was**, and the finding is handed to a successor with its evidence and its
+one-line locus rather than filed against a frozen scope clause. Our side is already hardened
+(A5), so nothing here waits on the engine.
