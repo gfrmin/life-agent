@@ -595,9 +595,28 @@ material for that candidate only.
   landed: `client.request` raises `MembraneError` on an unparsable reply (HEAD's refusals are
   invalid JSON), and **`session.evidence_tick_body` is the ONE evidence-tick declaration** —
   the body had been spelled three times (session, `lattice_replay`, `p3_gate`), all menu-less,
-  which would have left r46's own grid leg dead on arrival. Next: **r46** — the act-conditioning
-  question as r45 reframes it (not "add a guard row"), `GD-15`'s grid precision, and the
-  categorical twin, still the fourth and only menu-less sender.
+  which would have left r46's own grid leg dead on arrival.
+  **P1 IS RESTORED AND LIVE (C9/C10 PASS, 2026-09-01).** Arm B is installed at the path the
+  code names, `LIFE_AGENT_MEMBRANE_COMMAND` is in the deployed **`.env`** (never the keyring —
+  a linger-started unit boots with it locked), and the 08-10 → 09-01 gap is a `kind: "boundary"`
+  row **in the stream** (`M-14`) carrying both engine shas — mandatory because `models` went
+  2 393 → 960, so `p1` either side is a posterior over a different space. The boot row is itself
+  the proof of the fold (`shadow.py:678` must not raise for `:697` to write it) and reached
+  **t = 250**, the same 250 the offline backfill verified. Four labelled live decides
+  (`question_id` `r45c9probe*`, the only non-hex ids in 3 765 decide rows, so exclusion is
+  mechanical) close the **mirror** leg too — "clean boot then silence" was the 08-10 failure, so
+  the boot leg alone would not have tested it — and all four chose `gather`, confirming C3 on
+  the deployed path. **The cost is published, not buried: ~20 s wall / 6.8 s engine CPU per
+  mirrored decide at depth 250 vs `r44`'s 297 ms at negligible depth, and a bridge restart re-pays the
+  whole ~19.5 min boot fold.** A depth sweep on one process attributes it to FOLD DEPTH (0.280 s
+  CPU at depth 0 — `r44`'s bench reproduced — then 0.640 s at 25, 4.440 s at 100), which
+  **falsifies `GD-15`'s first ground** (*"depth is small … very likely not yet biting"*).
+  **`GD-17`** publishes it, corrects the register (`M-20`), keeps the shadow enabled (branch 1
+  is frozen; nothing user-facing waits — `submit_decide` is enqueue-only off the decision path)
+  and still changes no rule today (`GD-15`'s other two grounds are unmoved; `M-4`). Next:
+  **r46** — the act-conditioning question as r45 reframes it (not "add a guard row"),
+  `GD-15`'s grid precision **now with its number**, and the categorical twin, still the fourth
+  and only menu-less sender.
 
 ## `src/pkm` — the KB core (Python, uv, DuckDB): key files
 

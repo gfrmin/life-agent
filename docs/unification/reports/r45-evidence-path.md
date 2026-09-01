@@ -453,6 +453,136 @@ subject** under the carried `GD-13` obligation. Named here so nobody reads the o
 declaration as already covering both worlds — it covers the binary world's three senders,
 and the twin is the fourth, outstanding.
 
+## C9 / C10 — the live enable
+
+**Pre-state recorded before anything was touched (`M-19`).** The launcher's `record` mode,
+run first: engine binary at the expected path **absent**, `MEMBRANE` lines in the deployed
+`.env` **0**, bridge **active**, `shadow.jsonl` **6 683 rows**, deploy tree at
+`c0d5f1c`. `rollback` restores exactly that set, and was held ready for the whole window.
+
+**The launcher refuses three ways, and one of them is the point.** It will not run if the
+binary already exists, if a `LIFE_AGENT_MEMBRANE_COMMAND` line is already in `.env`, or —
+the load-bearing one — **if the deploy tree does not contain `evidence_tick_body`**. The
+bridge runs from the deploy tree on master, not from a worktree, so enabling the shadow
+before B5's repair had merged would have reproduced the 2026-08-10 signature exactly: a
+clean boot record, then silence. That ordering is why the merge came first and the enable
+second, and the check is in the script rather than in a human's head.
+
+**What the enable did.** Fast-forward the deploy tree to `c0d5f1c`; install arm B
+(`71998f65…`) at the path `lattice_replay.DEFAULT_ENGINE` already names; append one
+`LIFE_AGENT_MEMBRANE_COMMAND` line to the **gitignored `.env` at mode 600** — not the
+keyring, because a `loginctl enable-linger` unit boots with the keyring locked and a
+keyring-only value fails exactly when a deployed unit needs it; restart the bridge.
+
+### C10 — the boundary, in the stream
+
+Row 6 684, written through the project's own `jsonl_log.append_line` (open, write one line,
+flush, fsync, close — so it cannot interleave with the worker):
+
+| field | value |
+|---|---|
+| `kind` | `boundary` |
+| `engine_before` → `engine_after` | `ebc06c81…` → `71998f65…` |
+| `prior_rows` / `prior_last_ts` | 6 683 / 2026-08-10 16:06:47 |
+| `what_changed` | four items: the engine arm, `models` 2 393 → 960, r44's declarations, r45's menu |
+| `why_it_stopped` | C8's answer, recorded where a reader of the stream will meet it |
+
+The `models` change is the reason this is a boundary and not a resumption: `p1` on either
+side of row 6 684 is a posterior over a **different hypothesis space**, so the two sides are
+not one population and nothing may pool them without saying so.
+
+### C9 leg 1 — the boot, and why the row is proof of the fold
+
+Row 6 685 at **19:17:14**: `kind: "boot"`, `binary_sha256` = the installed arm B,
+`engine.ok true`, `models 960`, `world_digest d33322e1…`, `respawn_count 0`,
+`n_source_records 4 116`.
+
+The row's **existence** is the evidence, not its contents. `_boot_form` calls
+`session.boot(verdict_replay=…, outcome_replay=…)` at `shadow.py:678` and reaches
+`_write_boot_record` at `:697` only if that did not raise; a refused evidence tick takes
+the `except` branch into `_handle_death` and returns, writing **no** boot row. So a boot row
+carrying this binary is proof that the replay folded against HEAD without a refusal — which
+is precisely what was impossible before this checkpoint, and precisely what produced the
+08-10 silence.
+
+The session reached **`t = 250`**, and 250 is exactly the joined replay C7 verified offline
+(C6's universe line: 250 joined rows out of 4 116 source records). **The production boot
+folded the same 250 rows the offline backfill did** — an independent confirmation of C7 on
+the deployed path, not a restatement of it.
+
+### C9 leg 2 — the live mirror, probed rather than assumed
+
+The boot leg alone does not close C9. The 08-10 failure *is* "clean boot, then silence", so
+verifying only the boot would leave the exact failure mode this checkpoint exists to fix
+unverified. Four labelled decides were therefore posted to the **deployed**
+`/decide-support` — the endpoint the executor mirrors live traffic through.
+
+The reply was `{"ok": true}`, not `{"ok": false, "disabled": true}`: that alone establishes
+that `deps.membrane` is constructed in the running bridge. Rows 6 686–6 689 followed.
+
+| `question_id` | `t` | `action` | `p1` | `latency_ms` |
+|---|---|---|---|---|
+| `r45c9probeA` | 250 | `gather` | 0.8621 | 18 829 |
+| `r45c9probeB` | 250 | `gather` | 0.8621 | 20 968 |
+| `r45c9probeC` | 250 | `gather` | 0.8621 | 19 974 |
+| `r45c9probeD` | 250 | `gather` | 0.8621 | 21 356 |
+
+**The prediction was stated before the measurement and held**: a decide reads the evidence
+index without advancing it (`session.py:157`), so `t` must stay at 250 and the rows must not
+drift. All four agree exactly, including `p1` to four places.
+
+**Contamination, bounded and mechanical.** `/decide-support` writes to the shadow's own log
+and to no calibration stream — `submit_decide` enqueues, and nothing on that path touches
+`decisions.jsonl` or `reactions.jsonl`. The four synthetic rows are self-identifying: every
+real `question_id` is 16 hex characters, these are `r45c9probe{A,B,C,D}`, so **the exclusion
+rule is a property of the data, not a flag a later reader has to remember** — and it was
+checked rather than asserted: across all **3 765** decide rows in the stream, exactly **4**
+carry a non-hex `question_id`, and they are exactly these four. The payloads carry counts and
+credences borrowed from one recorded decision and no corpus text at all.
+
+**C3's finding is now confirmed on the deployed path.** All four live decides chose
+`gather`. r45's offline C3 read 250/250 `gather` through a probe harness; the deployed
+bridge, the deployed utility posterior and the deployed submit path agree. The near-constant
+is a property of the world, not of the instrument that first found it.
+
+### The cost P1 actually carries — measured, and it is `GD-15`'s lever
+
+The four probe rows above carry a number nothing in the pre-registration anticipated:
+**18.8–21.4 s** per mirrored decide. The live boot is the same story at scale — 250 rows
+folded in **~19.5 min wall / 17.5 min CPU**, and a bridge restart re-pays all of it before
+the shadow serves anything.
+
+The box was at load ~14–19 on 8 cores throughout (the owner's own work, not the shadow's),
+so wall clock is not comparable to `r44`'s bench. **Engine CPU is.** One session, one
+process, one binary, one declared world, folded incrementally with a decide timed at each
+checkpoint — sound because a decide provably does not advance the evidence index
+(`session.py:157`, confirmed above at `t = 250` across four probes):
+
+| fold depth | decide, engine CPU | decide, wall |
+|---|---|---|
+| 0 | **0.280 s** | 0.449 s |
+| 25 | **0.640 s** | 0.773 s |
+| 100 | **4.440 s** | 6.526 s |
+| 250 (live shadow) | **6.77 s** | 18.8–21.4 s |
+
+**`r44`'s 297 ms reproduces at depth 0**, so that bench is confirmed and **depth is the only
+variable that changed**. That falsifies `GD-15`'s first ground for holding the grid-precision
+lever open — *"depth is the multiplier, and depth is small … the lever is real and is very
+likely not yet biting"*. It is biting.
+
+**Disclosed: the sweep's own depth-250 checkpoint was not reached** (the run was interrupted
+during the 100 → 250 fold), so the last row is the live shadow's figure from a different
+process. It is the operationally relevant number and a real measurement, but the sweep
+therefore establishes monotone steep growth over **0 → 100** only; the shape between 100 and
+250 is not established here. The live point sitting *below* a naive extrapolation is a hint
+that growth decelerates — a hint, not a finding, and exactly what r46's sweep should settle.
+
+**`GD-17`** records what this decides: publish the number, correct the register (`M-20`),
+keep the shadow enabled (branch 1 is frozen, and nothing user-facing waits on it —
+`submit_decide` is enqueue-only, off the decision path, overflow counted as drops), and still
+change no rule today, because `GD-15`'s other two grounds are unmoved and `M-4` forbids
+picking between two registered rules on anything less than a reading.
+
 ## Verdict
 
 | id | criterion | verdict |
@@ -465,8 +595,8 @@ and the twin is the fourth, outstanding.
 | **C6** | every universe named with its size | **PASS** — 250 joined rows / 3 865 decisions / 70 deduped reactions / 180 Claude verdicts / 4 116 source records |
 | **C7** | 0 unexplained skips ∧ byte-identical double run, before any production change | **PASS** — 0 skips, digests identical, scope disclosed in B4 |
 | **C8** | `GD-10`'s question answered from evidence consulted, or re-recorded | **PASS — answered**, and it falsified a fact this pre-registration had frozen |
-| **C9** | live enable reversible, launcher restores what it found, rows appear or roll back | *(below)* |
-| **C10** | the gap declared a segmentation boundary, recorded in the stream | *(below)* |
+| **C9** | live enable reversible, launcher restores what it found, rows appear or roll back | **PASS on both legs** — pre-state recorded and `rollback` held ready; boot row proves the 250-row fold; four labelled live decides prove the mirror. Not rolled back |
+| **C10** | the gap declared a segmentation boundary, recorded in the stream | **PASS** — row 6 684, `kind: "boundary"`, carrying both engine shas, the prior extent and C8's answer |
 
 **Item 3 is resolved, and it was never one thing.** It is (a) a door rule — an evidence tick
 must supply every declared name, and the menu is the only supplier for `act`; (b) a modelling
@@ -495,9 +625,13 @@ the number reversed under a grid that could actually separate the values.
    and choose it, and if not, what two-world arrangement is admissible?"** Its bar has to be
    written against that question, not the old one. `GD-16` binds: if act-conditioning lands,
    C3's premise goes live and `GD-16` must be re-read before any further backfill.
-2. **`GD-15`'s grid precision** — unchanged by r45, still carrying its own bar and lattice.
-   Note `lattice_replay.py`, the tool its decision-equality leg runs through, was **broken on
-   HEAD until this checkpoint** (B5) and is now bound to the one evidence-tick declaration.
+2. **`GD-15`'s grid precision** — still r46's, still carrying its own bar and lattice, but
+   **no longer carrying an unknown**. `GD-15` held it open partly on the ground that *"depth is
+   the multiplier, and depth is small … the lever is real and is very likely not yet biting"*.
+   P1 landed at depth 250 and the lever bites hard (the cost section above; **`GD-17`**). r46
+   does not have to predict the depth at which it starts to matter — it is past. Note also that
+   `lattice_replay.py`, the tool its decision-equality leg runs through, was **broken on HEAD
+   until this checkpoint** (B5) and is now bound to the one evidence-tick declaration.
 3. **The categorical twin** (carried `GD-13`) — now with a third defect named: it is the
    fourth evidence-tick sender and the only one still menu-less (B5).
 
