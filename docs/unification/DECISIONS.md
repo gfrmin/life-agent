@@ -596,3 +596,64 @@ so. *Take branch 2 (publish the stream as unfoldable and accrue live-only)* — 
 measurement: the stream folds, and the C3 run folded all 250 rows to prove it.
 
 **Reaction.** *(open)*
+
+## GD-17 · 2026-09-01 · the fold-depth lever is measured, it bites, and the rule still does not change today
+
+**The fork.** `GD-15` held the grid-precision lever open on three grounds and scoped it to r46.
+Its **first ground is now falsified by measurement**: *"Depth is the multiplier, and depth is
+small … below ~10³ folds cost is `c0`-dominated and nearly flat. The lever is real and is very
+likely not yet biting."* P1 landed, the live shadow booted on a **250**-row replay, and a single
+mirrored decide costs **~20 s wall / 6.8 s engine CPU** where `r44` measured **297 ms**. A false
+premise standing in the register is exactly what `M-20` exists to stop, so the correction is
+published whether or not the rule moves.
+
+**What was measured, and why it attributes.** One session, one process, one box, one binary, one
+declared world, folded incrementally with a decide timed at each checkpoint — sound because a
+decide provably does not advance the evidence index (`session.py:157`; confirmed live, `t = 250`
+across four probes). Engine **CPU** (`utime + stime`), not wall clock, because the box was at load
+~14 on 8 cores throughout. **`r44`'s 297 ms reproduces at depth 0**, so the bench is confirmed and
+**depth is the only variable that changed**.
+
+| fold depth | decide, engine CPU | decide, wall | note |
+|---|---|---|---|
+| 0 | **0.280 s** | 0.449 s | `r44`'s 297 ms reproduced |
+| 25 | **0.640 s** | 0.773 s | 2.3× |
+| 100 | **4.440 s** | 6.526 s | 15.9× |
+| 250 (live) | **6.77 s** | 18.8–21.4 s (n=4) | the deployed shadow |
+
+**One point is missing and is disclosed rather than interpolated.** The sweep's own depth-250
+checkpoint was **not reached** — the run was interrupted during the 100 → 250 fold — so the
+250 row above is the *live* shadow's measurement, taken in a different process. It is the
+operationally relevant number and it is a real measurement, but it is not the sweep's own
+fourth point, so the sweep establishes **monotone, steep growth over 0 → 100** and the live
+figure establishes the **cost now being paid**; neither on its own establishes the shape
+between 100 and 250. Note the live 250 point (6.77 s) sits *below* a naive extrapolation from
+100, which is a hint that growth decelerates — **a hint, not a finding**, and precisely the
+quantity r46's sweep should settle.
+
+**Decided: publish the number, correct `GD-15`'s first ground, change no rule today, and hand r46
+the quantity it was told to go and find.** The other two grounds are untouched and still bind:
+sixteenths contradicts two clauses `r44` froze (a rung **at** the operating rate; a crossing
+survives the collision), and `M-4` still forbids choosing between two registered rules on a
+citation. What has changed is that r46 no longer has to *predict* the depth at which the lever
+bites — it is past, and the cost is on the table.
+
+**The shadow stays enabled.** C9's frozen consequence is branch 1, and turning the shadow off
+after it passed would be renegotiating a frozen conjunct on a cost the criterion did not price.
+The cost is bounded where it matters: `submit_decide` is enqueue-only against a bounded queue and
+never on the decision path, so **no user-facing reply waits on this** — the cost lands on the
+shadow's own worker, and overflow is counted as drops rather than backpressure. Two operational
+facts are published rather than discovered later: a bridge restart re-pays the **whole** boot fold
+(~19.5 min wall / 17.5 min CPU for 250 rows) before the shadow serves anything, and both costs
+grow with the streams. If either proves disruptive the rollback is one command
+(`enable.sh rollback`) and restores the recorded pre-state exactly (`M-19`).
+
+**Alternatives rejected.** *Snap the grid to sixteenths now* — `GD-15`'s grounds 2 and 3 are
+unmoved by this measurement, and it is r46's frozen scope; acting now would be the reflex `M-4`
+names. *Disable the shadow to save the CPU* — renegotiates a frozen consequence on a criterion
+that passed, and P1 would be unrestored again with nothing learned. *Report the wall-clock number
+alone* — it is contaminated by a load the shadow did not cause, and would have overstated the
+lever by roughly 3×. *Leave `GD-15` uncorrected until r46 reads* — its first ground is now false
+in the register, and `M-20` binds.
+
+**Reaction.** *(open)*

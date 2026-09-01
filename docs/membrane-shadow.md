@@ -1352,3 +1352,22 @@ What "gated-mandatory" binds, precisely:
 >    rather than as the reassurance it would be convenient to be. **Which surface a §18 bar
 >    reads, and what that surface's distribution actually is, are now preconditions for
 >    reading it** — registered here rather than discovered mid-run.
+> 4. **"The shadow keeps accruing" is TRUE again — the clause the first correction struck is
+>    restored, on evidence.** P1 landed on 2026-09-01: arm B (`71998f65…`) is installed at the
+>    path the code names, `LIFE_AGENT_MEMBRANE_COMMAND` is set in the deployed **`.env`** (not
+>    the keyring — a linger-started unit boots with the keyring locked), and the bridge booted
+>    the shadow against it. The 08-10 → 09-01 gap is recorded **in the stream** as a
+>    `kind: "boundary"` row (`M-14`), not only here, carrying both engine shas, the prior
+>    extent and why it stopped — necessary because `models` went 2 393 → 960, so `p1` either
+>    side of that row is a posterior over a different hypothesis space and the two sides are
+>    not one population. The boot folded **250** rows, the same 250 the offline backfill
+>    verified, and four labelled live decides confirm the mirror leg as well as the boot leg —
+>    "clean boot, then silence" being the exact 08-10 failure, verifying only the boot would
+>    have left it untested. All four chose `gather`, confirming item 3 on the deployed path.
+> 5. **P1's cost is published here, not left to be discovered.** The live shadow's decide costs
+>    **~20 s wall / ~6.8 s engine CPU** at fold depth 250, against `r44`'s measured 297 ms at
+>    negligible depth, and a bridge restart re-pays the entire boot fold (~19.5 min) before the
+>    shadow serves anything. Both grow with the streams. This is `GD-15`'s registered fold-depth lever,
+>    no longer conditional: see **`GD-17`** for the measurement that attributes it to depth and
+>    for why the grid rule still does not change today. Nothing user-facing waits on it —
+>    `submit_decide` is enqueue-only, off the decision path, with overflow counted as drops.
