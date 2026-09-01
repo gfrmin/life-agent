@@ -550,7 +550,11 @@ material for that candidate only.
   routes selection to the substitution path and arm B tracks `argmax_action` on 5/5 cases
   (three winners not the head); an **`act` guard row** is a second, independent repair.
   Registered: **`M-23` — read the counterparty's own register first** (the engine had it as
-  `OB-24` all along, remedy named, so no issue was filed). **`r44` LANDED the repair**
+  `OB-24` all along, remedy named). **`GD-14` then superseded that decision's consequence on
+  owner direction: the issue IS filed** (`proplang#24`) as **demand**, not diagnosis —
+  `OB-24` is a *ruled deferral*, and a deferral is a judgement about demand, the one input a
+  downstream consumer supplies and the counterparty's register cannot derive. `M-23` carries the
+  rider; r43's reading is untouched. **`r44` LANDED the repair**
   (items 1, 2, 4; no decide-path change): a declared grid rule (rungs at the measured
   operating rate, every `argmax_action` crossing, the shadow's p05/median/p95 and the
   endpoints → n=8, 960 worlds), full-coverage ticks with the writable name EXCLUDED, and the

@@ -113,6 +113,16 @@ separately by r44. No upstream issue is filed, and the case for one collapsed ra
 strengthened: **the engine has already registered this exact finding as `OB-24` and ruled its
 remedy**, which our world simply does not declare.
 
+> **Dated supersession of the consequence, 2026-09-01 (`GD-14`) — the reading above is
+> untouched.** The owner directed that the issue be filed anyway, *"as it might cancel deferral
+> based on demand"*, and that is right on a distinction this verdict did not draw. `OB-24` is
+> not just a record of the mechanism — it is a **ruled deferral**, and a deferral is a judgement
+> about **demand**, which is the one input a downstream consumer can supply and the
+> counterparty's register cannot derive. "No issue" was the correct call for a *diagnosis* and
+> the wrong one for a *demand*. Filed as
+> [proplang#24](https://github.com/gfrmin/proplang/issues/24), framed as demand, agreeing with
+> the ruling, offering "confirm the boundary" as a complete answer. `M-23` carries the rider.
+
 | what r42 measured | what r43 found |
 |---|---|
 | HEAD parses the utility, then decides as if absent | HEAD's `chooseEU` compares two **beliefs** under one **common** utility row, so per-action *levels* never enter |

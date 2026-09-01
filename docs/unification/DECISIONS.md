@@ -459,3 +459,54 @@ re-earn path runs on. Its menu grid is per-question, so its grid under r44's rul
 r45's pre-registration must say whether the two worlds share one declaration of the rule or two.
 
 **Reaction.** *(open)*
+
+
+---
+
+## GD-14 · 2026-09-01 · filing the demand upstream anyway, against `GD-12`
+
+**The fork.** `GD-12` decided **no upstream issue is filed**, and `M-23` recorded the lesson
+that earned it: the engine already carried r43's finding as `OB-24`, with the remedy named and
+the migration deliberately deferred, so filing would have handed the maintainer their own
+obligation back. The owner directed the opposite — *"create issue for proplang anyway as it
+might cancel deferral based on demand."*
+
+**Decided: filed as [proplang#24](https://github.com/gfrmin/proplang/issues/24), labelled
+`enhancement`, in the repo's own established `Demand for …` genre (#9, #11, #12, #13, #14).**
+`GD-12`'s reading is untouched — r43 measured what it measured and its verdict stands. What is
+superseded is only its *consequence*, and on a distinction `GD-12` did not draw.
+
+**Why the owner is right and `GD-12` was reasoning about the wrong quantity.** `M-23` answers
+"is this finding new to them?" — it was not, so a *diagnosis* issue would have been noise.
+`OB-24` is not merely a record of the mechanism, though: it is a **ruled deferral**, and a
+deferral is a judgement about **demand** — the one input a downstream consumer can supply that
+the counterparty's register cannot derive for itself. Reading their register tells you whether
+to report the defect. It tells you nothing about whether to report that someone is blocked on
+its remedy. The issue is therefore framed as a demand and not a diagnosis: it asks nothing
+about the ruling (it agrees with it), states our cost in measured numbers, and offers
+*"confirm the boundary"* as a complete answer.
+
+**What it carries, all measured, none of it new work.** A minimal harness-free repro built for
+the filing — a five-line world whose `said@1` utility is **constant in `y`** and differs only by
+action, so no belief, evidence or learning is involved: HEAD returns the menu head (`act 1`,
+worth 10) clockless and the declared argmax (`act 2`, worth 100) with a clock, while the
+pre-trampoline control returns `act 2` either way. Both costs from `GD-13` (297 ms vs 135 ms;
+`batch: 0` verified refused as `bad hello`, so the preposterior is not opt-out-able). The
+composition with **#15** — that issue names the declared-utility route as the fallback for the
+learned one, and on a clockless world that fallback is closed too. And a documentation note:
+§2's `menu` bullet describes substitution semantics, and only thirty-odd lines on does the
+OPTIONAL `clock` bullet quietly withdraw them for the clockless case.
+
+**Alternatives rejected.** *Hold `GD-12` and wait for the named boundary* — the owner's point is
+that the boundary is not fixed, and an unstated demand cannot move it. *File a diagnosis of the
+mechanism* — that is exactly what `M-23` forbids, and the issue deliberately cites `OB-24` as
+settled rather than re-deriving it. *Ask for the `batch: 0` escape hatch* — recorded in the
+issue as the shape we would otherwise have asked for, explicitly **not** proposed, because it
+contradicts §2's availability-from-pricing law and the trampoline's termination argument, and
+we are not positioned to price that against their register.
+
+**What does not change.** `A-2` still binds: the fix is engine work, never a softened bar. r45's
+scope is unchanged — the workaround is landed and working, so nothing here blocks. If the answer
+is "wait for the boundary", we hold the clock and its 2.2× and record the price.
+
+**Reaction.** *(open)*
