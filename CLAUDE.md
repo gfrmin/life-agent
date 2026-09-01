@@ -539,7 +539,20 @@ material for that candidate only.
   condition). **The completion audit is DEFINED and READ** (owner ruling 2026-08-31,
   `RULINGS.md` `G-2`; `docs/unification/reports/r35-completion-audit.md`), so **Arc C is
   UNBLOCKED**; the programme itself closes at Stages 0, 1 and 4 with Stage 2 RETIRED (`G-1`). Nothing in tree may presuppose the
-  swap until it lands.**
+  swap until it lands.** **Arc C IS OPEN and its first three rungs are read, all $0: `r40` found no engine binary here and the shadow dead
+  since 2026-08-10; `r41`/P0 pinned the engine and its control replays a recorded decide
+  exactly, while HEAD refuses the handshake; `r42` measured HEAD's door to differ in **four**
+  ways, not the one named from source. **`r43` closes the blocker: item 4 — HEAD parsing our
+  utility then deciding as if absent — is OUR declaration.** HEAD's `chooseEU` compares two
+  BELIEFS under one common utility row, so per-action levels never enter; and `act` is one of
+  exactly two names (with `t`) in a 19-name namespace that cannot move the predictive, because
+  `handshake_decl` declares guard rows only for the indicators. Declaring a **`clock`** row
+  routes selection to the substitution path and arm B tracks `argmax_action` on 5/5 cases
+  (three winners not the head); an **`act` guard row** is a second, independent repair.
+  Registered: **`M-23` — read the counterparty's own register first** (the engine had it as
+  `OB-24` all along, remedy named, so no issue was filed). Next: **r44**, the world-declaration
+  pre-registration and repair; P1 stays blocked behind the evidence path, which is narrower
+  than r42 could see — the act can never be a tick feature, so the engine picks it.
 
 ## `src/pkm` — the KB core (Python, uv, DuckDB): key files
 
