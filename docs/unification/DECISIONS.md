@@ -419,3 +419,43 @@ predictives across all four acts, 16 readouts. The mechanism the prediction came
 confirmed; the act it named is not. Both are published (`M-4`).
 
 **Reaction.** *(open)*
+
+## GD-13 · 2026-09-01 · what r44 buys, what it costs, and what it leaves
+
+**The fork.** `GD-12` said the repair is a declaration change and named four items. Building it
+raised three choices the register does not determine: which theta grid, whether to accept the
+clock's cost, and how much of the door to repair in one reading.
+
+**Decided, and read at [`r44-world-declaration.md`](./reports/r44-world-declaration.md).**
+
+1. **The grid is a declared rule, not a number.** Rungs at the measured operating rate, at every
+   `argmax_action` crossing, at the recorded shadow's p05/median/p95, and at the endpoints —
+   because the engine's `#19` records a false clear caused by *placement*, and a rule is the only
+   thing that survives the utility posterior moving. It yields n = 8 and `models = 960` today;
+   the rule is what is frozen, never the numbers. Rejected: fitting arm A's 2393 (r42: two
+   enumerators, a reference and never a target) and the tempting `theta: [0.5]` (`models: 1`, an
+   engine that cannot learn).
+2. **The clock's cost is accepted and published, not engineered around.** `Host.hs` reaches the
+   substituting chooser only through the clock, and `thinkValue` takes its preposterior branch
+   whenever `batch ≥ 1`, which the wire **enforces** — so a utility that decides costs
+   **297 ms per decide against 135 ms**, ≈2.2×, structurally. Rejected: leaving the clock off to
+   stay fast, which is r42's measured state — a green handshake over a constant `abstain`.
+3. **Items 3 and the `act` guard row are scoped OUT, to r45.** Item 3 is a modelling question
+   (the act can never be a tick feature, so the engine picks what the fold conditions on) and the
+   guard row is the one row r43 measured as **not** free on the control. Bundling either would put
+   two levers on one reading — the r30b precedent. P1 stays blocked behind item 3, as `GD-11`
+   ruled.
+
+**W6's result is left standing rather than acted on.** The at-rung/near-rung gap grows with data
+as `#19` warns, but the *near* grid ends closer to the truth, because the rate rung sits 7 × 10⁻³
+from the p95 rung and the posterior spreads across the pair. Re-tuning the collision threshold to
+merge them would be tuning to a result the rule was frozen to precede (`M-4`). Registered for a
+successor: **the placement lever is the grid's local density, not one rung** — and at these
+magnitudes no false clear is reachable on this world, which is why nothing changed.
+
+**Found en route and deliberately not built** (`M-6`): `membrane.categorical` — the E1 stage-1
+world — carries all three of the same defects, disabled today but exactly the world §17.6's
+re-earn path runs on. Its menu grid is per-question, so its grid under r44's rule is per-`K`;
+r45's pre-registration must say whether the two worlds share one declaration of the rule or two.
+
+**Reaction.** *(open)*
