@@ -19,9 +19,9 @@ view** — what each faculty is and where it stands.
 | Faculty | System / language | Status |
 |---|---|---|
 | **Memory** — recall + retrieval | **PKM** (`src/pkm`, Python) + **`life_agent`** (this repo, Python) | **Live.** PKM: content-addressed extraction + DuckDB `fts`/`vss` + **composable transforms** (chained, cited perspectives — SPEC §18.7). `life_agent` adds the retrieval/synthesis read path (`scripts/ask.py`, dogfooded via `bin/ask-live`). |
-| **Brain** — beliefs under uncertainty; value-of-information → ask/proceed/block | **credence** (`../credence`, Julia; the skin's JSON-RPC-over-stdio seam) | **Adopted, being wired (Phase 1.6 / Ask v0):** [`docs/bayesian-foundations.md`](./docs/bayesian-foundations.md) — answers become claim sets with posteriors; responses are EU decisions through `src/life_agent/core/brain.py` (slice 1). **The typed arm is the deployed default since 2026-08-25 (run 14 PASS — §14).** Per §16 there is no separate VOI governor to build afterwards: the governor is the spine itself. |
+| **Brain** — beliefs under uncertainty; value-of-information → ask/proceed/block | **credence** (`../credence`, Julia; the skin's JSON-RPC-over-stdio seam) | **Adopted, being wired (Phase 1.6 / Ask v0):** [`docs/bayesian-foundations.md`](./docs/bayesian-foundations.md) — answers become claim sets with posteriors; responses are EU decisions through `src/life_agent/core/brain.py` (slice 1). **The typed arm is the deployed default since 2026-08-25 (run 14 PASS — §14).** Per §16 there is no separate VOI governor to build afterwards: the governor is the spine itself. **proplang is the RULED successor of credence at this seam** (owner ruling 2026-08-25; [`docs/membrane-shadow.md`](./docs/membrane-shadow.md) §18 — gated-mandatory, FAIL means iterate, never park), being migrated as **Arc C** (item 3h below); its shadow engine mirrors live decide traffic off the decision path again since 2026-09-01. |
 | **Hands** — capabilities/actions | **GTD** (`life_agent.tasks`, event-sourced) reached via **`life_agent.reach`** (Telegram transport + persona); email (`msmtp`/JMAP), calendar (CalDAV/Google), chat (matrix) | GTD live, ledger-as-truth (PRINCIPLES §7); **email→GTD shipped (M2)** — the `action_items` transform (haiku, grounded quotes) **auto-files** cited tasks to the inbox; you triage in Telegram. Rest not wired. |
-| **Goals / Utility** — what the owner values | *(new, unbuilt)* | **The hardest missing piece.** EU-maximisation presupposes it; owed a design before any autonomous *action* (PRINCIPLES §3). |
+| **Goals / Utility** — what the owner values | **`core/utility.py`** (this repo, Python) | **Partly built.** The *answer*-utility gauge is live: one utility posterior, a learned belief about the owner (foundations §4.4/§10 as amended), elicited P(U) pricing every gate run and the deployed argmax. **Still unbuilt:** any goal/plan representation beyond it — owed before autonomous *action* (PRINCIPLES §3, Phase 2). **Named residue (owner-only):** the gauge fixes `u_abstain = 0`, so it cannot represent the cost of *not* answering. |
 | **Spine** — the agent loop + routing | **TBD — open decision** | Deferred to Phase 2 (PRINCIPLES §15). Candidates: pi-mono (TS), a Python loop, or Claude Code as an interim loop. |
 
 The earlier `pkm-memory` MCP server was built then **torn down** (operational — a leaked
@@ -220,8 +220,65 @@ Bayesian Ask rather than deterministic pipelines. Remaining program, in dependen
    for the carried risks) → the collapse ladder M2–M7 (`docs/module-collapse-design.md` §8;
    Appendix A signed at M7) → items 4–5 below through §8 gates → the proplang graduation
    (shadow → challenger → priced run; `docs/membrane-shadow.md` §11 exit criteria), with the
-   MVP exit test running wall-clock-parallel from the deploy.
-4. **The aggregate family** (subsumes D3): recall term + completeness priors,
+   MVP exit test running wall-clock-parallel from the deploy. **[Corrected 2026-09-01: the
+   proplang graduation is struck from this chain — owner ruling `G-2` (2026-08-31) makes it
+   NOT a completion condition. The resolved stage map below governs; this sentence is left
+   standing as the record it was. `r35` §1 D-4 claimed this correction and enacted only the
+   table rows, which is why it is being made here.]**
+3g. **The ruled queue — r28 → r39 (2026-08-28 → 08-31), after the collapse ladder closed.**
+   Not *post-programme*: the queue straddles the programme's own close, and `r32`/`r33` are
+   Conferral 2's rulings on the Stage-4 measurement — programme work, not successors to it.
+   The readings themselves are $0; the gate runs they bought are **runs 20–23**, cents each,
+   every figure in its own report. (Run 19 belongs to `r21`/CP-D, fired 2026-08-26 and
+   stopped before its first conjunct; its artefacts are voided.)
+   **`r28`** decomposed what the gate measures:
+   Δ = Δ_answers + Δ_spend reads 0.019 + 0.495 on run 18, so **96% of the adoption margin is
+   the price of the baseline arm** — quote the split, never the total. **`r29`–`r31`** ran the
+   units lever (the answer-shape census, then the INTERVAL claim priced inside the argmax) and
+   **closed it FAIL**: the interval is dominated on both sides and never fires; `r30b` stays in
+   tree measured-dormant by ruling, nothing deployed. **`r32`/`r33`** priced the commit bar's
+   drift (below, under Stage 4) and fixed the exit measurement's five instrument defects.
+   **`r34` → `r38`**
+   repaired the value-join — M6's one declaration of the value-join tested identity while five
+   other call sites used a different key, two declarations of one relation surviving M6 because
+   they carried different §-numbers — and **run 23 PASSED on all five frozen criteria, so it is
+   merged and DEPLOYED**; `GD-8` binds the reading (the benefit is one row, below §6.13's wobble
+   floor: it shipped as a defect repair, never on its row count). En route, **`M-18`** (pin the
+   comparison tree, not just the deciding tree) and **`M-19`** (a measurement launcher restores
+   the tree it found). **`r39`** closed the B class: **B is C** — the constant that kills
+   narrative inclusion is `u_wrong`, so no lever opens. `CLAUDE.md` and the reports under
+   `docs/unification/reports/` carry the detail.
+3h. **Arc C — the proplang migration · OPEN** (unblocked 2026-08-31 by `G-2`; the ruled successor
+   at the decide seam, `docs/membrane-shadow.md` §18: gated-mandatory, FAIL means iterate and
+   re-run, never park). The ladder is `GD-10`'s: **P0** (engine pinned) → **P1** (accrual
+   restored) → §17.6's **E1** re-earn → §18's bars → §11's exit criteria ("credence fully
+   retired"). Read so far — all $0 except `r45`, whose Part B changed the deployed box:
+   **`r40`** found the premise stale — no engine binary on this
+   box and the shadow dead since 2026-08-10; **`r41`** pinned both engine arms and read P0;
+   **`r42`** measured HEAD's door to differ in four ways, not the one named from source;
+   **`r43`** found the blocker was **our** declaration, not the engine's; **`r44`** landed the
+   repair (59/59 battery cases tracking the engine's own argmax, 8/8 mutations RED); and
+   **`r45`** restored P1 — **the shadow is live again since 2026-09-01**, folding real traffic,
+   with the 2026-08-10 → 09-01 gap recorded in the stream as a segmentation boundary because
+   the engine's model space changed underneath it. Three constraints found en route bind what
+   comes next: the engine chooses `gather` across 96–98% of the credence range under both the
+   declared and deployed utility (the v1 gather-bar pathology is **not** dissolved; the
+   precondition this puts on any §18 bar is that it **state which surface it reads** — the raw
+   affordance or `coarse.map_action` — and establish that surface's distribution first, `r45`
+   having measured the raw one and not the mapped one); the fold-depth cost is real and
+   biting (~20 s wall / **6.8 s engine CPU** per mirrored decide at fold depth 250, against
+   `r44`'s 297 ms bench at depth 0 — CPU is the comparable pair, the box being loaded;
+   `GD-17`, which falsifies `GD-15`'s first ground. The sweep established 0 → 100 only: its
+   own depth-250 checkpoint was never reached, so the 250 figure is the live shadow's, from
+   a different process); and the one engine-side ask is filed upstream as demand,
+   `proplang#24` (`GD-14`). **Next rung: `r46`** — act-conditioning as `r45` reframes it,
+   `GD-15`'s grid precision now with its number, and the categorical twin, each gated
+   separately.
+4. **[RETIRED 2026-08-31 — `G-1`. Items 4 and 5 *were* Stage 2; the aggregate family was
+   additionally deleted by K1 as "family routing in disguise", its transformations kept.
+   The thread transformations may still be built when evidence calls for them, never as a
+   completion condition. Both are left standing below as the record they were.]**
+   **The aggregate family** (subsumes D3): recall term + completeness priors,
    missing-mass posterior, dedup-as-inference — the spending question answered as a
    posterior with both coverage readouts.
 5. **The thread family** (subsumes D4): `assemble` SPEC amendment, email `_VERSION` bump
@@ -288,7 +345,10 @@ the "completion audit" the others gate it behind is undefined).
 
 **Owner keypress.** Items 3–5 have no in-tree text and only the owner can say what they
 were — or whether there were four. The completion audit reads against this list, so it
-should not read until this is settled.
+should not read until this is settled. **[DISCHARGED — no keypress was needed. `r27`
+(K4, 2026-08-28) resolved the numbering from four sites this reconstruction never opened,
+and the audit read on 2026-08-31 (`G-2`). The next section is the resolution; this one is
+left standing as the record of what was knowable from the sites it did open.]**
 
 #### The stage map, resolved — 2026-08-28 (K4 · r27)
 
@@ -312,14 +372,23 @@ agree with each other:
 | **0** | the riders — baseline re-record, doc-currency sweep, production readout | **DONE** (r11) |
 | **1** | the collapse ladder M2–M7; Appendix A signed at M7 | **DONE** 2026-08-26 (r12–r17) |
 | **2** | Phase 1.6 items 4–5 — the aggregate (2a) and thread families | **RETIRED from the programme by owner ruling 2026-08-31** (below) |
-| **3** | the proplang graduation | ruled **not** a completion condition; opens after the completion audit (owner ruling 2026-08-31, `RULINGS.md` `G-2`) |
-| **4** | the MVP exit test | **open** — see below |
+| **3** | the proplang graduation | ruled **not** a completion condition; **OPEN as Arc C** since the audit read (owner ruling 2026-08-31, `RULINGS.md` `G-2`) — item 3h below |
+| **4** | the MVP exit test | **CLOSED 2026-08-30 at 69 asks** (Conferral 2, ruling 4) — see below |
 
 That is five stages, 0–4, which is where "five DONE conditions" came from; item *N* is the
 close of Stage *N* once the riders are dropped, exactly as the reconstruction's most
 economical reading predicted. **The one thing it could not have known** is that Stage 3 is
 the migration — the sentence naming it is in `membrane-shadow.md`, which never says
 "programme stage".
+
+**THE COMPLETION PROGRAMME IS CLOSED — 2026-08-31** (the completion audit,
+[`r35`](./docs/unification/reports/r35-completion-audit.md), $0). Stages 0, 1 and 4 close
+it; Stage 2 is retired (`G-1`) and Stage 3 was never a condition (`G-2`). Nothing in the
+programme remains open. What that does **not**
+close is recorded with it: Stage 4's named question — *why a system that measures better is not
+the one being reached for* — which is a question about the objective, beyond what evidence can
+settle from inside the system (`RULINGS.md` §5). Work continues, but it is no longer *programme*
+work: capability is continuous and eval-gated under PRINCIPLES §9 as amended.
 
 **Stage 2 — RETIRED 2026-08-31 (owner ruling, `RULINGS.md` `G-1`).** The deferral below waited on the exit-test measurement; that measurement closed 2026-08-30 at 69 asks, the question was put, and the ruling is **retire, not redefine** — capability work is continuous and eval-gated under PRINCIPLES §9 as amended, so it needs no programme stage, and the thread transformations may still be built when evidence calls for them, never as a completion condition. **The programme closes at Stages 0, 1 and 4.** The original deferral and its three options stand below as the record they were.
 
@@ -350,6 +419,37 @@ So Stage 4's open question is no longer "is the agent as good as the outside opt
 declining to pay that cost is exactly what the owner did. That is the named next question,
 recorded rather than answered.
 
+**Stage 4 — CLOSED 2026-08-30 at 69 asks, and it ran after all.** The measurement went ahead
+under a VOI stopping rule (owner-ruled, PR #120): it closes when two consecutive rounds of ≥8
+mixed-class asks add no new failure signature and keep the dominant-class ranking. Rounds 7 and
+8 both read dry, so it stopped at **69 lifetime asks**, six days inside the hard cap — eight
+rounds, each under a manifest frozen and hashed before its first ask.
+
+**The headline is zero wrong commits in 69 asks**, including on the strongest miscommit trap
+built during the measurement (a question whose answer does not exist, with a plausible wrong
+value adjacent to the very field label the question names, in four documents). The failure mode
+is uniformly *silence*, never *error* — the calibration property the typed arm was adopted for.
+The misses concentrate in three classes: **C** gold-leads-below-bar 13 · **normalisation** 12 ·
+**B** narrative-inclusion 9.
+
+[`Conferral 2`](./docs/unification/conferrals/conferral-2.md) (2026-08-30) took four rulings on
+it; the three that bear on the reading are below, and the two that commissioned readings
+have since read:
+
+- **The Stage-4 closure is ACCEPTED as the exit read** (ruling 4), with levers before proplang
+  and the risk named: levers built on the credence seam are work the ruled successor may reshape.
+- **C was HELD pending a $0 bar reading** (rulings 1–2), which read the same day:
+  [`r32`](./docs/unification/reports/r32-bar-reading.md) **PRICED** — the deployed bar is
+  p† = 0.8522 at the rows in question (0.8369 today), not the declared 0.90, with the reaction
+  stream the whole difference and all four attenuation candidates refuted. **C therefore gets no
+  lever:** the window's highest abstained leader is 0.8282, *below* the deployed bar, and only 2
+  of 70 abstains sit within 0.05 of it — **C is a dispersion problem, not a threshold problem**,
+  the same finding the normalisation class reaches from the other side. The bar's own drift is a
+  separate ruling (2026-08-31): **MONITOR ONLY**, armed by `r33` in the weekly readout.
+- **All five instrument defects are fixed before any successor measurement** (ruling 3) — `r33`.
+
+So the exit test is closed *and* read; the question above it stands, unanswered and unclaimed.
+
 ### Phase 2 — Goals/utility model + first agent loop (read-only) · future
 - Design the **goals/utility representation** (the unbuilt faculty) — how the agent learns and
   stores what the owner values. Owed before any write-action (PRINCIPLES §3).
@@ -366,7 +466,10 @@ then the 661 GB encrypted `more/` (needs keys).
 PRINCIPLES §15 is the canonical list, with criteria:
 - **The spine** (Phase 2): pi-mono vs a Python agent loop vs Claude Code as an interim loop. One
   candidate composition is sketched in [`docs/candidates/brain-design.md`](./docs/candidates/brain-design.md).
-- **The goals/utility representation** (Phase 2).
+- **The goals/utility representation** (Phase 2) — still open as PRINCIPLES §15 states it
+  ("the form the expected-utility model takes"). Note what is *not* open: the **answer**-utility
+  gauge is built and deployed (`core/utility.py`, the faculty table above). What the decision
+  covers is the model beyond it — goals, plans, and the write-actions those gate.
 - **The CRM rebuild** — #1/#2/#5/#6 resolved by the adopted framework (recorded in
   [`docs/crm-architecture-decisions.md`](./docs/crm-architecture-decisions.md)); #3
   (mutable notes) and #4 (alias dedup) remain open.
@@ -390,5 +493,16 @@ PRINCIPLES §15 is the canonical list, with criteria:
   `python scripts/ingest_sources.py` is idempotent (re-run = no new catalogue rows).
 - **Phase 1.5:** a `FAILURES.md`-traced change moves a real dogfood miss (e.g. an image-PDF becomes
   searchable after OCR routing); idempotent re-ingest; no FTS-ranking regressions.
+- **Phase 1.6 (the active phase):** every checkpoint is **pre-registered** — criteria, the rule
+  table and the numeric consequence committed BEFORE the instrument exists and before any
+  `src/` change (`M-3`); each load-bearing predicate verified **RED by mutation** before it is
+  read (`G-3`); each universe named with its size. A lever that changes the decision path is
+  read by a **priced gate run** against its frozen conjuncts (`run_eval --gate`), a $0 replay
+  of an existing record, or both. **The outcome is bound by the consequence branch the
+  checkpoint froze before it read** (`M-3`) — which has meant STOP-for-a-ruling as often as
+  iterate (`r31` FAILed K6 and the arc closed; run 13 FAILed and the JOIN was reverted); a
+  bar is never softened after the fact. Arc C alone carries `A-2`'s stricter rule, that a FAIL
+  means iterate and re-run rather than park. The hard clause `M-1` overrides a PASS:
+  **no lever ships while it makes a named wrong-commit class worse.**
 - **Phase 2:** the read-only loop renders a daily briefing; credence asks/auto-proceeds appropriately
   on read-only capabilities; a goals/utility representation exists and is consulted.
