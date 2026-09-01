@@ -77,3 +77,30 @@ H2 are what this checkpoint **tests**.
 ## THE READING
 
 *(follows; nothing above this line changes)*
+
+### C1's discriminating experiment and its named winner — frozen before it ran
+
+Two probes had already established the ground (their results are in the reading below): the
+writable name may **never** appear in a tick's features (`Host.hs:399`, `feature/assignment
+collision`, both arms), so the only satisfiable evidence path at HEAD is a **menu-carrying**
+evidence tick, on which the engine picks the act and the fold conditions at *its* choice. The
+belief does move under it.
+
+That makes H1 discriminable. Declare `u_abstain = 90`, `u_correct = 100`, `u_wrong = 0`, and
+both information actions priced out (`lambda_int = kappa_att = 1000`, so `gather` and `ask` are
+worth about −900). Then feed **`evidence = 0`** repeatedly, which drives the predictive down at
+the act the engine keeps choosing — the head — while the other options keep a belief nearer the
+prior.
+
+At that point the two accounts of selection disagree, in opposite directions:
+
+| account | rule it applies | act it names |
+|---|---|---|
+| **correct (arm A's `choose`)** | argmax over rows of `E_{b_a}[u(y; a)]`: abstain 90, respond ≈ 50, gather/ask ≈ −900 | **abstain** |
+| **H1 (HEAD's `chooseEU`)** | every row rises in `y`, so `Gt vC vI` reduces to `p_chal > p_inc` — a comparison of **beliefs**, with the incumbent's own utility row never consulted | **gather** — the first challenger whose belief beats the depressed head's |
+
+**The prediction, named in advance: arm A holds `abstain` at every tick; arm B leaves the head
+for `gather`** — an option this utility prices at about −900 — as soon as the head's predictive
+falls strictly below the others'. If arm B instead holds `abstain` throughout, H1 is **refuted**
+under C1 unless the per-option beliefs are shown never to have separated, which C6 requires be
+measured rather than assumed.
