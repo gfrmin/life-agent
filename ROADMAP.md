@@ -455,7 +455,10 @@ then the 661 GB encrypted `more/` (needs keys).
 PRINCIPLES §15 is the canonical list, with criteria:
 - **The spine** (Phase 2): pi-mono vs a Python agent loop vs Claude Code as an interim loop. One
   candidate composition is sketched in [`docs/candidates/brain-design.md`](./docs/candidates/brain-design.md).
-- **The goals/utility representation** (Phase 2).
+- **The goals/utility representation** (Phase 2) — still open as PRINCIPLES §15 states it
+  ("the form the expected-utility model takes"). Note what is *not* open: the **answer**-utility
+  gauge is built and deployed (`core/utility.py`, the faculty table above). What the decision
+  covers is the model beyond it — goals, plans, and the write-actions those gate.
 - **The CRM rebuild** — #1/#2/#5/#6 resolved by the adopted framework (recorded in
   [`docs/crm-architecture-decisions.md`](./docs/crm-architecture-decisions.md)); #3
   (mutable notes) and #4 (alias dedup) remain open.
@@ -479,5 +482,13 @@ PRINCIPLES §15 is the canonical list, with criteria:
   `python scripts/ingest_sources.py` is idempotent (re-run = no new catalogue rows).
 - **Phase 1.5:** a `FAILURES.md`-traced change moves a real dogfood miss (e.g. an image-PDF becomes
   searchable after OCR routing); idempotent re-ingest; no FTS-ranking regressions.
+- **Phase 1.6 (the active phase):** every checkpoint is **pre-registered** — criteria, the rule
+  table and the numeric consequence committed BEFORE the instrument exists and before any
+  `src/` change (`M-3`); each load-bearing predicate verified **RED by mutation** before it is
+  read (`G-3`); each universe named with its size. A lever that changes the decision path is
+  read by a **priced gate run** against its frozen conjuncts (`run_eval --gate`), a $0 replay
+  of an existing record, or both; `docs/unification/RULINGS.md` `A-2` binds the outcome — FAIL
+  means iterate under a fresh pre-registration, never a softened bar. The hard clause `M-1`
+  overrides a PASS: **no lever ships while it makes a named wrong-commit class worse.**
 - **Phase 2:** the read-only loop renders a daily briefing; credence asks/auto-proceeds appropriately
   on read-only capabilities; a goals/utility representation exists and is consulted.
