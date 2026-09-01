@@ -105,9 +105,11 @@ measured rather than assumed.
 
 ### Verdict
 
-**Branch 1 fires. Item 4 is a defect in OUR world declaration, not in the engine — and the
-repair is two declared rows, measured to restore utility-driven selection at HEAD on every
-case r42 read as dead.** No upstream issue is filed, and the case for one collapsed rather than
+**Branch 1 fires. Item 4 is a defect in OUR world declaration, not in the engine — and its
+repair is ONE declared row (a `clock`), measured to restore utility-driven selection at HEAD
+on every case r42 read as dead.** A second row (an `act` guard) repairs a **distinct** defect
+found here — an act-blind belief — and is not what makes the utility live; the two are gated
+separately by r44. No upstream issue is filed, and the case for one collapsed rather than
 strengthened: **the engine has already registered this exact finding as `OB-24` and ruled its
 remedy**, which our world simply does not declare.
 
