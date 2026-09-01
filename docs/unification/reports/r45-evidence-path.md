@@ -331,3 +331,51 @@ instead of being resolved by picking whichever branch reads better (`M-4`):
 
 The decision this forces is recorded as **`GD-16`**, with the condition that would reverse
 it named there.
+
+## Part B — P1
+
+### B1 — the deployed replay path could not replay a single row
+
+The first C7 backfill **died on row 1**, and the failure is the most useful thing in Part B:
+
+```
+MembraneError: unparsable reply line: '{"error": "tick refused: missing declared ["act"]"}'
+  session.boot -> observe_verdict -> _tick({"features": ..., "evidence": y})
+```
+
+`session.observe_verdict` and `observe_outcome` send a **menu-less** evidence tick. HEAD
+requires the declared namespace covered exactly; `act` is in the namespace; and
+`shadow_features` deliberately never emits `act`, because padding it in is a
+`feature/assignment collision` on both arms (A4). The menu is the only supplier left — so
+**every** evidence tick was refused and `session.boot()` could not replay against HEAD at all.
+
+Part A's own probes had missed this because they hand-built their ticks *with* a menu. That
+is precisely the substitution `M-7` names, committed by the instrument that was supposed to
+be checking for it, and it was caught only by driving the deployed surface end to end. The
+client fix from A5 earned itself here too: the failure arrived as a legible `MembraneError`
+naming the refusal, where before it would have been a bare `JSONDecodeError` from
+`json.loads`.
+
+**The repair, measured free on the control before being taken.** Evidence ticks now carry
+`"menu": [ACT_NAME]`. On arm A, six evidence ticks followed by a decide return a
+byte-identical `p1` (`0.496689261820934`) and `entropy_bits` (`4.073428751831122`) with and
+without the menu — so this **restores** the replay rather than re-writing what it folds, the
+same "provably a no-op on arm A ⇒ safe forward repair" standard r42 set for items 1–2. The
+act the engine then picks is discarded, and A2 is what makes discarding it free.
+
+### B2 — the skip census (C7's first half)
+
+```
+UNIVERSE (C6)
+  decisions            3865      reactions raw          71
+  reactions deduped      70      claude verdicts raw   180
+  folded                250      verdict_replay rows   250    (census binds boot_snapshot)
+  outcome_replay rows     0      n_source_records     4116
+
+SKIP CENSUS: 0 skipped -> unexplained skips = 0
+```
+
+Every reaction that survives dedup routes to a decision and decodes through `VERDICT_Y`, and
+every Claude verdict either routes or is superseded by a declared-precedence owner verdict.
+Nothing is dropped silently. `outcome_replay` is empty because no warm-vectors directory is
+passed — named here rather than left to look like an absence of outcomes.
