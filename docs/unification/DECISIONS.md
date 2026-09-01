@@ -558,3 +558,41 @@ exists to stop.
 **Registered alongside:** `M-24` — a conditional in the register is a trigger you own.
 
 **Reaction.** *(open)*
+
+## GD-16 · 2026-09-01 · the backfill folds pooled, against C3's letter, because C3's ground is refuted
+
+**The fork.** r45 froze C3: *"Option 2 is admissible only if the engine's chosen act matches
+the recorded act on ≥ 95% of a sample of ≥ 100 replayed decide rows. Below that it is
+disqualified as a corruption and said to be one."* Measured: **0/250**. Option 2 fails its
+bar by the widest margin available. But r45's A2 measured, on both arms and with the
+mutation control RED, that **the act never enters the fold at all** — four pinned acts give a
+byte-identical `p1`. So the criterion disqualifies option 2 *as a corruption*, and there is
+no corruption: options 1 and 2 produce the same posterior over the same rows.
+
+**Decided: the backfill folds POOLED (option 2's shape), and C3 stands recorded as FAIL.**
+Both halves are on the record; neither is softened to make the other comfortable.
+
+**Why.** Applying C3's letter would force option 1, and option 1 **cannot do P1's job**: one
+session per act is one belief per act (two here — `abstain` 162, `respond` 88 under
+`world.REAL_TO_MEMBRANE`), while the live shadow is a single session that must decide
+against a single belief. C3's letter would therefore buy nothing real and lose the pooled
+fold, on the strength of a quantity A2 proved causally inert. Pooled is also the *historical*
+shape: `session.boot()` has always replayed one session with the full menu, so every row
+already in `shadow.jsonl` was produced this way. Restoring accrual pooled reproduces the
+recorded semantics exactly; segmenting would depart from them.
+
+**What would reverse this.** The inertness is the whole ground, and it is contingent on the
+declaration. **If r46's `act` guard row lands** — r45's A4 measured that `act` as a guard on
+a *discriminating* grid, with `act` removed from the menu, makes the fold condition on it
+(arm B gap +3.37 bits) — then the act stops being inert, C3's premise becomes live, and
+**this decision must be re-read before any further backfill.** Recorded as a standing
+condition on r46, not as a footnote.
+
+**Alternatives rejected.** *Follow C3's letter and segment* — buys a criterion's form at the
+cost of its purpose, and delivers no restored belief. *Declare C3 satisfied on the grounds
+that inertness makes agreement irrelevant* — that is renegotiating a frozen bar after seeing
+the number, which is the one thing pre-registration exists to prevent; C3 reads FAIL and says
+so. *Take branch 2 (publish the stream as unfoldable and accrue live-only)* — false on the
+measurement: the stream folds, and the C3 run folded all 250 rows to prove it.
+
+**Reaction.** *(open)*

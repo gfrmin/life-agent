@@ -261,3 +261,73 @@ later, exactly as `GD-10` suspected when it refused to infer.
 
 The remedy is already what C9 prescribes for its own reasons: the variable goes in the
 deployed unit's `.env` **and** in `.env.example`, so the next restart carries it.
+
+## C3 — option 2's bar: **FAIL at 0/250**, and the reason is structural
+
+The full recorded stream was replayed on arm B — every row `boot_snapshot` yields, folded
+in order, the engine's chosen act read off each evidence tick.
+
+```
+UNIVERSE (C6): decisions.jsonl rows joined to a decodable verdict = 250
+  boot_snapshot len(verdict_replay) = 250   n_source_records = 4116
+  join binds boot_snapshot: OK          (asserted before measuring, not after)
+
+C3: engine-chosen act == recorded act on 0/250 = 0.0000   bar 0.95 -> FAIL
+  recorded abstain        (162)  -> engine gather
+  recorded report          (87)  -> engine gather
+  recorded report_scoped    (1)  -> engine gather
+```
+
+**The engine chose `gather` on 250 of 250 rows.** Not a near miss — a constant.
+
+Corrected en route: the first comparison matched raw strings, but `report`/`report_scoped`
+are the *executor's* vocabulary and can never be returned by a world whose affordances are
+`{abstain, gather, ask, respond}`. `world.REAL_TO_MEMBRANE` is the ONE declared projection
+between them and is now bound rather than re-spelled. It does not change the answer —
+nothing maps to `gather`, so both readings give 0/250 — but a census that gets the right
+number through the wrong constant is right by luck (the r10 lesson).
+
+### Why it is a constant
+
+Host-side, from the same utility the world declares — `argmax_action` over the credence
+range, for the declared defaults and for the **deployed** `u_bar` read off the final
+recorded boot row:
+
+| `u_bar` | `abstain` wins | `gather` wins | `respond` wins |
+|---|---|---|---|
+| declared defaults | p1 ≤ 0.020 (2.1%) | **0.021 – 0.997 (97.7%)** | p1 ≥ 0.998 (0.3%) |
+| deployed | p1 ≤ 0.033 (3.4%) | **0.034 – 0.996 (96.3%)** | p1 ≥ 0.997 (0.4%) |
+
+`gather` is the argmax across **96–98% of the credence range**, at the measured operating
+rate (0.857) included. r44's W1 established 59/59 that the engine tracks `argmax_action` at
+its own `p1`, so `gather` on 250/250 *implies* `p1` stayed inside that band throughout —
+stated as the inference it is, not as a second measurement.
+
+**This is `world.py`'s own registered flag, now measured.** `utility_by_action` prices
+`gather`/`ask` as MYOPIC PERFECT INFORMATION and says so in its docstring: *"this
+OVERVALUES information, deliberately and namedly… whether that dissolves the v1 gather-bar
+pathology is an EMPIRICAL question the v2 shadow answers."* **It does not dissolve it.** The
+v2 shadow gathers essentially always.
+
+### What C3 therefore decides — and what it does not
+
+C3 is recorded **FAIL as frozen**: option 2 does not meet its bar, and no reading below
+softens that. But the criterion disqualifies option 2 *"as a corruption"*, and **A2 measured
+that there is no corruption to have**: the act does not enter the fold on either arm, so
+options 1 and 2 produce the *same posterior over the same rows*. The disqualifying quantity
+is causally inert with respect to the thing the backfill is for.
+
+The frozen disjunction is therefore dissolved rather than satisfied, and this is said plainly
+instead of being resolved by picking whichever branch reads better (`M-4`):
+
+- **Option 1 preserves the recorded act but cannot serve P1.** One session per act means one
+  belief per act — two here, `abstain` (162) and `respond` (88) under the declared
+  projection. The live shadow is a single session that must decide; it cannot decide against
+  two beliefs. Option 1 restores no accrual.
+- **Option 2 serves P1 and is the historical shape** — `session.boot()` has always replayed
+  one pooled session with the full menu, which is how every row already in `shadow.jsonl`
+  was produced — but it fails C3's number.
+- **Option 3 is r46's lever**, cross-checked here (A4) and not built.
+
+The decision this forces is recorded as **`GD-16`**, with the condition that would reverse
+it named there.
