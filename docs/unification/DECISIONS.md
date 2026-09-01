@@ -611,7 +611,7 @@ published whether or not the rule moves.
 declared world, folded incrementally with a decide timed at each checkpoint — sound because a
 decide provably does not advance the evidence index (`session.py:157`; confirmed live, `t = 250`
 across four probes). Engine **CPU** (`utime + stime`), not wall clock, because the box was at load
-~14 on 8 cores throughout. **`r44`'s 297 ms reproduces at depth 0**, so the bench is confirmed and
+~14–19 on 8 cores throughout, from the owner's own work rather than the shadow's. **`r44`'s 297 ms reproduces at depth 0**, so the bench is confirmed and
 **depth is the only variable that changed**.
 
 | fold depth | decide, engine CPU | decide, wall | note |
@@ -645,8 +645,11 @@ never on the decision path, so **no user-facing reply waits on this** — the co
 shadow's own worker, and overflow is counted as drops rather than backpressure. Two operational
 facts are published rather than discovered later: a bridge restart re-pays the **whole** boot fold
 (~19.5 min wall / 17.5 min CPU for 250 rows) before the shadow serves anything, and both costs
-grow with the streams. If either proves disruptive the rollback is one command
-(`enable.sh rollback`) and restores the recorded pre-state exactly (`M-19`).
+grow with the streams. If either proves disruptive the rollback is three steps and restores the
+recorded pre-state exactly (`M-19`): remove the installed binary, remove the
+`LIFE_AGENT_MEMBRANE_COMMAND` line from the deployed `.env`, restart the bridge. Stated
+here in full because the session's launcher script is a scratch artefact, not something a
+later reader of this register can be sent to look for.
 
 **Alternatives rejected.** *Snap the grid to sixteenths now* — `GD-15`'s grounds 2 and 3 are
 unmoved by this measurement, and it is r46's frozen scope; acting now would be the reflex `M-4`
