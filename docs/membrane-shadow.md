@@ -1299,3 +1299,17 @@ What "gated-mandatory" binds, precisely:
 > on **P0** (the engine, pinned, byte-compat-checked per §15's own procedure) and **P1**
 > (accrual restored with the 21-day gap declared as a segmentation boundary — `M-14`), and
 > reaches §17.6's E1 re-earn path only after. See `GD-10`.
+>
+> **Second correction (2026-09-01, `r43-selection-contract`; `GD-11` → `GD-12`).** The bars
+> above could not have been read at all against the current engine, and the cause was **our own
+> world declaration**. At HEAD, `Membrane.chooseEU` builds one environment from the
+> *challenger*, so both sides of every comparison read the same utility row and per-action
+> **levels** never enter — only beliefs can differ, and this world's beliefs cannot: `act` is
+> one of exactly two names (with `t`) in the 19-name namespace with no guard row, so no
+> enumerated hypothesis conditions on it. Every option ties and the option-space head fires.
+> Declaring a **`clock`** row routes selection to the substitution path (`pickWire`) and the
+> world becomes utility-driven at HEAD on 5 of 5 cases, three of whose winners are not the
+> head; an **`act` guard row** is a second, independent repair restoring act-conditionable
+> belief. Until both land in the declaration, **a §18 bar compares arm A's policy against a
+> constant `abstain`.** The engine's own register carried the mechanism as `OB-24` throughout
+> (`M-23`).
