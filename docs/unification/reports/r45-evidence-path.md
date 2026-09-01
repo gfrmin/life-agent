@@ -120,9 +120,15 @@ variants each:
 | world variant | arm | evidence tick, no menu | evidence tick + menu | decide |
 |---|---|---|---|---|
 | shipped | A | accepted | accepted | accepted |
+| act pinned to a one-point menu grid | A | accepted | accepted | accepted |
+| `act` guard row added | A | accepted | accepted | accepted |
 | shipped | **B** | **refused** | **accepted** | accepted |
-| act pinned to a one-point menu grid | B | **refused** | **accepted** | accepted |
-| `act` guard row added | B | **refused** | **accepted** | accepted |
+| act pinned to a one-point menu grid | **B** | **refused** | **accepted** | accepted |
+| `act` guard row added | **B** | **refused** | **accepted** | accepted |
+
+All six cells measured (3 world variants × 2 arms × 3 tick shapes = 18 replies, each read
+whole and recorded in `matrix.json`). `models` moves with the declaration exactly as r42's
+enumerator predicts: arm A 2393 → 2465 with the act guard, arm B 960 → 1016.
 
 HEAD's refusal, quoted exactly (C1):
 
