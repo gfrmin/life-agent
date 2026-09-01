@@ -180,6 +180,17 @@ the P2 re-run:**
   the question does not arise for the consumer as built; **if the swap discretises**, the
   bench's "sixteenths" rule applies from day one, and P3's 100× lever is avoidable by
   declaration.
+
+  > **The antecedent fired, 2026-09-01 (`GD-15`) — this bullet's reading is untouched; its
+  > premise is not.** `r44` declared `codebooks.theta` (HEAD's door requires it), so grid values
+  > *are* declared on the wire as of `7a0d098`, and the conditional this bullet wrote came due.
+  > The frozen rule emits crossings and quantiles at full double precision — 49–56-bit
+  > denominators — which is the bench's own P3 regime (`~107 bits per weight per fold vs ~4–8
+  > for sixteenths`). The sixteenths rule was **not** applied, and the reason it is not being
+  > applied by reflex is that it contradicts two clauses `r44` froze deliberately (a rung *at*
+  > the operating rate; a crossing always survives the collision) and reintroduces engine `#19`'s
+  > placement hazard. Scoped to r45 with frozen criteria and a $0 measurement, because depth —
+  > the thing that multiplies the lever — only accrues once P1 restores accrual.
 - *Consequence for the P2 re-run (bench PROPOSED 2, QUESTIONS 1/6):* a P2 built as
   `UConst + UWalk over one grid` is not a faithful world for this consumer; the truthful P2 is
   either (α) the consumer's *actual* per-ask folds — a Beta-Bernoulli at depth ~10³, a
