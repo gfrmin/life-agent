@@ -404,3 +404,21 @@ start**, growing with the stream. It is safe (the supervisor boots inside its da
 never blocks on a slow boot) but it is not free, and it is the same fold-depth quantity
 `GD-15` is about. Second, the clock r44 declared forces a preposterior on every decide —
 297 ms against 135 ms — paid on the worker, never in jarvis's reply.
+
+### B4 — what C7 did and did not verify
+
+Disclosed rather than left implicit:
+
+- **The double run used the world's declared-default `u_bar` (`{}`), not the live posterior.**
+  The live shadow is constructed with the real posterior, which moves the grid: both yield
+  **n = 8 and `models` 960**, but the two *crossing* rungs shift (`0.02 → 0.033879`,
+  `0.997778 → 0.996163`) and the clock price reads `10.830…` rather than `11.0`. So C7
+  verifies the **mechanism's** determinism, not the live numbers; the live boot record is
+  what verifies those, which is exactly what C9 asks for.
+- **`outcome_replay` is empty on both paths, and that is checked rather than assumed.**
+  `LIFE_AGENT_MEMBRANE_WARM_VECTORS` is unset, so `config.membrane_warm_vectors_dir()`
+  returns `None` and the live boot folds precisely the 250 verdict rows the backfill
+  verified — not a larger set the backfill never saw.
+- **The bridge disables the shadow on any construction failure** (`server.py`'s
+  `except Exception … return None`), and `submit_*` is `put_nowait` on a bounded queue with
+  overflow counted as drops. A slow or failing boot degrades the shadow, never the ask path.
