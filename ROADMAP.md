@@ -225,17 +225,20 @@ Bayesian Ask rather than deterministic pipelines. Remaining program, in dependen
    NOT a completion condition. The resolved stage map below governs; this sentence is left
    standing as the record it was. `r35` §1 D-4 claimed this correction and enacted only the
    table rows, which is why it is being made here.]**
-3g. **The ruled queue — r28 → r39 (2026-08-28 → 08-31), post-programme.** The readings
-   themselves are $0; the gate runs some of them bought (runs 19–23) cost cents each and
-   every report carries its own figure. Once the ladder closed, work continued as
-   pre-registered checkpoints against the §14 ledger rather than programme stages.
+3g. **The ruled queue — r28 → r39 (2026-08-28 → 08-31), after the collapse ladder closed.**
+   Not *post-programme*: the queue straddles the programme's own close, and `r32`/`r33` are
+   Conferral 2's rulings on the Stage-4 measurement — programme work, not successors to it.
+   The readings themselves are $0; the gate runs they bought are **runs 20–23**, cents each,
+   every figure in its own report. (Run 19 belongs to `r21`/CP-D, fired 2026-08-26 and
+   stopped before its first conjunct; its artefacts are voided.)
    **`r28`** decomposed what the gate measures:
    Δ = Δ_answers + Δ_spend reads 0.019 + 0.495 on run 18, so **96% of the adoption margin is
    the price of the baseline arm** — quote the split, never the total. **`r29`–`r31`** ran the
    units lever (the answer-shape census, then the INTERVAL claim priced inside the argmax) and
    **closed it FAIL**: the interval is dominated on both sides and never fires; `r30b` stays in
    tree measured-dormant by ruling, nothing deployed. **`r32`/`r33`** priced the commit bar's
-   drift (above) and fixed the exit measurement's five instrument defects. **`r34` → `r38`**
+   drift (below, under Stage 4) and fixed the exit measurement's five instrument defects.
+   **`r34` → `r38`**
    repaired the value-join — M6's one declaration of the value-join tested identity while five
    other call sites used a different key, two declarations of one relation surviving M6 because
    they carried different §-numbers — and **run 23 PASSED on all five frozen criteria, so it is
@@ -249,7 +252,8 @@ Bayesian Ask rather than deterministic pipelines. Remaining program, in dependen
    at the decide seam, `docs/membrane-shadow.md` §18: gated-mandatory, FAIL means iterate and
    re-run, never park). The ladder is `GD-10`'s: **P0** (engine pinned) → **P1** (accrual
    restored) → §17.6's **E1** re-earn → §18's bars → §11's exit criteria ("credence fully
-   retired"). Read so far, all $0: **`r40`** found the premise stale — no engine binary on this
+   retired"). Read so far — all $0 except `r45`, whose Part B changed the deployed box:
+   **`r40`** found the premise stale — no engine binary on this
    box and the shadow dead since 2026-08-10; **`r41`** pinned both engine arms and read P0;
    **`r42`** measured HEAD's door to differ in four ways, not the one named from source;
    **`r43`** found the blocker was **our** declaration, not the engine's; **`r44`** landed the
@@ -258,12 +262,18 @@ Bayesian Ask rather than deterministic pipelines. Remaining program, in dependen
    with the 2026-08-10 → 09-01 gap recorded in the stream as a segmentation boundary because
    the engine's model space changed underneath it. Three constraints found en route bind what
    comes next: the engine chooses `gather` across 96–98% of the credence range under both the
-   declared and deployed utility (the v1 gather-bar pathology is **not** dissolved — a
-   precondition on reading any §18 bar); the fold-depth cost is real and biting (~20 s per
-   mirrored decide at depth 250 against 297 ms at depth 0, `GD-17`, which falsifies `GD-15`'s
-   first ground); and the one engine-side ask is filed upstream as demand, `proplang#24`
-   (`GD-14`). **Next rung: `r46`** — act-conditioning as `r45` reframes it, `GD-15`'s grid
-   precision now with its number, and the categorical twin, each gated separately.
+   declared and deployed utility (the v1 gather-bar pathology is **not** dissolved; the
+   precondition this puts on any §18 bar is that it **state which surface it reads** — the raw
+   affordance or `coarse.map_action` — and establish that surface's distribution first, `r45`
+   having measured the raw one and not the mapped one); the fold-depth cost is real and
+   biting (~20 s wall / **6.8 s engine CPU** per mirrored decide at fold depth 250, against
+   `r44`'s 297 ms bench at depth 0 — CPU is the comparable pair, the box being loaded;
+   `GD-17`, which falsifies `GD-15`'s first ground. The sweep established 0 → 100 only: its
+   own depth-250 checkpoint was never reached, so the 250 figure is the live shadow's, from
+   a different process); and the one engine-side ask is filed upstream as demand,
+   `proplang#24` (`GD-14`). **Next rung: `r46`** — act-conditioning as `r45` reframes it,
+   `GD-15`'s grid precision now with its number, and the categorical twin, each gated
+   separately.
 4. **[RETIRED 2026-08-31 — `G-1`. Items 4 and 5 *were* Stage 2; the aggregate family was
    additionally deleted by K1 as "family routing in disguise", its transformations kept.
    The thread transformations may still be built when evidence calls for them, never as a
@@ -423,7 +433,8 @@ The misses concentrate in three classes: **C** gold-leads-below-bar 13 · **norm
 **B** narrative-inclusion 9.
 
 [`Conferral 2`](./docs/unification/conferrals/conferral-2.md) (2026-08-30) took four rulings on
-it, and two have since read:
+it; the three that bear on the reading are below, and the two that commissioned readings
+have since read:
 
 - **The Stage-4 closure is ACCEPTED as the exit read** (ruling 4), with levers before proplang
   and the risk named: levers built on the credence seam are work the ruled successor may reshape.
@@ -487,8 +498,11 @@ PRINCIPLES §15 is the canonical list, with criteria:
   `src/` change (`M-3`); each load-bearing predicate verified **RED by mutation** before it is
   read (`G-3`); each universe named with its size. A lever that changes the decision path is
   read by a **priced gate run** against its frozen conjuncts (`run_eval --gate`), a $0 replay
-  of an existing record, or both; `docs/unification/RULINGS.md` `A-2` binds the outcome — FAIL
-  means iterate under a fresh pre-registration, never a softened bar. The hard clause `M-1`
-  overrides a PASS: **no lever ships while it makes a named wrong-commit class worse.**
+  of an existing record, or both. **The outcome is bound by the consequence branch the
+  checkpoint froze before it read** (`M-3`) — which has meant STOP-for-a-ruling as often as
+  iterate (`r31` FAILed K6 and the arc closed; run 13 FAILed and the JOIN was reverted); a
+  bar is never softened after the fact. Arc C alone carries `A-2`'s stricter rule, that a FAIL
+  means iterate and re-run rather than park. The hard clause `M-1` overrides a PASS:
+  **no lever ships while it makes a named wrong-commit class worse.**
 - **Phase 2:** the read-only loop renders a daily briefing; credence asks/auto-proceeds appropriately
   on read-only capabilities; a goals/utility representation exists and is consulted.
