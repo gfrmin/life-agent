@@ -207,6 +207,24 @@ repairs with two purposes — the clock restores *utility-driven selection*, the
 swept 0 → 10⁶ at this feature vector with the choice invariant and the internal `think` act
 never winning; that is a statement about this vector, not a general one.
 
+### Backwards compatibility of the two repair rows — an r44 precondition, measured here
+
+r42 established that items 1–2 are free on the control (arm A ignores `codebooks` and answers a
+full-coverage tick byte-identically), which is what lets one declaration serve both arms. The
+same question for the two new rows, over a 5-tick session on arm A:
+
+| row added | arm A `models` | arm A hello identical | arm A ticks byte-identical |
+|---|---|---|---|
+| **`clock`** | 2393 → **2393** | **yes** | **yes** |
+| `act` guard | 2393 → 2681 | no | no — `entropy_bits` moves at the first tick |
+| both | 2393 → 2681 | no | no |
+
+**The clock row — the one that actually repairs item 4 — is a byte-identical no-op on the
+control.** So it joins items 1–2 in the "verifiable before the swap, one declaration for both
+arms" class. The act guard row is not: it enlarges the hypothesis space on both arms and moves
+arm A's readouts (the chosen act held at `gather` in this session, but that is one session, not
+a claim). r44 must therefore justify and gate the two rows **separately** — they are not a pair.
+
 ### What this changes for item 3 — the evidence path is narrower than r42 could see
 
 Two facts, both measured on **both** arms:
