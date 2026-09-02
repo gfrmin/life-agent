@@ -68,13 +68,15 @@ pass-through and a probe selection **identically** (`real_effector: "gather", de
 covers both), which is why `mapped_echo` was frozen as a criterion rather than left to be
 inferred from the effector distribution.
 
-## 3. …but the surface cannot express a commit, and the reason is a number
+## 3. …but its commit branch has never once been reached, and the reason is a number
 
 The mapped terminal act is a **step function of the engine's `p1` with exactly one
 threshold**, and the sweep locates it:
 
 - Below the threshold the 116 exhausted rows map to `abstain`; at and above it they map to
-  `report`. Nothing else moves — the 489 probe-selecting rows are p1-independent.
+  `report`. Nothing else moves: the other 489 rows — **385 agreement echoes and 104 engine
+  probe selections**, a decomposition verified row-by-row rather than subtracted — never
+  reach the branch that reads `p1`.
 - The threshold is **p1 = 0.897015**, identical on all 605 rows because the corpus carries a
   single elicited `u_bar`. It is not a tuning constant: it is
   `|u_wrong| / (u_correct + |u_wrong|)` = 8.710166 / 9.710166, and it sits there **because
@@ -92,14 +94,21 @@ arms, and it holds on the **mapped** surface too, not only on the raw commit pol
 corpus's `u_wrong` of −8.710 puts the same bar at 0.897015; the two numbers are one
 quantity elicited twice.
 
-**So the honest disposition is Branch A with a named ceiling.** The mapped surface is
-readable and varies with engine signal, so a §18 bar **can** be read on it — but that bar can
-only price *gather-more versus withhold*. **A commit is not in its range**, and no sharpening
-of the instrument changes that: only a `p1` above 0.897 would, which is exactly §17.6's
-*"the fix is always a sharper `p1`, never a softer bar"*, now carrying its distance — the
-ceiling sits **0.0264 below** the threshold, and the new era's 0.8621 sits 0.0349 below.
+**So the honest disposition is Branch A with a named ceiling — and the ceiling is
+empirical, not structural.** Stated precisely, because the loose version is wrong in a way
+that matters: the mapped surface **can** express a commit — the branch exists and fires at
+`p1 ≥ 0.897015` — but **no recorded row has ever reached it**, so on all evidence to date the
+surface has only ever produced `{gather, abstain}`. A §18 bar read on it today therefore
+prices *gather-more versus withhold* and **nothing about committing**, not because committing
+is outside the surface's range but because the engine has never gone there.
 
-## 4. `real_effector` names two different quantities depending on `kind`
+That distinction sets the successor's task. A bar written now must say the commit column is
+empty and why; and the thing that would fill it is exactly §17.6's *"the fix is always a
+sharper `p1`, never a softer bar"* — now carrying its distance, **0.0264** at the ledger
+ceiling and **0.0349** in the new era. Those are small numbers, and that is the news: this is
+a near miss, not a chasm.
+
+## 4. `real_effector` names three different quantities depending on `kind`
 
 Read from the writers, not the name. On `decide` it is `dec.get("effector")` — the deployed
 daemon's act. On `gate` it is the literal `"abstain"`. On `cat` it is the decide item's, again
@@ -124,20 +133,28 @@ rounded away:** `tests/pkm/test_extract.py`'s
 `test_retry_failed_reruns_and_flips_failed_artifact_to_success`, a pkm extraction test this
 leg does not touch (the diff is `src/life_agent/membrane/` only). It passes in isolation and
 passes as a whole module on clean `master`, so it is a flake under full-suite load rather
-than a regression — stated here because "3 143 passed" alone would read
-as a clean run, and it was not one.
+than a regression — stated here because "3 143 passed" alone would read as a clean run,
+and it was not one.
 
 ## 6. Consequence enacted, and what it does NOT license
 
 **Branch A.** The §18 precondition r45 registered is **discharged**: the surface a §18 bar
-reads is declared to be the **mapped** surface, its distribution is published above, and the
-tap that writes it is deployed. The raw affordance is disqualified on measurement — 6 654 of
-6 654 rows `gather`.
+reads is declared to be the **mapped** surface, and its distribution is published above. The
+raw affordance is disqualified on measurement — 6 654 of 6 654 rows `gather`.
+
+**The tap is built and merged; it is not yet writing.** Nothing in the ledger carries a
+`mapped_*` key today (checked: 0 rows). The tap writes from the bridge's next restart, at
+which point the live leg begins accruing real `action` and `readouts` against the corpus
+read above. Saying "deployed" of a merged-but-unrestarted change is the r36 error, and
+`M-21`'s reminder that a live stack is one restart from whatever the deploy tree holds cuts
+both ways.
 
 **No §18 bar is read here, and §3 constrains the one that will be.** A bar written against
-this surface must state that a commit is outside its range and price only the
-gather-versus-withhold margin, or it will be read as evidence about a decision the surface
-cannot express. `M-1` is not engaged: nothing in this leg reaches a commit decision.
+this surface must price the gather-versus-withhold margin and say plainly that its commit
+column is **empty on every row ever recorded** — not that committing is unrepresentable,
+which is false, but that it has never been observed. Without that sentence the bar will be
+read as evidence about a decision it never saw. `M-1` is not engaged: nothing in this leg
+reaches a commit decision.
 
 **Carried, not fixed:** the three other r46 items keep their own pre-registrations
 (`M-3`) — act-conditioning as r45 reframes it, `GD-15`'s grid precision now with its

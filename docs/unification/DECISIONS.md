@@ -680,16 +680,21 @@ is outside its range.** Three measurements settle it, all $0 and all published i
    takes 2 distinct effectors, differs from the deployed daemon's act on **118 of 605**, and
    on **all 118** the engine contributed the difference (the agreement branch did not fire).
    The echo fraction is 0.636 against the 0.95 bar Branch A′ would have needed.
-3. **But its terminal act is a step function of `p1` with one threshold at 0.897015, and the
-   engine has never crossed it** — 0 of 6 654 rows, max 0.8706. The threshold is
-   `|u_wrong|/(u_correct+|u_wrong|)`, and it sits there because **`u_abstain = 0`**, the
-   residue `r35` §3 records as owner-only.
+3. **But its commit branch has never once been reached.** The terminal act is a step
+   function of `p1` with one threshold at **0.897015** — `|u_wrong|/(u_correct+|u_wrong|)`,
+   sitting there because **`u_abstain = 0`**, the residue `r35` §3 records as owner-only —
+   and the engine has never crossed it: **0 of 6 654 rows, max 0.8706**. The branch exists
+   and would fire; nothing has reached it. The ceiling is **empirical, not structural**, and
+   the two readings license different successors, which is why the distinction is drawn here
+   rather than left to the looser "cannot commit".
 
 **Why this is a decision and not just a reading.** (2) alone would license "read a §18 bar on
 the mapped surface" and (3) alone would license "read no bar at all". Taken together they
 license a **scoped** bar, and scoping it is a choice about what the evidence may be used for.
 The scope: a §18 bar on this surface prices the **gather-versus-withhold** margin and **may
-not be read as evidence about a commit**, because the surface cannot express one.
+not be read as evidence about a commit** — not because the surface cannot express one, but
+because its commit column is empty on every row ever recorded. A bar that omits that sentence
+will be read as evidence about a decision it never observed.
 
 **Attribution — §17.6 found the near-miss first** (*"those same ticks' engine posteriors sit
 between 0.856 and 0.899"*, on 193 ticks at a bar of 0.899). What r46 adds is extent and
