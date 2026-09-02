@@ -714,3 +714,59 @@ delegation does not cover.
 **Registered alongside:** `M-26` — a column's meaning can depend on the row's kind.
 
 **Reaction.** *(open)*
+
+## GD-19 · 2026-09-02 · the measurement-tree tags are NOT pushed — the guard is right
+
+**The fork.** `tree/run11-minus-nullread` (`78810dd`) and `tree/run12-minus-69` (`81baf7f`)
+pin the two isolation trees of the run-10 ladder. They exist locally and have never been
+pushed, because the armed pre-push PII guard refuses them. This was carried for several
+checkpoints as *"an owner keypress — needs `--no-verify` against the guard"*, on the
+assumption that the guard was firing on already-public content.
+
+**Measured, and the assumption is false.** A dry-run push reports **18 flagged lines across
+six files**. Re-scanning the same files at `master` returns **clean**, so the content was
+remediated after those commits. Line by line, the two files split cleanly:
+
+- **`tests/test_lookup.py`** (4 hits, `passport-shape`): the same values **are** still at
+  `master`, which simply carries four more `# PII-OK` markers (12 vs 8). Reviewed synthetic
+  false positives, already public — pushing republishes nothing new.
+- **`docs/bayesian-foundations.md`, `docs/unification/reports/r02-collapse-m0.md`,
+  `r03-merge.md`, `r03a-migration.md`, `tests/test_gate_replay.py`** (14 hits): the flagged
+  content is **absent from `master`**. It was deliberately removed from a public repository.
+
+**Decided: the tags are not pushed, and the carried "owner keypress" is withdrawn — this is
+not an override the owner should be asked for.** Pushing them would republish, to
+`github.com/gfrmin/life-agent`, content that was taken out of it. `CLAUDE.md`'s constraint is
+unconditional and names commit messages and test fixtures explicitly; a `--no-verify` here is
+not a judgement call about tooling, it is the thing the constraint forbids. The guard is doing
+its job, and the earlier framing — "the owner's override" — mislabelled a refusal as a
+preference.
+
+**What the tags were for is served anyway.** Their purpose is `M-11`/§6.10 pinning: naming the
+tree a reading was taken on. `RULINGS.md` `M-16` already names both branches and requires them
+to live in worktrees and never merge; the SHAs are added to that entry in this commit, so the
+pin is durable **in the register**, which is the artefact a future session actually reads.
+Durability of the objects themselves is a backup question, not a remote question, and the
+repo is inside the machine's borg stream.
+
+**Alternatives rejected.** *Push with `--no-verify`* — republishes removed PII; refused above.
+*Rewrite the tagged trees to remediate them* — they are measurement trees whose whole value is
+being byte-exact records of what decided a reading (`M-11`); editing them destroys the thing
+they pin. *Push only `tests/test_lookup.py`'s tree* — not a thing; a tag names a whole tree.
+*Leave it carried as an owner keypress* — it was never the owner's call, and leaving a
+refusable action on the owner's desk invites the override.
+
+**The second carried item closes with it, as a non-issue.** The same list carried *"the
+machine hostname at commit `347ce7e`"* as an owner call. Checked rather than inherited:
+`347ce7e` is already an ancestor of `master` (so already public), its commit message carries
+no hostname, and **no tracked file at `master` carries one anywhere** — `src/`, docs prose and
+fixtures alike. There is nothing to remove and nothing to decide. Recorded here so a future
+session does not re-open it; had it been real, the remedy would have been a public-history
+rewrite, which is why it was worth five minutes to establish that it is not.
+
+**Registered alongside:** nothing new — this is `M-20` applied twice to inherited claims of
+our own ("the guard is firing on already-public content"; "there is a hostname at `347ce7e`").
+Both were carried across several checkpoints as owner keypresses; **one dry run and one grep
+falsified both.** Neither was ever the owner's call.
+
+**Reaction.** *(open)*
