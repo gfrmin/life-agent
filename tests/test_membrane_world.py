@@ -473,23 +473,64 @@ def test_handshake_decl_unknown_utility_form_raises_value_error() -> None:
 # --- r44: the world-declaration repair (items 1, 2, 4) ---------------------------------
 
 
-def test_theta_grid_contains_the_measured_operating_rate() -> None:
+#: Half a lattice step — the most `_snap_to_lattice` can move any rung. DERIVED from the
+#: declared constant, never a magic tolerance: if the lattice is ever re-declared this
+#: follows it, and a snap that displaced further would fail these tests rather than pass a
+#: loosened one.
+_LATTICE_TOLERANCE = 2.0 ** -(W._GRID_LATTICE_BITS + 1)
+
+
+def test_theta_grid_puts_a_rung_at_the_measured_operating_rate() -> None:
     """Item 1's first rung. #19's false clear is a PLACEMENT failure — a rung near but not
-    at the operating rate lets the posterior settle on the KL-nearest rung."""
+    at the operating rate lets the posterior settle on the KL-nearest rung.
+
+    **r46 leg B weakened "at" from exact equality to within half a lattice step, and did it
+    on a measurement rather than for convenience.** `r44`'s own W6 moved this rung by
+    7e-3 and read a `p1` gap of 3.2e-3 at 98 ticks, growing with data — concluding that even
+    then *"no false clear is reachable on this world at this data volume"*. The snap moves it
+    by at most 4.8e-7, four orders of magnitude less, and leg B measured the resulting `p1`
+    gap directly: ~1e-6 at 2**-14 and ~1e-10 at 2**-30, non-growing, against zero differing
+    decisions over 428 distinct summaries. The clause is honoured to a measured tolerance,
+    not abandoned."""
     grid = W.theta_grid({})
-    assert W.OPERATING_RATE in grid
+    assert min(abs(W.OPERATING_RATE - g) for g in grid) <= _LATTICE_TOLERANCE
 
 
-def test_theta_grid_contains_every_finite_argmax_crossing() -> None:
+def test_theta_grid_puts_a_rung_at_every_finite_argmax_crossing() -> None:
     """The same argument applied to this world's actual consumer: the p1 values at which the
-    declared utility changes its mind are where a threshold sits."""
+    declared utility changes its mind are where a threshold sits. Same lattice tolerance,
+    same justification."""
     u_bar = {"u_correct": 1.0, "u_abstain": 0.0, "u_wrong": -9.0,
              "lambda_int": 0.1, "kappa_att": 0.02}
     crossings = W.argmax_crossings(u_bar)
     assert crossings, "a utility with four distinct rows must cross somewhere in (0, 1)"
     grid = W.theta_grid(u_bar)
     for c in crossings:
-        assert c in grid, f"crossing {c} is not a declared rung"
+        assert min(abs(c - g) for g in grid) <= _LATTICE_TOLERANCE, (
+            f"no rung within half a lattice step of crossing {c}"
+        )
+
+
+def test_theta_grid_rungs_all_sit_on_the_declared_lattice() -> None:
+    """The lever itself: cost scales with the dyadic denominator's BIT LENGTH, so every rung
+    must actually be short. An IEEE double is already dyadic — the pre-snap grid's values are
+    54-57 bit — so this asserts SHORTNESS, which is the thing that is paid for."""
+    from fractions import Fraction
+    for u_bar in ({}, {"u_wrong": -9.0}, {"u_correct": 2.0, "u_abstain": -0.5}):
+        for value in W.theta_grid(u_bar):
+            bits = Fraction(value).denominator.bit_length() - 1
+            assert bits <= W._GRID_LATTICE_BITS, f"{value!r} needs {bits} bits"
+
+
+def test_the_snap_is_refused_rather_than_allowed_to_merge_two_rungs() -> None:
+    """`_GRID_COLLISION` bounds a fixed value against a crossing; it says nothing about two
+    CROSSINGS, which can be arbitrarily close. A merge would shrink `models = n(17n-16)` —
+    a representation change silently becoming a different lever. The ladder must step to a
+    finer lattice instead, and must never return a shorter grid."""
+    close = [0.5, 0.5 + 2.0 ** -30]
+    snapped = W._snap_to_lattice(close)
+    assert len(snapped) == len(close) == len(set(snapped))
+    assert snapped == sorted(snapped)
 
 
 def test_argmax_crossings_are_where_the_argmax_actually_changes() -> None:
