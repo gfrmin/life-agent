@@ -191,3 +191,24 @@ def test_gather_exhausted_without_u_bar_abstains_named() -> None:
 # --- live_decide: the seam's consult closure ---------------------------------------------
 
 
+
+
+def test_agreement_returns_the_identical_daemon_view_object() -> None:
+    """A DECLARED contract, not an incidental one (r46 leg A, criterion S6).
+
+    The agreement branch returns `dec` *itself* while every other branch builds a fresh
+    dict, so `map_action(...)[0] is dec` **is** the agreement predicate. The shadow's tap
+    reads exactly that to record `mapped_echo`, rather than re-deriving agreement from
+    `REAL_TO_MEMBRANE` — which would be `M-7`'s re-implemented constant. Changing any
+    branch to return a copy silently converts every echo into an apparent engine
+    contribution, so the identity is pinned here.
+    """
+    dec = {"credences": [0.8], "p_none": 0.1, "effector": "report"}
+    payload = {"candidates": ["a"], "transforms": []}
+
+    agreed, degraded = CO.map_action(payload, dec, "respond", {"p1": 0.7})
+    assert agreed is dec
+    assert degraded is None
+
+    overridden, _ = CO.map_action(payload, {**dec, "effector": "abstain"}, "respond", {"p1": 0.7})
+    assert overridden is not dec

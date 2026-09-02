@@ -1047,9 +1047,10 @@ def test_stats_shape(tmp_path: Path) -> None:
     stats = sh.stats()
     assert set(stats) == {
         "forms", "drops", "skips", "submit_errors", "queue_depth", "snapshot_records",
-        "cat",
+        "map_errors", "cat",
     }
     assert stats["cat"] == {"ticks": 0, "errors": 0, "skips": 0}
+    assert stats["map_errors"] == 0  # r46 leg A: the mapped-surface tap's fail-open counter
     assert set(stats["forms"]) == {"said@1"}  # type: ignore[arg-type]
     assert set(stats["forms"]["said@1"]) == {  # type: ignore[index]
         "alive", "respawns", "ticks", "dead_drops",
@@ -1630,3 +1631,147 @@ def test_categorical_runner_error_is_counted_and_the_worker_survives(
         sh.close()
 
 
+
+
+# --- r46 leg A: the mapped-surface tap ----------------------------------------------------
+#
+# `coarse.map_action` had ZERO call sites in src/ between M5 (4e5debd) and r46: the one
+# surface a §18 bar could read was the one nothing wrote. These pin the tap that restores
+# it — observation-only, additive, fail-open. Criteria S1/S3/S6 of
+# `docs/unification/reports/r46-readable-surface-preregistration.md`.
+
+
+def _drain_one_decide(sh: SH.MembraneShadow, cfg: SH.ShadowConfig,
+                      payload: dict[str, object], dec: dict[str, object],
+                      qid: str = "q-map") -> dict[str, object]:
+    """Submit one decide and return the decide row it produced."""
+    assert _wait_until(lambda: sh.stats()["forms"]["said@1"]["alive"])  # type: ignore[index]
+    sh.submit_decide(qid, payload, dec)
+    assert _wait_until(lambda: _n_records(cfg.log_path, "decide") >= 1)
+    rows = [r for r in _read_records(cfg.log_path) if r["kind"] == "decide"]
+    assert len(rows) == 1
+    return rows[0]
+
+
+def test_decide_row_carries_the_mapped_surface_on_agreement(tmp_path: Path) -> None:
+    """S6: the engine's `respond` over a daemon `report` is the AGREEMENT branch — the
+    daemon's own view stands, so the engine contributed nothing and `mapped_echo` is True.
+    A surface that varies only by echoing the daemon carries no engine signal, which is
+    why the branch is recorded and not left to be inferred from the effector alone."""
+    cfg = _cfg(tmp_path)
+    _calls, snapshot = _snapshot_calls_counter()
+    sh = SH.MembraneShadow(cfg, u_bar=_u_bar, snapshot=snapshot, session_factory=_FakeFactory())
+    try:
+        sh.start()
+        payload = {"candidates": ["a"], "observations": [1], "transforms": []}
+        dec = {"credences": [0.8], "p_none": 0.1, "effector": "report"}
+        row = _drain_one_decide(sh, cfg, payload, dec)
+        assert row["action"] == "respond"          # the engine's affordance, unchanged
+        assert row["real_effector"] == "report"    # the DAEMON's act, unchanged (S1)
+        assert row["mapped_effector"] == "report"  # map_action's act
+        assert row["mapped_degraded"] is None
+        assert row["mapped_echo"] is True
+        assert row["mapped_probe"] is None
+    finally:
+        sh.close()
+
+
+def test_decide_row_records_a_non_echo_override(tmp_path: Path) -> None:
+    """The engine's `respond` over a daemon `abstain` is a genuine override: map_action
+    asserts the MAP candidate, so the mapped act differs from the daemon's and the tap
+    must say the engine contributed it."""
+    cfg = _cfg(tmp_path)
+    _calls, snapshot = _snapshot_calls_counter()
+    sh = SH.MembraneShadow(cfg, u_bar=_u_bar, snapshot=snapshot, session_factory=_FakeFactory())
+    try:
+        sh.start()
+        payload = {"candidates": ["a", "b"], "observations": [1], "transforms": []}
+        dec = {"credences": [0.2, 0.8], "p_none": 0.1, "effector": "abstain"}
+        row = _drain_one_decide(sh, cfg, payload, dec)
+        assert row["real_effector"] == "abstain"
+        assert row["mapped_effector"] == "report"
+        assert row["mapped_degraded"] is None
+        assert row["mapped_echo"] is False
+    finally:
+        sh.close()
+
+
+def test_mapped_surface_is_computed_by_the_deployed_rule_not_a_restatement(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """M-7: the tap must CALL `coarse.map_action`, not reproduce its verdict. Redirect the
+    module attribute the shadow binds and the recorded surface must follow it."""
+    from life_agent.membrane import coarse as CO
+
+    seen: list[tuple[str, str]] = []
+
+    def _fake(payload: dict, dec: dict, action: str, readouts: dict):  # type: ignore[type-arg]
+        seen.append((action, str(dec.get("effector"))))
+        return {**dec, "effector": "ask_clarify"}, "sentinel_degradation"
+
+    monkeypatch.setattr(CO, "map_action", _fake)
+    cfg = _cfg(tmp_path)
+    _calls, snapshot = _snapshot_calls_counter()
+    sh = SH.MembraneShadow(cfg, u_bar=_u_bar, snapshot=snapshot, session_factory=_FakeFactory())
+    try:
+        sh.start()
+        row = _drain_one_decide(
+            sh, cfg, {"candidates": ["a"]}, {"credences": [0.8], "effector": "report"},
+        )
+        assert seen == [("respond", "report")]          # the engine's action reached the rule
+        assert row["mapped_effector"] == "ask_clarify"  # ... and its verdict reached the row
+        assert row["mapped_degraded"] == "sentinel_degradation"
+    finally:
+        sh.close()
+
+
+def test_a_raising_map_action_is_fail_open_and_leaves_the_form_alive(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """S3: `map_action` asserts on an undeclared action and can raise on a malformed view.
+    A diagnostic tap must never cost a decide row or a live form — the `_tick_cat`
+    precedent: one counted error, nothing else."""
+    from life_agent.membrane import coarse as CO
+
+    def _boom(*_a: object, **_k: object):  # type: ignore[no-untyped-def]
+        raise AssertionError("undeclared engine action 'wat'")
+
+    monkeypatch.setattr(CO, "map_action", _boom)
+    cfg = _cfg(tmp_path)
+    _calls, snapshot = _snapshot_calls_counter()
+    sh = SH.MembraneShadow(cfg, u_bar=_u_bar, snapshot=snapshot, session_factory=_FakeFactory())
+    try:
+        sh.start()
+        row = _drain_one_decide(
+            sh, cfg, {"candidates": ["a"]}, {"credences": [0.8], "effector": "report"},
+        )
+        # the row still lands, and every pre-existing field is untouched (S1)
+        assert row["action"] == "respond"
+        assert row["real_effector"] == "report"
+        assert row["readouts"] == {"p1": 0.7}
+        # ... carrying no mapped surface rather than a guessed one
+        assert "mapped_effector" not in row
+        assert sh.stats()["forms"]["said@1"]["alive"] is True  # type: ignore[index]
+        assert sh.stats()["map_errors"] == 1
+    finally:
+        sh.close()
+
+
+def test_gate_rows_do_not_carry_a_mapped_surface(tmp_path: Path) -> None:
+    """S1: the tap is scoped to `decide`. A gate tick has no payload and no daemon view —
+    its `real_effector` is the literal committed abstain — so there is nothing to map, and
+    inventing a mapped act there would put a third meaning on a row that already carries
+    two across kinds."""
+    cfg = _cfg(tmp_path)
+    _calls, snapshot = _snapshot_calls_counter()
+    sh = SH.MembraneShadow(cfg, u_bar=_u_bar, snapshot=snapshot, session_factory=_FakeFactory())
+    try:
+        sh.start()
+        assert _wait_until(lambda: sh.stats()["forms"]["said@1"]["alive"])  # type: ignore[index]
+        sh.submit_gate("q-gate", "weak_retrieval")
+        assert _wait_until(lambda: _n_records(cfg.log_path, "gate") >= 1)
+        row = next(r for r in _read_records(cfg.log_path) if r["kind"] == "gate")
+        assert row["real_effector"] == "abstain"
+        assert not any(k.startswith("mapped_") for k in row)
+    finally:
+        sh.close()

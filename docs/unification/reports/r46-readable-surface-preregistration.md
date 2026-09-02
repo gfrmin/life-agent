@@ -142,3 +142,60 @@ reading is the r30b mistake).
 ## Cost
 
 **$0.** No priced run. Wall-clock only, capped above.
+
+---
+
+## Amendment 1 — the population, corrected blind before the read (2026-09-02)
+
+**The criteria S1–S6 and the four consequence branches above are unchanged.** What follows
+corrects the *"Population and bound"* section only, prospectively and in public (`M-4`),
+**before the instrument was run against a single row**.
+
+**The frozen population names an artefact that cannot serve it.** `M-3` requires a frozen
+clause to be re-read against the artefact it names before it is applied. Done, and it fails:
+
+- `scripts/collapse_replay.py` contains **zero** references to the membrane — it is hermetic
+  by design (*"no daemon, no credence engine, no API key, no corpus"*) and constructs no
+  `MembraneShadow`, so "the m5-base replay with the shadow live" is not a configuration the
+  instrument has.
+- The shadow's only decide feed is `/decide-support`, posted by the executor on the live
+  path, and that URL appears **zero times** in the m5-base wire — the corpus was recorded
+  with the shadow disabled.
+
+This is the r13 defect class caught before it bound rather than after: a frozen clause that
+would have failed by construction on the artefact it names.
+
+**The corrected population — strictly better, and available at $0.** The same corpus records
+the exact pair `_decide_support` forwards: **605 `/decide` request/reply exchanges across the
+314 m5-base fixtures**, the request's `payload` carrying `candidates` / `transforms` /
+`applied_probes` / `u_bar` and the response carrying the daemon view's `effector` /
+`credences` / `p_none` / `probe` / `value`. These are real recorded inputs from the pinned
+corpus, driven through the **deployed** `coarse.map_action` (`M-7`). The 4-hour wall-clock cap
+and its prefix rule are **struck as moot** — the read is seconds, not hours, and no bound is
+needed; they return under a fresh amendment if one ever binds.
+
+**What the corpus does NOT record, and how it is handled — declared, not smuggled.** The
+engine's own `action` and `readouts` are not in a `/decide` exchange, because the engine is
+not in that loop.
+
+1. **`action` is supplied as `gather`.** This is a **substitution, and is named as one.** It
+   is licensed by measurement — 6 628 of 6 628 rows carrying an `action` in the entire shadow
+   ledger record `gather`, across both engine arms and all four row kinds — not by assumption.
+   To keep the dependence visible rather than buried, the leg **also reports the mapped
+   surface at all four affordances**, so a reader can see exactly what the substitution buys.
+2. **`readouts["p1"]` is load-bearing on exactly one branch** — `_gather`'s exhausted
+   fallback, the only place `map_action` reads it. **The size of that subset is published**,
+   and the mapped act on it is reported across the recorded p1 **range** taken from the shadow
+   ledger's own decide rows (min / median / max), never at one invented point.
+3. **The live tap leg stands and is reported separately.** The deployed tap records real
+   `action` and `readouts`; its rows are published **with their size**, which is small, and
+   labelled a live confirmation of the substitution in (1) rather than a second census.
+
+**S4 now binds on each leg separately**: the corpus read fails if it covers zero exchanges,
+and the live leg is reported with its own size and never merged into the corpus counts.
+
+**Registered expectation is unchanged (Branch A), and the corpus makes its ground concrete:**
+the recorded daemon effector over the 605 is `gather` 385 · `abstain` 152 · `report` 64 ·
+`hedge` 4, so **220 of 605 (36%) cannot take the agreement branch** at `action = "gather"` and
+must either select an unapplied VOI probe or degrade. The echo fraction remains the live risk
+and remains the thing that decides between Branch A and Branch A′.
