@@ -121,8 +121,8 @@ and the daemon against itself on the other 6 099. Registered as **`M-26`**.
 
 Suite **3 143 passed / 1 failed**; `ruff` and `mypy` clean. **The failure is disclosed, not
 rounded away:** `tests/pkm/test_extract.py`'s
-`test_retry_failed_reruns_and_flips_failed_artifact_to_success`, a pkm extraction test this leg does not touch (the diff is `src/life_agent/membrane/` only).
-It passes in isolation and passes as a whole module on clean `master`, so it is a flake under
+`test_retry_failed_reruns_and_flips_failed_artifact_to_success`, a pkm extraction test this
+leg does not touch (the diff is `src/life_agent/membrane/` only). It passes in isolation and passes as a whole module on clean `master`, so it is a flake under
 full-suite load rather than a regression — stated here because "3 143 passed" alone would read
 as a clean run, and it was not one.
 
