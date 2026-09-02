@@ -354,6 +354,18 @@ _GRID_ENDPOINTS: tuple[float, ...] = (0.05, 0.95)
 # (r44 amendment 1 — rounding a rung off the crossing is exactly #19's hazard).
 _GRID_COLLISION: float = 5e-4
 
+# The lattice every rung is snapped to (r46 leg B). The engine's fold cost scales with the
+# theta values' DYADIC DENOMINATOR BIT-LENGTH — an IEEE double is already dyadic, so an
+# unsnapped rung costs its full 54-57 bits, and snapping to 2**-k costs k. Measured at depth
+# 250, the live boot depth: 744 s of engine CPU unsnapped against 284 s at 2**-30, and the
+# whole curve is monotone in k with 2**-53 landing back on the unsnapped cost (0.93x) — which
+# is the control that identifies the mechanism. 20 is the FINEST lattice clearing r46 leg B's
+# frozen >=2x bar on two depths at two reps each (0.46/0.45 at depth 60, 0.32/0.33 at 100);
+# 2**-24 misses it at depth 60 (0.508/0.513). Displacement at 2**-20 is <= 4.8e-7, against
+# the 7e-3 that r44's own W6 measured as producing a 3.2e-3 p1 gap with no false clear
+# reachable. Read the report before changing this number.
+_GRID_LATTICE_BITS: int = 20
+
 
 def argmax_crossings(u_bar: Mapping[str, float]) -> list[float]:
     """The p1 values in (0, 1) at which :func:`argmax_action` changes its mind — this
@@ -387,13 +399,41 @@ def theta_grid(u_bar: Mapping[str, float]) -> list[float]:
     never fitted to a world count: the union of the measured :data:`OPERATING_RATE`, every
     :func:`argmax_crossings` threshold, the recorded shadow's p05/median/p95, and the
     endpoints. Crossings enter at full precision and win any collision within
-    :data:`_GRID_COLLISION`."""
+    :data:`_GRID_COLLISION`.
+
+    **r46 leg B amendment: every surviving rung is then snapped to
+    :data:`_GRID_LATTICE_BITS`** (:func:`_snap_to_lattice`). Selection is untouched — the
+    snap changes representation only — and it is refused rather than allowed to merge two
+    rungs."""
     fixed = sorted({*_SHADOW_P1_QUANTILES, *_GRID_ENDPOINTS, OPERATING_RATE})
     grid = list(argmax_crossings(u_bar))
     for x in fixed:
         if 0.0 < x < 1.0 and all(abs(x - g) > _GRID_COLLISION for g in grid):
             grid.append(x)
-    return sorted(grid)
+    return _snap_to_lattice(sorted(grid))
+
+
+def _snap_to_lattice(grid: list[float]) -> list[float]:
+    """Every rung on the coarsest lattice that preserves the grid (r46 leg B).
+
+    Selection has already happened: this only changes each surviving rung's REPRESENTATION,
+    never which rungs survive, so `r44`'s two frozen clauses — a rung at the measured
+    operating rate, a crossing surviving the collision — still decide membership exactly as
+    before.
+
+    **The fallback ladder is not defensive dressing.** `_GRID_COLLISION` bounds the distance
+    between a *fixed* value and a *crossing*; it says nothing about two crossings, which can
+    be arbitrarily close. A snap that merged two rungs would silently shrink the hypothesis
+    space (`models = n(17n-16)`), turning a representation change into a different lever —
+    which is exactly what sixteenths do here (n 8 -> 6). So the snap is REFUSED whenever it
+    would merge, and the next finer lattice is tried, up to the double's own 53 bits where
+    snapping is a no-op. Monotone and total: the result is never coarser than declared and
+    never changes `n`."""
+    for bits in range(_GRID_LATTICE_BITS, 54):
+        snapped = [round(x * (2 ** bits)) / (2 ** bits) for x in grid]
+        if len(set(snapped)) == len(grid) and snapped == sorted(snapped):
+            return snapped
+    return grid
 
 
 # --- r44 item 4: the clock row (the seam that routes selection to the substitution route)
