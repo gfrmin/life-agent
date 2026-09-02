@@ -660,3 +660,57 @@ lever by roughly 3×. *Leave `GD-15` uncorrected until r46 reads* — its first 
 in the register, and `M-20` binds.
 
 **Reaction.** *(open)*
+
+## GD-18 · 2026-09-02 · the §18 bar's surface is declared, and a commit is outside its range
+
+**The fork.** `r45` registered a precondition without resolving it: *"which surface a §18 bar
+reads, and what that surface's distribution actually is, are now preconditions for reading
+it."* `r46` leg A measured both, and the answer forces a declaration rather than a preference.
+
+**Decided: the surface is the MAPPED one, and any bar written on it must state that a commit
+is outside its range.** Three measurements settle it, all $0 and all published in
+[`r46-readable-surface.md`](./reports/r46-readable-surface.md).
+
+1. **The raw affordance is disqualified on measurement, not on taste.** All **6 654**
+   action-bearing rows in the shadow ledger record `gather` (16:28 HKT, 2026-09-02) — across
+   both engine arms, all four row kinds, and the whole life of the stream. `r45` measured this
+   on 250 replayed rows and 4 live decides; it holds on the census. A bar reading it compares
+   two constants.
+2. **The mapped surface qualifies.** Over the 605 recorded `/decide` exchanges in m5-base it
+   takes 2 distinct effectors, differs from the deployed daemon's act on **118 of 605**, and
+   on **all 118** the engine contributed the difference (the agreement branch did not fire).
+   The echo fraction is 0.636 against the 0.95 bar Branch A′ would have needed.
+3. **But its commit branch has never once been reached.** The terminal act is a step
+   function of `p1` with one threshold at **0.897015** — `|u_wrong|/(u_correct+|u_wrong|)`,
+   sitting there because **`u_abstain = 0`**, the residue `r35` §3 records as owner-only —
+   and the engine has never crossed it: **0 of 6 654 rows, max 0.8706**. The branch exists
+   and would fire; nothing has reached it. The ceiling is **empirical, not structural**, and
+   the two readings license different successors, which is why the distinction is drawn here
+   rather than left to the looser "cannot commit".
+
+**Why this is a decision and not just a reading.** (2) alone would license "read a §18 bar on
+the mapped surface" and (3) alone would license "read no bar at all". Taken together they
+license a **scoped** bar, and scoping it is a choice about what the evidence may be used for.
+The scope: a §18 bar on this surface prices the **gather-versus-withhold** margin and **may
+not be read as evidence about a commit** — not because the surface cannot express one, but
+because its commit column is empty on every row ever recorded. A bar that omits that sentence
+will be read as evidence about a decision it never observed.
+
+**Attribution — §17.6 found the near-miss first** (*"those same ticks' engine posteriors sit
+between 0.856 and 0.899"*, on 193 ticks at a bar of 0.899). What r46 adds is extent and
+surface: it holds over the entire ledger, both engine arms, and on the mapped surface too. So
+§17.6's *"the fix is always a sharper `p1`, never a softer bar"* is unchanged and now carries
+its distance — **0.0264** at the ledger ceiling, **0.0349** in the new era.
+
+**Alternatives rejected.** *Read a bar on the raw affordance* — it is a constant; this is the
+`r43`/`GD-12` failure with a different constant substituted. *Declare no readable surface and
+stop* — false, and it would have retired a surface that carries engine signal on 118 rows.
+*Widen the bar to admit the commit* — §18's own clause forbids it (*"the fix is always a
+sharper `p1`, never a softer bar"*), and it is `M-4`'s prohibited move besides. *Fix
+`u_abstain` to move the threshold* — the residue is **owner-only** (`r35` §3, PRINCIPLES'
+objective class); moving the gauge to make a measurement come out is the one thing §2's
+delegation does not cover.
+
+**Registered alongside:** `M-26` — a column's meaning can depend on the row's kind.
+
+**Reaction.** *(open)*

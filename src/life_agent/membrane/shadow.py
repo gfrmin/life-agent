@@ -87,6 +87,7 @@ from life_agent.core import jsonl_log as JL
 from life_agent.core import reactions as RX
 
 from . import categorical as CAT
+from . import coarse as CO
 from . import world as W
 from .client import MembraneClient, request_json
 from .session import MembraneSession, ShadowChoice, verdict_y
@@ -289,6 +290,12 @@ class _DecideItem:
     summary: W.DecideSummary
     real_effector: object
     cat: CAT.CatSummary | None = None
+    #: The `/decide` request payload and the daemon's own view, carried verbatim so the
+    #: mapped-surface tap can pass them to the DEPLOYED `coarse.map_action` rather than
+    #: reconstruct its inputs (`M-7`). `None` on any item minted without them: the tap
+    #: then records nothing, which is why every mapped key is optional on the row.
+    payload: dict[str, Any] | None = None
+    dec: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -340,6 +347,7 @@ class MembraneShadow:
         self._drops = 0
         self._skips = 0
         self._submit_errors = 0
+        self._map_errors = 0
         # the categorical mirror's own accounting: skips at submit time (a 0-candidate
         # tick has nothing categorical to declare), ticks/errors on the worker.
         self._cat_skips = 0
@@ -416,7 +424,7 @@ class MembraneShadow:
                     )
             self._enqueue(_DecideItem(
                 question_id=question_id, summary=summary, real_effector=effector,
-                cat=self._reduce_cat(payload, dec),
+                cat=self._reduce_cat(payload, dec), payload=payload, dec=dec,
             ))
         except Exception:
             self._count_submit_error()
@@ -495,6 +503,7 @@ class MembraneShadow:
             drops, skips, submit_errors, snapshot_records = (
                 self._drops, self._skips, self._submit_errors, self._snapshot_records,
             )
+            map_errors = self._map_errors
             cat = {
                 "ticks": self._cat_ticks, "errors": self._cat_errors,
                 "skips": self._cat_skips,
@@ -515,6 +524,7 @@ class MembraneShadow:
             "submit_errors": submit_errors,
             "queue_depth": self._queue.qsize(),
             "snapshot_records": snapshot_records,
+            "map_errors": map_errors,
             "cat": cat,
         }
 
@@ -572,13 +582,61 @@ class MembraneShadow:
             return
         latency_ms = (time.time() - start) * 1000.0
         state.ticks += 1
-        self._append_record({
+        record: dict[str, Any] = {
             "event_type": "membrane-shadow", "kind": "decide", "ts": ts,
             "question_id": item.question_id, "form": form,
             "action": choice.action, "raw_internal": choice.raw_internal,
             "real_effector": item.real_effector, "latency_ms": latency_ms,
             "readouts": choice.readouts, "summary": asdict(item.summary), "t": t_before,
-        })
+        }
+        record.update(self._mapped_surface(item, choice))
+        self._append_record(record)
+
+    def _mapped_surface(self, item: _DecideItem, choice: ShadowChoice) -> dict[str, Any]:
+        """r46 leg A — the observation-only tap over the deployed coarse mapping.
+
+        The engine's raw affordance is a CONSTANT on this stream (every row that carries
+        an `action` records `gather`), so a bar reading it compares two constants. The one
+        surface that can vary is `coarse.map_action`'s — what an enactment WOULD have been
+        — and it had no writer at all between M5's deletion of the live lane and r46.
+
+        Four keys, `kind: "decide"` only, all additive; nothing here reaches the decision
+        path (`submit_decide` is enqueue-only) and nothing is folded (`M-14`):
+
+        * `mapped_effector` / `mapped_degraded` — `map_action`'s act and its named
+          transitional degradation, straight from the DEPLOYED rule (`M-7`: the rule is
+          called with the real payload and view, never restated).
+        * `mapped_echo` — whether the AGREEMENT branch fired, read from the rule's own
+          behaviour: it returns `dec` itself on agreement and a fresh dict everywhere
+          else, so object identity IS the predicate (pinned by a named test). This is the
+          quantity the deleted `enact` writer could not express — it recorded an agreement
+          pass-through and a probe selection identically — and without it "the surface
+          varies" cannot be told from "the daemon varies".
+        * `mapped_probe` — the probe the gather branch selected. On an echo row the view
+          IS the daemon's, so this is the daemon's own probe, not the engine's;
+          `mapped_echo` is what disambiguates them.
+
+        Fail-open, the `_tick_cat` precedent: `map_action` asserts on an undeclared action
+        and can raise on a malformed view. Any raise is one counted error
+        (`stats()["map_errors"]`) and the decide row still lands, carrying no mapped keys
+        rather than a guessed surface.
+        """
+        if item.payload is None or item.dec is None:
+            return {}
+        try:
+            mapped, degraded = CO.map_action(
+                item.payload, item.dec, choice.action, choice.readouts,
+            )
+        except Exception:
+            with self._lock:
+                self._map_errors += 1
+            return {}
+        return {
+            "mapped_effector": mapped.get("effector"),
+            "mapped_degraded": degraded,
+            "mapped_echo": mapped is item.dec,
+            "mapped_probe": mapped.get("probe"),
+        }
 
     def _tick_gate(self, form: str, state: _FormState, item: _GateItem, ts: float) -> None:
         """A decision tick under :data:`GATE_SUMMARY` — same engine semantics as
