@@ -759,8 +759,9 @@ refusable action on the owner's desk invites the override.
 **The second carried item closes with it, as a non-issue.** The same list carried *"the
 machine hostname at commit `347ce7e`"* as an owner call. Checked rather than inherited:
 `347ce7e` is already an ancestor of `master` (so already public), its commit message carries
-no hostname, and **no tracked file at `master` carries one anywhere** — `src/`, docs prose and
-fixtures alike. There is nothing to remove and nothing to decide. Recorded here so a future
+no hostname, and **neither of this fleet's two machine names appears in any tracked file at
+`master`** — `src/`, docs prose and fixtures alike. (Stated as the check that was actually
+run: a scan for the two known names over `git ls-files`, not a general hostname detector.) There is nothing to remove and nothing to decide. Recorded here so a future
 session does not re-open it; had it been real, the remedy would have been a public-history
 rewrite, which is why it was worth five minutes to establish that it is not.
 
