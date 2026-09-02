@@ -772,3 +772,58 @@ Both were carried across several checkpoints as owner keypresses; **one dry run 
 falsified both.** Neither was ever the owner's call.
 
 **Reaction.** *(open)*
+
+## GD-20 · 2026-09-02 · a bridge restart can permanently kill the shadow, and it nearly did
+
+**The fork.** `r46` leg A merged an observation-only tap that only writes after a bridge
+restart, so the deploy tree was restarted to make it live. **The restart killed the shadow**,
+and the failure is the exact one `r45` C8 spent a checkpoint diagnosing: a clean-looking
+service with a silently dead form.
+
+**What happened, to the second.** The credence skin runs as a **fresh podman container per
+respawn**, so each attempt starts with a cold Julia depot and precompiles from scratch.
+
+| time | event |
+|---|---|
+| 16:57:51 | restart; old form dies (`membrane driver closed the wire (EOF)` — expected) |
+| 16:59:57 · 17:02:58 · 17:05:58 | three respawns, each `skin process did not emit ready sentinel within 120.0s` |
+| 17:08:51 | *"87 dependencies successfully precompiled in **112 seconds**"* |
+| **17:08:58** | **4th respawn times out → `permanent: true`; the form is dead** |
+| **17:09:01** | the skin emits `{"status":"ready"}` — **three seconds too late** |
+
+`STARTUP_TIMEOUT = 120.0` (`core/brain.py:60`) against a measured cold start of **~122 s**
+(112 s precompile + ~10 s boot, plus an image pull). `max_respawns = 3` with a 60 s backoff
+exhausts the ladder in ~9 minutes while precompilation is still running, so **every** attempt
+fails for the same reason and the form dies permanently. A second restart, with the depot now
+warm, booted cleanly: 0 respawns, ready sentinel immediately, boot row at **17:38** — ~20 min,
+matching `GD-17`'s ~19.5 min fold. The tap's first live row confirms it end to end
+(`action: gather`, `real_effector: abstain`, `mapped_effector: gather`, `mapped_echo: false`,
+`mapped_probe` set) — the corpus finding reproduced on the deployed path.
+
+**Decided: publish the measurement, change no constant today, and name the hazard.** The
+tempting one-line fix — raise `STARTUP_TIMEOUT` — is **refused on a real cost, not on
+caution**: `core/brain.py` is the credence skin seam the **live ask path** also spawns lazily
+(`bridge/server.py`: *"the credence skin spawns on first `/utility`"*), so a longer timeout
+makes a genuinely-broken skin block a live ask for longer. Trading a live-path stall against
+an off-path accrual, on one observation, is exactly the move `M-4` and `M-6` exist to stop.
+
+**The remedies, named with their trade-offs so a successor need not re-derive them.**
+
+1. **Persist the skin container's Julia depot** (a volume, in the credence repo's own
+   packaging). The
+   *correct* fix — it removes the cold precompile rather than tolerating it, and touches no
+   timeout. Out of this repo entirely; a different repo's change.
+2. **Make `STARTUP_TIMEOUT` per-caller** — long for the shadow's respawn, unchanged for the
+   live seam. Right shape, needs its own pre-registration because it splits a constant two
+   surfaces currently share.
+3. **Raise it globally.** Cheapest, and the one with the live-path cost above. Not taken.
+
+**The cheap protective follow-up, recommended and not built here:** nothing detects a
+permanently dead form. `r45` C8 established that the shadow stayed dead **three weeks**
+unnoticed. `scripts/production_readout.py` already runs weekly; a single line reading the
+newest `kind: "respawn"` row for `permanent: true` would have caught both that outage and
+this one. This is detection, not repair, and it is independent of all three remedies above.
+
+**Registered alongside:** `M-27` — restarting a service is a measurement, not a formality.
+
+**Reaction.** *(open)*
