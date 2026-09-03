@@ -967,8 +967,11 @@ the approved 2026-07-21 record and §7 states what moved under it.
 
 **The re-ground's own finding: §3's "not landed" list is materially stale.** Read live
 (read-only `gh`, the proplang repo is never edited from here), six of the eight named issues
-have closed, three of them load-bearing. **#20** (per-code readout) **shipped** — so §16
-finding 5, "R-D23 cap-binding is UNOBSERVABLE", is readable for the first time. **#21** (the
+have closed, three of them load-bearing. **#20** (per-code readout) **shipped** — and,
+checked rather than assumed (`M-7`, one $0 probe on the deployed arm B binary), it is **live
+here**: every categorical reply carries `p0`, `argmax_code`, `p_argmax`, `p_codes[]` and
+`entropy_bits`. So §16 finding 5's "R-D23 cap-binding is UNOBSERVABLE" is answerable at last
+(`p0` *is* P(y=0)), and §4.4's named observability gap closes. **#21** (the
 null-mass cap) closed at the `OB-19` heir boundary, the minority-cell tie broken by declared
 `breadth` pairs. **#19** closed with the θ ceiling **changing owner rather than dissolving** —
 θ is now REQUIRED hello data priced by mention mass (finiteness remains), which is precisely

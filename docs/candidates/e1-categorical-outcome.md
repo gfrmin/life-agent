@@ -322,8 +322,23 @@ remaining gap is small enough that it must be **measured, not inferred**: recomp
 categorical crossing needs the engine, under the deployed Ū, which is `r48`'s job. Nothing
 here concludes it, in either direction.
 
-Also open for `r48`: §16 finding 4's cost (session-per-question ran minute-scale at K≳10, a
-K-cap or episode budget owed **before** any live enablement), and #20's now-landed readout,
-which makes §16 finding 5 (R-D23 cap-binding, previously unobservable) readable for the first
-time. `GD-16`'s rider is inherited: an enabled categorical world re-reads before its first
-backfill.
+Also open for `r48`: §16 finding 4's cost — session-per-question ran minute-scale at K≳10, so
+a K-cap or episode budget is owed **before** any live enablement. `GD-16`'s rider is inherited:
+an enabled categorical world re-reads before its first backfill.
+
+### 7.5 One thing measured rather than inferred: the readout is live on our own arm B
+
+#20 closing upstream does not by itself make the readout reachable *here*, so it was checked
+rather than assumed (`M-7`) — one $0 probe, deployed arm B binary, the deployed
+`handshake_decl_cat` at k=3 plus codebooks and a clock, three synthetic code-valued ticks.
+Handshake ok, `models` 1032, and **every reply carries the per-code readout**:
+
+    p0, argmax_code, p_argmax, p_codes[], entropy_bits   (beside the scalar p1)
+
+So the doc's §3 *"no per-code posterior, no argmax code, no P(y=0)"* is dead on this binary:
+`p0` **is** P(y=0), and `p_codes` is the per-candidate vector. Two consequences follow at
+once. **§16 finding 5 is no longer unobservable** — whether R-D23's null-mass cap binds on the
+over-abstention corpus is now a straightforward read of `p0`, and `r48` should take it. And
+**§4.4's named observability gap closes**: the host-visible `p_none` no longer has to stay
+daemon-side for rendering. Neither is built here; both are handed forward with the field names
+they need.

@@ -662,8 +662,9 @@ material for that candidate only.
   (`docs/candidates/e1-categorical-outcome.md`, owner-approved 2026-07-21) had been **stranded
   on a paused branch while §15 named it governing**; it is salvaged verbatim with a third dated
   re-ground (§7) rather than rebased, and `feat/e1-design` is retired. The finding: **six of
-  its eight engine dependencies have closed** — #20's per-code readout SHIPPED (§16's
-  unobservable R-D23 question is readable at last), #21's null-mass cap closed at the `OB-19`
+  its eight engine dependencies have closed** — #20's per-code readout SHIPPED and
+  verified **live on our arm B** ($0 probe: `p0`/`argmax_code`/`p_argmax`/`p_codes[]` in every
+  reply — §16's unobservable R-D23 question is answerable, §4.4's gap closes), #21's null-mass cap closed at the `OB-19`
   heir, and #19 closed with the θ ceiling **changing owner rather than dissolving** (θ is
   REQUIRED hello data — the reason leg D's item 1 exists; our declared grid's top rung reads
   **0.990634** under the deployed Ū, not the doc's 0.9). `OB-12` discharged, increment B out

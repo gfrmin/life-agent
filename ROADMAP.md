@@ -341,7 +341,7 @@ Bayesian Ask rather than deterministic pipelines. Remaining program, in dependen
    rebased (the branch sat 521 commits behind and its only unique bytes were that file); the
    branch is retired. The re-ground's finding is that the design's "not landed" list is
    materially stale: **six of its eight engine dependencies have closed**, three load-bearing —
-   the per-code readout **shipped** (#20, making §16's unobservable R-D23 question readable),
+   the per-code readout **shipped** (#20 — and verified **live on our own arm B**, one $0 probe: every categorical reply carries `p0`, `argmax_code`, `p_argmax`, `p_codes[]`, so §16's unobservable R-D23 question is answerable and §4.4's observability gap closes),
    the null-mass cap closed at the `OB-19` heir (#21), and the θ ceiling **changed owner rather
    than dissolving** (#19 — θ is REQUIRED hello data now, which is why leg D's item 1 exists;
    our declared grid's top rung reads **0.990634** under the deployed Ū, neither the doc's 0.9
