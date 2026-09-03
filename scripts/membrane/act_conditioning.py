@@ -139,6 +139,17 @@ def _fixed_stream() -> list[tuple[W.DecideSummary, int]]:
     return [(_summary(1 + (i % 4), leader=0.5 + 0.1 * (i % 4)), i % 2) for i in range(8)]
 
 
+def _teach_stream(n: int = 24) -> list[tuple[W.DecideSummary, int, float]]:
+    """A stream whose act-taken VARIES over the grid and CORRELATES with y (y=1 iff the
+    act value is <= 2), so a world that conditions on act-taken can learn it. Synthetic,
+    deterministic, no corpus content. The act-identical control folds ONE act value."""
+    out = []
+    for i in range(n):
+        v = float(1 + (i % 4))
+        out.append((_summary(1 + (i % 3), leader=0.6), 1 if v <= 2.0 else 0, v))
+    return out
+
+
 def decide_msg(s: W.DecideSummary, t: float,
                extra: Mapping[str, float] | None = None,
                menu: list[str] | None = None) -> dict[str, Any]:
@@ -233,55 +244,69 @@ def inertness(engine: str, u_bar: Mapping[str, float]) -> dict[str, Any]:
         finally:
             client.shutdown()
 
-    def observer_p1(value: float) -> dict[str, Any]:
-        client = spawn(engine)
-        try:
-            client.request(observer_decl(u_bar))
-            for s, y in stream:
-                client.request({"tick": observer_tick(
-                    {**W.shadow_features(s, 0.0), W.ACT_NAME: value}, y)})
-            # no menu ⇒ p1 read off the last evidence reply's readouts if any, else a
-            # menu-less decide attempt — both recorded
-            return try_request(client, decide_msg(_summary(2), 8.0,
-                                                  extra={W.ACT_NAME: value}, menu=[]))
-        finally:
-            client.shutdown()
-
-    control = {str(v): observer_p1(v) for v in (1.0, 4.0)}
+    # M-25 control (the A4-shape observer world): fold ONE teach stream where act
+    # correlates with y, then read the conditional p1 ACROSS the discriminating grid on
+    # the SAME trained model — the alternative the null denies must be EXPRESSIBLE. A
+    # constant-act stream cannot teach conditioning (that mis-build is disclosed in the
+    # report), so the teach is what makes distinct>1 a real detector rather than noise.
+    control_client = spawn(engine)
+    try:
+        control_client.request(mirrored_decl(u_bar))
+        t_ev = 0.0
+        for s, y, v in _teach_stream():
+            control_client.request({"tick": mirrored_tick(
+                W.shadow_features(s, t_ev), y, v)})
+            t_ev += 1.0
+        control = {str(v): _p1(try_request(control_client, decide_msg(
+            _summary(2), t_ev, extra={MIRROR_NAME: v})))
+            for v in W.ACT_GRID}
+    finally:
+        control_client.shutdown()
+    control_distinct = len({round(v, 12) for v in control.values() if v is not None})
     return {"pinned_p1": p1s,
             "distinct": len({v for v in p1s.values() if v is not None}),
-            "m25_control": control}
+            "m25_control_conditional_p1": control,
+            "m25_control_distinct": control_distinct}
 
 
 # --- K3: conditioning existence ----------------------------------------------------------
 
 
 def conditioning(engine: str, u_bar: Mapping[str, float]) -> dict[str, Any]:
-    """Mirrored world: two streams identical in (features, y), differing only in the
-    act-taken values → p1 must differ; an act-identical pair → byte-identical p1."""
-    stream = _fixed_stream()
+    """K3, read via the conditional readout (the only shape arm B's door admits — a
+    plain decide missing act-taken is refused). Fold two teach streams that DISAGREE on
+    what act-taken predicts (hi: act<=2 -> y=1; lo: act<=2 -> y=0), then read the
+    conditional p1 at a FIXED query act. Distinct across the two folds ⇒ the fold
+    conditions on act-taken. An act-identical control (fold hi twice) must be identical."""
 
-    def fold(acts: Sequence[float]) -> dict[str, Any]:
+    def fold_and_probe(flip: bool) -> dict[str, Any]:
         client = spawn(engine)
         try:
             client.request(mirrored_decl(u_bar))
-            for (s, y), v in zip(stream, acts, strict=True):
-                client.request({"tick": mirrored_tick(W.shadow_features(s, 0.0), y, v)})
-            plain = try_request(client, decide_msg(_summary(2), 8.0))
+            t_ev = 0.0
+            for s, y, v in _teach_stream():
+                yy = (1 - y) if flip else y
+                client.request({"tick": mirrored_tick(W.shadow_features(s, t_ev), yy, v)})
+                t_ev += 1.0
             conditional = {
-                str(v): _p1(try_request(client, decide_msg(
-                    _summary(2), 8.0, extra={MIRROR_NAME: v})))
-                for v in (1.0, 2.0, 3.0, 4.0)}
-            return {"plain": plain, "p1": _p1(plain), "conditional": conditional}
+                str(cv): _p1(try_request(client, decide_msg(
+                    _summary(2), t_ev, extra={MIRROR_NAME: cv})))
+                for cv in W.ACT_GRID}
+            return {"conditional": conditional, "t": t_ev}
         finally:
             client.shutdown()
 
-    a = fold([1.0] * 8)
-    b = fold([4.0] * 8)
-    a2 = fold([1.0] * 8)
-    return {"acts_all_1": a, "acts_all_4": b, "acts_all_1_again": a2,
-            "distinct_streams_differ": a["p1"] != b["p1"],
-            "identical_streams_identical": a["p1"] == a2["p1"]}
+    hi = fold_and_probe(flip=False)
+    lo = fold_and_probe(flip=True)
+    hi2 = fold_and_probe(flip=False)
+    q = "1.0"  # the fixed query act: act-taken = abstain-value
+    hi_q, lo_q, hi2_q = (d["conditional"][q] for d in (hi, lo, hi2))
+    return {"teach_hi": hi, "teach_lo": lo, "teach_hi_again": hi2,
+            "query_act": q,
+            "p1_hi": hi_q, "p1_lo": lo_q, "p1_hi_again": hi2_q,
+            "distinct_streams_differ": (hi_q is not None and lo_q is not None
+                                        and hi_q != lo_q),
+            "identical_streams_identical": hi_q == hi2_q}
 
 
 # --- K4: the selection contract ----------------------------------------------------------
@@ -301,7 +326,10 @@ def selection(engine: str, u_bar: Mapping[str, float]) -> dict[str, Any]:
             client.request({"tick": mirrored_tick(
                 W.shadow_features(_summary(1 + (i % 3)), t), y, v)})
             t += 1.0
-        outcome = try_request(client, decide_msg(_summary(2), t))
+        # the decide MUST carry act-taken (arm B's door), so selection is read at a
+        # fixed conditioning value — the chosen act is the menu pick, act-taken is the
+        # observed covariate; #15 says the covariate cannot reach the candidate ranking.
+        outcome = try_request(client, decide_msg(_summary(2), t, extra={MIRROR_NAME: 1.0}))
         reply = outcome.get("reply") or {}
         chosen = (reply.get("act") or {}).get(W.ACT_NAME)
         p1 = _p1(outcome)
@@ -330,21 +358,22 @@ def ceiling_pass(client: _Client, rows: Sequence[tuple[W.DecideSummary, int, str
             out.append({"i": i, "recorded_action": action, "skipped": "unmapped-action"})
             continue
         feats = W.shadow_features(s, t)
-        plain = try_request(client, {"tick": {"features": dict(feats),
-                                              "menu": [W.ACT_NAME]}})
-        reply = plain.get("reply") or {}
-        chosen = (reply.get("act") or {}).get(W.ACT_NAME)
-        p1_by_value = {
-            str(cv): _p1(try_request(client, {"tick": {
+        # every mirrored-world decide MUST carry act-taken (arm B's door refuses a decide
+        # missing a declared name), so there is no "plain" mirrored decide — the
+        # conditional readouts ARE the decides; the pooled (unconditional) ceiling comes
+        # from pooled_pass over the deployed world. Probe BEFORE folding row i (K5).
+        probes = {
+            str(cv): try_request(client, {"tick": {
                 "features": {**dict(feats), MIRROR_NAME: cv},
-                "menu": [W.ACT_NAME]}}))
+                "menu": [W.ACT_NAME]}})
             for cv in conditional_values}
+        p1_by_value = {k: _p1(o) for k, o in probes.items()}
         client.request({"tick": mirrored_tick(feats, y, v)})
         t += 1.0
-        chosen_name = None if chosen is None else W.VALUE_TO_ACTION.get(chosen)
+        refusals = {k: o["refused"] for k, o in probes.items() if "refused" in o}
         out.append({"i": i, "recorded_action": action, "y": y, "act_value": v,
-                    "p1": _p1(plain), "chosen": chosen_name,
-                    "refused_plain": plain.get("refused"), "p1_by_value": p1_by_value})
+                    "p1_by_value": p1_by_value,
+                    "refused": refusals or None})
     return out
 
 
@@ -421,21 +450,19 @@ def ceiling(engine: str, u_bar: Mapping[str, float]) -> dict[str, Any]:
         xs = [v for v in vals if v is not None]
         return max(xs) if xs else None
 
-    plain_ceiling = mx([r.get("p1") for r in mirrored if "skipped" not in r])
     cond_ceiling = mx([p for r in mirrored if "skipped" not in r
                        for p in r["p1_by_value"].values()])
     pooled_ceiling = mx([r.get("p1") for r in pooled])
     return {"universe": len(rows),
             "skipped": sum(1 for r in mirrored if "skipped" in r),
+            "refused_probe_rows": sum(1 for r in mirrored if r.get("refused")),
             "handshakes": {"mirrored": hs_m, "pooled": hs_p},
             "commit_bar": bar,
             "respond_threshold_raw_menu": W.respond_threshold(u_bar),
-            "ceilings": {"mirrored_plain": plain_ceiling,
-                         "mirrored_conditional_max": cond_ceiling,
+            "ceilings": {"mirrored_conditional_max": cond_ceiling,
                          "pooled": pooled_ceiling},
             "gaps_to_bar": {k: (None if v is None or bar is None else bar - v)
-                            for k, v in (("mirrored_plain", plain_ceiling),
-                                         ("mirrored_conditional_max", cond_ceiling),
+                            for k, v in (("mirrored_conditional_max", cond_ceiling),
                                          ("pooled", pooled_ceiling))},
             "wall_s": {"mirrored": t1[1] - t0[1], "pooled": t2[1] - t1[1]},
             "rows_mirrored": mirrored, "rows_pooled": pooled}
