@@ -674,9 +674,18 @@ material for that candidate only.
   tick 0**, the option §5.4(c) said we did not need. NOT
   concluded, deliberately: whether §16 finding 3's gather binder still binds (two of its three
   terms moved; `r45`'s C3 measured the pathology standing; the crossing needs the engine under
-  today's Ū — `r48`'s job). Next, each own pre-registration: **r47** (the four-item enablement
-  at HEAD, shadow-only) → **r48** (the re-earn measurement, replay-first; a K-cap/episode
-  budget is owed before any live enablement — §16 finding 4) → §18's bars (readable, never
+  today's Ū — `r48`'s job). **`r47` IS READ AND BUILT** (`GD-24`, $0, ten
+  criteria PASS): the deployed categorical episode speaks the enabled world at HEAD — the four
+  items land in `categorical.py`, codebooks/clock **binding** the binary world's own objects;
+  arm B accepts end to end at k ∈ {2,3,5} (`models` 688/1032/1720 = leg D's `344·k`) where the
+  pre-enablement episode is refused at the handshake; binary world byte-untouched; 4/4
+  mutations RED; **nothing deployed or enabled**. The order was frozen with its reason: build
+  before measuring (`M-7` forbids pricing a constant through a re-implementation of the rule
+  that assembles it; `r30b`'s in-process lever is invisible). Two corrections: a prediction
+  refuted (arm B refuses at the handshake) and a test asserting an **invented** requirement
+  (clock name in the namespace) refuted by the deployed binary world. Next: **r48** (the
+  re-earn measurement through the deployed runner; a K-cap/episode budget owed before any live
+  enablement — §16 finding 4) → §18's bars (readable, never
   read; preconditions C3's gather constant + leg A's empty commit column + `GD-21`'s bar-drift
   + leg D's spec), then §11's exit.
 
