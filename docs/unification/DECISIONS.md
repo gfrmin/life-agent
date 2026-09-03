@@ -896,3 +896,54 @@ uncommitted instrument rewrite before it was committed; caught by re-reading the
 re-applied, and committed before the battery re-ran).
 
 **Reaction.** *(open)*
+
+## GD-22 · 2026-09-03 · the two worlds share ONE grid rule — and GD-13's "per-K" was a category error
+
+**The fork.** `GD-13` carried the obligation: *do the binary and categorical (E1 stage-1)
+worlds share one declaration of r44's grid rule, or two?* — with the worry that *"[the twin's]
+grid under r44's rule is per-`K`."* `r46` leg D (`docs/unification/reports/r46d-categorical-twin.md`,
+$0, both arms) measured it.
+
+**Decided: ONE rule, one declaration — the categorical world binds r44's `theta_grid(u_bar)`
+unchanged, because the θ codebook is K-INDEPENDENT.** Measured on arm B (HEAD): with the SAME 8-rung
+grid the model count reads 688 / 1032 / 1720 for k = 2 / 3 / 5 — exactly `344·k`, i.e. it scales
+with `obs_arity` (the candidate/outcome dimension), NOT with any change to the θ grid. `GD-13`'s
+"per-`K`" conflated two objects: the **menu** grid (`act_grid_cat(k)`, genuinely per-`K` and
+already correct) and the **θ** codebook (K-independent — it parametrises the channel rate, keyed
+on `u_bar`). There is nothing to split. This is the `GD-16` shape: the carried premise's
+conclusion (one rule) survives while its stated mechanism (per-`K`, two applications) is refuted —
+the twin's utility admits **no crossings at all** (`respond_j` is code-conditional, `(= y (- act
+RESPOND_BASE))`, not scalar-`p1`-linear), so `argmax_crossings` cannot even be applied to it and a
+per-`K` θ grid was never on the table.
+
+**r45's three source claims measured true, and one is broader than r45 named.** (1) Arm B cannot
+handshake the twin as-is — **confirmed** (`bad hello`; codebooks is the single item that clears it);
+but arm A handshakes it with no codebooks at all, so "cannot handshake at HEAD" is a property of
+**arm B**, not the twin — r45's phrasing corrected. (2) The clock defect is real — without it the
+twin fires the menu head over a constant act; with it, selection tracks the utility (gather) — r43 /
+`OB-24` transferred whole. (3) The evidence-tick defect is real and has **two halves** on arm B: the
+menu-less `act` (r45's naming) AND the **dormant indicator names** `cat_features` omits on its
+"dormancy is free" assumption — the same `shadow_features` defect r45 A4/B5 fixed for the binary
+world, still live in the twin. The full-coverage repair clears arm B and is a byte-identical no-op
+on arm A.
+
+**What a categorical enablement (E1 / §17.6) must carry — SPECIFIED, not built.** Four items:
+(1) `codebooks.theta = theta_grid(u_bar)` unchanged; (2) a `clock` row; (3) a menu-bearing tick;
+(4) full indicator coverage on every tick (`cat_features` must emit every declared name, dormant
+0.0). Leg D builds and enables **none** of them — the categorical world stays env-disabled, no
+`src/` change, nothing deployed. `M-1` is not engaged; `GD-13`'s rider is carried (an enabled twin
+inherits `GD-16`'s re-read before its first backfill).
+
+**Alternatives rejected.** *Declare two rules* — false on the measurement: the twin binds the
+binary grid unchanged and its per-`K` growth is `obs_arity`, not θ. *Build the four fixes and enable
+the twin here* — that is E1 / §17.6's job under its own pre-registration; bundling a build into a
+$0 diagnosis is the r30b error. *Escalate to the owner* — a $0 reading a fork the register and
+evidence decide (`D-3`), not a change to the objective.
+
+**Disclosed (both fixed before any verdict, `r05`):** the instrument's first draft reused one
+session across handshakes (a handshake is once-per-session — the reuse read as a spurious refusal),
+and first sent `cat_features` (dormant-omitting, so the arm-B decide was refused, nulling K5). Both
+caught by the run's own output, fixed, and the instrument re-committed before the K7 battery
+(`M-29`).
+
+**Reaction.** *(open)*
