@@ -947,3 +947,54 @@ caught by the run's own output, fixed, and the instrument re-committed before th
 (`M-29`).
 
 **Reaction.** *(open)*
+
+## GD-23 · 2026-09-03 · the E1 design doc is salvaged, not rebased — and six of its eight engine dependencies have closed
+
+**The fork.** `GD-10`'s ladder reaches §17.6's E1 re-earn after `r46`. Its governing design —
+`docs/candidates/e1-categorical-outcome.md`, owner-approved 2026-07-21 and named as governing
+by `docs/membrane-shadow.md` §15 — **did not exist on master**: it was stranded on
+`feat/e1-design`, leaving §15's link broken since the branch was paused. How to recover it:
+salvage the file, or rebase/restart the branch?
+
+**Decided: salvage the doc onto master with a third dated re-ground section, and retire the
+branch.** `feat/e1-design` sat 2 commits ahead and **521 behind**, and both of its commits are
+that one file — the branch's only unique bytes are the doc itself. Rebasing 521 commits to
+carry one document buys nothing a `git show` does not; restarting the design discards an
+owner-approved artefact for staleness that is enumerable and can be stated in place, which is
+what the doc's own dated-re-ground convention exists for. The branch is deleted (local and
+origin) with its content fully on master. Preservation is exact: §§1–6 are byte-identical to
+the approved 2026-07-21 record and §7 states what moved under it.
+
+**The re-ground's own finding: §3's "not landed" list is materially stale.** Read live
+(read-only `gh`, the proplang repo is never edited from here), six of the eight named issues
+have closed, three of them load-bearing. **#20** (per-code readout) **shipped** — so §16
+finding 5, "R-D23 cap-binding is UNOBSERVABLE", is readable for the first time. **#21** (the
+null-mass cap) closed at the `OB-19` heir boundary, the minority-cell tie broken by declared
+`breadth` pairs. **#19** closed with the θ ceiling **changing owner rather than dissolving** —
+θ is now REQUIRED hello data priced by mention mass (finiteness remains), which is precisely
+why leg D's item 1 exists; read under the deployed boot Ū, our declared grid's top rung is
+**0.990634**, neither the doc's engine-frozen 0.9 nor the 0.95 endpoint. And **#11** closed
+`OB-12` as DISCHARGED with increment **B out on measurement** (`n_inv = 0`) — while naming the
+one thing that could re-open it, a second verdict source. This repo **has one built and
+dormant**: `core/claude_verdicts.py` (membrane-shadow §17), 180 verdicts, **none written since
+2026-07-22** — a supply as code and one fold, not as a running stream, so re-opening B means
+restarting and pricing it, not pointing at the file. §4.1's bad-verdict exclusion stands, and
+the demand would be ours to file rather than theirs to derive (`M-23`; `GD-14`'s rider).
+**#10** also closed against our stated position: it ruled **bounded option 3** — K at tick 0
+with a **reserved unallocated tail**, priced from tick 0 — where §5.4(c) had said the
+bounded-reserved-tail "is not needed on our account". Session-per-question is unaffected; the
+tail's pricing is a cost `r47` must declare deliberately.
+
+**What is deliberately NOT concluded.** Whether §16 finding 3's gather binder still binds. Two
+of its three terms have moved (the ceiling and the Ū) while `r45`'s C3 measured the pathology
+standing in the binary world at v2; the categorical crossing needs the engine under today's Ū.
+That is `r48`'s measurement, and this decision records it as open in both directions rather
+than inferring it from arithmetic — §17.6's own lesson about a Ū that moved under a reading.
+
+**Consequence.** Docs-only; no `src/` change, nothing deployed, `M-1` not engaged. The forward
+rungs are published in `ROADMAP.md` 3h and `CLAUDE.md`: **r47** (the four-item enablement at
+HEAD, pre-registered, shadow-only) → **r48** (the re-earn measurement, replay-first) → the
+**§18 bar read** (priced, own pre-registration). A `D-3` fork — the register and $0 evidence
+decide it, no objective changes.
+
+**Reaction.** *(open)*

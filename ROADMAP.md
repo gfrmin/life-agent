@@ -330,9 +330,38 @@ Bayesian Ask rather than deterministic pipelines. Remaining program, in dependen
    already correct) with θ. r45's three source claims measured true, one broader: the twin's tick
    fails arm B on **TWO** counts (menu-less `act` + the dormant indicators `cat_features` omits).
    A categorical enablement (E1/§17.6) needs four items — SPECIFIED, NOT built; nothing deployed.
-   **All four r46 legs are read.** Next: **§17.6's E1 re-earn** (paused on `feat/e1-design`),
-   then §18's bars (readable, never read; preconditions C3's gather constant + leg A's empty
-   commit column + `GD-21`'s bar-drift + leg D's four-item categorical spec), then §11's exit.
+   **All four r46 legs are read.**
+
+   **§17.6's E1 re-earn is OPEN, and its grounding pass is read (2026-09-03, `GD-23`, $0).**
+   E1 is not greenfield: stages 0–1 LANDED 2026-07-22 (membrane-shadow §15/§16) and
+   `membrane/categorical.py` is in tree, env-gated OFF and byte-inert. What was missing is that
+   its governing design — `docs/candidates/e1-categorical-outcome.md`, owner-approved
+   2026-07-21 — **was stranded on a paused branch while §15 named it governing**, so the link
+   was broken on master. It is salvaged verbatim with a third dated re-ground rather than
+   rebased (the branch sat 521 commits behind and its only unique bytes were that file); the
+   branch is retired. The re-ground's finding is that the design's "not landed" list is
+   materially stale: **six of its eight engine dependencies have closed**, three load-bearing —
+   the per-code readout **shipped** (#20, making §16's unobservable R-D23 question readable),
+   the null-mass cap closed at the `OB-19` heir (#21), and the θ ceiling **changed owner rather
+   than dissolving** (#19 — θ is REQUIRED hello data now, which is why leg D's item 1 exists;
+   our declared grid's top rung reads **0.990634** under the deployed Ū, neither the doc's 0.9
+   nor the 0.95 endpoint). `OB-12` discharged with increment B out **on measurement**, while
+   naming the one thing that reopens it — a second verdict source, which this repo has **built
+   and dormant** (`core/claude_verdicts.py`: 180 verdicts, none since 2026-07-22, so
+   re-opening B means restarting and pricing it). **#10** closed against our stated position
+   too, ruling a **reserved unallocated tail priced from tick 0** where §5.4(c) had said it was
+   not needed — a cost `r47` declares deliberately. Deliberately NOT concluded: whether §16 finding 3's
+   gather binder still binds — two of its three terms moved while `r45`'s C3 measured the
+   pathology standing, and the categorical crossing needs the engine under today's Ū.
+
+   Forward rungs, each under its own pre-registration (`M-3`): **r47** — the four-item
+   categorical enablement at HEAD (`GD-22`: codebooks = `theta_grid` unchanged, a clock row, a
+   menu-bearing tick, full indicator coverage), shadow-only, nothing deployed; **r48** — the
+   re-earn measurement, replay-first, settling the binder question and §16 finding 4's
+   minute-scale episode cost (a K-cap or episode budget is owed **before** any live
+   enablement); then **§18's bars** (readable, never read; preconditions all published — C3's
+   gather constant, leg A's empty commit column, `GD-21`'s bar-drift, leg D's spec), then
+   §11's exit.
 4. **[RETIRED 2026-08-31 — `G-1`. Items 4 and 5 *were* Stage 2; the aggregate family was
    additionally deleted by K1 as "family routing in disguise", its transformations kept.
    The thread transformations may still be built when evidence calls for them, never as a

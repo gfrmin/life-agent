@@ -656,9 +656,28 @@ material for that candidate only.
   `act` + the dormant indicators `cat_features` omits). A categorical enablement (E1/§17.6)
   needs four items (codebooks=`theta_grid`, clock, menu-tick, full indicator coverage) —
   SPECIFIED, NOT built; nothing deployed, world env-disabled. **All four r46 legs are read.**
-  Next: **§17.6's E1 re-earn** (paused on `feat/e1-design`, now with leg D's four-item
-  categorical spec), then §18's bars (readable, never read; preconditions C3's gather constant
-  + leg A's empty commit column + `GD-21`'s bar-drift + leg D's spec), then §11's exit.
+  **§17.6's E1 re-earn is OPEN and its grounding pass is read (`GD-23`, 2026-09-03, $0).**
+  E1 is NOT greenfield — stages 0-1 landed 2026-07-22 (membrane-shadow §15/§16) and
+  `membrane/categorical.py` is in tree, env-gated OFF and byte-inert. Its governing design
+  (`docs/candidates/e1-categorical-outcome.md`, owner-approved 2026-07-21) had been **stranded
+  on a paused branch while §15 named it governing**; it is salvaged verbatim with a third dated
+  re-ground (§7) rather than rebased, and `feat/e1-design` is retired. The finding: **six of
+  its eight engine dependencies have closed** — #20's per-code readout SHIPPED (§16's
+  unobservable R-D23 question is readable at last), #21's null-mass cap closed at the `OB-19`
+  heir, and #19 closed with the θ ceiling **changing owner rather than dissolving** (θ is
+  REQUIRED hello data — the reason leg D's item 1 exists; our declared grid's top rung reads
+  **0.990634** under the deployed Ū, not the doc's 0.9). `OB-12` discharged, increment B out
+  **on measurement**, its named re-opener a second verdict source — which this repo has **built
+  and dormant** (`core/claude_verdicts.py`: 180 verdicts, none since 2026-07-22), so the demand
+  is ours to file AND to re-supply (`M-23`/`GD-14`). #10 ruled a **reserved tail priced from
+  tick 0**, the option §5.4(c) said we did not need. NOT
+  concluded, deliberately: whether §16 finding 3's gather binder still binds (two of its three
+  terms moved; `r45`'s C3 measured the pathology standing; the crossing needs the engine under
+  today's Ū — `r48`'s job). Next, each own pre-registration: **r47** (the four-item enablement
+  at HEAD, shadow-only) → **r48** (the re-earn measurement, replay-first; a K-cap/episode
+  budget is owed before any live enablement — §16 finding 4) → §18's bars (readable, never
+  read; preconditions C3's gather constant + leg A's empty commit column + `GD-21`'s bar-drift
+  + leg D's spec), then §11's exit.
 
 ## `src/pkm` — the KB core (Python, uv, DuckDB): key files
 
