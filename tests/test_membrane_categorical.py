@@ -281,7 +281,8 @@ def test_decide_categorical_wire_sequence_and_decode() -> None:
         tick = client.requests[1 + i]["tick"]
         assert tick["evidence"] == code
         assert tick["features"]["t"] == float(i)
-        assert "menu" not in tick
+        # r47 item 3: EVERY tick names the writable act — arm B refuses a menu-less tick
+        assert tick["menu"] == [W.ACT_NAME]
     # [4] the decide tick at t = n_evidence, menu = the one writable name
     decide = client.requests[4]["tick"]
     assert decide["menu"] == [W.ACT_NAME]
@@ -355,7 +356,78 @@ def test_cat_features_carries_t_obs_bucket_and_flags() -> None:
     assert feats["n-obs=3plus"] == 1.0
     assert feats["era-split=1"] == 1.0
     assert feats["owner-scoped=1"] == 1.0
-    assert "grow-pass=1" not in feats
+    # r47 item 4: dormancy is NOT free at HEAD — a dormant name is present, at 0.0
+    assert feats["grow-pass=1"] == 0.0
     # every emitted indicator is a declared namespace member of the SAME declaration
     names = C.handshake_decl_cat(_u_bar(), s.k)["world"]["namespace"]
     assert set(feats) - {"t"} <= set(names)
+
+
+# --- r47: the four-item enablement (GD-22) -----------------------------------------------
+
+
+def test_handshake_binds_the_one_theta_grid_rule() -> None:
+    """Item 1: `codebooks.theta` IS `world.theta_grid(u_bar)` — the one rule, bound not
+    copied, and K-independent (GD-22), so every k declares the same grid."""
+    u_bar = _u_bar()
+    expected = W.theta_grid(u_bar)
+    for k in (1, 2, 3, 5):
+        codebooks = C.handshake_decl_cat(u_bar, k)["world"]["codebooks"]
+        assert codebooks["theta"] == expected
+    assert len(expected) > 1
+
+
+def test_handshake_carries_the_binary_worlds_clock_row() -> None:
+    """Item 2: the clock row binds the binary world's own objects — a second spelling of
+    the name, price rule or batch would be a second declaration (C5)."""
+    u_bar = _u_bar()
+    (clock,) = C.handshake_decl_cat(u_bar, 3)["world"]["clock"]
+    assert clock["name"] == W.CLOCK_NAME
+    assert clock["price"] == W.clock_price(u_bar)
+    assert clock["batch"] == W.CLOCK_BATCH
+
+
+def test_clock_name_is_outside_the_namespace_as_in_the_binary_world() -> None:
+    """The clock name is NOT a namespace member — pinned against the DEPLOYED binary
+    world, which r44 verified at arm B across 59 battery cases. An earlier draft of this
+    test asserted the opposite from first principles; the deployed rule refuted it."""
+    for decl in (C.handshake_decl_cat(_u_bar(), 3), W.handshake_decl(_u_bar())):
+        world = decl["world"]
+        (clock,) = world["clock"]
+        assert clock["name"] == W.CLOCK_NAME
+        assert W.CLOCK_NAME not in world["namespace"]
+
+
+def test_cat_features_emits_every_declared_indicator_even_when_dormant() -> None:
+    """Item 4: full coverage. Arm B refuses a tick that omits a declared name, so the
+    emitted key set is EXACTLY the declared indicators plus `t`, whatever the flags."""
+    for kw in (
+        dict(era_split=False, owner_scoped=False, grow_pass=False),
+        dict(era_split=True, owner_scoped=True, grow_pass=True),
+    ):
+        s = _summary(**kw)  # type: ignore[arg-type]
+        feats = C.cat_features(s, 1.0)
+        assert set(feats) == {"t", *C.cat_indicator_names()}
+        for name in C.cat_indicator_names():
+            assert feats[name] in (0.0, 1.0)
+
+
+def test_cat_features_covers_the_declarations_own_namespace() -> None:
+    """The coverage is checked against the SAME declaration's namespace, so the two can
+    never drift apart silently."""
+    s = _summary()
+    world = C.handshake_decl_cat(_u_bar(), s.k)["world"]
+    declared = [n for n in world["namespace"] if n not in ("t", W.ACT_NAME)]
+    assert set(C.cat_features(s, 0.0)) - {"t"} == set(declared)
+
+
+def test_every_tick_of_an_episode_names_the_act() -> None:
+    """Items 3+4 together, read off the wire the deployed episode actually sends."""
+    s = _summary()
+    client = _FakeClient(_ok_replies(len(s.obs_codes), 5.0))
+    C.decide_categorical(client, _u_bar(), s)
+    ticks = [r["tick"] for r in client.requests if "tick" in r]
+    assert len(ticks) == len(s.obs_codes) + 1
+    for tick in ticks:
+        assert tick["menu"] == [W.ACT_NAME]
+        assert set(tick["features"]) == {"t", *C.cat_indicator_names()}

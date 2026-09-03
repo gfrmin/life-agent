@@ -137,10 +137,17 @@ def cat_indicator_names() -> list[str]:
 
 
 def cat_features(s: CatSummary, t: float) -> dict[str, float]:
-    """The per-tick feature encoding: ``{"t": t}`` plus the applicable indicators
-    (absent names read 0.0 on the wire — dormancy is free, same as
-    :func:`world.shadow_features`)."""
-    feats: dict[str, float] = {"t": t}
+    """The per-tick feature encoding: ``{"t": t}`` plus **every** declared indicator —
+    the active ones at 1.0 and the dormant ones at 0.0.
+
+    **r47 item 4 (`GD-22`).** The original spelling emitted only the active names on the
+    documented assumption that "dormancy is free on the wire". That assumption is FALSE at
+    proplang HEAD, which refuses a tick not covering every declared name (`r46` leg D's K4,
+    the same defect `r45` A4/B5 fixed for :func:`world.shadow_features`). Coverage is
+    derived from :func:`cat_indicator_names` — the SAME list the declaration's namespace and
+    guards are built from — so the tick and the world cannot drift apart."""
+    feats: dict[str, float] = dict.fromkeys(cat_indicator_names(), 0.0)
+    feats["t"] = t
     feats[f"n-obs={_obs_bucket(s.n_obs)}"] = 1.0
     if s.era_split:
         feats["era-split=1"] = 1.0
@@ -233,6 +240,9 @@ def handshake_decl_cat(u_bar: Mapping[str, float], k: int) -> dict[str, Any]:
             "guards": [{"name": n, "grid": [0.5]} for n in names],
             "menu": [{"name": ACT_NAME, "grid": act_grid_cat(k)}],
             "obs_arity": k + 1,
+            "codebooks": {"theta": W.theta_grid(u_bar)},
+            "clock": [{"name": W.CLOCK_NAME, "price": W.clock_price(u_bar),
+                       "batch": W.CLOCK_BATCH}],
             "utility": {"form": "said@1", "said": utility_said_cat(u_bar)},
         },
     }
@@ -263,7 +273,8 @@ def decide_categorical(
     t = 0
     for code in s.obs_codes:
         ev = client.request(
-            {"tick": {"features": cat_features(s, float(t)), "evidence": int(code)}}
+            {"tick": {"features": cat_features(s, float(t)), "evidence": int(code),
+                      "menu": [ACT_NAME]}}
         )
         if "error" in ev:
             raise MembraneError(str(ev["error"]))

@@ -27,11 +27,31 @@ def test_base_cat_decl_is_the_deployed_one_verbatim() -> None:
             CAT.handshake_decl_cat(U_BAR, k), sort_keys=True), k
 
 
-def test_base_declares_obs_arity_and_neither_codebooks_nor_clock() -> None:
+def test_base_now_carries_the_items_r47_landed() -> None:
+    """**The drift pin worked.** Leg D read a base declaration carrying NEITHER codebooks
+    NOR a clock, and this test pinned that. `r47` then landed both into the deployed
+    `handshake_decl_cat`, so the pin fired — exactly what a drift pin is for.
+
+    `base_cat_decl` is defined as the deployed declaration verbatim, so it must track it.
+    What this means for the record: leg D's K1/K2 arms measured a world without those
+    items, and re-running them needs leg D's own tree (`M-28` — a measurement pins its
+    tree for the whole run), not this one. The instrument stays in tree, tested and
+    dormant, like `carrier_audit.py` and `replace_audit.py` before it."""
     world = CT.base_cat_decl(U_BAR, 3)["world"]
     assert "obs_arity" in world
-    assert "codebooks" not in world
-    assert "clock" not in world
+    assert world["codebooks"] == {"theta": W.theta_grid(U_BAR)}
+    assert world["clock"] == [
+        {"name": W.CLOCK_NAME, "price": W.clock_price(U_BAR), "batch": W.CLOCK_BATCH}
+    ]
+
+
+def test_the_leg_d_deltas_are_now_no_ops_on_the_deployed_base() -> None:
+    """Post-`r47` the instrument's `codebooks=`/`clock=` deltas add what the base already
+    declares, so they are idempotent rather than additive. Asserted explicitly so the
+    instrument cannot quietly appear to be varying something it no longer varies."""
+    base = json.dumps(CT.base_cat_decl(U_BAR, 3), sort_keys=True)
+    both = json.dumps(CT.cat_decl(U_BAR, 3, codebooks=True, clock=True), sort_keys=True)
+    assert base == both
 
 
 def test_codebooks_delta_adds_exactly_the_one_theta_rule() -> None:
