@@ -77,7 +77,7 @@ import queue
 import threading
 import time
 from collections.abc import Callable, Mapping
-from dataclasses import asdict, dataclass, fields
+from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -177,6 +177,10 @@ class BootSnapshot:
     outcome_replay: list[tuple[str, W.DecideSummary, int]]
     n_source_records: int
     warm: WarmJoin | None = None
+    # r46c (additive): the recorded `chosen_action` of verdict_replay[i]'s decision,
+    # index-aligned — the SAME join, exposed, so an act-reading instrument never
+    # re-implements it (the r45-C3 class). Empty only when verdict_replay is empty.
+    verdict_actions: list[str] = field(default_factory=list)
 
 
 SnapshotFn = Callable[[], BootSnapshot]
@@ -1052,6 +1056,7 @@ def boot_snapshot(
         latest_reaction[r.decision_id] = r
 
     verdict_replay: list[tuple[W.DecideSummary, int]] = []
+    verdict_actions: list[str] = []
     for decision_id, r in latest_reaction.items():
         d = by_decision_id.get(decision_id)
         if d is None:
@@ -1060,6 +1065,7 @@ def boot_snapshot(
         if y is None:
             continue
         verdict_replay.append((W.summary_from_decision_event(asdict(d)), y))
+        verdict_actions.append(d.chosen_action)
 
     for decision_id, cv in CV.latest_by_decision(claude_verdicts).items():
         d = by_decision_id.get(decision_id)
@@ -1069,6 +1075,7 @@ def boot_snapshot(
         if r_owner is not None and verdict_y(d.chosen_action, r_owner.valence) is not None:
             continue  # owner ≻ Claude precedence by source (D-15/M-6, declared at RX.VERDICT_Y)
         verdict_replay.append((W.summary_from_decision_event(asdict(d)), CV.y(cv)))
+        verdict_actions.append(d.chosen_action)
 
     outcome_replay: list[tuple[str, W.DecideSummary, int]] = []
     warm: WarmJoin | None = None
@@ -1077,5 +1084,5 @@ def boot_snapshot(
 
     return BootSnapshot(
         verdict_replay=verdict_replay, outcome_replay=outcome_replay,
-        n_source_records=n_source, warm=warm,
+        n_source_records=n_source, warm=warm, verdict_actions=verdict_actions,
     )
