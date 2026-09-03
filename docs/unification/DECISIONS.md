@@ -963,7 +963,16 @@ carry one document buys nothing a `git show` does not; restarting the design dis
 owner-approved artefact for staleness that is enumerable and can be stated in place, which is
 what the doc's own dated-re-ground convention exists for. The branch is deleted (local and
 origin) with its content fully on master. Preservation is exact: §§1–6 are byte-identical to
-the approved 2026-07-21 record and §7 states what moved under it.
+the approved 2026-07-21 record (verified by diff) and §7 states what moved under it.
+
+**The retired branch's provenance, pinned before the ref goes** — `M-16`'s discipline: the two
+commits were never merged, so deleting the ref makes them unreachable even though their content
+is on master. `451f940` *docs(e1): categorical-outcome deliberation doc — paused for pixel6
+conferral* (2026-07-20); `ac4f8c2` *docs(e1): re-ground against proplang HEAD 1a0cea7*
+(2026-07-21). **Only `feat/e1-design` is retired under this decision.** The repo's other
+unmerged branches are deliberately left alone: several carry commits that are not on master and
+may be the measurement trees `GD-19` kept unpushed and `M-16` pins, and a branch ref costs
+nothing beside destroying a pinned reference.
 
 **The re-ground's own finding: §3's "not landed" list is materially stale.** Read live
 (read-only `gh`, the proplang repo is never edited from here), six of the eight named issues
