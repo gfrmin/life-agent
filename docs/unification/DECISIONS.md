@@ -827,3 +827,72 @@ this one. This is detection, not repair, and it is independent of all three reme
 **Registered alongside:** `M-27` — restarting a service is a measurement, not a formality.
 
 **Reaction.** *(open)*
+
+## GD-21 · 2026-09-03 · act-conditioning is real but inert for the commit ceiling, and the bar it would clear has drifted below the ceiling anyway
+
+**The fork.** `r46` leg C (`docs/unification/reports/r46c-act-conditioning.md`, $0) asked r45's
+question — can one world both condition on the act and choose it — and, with leg A's sharpened
+target, whether act-conditioning lifts the `p1` ceiling over the §18 commit-pricing bar. The
+frozen consequence branch 1 said: an admissible arrangement that conditions AND whose ceiling
+reaches the bar on ≥1 row makes act-conditioning a **named candidate lever**.
+
+**Measured.** The mirrored arrangement (a non-writable `act-taken` guard on the discriminating
+grid, `act` kept in the menu) **does both**: it conditions (K3, the fold's `p1` swings
+0.954 ↔ 0.061 under a synthetic teach, both arms) and it chooses (K4, `chosen = argmax_action`
+at the reply's own `p1`). So r45 A4's *"the act-conditioned world cannot decide"* was an
+artefact of collapsing `act` into the guard; the two-name arrangement dissolves it. Branch 1's
+**letter is met** — the mirrored conditional ceiling (0.862257) reaches the located commit bar
+(0.836894) on 180 of 250 rows.
+
+**Decided: branch 1's letter is recorded met AND its ground refuted; act-conditioning is NOT
+opened as a lever.** Both on the record, neither softened (`M-4`). Two facts refute the ground:
+
+1. **Conditioning is causally inert for the ceiling.** The *pooled* (unconditional) ceiling
+   already reaches the bar (0.862188 > 0.836894); conditioning adds **7 × 10⁻⁵** and lifts
+   **0 of 250 rows** over the bar. Per-row the conditional spread from `act-taken` is median
+   **1.2 × 10⁻⁵** — on the real recorded stream the historical act is near-uninformative about
+   the reaction outcome, unlike the synthetic teach. Naming act-conditioning a "candidate
+   lever" would be false to the measurement. This is `GD-16`'s shape: a criterion's qualifying
+   quantity turns out not to carry the thing the criterion was written to detect.
+2. **The bar had drifted below the ceiling.** The commit bar is not a constant: it is
+   `|u_wrong| / (u_correct + |u_wrong|)` and `u_wrong` is learned from reactions (r32). The
+   shadow's boot `u_bar` has run `−8.83` (bar 0.898) → `−5.94` (0.856) → `−5.13` (0.8369)
+   across 20 boots; leg C reads the **live** 0.8369, r32's deployed p†. Leg A's 0.897015 was
+   the **corpus fixtures**' elicited `u_bar` (`u_wrong = −8.710`), a different number. Under the
+   deployed bar 180/250 rows clear the ceiling, so the ceiling is not the blocker.
+
+**What this corrects, and what it leaves open.** Leg A's sharpened target — *"the p1
+ceiling, not the affordance constant, blocks a commit-pricing bar"* — held under the corpus bar
+and is **false under the deployed bar**: the fold `p1` clears it on 180/250 rows. What K5 does
+**not** settle is why the mapped surface's commit column is nonetheless empty under the deployed
+bar — K5 folds and probes `p1`, it does not re-run `coarse.map_action` over the live stream;
+leg A's affordance explanation (`gather` 6 654/6 654) is inferred here, not re-measured. **A §18
+commit-pricing bar must therefore be read under the era-matched `u_bar`, never a fixed 0.897**,
+and it must settle by a mapped-surface census whether the deployed bar flips any exhausted-gather
+row to a commit — with the affordance and the gauge, not the `p1` ceiling, as the standing
+candidates for the blocker.
+
+**What would reverse this.** If a future stream carried a recorded act that genuinely predicts
+the reaction outcome (per-row conditional spread ≫ 10⁻⁵), conditioning would move the ceiling
+and this decision re-opens under its own pre-registration. And `GD-16`'s rider is carried: act-
+conditioning is now measured reachable and real, so any deployment of the mirrored declaration
+inherits `GD-16`'s re-read before its first backfill — though there is no lever here to deploy.
+
+**Not filed upstream (`M-23`).** #15 is the engine-side twin and is open; leg C's finding is
+that #15's capability is **recoverable seam-side without an engine change** (a non-writable
+mirror name receives evidence and conditions the outcome belief). Handed forward with its
+locus, not filed as new demand.
+
+**Alternatives rejected.** *Follow branch 1's letter and name act-conditioning a lever* —
+renegotiates nothing but reports a lever that moves the ceiling by 10⁻⁵. *Declare branch 2
+("ceiling stays under the bar everywhere")* — false on the measurement: the ceiling **exceeds**
+the deployed bar; the honest statement is that it does so without conditioning's help. *Escalate
+to the owner* — this is a $0 reading that a fork the register and evidence decide (`D-3`), not a
+change to the objective.
+
+**Registered alongside:** `M-29` — never run a git-checkout mutation harness over uncommitted
+work (leg C's own §Disclosure 1: the K7 battery's per-mutation `git checkout` reverted the
+uncommitted instrument rewrite before it was committed; caught by re-reading the committed tree,
+re-applied, and committed before the battery re-ran).
+
+**Reaction.** *(open)*
