@@ -316,10 +316,23 @@ Bayesian Ask rather than deterministic pipelines. Remaining program, in dependen
    Registered: `M-28` (a measurement pins its tree for the whole run — one equality run
    was void for comparing the treatment against itself, and its output looked perfect).
 
-   **Next: legs C and D, each gated separately (`M-3`)** — C is act-conditioning as `r45`
-   reframes it, with leg A's sharpened target (**the p1 ceiling, not the affordance
-   constant, is what blocks a commit-pricing bar**); D is the categorical twin (`GD-13`),
-   the fourth and only remaining menu-less evidence sender.
+   **Leg C IS READ (2026-09-03, `r46c-act-conditioning.md`, `GD-21`, PR #165, $0):**
+   act-conditioning is real (K3) and choosable (K4) — r45's YES, via a mirrored NON-writable
+   `act-taken` guard with `act` kept in the menu — but **INERT for the commit ceiling** (+7×10⁻⁵,
+   0/250 rows lifted), and the bar had drifted BELOW the ceiling anyway (live p† **0.8369**,
+   < pooled ceiling **0.862188**, 180/250 clear). Branch 1 letter met / ground refuted (the
+   `GD-16` shape): NOT opened as a lever; **leg A's sharpened target CORRECTED** — the p1 ceiling
+   is not the blocker under the deployed bar (whether it flips any exhausted-gather row is handed
+   to the §18 checkpoint). `M-29` registered. **Leg D IS READ (2026-09-03,
+   `r46d-categorical-twin.md`, `GD-22`, PR #166, $0):** `GD-13` RESOLVED — the two worlds share
+   **ONE grid rule**; the θ codebook is **K-INDEPENDENT** (same 8-rung grid across k, models
+   688/1032/1720 = 344·k via `obs_arity`), so `GD-13`'s "per-K" conflated the menu grid (per-K,
+   already correct) with θ. r45's three source claims measured true, one broader: the twin's tick
+   fails arm B on **TWO** counts (menu-less `act` + the dormant indicators `cat_features` omits).
+   A categorical enablement (E1/§17.6) needs four items — SPECIFIED, NOT built; nothing deployed.
+   **All four r46 legs are read.** Next: **§17.6's E1 re-earn** (paused on `feat/e1-design`),
+   then §18's bars (readable, never read; preconditions C3's gather constant + leg A's empty
+   commit column + `GD-21`'s bar-drift + leg D's four-item categorical spec), then §11's exit.
 4. **[RETIRED 2026-08-31 — `G-1`. Items 4 and 5 *were* Stage 2; the aggregate family was
    additionally deleted by K1 as "family routing in disguise", its transformations kept.
    The thread transformations may still be built when evidence calls for them, never as a

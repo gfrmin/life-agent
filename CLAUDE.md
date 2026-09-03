@@ -637,10 +637,28 @@ material for that candidate only.
   no reduction of `GD-20`'s hazard, which sits before any fold. Also registered: `M-26`
   (a column's meaning can depend on the row's kind) and `M-28` (a measurement pins its
   tree for the whole run); `GD-19` — settled the same day, apart from r46 — keeps the
-  measurement-tree tags unpushed, their SHAs pinned in `M-16`. Next: **legs C and D, each gated separately (`M-3`)** — act-conditioning as
-  r45 reframes it (leg A's sharpened target: **the p1 ceiling, not the affordance
-  constant, blocks a commit-pricing bar**), and the categorical twin, still the fourth
-  and only menu-less sender.
+  measurement-tree tags unpushed, their SHAs pinned in `M-16`.
+  **Leg C IS READ (2026-09-03, `r46c-act-conditioning.md`, `GD-21`, PR #165, $0):**
+  act-conditioning is real (K3) and choosable (K4) — r45's YES, via a mirrored NON-writable
+  `act-taken` guard with `act` kept in the menu — but **INERT for the commit ceiling** (K5:
+  +7×10⁻⁵, 0/250 rows lifted), and the bar had drifted BELOW the ceiling anyway (live p†
+  **0.8369** = r32's, < pooled ceiling **0.862188**, 180/250 clear). Branch 1 letter met /
+  ground refuted (the `GD-16` shape): NOT opened as a lever; **leg A's sharpened target
+  CORRECTED** — the p1 ceiling is not the blocker under the deployed bar (K5 does not re-run
+  `coarse.map_action`, so the affordance-`gather` explanation is inferred; whether the drifted
+  bar flips any exhausted-gather row is handed to the §18 checkpoint). `M-29` registered
+  (never run a git-checkout mutation harness over uncommitted work). **Leg D IS READ
+  (2026-09-03, `r46d-categorical-twin.md`, `GD-22`, PR #166, $0):** `GD-13` RESOLVED — the two
+  worlds share **ONE grid rule**; the θ codebook is **K-INDEPENDENT** (same 8-rung grid across
+  k, models 688/1032/1720 = 344·k via `obs_arity`), so `GD-13`'s "per-K" conflated the menu
+  grid (per-K, already correct) with θ (the K-independent channel rate). r45's three source
+  claims measured true, one broader: the twin's tick fails arm B on **TWO** counts (menu-less
+  `act` + the dormant indicators `cat_features` omits). A categorical enablement (E1/§17.6)
+  needs four items (codebooks=`theta_grid`, clock, menu-tick, full indicator coverage) —
+  SPECIFIED, NOT built; nothing deployed, world env-disabled. **All four r46 legs are read.**
+  Next: **§17.6's E1 re-earn** (paused on `feat/e1-design`, now with leg D's four-item
+  categorical spec), then §18's bars (readable, never read; preconditions C3's gather constant
+  + leg A's empty commit column + `GD-21`'s bar-drift + leg D's spec), then §11's exit.
 
 ## `src/pkm` — the KB core (Python, uv, DuckDB): key files
 
