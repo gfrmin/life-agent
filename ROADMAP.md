@@ -21,7 +21,7 @@ view** — what each faculty is and where it stands.
 | **Memory** — recall + retrieval | **PKM** (`src/pkm`, Python) + **`life_agent`** (this repo, Python) | **Live.** PKM: content-addressed extraction + DuckDB `fts`/`vss` + **composable transforms** (chained, cited perspectives — SPEC §18.7). `life_agent` adds the retrieval/synthesis read path (`scripts/ask.py`, dogfooded via `bin/ask-live`). |
 | **Brain** — beliefs under uncertainty; value-of-information → ask/proceed/block | **credence** (`../credence`, Julia; the skin's JSON-RPC-over-stdio seam) | **Adopted, being wired (Phase 1.6 / Ask v0):** [`docs/bayesian-foundations.md`](./docs/bayesian-foundations.md) — answers become claim sets with posteriors; responses are EU decisions through `src/life_agent/core/brain.py` (slice 1). **The typed arm is the deployed default since 2026-08-25 (run 14 PASS — §14).** Per §16 there is no separate VOI governor to build afterwards: the governor is the spine itself. **proplang is the RULED successor of credence at this seam** (owner ruling 2026-08-25; [`docs/membrane-shadow.md`](./docs/membrane-shadow.md) §18 — gated-mandatory, FAIL means iterate, never park), being migrated as **Arc C** (item 3h below); its shadow engine mirrors live decide traffic off the decision path again since 2026-09-01. |
 | **Hands** — capabilities/actions | **GTD** (`life_agent.tasks`, event-sourced) reached via **`life_agent.reach`** (Telegram transport + persona); email (`msmtp`/JMAP), calendar (CalDAV/Google), chat (matrix) | GTD live, ledger-as-truth (PRINCIPLES §7); **email→GTD shipped (M2)** — the `action_items` transform (haiku, grounded quotes) **auto-files** cited tasks to the inbox; you triage in Telegram. Rest not wired. |
-| **Goals / Utility** — what the owner values | **`core/utility.py`** (this repo, Python) | **Partly built.** The *answer*-utility gauge is live: one utility posterior, a learned belief about the owner (foundations §4.4/§10 as amended), elicited P(U) pricing every gate run and the deployed argmax. **Still unbuilt:** any goal/plan representation beyond it — owed before autonomous *action* (PRINCIPLES §3, Phase 2). **Named residue (owner-only):** the gauge fixes `u_abstain = 0`, so it cannot represent the cost of *not* answering. |
+| **Goals / Utility** — what the owner values | **`core/utility.py`** (this repo, Python) | **Partly built.** The *answer*-utility gauge is live: one utility posterior, a learned belief about the owner (foundations §4.4/§10 as amended), elicited P(U) pricing every gate run and the deployed argmax. **Still unbuilt:** any goal/plan representation beyond it — owed before autonomous *action* (PRINCIPLES §3, Phase 2). **Named residue (owner-only):** the gauge fixes `u_abstain = 0`, so it cannot represent the cost of *not* answering — now priced, not just named: [`docs/unification/conferrals/u-abstain-conferral.md`](./docs/unification/conferrals/u-abstain-conferral.md) (2026-09-02) holds the evidence and four costed options, awaiting the owner, and r46 leg A tied the residue to the decision path (it is what sets the engine's commit threshold at `p1 = 0.897015`). |
 | **Spine** — the agent loop + routing | **TBD — open decision** | Deferred to Phase 2 (PRINCIPLES §15). Candidates: pi-mono (TS), a Python loop, or Claude Code as an interim loop. |
 
 The earlier `pkm-memory` MCP server was built then **torn down** (operational — a leaked
@@ -260,20 +260,66 @@ Bayesian Ask rather than deterministic pipelines. Remaining program, in dependen
    repair (59/59 battery cases tracking the engine's own argmax, 8/8 mutations RED); and
    **`r45`** restored P1 — **the shadow is live again since 2026-09-01**, folding real traffic,
    with the 2026-08-10 → 09-01 gap recorded in the stream as a segmentation boundary because
-   the engine's model space changed underneath it. Three constraints found en route bind what
-   comes next: the engine chooses `gather` across 96–98% of the credence range under both the
-   declared and deployed utility (the v1 gather-bar pathology is **not** dissolved; the
-   precondition this puts on any §18 bar is that it **state which surface it reads** — the raw
-   affordance or `coarse.map_action` — and establish that surface's distribution first, `r45`
-   having measured the raw one and not the mapped one); the fold-depth cost is real and
-   biting (~20 s wall / **6.8 s engine CPU** per mirrored decide at fold depth 250, against
-   `r44`'s 297 ms bench at depth 0 — CPU is the comparable pair, the box being loaded;
-   `GD-17`, which falsifies `GD-15`'s first ground. The sweep established 0 → 100 only: its
-   own depth-250 checkpoint was never reached, so the 250 figure is the live shadow's, from
-   a different process); and the one engine-side ask is filed upstream as demand,
-   `proplang#24` (`GD-14`). **Next rung: `r46`** — act-conditioning as `r45` reframes it,
-   `GD-15`'s grid precision now with its number, and the categorical twin, each gated
-   separately.
+   the engine's model space changed underneath it. Three constraints found en route bind
+   what comes next: the engine chooses `gather` across 96–98% of the credence range under
+   both the declared and deployed utility (the v1 gather-bar pathology is **not**
+   dissolved, and it stands); the fold-depth cost is real and biting (~20 s wall /
+   **6.8 s engine CPU** per mirrored decide at fold depth 250 — `GD-17`, which falsifies
+   `GD-15`'s first ground); and the one engine-side ask is filed upstream as demand,
+   `proplang#24` (`GD-14`). **`r46` has since read its two readable legs, both $0
+   (2026-09-02) — leg A declaring the §18 bar's surface, leg B cutting the fold cost 3.3×
+   (merged, not yet live):**
+
+   **Leg A** ([`r46-readable-surface.md`](./docs/unification/reports/r46-readable-surface.md))
+   discharged the §18 surface precondition: the surface a §18 bar reads is **declared** to
+   be the mapped one — `coarse.map_action`, which had **zero `src/` call sites since M5** —
+   and its distribution is published (`GD-18`); the raw affordance is disqualified on
+   measurement (6 654 of 6 654 action-bearing rows `gather`, at a stated read time — the
+   ledger is live and the count moves). The mapped surface varies and carries engine
+   signal (echo 0.636 over 605 recorded exchanges; 118 disagreeing rows, every one
+   engine-contributed) — **but its commit branch has never once been reached**: the
+   threshold is `p1 = 0.897015` (`|u_wrong| / (u_correct + |u_wrong|)`, sitting there
+   **because `u_abstain = 0`** — the owner-only residue named in the table above), the
+   ledger max **0.8706**, gap 0.0264 (0.0349 in the new era). §17.6 found the near-miss
+   first, on 193 ticks; leg A extends it to the whole ledger, both engine arms, and the
+   mapped surface. The ceiling is **empirical, not structural**: a bar read today prices
+   gather-versus-withhold and must say plainly that its commit column is empty on every
+   row ever recorded. The observation-only tap that restores the surface is live and
+   writing since the bridge's 2026-09-02 restart — a restart pair whose price `GD-20`
+   records: the first one **permanently killed the shadow** (the skin's 112 s cold Julia
+   precompile racing a 120 s ready-sentinel timeout, ready arriving 3 s after the last
+   respawn gave up, `ActiveState=active` green throughout), caught and repaired by a
+   second, warm restart. Registered: `M-26` (a column's meaning can depend on the row's
+   kind) from the leg itself, and `M-27` (restarting a service is a measurement, not a
+   formality) from that incident. The same sitting also settled `GD-19`, apart from r46:
+   the measurement-tree tags stay unpushed — the PII guard is right — with the SHAs
+   pinned in `M-16` instead.
+
+   **Leg B** ([`r46b-grid-precision.md`](./docs/unification/reports/r46b-grid-precision.md))
+   discharged `GD-15`'s inherited conditional and closed `M-24` — **not** by the
+   sixteenths rule, which this world refutes (sixteenths merge two rung pairs: `n` 8 → 6,
+   `models` 960 → 516 — a different hypothesis space, not a placement fix), but by the
+   finest lattice the frozen bar admits: `world._GRID_LATTICE_BITS = 20`, snapped after
+   rung selection and refused rather than allowed to merge. Depth 250 — the checkpoint
+   `GD-17` was interrupted before — was reached: **748 s → 226 s** within-run (the
+   deployed baseline is unstable across runs, 1 102 / 744 / 748 s; the 1 102 s run is the
+   one reproducing `GD-17`'s ~19.5 min live boot). **Nothing clears at depth 25**, so
+   `GD-15`'s "depth is small" and `GD-17`'s falsification of it are both true at their own
+   depths. `p1` gap ~3 × 10⁻⁷ (~9 500× under `W6`'s, with no growth at the three tick
+   counts `W6` used — though three points cannot prove absence of a trend), and **zero
+   differing actions over 428 distinct summaries**. One correction disclosed: the
+   pre-registration's own mechanism claim was wrong — every IEEE double is already dyadic;
+   cost tracks denominator **bit-length**, the 2⁻⁵³ control landing back on the deployed
+   cost. The change is **merged, not on the wire** (the running shadow keeps the old grid
+   until the next restart taken for its own reasons — none is spent for an 8.7-minute
+   saving), and it does **not** reduce `GD-20`'s hazard, which sits before any fold.
+   Registered: `M-28` (a measurement pins its tree for the whole run — one equality run
+   was void for comparing the treatment against itself, and its output looked perfect).
+
+   **Next: legs C and D, each gated separately (`M-3`)** — C is act-conditioning as `r45`
+   reframes it, with leg A's sharpened target (**the p1 ceiling, not the affordance
+   constant, is what blocks a commit-pricing bar**); D is the categorical twin (`GD-13`),
+   the fourth and only remaining menu-less evidence sender.
 4. **[RETIRED 2026-08-31 — `G-1`. Items 4 and 5 *were* Stage 2; the aggregate family was
    additionally deleted by K1 as "family routing in disguise", its transformations kept.
    The thread transformations may still be built when evidence calls for them, never as a
@@ -417,7 +463,9 @@ So Stage 4's open question is no longer "is the agent as good as the outside opt
 **why a system that measures better is not the one being reached for**. The gauge fixes
 `u_abstain = 0`, so the utility model cannot represent the cost of *not* answering — and
 declining to pay that cost is exactly what the owner did. That is the named next question,
-recorded rather than answered.
+recorded rather than answered — and since 2026-09-02 *priced* rather than merely recorded
+([`u-abstain-conferral.md`](./docs/unification/conferrals/u-abstain-conferral.md): four
+costed options, still owner-only).
 
 **Stage 4 — CLOSED 2026-08-30 at 69 asks, and it ran after all.** The measurement went ahead
 under a VOI stopping rule (owner-ruled, PR #120): it closes when two consecutive rounds of ≥8

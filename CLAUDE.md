@@ -613,9 +613,33 @@ material for that candidate only.
   **falsifies `GD-15`'s first ground** (*"depth is small … very likely not yet biting"*).
   **`GD-17`** publishes it, corrects the register (`M-20`), keeps the shadow enabled (branch 1
   is frozen; nothing user-facing waits — `submit_decide` is enqueue-only off the decision path)
-  and still changes no rule today (`GD-15`'s other two grounds are unmoved; `M-4`). Next:
-  **r46** — the act-conditioning question as r45 reframes it (not "add a guard row"),
-  `GD-15`'s grid precision **now with its number**, and the categorical twin, still the fourth
+  and still changes no rule today (`GD-15`'s other two grounds are unmoved; `M-4`).
+  **`r46` legs A and B ARE READ, both $0 (2026-09-02).** Leg A discharged the §18 surface
+  precondition: the bar's surface is DECLARED to be `coarse.map_action`'s mapped one
+  (`GD-18`) — the raw affordance is a constant (6 654/6 654 `gather` at the read), the
+  mapped surface varies with engine signal (echo 0.636; 118/605 disagreeing rows, all
+  engine-contributed), **but its commit branch has never once been reached**: threshold
+  `p1 = 0.897015` (sitting there because `u_abstain = 0` — the owner-only residue, now
+  priced in `docs/unification/conferrals/u-abstain-conferral.md`), ledger max 0.8706, gap
+  0.0264 — §17.6's near-miss extended to the whole ledger, both arms, and the mapped
+  surface; empirical, not structural, so a bar read today prices gather-vs-withhold and
+  must say its commit column is empty. The tap is live and writing since the bridge's
+  restart — whose first attempt **permanently killed the shadow** (112 s cold precompile
+  vs a 120 s ready timeout; `ActiveState=active` throughout), repaired by a warm second
+  (`GD-20`, `M-27`). Leg B discharged `GD-15`'s conditional and closed `M-24` — sixteenths
+  are REFUTED for this world (they merge rung pairs, `n` 8→6, `models` 960→516) — by
+  snapping the grid to the finest lattice the frozen bar admits
+  (`world._GRID_LATTICE_BITS = 20`, applied after rung selection, refused rather than
+  allowed to merge): depth 250 reached, **748 s → 226 s** within-run, **zero differing
+  actions over 428 summaries**, `p1` gap ~3×10⁻⁷ (~9 500× under `W6`'s); the mechanism is
+  denominator **bit-length**, not non-dyadicity — the pre-registration's own claim,
+  corrected not dropped. **Merged, NOT on the wire** until the next natural restart, and
+  no reduction of `GD-20`'s hazard, which sits before any fold. Also registered: `M-26`
+  (a column's meaning can depend on the row's kind) and `M-28` (a measurement pins its
+  tree for the whole run); `GD-19` — settled the same day, apart from r46 — keeps the
+  measurement-tree tags unpushed, their SHAs pinned in `M-16`. Next: **legs C and D, each gated separately (`M-3`)** — act-conditioning as
+  r45 reframes it (leg A's sharpened target: **the p1 ceiling, not the affordance
+  constant, blocks a commit-pricing bar**), and the categorical twin, still the fourth
   and only menu-less sender.
 
 ## `src/pkm` — the KB core (Python, uv, DuckDB): key files
