@@ -109,17 +109,16 @@ def test_ceiling_pass_is_prequential_probe_before_fold() -> None:
     ticks = [m["tick"] for m in client.sent if "tick" in m]
     evidence_idx = [i for i, t in enumerate(ticks) if "evidence" in t]
     assert len(evidence_idx) == 2
-    # every decide for row i precedes row i's evidence tick, and the mirror feature
-    # appears on the evidence tick (the recorded act) and on each conditional probe
+    # every decide for row i precedes row i's evidence tick; the mirror feature appears
+    # on each conditional probe (there is no menu-less "plain" decide — arm B's door
+    # refuses one) and on the fold tick (the recorded act).
     first_fold = evidence_idx[0]
     decides_before = [t for t in ticks[:first_fold] if "evidence" not in t]
-    assert len(decides_before) == 1 + 4  # plain + four conditional probes
-    plain, conditionals = decides_before[0], decides_before[1:]
-    assert AC.MIRROR_NAME not in plain["features"]
-    assert [t["features"][AC.MIRROR_NAME] for t in conditionals] == [1.0, 2.0, 3.0, 4.0]
+    assert len(decides_before) == 4  # four conditional probes, one per grid value
+    assert [t["features"][AC.MIRROR_NAME] for t in decides_before] == [1.0, 2.0, 3.0, 4.0]
     fold = ticks[first_fold]
     assert fold["features"][AC.MIRROR_NAME] == AC.act_value("report")
-    assert len(out) == 2 and all("p1" in r and "p1_by_value" in r for r in out)
+    assert len(out) == 2 and all("p1_by_value" in r for r in out)
 
 
 def test_ceiling_pass_skips_and_names_an_unmapped_action() -> None:
