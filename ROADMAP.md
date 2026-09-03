@@ -357,12 +357,24 @@ Bayesian Ask rather than deterministic pipelines. Remaining program, in dependen
    measured the pathology standing, and the categorical crossing needs the engine under
    today's Ū.
 
-   Forward rungs, each under its own pre-registration (`M-3`): **r47** — the four-item
-   categorical enablement at HEAD (`GD-22`: codebooks = `theta_grid` unchanged, a clock row, a
-   menu-bearing tick, full indicator coverage), shadow-only, nothing deployed; **r48** — the
-   re-earn measurement, replay-first, settling the binder question and §16 finding 4's
-   minute-scale episode cost (a K-cap or episode budget is owed **before** any live
-   enablement); then **§18's bars** (readable, never read; preconditions all published — C3's
+   **`r47` IS READ and BUILT (2026-09-03, `GD-24`, $0, all ten frozen criteria PASS):** the
+   deployed categorical episode now speaks the enabled world at HEAD. `GD-22`'s four items land
+   in `categorical.py` — codebooks **binding** `world.theta_grid` unchanged, the clock row
+   binding the binary world's own objects, every tick naming the writable act, and `cat_features`
+   emitting every declared indicator dormant at 0.0. Arm B accepts the episode end to end at
+   k ∈ {2,3,5} (`models` 688/1032/1720, reproducing leg D's `344·k`) while the pre-enablement
+   episode is refused at the **handshake**; arm A unharmed; the binary world byte-untouched;
+   4/4 mutations RED. **Nothing deployed or enabled** — the world stays env-disabled and
+   byte-inert, `M-1` not engaged. The ordering was frozen with its reason (`GD-24`): build
+   before measuring, because `M-7` forbids pricing a constant through a re-implementation of
+   the rule that assembles it and `r30b` showed an in-process-only lever is invisible to the
+   measurement that matters. Two corrections recorded: a blind prediction **refuted** (arm B
+   refuses at the handshake, so no tick item can bite first), and a test that **asserted an
+   invented requirement** — that the clock name must be a namespace member — refuted by the
+   deployed binary world, which keeps `think` out of its namespace in the shape `r44` verified
+   at arm B. Next: **r48** — the re-earn measurement through the deployed runner, settling the
+   binder question under today's Ū and §16 finding 4's minute-scale episode cost (a K-cap or
+   episode budget is owed **before** any live enablement); then **§18's bars** (readable, never read; preconditions all published — C3's
    gather constant, leg A's empty commit column, `GD-21`'s bar-drift, leg D's spec), then
    §11's exit.
 4. **[RETIRED 2026-08-31 — `G-1`. Items 4 and 5 *were* Stage 2; the aggregate family was

@@ -1010,3 +1010,45 @@ HEAD, pre-registered, shadow-only) → **r48** (the re-earn measurement, replay-
 decide it, no objective changes.
 
 **Reaction.** *(open)*
+
+## GD-24 · 2026-09-03 · build the enablement before measuring the binder — and the categorical world now speaks the enabled wire
+
+**The fork.** `GD-23` opened §17.6's E1 re-earn with two rungs published: `r47` (land `GD-22`'s
+four-item enablement) then `r48` (measure the re-earn). The cheaper-looking alternative is the
+reverse — measure the binder first on an instrument, and build only if it has loosened, so a
+refused reading costs no `src/` change. Which order?
+
+**Decided: BUILD FIRST, on two registered lessons, and the reason is frozen in the
+pre-registration rather than argued after the fact.** `M-7` — a census must read the deployed
+rule end to end and never re-implement the constant it prices; four instances, one of which
+flipped a verdict at a frozen bar. An instrument that re-implemented the episode (session
+lifecycle, t-convention, timeout bound, act decoding) to price the binder would be exactly that
+trap, and the binder is an argmax over utility rows the episode itself assembles. And `r30b` —
+a lever built only in-process is invisible to the measurement that matters and absent from the
+deployed path. So the four items land in `categorical.py`, the ONE declaration the shadow
+supervisor binds, and `r48` measures through it.
+
+**`r47` is READ and all ten frozen criteria PASS** (`docs/unification/reports/r47-categorical-enablement.md`,
+$0). Arm B (HEAD) accepts the deployed episode end to end at k ∈ {2,3,5} — `models` 688 / 1032 /
+1720, reproducing leg D's `344·k` exactly — while the pre-enablement episode is refused at the
+handshake (`bad hello`); arm A still completes; the binary world is byte-untouched, the shared
+objects BOUND rather than copied; 4/4 mutations RED. **Nothing is deployed or enabled**: the
+world stays env-disabled and byte-inert, and `M-1` is not engaged.
+
+**Two corrections the run made, recorded because they are the useful part.** A blind prediction
+was **refuted**: it named which *tick* item would bite first, but arm B refuses at the
+**handshake**, so no tick is sent and neither tick item can bite — codebooks gates everything.
+And a test drafted for this build **asserted an invented requirement** (that the clock name must
+be a namespace member); an existing assertion refuted it against the deployed binary world,
+which keeps `think` out of its 19-name namespace in the exact shape `r44` verified at arm B
+across 59 battery cases. `M-7` in test form, caught by the suite that already existed. The
+namespace change was reverted and the test now pins the deployed shape on both worlds.
+
+**Consequence.** `r48` opens under its own pre-registration (`M-3`) and measures through the
+deployed runner: does `respond_j` clear its bars under today's Ū, and what does §16 finding 4's
+minute-scale episode cost demand as a K-cap or episode budget **before** any live enablement.
+Every act observed during `r47` was `gather`; under criterion C9 that is a **disclosure for
+`r48`, not a finding here**. A `D-3` fork — the register and $0 evidence decide it, no objective
+change.
+
+**Reaction.** *(open)*
