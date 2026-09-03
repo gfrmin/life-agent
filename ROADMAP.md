@@ -341,7 +341,9 @@ Bayesian Ask rather than deterministic pipelines. Remaining program, in dependen
    rebased (the branch sat 521 commits behind and its only unique bytes were that file); the
    branch is retired. The re-ground's finding is that the design's "not landed" list is
    materially stale: **six of its eight engine dependencies have closed**, three load-bearing —
-   the per-code readout **shipped** (#20 — and verified **live on our own arm B**, one $0 probe: every categorical reply carries `p0`, `argmax_code`, `p_argmax`, `p_codes[]`, so §16's unobservable R-D23 question is answerable and §4.4's observability gap closes),
+   the per-code readout **shipped** (#20 — and verified **live on our own arm B**, one $0
+   probe: every categorical reply carries `p0`, `argmax_code`, `p_argmax` and `p_codes[]`, so
+   §16's unobservable R-D23 question is answerable and §4.4's observability gap closes),
    the null-mass cap closed at the `OB-19` heir (#21), and the θ ceiling **changed owner rather
    than dissolving** (#19 — θ is REQUIRED hello data now, which is why leg D's item 1 exists;
    our declared grid's top rung reads **0.990634** under the deployed Ū, neither the doc's 0.9
@@ -350,9 +352,10 @@ Bayesian Ask rather than deterministic pipelines. Remaining program, in dependen
    and dormant** (`core/claude_verdicts.py`: 180 verdicts, none since 2026-07-22, so
    re-opening B means restarting and pricing it). **#10** closed against our stated position
    too, ruling a **reserved unallocated tail priced from tick 0** where §5.4(c) had said it was
-   not needed — a cost `r47` declares deliberately. Deliberately NOT concluded: whether §16 finding 3's
-   gather binder still binds — two of its three terms moved while `r45`'s C3 measured the
-   pathology standing, and the categorical crossing needs the engine under today's Ū.
+   not needed — a cost `r47` declares deliberately. Deliberately NOT concluded: whether §16
+   finding 3's gather binder still binds — two of its three terms moved while `r45`'s C3
+   measured the pathology standing, and the categorical crossing needs the engine under
+   today's Ū.
 
    Forward rungs, each under its own pre-registration (`M-3`): **r47** — the four-item
    categorical enablement at HEAD (`GD-22`: codebooks = `theta_grid` unchanged, a clock row, a
