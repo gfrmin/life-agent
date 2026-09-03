@@ -73,6 +73,18 @@ def test_menu_head_is_abstain() -> None:
     assert CAT.act_grid_cat(3)[0] == 1.0
 
 
+def test_full_cat_features_covers_every_declared_name() -> None:
+    # arm B demands every declared name on a tick; `cat_features` omits dormant ones, so the
+    # coverage repair must carry them all (dormant 0.0, active overriding).
+    s = CT._cat_summary(3, ())
+    full = CT.full_cat_features(s, 0.0)
+    for name in CAT.cat_indicator_names():
+        assert name in full, name
+    assert full["t"] == 0.0
+    for name, val in CAT.cat_features(s, 0.0).items():
+        assert full[name] == val, name
+
+
 def test_cat_summary_helper_carries_only_numbers() -> None:
     s = CT._cat_summary(3, (1, 2))
     assert s.k == 3

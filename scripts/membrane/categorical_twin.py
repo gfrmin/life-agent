@@ -94,6 +94,28 @@ def hello(client: _Client, decl: dict[str, Any]) -> dict[str, Any]:
             "error": reply.get("error"), "reply_keys": sorted(reply.keys())}
 
 
+def hello_fresh(engine: str, decl: dict[str, Any]) -> dict[str, Any]:
+    """A handshake in its OWN session — a handshake is once-per-session, so every isolated
+    handshake measurement spawns and shuts down its own engine (a reused session answers a
+    second hello with `expected tick`, not a re-handshake)."""
+    client = spawn(engine)
+    try:
+        return hello(client, decl)
+    finally:
+        client.shutdown()
+
+
+def full_cat_features(s: CAT.CatSummary, t: float) -> dict[str, float]:
+    """The categorical tick body with EVERY declared indicator name present (dormant at
+    0.0, active overriding) — the coverage the deployed `cat_features` omits. `cat_features`
+    is built on 'absent names read 0.0, dormancy is free', which arm B refutes (it demands
+    every declared name covered on a tick, r45 A4/B5's `shadow_features` defect, here in the
+    twin). This is what a tick must carry to clear arm B's door."""
+    feats: dict[str, float] = {name: 0.0 for name in CAT.cat_indicator_names()}
+    feats.update(CAT.cat_features(s, t))  # {"t": t} + the active names
+    return feats
+
+
 def tick(client: _Client, obj: dict[str, Any]) -> dict[str, Any]:
     """One tick, recorded whole. HEAD's tick refusals are invalid JSON (unescaped quotes,
     r45 A5), so they arrive as `MembraneError` under `"refused"` — captured verbatim."""
@@ -109,17 +131,10 @@ def tick(client: _Client, obj: dict[str, Any]) -> dict[str, Any]:
 def handshake_matrix(engines: Mapping[str, str], u_bar: Mapping[str, float]) -> dict[str, Any]:
     """Each arm and each k: the deployed categorical handshake, verbatim, reply recorded
     whole. Settles r45's 'cannot handshake at HEAD' claim either way."""
-    out: dict[str, Any] = {}
-    for arm, engine in engines.items():
-        rows: dict[str, Any] = {}
-        client = spawn(engine)
-        try:
-            for k in K_GRID:
-                rows[str(k)] = hello(client, base_cat_decl(u_bar, k))
-        finally:
-            client.shutdown()
-        out[arm] = rows
-    return out
+    return {
+        arm: {str(k): hello_fresh(engine, base_cat_decl(u_bar, k)) for k in K_GRID}
+        for arm, engine in engines.items()
+    }
 
 
 # --- K2: the {codebooks, clock} ladder ---------------------------------------------------
@@ -127,24 +142,18 @@ def handshake_matrix(engines: Mapping[str, str], u_bar: Mapping[str, float]) -> 
 
 def ladder(engines: Mapping[str, str], u_bar: Mapping[str, float], k: int = 3) -> dict[str, Any]:
     """For each arm, the four declaration variants — which missing item actually bites.
-    A delta that changes nothing is reported as a no-op, not dropped."""
+    A delta that changes nothing is reported as a no-op, not dropped. Each handshake in its
+    OWN session (a handshake is once-per-session)."""
     variants = {
         "base": cat_decl(u_bar, k),
         "codebooks": cat_decl(u_bar, k, codebooks=True),
         "clock": cat_decl(u_bar, k, clock=True),
         "codebooks+clock": cat_decl(u_bar, k, codebooks=True, clock=True),
     }
-    out: dict[str, Any] = {}
-    for arm, engine in engines.items():
-        rows: dict[str, Any] = {}
-        client = spawn(engine)
-        try:
-            for name, decl in variants.items():
-                rows[name] = hello(client, decl)
-        finally:
-            client.shutdown()
-        out[arm] = rows
-    return out
+    return {
+        arm: {name: hello_fresh(engine, decl) for name, decl in variants.items()}
+        for arm, engine in engines.items()
+    }
 
 
 # --- K3: GD-13 — one grid rule, and its K-independence -----------------------------------
@@ -168,19 +177,16 @@ def grid(engine_b: str, u_bar: Mapping[str, float]) -> dict[str, Any]:
     SAME rule/grid across k, models varying only through obs_arity? Plus the structural
     read that the categorical utility admits no crossings, so one rule is the only rule."""
     theta = theta_rule(u_bar)
-    client = spawn(engine_b)
-    try:
-        base_k3 = hello(client, cat_decl(u_bar, 3))
-        cb_k3 = hello(client, cat_decl(u_bar, 3, codebooks=True))
-        # K-independence: same theta grid, varying k -> models moves ONLY via obs_arity.
-        models_by_k = {
-            str(k): hello(client, cat_decl(u_bar, k, codebooks=True)).get("models")
-            for k in K_GRID
-        }
-        # the binary world's own count under the same rule, for the contrast.
-        binary = hello(client, W.handshake_decl(u_bar))
-    finally:
-        client.shutdown()
+    base_k3 = hello_fresh(engine_b, cat_decl(u_bar, 3))
+    cb_k3 = hello_fresh(engine_b, cat_decl(u_bar, 3, codebooks=True))
+    # K-independence: same theta grid, varying k -> models moves ONLY via obs_arity. Each
+    # handshake in its own session (a handshake is once-per-session).
+    models_by_k = {
+        str(k): hello_fresh(engine_b, cat_decl(u_bar, k, codebooks=True)).get("models")
+        for k in K_GRID
+    }
+    # the binary world's own count under the same rule, for the contrast.
+    binary = hello_fresh(engine_b, W.handshake_decl(u_bar))
     codebooks_required = (base_k3.get("ok") is not True) and (cb_k3.get("ok") is True)
     return {
         "codebooks_required_armB": codebooks_required,
@@ -205,33 +211,38 @@ def _cat_summary(k: int, codes: tuple[int, ...]) -> CAT.CatSummary:
     )
 
 
+def _episode_tick(engine: str, decl: dict[str, Any], tick_obj: dict[str, Any]) -> dict[str, Any]:
+    """One codebooks-augmented handshake then ONE tick, in its own session (a refused tick
+    can wedge a session's fold, so each variant gets a fresh engine)."""
+    client = spawn(engine)
+    try:
+        hs = hello(client, decl)
+        if hs.get("ok") is not True:
+            return {"handshake": hs}
+        return {"handshake_ok": True, "tick": tick(client, tick_obj)}
+    finally:
+        client.shutdown()
+
+
 def door(engines: Mapping[str, str], u_bar: Mapping[str, float], k: int = 3) -> dict[str, Any]:
-    """The categorical evidence tick is code-valued and menu-less. On arm B (codebooks
-    added so the handshake passes) the menu-less tick must be REFUSED; the `menu:[act]`
-    repair clears it and is a byte-identical no-op on arm A. Checked on the categorical
-    tick itself, not inherited from leg C."""
+    """The categorical evidence tick against arm B's coverage door (codebooks added so the
+    handshake passes). Three variants show the twin's refusal is broader than r45 named —
+    it fails on BOTH the writable `act` AND the dormant indicator names:
+      menuless        active features, no menu     -> arm B misses `act` + dormant names
+      withmenu        active features + menu        -> arm B still misses the dormant names
+      full_coverage   every name present + menu     -> clears arm B; a no-op on arm A
+    Checked on the categorical (code-valued) tick itself, not inherited from leg C."""
     s = _cat_summary(k, (1,))
-    feats = CAT.cat_features(s, 0.0)
-    menuless = {"tick": {"features": feats, "evidence": 1}}
-    withmenu = {"tick": {"features": feats, "evidence": 1, "menu": [W.ACT_NAME]}}
-    out: dict[str, Any] = {}
-    for arm, engine in engines.items():
-        client = spawn(engine)
-        try:
-            hs = hello(client, cat_decl(u_bar, k, codebooks=True))
-            row: dict[str, Any] = {"handshake_ok": hs.get("ok")}
-            if hs.get("ok"):
-                row["menuless"] = tick(client, menuless)
-                # fresh session for the repaired tick (a refused tick can wedge the fold)
-            client.shutdown()
-            client = spawn(engine)
-            hs2 = hello(client, cat_decl(u_bar, k, codebooks=True))
-            if hs2.get("ok"):
-                row["withmenu"] = tick(client, withmenu)
-        finally:
-            client.shutdown()
-        out[arm] = row
-    return out
+    active = CAT.cat_features(s, 0.0)
+    full = full_cat_features(s, 0.0)
+    decl = cat_decl(u_bar, k, codebooks=True)
+    variants = {
+        "menuless": {"tick": {"features": active, "evidence": 1}},
+        "withmenu": {"tick": {"features": active, "evidence": 1, "menu": [W.ACT_NAME]}},
+        "full_coverage": {"tick": {"features": full, "evidence": 1, "menu": [W.ACT_NAME]}},
+    }
+    return {arm: {name: _episode_tick(eng, decl, obj) for name, obj in variants.items()}
+            for arm, eng in engines.items()}
 
 
 # --- K5: the r43 inertness twin ----------------------------------------------------------
@@ -254,7 +265,7 @@ def inertness(engine_b: str, u_bar: Mapping[str, float], k: int = 3) -> dict[str
     regardless of order (r42/r43 signature). With a clock, selection should track the
     utility. Reported as the chosen act value under each permutation, no-clock vs clock."""
     s = _cat_summary(k, ())
-    feats = CAT.cat_features(s, 0.0)
+    feats = full_cat_features(s, 0.0)  # full coverage so the decide clears arm B's door
     grid_values = CAT.act_grid_cat(k)
     permutations = {
         "declared": list(grid_values),
