@@ -1775,3 +1775,35 @@ def test_gate_rows_do_not_carry_a_mapped_surface(tmp_path: Path) -> None:
         assert not any(k.startswith("mapped_") for k in row)
     finally:
         sh.close()
+
+
+# --- boot_snapshot(): verdict_actions — the r46c additive, index-aligned act record -------
+
+
+def test_boot_snapshot_verdict_actions_align_with_replay_rows(tmp_path: Path) -> None:
+    # r46c K9: each replay row's recorded chosen_action, index-aligned with
+    # verdict_replay, so an instrument never re-implements the join (the r45-C3 class).
+    dpath, rpath = tmp_path / "decisions.jsonl", tmp_path / "reactions.jsonl"
+    DEC.append(dpath, _decision("dec-1", "q-001", "report", n_obs=1))
+    DEC.append(dpath, _decision("dec-2", "q-002", "abstain", n_obs=2))
+    RX.append(rpath, _reaction("dec-1", "q-001", "good"))
+    RX.append(rpath, _reaction("dec-2", "q-002", "bad"))
+    snap = SH.boot_snapshot(dpath, rpath, None)
+    assert len(snap.verdict_actions) == len(snap.verdict_replay) == 2
+    pairs = zip(snap.verdict_replay, snap.verdict_actions, strict=True)
+    by_nobs = {s.n_obs: a for (s, _y), a in pairs}
+    assert by_nobs == {1: "report", 2: "abstain"}
+
+
+def test_boot_snapshot_verdict_actions_cover_the_claude_segment_too(tmp_path: Path) -> None:
+    dpath, rpath = tmp_path / "decisions.jsonl", tmp_path / "reactions.jsonl"
+    cpath = tmp_path / "claude_verdicts.jsonl"
+    DEC.append(dpath, _decision("dec-1", "q-001", "report", n_obs=1))
+    DEC.append(dpath, _decision("dec-2", "q-002", "hedge", n_obs=2))
+    RX.append(rpath, _reaction("dec-1", "q-001", "good"))          # owner segment
+    CV.append(cpath, _claude_verdict("dec-2", "q-002", correct=1))  # claude segment
+    snap = SH.boot_snapshot(dpath, rpath, None, claude_verdicts_path=cpath)
+    assert len(snap.verdict_actions) == len(snap.verdict_replay) == 2
+    pairs = zip(snap.verdict_replay, snap.verdict_actions, strict=True)
+    by_nobs = {s.n_obs: a for (s, _y), a in pairs}
+    assert by_nobs == {1: "report", 2: "hedge"}
