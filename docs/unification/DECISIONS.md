@@ -1052,3 +1052,61 @@ Every act observed during `r47` was `gather`; under criterion C9 that is a **dis
 change.
 
 **Reaction.** *(open)*
+
+## GD-25 · 2026-09-04 · the E1 re-earn does not clear — and the KILL that fired names a cost defect, not a build defect
+
+**The fork.** `r48`'s pre-registration froze nine criteria with **J1 as a KILL** and three
+consequence branches. Two branches fired at once: J1 (three of 129 summaries returned no
+action) and the predicted no-flip branch. A KILL whose stated ground is refuted by the same
+measurement that fired it is not self-executing, and the register does determine it — `GD-16`
+settled this exact shape (letter met, ground refuted) for C3. A `D-3` fork: register + $0
+evidence decide it, no objective change, nothing escalated.
+
+**The decision.** **J1 stands as fired and is not reinterpreted.** Its ground —
+*"`r47`'s enablement is not exercised by the real corpus"* — is published as **refuted**: 126
+episodes handshook, folded and returned a declared action on the deployed enabled world,
+covering **2 009 of 2 012 recorded rows (99.85%)**. The KILL's mandated re-read of `r47` is
+performed and its finding is the opposite of the guess: **the enablement is sound; the episode
+budget is unbounded.** Nothing the criterion would have gated is taken — and nothing was
+pending, since J9 already forbade every adoption this checkpoint could have made.
+
+**The reading.** **The E1 re-earn is NOT cleared on this ledger under this Ū.** `gather` on all
+126 completed replay episodes and on all 55 sweep steps (k ∈ {1,2,3,5,10} × 11 evidence depths),
+no flip anywhere. Forty observations reach `p_argmax` **0.98348** against a necessary bar of
+**0.99063** — a gap of **0.00716**, closed **14.3×** from §16's era (0.8918 vs 0.9942) and still
+open. The sharpening is **K-independent** to 16 digits; only the zero-evidence prior (≈1/(k+1))
+separates the curves. Eleven summaries clear the **vs-abstain** bar 0.836894 — nine of them the
+degenerate k=1 — and every one still chose `gather`. §17.6's rule binds unchanged: **a sharper
+`p1` or an engine-side change (#15 / E3), never a softer bar**, and this checkpoint proposes
+neither.
+
+**Three corrections, all published rather than absorbed.**
+
+1. **§16 finding 3's *by-construction* clause is VOID** (`M-30`). #19 handed us the θ ceiling
+   and `r46` leg B's 2⁻²⁰ lattice snap rounded the decisive rung **up**, so the ceiling
+   (0.9906339645385742) now sits **1.2×10⁻⁸ above** the bar (0.9906339522695138) rather than
+   ~0.09 below it. `respond_j` is no longer structurally excluded — it is excluded by a window
+   1.2×10⁻⁸ wide. Leg B's own verification was honest and complete on the rows it checked (428
+   summaries, zero differing actions); the boundary it moved is one no episode visits. Finding
+   3's **primary** attribution — the deliberately-overvalued information row — stands, and is
+   now empirical rather than analytic.
+2. **Blind prediction 4 is REFUTED.** It expected arm B *faster* than arm A on a 4.65× smaller
+   model space; arm B is **2.3× to 145× slower**, with median latency scaling as **~k⁴** while
+   `models` is linear in k. The model population is not the cost driver. A mechanism is named
+   (`r44`'s clock forces a preposterior over (3+k) acts × (k+1) atoms × 344k models) and
+   explicitly **not measured** here.
+3. **§16 finding 5 is answered** — #20's readout makes `p0` observable, and R-D23's `1/(K−1)`
+   cap shows **zero violations** across 113 rows, tightening monotonically with k (0.26 of the
+   cap at k=2 → 0.82 at k=11) without ever binding.
+
+**Consequence.** §16 finding 4's owed **K-cap now has a number: k ≤ 3**, the largest cap under
+which every observed episode finishes inside production's 20 s `cat_timeout_s` — covering
+**74.3%** of recorded traffic, with the other 25.7% requiring a *named* skip. It is a
+**recommendation and a precondition**, not an enablement: nothing is deployed, the world stays
+env-gated OFF and byte-inert, no `src/` change is made, and `M-1` is not engaged. The **§18
+bars gain two preconditions** on top of the four already published — (a) no bar may be read on a
+world whose episode budget is unbounded, and (b) the categorical commit surface is empty for the
+**same** reason the binary one is, `gather` dominating rather than an insufficient `p1`. Building
+the cap, and any move on #15 / E3, each need their own pre-registration.
+
+**Reaction.** *(open)*
