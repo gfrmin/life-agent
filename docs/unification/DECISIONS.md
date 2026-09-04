@@ -713,6 +713,19 @@ delegation does not cover.
 
 **Registered alongside:** `M-26` — a column's meaning can depend on the row's kind.
 
+> **Dated correction — 2026-09-04 (`r49`/`GD-26`).** The *scope* sentence above — that a §18 bar
+> on this surface may not be read as evidence about a commit *"because its commit column is empty
+> on every row ever recorded"* — was computed at the **fixture bar 0.897020**, which `GD-21`
+> retired the next day in favour of the deployed **0.8368942**. `r49`'s S11 supplies the
+> measurement: of leg A's own 605 recorded exchanges, **116 (19.2%) reach `_gather`'s exhausted
+> argmax**, and at the deployed bar **116 of 116 commit** (at the fixture bar, 0 of 116 — which
+> reproduces leg A exactly and is what makes the substitution attributable); ledger-wide,
+> **1 276 of 6 873** rows carrying a `p1` clear the deployed bar and **0 of 6 873** clear the
+> fixture one. The column is therefore **not** empty in principle. What survives — and it is
+> `GD-18`'s own hedge, stated exactly — is that the ceiling is **empirical, not structural**.
+> The decision `GD-18` took (declare the mapped surface; refuse both the wider bar and the
+> `u_abstain` move) is untouched, and `r49` re-declines the same two moves on the same grounds.
+
 **Reaction.** *(open)*
 
 ## GD-19 · 2026-09-02 · the measurement-tree tags are NOT pushed — the guard is right
@@ -1108,5 +1121,77 @@ bars gain two preconditions** on top of the four already published — (a) no ba
 world whose episode budget is unbounded, and (b) the categorical commit surface is empty for the
 **same** reason the binary one is, `gather` dominating rather than an insufficient `p1`. Building
 the cap, and any move on #15 / E3, each need their own pre-registration.
+
+**Reaction.** *(open)*
+
+## GD-26 · 2026-09-04 · the first §18 bar FAILs — and the gauge finding is published without re-reading the bar at the softer gauge
+
+**The fork.** `r49` read §18's first bar and **S5 FAILed on all three variants** (best
+P(Δ>0.05) = **0.301** against the frozen 0.90; Δ̄ **−0.081** [−0.482, +0.205]). The FAIL branch
+itself is not a fork — the pre-registration froze it: §17.6 FAILed this same A3 criterion on
+2026-08-17, no A3 read has passed since, so this is the **second consecutive FAIL on one frozen
+criterion**, which stops for an owner ruling. What *is* a fork is what to do with the reading's
+central finding: the point Δ **changes sign with the utility gauge** (+0.075 at the deployed
+boot Ū, −0.080 at the gate's posterior mean, the measured reach of **0.875** falling between
+their break-evens of 0.837 and 0.900). A re-run of A3 under a posterior centred on the boot Ū
+was available, costs nothing, and would plausibly have produced a PASS. A `D-3` fork: register
++ $0 evidence decide it, no objective change.
+
+**The decision.** **The gauge gap is published as a point quantity and the bar is NOT re-read at
+the softer gauge.** Three grounds, in order of force:
+
+1. **§17.6's rule and `M-4` forbid it.** *A sharper `p1`, never a softer bar.* Choosing a
+   gauge **after** seeing a FAIL, from among gauges that were both available before it, is
+   selecting the instrument on its answer. That the softer gauge happens to be the *deployed*
+   one does not repair the ordering — the pre-registration named the harness's frozen defaults
+   and did not name a Ū, and the honest consequence of an under-specified pre-registration is
+   to read it as written and register the gap, not to resolve it in the favourable direction.
+2. **It would not settle anything.** Only the *point* gap is computed here; P(Δ>δ) needs a
+   posterior, and no posterior centred on the boot Ū exists as a frozen artefact. Manufacturing
+   one is a new instrument, which needs its own pre-registration — exactly what the FAIL branch
+   forbids doing unilaterally.
+3. **S6 blocks independently.** The membrane arm commits **q2-019** — the named
+   superset-confirm class, currently *withheld* on deployed master — **wrong**. `M-1`'s hard
+   clause bites regardless of any Δ, at any gauge.
+
+**What the reading establishes** (all $0, from the run's own artefacts):
+
+1. **The failure is pure over-assertion, not abstention.** The membrane's report set **strictly
+   contains** the baseline's — **zero** abstain×report rows — and on the 26 shared commits the
+   arms never disagree about correctness. The entire differential is **24 marginal commits, 21
+   right and 3 wrong (0.875)**, against a gate break-even of 0.900. Blind prediction 4 named
+   the opposite mechanism and is refuted.
+2. **One family carries the whole policy.** `leader-credence` alone is degenerate — mean `p1`
+   **0.8584 in four of five buckets**, above the bar, so it commits on all 238 probe ticks and
+   *is* respond-all (Δ̄ −1.479). Adding `p-none` produces the entire working policy; adding
+   `n-candidates`, `n-obs` and `flags` on top changes **no action on any of 238 ticks** and
+   moves `p1` by ~10⁻⁸ (`a3_paired-FULL.jsonl` is byte-identical to the
+   `leader-credence+p-none` file). **Three of the seventeen declared indicators never fire at
+   all** — the whole `flags` family is dead on this corpus — while still costing model space
+   (960 vs 456 vs 288).
+3. **Δ_spend is 0.000 structurally and unrepairably.** All 104 baseline rows carry
+   `cost_usd: null` / `cost_status: "partial"` with every token counter zero, so unlike r28's
+   π\* this arm's spend cannot even be imputed. r28 found the price term carried 96% of run 18's
+   margin; here it is absent, and its direction would favour the membrane arm. **Bounded, and
+   the first bound was wrong**: at `lambda_usd` 1.33108 a mean spend gap of **$0.0376/question**
+   ($3.91 over 104) moves Δ by a full δ, and era-contemporary priced runs sit *at* that scale
+   (run 6/7 $0.053/q, run 9 $0.039/q) — so the term is plausibly worth about one δ, not
+   "fractions of a cent" (that figure came from the *post-M4* runs, three pricing eras later).
+   It is still not plausibly decisive: +0.05 moves Δ̄ to ≈ −0.03 and does not put 0.90 of the
+   posterior above +0.05. Unmeasured, and **not leaned on in either direction**.
+4. **Blind prediction 2 is refuted by two orders** — it expected single-digit commits; 188 of
+   238 probe ticks commit.
+
+**Consequence.** The report is published and **work stops** for an owner ruling:
+`conferrals/s18-bar-conferral.md` carries the evidence, four options and their prices. **No
+successor rung is opened**, no bar is loosened, nothing is deployed, enabled or swapped, no
+`src/` change is made, and `M-1` is not engaged because nothing ships from this checkpoint in
+either branch. Two method notes are registered: **`M-31`** (a policy measured at one gauge and
+scored at another is a two-gauge reading — publish both break-evens, and finding the gap after a
+FAIL does not license re-reading at the softer one) and **`M-32`** (a long measurement
+timestamps its own phase boundaries — `r49` cannot attribute 14 hours across its three arms, and
+that is what blocks sizing the parallel-harness successor). `GD-18` takes a dated correction:
+its *scope* sentence rested on the fixture bar `GD-21` retired, and S11 supplies the evidence —
+its hedge, that the ceiling is **empirical rather than structural**, is what survives.
 
 **Reaction.** *(open)*

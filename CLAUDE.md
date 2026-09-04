@@ -708,12 +708,40 @@ material for that candidate only.
   owed K-cap has a number: **k ≤ 3** (every observed episode inside production's 20 s
   `cat_timeout_s`; **74.3%** of recorded traffic, the rest needs a *named* skip). Nothing
   deployed or enabled; no `src/` change; `M-1` not engaged.
-  Next: §18's bars (readable, never read) — now carrying **six** published preconditions: C3's
-  gather constant, leg A's empty commit column, `GD-21`'s bar-drift, leg D's spec, plus r48's
-  two (**no bar on a world whose episode budget is unbounded**; the categorical commit surface
-  is empty for the SAME reason the binary one is — `gather` dominates, the `p1` is not what is
-  short). The K-cap build and any move on #15 / E3 each need their own pre-registration. Then
-  §11's exit.
+  **r49 — §18's FIRST BAR IS READ, and it FAILs (2026-09-04, `GD-26`, $0).** Pre-reg
+  frozen before the harness ran (S1–S11, S1/S3 KILL, six blind predictions; r48's six
+  preconditions disposed inside it); a blind Amendment 1 **withdrew its own recon claim**
+  that `GD-18`'s empty commit column was already false — `M-26` fired on the checkpoint's
+  author (the 555 `kind: "enact"` rows are the M5-deleted M3 lane's; the real leg A tap has
+  exactly ONE `kind: "decide"` row, recording `gather` — **`GD-18` stands**). Read so far:
+  **S3 (KILL) PASSES** (both commit-rule spellings flip bit-identically at
+  **0.8368942119315517** over 200 001 points) and **S11 answers `GD-21`'s census YES** —
+  116/605 exchanges (19.2%) reach the exhausted argmax and the deployed bar flips **all
+  116** abstain → commit at ledger-max `p1` 0.8706 where the fixture bar flips **0**
+  (ledger-wide 1 276/6 873 clear the deployed bar, 0 the fixture bar; prediction 6 REFUTED
+  — 116, not single digits; `GD-18` takes a dated correction, its *hedge* — empirical, not
+  structural — being what survives). **S5, THE BAR: FAIL on all three variants** — best
+  P(Δ>0.05) **0.301** vs the frozen 0.90, Δ̄ **−0.081** [−0.482, +0.205], 423 engine spawns
+  in 14h02m. **The failure is pure over-assertion, 24 rows wide**: the membrane's report set
+  strictly *contains* the baseline's (zero abstain×report), the 26 shared commits never
+  disagree, and the entire differential is 24 marginal commits at **21/3 = 0.875**. **The
+  gauge decides the sign** — the same rows are worth **+0.234/q** at the deployed boot Ū
+  (break-even 0.837) and **−0.250/q** at the gate's posterior (break-even 0.900); point Δ
+  **+0.075 vs −0.080** (`M-31`), and `GD-26` **declined to re-read the bar at the softer
+  gauge after seeing the FAIL** (§17.6 / `M-4`). **S6 blocks independently under `M-1`** —
+  the arm commits **q2-019**, the named superset-confirm class, wrong. And **`p-none`
+  carries the whole policy**: `leader-credence` alone is degenerate (mean `p1` 0.8584 in
+  four of five buckets ⇒ respond-all) while `n-candidates`/`n-obs`/`flags` change **no
+  action on any of 238 ticks**, three of seventeen indicators never firing at all.
+  Δ_spend is **0.000 structurally** (104/104 baseline rows `cost_usd: null`, token counters
+  zero — unimputable), and the harness timestamps no phase boundary so 14h is unattributable
+  across arms (`M-32`, which blocks sizing the parallel-harness successor). **The frozen
+  stop rule is ENACTED**: §17.6 FAILed this same A3 criterion, so this is the second
+  consecutive FAIL on one frozen criterion and **work STOPS for an owner ruling** —
+  `docs/unification/conferrals/s18-bar-conferral.md` carries evidence, five options and
+  prices, asking the objective-class question: **which utility is §18's bar quoted at?**
+  Nothing deployed, enabled or swapped; no successor opened. The K-cap build and any move on
+  #15 / E3 each need their own pre-registration. Then §11's exit.
 
 ## `src/pkm` — the KB core (Python, uv, DuckDB): key files
 
