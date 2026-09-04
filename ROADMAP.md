@@ -401,12 +401,38 @@ Bayesian Ask rather than deterministic pipelines. Remaining program, in dependen
    recorded traffic — the other 25.7% needs a *named* skip. Nothing deployed or enabled, no
    `src/` change, `M-1` not engaged.
 
-   Next: **§18's bars** (readable, never read), now carrying **six** published preconditions —
-   C3's gather constant, leg A's empty commit column, `GD-21`'s bar-drift, leg D's spec, and
-   r48's two: no bar may be read on a world whose **episode budget is unbounded**, and the
-   categorical commit surface is empty for the **same** reason the binary one is (`gather`
-   dominates; the `p1` is not what is short). Building the K-cap, and any move on #15 / E3, each
-   need their own pre-registration. Then §11's exit.
+   **r49 — §18's bar read — IS OPEN and partially read (2026-09-04,
+   [`r49-s18-bars.md`](./docs/unification/reports/r49-s18-bars.md), $0 so far).** The
+   pre-registration was frozen before the harness ran (S1–S11 with S1/S3 KILL, six blind
+   predictions, four consequence branches; binary world only — r48's six preconditions
+   disposed inside it: four discharged by construction, two scoped to a categorical bar this
+   read does not price), and it already carries a correction against its own author: the
+   recon disclosure claimed `GD-18`'s empty commit column was *already* false, and a blind
+   Amendment 1 **withdraws** that — `M-26` fired on this checkpoint itself. The 555
+   `kind: "enact"` rows behind the claim are the **M5-deleted M3 lane's** (2026-07-20/22),
+   whose writer's named defect is recording an agreement pass-through and a probe selection
+   identically; the real leg A tap writes `mapped_*` onto `kind: "decide"` rows and exactly
+   **one** exists — recording `gather` at `p1` 0.8621, *above* the deployed bar, mapped to
+   gather anyway because an unapplied VOI transform pre-empts the argmax. **`GD-18`
+   stands**, and the discarded "net −84 commits" figure never reached a criterion. Of what
+   is read: **S3 (KILL) PASSES** — the commit rule's two spellings
+   (`lattice_replay.commits_respond`, `coarse._gather`'s exhaustion argmax) agree on all
+   200 001 grid points and flip at the bit-identical **0.8368942119315517** (prediction 1
+   confirmed). And **S11 answers `GD-21`'s handed census YES, by a wide margin** — **116 of
+   605** recorded m5-base `/decide` exchanges (19.2%) reach the exhausted argmax, and
+   swapping the fixtures' era Ū (bar 0.897020) for the deployed boot Ū (bar 0.836900) flips
+   **all 116** from abstain to commit at the ledger-max `p1` 0.8706074, while the control
+   arm flips **0 of 116**, reproducing leg A exactly — the arms differ by the bar
+   substitution alone. Ledger-wide, **1 276 of 6 873** recorded `p1` clear the deployed bar
+   and **0** clear the fixture bar. Blind prediction 6 REFUTED (it said single digits:
+   pre-emption acts *before* the population forms, not inside it). **S4–S7 — the priced A3
+   differential, THE BAR (`P(Δ>0.05) ≥ 0.90`) — pend `r49-gate`**, a transient
+   `systemd --user` unit running one fresh engine per held-out question × 3 gate variants
+   (423 spawns). The stop rule is frozen: §17.6 (2026-08-17) already FAILed this same A3
+   criterion, so a FAIL here is the **second consecutive FAIL on one frozen criterion and
+   STOPS for an owner ruling** (conferral document prepared — no unilateral successor).
+   Building the K-cap, and any move on #15 / E3, each still need their own
+   pre-registration. Then §11's exit.
 4. **[RETIRED 2026-08-31 — `G-1`. Items 4 and 5 *were* Stage 2; the aggregate family was
    additionally deleted by K1 as "family routing in disguise", its transformations kept.
    The thread transformations may still be built when evidence calls for them, never as a

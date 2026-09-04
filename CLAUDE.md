@@ -708,12 +708,22 @@ material for that candidate only.
   owed K-cap has a number: **k ≤ 3** (every observed episode inside production's 20 s
   `cat_timeout_s`; **74.3%** of recorded traffic, the rest needs a *named* skip). Nothing
   deployed or enabled; no `src/` change; `M-1` not engaged.
-  Next: §18's bars (readable, never read) — now carrying **six** published preconditions: C3's
-  gather constant, leg A's empty commit column, `GD-21`'s bar-drift, leg D's spec, plus r48's
-  two (**no bar on a world whose episode budget is unbounded**; the categorical commit surface
-  is empty for the SAME reason the binary one is — `gather` dominates, the `p1` is not what is
-  short). The K-cap build and any move on #15 / E3 each need their own pre-registration. Then
-  §11's exit.
+  **r49 — §18's bar read — IS OPEN and partially read (2026-09-04, $0 so far).** Pre-reg
+  frozen before the harness ran (S1–S11, S1/S3 KILL, six blind predictions; r48's six
+  preconditions disposed inside it); a blind Amendment 1 **withdrew its own recon claim**
+  that `GD-18`'s empty commit column was already false — `M-26` fired on the checkpoint's
+  author (the 555 `kind: "enact"` rows are the M5-deleted M3 lane's; the real leg A tap has
+  exactly ONE `kind: "decide"` row, recording `gather` — **`GD-18` stands**). Read so far:
+  **S3 (KILL) PASSES** (both commit-rule spellings flip bit-identically at
+  **0.8368942119315517** over 200 001 points) and **S11 answers `GD-21`'s census YES** —
+  116/605 exchanges (19.2%) reach the exhausted argmax and the deployed bar flips **all
+  116** abstain → commit at ledger-max `p1` 0.8706 where the fixture bar flips **0**
+  (ledger-wide 1 276/6 873 clear the deployed bar, 0 the fixture bar; prediction 6 REFUTED
+  — 116, not single digits). **S4–S7 (the A3 differential, THE BAR) pend `r49-gate`** — one
+  fresh engine × 3 variants × 141 held-out questions as a transient `systemd --user` unit.
+  Frozen stop rule: §17.6 already FAILed this A3 criterion, so a FAIL is the second
+  consecutive on one frozen criterion and **STOPS for an owner ruling**. The K-cap build
+  and any move on #15 / E3 each need their own pre-registration. Then §11's exit.
 
 ## `src/pkm` — the KB core (Python, uv, DuckDB): key files
 
