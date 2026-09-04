@@ -401,8 +401,8 @@ Bayesian Ask rather than deterministic pipelines. Remaining program, in dependen
    recorded traffic — the other 25.7% needs a *named* skip. Nothing deployed or enabled, no
    `src/` change, `M-1` not engaged.
 
-   **r49 — §18's bar read — IS OPEN and partially read (2026-09-04,
-   [`r49-s18-bars.md`](./docs/unification/reports/r49-s18-bars.md), $0 so far).** The
+   **r49 — §18's first bar IS READ, and it FAILs (2026-09-04,
+   [`r49-s18-bars.md`](./docs/unification/reports/r49-s18-bars.md), `GD-26`, $0).** The
    pre-registration was frozen before the harness ran (S1–S11 with S1/S3 KILL, six blind
    predictions, four consequence branches; binary world only — r48's six preconditions
    disposed inside it: four discharged by construction, two scoped to a categorical bar this
@@ -425,14 +425,35 @@ Bayesian Ask rather than deterministic pipelines. Remaining program, in dependen
    arm flips **0 of 116**, reproducing leg A exactly — the arms differ by the bar
    substitution alone. Ledger-wide, **1 276 of 6 873** recorded `p1` clear the deployed bar
    and **0** clear the fixture bar. Blind prediction 6 REFUTED (it said single digits:
-   pre-emption acts *before* the population forms, not inside it). **S4–S7 — the priced A3
-   differential, THE BAR (`P(Δ>0.05) ≥ 0.90`) — pend `r49-gate`**, a transient
-   `systemd --user` unit running one fresh engine per held-out question × 3 gate variants
-   (423 spawns). The stop rule is frozen: §17.6 (2026-08-17) already FAILed this same A3
-   criterion, so a FAIL here is the **second consecutive FAIL on one frozen criterion and
-   STOPS for an owner ruling** (conferral document prepared — no unilateral successor).
-   Building the K-cap, and any move on #15 / E3, each still need their own
-   pre-registration. Then §11's exit.
+   pre-emption acts *before* the population forms, not inside it). **S5 — THE BAR — FAILs on
+   all three variants**: best P(Δ>0.05) **0.301** against the frozen 0.90, Δ̄ **−0.081**
+   [−0.482, +0.205] (the leader-credence-only coarsening reads 0.000 / −1.479), over 423
+   engine spawns in 14h02m. **The failure is pure over-assertion and 24 rows wide** — the
+   membrane's report set strictly *contains* the baseline's (zero abstain×report rows), the
+   26 shared commits never disagree about correctness, and the whole differential is 24
+   marginal commits at **21 right / 3 wrong = 0.875**. **The gauge decides the sign**: those
+   same rows are worth **+0.234/question** at the deployed boot Ū (break-even 0.837, the bar
+   the policy was measured at) and **−0.250** at the gate's utility posterior (break-even
+   0.900) — point Δ **+0.075 vs −0.080**, registered `M-31`, and `GD-26` **declined to
+   re-read the bar at the softer gauge after seeing the FAIL** (§17.6 / `M-4`). **S6 blocks
+   independently under `M-1`**: the arm commits **q2-019**, the named superset-confirm class
+   currently *withheld* on deployed master, **wrong**. A third finding stands on its own:
+   **`p-none` carries the entire policy** — `leader-credence` alone is degenerate
+   (mean `p1` 0.8584 in four of five buckets ⇒ respond-all), while `n-candidates`, `n-obs`
+   and `flags` change **no action on any of 238 ticks** and three of the seventeen declared
+   indicators never fire at all. Predictions 2 and 4 REFUTED, 3 confirmed-in-letter with its
+   ground refuted, 5 untested (depth was held fixed; model space varied). Two instrument
+   gaps disclosed: Δ_spend is **0.000 structurally** (all 104 baseline rows carry
+   `cost_usd: null` with zero token counters — unimputable, unlike r28's π\*), and the
+   harness timestamps no phase boundary, so 14 hours cannot be attributed across its arms
+   (`M-32` — which is what blocks sizing the parallel-harness successor). **The frozen stop
+   rule is ENACTED**: §17.6 FAILed this same A3 criterion on 2026-08-17, so this is the
+   second consecutive FAIL on one frozen criterion and **work STOPS for an owner ruling** —
+   [`conferrals/s18-bar-conferral.md`](./docs/unification/conferrals/s18-bar-conferral.md)
+   carries the evidence, five options and their prices, and its question is
+   objective-class: **which utility is §18's bar quoted at?** Nothing deployed, enabled or
+   swapped; no `src/` change; no successor opened. Building the K-cap, and any move on #15 /
+   E3, each still need their own pre-registration. Then §11's exit.
 4. **[RETIRED 2026-08-31 — `G-1`. Items 4 and 5 *were* Stage 2; the aggregate family was
    additionally deleted by K1 as "family routing in disguise", its transformations kept.
    The thread transformations may still be built when evidence calls for them, never as a
