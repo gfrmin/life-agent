@@ -1172,8 +1172,13 @@ the softer gauge.** Three grounds, in order of force:
 3. **Δ_spend is 0.000 structurally and unrepairably.** All 104 baseline rows carry
    `cost_usd: null` / `cost_status: "partial"` with every token counter zero, so unlike r28's
    π\* this arm's spend cannot even be imputed. r28 found the price term carried 96% of run 18's
-   margin; here it is absent, and its direction would favour the membrane arm. Named, bounded
-   (fractions of a cent per question in this era), and **not leaned on**.
+   margin; here it is absent, and its direction would favour the membrane arm. **Bounded, and
+   the first bound was wrong**: at `lambda_usd` 1.33108 a mean spend gap of **$0.0376/question**
+   ($3.91 over 104) moves Δ by a full δ, and era-contemporary priced runs sit *at* that scale
+   (run 6/7 $0.053/q, run 9 $0.039/q) — so the term is plausibly worth about one δ, not
+   "fractions of a cent" (that figure came from the *post-M4* runs, three pricing eras later).
+   It is still not plausibly decisive: +0.05 moves Δ̄ to ≈ −0.03 and does not put 0.90 of the
+   posterior above +0.05. Unmeasured, and **not leaned on in either direction**.
 4. **Blind prediction 2 is refuted by two orders** — it expected single-digit commits; 188 of
    238 probe ticks commit.
 

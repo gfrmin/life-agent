@@ -65,8 +65,11 @@ all**. The lattice is 2 useful families wide, not 5 — while costing 960 models
 
 **Two disclosed instrument gaps.** Δ_spend is **0.000 structurally**: all 104 baseline rows carry
 `cost_usd: null` with every token counter zero, so unlike r28's π\* this arm's spend cannot even
-be imputed (direction: it would favour the membrane arm; magnitude: fractions of a cent per
-question in this era, so very unlikely to be material against δ = 0.05 — named, not leaned on).
+be imputed — direction: it favours the membrane arm; magnitude: at `lambda_usd`
+1.33108 a mean spend gap of **$0.0376/question** ($3.91 over 104) is worth a full δ, and
+era-contemporary priced runs sit *at* that scale (run 6/7 $0.053/q, run 9 $0.039/q), so the term
+is plausibly worth about one δ — though not enough to carry the bar (+0.05 moves Δ̄ to ≈ −0.03,
+nowhere near 0.90 posterior mass above +0.05). Unmeasured, and not leaned on.
 And the harness timestamps no phase boundary, so 14 hours cannot be attributed across its three
 arms (`M-32`) — which is what blocks sizing the parallel-harness successor.
 
@@ -84,7 +87,7 @@ progression to §11's exit; it does not by itself put this policy anywhere near 
 |---|---|---|---|
 | **A** | **Rule the gauge prospectively, then continue** — the owner settles which Ū §18's bars are quoted at (the elicitation posterior, or the deployed boot Ū the system decides with), *for future reads only*; `r49` stands as FAIL either way. | **$0** ruling; the next read is priced by whichever of B/C follows it. | Nothing. It removes an ambiguity that will otherwise recur at every §18 read and at every future gate. |
 | **B** | **Sharpen `p1` where it is measurably wrong** — the licensed direction. The defect has a precise address: the 70–90 leader-credence band, 55 rows, realised correctness **0.800**, committed at mean `p1` 0.863–0.873, against a needed 0.837 (deployed) / 0.900 (gate). The census says `p-none` and `leader-credence` are the only families carrying signal, so a family that separates that band is the concrete lever. | Build + one gate run: **$0 in model spend**, ~14h serial or ~2h on a parallel harness (see D). Own pre-registration. | Nothing; this is what §18's *iterate* branch means. It is the only option that can change the FAIL honestly. |
-| **C** | **Repair the instrument before re-reading** — record the baseline arm's spend so Δ_spend is a measurement rather than a zero, and make the gate print both break-evens (`M-31`) and timestamp its phases (`M-32`). | **~$0–low**; a re-recorded baseline arm is a priced run of the credence executor lane over 104 questions (era cost: cents). | Nothing. Strictly additive, and cheap. It does not by itself move the verdict. |
+| **C** | **Repair the instrument before re-reading** — record the baseline arm's spend so Δ_spend is a measurement rather than a zero, and make the gate print both break-evens (`M-31`) and timestamp its phases (`M-32`). | **~$0–low**; a re-recorded baseline arm is a priced run of the credence executor lane over 104 questions (era cost: single dollars — which is exactly why it matters). | Nothing. Strictly additive, and cheap. It does not by itself move the verdict. |
 | **D** | **Build the parallel harness first** — the 423 spawns are independent by construction (one fresh engine per question, no shared state). This is the sizing that `M-32` says `r49` cannot supply, so it would be built to a guess. | ~half a day of build; turns every future bar read from ~14h into ~2h. | Nothing, but it is infrastructure, not evidence — it makes B cheaper without making B more likely to pass. |
 | **E** | **Park Arc C at §18** — declare the migration's evidence bar unmet and stop before §11's exit. | $0. | **This is the one option that touches a standing ruling**: proplang-replaces-credence is *gated-mandatory* — the bars pace the swap, a FAIL means iterate-and-re-run, and refusal was explicitly retired as an endpoint. Parking would amend that, which is why it is on this page rather than being taken. |
 

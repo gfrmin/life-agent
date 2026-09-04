@@ -271,9 +271,17 @@ with `cost_status: "partial"`, and their token counters (`in_tokens`, `out_token
 r28's π\*, this arm's spend is not merely unpriced but **unimputable**. r28 found 96% of run 18's
 adoption margin lived in the price term; here that term is absent by construction, and its
 direction would favour the membrane arm (the baseline is a live executor lane, the membrane arm
-is a replay). Bounded honestly: the era's own executor runs spend fractions of a cent per
-question, so the missing term is very unlikely to be material against δ = 0.05 — but it is
-**not measured**, and this reading does not lean on it.
+is a replay). **Bounded honestly, and the first bound I wrote was wrong.** At the recorded
+`lambda_usd` = 1.33108, a mean spend difference of only **$0.0376/question** ($3.91 over 104
+questions) moves Δ by a full δ = 0.05 — and era-contemporary priced runs sit *at* that scale, not
+below it (run 6/7's typed arm $5.56/104 = $0.053/q; run 9 $0.039/q; run 10 $0.032/q). So the
+missing term is **potentially material to Δ̄**, in the membrane arm's favour, and the earlier
+draft's "fractions of a cent" was an unchecked extrapolation from the *post-M4* runs (run 18's
+$0.0036/q), three pricing eras after this baseline was recorded. What it is **not** is plausibly
+decisive for the verdict: a +0.05 shift moves Δ̄ from −0.081 to ≈ −0.03 with the interval carried
+along (today's 90% upper end is +0.205), which does not put 0.90 of the posterior above +0.05.
+Stated as it is — **unmeasured, plausibly worth about one δ, and not enough to carry the bar** —
+and this reading does not lean on it in either direction.
 
 ## S6 — the hard clause (`M-1`): a named wrong-commit class **is** made worse
 
@@ -289,7 +297,7 @@ the marginal-reach block where the baseline abstains.
 
 **q2-019 is a named class.** It is the truncated-leader **superset-confirm** row: the defect that
 made `corroborate_audit` a NO-GO, one of run 13's four wrong commits, and a row that run 14
-converted **wrong → withheld** — its current disposition on deployed master. This checkpoint's
+converted **wrong → withheld** — still its disposition in the newest gate record (`gate-20260831T195752`, run 23: `typed.action = abstain`), verified for this report rather than carried. This checkpoint's
 held-out policy commits it **wrong**. Under `M-1`'s hard clause that blocks a ship on its own,
 independently of S5. It does not bind anything today — **this checkpoint ships nothing in either
 branch, by its own pre-registration** — but it is recorded as a second, independent reason the
@@ -317,7 +325,7 @@ one**. Per-commit correctness across the whole membrane arm is 45/50 = 0.900; th
 
 ## Cost, and one thing the instrument could not tell me
 
-`r49-gate.service`: **14h 01m 54.716s wall, 13h 35m 06.727s CPU** (96.9% of one core — the
+`r49-gate.service`: **14h 01m 54.716s wall, 13h 35m 06.727s CPU** (96.8% of one core — the
 harness is serial), 96.3 MB peak, 423 engine spawns, **$0** (local engine, no model calls).
 
 Per-variant cost attribution is **unavailable**: the harness does not timestamp its own phase
