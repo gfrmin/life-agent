@@ -138,3 +138,64 @@ This does **not** re-open the utility gauge (`u_abstain` remains owner-only, pri
 conferral), does **not** enable or price the categorical world, does **not** file anything
 upstream, and does **not** swap any seam. `M-1`'s hard clause is not engaged: no lever ships from
 this checkpoint at all.
+
+---
+
+# Amendment 1 — the recon disclosure was WRONG, and S11 replaces what it claimed
+
+**Frozen blind, before the amended measurement runs.** Precedent: §17.6's Amendment 1 and
+`r46` leg A's Amendment 1, both blind, both correcting a population.
+
+## The correction (a fact, not a result)
+
+The recon disclosure above states that `GD-18`'s *"the commit column is empty on every row ever
+recorded"* **is already false**, citing 555 `enact` rows with one mapped `report`. **That is
+wrong, and the claim is withdrawn.**
+
+`M-26` fired — on this instrument's own author. The 555 `kind: "enact"` rows are **not** the
+`r46` leg A tap. They are the **M3 live lane's** rows, written 2026-07-20 → 2026-07-22 by
+`MembraneShadow._tick_live`, which **M5 deleted** (`4e5debd`), and whose named defect is exactly
+that it *"recorded an agreement pass-through and a probe selection identically"* — so its
+`daemon_effector` / `real_effector` columns do not mean what a mapped-surface census needs them
+to mean. Every count derived from them (including a "net −84 commits" figure computed and
+discarded before it reached any criterion) is void.
+
+**The leg A tap writes `mapped_effector` / `mapped_degraded` / `mapped_echo` / `mapped_probe`
+onto `kind: "decide"` rows.** Exactly **one** such row exists, at 2026-09-02T17:38:38, and it
+records `mapped_effector: gather`, `mapped_echo: false`, `mapped_degraded: null`,
+`p1 = 0.8621320287400522`. So on the declared surface the commit column holds **zero** rows and
+**`GD-18` STANDS.** The tap is not broken — the shadow is live and `gate` rows arrived today;
+only one mirrored `decide` has occurred since the tap landed, so the live stream cannot support
+a mapped-surface census at all.
+
+That one row is itself instructive and is reported as such: `p1` **above** the deployed bar
+0.8369, mapped to `gather` anyway, because an unapplied VOI transform pre-empts the argmax.
+
+## S11 — the mapped-surface commit census under the era-matched Ū (new criterion)
+
+`GD-21` handed this checkpoint a specific question: *"it must settle by a mapped-surface census
+whether the deployed bar flips any exhausted-gather row to a commit."* The live stream cannot
+answer it (n = 1). The only population that can is `r46` leg A's — the **605 recorded `/decide`
+exchanges across the 314 m5-base fixtures**.
+
+Those payloads carry the **fixtures'** elicited `u_bar` (`u_wrong = −8.710`, bar 0.897015), which
+is precisely the number `GD-21` forbids reading a commit bar at. So S11 runs leg A's deployed
+rule over leg A's population with **one further declared substitution**: the payload's `u_bar`
+replaced by the **deployed boot Ū** (`u_wrong = −5.13099`, bar 0.8368942119315517). Named as a
+substitution, exactly as leg A named the `gather` action.
+
+**The reading:** at each swept `p1` — and specifically at the ledger's recorded maximum
+**0.8706074152883231**, which lies *above* the deployed bar and *below* the fixture bar, the
+window `GD-21` opened — report how many of the 605 exchanges reach `_gather`'s exhausted argmax
+and how many of those commit. **No pass condition**; the count is the answer, and below §6.13's
+wobble floor of **2** it may not be read as a benefit (`GD-8`).
+
+**Blind prediction 6.** The exhausted fraction is small (the fixtures are mid-deliberation, so
+most carry an unapplied VOI transform), and at the deployed bar the commit count is **non-zero
+but single-digit** — because the fixture bar exceeded the ledger ceiling by 0.0264 while the
+deployed bar sits 0.0337 *below* it, so the window is real; and the pre-emption the one live row
+demonstrates will remove most of it.
+
+**Nothing else changes.** S1–S10 stand as frozen; predictions 1–5 stand; the consequence branches
+stand. S11 adds a criterion, loosens nothing, and its result cannot convert an S5 FAIL into a
+pass.
