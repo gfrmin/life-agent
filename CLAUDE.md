@@ -683,11 +683,37 @@ material for that candidate only.
   before measuring (`M-7` forbids pricing a constant through a re-implementation of the rule
   that assembles it; `r30b`'s in-process lever is invisible). Two corrections: a prediction
   refuted (arm B refuses at the handshake) and a test asserting an **invented** requirement
-  (clock name in the namespace) refuted by the deployed binary world. Next: **r48** (the
-  re-earn measurement through the deployed runner; a K-cap/episode budget owed before any live
-  enablement — §16 finding 4) → §18's bars (readable, never
-  read; preconditions C3's gather constant + leg A's empty commit column + `GD-21`'s bar-drift
-  + leg D's spec), then §11's exit.
+  (clock name in the namespace) refuted by the deployed binary world.
+  **`r48` IS READ (2026-09-04, `GD-25`, $0) — the E1 re-earn does NOT clear, and the KILL that
+  fired names a COST defect, not a build defect.** J1 fires (3 of 129 summaries returned no
+  action, all k ≥ 12, one of them at **`n_obs` = 0** — so the cost is model-space and handshake,
+  not evidence depth) and **its stated ground is refuted**: 126 episodes returned a declared
+  action on the deployed enabled world, covering **2 009/2 012 recorded rows (99.85%)**. It
+  stands as fired (`GD-16`'s letter-met/ground-refuted shape); the re-read it mandates finds
+  `r47`'s enablement **sound** and its **episode budget unbounded**. On the completing leg:
+  `gather` on all 126 replay episodes and all 55 sweep steps, **no flip**; 40 observations reach
+  `p_argmax` **0.98348** vs a necessary bar of **0.99063** (gap **0.00716**, closed 14.3× from
+  §16's era, still open), **K-independent to 16 digits**; 11 summaries clear the vs-abstain bar
+  0.836894 — nine of them the degenerate k=1 — and all still chose `gather`. §17.6 binds
+  unchanged: a sharper `p1` or #15 / E3, **never a softer bar**; r48 proposes neither. Three
+  corrections: **`M-30`** — §16 finding 3's *by-construction* clause is **VOID** (`r46` leg B's
+  2⁻²⁰ snap rounded the decisive rung **up**; the θ ceiling now sits 1.2×10⁻⁸ **above** the bar,
+  so reachability rests on a rounding direction — leg B's verification was honest and complete on
+  the rows it checked, and the boundary it moved is one no episode visits; finding 3's primary
+  attribution, the overvalued information row, stands and is now **empirical**); **blind
+  prediction 4 REFUTED** — arm B is **2.3–145× SLOWER** than arm A on a **4.65× smaller** model
+  space, median latency **~k⁴** where `models` is k¹ (mechanism named, not measured); and **§16
+  finding 5 answered** — R-D23's `1/(K−1)` cap shows **zero violations** over 113 rows,
+  tightening monotonically (0.26 of cap at k=2 → 0.82 at k=11) without binding. §16 finding 4's
+  owed K-cap has a number: **k ≤ 3** (every observed episode inside production's 20 s
+  `cat_timeout_s`; **74.3%** of recorded traffic, the rest needs a *named* skip). Nothing
+  deployed or enabled; no `src/` change; `M-1` not engaged.
+  Next: §18's bars (readable, never read) — now carrying **six** published preconditions: C3's
+  gather constant, leg A's empty commit column, `GD-21`'s bar-drift, leg D's spec, plus r48's
+  two (**no bar on a world whose episode budget is unbounded**; the categorical commit surface
+  is empty for the SAME reason the binary one is — `gather` dominates, the `p1` is not what is
+  short). The K-cap build and any move on #15 / E3 each need their own pre-registration. Then
+  §11's exit.
 
 ## `src/pkm` — the KB core (Python, uv, DuckDB): key files
 

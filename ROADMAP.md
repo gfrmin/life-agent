@@ -372,11 +372,41 @@ Bayesian Ask rather than deterministic pipelines. Remaining program, in dependen
    refuses at the handshake, so no tick item can bite first), and a test that **asserted an
    invented requirement** — that the clock name must be a namespace member — refuted by the
    deployed binary world, which keeps `think` out of its namespace in the shape `r44` verified
-   at arm B. Next: **r48** — the re-earn measurement through the deployed runner, settling the
-   binder question under today's Ū and §16 finding 4's minute-scale episode cost (a K-cap or
-   episode budget is owed **before** any live enablement); then **§18's bars** (readable, never read; preconditions all published — C3's
-   gather constant, leg A's empty commit column, `GD-21`'s bar-drift, leg D's spec), then
-   §11's exit.
+   at arm B.
+
+   **`r48` IS READ (2026-09-04, `GD-25`, $0): the E1 re-earn does NOT clear, and the KILL that
+   fired names a cost defect rather than a build defect.** J1 fires — three of 129 summaries
+   returned no action, all at k ≥ 12 — and **its stated ground is refuted**: 126 episodes
+   handshook, folded and returned a declared action on the deployed enabled world, covering
+   **2 009 of 2 012 recorded rows (99.85%)**. It stands as fired anyway (`GD-16`'s letter-met /
+   ground-refuted shape), and the re-read it mandates finds the opposite of the guess —
+   `r47`'s enablement is sound; its **episode budget** is unbounded. On the leg that completed:
+   **`gather` on all 126 replay episodes and all 55 sweep steps, no flip anywhere.** Forty
+   observations reach `p_argmax` **0.98348** against a necessary bar of **0.99063** (gap
+   **0.00716**, closed 14.3× from §16's era and still open), **K-independent to 16 digits**;
+   eleven summaries clear the vs-abstain bar 0.836894 — nine of them the degenerate k=1 — and
+   every one still chose `gather`. §17.6's rule binds unchanged: a sharper `p1` or #15 / E3,
+   **never a softer bar**, and r48 proposes neither. Three corrections published:
+   **`M-30`** — §16 finding 3's *by-construction* clause is **VOID**, because `r46` leg B's
+   2⁻²⁰ snap rounded the decisive rung **up** and the θ ceiling now sits 1.2×10⁻⁸ **above** the
+   bar (leg B's own verification was honest and complete on the rows it checked; the boundary it
+   moved is one no episode visits) — finding 3's primary attribution, the overvalued information
+   row, stands and is now **empirical**; **blind prediction 4 REFUTED** — arm B runs **2.3× to
+   145× slower** than arm A on a model space 4.65× *smaller*, median latency scaling **~k⁴**
+   where `models` is k¹ (mechanism named, not measured); and **§16 finding 5 answered** — #20's
+   readout makes `p0` observable and R-D23's `1/(K−1)` cap shows **zero violations** over 113
+   rows, tightening monotonically (0.26 of the cap at k=2 → 0.82 at k=11) without ever binding.
+   §16 finding 4's owed K-cap now has a number: **k ≤ 3**, the largest cap under which every
+   observed episode finishes inside production's 20 s `cat_timeout_s`, covering **74.3%** of
+   recorded traffic — the other 25.7% needs a *named* skip. Nothing deployed or enabled, no
+   `src/` change, `M-1` not engaged.
+
+   Next: **§18's bars** (readable, never read), now carrying **six** published preconditions —
+   C3's gather constant, leg A's empty commit column, `GD-21`'s bar-drift, leg D's spec, and
+   r48's two: no bar may be read on a world whose **episode budget is unbounded**, and the
+   categorical commit surface is empty for the **same** reason the binary one is (`gather`
+   dominates; the `p1` is not what is short). Building the K-cap, and any move on #15 / E3, each
+   need their own pre-registration. Then §11's exit.
 4. **[RETIRED 2026-08-31 — `G-1`. Items 4 and 5 *were* Stage 2; the aggregate family was
    additionally deleted by K1 as "family routing in disguise", its transformations kept.
    The thread transformations may still be built when evidence calls for them, never as a

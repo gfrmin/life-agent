@@ -867,6 +867,16 @@ clears every remaining bar. This names E3 (engine-held stop rule) / proplang #15
 (act-conditional outcome hypotheses) as the exit, exactly as staged — and it is what
 the differential was built to measure, never to be tuned away silently.
 
+> **CORRECTED 2026-09-04 by `r48` (`GD-25`, `M-30`).** The *by-construction* clause is
+> **void**. #19 handed the θ ceiling to us and `r46` leg B snapped the grid to a 2⁻²⁰
+> lattice; the decisive rung rounded **up**, so the ceiling (0.9906339645385742) now sits
+> **1.2×10⁻⁸ above** the bar (`world.respond_threshold` = 0.9906339522695138) instead of
+> ~0.09 below it. Reachability is no longer structurally excluded — it is excluded by a
+> window 1.2×10⁻⁸ wide, which is a measurement, not a construction. **Finding 3's primary
+> attribution stands and is now empirical rather than analytic**: `gather` won all 126
+> replayed episodes and all 55 sweep steps under today's Ū, with 40 observations reaching
+> `p_argmax` 0.98348 against a 0.99063 bar. The named exit (E3 / #15) is unchanged.
+
 **Finding 4 — session cost is linear in K via the model population, minute-scale at
 K≳10.** models = 1601·K (one atom's said@1 sentence population per candidate); median
 episode latency 71ms (K=1), 189ms (K=2), 514ms (K=3), 1.2s (K=5), 2.8s (K=7), 6.9s
@@ -878,11 +888,27 @@ but stage 2 (M4, on the decision path) needs either a K cap with a named-skip, a
 episode-level budget, or the warm-counts boot before minute-scale episodes can sit on
 the answer path.
 
+> **PRICED 2026-09-04 by `r48` J5 (`GD-25`).** On the **enabled** world at arm B the cost is
+> far worse than this row records and the model population is not what drives it: arm B runs
+> **2.3× (k=1) to 145× (k=10) slower** than these arm A medians despite a model space 4.65×
+> smaller, and median latency scales as **~k⁴** where `models` is linear in k. The K cap this
+> row owes now has a number: **k ≤ 3** is the largest cap under which *every* observed episode
+> finishes inside the 20 s `cat_timeout_s` (worst case 9.7 s; k=4 reaches 27.4 s), covering
+> **74.3%** of recorded rows — the other 25.7% needs the named skip. Three episodes at k ≥ 12
+> never returned at all, including one at **`n_obs` = 0**, so the cost is in the model space and
+> handshake fold, not evidence depth.
+
 **Finding 5 — R-D23 cap-binding is UNOBSERVABLE without the per-code readout.** The
 decide reply's scalar `p1` cannot show P(y=0), so whether the null-mass cap (1/(K−1))
 binds on this 73.5%-over-abstention corpus is unanswerable from these rows. Filed as
 gfrmin/proplang#20 (observability-only per-code readout: argmax code + its mass + null
 mass); the R-D23 heir evidence (§5.4(e)) is blocked behind it.
+
+> **ANSWERED 2026-09-04 by `r48` J4 (`GD-25`).** #20 shipped and is live on arm B, so `p0`
+> IS P(y=0). Measured across the whole recorded population (113 completed rows with a finite
+> cap): **zero violations**, `p0` spanning 0.0338–0.4652, and the ratio to the cap rising
+> monotonically with k — 0.26 of the cap at k=2 to 0.82 at k=11. **The cap holds and never
+> binds** anywhere observed.
 
 §5.4 sends filed against this ledger: the OB-11 position (proplang#10 comment:
 K-at-tick-0 suffices, session-per-question, bounded-reserved-tail not needed on our
