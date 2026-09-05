@@ -100,7 +100,8 @@ def test_summary_from_payload_reads_candidates_observations_and_flags() -> None:
     s = W.summary_from_payload(payload, dec)
 
     assert s == _summary(n_candidates=3, leader_credence=0.5, p_none=0.1, n_obs=2,
-                          era_split=True, owner_scoped=True, grow_pass=False)
+                          era_split=True, owner_scoped=True, grow_pass=False,
+                          runner_up_credence=0.3)
 
 
 def test_summary_from_payload_empty_credences_and_none_p_none() -> None:
@@ -125,6 +126,41 @@ def test_summary_from_payload_grow_pass_true_only_when_grow_block_present() -> N
 
     assert without_grow.grow_pass is False
     assert with_grow.grow_pass is True
+
+
+# --- runner_up_credence (r50): the raw second credence, on BOTH reducers --------------------
+
+
+def test_summary_from_payload_carries_the_runner_up_credence() -> None:
+    # the second-largest credence, not index 1 (the daemon returns candidate order)
+    dec = {"credences": [0.5, 0.15, 0.3], "p_none": 0.05}
+    s = W.summary_from_payload({"candidates": ["A", "B", "C"], "observations": []}, dec)
+    assert s.leader_credence == 0.5 and s.runner_up_credence == 0.3
+
+
+def test_runner_up_credence_is_zero_with_fewer_than_two_candidates() -> None:
+    one = W.summary_from_payload({"candidates": ["A"], "observations": []},
+                                 {"credences": [0.9], "p_none": 0.1})
+    none = W.summary_from_payload({"candidates": [], "observations": []},
+                                  {"credences": [], "p_none": None})
+    assert one.runner_up_credence == 0.0 and none.runner_up_credence == 0.0
+
+
+def test_summary_from_decision_event_carries_the_runner_up_credence() -> None:
+    event = {"posterior_summary": {"candidates": ["A", "B"], "credences": [0.2, 0.7],
+                                   "p_none": 0.1, "n_obs": 2}}
+    s = W.summary_from_decision_event(event)
+    assert s.leader_credence == 0.7 and s.runner_up_credence == 0.2
+
+
+def test_runner_up_credence_does_not_enter_the_declared_vocabulary() -> None:
+    # r50 step (a) is neutral: a raw field on the summary, NOT a new indicator family — the
+    # handshake namespace, the tick body and the world digest are byte-untouched until the
+    # census (S2) names a family
+    s = _summary(n_candidates=2, leader_credence=0.8, p_none=0.1, n_obs=1,
+                 runner_up_credence=0.15)
+    assert not any("runner" in n for n in W.indicator_names())
+    assert not any("runner" in n for n in W.shadow_features(s, 0.0))
 
 
 # --- summary_from_decision_event(): the warm/replay path ----------------------------------

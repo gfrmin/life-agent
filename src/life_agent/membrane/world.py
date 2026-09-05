@@ -23,7 +23,7 @@ with the id/slots menu), then gather, ask, respond.
 """
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -79,6 +79,19 @@ class DecideSummary:
     era_split: bool
     owner_scoped: bool
     grow_pass: bool
+    # r50 (`r50-band-sharpening-preregistration` candidate F1): the second-largest candidate
+    # credence, 0.0 with fewer than two candidates. A RAW field on the summary, deliberately
+    # NOT an indicator family — the vocabulary changes only if the census (S2) names one.
+    # Appended last with a default so every positional construction stays valid.
+    runner_up_credence: float = 0.0
+
+
+def runner_up(credences: Sequence[float]) -> float:
+    """The second-largest credence — by VALUE, never index 1 (the daemon returns credences in
+    candidate order, so the leader is the max and the runner-up is the second max)."""
+    if len(credences) < 2:
+        return 0.0
+    return float(sorted(credences, reverse=True)[1])
 
 
 def summary_from_payload(payload: dict[str, Any], dec: dict[str, Any]) -> DecideSummary:
@@ -100,6 +113,7 @@ def summary_from_payload(payload: dict[str, Any], dec: dict[str, Any]) -> Decide
         era_split=bool(payload.get("era_split", False)),
         owner_scoped=bool(payload.get("owner_scoped", False)),
         grow_pass=payload.get("grow") is not None,
+        runner_up_credence=runner_up(credences),
     )
 
 
@@ -125,6 +139,7 @@ def summary_from_decision_event(event: dict[str, Any]) -> DecideSummary:
         era_split=False,
         owner_scoped=False,
         grow_pass=False,
+        runner_up_credence=runner_up(credences),
     )
 
 

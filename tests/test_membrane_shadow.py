@@ -23,6 +23,7 @@ from __future__ import annotations
 import json
 import time
 from collections.abc import Iterable, Mapping
+from dataclasses import asdict
 from pathlib import Path
 
 import pytest
@@ -484,15 +485,9 @@ def test_decide_submit_is_drained_into_a_decide_record(tmp_path: Path) -> None:
         assert row["real_effector"] == "report"
         assert row["readouts"] == {"p1": 0.7}
         expected_summary = W.summary_from_payload(payload, dec)
-        assert row["summary"] == {
-            "n_candidates": expected_summary.n_candidates,
-            "leader_credence": expected_summary.leader_credence,
-            "p_none": expected_summary.p_none,
-            "n_obs": expected_summary.n_obs,
-            "era_split": expected_summary.era_split,
-            "owner_scoped": expected_summary.owner_scoped,
-            "grow_pass": expected_summary.grow_pass,
-        }
+        # the WHOLE summary is the record (a new field — r50's runner_up_credence — is pinned
+        # here automatically rather than silently dropped from the assertion)
+        assert row["summary"] == asdict(expected_summary)
         assert isinstance(row["latency_ms"], (int, float))
         assert row["t"] == 0
     finally:
@@ -1436,10 +1431,7 @@ def test_gate_submit_is_drained_into_a_gate_record_per_form(tmp_path: Path) -> N
         assert row["readouts"] == {"p1": 0.7}
         # the engine was consulted under the FAITHFUL empty-evidence context: nothing
         # retrieved/extracted at either declared gate, so zero candidates, no posterior.
-        assert row["summary"] == {
-            "n_candidates": 0, "leader_credence": None, "p_none": None, "n_obs": 0,
-            "era_split": False, "owner_scoped": False, "grow_pass": False,
-        }
+        assert row["summary"] == asdict(SH.GATE_SUMMARY)  # the whole summary is the record
         session = factory.built["said@1"][0]
         assert session.decide_calls == [SH.GATE_SUMMARY]
         assert row["t"] == 0
