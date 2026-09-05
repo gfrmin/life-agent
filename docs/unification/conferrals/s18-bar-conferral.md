@@ -117,3 +117,57 @@ progression to §11's exit; it does not by itself put this policy anywhere near 
 > 0.837)?** And, given the answer: iterate on `p1` in the 70–90 band (B), or something else?
 
 Everything else in this document is delegated and does not need a keypress.
+
+---
+
+## RULING (owner, 2026-09-05) — the question is withdrawn as mis-posed
+
+**The question in §6 was wrong, and the register is where the error entered.**
+
+`u_wrong` is **not a gauge**. The affine gauge is the two pins (`u_correct = +1`,
+`u_abstain = 0`), fixed by convention. Once they are pinned, `u_wrong` is an **identified
+latent** — §4.4 lists it as exactly that, and `p* = −u_wrong/(1−u_wrong)` shows the number is
+fully determined inside the pinned gauge. So −9.0 and −5.131 were never two conventions to
+choose between; they are **two estimates of one quantity**, and the choice between them is
+**epistemic**. Calling it a gauge routed the question into `RULINGS` §5's conventional bucket and
+asked for a keypress on a question the constitution had already assigned to evidence — a keypress
+that would have turned a FAIL into a PASS. **A bad question, not a bad answer.**
+
+**Ruled instead:** a **consistency rule, not a number** — *there is one utility, the current
+posterior mean, and the decision layer and the gate both read it.* Ordering inverted from §5's
+recommendation: **B is the substantive move** (it is regime-independent: the 70–90 band's realised
+correctness of 0.80 sits below *both* break-evens, so a calibrated `p1` withholds those rows
+either way, and it is §17.6's own direction — a sharper `p1`, never a softer bar). **C starts
+now**, with `M-31` reframed from "print both break-evens" to "assert one Ū across decision layer
+and gate, and print it". **Not D yet; not E.** `M-1`'s q2-019 blocks deployment regardless.
+
+## What was enacted, and the one part that came back (`r49b`, `GD-27`)
+
+The classification correction is **enacted in full**: `M-31` corrected, the misclassification
+named, `GD-26` given a dated correction, and **C built** (`M-33` — `gate.regime_pairing`, wired
+as a preflight in `p3_gate.py`, reproduced against `r49`'s own artefacts, 16 tests, 6/6 mutations
+RED).
+
+**The consistency rule is escalated rather than implemented**, because
+[`r49b`](../reports/r49b-utility-regimes.md) found three facts this conferral never put in front
+of the owner:
+
+1. **There is no stale side-store.** `current_u_bar` re-folds live on every call and the bridge
+   hands the shadow that same fold; the boot Ū is a *snapshot of the live belief*.
+2. **It tracks, non-monotonically** — −5.9395 → −8.8301 → −5.1310 across 20 boot records. **In
+   August the deployed bar sat within 0.002 of the gate's.**
+3. **The labels are reversed.** −9.0 is the *elicitation-only* number; −5.131 is the
+   *reaction-conditioned* one. So "the current posterior mean" is **−5.131** — the **softer**
+   bar.
+
+So the rule, implemented literally, makes the gate score at 0.837, flips `r49`'s Δ to **+0.075**,
+and deletes `frozen-elicitations` — a **structurally enforced anti-circularity guard**, since
+reactions are projected from verdicts on the very decision log the gate scores. The rule designed
+to prevent result-picking would, on today's numbers, deliver it.
+
+**The re-posed question** (`r49b` §5, `RULINGS` §5) is narrower and genuinely objective-class:
+**does the A3 gate keep its blind regime?** Circularity on one horn, a second master on the
+other. Three sub-answers are costed there; the recommended one, if the guard stands, is to keep
+blindness and make it honest — report **inconclusive** when the measured reach straddles the two
+break-evens, which is exactly `r49`'s configuration and the only sub-answer that changes what
+`r49` was entitled to conclude.

@@ -739,9 +739,37 @@ material for that candidate only.
   stop rule is ENACTED**: §17.6 FAILed this same A3 criterion, so this is the second
   consecutive FAIL on one frozen criterion and **work STOPS for an owner ruling** —
   `docs/unification/conferrals/s18-bar-conferral.md` carries evidence, five options and
-  prices, asking the objective-class question: **which utility is §18's bar quoted at?**
-  Nothing deployed, enabled or swapped; no successor opened. The K-cap build and any move on
-  #15 / E3 each need their own pre-registration. Then §11's exit.
+  prices. Nothing deployed, enabled or swapped; no successor opened.
+  **r49b IS READ (2026-09-05, `GD-27`, $0) and the conferral's question is WITHDRAWN as
+  mis-posed.** The owner ruled `u_wrong` is **not a gauge**: the affine gauge is the two pins
+  (`u_correct = +1`, `u_abstain = 0`), so `u_wrong` is an **identified latent** and −9.0 vs
+  −5.131 are two **estimates of one quantity** — an *epistemic* question the constitution had
+  already assigned to evidence, which `M-31` mis-routed into §5's conventional bucket, producing
+  a keypress that would have turned a FAIL into a PASS. **A bad question, not a bad answer.**
+  `core/utility.py` carried the right framing all along ("two conditioning sets over one
+  probability model"): `all-to-date` folds the §4.4 verdict→evidence projection, the gate's
+  `frozen-elicitations` **structurally refuses** it. The ruled remedy — *one utility, decision
+  layer and gate both read it* — is **enacted in part and escalated in part**, because three
+  facts refute its mechanism: (1) **no stale side-store exists** — `current_u_bar` re-folds live
+  on every call and the bridge hands the shadow that same fold, so the boot Ū is a *snapshot of
+  the live belief*; (2) it **tracks non-monotonically** — −5.9395 → **−8.8301** → −5.1310 across
+  20 boot records, and in August the deployed bar sat **within 0.002** of the gate's; (3) **the
+  labels are reversed** — −9.0 is the *elicitation-only* number, −5.131 the *reaction-conditioned*
+  one, so "the current posterior mean" is the **softer** bar. Implemented literally the rule
+  scores the gate at 0.837, flips r49's Δ to **+0.075**, and deletes an **anti-circularity
+  guard** (reactions are projected from verdicts on the very decision log the gate scores) — the
+  rule written to prevent result-picking would deliver it. **Escalated, not resolved** (§17.6 /
+  `M-4`); the re-posed question is narrow: **does the A3 gate keep its blind regime?** Enacted:
+  `M-31` corrected, `GD-26` given a dated correction and its Reaction filled, and **C built** —
+  **`M-33`**, `gate.regime_pairing`/`break_even`/`render_regime_pairing` (derived *through*
+  `decide.u_assert`, `M-7`) with a **preflight in `p3_gate.py`** that declares both regimes and
+  both break-evens before any engine spawns; reproduced on r49's own artefacts, 16 tests, 6/6
+  mutations RED (three initially SURVIVED — rounded endpoint stand-ins, no coincident-regime
+  case, no reversed-order case — and one predicate was **dead, not untested**, so it was
+  removed). **B is NOT opened** — right and regime-independent (the band's realised 0.80 sits
+  below both break-evens) but a decision-path lever needing its own `M-3` pre-registration.
+  The K-cap build and any move on #15 / E3 each need their own pre-registration. Then §11's
+  exit.
 
 ## `src/pkm` — the KB core (Python, uv, DuckDB): key files
 
