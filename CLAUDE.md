@@ -770,8 +770,20 @@ material for that candidate only.
   case, no reversed-order case — and one predicate was **dead, not untested**, so it was
   removed). **B is NOT opened** — right and regime-independent (the band's realised 0.80 sits
   below both break-evens) but a decision-path lever needing its own `M-3` pre-registration.
-  The K-cap build and any move on #15 / E3 each need their own pre-registration. Then §11's
-  exit.
+  **Next (2026-09-05):** the guard question is held for the owner and gates nothing else
+  (three sub-answers costed in `r49b` §5; nothing is re-read at the softer regime while it is
+  open). The stop rule is discharged — the ruling named B — so **B opens under its own `M-3`
+  pre-registration**: r49's 70–90 band (55 rows, realised 0.800 committed at mean `p1`
+  0.863–0.873, below both break-evens), a host-side family that separates the band or the
+  engine's guard prior (filed as demand), decided by a $0 census through the harness's own
+  `features_for`, KILL if nothing separates; the lattice trim under §10's retention test rides
+  with it (`flags` 0/250; `n-candidates`/`n-obs` move zero actions; 960 vs 456 models), its
+  control leg reproducing r49's S4 policy. Verdict at the standing blind regime with the `M-33`
+  preflight; a FAIL stops for a ruling as before; `M-1` (q2-019) gates any deployment. C's
+  remainder lands first (`M-32` timestamps + the `a3_meta` regime record, $0, no restart; the
+  boot record's policy name on the next natural restart; the baseline arm's spend re-recorded
+  under an `M-18` rider); D is sized from B's timestamped run. The K-cap build and any move on
+  #15 / E3 each need their own pre-registration. Then §11's exit.
 
 ## `src/pkm` — the KB core (Python, uv, DuckDB): key files
 
