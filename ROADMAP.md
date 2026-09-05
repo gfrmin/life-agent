@@ -503,8 +503,29 @@ Bayesian Ask rather than deterministic pipelines. Remaining program, in dependen
    break-evens), but it is a decision-path lever and needs its own pre-registration under `M-3`.
    `M-1`'s q2-019 still blocks deployment regardless.
 
-   Building the K-cap, and any move on #15 / E3, each still need their own pre-registration.
-   Then §11's exit.
+   **Next (2026-09-05).** One question is held for the owner and gates nothing else: *does the
+   A3 gate keep its blind regime?* — three sub-answers costed in `r49b` §5, each convertible
+   into a $0 PR the day it is answered, and **nothing is re-read at the softer regime while it
+   is open**. The stop rule is discharged: the ruling licensed the successor by name. **B opens
+   next, under its own `M-3` pre-registration** — the address is r49's 70–90 leader-credence
+   band, 55 rows at realised 0.800 committed on every one at mean `p1` 0.863–0.873, below
+   *both* break-evens, so the lever is regime-independent and it is §17.6's own direction (a
+   sharper `p1`, never a softer bar). Its fork — a host-side family that *separates* the band,
+   or the engine's guard prior (filed as demand, `M-23`/`GD-14`, never edited from here) — is
+   settled by a $0 census through the harness's own `features_for` (`M-7`), with a KILL if no
+   family separates the band. The same pre-registration carries the lattice trim under §10's
+   retention test: `flags` fires 0/250, `n-candidates`/`n-obs` move zero actions once
+   `leader-credence` + `p-none` are present, 960 models against 456 for identical decisions —
+   the trimmed lattice reproducing r49's S4 policy is the control leg. The verdict is quoted at
+   the standing blind regime with the `M-33` preflight, a straddle reported pairing-sensitive,
+   a FAIL stopping for a ruling as before, and `M-1` (q2-019) gating any deployment regardless.
+   **C's remainder lands first**: `M-32` phase timestamps and the `a3_meta` regime record in
+   `p3_gate.py` ($0, no restart — so B's run is the first with attributable per-arm cost), the
+   boot record's policy name on the next *natural* bridge restart (`GD-20`/`M-27`), and the
+   baseline arm's spend re-recorded (`scripts/fairfight/arm_baseline.py`, single dollars, an
+   `M-18` comparability rider) so Δ_spend is measured rather than structurally 0. **D** (the
+   parallel harness, ~14h → ~2h) is sized from B's timestamped run, not before. The K-cap
+   (k ≤ 3) and any move on #15 / E3 each still need their own pre-registration. Then §11's exit.
 4. **[RETIRED 2026-08-31 — `G-1`. Items 4 and 5 *were* Stage 2; the aggregate family was
    additionally deleted by K1 as "family routing in disguise", its transformations kept.
    The thread transformations may still be built when evidence calls for them, never as a
