@@ -1194,4 +1194,96 @@ that is what blocks sizing the parallel-harness successor). `GD-18` takes a date
 its *scope* sentence rested on the fixture bar `GD-21` retired, and S11 supplies the evidence —
 its hedge, that the ceiling is **empirical rather than structural**, is what survives.
 
+> **Dated correction — 2026-09-05 (`r49b`/`GD-27`).** This entry's word **"gauge" is wrong**
+> throughout, title included. The affine gauge is the two pins (`u_correct = +1`,
+> `u_abstain = 0`); `u_wrong` is an **identified latent** underneath them, so −5.131 and −8.999
+> are two **estimates of one quantity** separated by their declared **conditioning set**
+> (`all-to-date` folds the §4.4 reaction projection; `frozen-elicitations` structurally refuses
+> it), not two conventions. Every **number** in this entry stands and every **measurement** is
+> reproduced; what is withdrawn is the classification, which routed an epistemic question to the
+> owner as if it were conventional. See `GD-27`.
+
+**Reaction (owner, 2026-09-05).** The classification is **rejected and corrected**: `u_wrong` is
+an identified latent, §4.4 lists it as one, and `p* = −u_wrong/(1−u_wrong)` shows it is fully
+determined inside the pinned gauge — so the conferral asked for a keypress on a question the
+constitution had already assigned to evidence. The remedy ruled is a **consistency rule, not a
+number**: *one utility — the current posterior mean — read by both the decision layer and the
+gate*. Ordering inverted: **B is the substantive move** (regime-independent — the band's realised
+correctness of 0.80 sits below both break-evens), **C starts now** with `M-31` reframed from
+"print both" to "assert one Ū and print it", **not D yet, not E**, and `M-1`'s q2-019 blocks
+deployment regardless. `GD-27` enacts the correction and the parts of the ruling that hold, and
+returns the one part that collides with a structural guard.
+
+## GD-27 · 2026-09-05 · the "gauge" was a misclassification — enacted; and the consistency rule collides with the gate's blind regime
+
+**The fork.** The owner's ruling on `GD-26`'s conferral corrected the classification and
+prescribed a remedy. The classification correction is unambiguous and is enacted. The remedy —
+*one utility, decision layer and gate both read it* — turns out, on evidence the conferral never
+put in front of the owner, to select the **softer** bar and to delete a **structural
+anti-circularity guard**. The fork is what to do with a ruling whose letter is right and whose
+prescribed mechanism is refuted by the code it governs.
+
+**Decided.** Enact everything that does not depend on the refuted part; escalate the part that
+does, with the missing fact attached. `docs/unification/reports/r49b-utility-regimes.md` is the
+$0 reading; no engine ran, no bar was re-read, nothing is deployed.
+
+**Enacted.**
+
+1. **`M-31` corrected.** "Gauge" withdrawn. `u_wrong` is an identified latent under the two
+   pins; −5.131 and −8.999 are two estimates of it under two **declared conditioning sets**, a
+   distinction `core/utility.py` already carried verbatim ("two conditioning sets over one
+   probability model"). The register contradicted the module it described. The operational half
+   — publish both numbers, say which one the verdict is quoted at — stands, on a corrected
+   rationale.
+2. **The misclassification is named as the failure.** Converting an empirical question into an
+   owner keypress produced one that is **result-relevant**: it flips the headline sign toward
+   adoption (point Δ −0.080 → +0.075), though not by itself to a PASS — A3's P(Δ>0.05) ≥ 0.90 was
+   never computed at that regime. That is a **bad
+   question**, not a bad answer, and `RULINGS` §5 is where it entered.
+3. **`M-33` registered and C built** — `gate.regime_pairing` / `break_even` /
+   `render_regime_pairing`, plus a preflight in `scripts/membrane/p3_gate.py` that declares both
+   regimes and both break-evens **before any engine spawns**, naming the interval that would make
+   the verdict pairing-sensitive. Reproduced against `r49`'s own artefacts: it prints the
+   divergence at preflight and flags the straddle at the measured 0.875. Sixteen tests, six of
+   six mutations RED. `break_even` is derived **through** `decide.u_assert` rather than respelled
+   (`M-7`).
+4. **`GD-26`'s Reaction field** carries the ruling, per the house convention, and `GD-26` takes a
+   dated correction on the word.
+
+**Escalated, not implemented — and this is the substance.** Three findings refute the ruling's
+mechanism:
+
+- **No stale side-store exists.** `lookup.current_u_bar` re-reads model, elicitations *and*
+  reactions on every call, recomputes `fold_version`, and re-folds when it moves; the bridge
+  hands the shadow that same live fold. The "boot Ū" is a **snapshot of the live belief**, not a
+  constant that drifted from it — so the diagnosed fold-not-store violation is not in this code.
+- **The record proves it tracks, and not monotonically.** Across 20 boot records `u_wrong` reads
+  −5.9395 → **−8.8301** → −5.1310 (break-evens 0.8559 → **0.8983** → 0.8369). **In August the
+  deployed bar sat within 0.002 of the gate's.** The gap is volatility in a conditioned latent,
+  not a fixed offset between two ways of measuring; a reading taken in August would have found no
+  gap at all.
+- **The labels are reversed.** −9.0 is the **elicitation-only** number (and `world.py:247`'s
+  hardcoded fallback); −5.131 is the **reaction-conditioned** one. Revealed preference has
+  already pulled it there — that is what the §4.4 loop is and what r32 priced. So "the current
+  posterior mean" is **−5.131**, break-even **0.837**, the softer bar.
+
+Therefore the consistency rule, implemented literally, moves the gate's scoring break-even from
+0.900 to 0.837, flips `r49`'s point Δ from −0.080 to **+0.075**, and does so by removing the
+regime that **structurally refuses** verdict-projected evidence — evidence projected from
+verdicts on the very decision log the gate scores. The rule written to prevent result-picking
+would, on today's numbers, deliver it. **Not resolved here:** it changes the gauge the objective
+is measured at (`D-3`'s one escalating class), and resolving it in the direction the arithmetic
+favours *after* seeing a FAIL is what §17.6 and `M-4` forbid.
+
+The re-posed question is in `RULINGS` §5 and `r49b` §5, with three sub-answers costed: keep the
+guard and scope consistency to deciders; drop the guard and accept that runs 6–23 become
+non-comparable; or keep the guard and make it honest by reporting **inconclusive** when the
+measured reach straddles. The third is the only one that changes what `r49` was entitled to
+conclude, and it is the one recommended if the guard stands.
+
+**Not done, deliberately.** The consistency rule is not implemented; the bar is not re-read;
+**B is not opened** (it is right, and regime-independent — 0.80 sits below both break-evens — but
+it is a decision-path lever and needs its own pre-registration under `M-3`); `M-1` is not
+engaged because nothing ships.
+
 **Reaction.** *(open)*

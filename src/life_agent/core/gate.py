@@ -59,6 +59,7 @@ from __future__ import annotations
 
 import math
 import random
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -294,6 +295,102 @@ class GateResult:
     n_draws: int
     u_bar: dict[str, float]
     diagnostics: Diagnostics
+
+
+# --- the regime pairing a differential reading spans (r49b, `M-33`) -----------------------
+# A gate prices a policy under the Ū that policy COMMITS with and scores it under the Ū the
+# gate folds. Those can be two conditioning sets over one probability model (`utility.posterior`'s
+# `policy=`: `all-to-date` folds the §4.4 verdict→evidence projection, `frozen-elicitations`
+# structurally refuses it). r49 spanned exactly that pair and its whole differential — 24
+# marginal commits at 0.875 — fell BETWEEN the two break-evens, so the verdict's sign was
+# decided by the pairing, and the reading did not say so.
+#
+# This declares the pairing; it does not resolve it. Whether the gate keeps its blind regime
+# is an open owner question (r49b §5), so nothing here prefers a regime or alters a verdict.
+
+
+def break_even(u_bar: Mapping[str, float]) -> float:
+    """The report-vs-abstain break-even credence under ``u_bar``: the ``p`` at which
+    asserting is worth exactly what withholding is (``u_abstain = 0``, a gauge pin).
+
+    Derived THROUGH :func:`decide.u_assert` rather than respelled as
+    ``-u_wrong / (1 - u_wrong)`` (`M-7`): ``u_assert`` is affine in ``p``, so its two
+    endpoints fix the root, and a change to the one atomic correctness utility moves this
+    with it instead of leaving a second spelling behind.
+    """
+    at_zero, at_one = u_assert(0.0, u_bar), u_assert(1.0, u_bar)
+    span = at_one - at_zero
+    if span <= 0.0:
+        raise ValueError(
+            "degenerate Ū: u_assert does not increase in p "
+            f"(u_assert(0)={at_zero!r}, u_assert(1)={at_one!r}), so no break-even exists")
+    return -at_zero / span
+
+
+@dataclass(frozen=True)
+class RegimePairing:
+    """The two declared conditioning sets a differential reading spans, and their bars."""
+
+    pricing_policy: str
+    scoring_policy: str
+    pricing_break_even: float
+    scoring_break_even: float
+
+    @property
+    def divergent(self) -> bool:
+        """True when the policy was priced and scored under different regimes."""
+        return (self.pricing_policy != self.scoring_policy
+                or self.pricing_break_even != self.scoring_break_even)
+
+    def straddles(self, reach_rate: float | None) -> bool:
+        """True iff this run's measured correctness on its marginal commits falls STRICTLY
+        between the two break-evens — the configuration in which the verdict's sign is an
+        artefact of the pairing rather than of the policy. Endpoints do not straddle: there
+        the marginal rows are exactly break-even under one regime and the sign is carried by
+        the rest of the reading."""
+        if reach_rate is None:
+            return False
+        lo, hi = sorted((self.pricing_break_even, self.scoring_break_even))
+        return lo < reach_rate < hi
+
+
+def regime_pairing(*, pricing_u_bar: Mapping[str, float], pricing_policy: str,
+                   scoring_u_bar: Mapping[str, float], scoring_policy: str) -> RegimePairing:
+    """Build the pairing from the two Ū the reading actually used — never from literals, so
+    a record stamps what was used (the `M3`/r13 discipline applied to the gate's own report)."""
+    return RegimePairing(pricing_policy=pricing_policy, scoring_policy=scoring_policy,
+                         pricing_break_even=break_even(pricing_u_bar),
+                         scoring_break_even=break_even(scoring_u_bar))
+
+
+def render_regime_pairing(pairing: RegimePairing, *, reach_rate: float | None) -> str:
+    """The disclosure block. Corrected `M-31` requires both numbers to be PUBLISHED whenever
+    they differ — not merely warned about when they happen to bite."""
+    if not pairing.divergent:
+        return (f"- Regime: `{pairing.pricing_policy}` governs both pricing and scoring "
+                f"(break-even {pairing.pricing_break_even:.4f}).")
+    lines = [
+        f"- **Regime pairing — DIVERGENT.** Priced at `{pairing.pricing_policy}` "
+        f"(break-even {pairing.pricing_break_even:.4f}); scored at "
+        f"`{pairing.scoring_policy}` (break-even {pairing.scoring_break_even:.4f}).",
+    ]
+    lo, hi = sorted((pairing.pricing_break_even, pairing.scoring_break_even))
+    if reach_rate is None:
+        lines.append(
+            f"- Measured reach is not yet available (preflight). If this reading's marginal "
+            f"commits land in [{lo:.4f}, {hi:.4f}], its verdict will be pairing-sensitive "
+            f"and the regime question must be settled before the result is quoted.")
+    elif pairing.straddles(reach_rate):
+        lines.append(
+            f"- **This verdict is pairing-sensitive.** Measured reach {reach_rate:.3f} falls "
+            f"between the two break-evens [{lo:.4f}, {hi:.4f}]: the same rows carry "
+            f"OPPOSITE signs under the two regimes, so the sign reported here is a property "
+            f"of the pairing as much as of the policy. Resolve the regime question before "
+            f"quoting this verdict as a reading of the policy.")
+    else:
+        lines.append(f"- Measured reach {reach_rate:.3f} lies outside [{lo:.4f}, {hi:.4f}], "
+                     f"so the verdict's sign does not turn on the pairing.")
+    return "\n".join(lines)
 
 
 def _rate(num: int, den: int) -> float | None:

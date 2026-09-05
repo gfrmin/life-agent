@@ -393,6 +393,7 @@ def main(argv: list[str] | None = None) -> int:
              "Ū is the boot row, and the p3b pre-registration disclosed why the two differ")
     args = parser.parse_args(argv)
 
+    import life_agent.core.gate as GATE
     import life_agent.core.lookup as LK
     import life_agent.core.utility as UT
     from life_agent.core import config as LCFG
@@ -436,6 +437,19 @@ def main(argv: list[str] | None = None) -> int:
     model = UT.load_model(LCFG.UTILITY_MODEL)
     evidence: list[UT.Evidence] = list(UT.load_elicitations(LCFG.UTILITY_ELICITATIONS, model))
     posterior = UT.posterior(brain, model, evidence, policy="frozen-elicitations")
+
+    # `M-33` preflight (r49b): this harness PRICES the held-out policy under the shadow's
+    # boot Ū — the decider's `all-to-date` regime, which folds the §4.4 verdict→evidence
+    # projection — and SCORES it under the gate's blind `frozen-elicitations` posterior,
+    # which structurally refuses that projection. Two conditioning sets over one model, and
+    # their break-evens differ. r49 discovered that only after spending fourteen hours, so
+    # the pairing is declared here, before a single engine is spawned. This DECLARES; it
+    # does not prefer a regime (the regime question is open — r49b §5).
+    pairing = GATE.regime_pairing(
+        pricing_u_bar=u_bar,
+        pricing_policy=("Ū-override" if args.u_bar_override else LK.U_BAR_POLICY),
+        scoring_u_bar=posterior.u_bar(), scoring_policy=posterior.policy)
+    print(GATE.render_regime_pairing(pairing, reach_rate=None))
 
     gate_variants = [v.strip() for v in str(args.gate_variants).split(",") if v.strip()]
     unknown = [v for v in gate_variants if v not in variants]

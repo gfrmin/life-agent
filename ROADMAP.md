@@ -450,10 +450,61 @@ Bayesian Ask rather than deterministic pipelines. Remaining program, in dependen
    rule is ENACTED**: §17.6 FAILed this same A3 criterion on 2026-08-17, so this is the
    second consecutive FAIL on one frozen criterion and **work STOPS for an owner ruling** —
    [`conferrals/s18-bar-conferral.md`](./docs/unification/conferrals/s18-bar-conferral.md)
-   carries the evidence, five options and their prices, and its question is
-   objective-class: **which utility is §18's bar quoted at?** Nothing deployed, enabled or
-   swapped; no `src/` change; no successor opened. Building the K-cap, and any move on #15 /
-   E3, each still need their own pre-registration. Then §11's exit.
+   carries the evidence, five options and their prices. Nothing deployed, enabled or
+   swapped; no `src/` change; no successor opened.
+
+   **r49b IS READ — the conferral's question is WITHDRAWN as mis-posed (2026-09-05,
+   [`r49b-utility-regimes.md`](./docs/unification/reports/r49b-utility-regimes.md), `GD-27`,
+   $0).** The owner ruled that `u_wrong` is **not a gauge**: the affine gauge is the two pins
+   (`u_correct = +1`, `u_abstain = 0`), and once they are fixed `u_wrong` is an **identified
+   latent**, so −9.0 and −5.131 are two **estimates of one quantity**. That makes the choice
+   **epistemic** — a question the constitution had already assigned to evidence — and `M-31`
+   mis-routed it into `RULINGS` §5's *conventional* bucket, producing a **result-relevant**
+   keypress: it flips the headline sign toward adoption (point Δ −0.080 → +0.075), though not by
+   itself to a PASS — A3's P(Δ>0.05) ≥ 0.90 was never computed at that regime and is implausible
+   at the measured interval width. **A bad question, not a bad answer**, and `core/utility.py` carried
+   the right framing all along: *"two conditioning sets over one probability model"* —
+   `all-to-date` folds the §4.4 verdict→evidence projection; the gate's `frozen-elicitations`
+   **structurally refuses** it (it raises, so the blindness is a guard, not a default).
+
+   The ruled remedy — *one utility, decision layer and gate both read it* — is **enacted in part
+   and escalated in part**, because three facts refute its mechanism. (1) **There is no stale
+   side-store:** `lookup.current_u_bar` re-reads model, elicitations *and* reactions on every
+   call, recomputes `fold_version` and re-folds when it moves, and the bridge hands the membrane
+   shadow that same live fold — so the "boot Ū" is a **snapshot of the live belief**, not a
+   constant that drifted from it. (2) **It tracks, and not monotonically:** across 20 boot
+   records `u_wrong` reads −5.9395 → **−8.8301** → −5.1310 (break-evens 0.8559 → **0.8983** →
+   0.8369), so **in August the deployed bar sat within 0.002 of the gate's** — the gap is
+   volatility in a conditioned latent, not a fixed offset between two ways of measuring. (3)
+   **The labels are reversed:** −9.0 is the *elicitation-only* number (and `world.py:247`'s
+   hardcoded fallback), −5.131 the *reaction-conditioned* one, so "the current posterior mean"
+   is **−5.131** — the **softer** bar. Implemented literally the rule therefore scores the gate
+   at 0.837, flips r49's point Δ from −0.080 to **+0.075**, and deletes an **anti-circularity
+   guard**: reactions are projected from the owner's verdicts on the very decision log the gate
+   scores. The rule written to prevent result-picking would, on today's numbers, deliver it. So
+   it is **escalated, not resolved** (§17.6 / `M-4`), and the re-posed question is narrow and
+   genuinely objective-class: **does the A3 gate keep its blind regime?** — circularity on one
+   horn, a second master on the other, with three sub-answers costed in `r49b` §5.
+
+   **Enacted:** `M-31` corrected (the word "gauge" withdrawn, the anti-circularity guard named),
+   `GD-26` given a dated correction and its Reaction field filled, and **C built** — **`M-33`**:
+   `gate.regime_pairing` / `break_even` / `render_regime_pairing`, with `break_even` derived
+   *through* `decide.u_assert` rather than respelled (`M-7`), wired as a **preflight in
+   `scripts/membrane/p3_gate.py`** that declares both regimes and both break-evens **before any
+   engine spawns** and names the interval that would bite. Reproduced on r49's own artefacts:
+   preflight prints `[0.8369, 0.9000]`, and at the measured 21/24 = 0.875 it flags the verdict
+   **pairing-sensitive**. 16 tests, **6/6 mutations RED** — three initially SURVIVED (rounded
+   endpoint stand-ins, no coincident-regime case, no reversed-order case) and one predicate was
+   **dead rather than untested**, so it was removed instead of given a contrived test. Two record
+   gaps disclosed and deliberately deferred (the boot record stores `u_bar` but not its policy;
+   `a3_meta-*.json` stores neither) — additive schema fixes whose cost is a bridge restart, the
+   `GD-20`/`M-27` hazard. **B is NOT opened**: the ruling is right that it is the substantive
+   move and regime-independent (the 70–90 band's realised correctness of 0.80 sits below *both*
+   break-evens), but it is a decision-path lever and needs its own pre-registration under `M-3`.
+   `M-1`'s q2-019 still blocks deployment regardless.
+
+   Building the K-cap, and any move on #15 / E3, each still need their own pre-registration.
+   Then §11's exit.
 4. **[RETIRED 2026-08-31 — `G-1`. Items 4 and 5 *were* Stage 2; the aggregate family was
    additionally deleted by K1 as "family routing in disguise", its transformations kept.
    The thread transformations may still be built when evidence calls for them, never as a
