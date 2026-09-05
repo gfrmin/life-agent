@@ -780,10 +780,12 @@ material for that candidate only.
   with it (`flags` 0/250; `n-candidates`/`n-obs` move zero actions; 960 vs 456 models), its
   control leg reproducing r49's S4 policy. Verdict at the standing blind regime with the `M-33`
   preflight; a FAIL stops for a ruling as before; `M-1` (q2-019) gates any deployment. C's
-  remainder lands first (`M-32` timestamps + the `a3_meta` regime record, $0, no restart; the
-  boot record's policy name on the next natural restart; the baseline arm's spend re-recorded
-  under an `M-18` rider); D is sized from B's timestamped run. The K-cap build and any move on
-  #15 / E3 each need their own pre-registration. Then §11's exit.
+  harness half LANDED 2026-09-05 (`M-32` phase marks + `phases.json`; the `a3_meta` regime
+  record with both Ū and the marginal-commit table, the pairing re-printed at the measured
+  marginal rate; 8/8 mutations RED, $0, no restart); still open under C: the boot record's
+  policy name on the next natural restart, and the baseline arm's spend re-recorded under an
+  `M-18` rider. D is sized from B's timestamped run. The K-cap build and any move on #15 / E3
+  each need their own pre-registration. Then §11's exit.
 
 ## `src/pkm` — the KB core (Python, uv, DuckDB): key files
 

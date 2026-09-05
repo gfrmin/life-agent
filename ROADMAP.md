@@ -519,8 +519,11 @@ Bayesian Ask rather than deterministic pipelines. Remaining program, in dependen
    the trimmed lattice reproducing r49's S4 policy is the control leg. The verdict is quoted at
    the standing blind regime with the `M-33` preflight, a straddle reported pairing-sensitive,
    a FAIL stopping for a ruling as before, and `M-1` (q2-019) gating any deployment regardless.
-   **C's remainder lands first**: `M-32` phase timestamps and the `a3_meta` regime record in
-   `p3_gate.py` ($0, no restart — so B's run is the first with attributable per-arm cost), the
+   **C's remainder — the harness half LANDED 2026-09-05**: `M-32` phase marks with
+   `phases.json` and a line-buffered, boundary-stamped log, and the `a3_meta` regime record
+   (both regimes, both Ū at full precision, the marginal-commit table, the pairing re-printed
+   at the measured marginal rate) in `p3_gate.py` — 12 tests, 8/8 mutations RED, $0, no
+   restart, so B's run is the first with attributable per-arm cost. Still open under C: the
    boot record's policy name on the next *natural* bridge restart (`GD-20`/`M-27`), and the
    baseline arm's spend re-recorded (`scripts/fairfight/arm_baseline.py`, single dollars, an
    `M-18` comparability rider) so Δ_spend is measured rather than structurally 0. **D** (the

@@ -17,13 +17,17 @@ Run: `uv run --project . python scripts/membrane/p3_gate.py`
 from __future__ import annotations
 
 import argparse
+import itertools
 import json
+import os
 import statistics as st
 import sys
+import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 sys.path.insert(0, "scripts")
 
@@ -35,6 +39,9 @@ from life_agent.membrane import shadow as SH
 from life_agent.membrane import world as W
 from life_agent.membrane.client import MembraneClient
 from life_agent.membrane.session import verdict_y  # defined here; shadow only re-exports it
+
+if TYPE_CHECKING:
+    from life_agent.core.gate import PairedOutcome, RegimePairing
 
 # --- question-keyed verdict replay (boot_snapshot's join, keeping the question id) --------
 
@@ -289,6 +296,121 @@ def build_paired(
     return paired, only_membrane, only_baseline
 
 
+# --- M-32: a long measurement timestamps its own phase boundaries -------------------------
+
+
+@dataclass(frozen=True)
+class PhaseMark:
+    """One phase boundary. ``at`` is the wall-clock instant (ISO-8601 UTC — the liveness
+    reading an un-timestamped log could not give); ``wall`` a monotonic reading (durations);
+    ``cpu`` cumulative CPU seconds of this process AND its waited-for children — the engines
+    are children, so ``time.process_time()`` would miss almost all of the work."""
+
+    phase: str
+    at: str
+    wall: float
+    cpu: float
+
+
+def phase_mark(phase: str, *, now: Callable[[], float] = time.time,
+               mono: Callable[[], float] = time.monotonic,
+               times: Callable[[], Any] = os.times) -> PhaseMark:
+    t = times()
+    cpu = float(t.user + t.system + t.children_user + t.children_system)
+    at = datetime.fromtimestamp(now(), tz=UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return PhaseMark(phase=phase, at=at, wall=float(mono()), cpu=cpu)
+
+
+@dataclass(frozen=True)
+class PhaseSpan:
+    phase: str
+    wall_s: float
+    cpu_s: float
+
+
+def phase_spans(marks: Sequence[PhaseMark]) -> list[PhaseSpan]:
+    """Consecutive marks bound one span, named by the EARLIER mark; the last mark is the
+    terminator and names no span of its own."""
+    return [PhaseSpan(a.phase, b.wall - a.wall, b.cpu - a.cpu)
+            for a, b in itertools.pairwise(marks)]
+
+
+def fmt_hms(seconds: float) -> str:
+    whole = round(seconds)
+    hours, rem = divmod(whole, 3600)
+    minutes, secs = divmod(rem, 60)
+    return f"{hours}:{minutes:02d}:{secs:02d}"
+
+
+def render_phase_boundary(prev: PhaseMark | None, cur: PhaseMark) -> str:
+    head = f"[{cur.at}] ▶ {cur.phase}"
+    if prev is None:
+        return head
+    span = phase_spans([prev, cur])[0]
+    return (f"{head}  (← {span.phase}: wall {fmt_hms(span.wall_s)} · "
+            f"cpu {fmt_hms(span.cpu_s)})")
+
+
+def render_phase_summary(marks: Sequence[PhaseMark]) -> str:
+    """Every span, then the wall/CPU split `M-32` asks for — the number that sizes a
+    parallel successor (a cpu/wall near 1 on one core means the run is serial CPU)."""
+    spans = phase_spans(marks)
+    wall = sum(s.wall_s for s in spans)
+    cpu = sum(s.cpu_s for s in spans)
+    lines = ["phases (M-32):"]
+    lines += [f"  {s.phase:<28} wall {fmt_hms(s.wall_s):>9} · cpu {fmt_hms(s.cpu_s):>9}"
+              for s in spans]
+    ratio = f"{cpu / wall:.2f}" if wall > 0 else "n/a"
+    lines.append(f"  total wall {fmt_hms(wall)} · cpu {fmt_hms(cpu)} · cpu/wall {ratio}")
+    return "\n".join(lines)
+
+
+def write_phases(out: Path, marks: Sequence[PhaseMark]) -> Path:
+    """The record, not just the log: ``phases.json`` beside the gate artifacts."""
+    spans = phase_spans(marks)
+    out.mkdir(parents=True, exist_ok=True)
+    path = out / "phases.json"
+    path.write_text(json.dumps({
+        "marks": [asdict(m) for m in marks],
+        "spans": [asdict(sp) for sp in spans],
+        "total": {"wall_s": sum(sp.wall_s for sp in spans),
+                  "cpu_s": sum(sp.cpu_s for sp in spans)},
+    }, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return path
+
+
+# --- M-33: the regimes a differential spans are part of its record ------------------------
+
+
+def regime_record(pairing: RegimePairing, *, pricing_u_bar: Mapping[str, float],
+                  scoring_u_bar: Mapping[str, float]) -> dict[str, Any]:
+    """Both regimes, both break-evens and BOTH Ū at full precision. r49b found that
+    ``a3_meta`` stored none of these, so an offline reader had to infer the regimes a past
+    run spanned — this checkpoint's own finding in miniature."""
+    return {
+        "pricing": {"policy": pairing.pricing_policy,
+                    "break_even": pairing.pricing_break_even,
+                    "u_bar": {k: float(v) for k, v in pricing_u_bar.items()}},
+        "scoring": {"policy": pairing.scoring_policy,
+                    "break_even": pairing.scoring_break_even,
+                    "u_bar": {k: float(v) for k, v in scoring_u_bar.items()}},
+        "divergent": pairing.divergent,
+    }
+
+
+def marginal_commits(paired: Sequence[PairedOutcome]) -> dict[str, Any]:
+    """The rows on which a regime pairing can bite: the membrane ASSERTS where the baseline
+    did not (r49's whole differential was 24 of these at 21/3). ``abstain_x_report`` is the
+    reverse cell — non-zero means the differential is not pure over-assertion and the
+    marginal rate alone does not decide the sign."""
+    marginal = [p for p in paired if p.typed.asserts() and not p.mono.asserts()]
+    n = len(marginal)
+    correct = sum(1 for p in marginal if p.typed.correct)
+    reverse = sum(1 for p in paired if not p.typed.asserts() and p.mono.asserts())
+    return {"n": n, "correct": correct, "rate": (correct / n) if n else None,
+            "abstain_x_report": reverse}
+
+
 # --- the run (needs the engine + the baseline arm) ----------------------------------------
 
 
@@ -308,14 +430,17 @@ def _load_v2_questions(path: Path) -> list[dict[str, Any]]:
 def run_differential(rows: Sequence[HeldoutTick], *, variant: str,
                      families: Sequence[str], h2q: Mapping[str, str],
                      baseline_rows: Sequence[dict[str, Any]], baseline_arm: str,
-                     posterior: Any,
+                     posterior: Any, pairing: RegimePairing,
+                     pricing_u_bar: Mapping[str, float],
                      oracle_p: float, out: Path, draws: int, seed: int,
                      log: Callable[[str], None] = print) -> Any:
     """One A3 differential gate (membrane held-out acts vs the credence baseline) for one
     lattice variant, with VARIANT-SUFFIXED artifacts — a second variant (or a re-run)
     must never clobber another's record (the runs-3/4 clobber lesson). The lattice under
     test is provenance: ``a3_meta-{variant}.json`` names its families and their resolved
-    indicator vocabulary (read from ``LR.FAMILY_NAMES``, never re-spelled)."""
+    indicator vocabulary (read from ``LR.FAMILY_NAMES``, never re-spelled) — and, since
+    r49b (`M-33`), the two regimes it spans with both Ū, plus the marginal-commit table
+    that says whether the pairing bit."""
     import life_agent.core.gate as GATE
 
     acts = question_acts(list(rows))
@@ -332,6 +457,14 @@ def run_differential(rows: Sequence[HeldoutTick], *, variant: str,
     ar = lambda x: "n/a" if x is None else f"{x:.2f}"  # noqa: E731
     log(f"  answer rate: membrane {ar(d.typed_answer_rate)} · baseline "
         f"{ar(d.mono_answer_rate)} · disagreement {d.disagreement_n}/{d.n}")
+    marginal = marginal_commits(paired)
+    if marginal["rate"] is None:
+        log("  no marginal commits (membrane asserts where the baseline did not: 0) — "
+            "the regime pairing cannot bite on this reading")
+    else:
+        log(f"  marginal commits {marginal['correct']}/{marginal['n']} correct · "
+            f"abstain-x-report {marginal['abstain_x_report']}")
+        log(GATE.render_regime_pairing(pairing, reach_rate=marginal["rate"]))
 
     out.mkdir(parents=True, exist_ok=True)
     (out / f"a3_gate-{variant}.md").write_text(
@@ -360,6 +493,9 @@ def run_differential(rows: Sequence[HeldoutTick], *, variant: str,
         "delta_mean": gate.delta_mean,
         "delta_lo": gate.delta_lo, "delta_hi": gate.delta_hi,
         "draws": draws, "seed": seed,
+        "regimes": regime_record(pairing, pricing_u_bar=pricing_u_bar,
+                                 scoring_u_bar=posterior.u_bar()),
+        "marginal_commits": marginal,
     }, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return gate
 
@@ -398,6 +534,18 @@ def main(argv: list[str] | None = None) -> int:
     import life_agent.core.utility as UT
     from life_agent.core import config as LCFG
 
+    # `M-32`: under a unit, stdout is a block-buffered pipe — an un-timestamped, buffered
+    # log cannot be read for liveness. Line-buffer it, and mark every phase boundary.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(line_buffering=True)
+    marks: list[PhaseMark] = []
+
+    def mark(phase: str) -> None:
+        prev = marks[-1] if marks else None
+        marks.append(phase_mark(phase))
+        print(render_phase_boundary(prev, marks[-1]))
+
+    mark("load")
     keyed = load_keyed_replay()
     groups = group_by_question(keyed)
     if ((args.expect_ticks is not None and len(keyed) != args.expect_ticks)
@@ -433,6 +581,7 @@ def main(argv: list[str] | None = None) -> int:
     variants = {"FULL": tuple(LR.ALL_FAMILIES),
                 "leader-credence-only": ("leader-credence",),
                 "leader-credence+p-none": ("leader-credence", "p-none")}
+    mark("fold")
     brain = LK.shared_brain()
     model = UT.load_model(LCFG.UTILITY_MODEL)
     evidence: list[UT.Evidence] = list(UT.load_elicitations(LCFG.UTILITY_ELICITATIONS, model))
@@ -461,7 +610,9 @@ def main(argv: list[str] | None = None) -> int:
     rows_by_variant: dict[str, list[HeldoutTick]] = {}
     for name, fams in variants.items():
         print(f"\n=== A1/A2 held-out variant: {name} (families={list(fams)}) ===")
+        mark(f"probe:{name}")
         rows = probe_heldout(keyed, u_bar, args.engine, fams, log=print)
+        mark(f"price:{name}")
         at_bar = price_at_u_bar(rows, u_bar, oracle_p=LK._ORACLE_P)
         mean, q05, q95 = price_under_pu(rows, posterior, oracle_p=LK._ORACLE_P,
                                         n_draws=args.draws, seed=args.seed)
@@ -488,12 +639,16 @@ def main(argv: list[str] | None = None) -> int:
     for name in gate_variants:
         print(f"\n=== A3 differential adoption gate: membrane (held-out, {name}) "
               f"vs credence baseline ===")
+        mark(f"a3:{name}")
         run_differential(rows_by_variant[name], variant=name,
                          families=variants[name], h2q=h2q,
                          baseline_rows=baseline_rows, baseline_arm=args.baseline_arm,
-                         posterior=posterior,
+                         posterior=posterior, pairing=pairing, pricing_u_bar=u_bar,
                          oracle_p=LK._ORACLE_P, out=args.out,
                          draws=args.draws, seed=args.seed)
+    mark("end")
+    write_phases(args.out, marks)
+    print("\n" + render_phase_summary(marks))
     print(f"\nWrote → {args.out}")
     return 0
 

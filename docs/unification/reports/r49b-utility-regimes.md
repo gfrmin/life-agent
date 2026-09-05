@@ -255,3 +255,11 @@ without inferring them, which is this checkpoint's finding in miniature. Both ar
 schema fixes. They are deferred deliberately: the shadow's writer is live, and a record-schema
 change means a bridge restart, which `GD-20`/`M-27` established is a hazard that has already
 killed the shadow once. The preflight closes the forward-looking half at zero risk.
+
+> **Addendum 2026-09-05 — the harness-side half is repaired.** `a3_meta-{variant}.json` now
+> records both regimes with both Ū at full precision and the marginal-commit table
+> (`regime_record`, `marginal_commits`), and the harness re-prints the regime pairing at the
+> *measured* marginal rate after each verdict. `M-32`'s phase marks land in the same change
+> (`phases.json`; a boundary-stamped, line-buffered log; the wall/CPU split at the end). Twelve
+> tests, 8/8 mutations RED. The boot record's policy name still waits for the next natural
+> bridge restart.
