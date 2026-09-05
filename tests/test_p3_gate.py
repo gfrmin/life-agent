@@ -195,6 +195,14 @@ def _posterior() -> UT.UtilityPosterior:
         n_events=0, fold_version="test", policy="frozen-elicitations")
 
 
+def _pairing() -> GATE.RegimePairing:
+    # the regimes a differential spans are part of its record (`M-33`): the test Ū prices,
+    # the test posterior scores
+    return GATE.regime_pairing(pricing_u_bar=U_BAR, pricing_policy="all-to-date",
+                               scoring_u_bar=_posterior().u_bar(),
+                               scoring_policy="frozen-elicitations")
+
+
 def _p3b_fixture() -> tuple[list[P3.HeldoutTick], dict[str, str], list[dict]]:
     q = "joined question text?"
     h = DEC.question_id(q)
@@ -214,7 +222,8 @@ def test_run_differential_writes_variant_suffixed_artifacts(tmp_path: Path) -> N
                           ("leader-credence-only", ("leader-credence",))):
         P3.run_differential(rows, variant=variant, families=fams, h2q=h2q,
                             baseline_rows=baseline_rows, baseline_arm="deliberative",
-                            posterior=_posterior(),
+                            posterior=_posterior(), pairing=_pairing(),
+                            pricing_u_bar=U_BAR,
                             oracle_p=0.9, out=tmp_path, draws=400, seed=7,
                             log=lambda _m: None)
     names = sorted(p.name for p in tmp_path.iterdir())
@@ -232,7 +241,8 @@ def test_run_differential_matches_the_inline_gate_it_replaced(tmp_path: Path) ->
     gate = P3.run_differential(rows, variant="FULL",
                                families=tuple(P3.LR.ALL_FAMILIES), h2q=h2q,
                                baseline_rows=baseline_rows, baseline_arm="deliberative",
-                               posterior=_posterior(),
+                               posterior=_posterior(), pairing=_pairing(),
+                               pricing_u_bar=U_BAR,
                                oracle_p=0.9, out=tmp_path, draws=400, seed=7,
                                log=lambda _m: None)
     acts = P3.question_acts(rows)
@@ -254,7 +264,8 @@ def test_run_differential_meta_names_the_lattice_under_test(tmp_path: Path) -> N
     P3.run_differential(rows, variant="leader-credence-only",
                         families=("leader-credence",), h2q=h2q,
                         baseline_rows=baseline_rows, baseline_arm="deliberative",
-                        posterior=_posterior(),
+                        posterior=_posterior(), pairing=_pairing(),
+                        pricing_u_bar=U_BAR,
                         oracle_p=0.9, out=tmp_path, draws=400, seed=7,
                         log=lambda _m: None)
     meta = _json.loads((tmp_path / "a3_meta-leader-credence-only.json").read_text())
