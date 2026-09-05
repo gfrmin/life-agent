@@ -506,9 +506,11 @@ Bayesian Ask rather than deterministic pipelines. Remaining program, in dependen
    **Next (2026-09-05).** One question is held for the owner and gates nothing else: *does the
    A3 gate keep its blind regime?* — three sub-answers costed in `r49b` §5, each convertible
    into a $0 PR the day it is answered, and **nothing is re-read at the softer regime while it
-   is open**. The stop rule is discharged: the ruling licensed the successor by name. **B opens
-   next, under its own `M-3` pre-registration** — the address is r49's 70–90 leader-credence
-   band, 55 rows at realised 0.800 committed on every one at mean `p1` 0.863–0.873, below
+   is open**. The stop rule is discharged: the ruling licensed the successor by name. **B IS
+   OPEN as `r50` — pre-registration frozen `037b506`** (`r50-band-sharpening-preregistration.md`:
+   eleven criteria, S1/S2 KILLs, three candidate families with an X-only tercile bucketing
+   rule, six blind predictions, five consequence branches) — the address is r49's 70–90
+   leader-credence band, 55 rows at realised 0.800 committed on every one at mean `p1` 0.863–0.873, below
    *both* break-evens, so the lever is regime-independent and it is §17.6's own direction (a
    sharper `p1`, never a softer bar). Its fork — a host-side family that *separates* the band,
    or the engine's guard prior (filed as demand, `M-23`/`GD-14`, never edited from here) — is
