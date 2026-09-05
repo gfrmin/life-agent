@@ -772,8 +772,9 @@ material for that candidate only.
   below both break-evens) but a decision-path lever needing its own `M-3` pre-registration.
   **Next (2026-09-05):** the guard question is held for the owner and gates nothing else
   (three sub-answers costed in `r49b` §5; nothing is re-read at the softer regime while it is
-  open). The stop rule is discharged — the ruling named B — so **B opens under its own `M-3`
-  pre-registration**: r49's 70–90 band (55 rows, realised 0.800 committed at mean `p1`
+  open). The stop rule is discharged — the ruling named B — so **B is OPEN as `r50`,
+  pre-registration frozen `037b506`** (S1/S2 KILLs; three candidate families, X-only tercile
+  edges; six blind predictions): r49's 70–90 band (55 rows, realised 0.800 committed at mean `p1`
   0.863–0.873, below both break-evens), a host-side family that separates the band or the
   engine's guard prior (filed as demand), decided by a $0 census through the harness's own
   `features_for`, KILL if nothing separates; the lattice trim under §10's retention test rides
