@@ -59,7 +59,7 @@ from __future__ import annotations
 
 import math
 import random
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -393,6 +393,64 @@ def render_regime_pairing(pairing: RegimePairing, *, reach_rate: float | None) -
     return "\n".join(lines)
 
 
+# --- the verdict (owner ruling 2026-09-05, `a3-regime-conferral`; `M-34`) -----------------
+# The gate KEEPS its blind regime — the anti-circularity guard stands: reactions are projected
+# from verdicts on the very decision log the gate scores, so a gate that folded them would
+# grade a policy with a yardstick that policy's own outcomes moved. It is made HONEST about the
+# price: when this reading's marginal commits land strictly between the pricing and the scoring
+# break-evens, the sign of Δ belongs to the pairing, not to the policy, and no PASS/FAIL is
+# quoted. INCONCLUSIVE adopts nothing and does not advance the consecutive-FAIL stop rule; its
+# remedy is evidence — a sharper `p1`, or the two estimates of `u_wrong` converging — never a
+# softer bar (§17.6, `M-4`). r49 (24 marginal commits at 0.875, between 0.8369 and 0.9000)
+# is the configuration this names; its record stands as quoted, with a dated note.
+
+VERDICTS: tuple[str, ...] = ("PASS", "FAIL", "INCONCLUSIVE")
+
+
+@dataclass(frozen=True)
+class MarginalCommits:
+    """The rows on which a regime pairing can bite: the typed arm ASSERTS where the baseline
+    did not (r49's whole differential was 24 of these at 21/3). ``reverse`` is the mirror
+    cell — non-zero means the differential is not pure over-assertion and the marginal rate
+    alone does not decide the sign."""
+
+    n: int
+    correct: int
+    reverse: int
+
+    @property
+    def rate(self) -> float | None:
+        return (self.correct / self.n) if self.n else None
+
+    def as_record(self) -> dict[str, float | int | None]:
+        return {"n": self.n, "correct": self.correct, "rate": self.rate,
+                "abstain_x_report": self.reverse}
+
+
+def marginal_commits(paired: Sequence[PairedOutcome]) -> MarginalCommits:
+    """ONE declaration (`M-7`): the harness's ``a3_meta`` record and the gate's verdict both
+    read this table, so the rate the verdict turned on is the rate the record shows."""
+    marginal = [p for p in paired if p.typed.asserts() and not p.mono.asserts()]
+    return MarginalCommits(
+        n=len(marginal),
+        correct=sum(1 for p in marginal if p.typed.correct),
+        reverse=sum(1 for p in paired if not p.typed.asserts() and p.mono.asserts()))
+
+
+def verdict(result: GateResult, *, pairing: RegimePairing | None,
+            reach_rate: float | None) -> str:
+    """The published verdict, one of :data:`VERDICTS`.
+
+    ``pairing`` is REQUIRED. ``None`` means *this instrument declares no pairing* — the
+    report then says so — never "assume the regimes agree" (r28: a default is the vector).
+    A straddle is INCONCLUSIVE whatever ``result.passed`` says; otherwise the arithmetic's
+    PASS/FAIL stands. Endpoints do not straddle (`RegimePairing.straddles`).
+    """
+    if pairing is not None and pairing.straddles(reach_rate):
+        return "INCONCLUSIVE"
+    return "PASS" if result.passed else "FAIL"
+
+
 def _rate(num: int, den: int) -> float | None:
     return (num / den) if den else None
 
@@ -609,8 +667,28 @@ def _censoring_lines(d: Diagnostics) -> list[str]:
     return lines
 
 
+def _regime_lines(pairing: RegimePairing | None, reach_rate: float | None,
+                  quoted: str) -> list[str]:
+    """Both break-evens beside the measured reach (corrected `M-31`), and — when the verdict
+    is INCONCLUSIVE — why that is not a FAIL (`M-34`)."""
+    if pairing is None:
+        return ["- Regime pairing: **not declared** by this instrument — the verdict is quoted "
+                "at the scoring regime alone, and whether the marginal reach straddles a "
+                "second break-even is unknown here (`M-33`).", ""]
+    lines = [render_regime_pairing(pairing, reach_rate=reach_rate)]
+    if quoted == "INCONCLUSIVE":
+        lines.append(
+            "- **Why INCONCLUSIVE rather than a fail** (owner ruling 2026-09-05, `M-34`): the "
+            "sign of Δ on this reading is set by which break-even prices the marginal commits, "
+            "so no PASS/FAIL is quoted. Nothing is adopted; the consecutive-FAIL stop rule does "
+            "not advance; the remedy is evidence — a sharper `p1`, or the two estimates of "
+            "`u_wrong` converging — never a softer bar.")
+    return [*lines, ""]
+
+
 def render_report(result: GateResult, *, run_id: str, elapsed: float,
-                  baseline: str) -> str:
+                  baseline: str, pairing: RegimePairing | None,
+                  reach_rate: float | None) -> str:
     """The published gate report (`$LIFE_AGENT_KB/eval/gate/report.md`) — the
     blind-comparison discipline applied to ourselves (SPEC-comparison.md precedent).
 
@@ -629,17 +707,23 @@ def render_report(result: GateResult, *, run_id: str, elapsed: float,
     default is the vector - a report that does not know which arm it ran against must not
     render at all. Structural, so no census has to keep finding call sites (guards.md
     entry 1: the checker's universe came from somewhere other than the thing checked).
+
+    `M-34` (2026-09-05): ``pairing`` and ``reach_rate`` are REQUIRED for the same reason.
+    The verdict is :func:`verdict`'s — INCONCLUSIVE when the marginal reach straddles the
+    declared pairing — and the report publishes both break-evens beside the measured reach
+    (corrected `M-31`), or states that the instrument declared no pairing.
     """
     d = result.diagnostics
-    verdict = "PASS" if result.passed else "FAIL"
+    quoted = verdict(result, pairing=pairing, reach_rate=reach_rate)
     lines = [
         f"# Adoption gate — typed families vs the {baseline} baseline",
         "",
         f"Decision-weighted gate (bayesian-foundations §8). run_id={run_id}  "
         f"elapsed={elapsed:.1f}s  draws={result.n_draws}",
         "",
-        f"## Verdict: **{verdict}**",
+        f"## Verdict: **{quoted}**",
         "",
+        *_regime_lines(pairing, reach_rate, quoted),
         f"- P(Δ > δ) = **{result.p_delta_gt:.3f}**  (gate: >= {result.level:.2f})",
         f"- Δ = EU(typed) - EU({baseline}), per-question mean, gauge units "
         "(u_correct = 1)",

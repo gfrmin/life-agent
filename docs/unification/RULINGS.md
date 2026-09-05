@@ -61,6 +61,7 @@ not cited below.
 | **M-31 · a policy measured at one gauge and scored at another is a two-gauge reading** | 2026-09-04 | `r49-s18-bars` §S5 disclosure 1 (`GD-26`) | `r49`'s held-out policy commits under the **deployed boot Ū** (`u_wrong` −5.131, break-even **0.837** — the bar it was optimised against) and the A3 gate scores it under the **utility posterior** (`u_wrong` −8.999, break-even **0.900**). The measured marginal reach — 24 commits at **0.875** — falls *between the two break-evens*, so the point Δ is **+0.075 at one gauge and −0.080 at the other**: the same actions, the same rows, opposite signs. Neither number is wrong and neither instrument is broken; the reading is simply not a scalar. **Publish both break-evens beside the measured rate, and say which gauge the verdict is quoted at** — a differential gate whose report prints only one Ū invites a reader to attribute to the engine what belongs to the gauge. Cousin of `GD-21` (the deployed bar drifted below the declared one) — that priced the drift; this says a gate must show it. Corollary, and the harder half: **discovering the gap after a FAIL does not license re-reading the bar at the softer one** (§17.6, `M-4`). **CORRECTED 2026-09-05 (`r49b`, `GD-27`): the word "gauge" is WITHDRAWN.** The affine gauge is the two pins (`u_correct = +1`, `u_abstain = 0`); once they are fixed, `u_wrong` is an **identified latent**, so −5.131 and −8.999 are two **estimates of one quantity**, not two conventions. They differ by declared **conditioning set** — `utility.posterior(policy=)`: `all-to-date` folds the §4.4 verdict→evidence projection, `frozen-elicitations` structurally refuses it — and `core/utility.py` said so verbatim all along ("two conditioning sets over one probability model"). The entry's operational half stands and its rationale does not: calling the pair a gauge routed an **epistemic** question into §5's **conventional** bucket, and the keypress it produced was **result-relevant** — it flips the reading's headline sign in the direction of adoption (point Δ −0.080 → +0.075). It would not by itself have produced a PASS: A3 needs P(Δ>0.05) ≥ 0.90, which was never computed at that regime and is implausible at the measured interval width. A bad question, not a bad answer. See `M-33` for the check, and note the guard the original entry never named: the blind regime is **anti-circularity** — reactions are projected from verdicts on the decision log the gate scores. |
 | **M-32 · a long measurement timestamps its own phase boundaries** | 2026-09-04 | `r49-s18-bars` §Cost (`GD-26`) | `r49`'s gate ran **14h 02m** across three arms and its log carries **no clock at all**, so per-arm cost is unattributable after the fact: the only measured rate is the last arm's tail (28 spawns between two external wall-clock observations = 146.8 s/spawn), leaving ~8h17m for the other two jointly and not separably. The cost of the gap is not the missing table — it is that the **successor cannot be sized**: the named next step is a parallel harness, and choosing its width needs the per-arm costs this run cannot supply. **Emit a timestamp at every phase boundary, and the wall/CPU split at the end** — block-buffered stdout also means an un-timestamped log cannot even be read for liveness. Cousin of `M-19`/`M-28`, which govern the tree a measurement runs on; this one governs its record. **Built 2026-09-05** (`p3_gate.py`): a `PhaseMark` at every boundary — `load` · `fold` · `probe:{variant}` · `price:{variant}` · `a3:{variant}` · `end` — carrying wall-clock, monotonic and self+children CPU (the engines are children); `phases.json` beside the gate artifacts; the summary prints each span and the wall/CPU split; stdout line-buffered so a unit's log reads live. |
 | **M-33 · a differential reading declares the regimes it spans** | 2026-09-05 | `r49b-utility-regimes` §7 (`GD-27`) | A gate PRICES a policy under the Ū that policy commits with and SCORES it under the Ū the gate folds. Those can be two conditioning sets over one probability model with **different break-evens**, and when the reading's measured reach falls **between** them the verdict's sign is a property of the pairing, not of the policy: `r49`'s whole differential was 24 marginal commits at **0.875**, against break-evens **0.8369** (priced) and **0.9000** (scored), so the same rows are worth **+0.075 or −0.080** depending only on which regime is quoted. **Declare both regimes and both break-evens before the run, and name the interval that would bite** — `gate.regime_pairing` / `render_regime_pairing`, wired as a preflight in `p3_gate.py`. It asserts the DECLARATION, never the number, so it stays correct whichever way the open regime question is settled, and goes quiet by itself if the two regimes are ever unified. Divergence is a property of the declaration, not of today's arithmetic — the two bars sat within 0.002 of each other in August 2026 and parted again. Cousin of the corrected `M-31`, which says publish both numbers; this says compute them before spending the run. **Record half landed 2026-09-05:** `a3_meta-{variant}.json` carries both regimes, both Ū at full precision and the marginal-commit table (`regime_record`, `marginal_commits`), and the harness re-prints the pairing at the MEASURED marginal rate after each verdict — r49's 0.875 would have been flagged in its own log, not fourteen hours later by hand. |
+| **M-34 · a straddling differential is INCONCLUSIVE, not a FAIL** | 2026-09-05 | owner, interviewed (`a3-regime-conferral`) | The A3 gate **keeps its blind regime** — `frozen-elicitations` is anti-circularity (reactions are projected from verdicts on the very decision log the gate scores; a gate that folded them would grade a policy with a yardstick that policy's own outcomes moved) — and "one utility" binds every *decider*, the gate exempt by declaration. The price of blindness is `M-33`'s pairing, and it is paid honestly: `core/gate.py` quotes **INCONCLUSIVE** when the measured marginal reach falls strictly between the pricing and the scoring break-evens (`gate.verdict`; `render_report` cannot render without being told the pairing — r28's no-default rule), and PASS/FAIL only when the reach is on one side, no commit is marginal, or the two regimes coincide. INCONCLUSIVE **adopts nothing and does not advance the consecutive-FAIL stop rule**; its remedy is evidence — a sharper `p1`, or the two estimates of `u_wrong` converging — never a softer bar (§17.6, `M-4`). `r49` (24 marginal commits at 0.875, between 0.8369 and 0.9000) is the configuration this names: its FAIL stands as recorded, with a dated note that under this rule it would have read INCONCLUSIVE. The classic gate (`run_eval --gate`) spans the same pairing — the typed arm decides under the live `all-to-date` Ū — and now declares it; `gate_splice` declares none and its report says so. |
 
 ## §2 Delegation — what does NOT come back to the owner
 
@@ -87,6 +88,7 @@ not cited below.
 | **A-8 · extract-side entity field retired** | 2026-08-25 | `entity-key-conferral` ruling 2 | Retired from the queue. Re-opens only under its own pre-registration, and only for a reason specifically about extraction. |
 | **A-9 · shape scales stay at 1.0** | 2026-08-29 | `conferral-1` ruling 1 | The `quantity` scale opt-in is declined; every shape ships inert. The units-lever arc (r28–r31) subsequently **closed** — r31 FAIL on K6, nothing deployed. |
 | **A-10 · sequencing is continuous** | — | PRINCIPLES §9 as amended | Eval-gated, not dogfood-gated. Open the next checkpoint as soon as its preconditions are met. |
+| **A-11 · §18's next rung is engine-side demand** | 2026-09-05 | owner, interviewed (`a3-regime-conferral`) | With B closed on its own KILL (`GD-28`: no host-side family separates the 70–90 band; the verdict supply binds), the next §18 iteration is **the engine-side pooled-prior hypothesis, filed as demand** on proplang (#26) with `r49` S4's table attached — held-out `p1` pulled toward ~0.86 in both directions — never edited from here (`M-23`/`GD-14`). Offered and **not chosen**: re-supplying the Claude verdict channel (104 unverdicted questions exist — ≈23 band rows at the band's 22% share against the ≈330 the split needs, so it cannot reach BF 10 on the existing pool), C's baseline-spend re-record, and holding §18 for the K-cap / §11's exit. Each stays named; none opens. The next gate run, whatever earns it, sizes D. |
 
 ## §4 CARRIED AND UNSETTLED — RESOLVED 2026-08-31
 
@@ -121,26 +123,22 @@ what to build next, and to §4's two carried items.
 Everything else — scope, sequencing, method, measurement design, consequence branches, FAIL
 handling, spend — is derivable and is delegated.
 
-**Live in this class (2026-09-04, RE-POSED 2026-09-05):** `conferrals/s18-bar-conferral.md`
-— `r49` read the first §18 bar and it **FAILed**, the second consecutive FAIL on the A3
-criterion (§17.6 was the first). The pre-registration's own frozen consequence sends that to the
-owner rather than to a unilateral successor.
+**Nothing is live in this class (2026-09-05).** The last two entries were RESOLVED the same day
+by interview (`conferrals/a3-regime-conferral.md` — `AskUserQuestion`, priced options with a
+recommendation first, `M-17`'s form):
 
-The conferral's question as originally posed — *which utility is the bar quoted at?* — was
-**withdrawn as mis-classified** by the owner's ruling of 2026-09-05 and by `r49b`: `u_wrong` is
-an identified latent, not part of the affine gauge, so the choice between two estimates of it is
-**epistemic and belongs to evidence**, not to this section. That correction is enacted
-(`M-31` corrected, `GD-27`).
-
-What remains here is narrower and genuinely in this class, because it is a question about what
-the instrument is *for*: **does the A3 gate keep its blind regime?** Scoring a policy under a
-utility conditioned on verdicts about that policy's own decisions is **circular**; scoring it
-under a utility the system does not hold is a **second master**. `frozen-elicitations` chose the
-first horn deliberately and enforces it structurally; the owner's consistency rule ("one utility,
-decision layer and gate both read it") chooses the second. On today's numbers the two select
-opposite regimes and opposite signs for `r49`, so only one can hold. `r49b` §5 carries the
-evidence and three sub-answers; **nothing is re-read at the softer regime while it is open**
-(§17.6, `M-4`).
+- **Does the A3 gate keep its blind regime?** Posed by `r49b` after the `s18-bar-conferral`'s
+  original question — *which utility is the bar quoted at?* — was withdrawn as mis-classified
+  (`u_wrong` is an identified latent, not part of the affine gauge; `GD-27`). **RULED: the guard
+  STANDS and is made honest** → `M-34`. `frozen-elicitations` remains the gate's regime
+  (anti-circularity: reactions are projected from verdicts on the decision log the gate scores);
+  "one utility" binds every *decider*; the gate publishes both break-evens beside the measured
+  marginal reach and quotes **INCONCLUSIVE** — not PASS, not FAIL — when the reach falls strictly
+  between them. `r49`'s record stands as quoted with a dated note; nothing was re-read (`M-4`).
+- **What earns the next §18 iteration, B having closed on its own KILL** (`GD-28`)? **RULED: the
+  engine-side pooled-prior hypothesis is filed as demand** (proplang#26, `M-23`/`GD-14`) →
+  `A-11`. Offered and NOT chosen: re-supplying the Claude verdict channel, C's baseline-spend
+  re-record, and holding §18 for the K-cap / §11's exit — each stays named, none opens.
 
 *(Distinct from governance, and unchanged: acts that touch third parties or destroy data are
 confirmed before they are taken. That is ordinary operating caution, not a keypress this project
@@ -150,6 +148,8 @@ owns.)*
 
 Recorded so they are not re-litigated, and so a reader can tell a closed ruling from a live one.
 
+- **The A3 regime question CLOSED** (`a3-regime-conferral`, 2026-09-05, interviewed) — the guard
+  stands and is made honest (`M-34`); the next §18 rung is engine-side demand (`A-11`, proplang#26).
 - **Appendix A SIGNED** (`appendix-a-conferral`, 2026-08-26, owner keypress) — PRINCIPLES §16 gains the three-verdict
   rule, §15 the no-space/policy-preference clause, §14 the module collapse. The collapse ladder
   is CLOSED.

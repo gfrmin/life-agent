@@ -794,6 +794,14 @@ material for that candidate only.
   policy name on the next natural restart, and the baseline arm's spend re-recorded under an
   `M-18` rider. D is sized from B's timestamped run. The K-cap build and any move on #15 / E3
   each need their own pre-registration. Then §11's exit.
+  **Both owner questions RULED 2026-09-05 by interview (`conferrals/a3-regime-conferral.md`):**
+  the A3 gate **keeps its blind regime and is made honest** — `M-34`, built: `core/gate.py`
+  quotes **INCONCLUSIVE** when the marginal reach straddles the declared pairing (adopts
+  nothing; does not advance the consecutive-FAIL count; the remedy is evidence, never a softer
+  bar), `run_eval` now declares the pairing the classic gate spans, and `r49` carries a dated
+  note; and **the next §18 rung is engine-side demand** — the pooled-prior hypothesis filed as
+  proplang#26 with `r49` S4 attached (`A-11`); the verdict re-supply, C's spend re-record and a
+  §18 hold were offered and not chosen. `RULINGS` §5 has nothing live.
 
 ## `src/pkm` — the KB core (Python, uv, DuckDB): key files
 

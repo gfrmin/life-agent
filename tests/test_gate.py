@@ -272,7 +272,8 @@ def test_report_publishes_what_delta_was_computed_over() -> None:
               _pair("z", _resp("abstain", withheld=G.WITHHELD_UNAVAILABLE),
                     _resp("report", True))]
     md = G.render_report(G.delta_posterior(paired, post, oracle_p=0.9, n_draws=500, seed=3),
-                         run_id="gate-test", elapsed=1.0, baseline="monolithic")
+                         run_id="gate-test", elapsed=1.0, baseline="monolithic",
+                         pairing=None, reach_rate=None)
     assert "censored from Δ: 1" in md
     assert "Δ was computed over 1 question(s)" in md
 
@@ -284,7 +285,8 @@ def test_report_discloses_zero_censoring_when_reasons_are_recorded() -> None:
     paired = [_pair("a", _resp("abstain", withheld=G.WITHHELD_MISS), _resp("report", True)),
               _pair("b", _resp("report", True), _resp("report", True))]
     md = G.render_report(G.delta_posterior(paired, post, oracle_p=0.9, n_draws=500, seed=3),
-                         run_id="gate-test", elapsed=1.0, baseline="monolithic")
+                         run_id="gate-test", elapsed=1.0, baseline="monolithic",
+                         pairing=None, reach_rate=None)
     assert "censored from Δ: 0" in md and "miss 1" in md
 
 
@@ -304,7 +306,8 @@ def test_render_report_names_the_verdict_and_diagnostics() -> None:
     paired = [_pair("a", _resp("abstain"), _resp("report", False)),
               _pair("b", _resp("report", True), _resp("report", True))]
     res = G.delta_posterior(paired, post, oracle_p=0.9, n_draws=2000, seed=9)
-    md = G.render_report(res, run_id="gate-test", elapsed=1.0, baseline="monolithic")
+    md = G.render_report(res, run_id="gate-test", elapsed=1.0, baseline="monolithic",
+                         pairing=None, reach_rate=None)
     assert "PASS" in md or "FAIL" in md
     assert "P(Δ" in md and "0.05" in md         # materiality named
     assert "answer rate" in md.lower()
@@ -329,7 +332,7 @@ def test_the_report_names_the_baseline_arm_it_ran_against() -> None:
     res = G.delta_posterior(paired, post, oracle_p=0.9, n_draws=2000, seed=9)
 
     md = G.render_report(res, run_id="gate-test", elapsed=1.0,
-                         baseline="raw-deliberative-replay")
+                         baseline="raw-deliberative-replay", pairing=None, reach_rate=None)
     assert "raw-deliberative-replay" in md, "the report did not name its baseline arm"
     assert "monolithic" not in md.lower(), (
         "the report names 'monolithic' while running against a different arm — the label "
@@ -343,7 +346,8 @@ def test_the_monolithic_baseline_is_still_named_when_it_is_the_one_used() -> Non
     post = _posterior(u_wrong=-2.0)
     paired = [_pair("a", _resp("abstain"), _resp("report", False))]
     res = G.delta_posterior(paired, post, oracle_p=0.9, n_draws=500, seed=9)
-    md = G.render_report(res, run_id="gate-test", elapsed=1.0, baseline="monolithic")
+    md = G.render_report(res, run_id="gate-test", elapsed=1.0, baseline="monolithic",
+                         pairing=None, reach_rate=None)
     assert "monolithic" in md.lower()
 
 
@@ -465,7 +469,7 @@ def test_the_report_publishes_the_decomposition() -> None:
     paired, post = _decomposition_fixture()
     res = G.delta_posterior(paired, post, oracle_p=0.9, n_draws=200, seed=1)
     md = G.render_report(res, run_id="gate-test", elapsed=1.0,
-                         baseline="raw-deliberative-replay")
+                         baseline="raw-deliberative-replay", pairing=None, reach_rate=None)
     low = md.lower()
     assert "answers" in low and "spend" in low
     assert "+4.700" in md or "4.700" in md, "the spend term is not in the report"

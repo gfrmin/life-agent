@@ -544,6 +544,14 @@ Bayesian Ask rather than deterministic pipelines. Remaining program, in dependen
    `M-18` comparability rider) so Δ_spend is measured rather than structurally 0. **D** (the
    parallel harness, ~14h → ~2h) is sized from B's timestamped run, not before. The K-cap
    (k ≤ 3) and any move on #15 / E3 each still need their own pre-registration. Then §11's exit.
+   **Both owner questions RULED 2026-09-05 by interview (`conferrals/a3-regime-conferral.md`):**
+   the A3 gate **keeps its blind regime and is made honest** — `M-34`, built: `core/gate.py`
+   quotes **INCONCLUSIVE** when the marginal reach straddles the declared pairing (adopts
+   nothing; does not advance the consecutive-FAIL count; the remedy is evidence, never a softer
+   bar), `run_eval` now declares the pairing the classic gate spans, and `r49` carries a dated
+   note; and **the next §18 rung is engine-side demand** — the pooled-prior hypothesis filed as
+   proplang#26 with `r49` S4 attached (`A-11`); the verdict re-supply, C's spend re-record and a
+   §18 hold were offered and not chosen. `RULINGS` §5 has nothing live.
 4. **[RETIRED 2026-08-31 — `G-1`. Items 4 and 5 *were* Stage 2; the aggregate family was
    additionally deleted by K1 as "family routing in disguise", its transformations kept.
    The thread transformations may still be built when evidence calls for them, never as a

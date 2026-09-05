@@ -168,6 +168,14 @@ def test_marginal_commits_counts_typed_asserts_over_mono_withheld_and_the_revers
     assert table == {"n": 2, "correct": 1, "rate": 0.5, "abstain_x_report": 1}
 
 
+def test_the_harness_marginal_table_binds_the_gates_one_declaration() -> None:
+    """`M-7`: the harness records the table the gate's verdict was computed from — the same
+    function, not a re-spelling."""
+    paired = _paired([("a", True, True, False), ("b", True, False, False),
+                      ("c", False, None, True)])
+    assert P3.marginal_commits(paired) == GATE.marginal_commits(paired).as_record()
+
+
 def test_marginal_commits_rate_is_none_when_nothing_is_marginal() -> None:
     assert P3.marginal_commits(_paired([("q1", True, True, True)]))["rate"] is None
 
@@ -183,6 +191,7 @@ def test_run_differential_meta_carries_regimes_and_the_marginal_table(tmp_path: 
                                                scoring_u_bar=_posterior().u_bar())
     assert meta["marginal_commits"] == {"n": 0, "correct": 0, "rate": None,
                                         "abstain_x_report": 0}
+    assert meta["verdict"] in ("PASS", "FAIL"), "no marginal commit: the pairing cannot bite"
 
 
 def _heldout(rows: list[tuple[str, bool, bool, bool]]
@@ -212,6 +221,11 @@ def test_run_differential_logs_the_pairing_at_the_measured_marginal_rate(tmp_pat
     assert "pairing-sensitive" in text and "0.750" in text
     meta = json.loads((tmp_path / "a3_meta-FULL.json").read_text())
     assert meta["marginal_commits"]["rate"] == 0.75
+    # the honest verdict (`M-34`): a straddling reach is INCONCLUSIVE in the record, the log
+    # and the published report — never a PASS/FAIL that the pairing decided
+    assert meta["verdict"] == "INCONCLUSIVE"
+    assert "verdict INCONCLUSIVE" in text
+    assert "## Verdict: **INCONCLUSIVE**" in (tmp_path / "a3_gate-FULL.md").read_text()
 
 
 def test_run_differential_says_so_when_no_commit_is_marginal(tmp_path: Path) -> None:
