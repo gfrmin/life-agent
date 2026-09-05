@@ -60,6 +60,19 @@ def test_summary_of_rebuilds_the_engines_own_input_type() -> None:
     assert s.n_candidates == 2 and s.leader_credence == 0.9
 
 
+def test_a_pre_r50_summary_without_the_record_only_field_still_rebuilds() -> None:
+    """r50 added `runner_up_credence` to DecideSummary with a default. It is RECORD-ONLY: it
+    never enters the tick, so a summary recorded before it existed rebuilds without inventing
+    an engine input — the reproduction guarantee is about inputs, and the tick is byte-identical
+    with the field absent or present."""
+    d = _decide(13)
+    assert "runner_up_credence" not in d["summary"]          # a pre-r50 record
+    s = PR.summary_of(d)
+    assert s.runner_up_credence == 0.0
+    with_field = PR.summary_of({**d, "summary": {**d["summary"], "runner_up_credence": 0.3}})
+    assert W.shadow_features(s, 1.0) == W.shadow_features(with_field, 1.0)
+
+
 def test_a_summary_missing_a_field_is_refused_not_defaulted() -> None:
     """Defaulting an absent field would invent an input and call the result a reproduction."""
     d = _decide(13)

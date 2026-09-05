@@ -17,7 +17,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from dataclasses import fields
+from dataclasses import MISSING, fields
 from pathlib import Path
 from typing import Any
 
@@ -34,6 +34,11 @@ boot_snapshot = SH.boot_snapshot
 
 #: The one summary type; its field names are the ledger's `summary` keys verbatim.
 SUMMARY_FIELDS = tuple(f.name for f in fields(W.DecideSummary))
+#: The fields a record MUST carry: every one without a declared default. A defaulted field is
+#: record-only by construction (r50's `runner_up_credence` — it never enters the tick), so a
+#: record written before it existed is still a complete engine input, not an invented one.
+REQUIRED_FIELDS = tuple(f.name for f in fields(W.DecideSummary)
+                        if f.default is MISSING and f.default_factory is MISSING)
 
 
 def shadow_records(path: Path | None = None) -> list[dict[str, Any]]:
@@ -60,10 +65,10 @@ def summary_of(record: dict[str, Any]) -> W.DecideSummary:
     """The recorded `summary` rebuilt as the engine's own input type. Amendment 1's whole
     basis: the ledger's summary IS `world.DecideSummary`, so no reconstruction is invented."""
     s = record["summary"]
-    missing = [f for f in SUMMARY_FIELDS if f not in s]
+    missing = [f for f in REQUIRED_FIELDS if f not in s]
     if missing:
         raise ValueError(f"recorded summary is missing {missing} — not a DecideSummary")
-    return W.DecideSummary(**{f: s[f] for f in SUMMARY_FIELDS})
+    return W.DecideSummary(**{f: s[f] for f in SUMMARY_FIELDS if f in s})
 
 
 def supersession_bound(boot_ts: float, reactions_path: Path | None = None) -> int:

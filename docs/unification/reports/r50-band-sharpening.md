@@ -34,8 +34,8 @@ a Beta(1,1) Beta-Binomial Bayes factor of split over pooled ≥ 10.
 Band membership was read through the harness's own `features_for` (`M-7`): 55 rows, exactly
 `r49`'s. The edges were computed and printed from X alone before any y was read.
 
-**Edges (X only, all 250 ticks).** `runner-up` terciles **(0, 0.03)** — two-thirds of every
-recorded tick carry a runner-up at or below 0.03, and at least a third carry none at all;
+**Edges (X only, all 250 ticks).** `runner-up` terciles **(0, 0.03)** — 58% of recorded ticks
+carry no runner-up at all and 70% carry one at or below 0.03 (ledger max 0.398);
 `leader-share` terciles **(0.94, 1)**; `n-candidates-fine` cells 1 / 2 / 3 / 4plus by
 declaration.
 
@@ -139,10 +139,20 @@ Each needs its own pre-registration; none is opened by this reading.
 
 ## 7. Method notes
 
+- **A consumer the eight-suite selection missed, caught by CI.** `r41`'s engine-replay
+  instrument (`scripts/p0_engine_replay.py`) rebuilds a recorded summary and, by design,
+  refuses to *default* an absent field — a reproduction must not invent an input. Every
+  pre-r50 record lacks `runner_up_credence`, so it refused them all. Repaired without weakening
+  the guarantee: only fields **without a declared default** are required (they are the ones that
+  enter the tick), and the test proves the rebuilt tick is byte-identical with the field absent
+  or present. Two mutations RED; the full suite (3 239) run before the fix was pushed — the
+  lesson being that a new field on a shared type needs the whole suite, not the suites one
+  remembers.
+
 - The census ran once, on the committed tree, with the edges printed before the cells; the
   power figures in §3 were computed afterwards from the census artefact and are labelled as
   power, not as a reading.
 - The `runner-up` edges say something about the ledger worth carrying: recorded runner-up
-  credences are tiny almost everywhere (two-thirds ≤ 0.03). A competitor that the temper has
+  credences are tiny almost everywhere (58% none, 70% ≤ 0.03, max 0.398). A competitor that the temper has
   already halved twice does not show up as a large second credence; it shows up as a smaller
   leader. Any successor family built on "the competitor's credence" inherits that.
