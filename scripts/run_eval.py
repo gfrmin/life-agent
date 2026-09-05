@@ -1880,6 +1880,18 @@ def main() -> int:
         result = GATE.delta_posterior(paired, post, oracle_p=LK._ORACLE_P)
         elapsed = time.monotonic() - t0
 
+        # `M-33`/`M-34` (owner ruling 2026-09-05): the typed arm DECIDED under the live
+        # `all-to-date` Ū — the daemon's `current_u_bar`, the same fold at report time unless
+        # a reaction landed mid-run — and this gate SCORES under the blind posterior above.
+        # Declare the pairing so a marginal reach that straddles the two break-evens is
+        # quoted INCONCLUSIVE rather than as a sign the pairing chose.
+        pricing_u_bar, _pricing_fold, pricing_policy = LK.current_u_bar(brain)
+        pairing = GATE.regime_pairing(
+            pricing_u_bar=pricing_u_bar, pricing_policy=pricing_policy,
+            scoring_u_bar=post.u_bar(), scoring_policy=post.policy)
+        marginal = GATE.marginal_commits(paired)
+        print(GATE.render_regime_pairing(pairing, reach_rate=marginal.rate))
+
         compare_meta = None
         if args.compare_run_meta:
             compare_meta = json.loads(
@@ -1894,7 +1906,8 @@ def main() -> int:
                     + corpus_note(conn, questions, corpus=corpus))
         (gate_dir / "report.md").write_text(
             preamble + GATE.render_report(result, run_id=run_id, elapsed=elapsed,
-                                          baseline=baseline_tag),
+                                          baseline=baseline_tag, pairing=pairing,
+                                          reach_rate=marginal.rate),
             encoding="utf-8")
         (gate_dir / "paired.jsonl").write_text(
             "".join(json.dumps(_paired_to_dict(

@@ -226,6 +226,14 @@ Gate ≥ 0.90 at δ = 0.05, 20 000 draws, seed 8675309, against `eval/fairfight/
 arm `baseline` — the harness's frozen defaults, unchanged. Joined 75 questions (membrane-only 55
 live/non-v2 ids; baseline-only 29).
 
+> **Dated note (2026-09-05, owner ruling — `conferrals/a3-regime-conferral.md`, `M-34`).** Under
+> the rule now in `core/gate.py` this reading would have been quoted **INCONCLUSIVE**, not FAIL:
+> its marginal reach 0.875 falls strictly between the pricing break-even 0.8369 and the scoring
+> break-even 0.9000 (Disclosure 1 below), so the sign was the pairing's. The record above is
+> untouched and nothing was re-read (`M-4`); the FAIL stands as quoted, and the stop rule it
+> fired was discharged by the ruling. The note changes what this reading was *entitled* to
+> conclude, not what it concluded.
+
 **The failure has an unusually simple shape, and it is not the shape that was predicted.** On the
 best variant:
 

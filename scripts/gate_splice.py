@@ -238,8 +238,12 @@ def main(argv: list[str] | None = None) -> int:
         if pick not in results:
             ap.error(f"--report-for {pick!r} names no rung")
         report += [f"## Full gate report — {pick}", "",
+                   # not a gate reading (stated above): this splice re-scores archives under
+                   # the current posterior and declares no pricing regime — the report says
+                   # so rather than assuming the two agree (`M-33`/`M-34`)
                    GATE.render_report(results[pick], run_id=pick, elapsed=0.0,
-                                      baseline=baselines[pick])]
+                                      baseline=baselines[pick], pairing=None,
+                                      reach_rate=None)]
     text = "\n".join(report)
     print(text)
     if args.out:

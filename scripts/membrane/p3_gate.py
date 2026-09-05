@@ -399,16 +399,12 @@ def regime_record(pairing: RegimePairing, *, pricing_u_bar: Mapping[str, float],
 
 
 def marginal_commits(paired: Sequence[PairedOutcome]) -> dict[str, Any]:
-    """The rows on which a regime pairing can bite: the membrane ASSERTS where the baseline
-    did not (r49's whole differential was 24 of these at 21/3). ``abstain_x_report`` is the
-    reverse cell — non-zero means the differential is not pure over-assertion and the
-    marginal rate alone does not decide the sign."""
-    marginal = [p for p in paired if p.typed.asserts() and not p.mono.asserts()]
-    n = len(marginal)
-    correct = sum(1 for p in marginal if p.typed.correct)
-    reverse = sum(1 for p in paired if not p.typed.asserts() and p.mono.asserts())
-    return {"n": n, "correct": correct, "rate": (correct / n) if n else None,
-            "abstain_x_report": reverse}
+    """The ``a3_meta`` shape of the gate's ONE marginal-commit table
+    (`GATE.marginal_commits`, `M-7`) — the rows on which a regime pairing can bite, and the
+    very table the verdict was computed from (`M-34`)."""
+    import life_agent.core.gate as GATE
+
+    return GATE.marginal_commits(paired).as_record()
 
 
 # --- the run (needs the engine + the baseline arm) ----------------------------------------
@@ -449,7 +445,11 @@ def run_differential(rows: Sequence[HeldoutTick], *, variant: str,
         f"·  baseline-only {len(only_b)}")
     gate = GATE.delta_posterior(paired, posterior, oracle_p=oracle_p,
                                 n_draws=draws, seed=seed)
-    verdict = "PASS" if gate.passed else "FAIL"
+    marginal = marginal_commits(paired)
+    # `M-34` (owner ruling 2026-09-05): the verdict is the gate's — INCONCLUSIVE when the
+    # marginal reach straddles the declared pairing — never a PASS/FAIL re-spelled from
+    # `passed` here, which is exactly what quoted r49 as a FAIL
+    verdict = GATE.verdict(gate, pairing=pairing, reach_rate=marginal["rate"])
     log(f"  verdict {verdict} · P(Δ>{gate.materiality_delta})={gate.p_delta_gt:.3f} "
         f"(gate ≥ {gate.level:.2f}) · Δ̄={gate.delta_mean:+.3f} "
         f"[{gate.delta_lo:+.3f}, {gate.delta_hi:+.3f}]")
@@ -457,7 +457,6 @@ def run_differential(rows: Sequence[HeldoutTick], *, variant: str,
     ar = lambda x: "n/a" if x is None else f"{x:.2f}"  # noqa: E731
     log(f"  answer rate: membrane {ar(d.typed_answer_rate)} · baseline "
         f"{ar(d.mono_answer_rate)} · disagreement {d.disagreement_n}/{d.n}")
-    marginal = marginal_commits(paired)
     if marginal["rate"] is None:
         log("  no marginal commits (membrane asserts where the baseline did not: 0) — "
             "the regime pairing cannot bite on this reading")
@@ -471,7 +470,8 @@ def run_differential(rows: Sequence[HeldoutTick], *, variant: str,
         # r28: the comparator is NAMED — this report's mono arm is the fair-fight
         # baseline arm the rows were loaded from, never the module's old default.
         GATE.render_report(gate, run_id=f"p3-heldout-{variant}", elapsed=0.0,
-                           baseline=baseline_arm),
+                           baseline=baseline_arm, pairing=pairing,
+                           reach_rate=marginal["rate"]),
         encoding="utf-8")
     (out / f"a3_paired-{variant}.jsonl").write_text(
         # `withheld`/`censored` ride here too (§14 availability registration): the A3 gate

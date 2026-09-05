@@ -1286,7 +1286,9 @@ conclude, and it is the one recommended if the guard stands.
 it is a decision-path lever and needs its own pre-registration under `M-3`); `M-1` is not
 engaged because nothing ships.
 
-**Reaction.** *(open)*
+**Reaction.** The owner ruled on 2026-09-05, interviewed (`conferrals/a3-regime-conferral.md`):
+**the guard stands and is made honest** — the third of §5's sub-answers, the one this entry put
+first. Registered as `M-34`; built and enacted in `GD-29`. `RULINGS` §5 has nothing live.
 
 ## GD-28 · 2026-09-05 · B closes on its own KILL — the 70–90 band is not separable from recorded evidence
 
@@ -1325,5 +1327,70 @@ hypothesis to be filed as demand with evidence if opened (`M-23`/`GD-14`), never
 the verdict re-supply is evidence policy; the engine prior is upstream). The guard question
 (`RULINGS` §5) is untouched and still with the owner. D stays unsized — no gate run has yet
 recorded `M-32` marks. C's boot-record and spend legs are unchanged.
+
+**Reaction.** The owner ruled on 2026-09-05, interviewed (`conferrals/a3-regime-conferral.md`):
+**the engine-side hypothesis is filed as demand** — proplang#26, with `r49` S4 attached
+(`A-11`). Re-supplying the Claude verdict channel, C's spend re-record and a §18 hold were
+offered and not chosen. Enacted in `GD-29`.
+
+---
+
+## GD-29 · 2026-09-05 · the guard stands and is made honest — INCONCLUSIVE built; the pooled-prior demand filed
+
+**The fork.** Two questions in `RULINGS` §5's class, put to the owner by interview
+(`conferrals/a3-regime-conferral.md`, `M-17`'s form) after `r50` closed B on its own KILL
+(`GD-28`): *does the A3 gate keep its blind regime?* (`r49b` §5's three sub-answers), and *what
+earns the next §18 iteration?* (`r50` §6's named successors, plus one count taken for the
+interview: 245 distinct questions recorded, 141 already verdicted, 104 not).
+
+**Ruled (owner).** (1) **The guard STANDS and is made honest** → `M-34`. (2) **The engine-side
+pooled-prior hypothesis is filed as demand** → `A-11`; the Claude verdict re-supply, C's spend
+re-record and a §18 hold were offered and not chosen.
+
+**Enacted.**
+
+1. **`core/gate.py`** — the closed verdict vocabulary `VERDICTS = ("PASS", "FAIL",
+   "INCONCLUSIVE")`; `verdict(result, *, pairing, reach_rate)` (INCONCLUSIVE iff the declared
+   pairing straddles the measured marginal reach; endpoints do not straddle; a coincident pairing
+   never does); the ONE `marginal_commits` table (`MarginalCommits`, `as_record()`), moved from the
+   harness so the rate the verdict turned on is the rate the record shows (`M-7`);
+   `render_report` **requires** `pairing` and `reach_rate` and publishes both break-evens beside
+   the reach, why INCONCLUSIVE is not a FAIL, or that the instrument declared no pairing.
+2. **`scripts/membrane/p3_gate.py`** — `marginal_commits` binds the gate's; `run_differential`
+   quotes `GATE.verdict` in its log, `a3_meta` and the published report, never a PASS/FAIL
+   re-spelled from `passed` (which is exactly what quoted `r49` as a FAIL).
+3. **`scripts/run_eval.py`** — the classic gate spans the same pairing (its typed arm decides
+   under the live `all-to-date` Ū via the daemon's `current_u_bar`; the gate scores blind), so it
+   now declares it from the live fold at report time and prints the pairing. Disclosed: a reaction
+   landing mid-run moves that fold; the report prints the Ū it used. **`scripts/gate_splice.py`**
+   declares none — it is not a gate reading and says so — and its report states that.
+4. Tests: `tests/test_gate_verdict.py` (16, including an AST guard that `run_eval` hands the
+   report a *declared* pairing — the r28 source-level pattern), three harness assertions in
+   `tests/test_p3_gate_record.py` (INCONCLUSIVE in record, log and report; the table binding),
+   six existing `render_report` call sites made explicit. **8/8 mutations RED** (verdict ignores
+   the straddle; endpoints straddle; heading re-spelled from `passed`; undeclared pairing renders
+   nothing; harness re-spells the verdict; marginal table counts every assert; INCONCLUSIVE on
+   divergence alone; `run_eval` hands `None`), hash-verified restore.
+5. Docs: `RULINGS` `M-34`, `A-11`, §5 closed (nothing live), §6 history line; `GD-27`/`GD-28`
+   Reactions filled; `r49` §S5 dated note; `r49b` §5 annotated; ROADMAP 3h and CLAUDE.md tails.
+6. **proplang#26 filed** — demand with `r49` S4's table, the `r50` KILL as the reason the lever is
+   not host-side, and the two questions it asks (intended prior behaviour + declared knob, or a
+   register row); no edit to proplang (`M-23`/`GD-14`).
+
+**Decided here (`D-3`), and why.** (a) The rule lives at the gate and the renderer cannot
+default — r28's lesson, applied to the regime; a caller that has not thought about the regimes it
+spans must not be handed a PASS/FAIL that looks like every other one. (b) `run_eval` declares its
+pairing rather than passing `None`: the classic gate has spanned the pair since run 6 (in August
+the two bars sat within 0.002 — `r49b` §4 — so a straddle there would have needed a marginal reach
+inside a 0.002-wide interval; whether any run did is NOT measured and not claimed), and leaving it
+undeclared would have kept open exactly the gap `M-34` closes. (c) The consecutive-FAIL count is
+not re-litigated: `r49` stands as a FAIL in the record and the stop it fired was discharged by
+the ruling; a future INCONCLUSIVE neither advances nor resets the count. (d) `gate_splice` stays
+undeclared: it re-scores archives under the current posterior and announces itself as not a gate
+reading.
+
+**Not done, deliberately.** `r49` is not re-read (`M-4`). No successor lever opens — the
+verdict re-supply, the spend re-record, the K-cap and §11's exit stay named. Nothing deploys;
+`M-1` is not engaged. D stays unsized until a gate run records `M-32` marks.
 
 **Reaction.** *(open)*

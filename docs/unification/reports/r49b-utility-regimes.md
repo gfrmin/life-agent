@@ -178,6 +178,11 @@ Three sub-answers are available and none needs a new measurement:
   This is the only option that changes what `r49` was entitled to conclude, and it is the one I
   would put first if the guard is kept.
 
+> **RULED 2026-09-05 (owner, interviewed — `conferrals/a3-regime-conferral.md`): the third — the
+> guard stands and is made honest.** Built as `M-34` (`core/gate.py` `verdict` /
+> `marginal_commits`; `render_report` requires the pairing; `run_eval` declares the one the classic
+> gate spans). `r49` takes the dated note in its §S5. `RULINGS` §5 has nothing live.
+
 ---
 
 ## 6. What is enacted here, and what is not
