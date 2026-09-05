@@ -1287,3 +1287,43 @@ it is a decision-path lever and needs its own pre-registration under `M-3`); `M-
 engaged because nothing ships.
 
 **Reaction.** *(open)*
+
+## GD-28 · 2026-09-05 · B closes on its own KILL — the 70–90 band is not separable from recorded evidence
+
+**The fork.** `r50`'s S2 census (frozen `037b506`, read on `aab71eb`, $0) found none of the three
+frozen candidate families separates `r49`'s 70–90 band: Bayes factors 0.229 / 0.253 / 0.212
+against a bar of 10, with `runner-up` meeting the sides clause (29 rows at 0.862 above the
+break-even, 18 at 0.722 below) and failing the evidence clause by a factor of forty. The
+pre-registration's KILL branch is unambiguous; the fork is what B *becomes*, given that the
+direction the ruling expected is visible and the evidence is not.
+
+**Decided.** The frozen branch, exactly: **no engine run is bought; B closes as *not separable
+from recorded evidence*.** The reading is `docs/unification/reports/r50-band-sharpening.md`.
+Nothing is re-read, no criterion is loosened (`M-4`), nothing deploys, `M-1` is not engaged.
+
+**Enacted.**
+
+1. The census published with every cell (the reading §2), the edges having been computed from X
+   alone before any y was read, as frozen.
+2. `DecideSummary.runner_up_credence` stays — a neutral raw field on both reducers, not an
+   indicator; the declared vocabulary, handshake and world digest are byte-untouched (tested).
+   It is the record the census reads.
+3. `scripts/membrane/band_census.py` stays in tree, tested and dormant, to be re-run under the
+   same frozen rule when the band has the rows.
+4. ROADMAP 3h and CLAUDE.md carry the verdict.
+
+**The finding that outlives the KILL.** At the observed rates the split needs ~7× the band's
+rows (≈385) to clear the frozen bar; owner verdicts add ~7 band rows a month, and the other
+verdict source (`core/claude_verdicts.py`, 180 verdicts) has been dormant since 2026-07-22. So
+**the verdict supply, not the feature vocabulary, binds every evidence-side lever on §18's bar.**
+`GD-23` named re-supplying that channel as `OB-12`'s re-opener; it is now also the precondition
+for any successor to B. A second, engine-side observation is recorded from `r49`'s own table —
+held-out `p1` pulled toward ~0.86 in both directions, the shape of a pooled guard prior — as a
+hypothesis to be filed as demand with evidence if opened (`M-23`/`GD-14`), never edited here.
+
+**Not done, deliberately.** No successor lever is opened (each needs its own pre-registration:
+the verdict re-supply is evidence policy; the engine prior is upstream). The guard question
+(`RULINGS` §5) is untouched and still with the owner. D stays unsized — no gate run has yet
+recorded `M-32` marks. C's boot-record and spend legs are unchanged.
+
+**Reaction.** *(open)*

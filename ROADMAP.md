@@ -506,8 +506,21 @@ Bayesian Ask rather than deterministic pipelines. Remaining program, in dependen
    **Next (2026-09-05).** One question is held for the owner and gates nothing else: *does the
    A3 gate keep its blind regime?* — three sub-answers costed in `r49b` §5, each convertible
    into a $0 PR the day it is answered, and **nothing is re-read at the softer regime while it
-   is open**. The stop rule is discharged: the ruling licensed the successor by name. **B IS
-   OPEN as `r50` — pre-registration frozen `037b506`** (`r50-band-sharpening-preregistration.md`:
+   is open**. The stop rule is discharged: the ruling licensed the successor by name. **B was
+   OPENED as `r50` — pre-registration frozen `037b506` — and READ the same day: S2 KILLs**
+   ([`r50-band-sharpening.md`](./docs/unification/reports/r50-band-sharpening.md), `GD-28`, $0,
+   no engine run bought): none of the three frozen candidate families separates the band —
+   Bayes factors 0.229 / 0.253 / 0.212 against 10; `runner-up` meets the sides clause (29 rows
+   at 0.862 above the break-even, 18 at 0.722 below) and fails the evidence clause by a factor
+   of forty; at the observed rates the split needs ~7× the band's rows (≈385) and owner
+   verdicts add ~7 band rows a month with the Claude verdict channel dormant since 2026-07-22,
+   so **the verdict supply, not the vocabulary, binds every evidence-side lever on §18's bar**.
+   `DecideSummary` keeps the neutral `runner_up_credence` field, the census instrument stays
+   dormant in tree, B closes as *not separable from recorded evidence*, and D stays unsized.
+   Named, not opened: re-supplying the Claude verdict channel (`GD-23`'s `OB-12` re-opener), and
+   the engine-side pooled-prior hypothesis (r49's S4 shows held-out `p1` pulled toward ~0.86 in
+   both directions) to be filed as demand with evidence. The frozen shape was
+   (`r50-band-sharpening-preregistration.md`:
    eleven criteria, S1/S2 KILLs, three candidate families with an X-only tercile bucketing
    rule, six blind predictions, five consequence branches) — the address is r49's 70–90
    leader-credence band, 55 rows at realised 0.800 committed on every one at mean `p1` 0.863–0.873, below
