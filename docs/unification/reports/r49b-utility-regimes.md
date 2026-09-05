@@ -50,7 +50,8 @@ at), which is right for a reason the entry got wrong.
 
 **This is the failure mode worth naming.** The two numbers were *never* a convention to be
 chosen. Calling them a gauge converted an empirical question into an owner keypress — and the
-keypress on offer was one that would have turned a FAIL into a PASS. That is not a bad answer;
+keypress on offer was **result-relevant**: it flips the reading's headline sign in the
+direction of adoption. (It would not by itself have produced a PASS — see §5.) That is not a bad answer;
 it is a **bad question**, and the register is where the badness entered.
 
 ---
@@ -132,8 +133,17 @@ Put (c) together with the ruling's remedy:
 Implemented literally, this makes the A3 gate score under `all-to-date`. On today's numbers that
 moves the scoring break-even from 0.900 to **0.837**. `r49`'s entire differential is **24
 marginal commits at 0.875** — which sits *between* the two. So the rule flips `r49`'s point Δ
-from **−0.080 to +0.075**, i.e. from FAIL toward PASS, and it does so by **deleting the
+from **−0.080 to +0.075** — from a negative headline to a positive one — and it does so by **deleting the
 anti-circularity guard** described in §3.
+
+**A sign is not a verdict, and the distinction matters here.** A3 passes on
+P(Δ>0.05) ≥ 0.90, not on the point estimate. `r49` computed the point Δ at the deployed regime
+(**+0.0748**) but never the posterior mass there, and at the interval width the reading actually
+shows ([−0.482, +0.205] around −0.081) a mean of +0.075 would not come close to putting 0.90 of
+the mass above δ. So the honest statement is that the regime choice **flips the headline sign
+and is therefore result-relevant** — not that it would have delivered a PASS. That is enough to
+engage §17.6 and `M-4`, which forbid re-reading at the softer regime *after* a FAIL regardless of
+whether the softer reading would have cleared the bar.
 
 This is the outcome the ruling was expressly designed to prevent — *"a number that isn't ruled
 can't be ruled for its result"* — arriving through the rule itself rather than through a

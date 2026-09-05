@@ -745,7 +745,9 @@ material for that candidate only.
   (`u_correct = +1`, `u_abstain = 0`), so `u_wrong` is an **identified latent** and −9.0 vs
   −5.131 are two **estimates of one quantity** — an *epistemic* question the constitution had
   already assigned to evidence, which `M-31` mis-routed into §5's conventional bucket, producing
-  a keypress that would have turned a FAIL into a PASS. **A bad question, not a bad answer.**
+  a **result-relevant** keypress: it flips the headline sign toward adoption (point Δ −0.080 →
+  +0.075), though not by itself to a PASS (A3's P(Δ>0.05) ≥ 0.90 was never computed there).
+  **A bad question, not a bad answer.**
   `core/utility.py` carried the right framing all along ("two conditioning sets over one
   probability model"): `all-to-date` folds the §4.4 verdict→evidence projection, the gate's
   `frozen-elicitations` **structurally refuses** it. The ruled remedy — *one utility, decision

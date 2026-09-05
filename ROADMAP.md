@@ -459,8 +459,10 @@ Bayesian Ask rather than deterministic pipelines. Remaining program, in dependen
    (`u_correct = +1`, `u_abstain = 0`), and once they are fixed `u_wrong` is an **identified
    latent**, so −9.0 and −5.131 are two **estimates of one quantity**. That makes the choice
    **epistemic** — a question the constitution had already assigned to evidence — and `M-31`
-   mis-routed it into `RULINGS` §5's *conventional* bucket, producing a keypress that would have
-   turned a FAIL into a PASS. **A bad question, not a bad answer**, and `core/utility.py` carried
+   mis-routed it into `RULINGS` §5's *conventional* bucket, producing a **result-relevant**
+   keypress: it flips the headline sign toward adoption (point Δ −0.080 → +0.075), though not by
+   itself to a PASS — A3's P(Δ>0.05) ≥ 0.90 was never computed at that regime and is implausible
+   at the measured interval width. **A bad question, not a bad answer**, and `core/utility.py` carried
    the right framing all along: *"two conditioning sets over one probability model"* —
    `all-to-date` folds the §4.4 verdict→evidence projection; the gate's `frozen-elicitations`
    **structurally refuses** it (it raises, so the blindness is a guard, not a default).

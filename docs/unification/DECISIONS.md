@@ -1236,7 +1236,9 @@ $0 reading; no engine ran, no bar was re-read, nothing is deployed.
    — publish both numbers, say which one the verdict is quoted at — stands, on a corrected
    rationale.
 2. **The misclassification is named as the failure.** Converting an empirical question into an
-   owner keypress produced a keypress that would have turned a FAIL into a PASS. That is a **bad
+   owner keypress produced one that is **result-relevant**: it flips the headline sign toward
+   adoption (point Δ −0.080 → +0.075), though not by itself to a PASS — A3's P(Δ>0.05) ≥ 0.90 was
+   never computed at that regime. That is a **bad
    question**, not a bad answer, and `RULINGS` §5 is where it entered.
 3. **`M-33` registered and C built** — `gate.regime_pairing` / `break_even` /
    `render_regime_pairing`, plus a preflight in `scripts/membrane/p3_gate.py` that declares both

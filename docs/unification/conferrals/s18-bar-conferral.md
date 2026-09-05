@@ -130,8 +130,10 @@ latent** — §4.4 lists it as exactly that, and `p* = −u_wrong/(1−u_wrong)`
 fully determined inside the pinned gauge. So −9.0 and −5.131 were never two conventions to
 choose between; they are **two estimates of one quantity**, and the choice between them is
 **epistemic**. Calling it a gauge routed the question into `RULINGS` §5's conventional bucket and
-asked for a keypress on a question the constitution had already assigned to evidence — a keypress
-that would have turned a FAIL into a PASS. **A bad question, not a bad answer.**
+asked for a keypress on a question the constitution had already assigned to evidence — a keypress that is
+**result-relevant** — it flips the headline sign toward adoption (point Δ −0.080 → +0.075),
+though not by itself to a PASS, since A3's P(Δ>0.05) ≥ 0.90 was never computed at that regime.
+**A bad question, not a bad answer.**
 
 **Ruled instead:** a **consistency rule, not a number** — *there is one utility, the current
 posterior mean, and the decision layer and the gate both read it.* Ordering inverted from §5's
