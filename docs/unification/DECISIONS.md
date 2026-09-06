@@ -1665,7 +1665,7 @@ corpora, which gradeability rule, which band constant, and what the KILL is.
    LLM judge in any verdict path (`M-37`'s one-grader rule applies to any later differential).
 3. **The band constant is the LOWER of the two measured rates, 0.149** (`r51b`: 29/195) against `r49`'s 0.231 —
    the projection cannot be flattered by the owner corpus's higher band share. P2 is sized on it: pooled
-   gradeable ∈ [498, 898] projects to [74, 134] band rows — a KILL at 385 even at the higher constant. **Y1
+   gradeable ∈ [498, 898] projects to [74, 134] band rows at 0.149 and [115, 207] at 0.231 — a KILL at 385 at both. **Y1
    is foreclosed by arithmetic at the frozen constant** (the answerable pool's ceiling projects 334) and the
    pre-registration says so before download; the recon's information is the sizing (Y1′) and Y2–Y4.
 4. **Producer cost is priced, not built**: a transcript producer per conversation-shaped corpus, a questions
