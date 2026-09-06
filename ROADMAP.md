@@ -590,6 +590,16 @@ Bayesian Ask rather than deterministic pipelines. Remaining program, in dependen
    deploys, no bar or counter moves, the owner KB is byte-untouched (X9), and no benchmark content
    is in tree. **Next: the corpus-pooling recon opens as its own $0 checkpoint (`A-13`), sized in
    the foldable unit (`M-35`).**
+   **`r52` IS READ (2026-09-07, `A-13`, `GD-35`, $0): Y1 KILLs at both band constants.**
+   LongMemEval-cleaned and LoCoMo's released ten add 142 + 97 number-typed questions to ATM's 198
+   — 437 pooled, projecting 65 band rows at `r51b`'s 0.149 and 101 at `r49`'s 0.231 against 385,
+   so 14 or 9 corpora of ATM's size would be needed at one pass each (`M-35`) and the pooling
+   route is closed. Y0 reproduced the paper's 360 / 139 / 514 exactly; multi-session evidence
+   spans 64% of LongMemEval's answerable rows and 96% of LoCoMo's multi-hop; ATM's abstention
+   phrase list fires on none of either corpus's labelled abstentions — the NONE atom's public gold
+   is a label on LongMemEval and an output-phrase test on LoCoMo. Nothing built; no corpus content
+   in tree. **What to build next is the residue class, live for the owner (`RULINGS` §5,
+   `conferrals/r52-successor-conferral.md`).**
 4. **[RETIRED 2026-08-31 — `G-1`. Items 4 and 5 *were* Stage 2; the aggregate family was
    additionally deleted by K1 as "family routing in disguise", its transformations kept.
    The thread transformations may still be built when evidence calls for them, never as a

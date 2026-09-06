@@ -1665,7 +1665,7 @@ corpora, which gradeability rule, which band constant, and what the KILL is.
    LLM judge in any verdict path (`M-37`'s one-grader rule applies to any later differential).
 3. **The band constant is the LOWER of the two measured rates, 0.149** (`r51b`: 29/195) against `r49`'s 0.231 —
    the projection cannot be flattered by the owner corpus's higher band share. P2 is sized on it: pooled
-   gradeable ∈ [498, 898] projects to [74, 134] band rows — a KILL at 385 even at the higher constant. **Y1
+   gradeable ∈ [498, 898] projects to [74, 134] band rows at 0.149 and [115, 207] at 0.231 — a KILL at 385 at both. **Y1
    is foreclosed by arithmetic at the frozen constant** (the answerable pool's ceiling projects 334) and the
    pre-registration says so before download; the recon's information is the sizing (Y1′) and Y2–Y4.
 4. **Producer cost is priced, not built**: a transcript producer per conversation-shaped corpus, a questions
@@ -1679,4 +1679,10 @@ counting QA pairs as ticks (`M-35`); the owner-corpus band rate as the constant 
 **Not done, deliberately.** No download before this commit; nothing built; no §18 counter moves; no proplang
 comment.
 
-**Reaction.** *(open)*
+**Reaction.** 2026-09-07 — read the same day (`r52-pooling-recon.md`, $0): Y0 PASS (360 / 139 / 514 exactly);
+Y1 KILL at both constants, as the frozen text said it must — 437 pooled gradeable (ATM 198 + LongMemEval 142 +
+LoCoMo 97) → 65 / 101 band rows against 385; Y1′ 14 / 9 ATM-sized corpora. Every fork above was exercised as
+decided (the answer-typed rule with the frozen casting; the lower constant; nothing built). P1 half refuted
+(LoCoMo 97, below [200, 500] — its numbers sit in one category), P2's interval refuted with its KILL clause and
+sizing confirmed, P3 and P4′ confirmed. The pooling route is closed at one pass each; what to build next is live
+for the owner (`RULINGS` §5, `conferrals/r52-successor-conferral.md`).
