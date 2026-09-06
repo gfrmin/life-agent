@@ -29,11 +29,13 @@ subset (read by `r51b`), LongMemEval-cleaned, LoCoMo's released ten conversation
   file the recon does not need; it was stopped at 449 MB, the partial cache and the 277 MB S file deleted, the pattern
   narrowed to the oracle file (deviation 1).
 - **Controls before verdicts:** Y0 was read first, in the same script, and the script exits before any count if it is RED.
-- **Casting as frozen:** JSON-number answers cast with `str()` (LongMemEval 32, LoCoMo 6); `null` answers (LoCoMo 444)
-  counted as abstention-shaped, never typed.
+- **Casting as frozen:** JSON-number answers cast with `str()` (LongMemEval 32, LoCoMo 6 — five of the 38, all four-digit,
+  type `open_end` after the cast; the rule as frozen). LoCoMo's 444 category-5 rows carry no `answer` key at all (not a
+  JSON null) and are counted as abstention-shaped, never typed.
 - **Lane** by `answer_shape_census.classify(question)`; **abstention** by the corpus's own label with ATM's
   `is_abstention` beside it; **multi-session evidence** = more than one distinct session among the question's evidence
-  ids (`answer_session_ids`; LoCoMo's `D<session>:<turn>` ids).
+  ids (`answer_session_ids`; LoCoMo's `D<session>:<turn>` ids — four LoCoMo entries pack several ids in one string and
+  are split).
 
 ## 3. Y0 — the harness control
 
@@ -44,21 +46,28 @@ paper's split reproduced exactly (`r51`'s X3e, re-read on this tree). PASS.
 
 | corpus | rows | abstention by label | `is_abstention` fires | answerable | `number`-typed | share | lanes on answerable (exact / quantity / set / threshold) | `number` × lane (exact / quantity / other) | multi-session evidence |
 |---|---:|---:|---:|---:|---:|---:|---|---|---:|
-| ATM-Bench email subset (`r51`) | 381 | 14 (0.037) | — | 381 | 198 | 0.520 | 118 / 79 on the 198 (`r51`) | — | single-document by construction |
+| ATM-Bench email subset (`r51`) | 381 | 14 (0.037) | — | 381 | 198 | 0.520 | 119 / 79 on the 198 (`r51`) | — | single-document by construction |
 | LongMemEval-cleaned (oracle) | 500 | 30 (0.060; `_abs` ids) | 0 / 30 labelled · 0 / 500 | 470 | **142** | 0.302 | 249 / 213 / 6 / 2 | 15 / 125 / 2 | **300 / 470 = 0.638** |
-| LoCoMo (released ten) | 1,986 | 446 (0.225; category 5, 444 null) | 0 / 2 non-null · 0 / 1,542 | 1,542 | **97** | 0.063 | 1,485 / 40 / 13 / 4 | 90 / 7 / 0 | 330 / 1,542 = 0.214 |
+| LoCoMo (released ten) | 1,986 | 446 (0.225; category 5, 444 without an `answer` key) | 0 / 446 `adversarial_answer` distractors · 0 / 1,542 | 1,542 | **97** | 0.063 | 1,485 / 40 / 13 / 4 | 90 / 7 / 0 | 334 / 1,542 = 0.217 |
 
-- **LongMemEval's numbers sit where the pre-registration guessed** (dates and counts): by `question_type`, multi-session
-  86 of 121, knowledge-update 24 of 72, single-session-user 16 of 64, temporal-reasoning 14 of 127, single-session-assistant
-  2 of 56, single-session-preference 0 of 30. The lane regex reads `quantity` on 125 of the 142 (0.880) — the reverse of
+- *The "answerable" column* excludes LongMemEval's 30 labelled abstentions and LoCoMo's 444 rows without an `answer`
+  (its two category-5 rows that carry one stay, neither number-typed); ATM's 14 abstentions carry answers and stay.
+- **LongMemEval's numbers hit P1's interval but not its ground**: they are counts, not dates — 4 of the 142 carry a
+  month name. By `question_type` (denominators: answerable rows), multi-session 86 of 121, knowledge-update 24 of 72,
+  single-session-user 16 of 64, temporal-reasoning 14 of 127, single-session-assistant 2 of 56, single-session-preference
+  0 of 30. The lane regex reads `quantity` on 125 of the 142 (0.880) — the reverse of
   ATM's 0.40.
 - **LoCoMo's numbers are almost all one category**: 86 of 97 in category 2, 7 in category 1, 4 in category 4. The
-  release carries category numbers only; against the paper's Table 5 shares and the evidence shapes the mapping is
-  *inferred* — category 1 multi-hop (269 of 282 span > 1 session), 2 temporal (the numbers are dates), 3 open-domain, 4
-  single-hop, 5 adversarial (the null answers). The lane regex reads `exact` on 90 of the 97 numbers.
-- **The abstention gold is a label, not a phrase, on both corpora**: ATM's seven-phrase list fires on none of
-  LongMemEval's 30 labelled abstentions (free-text refusals of the corpus's own shape), on neither of LoCoMo's two non-null
-  category-5 answers, and a `null` cannot fire. On these corpora the NONE atom's gold is the label.
+  release's own evaluator (`task_eval/evaluation.py`, lines 205–220 at the pinned commit) names category 1 multi-hop
+  and category 5 adversarial, and names {2, 3, 4} only as a set (single-hop, temporal, open-domain); their assignment
+  here — 2 temporal (85 of its 86 numbers carry a month name), 3 open-domain, 4 single-hop — rests on the release's
+  shares against the paper's Table 5 and on the answer shapes. Category 1 spans more than one session on 270 of 282. The lane regex reads `exact` on 90 of the 97 numbers.
+- **The abstention gold differs by corpus, and ATM's phrase list matches neither**: LongMemEval's 30 labelled
+  abstentions are free-text refusals of the corpus's own shape (ATM's seven phrases fire on 0 of 30); LoCoMo's 446
+  category-5 rows carry no gold answer but an `adversarial_answer` distractor each (439 distinct; the list fires on 0 of
+  446), and the release's evaluator grades them by a two-phrase output test, one of whose phrases is on ATM's list. The
+  NONE atom's public gold is a label on LongMemEval and an output-phrase test on LoCoMo — one benchmark's phrase list
+  does not transfer.
 
 ## 5. Y1 and Y1′ — the supply, in the foldable unit
 
@@ -74,10 +83,12 @@ corpus's — one pass each, no repeats (`M-35`). The route does not reach the ba
   (215) with 15 + 14 tests (249 + 254 lines) — a transcript producer per conversation-shaped corpus (one document per
   session, `Date` from the session timestamp, speaker labels only), a questions writer and a manifest each: roughly one
   ATM-sized build per corpus, two builds.
-- **Pass**: at `r51b`'s $0.107/q over the answerable pool — LongMemEval $50, LoCoMo $165, **$236** for 2,210 questions
-  (the pass answers every answerable question to verdict the gradeable 239).
-- **Engine**: K = 10 on 437 ticks — linear scaling of `r51b`'s 43.7 min per 195 ticks gives **≥ 98 min**, a floor
-  (per-tick cost is super-linear in fold depth: 0.172 → 0.472 s from 50 to 195 ticks).
+- **Pass**: by the frozen letter ("at Y1's count") 437 × $0.107 = **$47**; on `r51b`'s basis — the pass answers every
+  answerable question of a corpus to verdict its gradeable ones — the two new corpora's 2,012 answerable rows price at
+  **$215** (LongMemEval $50, LoCoMo $165); ATM's 381 were paid in `r51b` (deviation 5).
+- **Engine**: K = 10 on 437 ticks — linear scaling of `r51b`'s A3 pair (33.2 min per 195 ticks; 43.7 with its third
+  variant) gives **≥ 74 min** (98 with three variants), a floor (per-tick cost is super-linear in fold depth: 0.172 →
+  0.472 s from 50 to 195 ticks).
 
 ## 7. Y4 — disclosure
 
@@ -95,8 +106,8 @@ corpus's — one pass each, no repeats (`M-35`). The route does not reach the ba
 |---|---|---|---|
 | P1 | LongMemEval number-typed ∈ [100, 200] of 500; LoCoMo ∈ [200, 500] of 1,542 | 142; 97 | CONFIRMED; **REFUTED** (half the floor — the numbers live in one category, 16% of the release) |
 | P2 | pooled ∈ [498, 898] → band [74, 134] / [115, 207] → Y1 KILLs at both; Y1′ ≥ 13 / ≥ 8 | 437 → 65 / 101; 14 / 9 | interval **REFUTED** (below); KILL clause and sizing CONFIRMED |
-| P3 | multi-session evidence ≥ 40% of LongMemEval's answerable; ≥ 30% of LoCoMo's multi-hop | 0.638; 0.954 (category 1, inferred multi-hop) | CONFIRMED; CONFIRMED |
-| P4′ | `is_abstention` fires on < 50% of LongMemEval's 30 labelled abstentions and on 0 of LoCoMo's null answers | 0 / 30; 0 / 2 non-null, null cannot fire | CONFIRMED |
+| P3 | multi-session evidence ≥ 40% of LongMemEval's answerable; ≥ 30% of LoCoMo's multi-hop | 0.638; 0.957 (category 1, multi-hop by the release's evaluator) | CONFIRMED; CONFIRMED |
+| P4′ | `is_abstention` fires on < 50% of LongMemEval's 30 labelled abstentions and on 0 of LoCoMo's null answers | 0 / 30; LoCoMo has no null answer to fire on (the 444 have no `answer` key) — 0 / 446 on their `adversarial_answer` distractors | CONFIRMED; CONFIRMED vacuously (its object does not exist — the distractor reading is the substantive one) |
 
 ## 9. Consequence enacted
 
@@ -116,6 +127,12 @@ posed with priced options in `conferrals/r52-successor-conferral.md`.
    section): row counts, label shares, JSON-number and null counts were known before the freeze and are stated there as
    facts; the multi-session share was withheld and is read here for the first time. The reviewer's copies were deleted;
    the recon's downloads are the pinned ones above.
-3. **LoCoMo's category labels are inferred**, not read: the release carries numbers 1–5; the mapping to the paper's
-   five types rests on shares and evidence shapes (§4). P3's LoCoMo half is scored on category 1 under that inference.
+3. **LoCoMo's category labels are half read, half inferred**: the release's evaluator names 1 (multi-hop) and 5
+   (adversarial); {2, 3, 4} are assigned here from shares and answer shapes (§4). P3's LoCoMo half is scored on the read
+   label.
 4. **P2's interval was set from P1's**, so both miss together; the KILL clause and the sizing do not depend on them.
+5. **Y3's pass price is published on two bases** — the frozen letter ($47 at Y1's count) and `r51b`'s answer-everything
+   basis over the two new corpora ($215); the first render priced 2,210 rows including ATM's already-answered 198 ($236)
+   and was corrected at review.
+6. **The first render's multi-session count took the first id of a packed evidence entry**; four LoCoMo entries pack
+   several ids and are split now: category 1 269 → 270, category 3 31 → 34, overall 330 → 334. No prediction moves.
