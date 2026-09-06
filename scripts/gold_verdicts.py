@@ -18,11 +18,14 @@ except into the audit file the caller names, outside the KB and outside the repo
 
   uv run --project . python scripts/gold_verdicts.py grade --kb PATH
   uv run --project . python scripts/gold_verdicts.py audit-sample --kb PATH --n 60 --seed S \\
-      --out FILE          # blind rows (question, gold, leader) + FILE.key.jsonl (the verdicts)
+      --out FILE [--evidence-dir DIR]   # blind rows (question, gold, leader[, the evidence
+                                        # emails' text]) + FILE.key.jsonl (the verdicts)
 """
 from __future__ import annotations
 
 import argparse
+import email
+import email.policy
 import json
 import random
 import sys
@@ -99,12 +102,36 @@ def grade_decisions(decisions: Iterable[DEC.DecisionEvent],
     return events, counts
 
 
+def _evidence_text(path: Path) -> str:
+    """One evidence email as the auditor reads it: the subject line, then the text body."""
+    msg = email.message_from_bytes(path.read_bytes(), policy=email.policy.default)
+    body = msg.get_body(preferencelist=("plain", "html"))
+    text = str(body.get_content()).strip() if body is not None else ""
+    subject = str(msg["Subject"] or "").strip()
+    return f"Subject: {subject}\n\n{text}" if subject else text
+
+
+def _evidence_for(question: Mapping[str, Any], evidence_dir: Path) -> dict[str, str]:
+    """The builder's notes name the evidence ids (``evidence: id id …``); ids → files."""
+    notes = str(question.get("notes") or "")
+    ids = notes.split(":", 1)[1].split() if notes.startswith("evidence:") else []
+    out: dict[str, str] = {}
+    for eid in ids:
+        f = evidence_dir / f"{eid}.eml"
+        if f.is_file():
+            out[eid] = _evidence_text(f)
+    return out
+
+
 def audit_sample(decisions: Iterable[DEC.DecisionEvent],
                  questions_by_hash: Mapping[str, Mapping[str, Any]],
                  existing: Iterable[CV.ClaudeVerdictEvent], *, issuer: str, n: int, seed: int,
+                 evidence_dir: Path | None = None,
                  ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """A seeded sample of gold-verdicted rows for the blind hand audit (X3d): the rows carry
-    question, gold and leader; the verdicts ride a separate key list in the same order."""
+    question, gold and leader — and, with ``evidence_dir``, the text of the emails the
+    question's notes name, so each row is deliberated AGAINST THE CORPUS; the verdicts ride a
+    separate key list in the same order."""
     by_id = eligible_from(decisions)
     verdicts = {e.decision_id: CV.y(e) for e in CV.latest_by_decision(
         [e for e in existing if e.issuer == issuer]).values()}
@@ -114,8 +141,11 @@ def audit_sample(decisions: Iterable[DEC.DecisionEvent],
     for decision_id in picked:
         d = by_id[decision_id]
         q = questions_by_hash[d.question_id]
-        rows.append({"decision_id": decision_id, "question": str(q["question"]),
-                     "gold": str(q["answer"]), "leader": _leader(d)[0]})
+        row: dict[str, Any] = {"decision_id": decision_id, "question": str(q["question"]),
+                               "gold": str(q["answer"]), "leader": _leader(d)[0]}
+        if evidence_dir is not None:
+            row["evidence"] = _evidence_for(q, evidence_dir)
+        rows.append(row)
         keys.append({"decision_id": decision_id, "verdict": verdicts[decision_id]})
     return rows, keys
 
@@ -131,6 +161,8 @@ def build_parser() -> argparse.ArgumentParser:
     a.add_argument("--n", type=int, default=60)
     a.add_argument("--seed", type=int, required=True)
     a.add_argument("--out", type=Path, required=True)
+    a.add_argument("--evidence-dir", type=Path, default=None,
+                   help="the builder's emails dir: carry each row's evidence emails (on-machine)")
     return parser
 
 
@@ -167,7 +199,7 @@ def main(argv: list[str] | None = None) -> int:
               + f" appended={len(events)}")
         return 0
     rows, keys = audit_sample(decisions, by_hash, existing, issuer=issuer, n=args.n,
-                              seed=args.seed)
+                              seed=args.seed, evidence_dir=args.evidence_dir)
     out = Path(args.out).expanduser()
     if kb in out.resolve().parents:
         print("REFUSED: the audit file must live OUTSIDE the KB")
