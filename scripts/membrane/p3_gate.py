@@ -433,6 +433,18 @@ def question_acts(rows: Sequence[HeldoutTick]) -> dict[str, Any]:
     return acts
 
 
+def verdicts_by_question(rows: Sequence[HeldoutTick]) -> dict[str, bool]:
+    """The verdict of record per question, from the keyed ticks the harness folds: the
+    majority label over the question's ticks, tie → wrong (the anti-flattering side, as in
+    `question_acts`). ONE rule (`M-7`): the same `y` that grades the typed arm grades the
+    baseline's reports in `build_paired` — r51b Amendment 6 found the A3 join grading its two
+    arms with two graders (the fairfight row's `asserted_correct` is `answer_matches`)."""
+    by_q: dict[str, list[int]] = {}
+    for r in rows:
+        by_q.setdefault(r.question_id, []).append(int(r.y))
+    return {qid: 2 * sum(ys) > len(ys) for qid, ys in by_q.items()}
+
+
 def hash_to_qid(questions: Sequence[Mapping[str, Any]]) -> dict[str, str]:
     """{question_id_hash: corpus_id} via ``DEC.question_id`` recompute — the deterministic join
     from the anonymous verdict hashes to the fair-fight baseline's ``q2-*`` ids."""
@@ -441,12 +453,16 @@ def hash_to_qid(questions: Sequence[Mapping[str, Any]]) -> dict[str, str]:
 
 def build_paired(
     membrane_acts: Mapping[str, Any], h2q: Mapping[str, str],
-    baseline_rows: Sequence[dict[str, Any]],
+    baseline_rows: Sequence[dict[str, Any]], *,
+    verdicts: Mapping[str, bool] | None = None,
 ) -> tuple[list[Any], list[str], list[str]]:
     """A3 pairing: ``PairedOutcome(typed=membrane held-out act, mono=baseline realised act)``
     over the questions that (a) have a held-out membrane act, (b) map to a corpus id, and
     (c) appear in the baseline arm. Returns (paired, only_membrane_named, only_baseline_named)
-    — unjoined questions are named, never silently dropped."""
+    — unjoined questions are named, never silently dropped. ``verdicts`` (question hash →
+    verdict of record, `verdicts_by_question`) re-grades a baseline REPORT by the same verdict
+    that grades the typed arm; a withholding and a scoped report are untouched; ``None``
+    keeps the fairfight row's own `asserted_correct` (the r49/r50 record path)."""
     from fairfight import loss_ledger as LL
 
     import life_agent.core.gate as GATE
@@ -460,9 +476,13 @@ def build_paired(
             continue
         brow = by_qid[qid]
         joined_corpus_ids.add(qid)
+        mono = LL.actual_response(brow)
+        if verdicts is not None and vhash in verdicts and mono.action == "report":
+            mono = GATE.RealisedResponse("report", correct=bool(verdicts[vhash]),
+                                         cost_usd=mono.cost_usd)
         paired.append(GATE.PairedOutcome(
             question_id=qid, answerable=bool(brow.get("answerable", bool(brow.get("answer", "")))),
-            typed=act, mono=LL.actual_response(brow)))
+            typed=act, mono=mono))
     only_membrane = sorted(h for h in membrane_acts if h2q.get(h) not in by_qid)
     only_baseline = sorted(q for q in by_qid if q not in joined_corpus_ids)
     return paired, only_membrane, only_baseline
@@ -649,7 +669,8 @@ def run_differential(rows: Sequence[HeldoutTick], *, variant: str,
                      posterior: Any, pairing: RegimePairing,
                      u_bar_reading: UBarReading,
                      oracle_p: float, out: Path, draws: int, seed: int,
-                     log: Callable[[str], None] = print) -> Any:
+                     log: Callable[[str], None] = print,
+                     verdicts: Mapping[str, bool] | None = None) -> Any:
     """One A3 differential gate (membrane held-out acts vs the credence baseline) for one
     lattice variant, with VARIANT-SUFFIXED artifacts — a second variant (or a re-run)
     must never clobber another's record (the runs-3/4 clobber lesson). The lattice under
@@ -660,9 +681,10 @@ def run_differential(rows: Sequence[HeldoutTick], *, variant: str,
     import life_agent.core.gate as GATE
 
     acts = question_acts(list(rows))
-    paired, only_m, only_b = build_paired(acts, h2q, baseline_rows)
+    paired, only_m, only_b = build_paired(acts, h2q, baseline_rows, verdicts=verdicts)
+    baseline_grader = "verdict-of-record" if verdicts is not None else "harness"
     log(f"  joined {len(paired)} questions  ·  membrane-only (non-v2/live) {len(only_m)}  "
-        f"·  baseline-only {len(only_b)}")
+        f"·  baseline-only {len(only_b)}  ·  baseline graded by {baseline_grader}")
     gate = GATE.delta_posterior(paired, posterior, oracle_p=oracle_p,
                                 n_draws=draws, seed=seed)
     marginal = marginal_commits(paired)
@@ -707,7 +729,7 @@ def run_differential(rows: Sequence[HeldoutTick], *, variant: str,
         "variant": variant,
         "families": list(families),
         "indicators": [n for f in families for n in LR.FAMILY_NAMES[f]],
-        "n_joined": len(paired),
+        "n_joined": len(paired), "baseline_grader": baseline_grader,
         "membrane_only": only_m, "baseline_only": only_b,
         "verdict": verdict, "p_delta_gt": gate.p_delta_gt,
         "delta_mean": gate.delta_mean,
@@ -904,7 +926,8 @@ def main(argv: list[str] | None = None) -> int:
                          baseline_rows=baseline_rows, baseline_arm=args.baseline_arm,
                          posterior=posterior, pairing=pairing, u_bar_reading=reading,
                          oracle_p=LK._ORACLE_P, out=args.out,
-                         draws=args.draws, seed=args.seed)
+                         draws=args.draws, seed=args.seed,
+                         verdicts=verdicts_by_question(rows_by_variant[name]))
     mark("end")
     write_phases(args.out, marks)
     print("\n" + render_phase_summary(marks))

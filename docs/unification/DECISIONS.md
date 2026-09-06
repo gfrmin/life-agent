@@ -1546,10 +1546,13 @@ cells at n ≥ 30 on quintiles, the deliberate edge live, the pricing Ū from th
 fold at break-even 0.900 (coincident with the gate's by number, divergent by label; `M-34`'s
 INCONCLUSIVE structurally impossible, as the Scope clause said). Consequence enacted: the CONFIRMED
 branch — the proplang#26 comment worded as corroboration at ~1× n; A-CAL's reliability diagram and
-ECE (0.113) and OQ-0′ (c′)'s X7 table delivered in the report. Predictions: P2, P3, P3′, P5, P6
-confirmed; P1 (195 against [120, 190]), P4 (X6 PASS, not FAIL), P7 (n = 3), P8 (ECE 0.113) refuted;
-P9 as pre-read. One control clause (X3c) fired on the informative outcome — `GD-33`. `A-13`'s
-pooling recon opens next.
+ECE (0.113) and OQ-0′ (c′)'s X7 table delivered in the report. Predictions: P2, P3, P5, P6
+confirmed; P3′ and P4 confirmed in letter with their mechanism refuted (the fixed form is
+unreadable at 70–90, not at ≥90; X6 FAILs by under-assertion, not by marginal commits — and only
+once the baseline arm is graded by the verdict of record, `GD-34`); P1 (195 against [120, 190]),
+P7 (n = 3), P8 (ECE 0.113) refuted; P9 as pre-read. The self-review found two defects after the
+first commit: a control clause that fired on the informative outcome (`GD-33`) and an A3 join
+grading its arms with two graders (`GD-34`). `A-13`'s pooling recon opens next.
 
 ## GD-33 · 2026-09-07 · r51b — a control clause that fired on the informative outcome
 
@@ -1559,23 +1562,32 @@ consequence is STOP, re-scope by a dated blind amendment, no reading taken — a
 not be blind: the harness writes the control's and the verdict's artefacts in one run, and the
 runbook applied X4's rule before checking the controls.
 
-**Ruled.** `G-3` (owner, 2026-08-31): a control counts as a control only if removing what it
-controls for turns it RED. Removing the family ablation X3c checks makes every variant identical —
-GREEN. So X3c was never a control: it froze `r49`'s *empirical* S4 finding (three families inert on
-238 ticks) as a harness check, and its KILL fires exactly when the ablation is informative. `G-3`
-determines the fork (`RULINGS` §2); this entry publishes the enactment.
+**Ruled, by analogy.** `G-3` (owner, 2026-08-31) rules the test-guard method: a control counts as
+a control only if removing what it controls for turns it RED — *demonstrated by mutation, never
+asserted by shape*. Applying it to a pre-registered KILL is an extension decided here (`D-3`), and
+the demonstration was run rather than asserted: on a feature-sensitive fake engine the X3c check
+reads red as built (10/20 actions differ), **green when the ablation is made a no-op** (0/20), red
+again when it is mis-wired (10/20). X3c is blind to exactly the no-op defect — for that mechanism
+it was never a control: it froze `r49`'s *empirical* S4 finding (three families inert on 238 ticks)
+as a harness check, and its KILL fires when the ablation is informative.
 
 **Decided here (`D-3`), and why.**
 
 1. **The KILL stands as fired by its letter** (the `GD-16` / `GD-25` shape: letter met, ground
    refuted) and its consequence is enacted by Amendment 5 — dated, informed, disclosing what had
-   been seen — not by a re-run: X3b, read on the real engine, gives 19/19 rows identical across two
-   spawns and identical to the record, so a re-run would reproduce the artefacts byte for byte.
+   been seen — not by a full re-run: X3b, read on the real engine on two folds (fold 8, no commit;
+   fold 2, the fold carrying all ten commits), gives every row identical across two spawns and
+   identical to the record, the ten commits reproduced.
 2. **X3c is re-scoped as X3c′, a reading**: FULL 10 commits (8 correct), the control 0,
    `leader-credence-only` 0 (≡ the control on all 195); the ten all `n-candidates=1` (77 of the
-   other 185 are), 9 of 10 `p-none<0.20`, all in one fold, at `p1` 0.949–0.950 against 0.865–0.874
-   under the control. On this corpus the candidate-count family is the only one that ever lifts
-   `p1` over the commit bar; on the owner's it moved nothing (`r49` S4).
+   other 185 are), 9 of 10 `p-none<0.20`, and all in ONE fold whose held-out set is exactly ten
+   single-candidate rows (all committed at `p1` 0.949–0.950) and ten others (0.8595–0.8620); in the
+   other nine folds 68 single-candidate rows with `p-none<0.20` reach `p1` 0.896 and none commits.
+   A spawn-level reading: one engine of ten lifted `p1` by ≈ 0.08 on its single-candidate rows;
+   whether the candidate-count family or that training set did it is not separated (three families
+   differ between FULL and the control; no single-family ablation; a fold-specific alternative —
+   training-set sensitivity, rung placement, `#19` / `GD-15` — is open). On the owner's corpus the
+   three families moved nothing (`r49` S4).
 3. **No consequence for X4** — its verdict is invariant across the three variants (mean `p1`
    spans 0.018 / 0.010 / 0.006, realised identical, ρ 0.90 on each), which is the $0 evidence that
    the KILL's ground cannot reach the verdict. X6 is quoted per variant, as it always was to be.
@@ -1593,5 +1605,44 @@ determines the fork).
 
 **Not done, deliberately.** No rule, cell, threshold or branch of X4 changed; no §18 bar read;
 nothing deploys; `M-1` not engaged.
+
+**Reaction.** *(open)*
+
+## GD-34 · 2026-09-07 · r51b — the A3 join graded its two arms with two graders
+
+**The fork.** The self-review of the read (after the first commit) found `p3_gate.build_paired`
+grading the typed arm by the verdict of record (`y`, the vendored matcher) and the baseline arm by
+the fairfight row's `asserted_correct` — `answer_matches`, the reading the pre-registration's
+Verdict clause says decides nothing. Which grading is the reading of record for X6, and what is
+done with the harness.
+
+**Ruled.** The frozen Verdict clause: the vendored matcher is the verdict; `answer_matches` is a
+second reading and decides nothing. One grader for both arms follows; no new ruling is needed.
+
+**Decided here (`D-3`), and why.**
+
+1. **The verdict of record grades both arms.** `verdicts_by_question` (majority per question, tie
+   → wrong — `question_acts`' own tie rule) feeds `build_paired`, which re-grades a baseline REPORT
+   and leaves withholdings and scoped reports untouched; `a3_meta` names the grader; the curve
+   binds the same call. RED test, no-op mutation RED, suite green, ruff and mypy clean.
+2. **The A3 phase re-run from the persisted held-out rows** (no engine spawn) into a sibling
+   directory, the as-run artefacts kept: X6 reads **FAIL** 0.008 / −0.240 [−0.387, −0.059] where the
+   as-run record read PASS 0.984 / +0.424 — the baseline's 77 reports are 73 ✓ / 4 ✗ by the verdict,
+   60 / 17 by the harness grader; the abstain×report cell 68 ✓ / 3 ✗, not 55 / 16. P4's FAIL and
+   no-straddle clauses hold; its mechanism (marginal commits) is refuted — the differential is
+   under-assertion.
+3. **The owner-KB path inherits the rule**: `main` always supplies verdicts, so the baseline arm of
+   every future A3 reading is graded by the Claude verdicts of record, named in the record.
+   `r49`'s reading is untouched by construction (zero abstain×report rows; the 26 shared commits
+   agreed under both graders), stated with the numbers, not re-read.
+4. **This is not a softening** (`M-4`): a by-product moves from PASS to FAIL, the direction the
+   blind prediction named; X4, X7's policy columns, X9 and X10 do not read the baseline arm.
+
+**Alternatives rejected.** Quoting the as-run PASS with a footnote (the frozen clause names the
+grader; a footnote would leave a two-grader differential in the record); re-grading in a
+scratchpad script (`M-7` — the rule lives in the harness, tested); a full engine re-run (the
+held-out rows are persisted and X3b certifies them).
+
+**Not done, deliberately.** No decide-path change; nothing deploys; `r49` not re-read.
 
 **Reaction.** *(open)*

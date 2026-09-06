@@ -97,7 +97,8 @@ def curve_point(rows: Sequence[P3.HeldoutTick], u_bar: Mapping[str, float],
                 oracle_p: float, draws: int, seed: int) -> dict[str, Any]:
     at = policy_at(rows, u_bar)
     acts = P3.question_acts(at)
-    paired, only_m, only_b = P3.build_paired(acts, h2q, baseline_rows)
+    paired, only_m, only_b = P3.build_paired(acts, h2q, baseline_rows,
+                                             verdicts=P3.verdicts_by_question(rows))
     point: dict[str, Any] = {
         "u_wrong": float(u_bar["u_wrong"]), "implied_bar": implied_bar(u_bar),
         "effective_bar": effective_bar(u_bar),

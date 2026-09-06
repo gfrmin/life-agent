@@ -1,13 +1,14 @@
 # r51b — the 1×-n replication on ATM-Bench's email subset — READ: **X4 CONFIRMED**
 
-**2026-09-06 · $40.58 · one executor pass + one K = 10 engine run · repo `e9275c7` (build) / `2795fc8` (read) ·
+**2026-09-06 · $45.04 ($40.58 pass + $4.46 third pilot, whose 11 warm deliberates the pass served) · one executor pass + one K = 10 engine run · repo `e9275c7` (build) / `2795fc8` (read) ·
 engine `71998f6556f5…` · corpus `Jingbiao/ATM-Bench` at HF revision `78e826dc07e97466b2f54443831ef9a83ab8b27c`, pinned
 `atm-bench-20260906` (digest `50a73805…`) · evaluator `ef4e5dff`.** Pre-registration frozen at `18f7840` before any
-build; amended blind four times before the run (Amendment 3 the pins and the re-price; Amendment 4 the `--expect-*` pins, the
-X3d tally and the timing constant — each dated in the log) and once after it (Amendment 5, dated and informed — §8 deviation 6). No ATM-Bench question, answer, email text or id is quoted here; every
+build; amended twice before the run, blind (Amendment 3 the pins and the re-price; Amendment 4 the `--expect-*` pins, the X3d
+tally and the timing constant; Amendments 1–2 amended `r51`'s document) and twice after it, dated and informed (Amendment 5
+the X3c re-scope, Amendment 6 the A3 grader — §8 deviations 6–7). No ATM-Bench question, answer, email text or id is quoted here; every
 number is a count or an aggregate.
 
-> **Verdict.** **X4 CONFIRMED on the quintile form, under every variant.** Over five readable quintiles of leader credence (n = 39 each) the mean held-out `p1` spans **0.018** (0.860 → 0.878) while realised spans **0.436** (0.538 → 0.974), Spearman ρ **0.90** — the pooled shape `r49` read on the owner's corpus, here on a public one with independent labels: credence flat across the feature, truth rising with it, the pull in both directions (+0.32 in the lowest cell, −0.10 in the highest). The fixed form is not readable (P3′, as predicted). ECE over `p1`-deciles 0.113, so the pooled `p1` is not marginally calibrated either (P8 refuted). The reading is **corroboration at ~1× n** (`M-35`, `GD-32`), never power. One control clause, X3c, fired by its letter after the run and is re-scoped by Amendment 5 (§3b; §8 deviation 6) — the verdict is invariant to it: the same frozen rule reads CONFIRMED under all three variants. Consequence enacted: the frozen CONFIRMED branch (a comment on proplang#26 worded as corroboration); nothing deploys.
+> **Verdict.** **X4 CONFIRMED on the quintile form, under every variant.** Over five readable quintiles of leader credence (n = 39 each) the mean held-out `p1` spans **0.018** (0.860 → 0.878) while realised spans **0.436** (0.538 → 0.974), Spearman ρ **0.90** — the pooled shape `r49` read on the owner's corpus, here on a public one with independent labels: credence flat across the feature, truth rising with it, the pull in both directions (+0.32 in the lowest cell, −0.10 in the highest). The fixed form is not readable (P3′). ECE over `p1`-deciles 0.113 (P8 refuted by its letter; the pooled `p1`'s mean 0.870 sits 0.029 above the base rate 0.841 — close marginally, flat conditionally, which is P8's own rationale). The reading is **corroboration at ~1× n** (`M-35`, `GD-32`), never power. Two things the self-review changed after the run, both disclosed: X3c, a control clause, fired by its letter and is re-scoped by Amendment 5 (§3b; deviation 6) — the verdict is invariant to it; and the A3 by-product X6 had graded its two arms with two graders — re-graded by the verdict of record it reads **FAIL** (Amendment 6; §5; deviation 7), as P4 predicted. Consequence enacted: the frozen CONFIRMED branch (a comment on proplang#26 worded as corroboration); nothing deploys.
 
 ## 1. What was asked
 
@@ -26,10 +27,10 @@ a public corpus, and the `u_wrong` sensitivity curve with implied bar, coverage 
 - **The pass.** `ff-atm-baseline-20260906c`, launched 08:28:26 UTC as a transient unit, finished 15:00:23 UTC (6 h 32 min):
   381 answers, 361 decisions (155 report · 206 abstain; 340 under the full regime, 21 terminals-only; 0 defaulted), typed report rate 0.407 on 381 scored
   rows (P2); deliberate edge fired on 120 questions (497 tool calls, 1 declines), 11
-  of them warm from the third pilot's cache; spend 40.58 (decision rows $40.58, 361/361 numeric; deliberate records $40.26 over 109 fresh records).
+  of them warm from the third pilot's cache; spend 45.04 ($40.58 pass + $4.46 third pilot, whose 11 warm deliberates the pass served) (decision rows $40.58, 361/361 numeric; deliberate records $40.26 over 109 fresh records).
 - **Verdicts.** `gold_verdicts.py grade` over the pass's decision log: eligible 340 · no question 0 · not
   gradeable 145 · correct 164 · wrong 31 → **195 verdicted ticks over 195 questions**
-  (P1 [120, 190]); harness `answer_matches` agrees on 160, disagrees on 35 (the cross-tab, §3).
+  (P1 [120, 190]); harness `answer_matches` agrees on 160, disagrees on 35 (the cross-tab: Amendment 4).
 - **The engine run.** `p3_gate.py --folds 10 --u-bar-source current`, unit `r51b-gate`, 43 min 42 s wall (fold 1 min 22 s · probe:FULL 24 min 29 s · probe:leader-credence-only 8 min 51 s · probe:leader-credence+p-none 8 min 40 s · pricing ≤ 9 s each · a3 3 s + 4 s; cpu 40 min 48 s, cpu/wall 0.93);
   pricing Ū = the external KB's live fold (`all-to-date@current`, elicitation-only: `u_wrong` −8.9993, `lambda_int` 1.0)
   → break-even **0.900**, the gate's `frozen-elicitations` posterior break-even **0.9000** — coincident numerically,
@@ -38,7 +39,7 @@ a public corpus, and the `u_wrong` sensitivity curve with implied bar, coverage 
 
 ## 3. X3d — the grader audit (blind, on-machine, files deleted)
 
-Sixty verdicted rows were drawn by seed 8675309 from the sorted verdicted ids into a file outside the KB and the repo, each carrying the question, the gold, the leader and the full text of its gold evidence emails. Every row was read against its evidence and judged leader-correct or leader-wrong before the key was opened; the tally was then computed mechanically against the key. Five rows were judged wrong: in four the leader carried a different amount or date than the evidence states; in one it gave the stay in nights where the gold counts days and the evidence shown did not confirm the arrival date, so it was counted wrong (the conservative side). Two rows were judged correct although the leader answered a 'when' question to the day where the gold adds the hour — named as the class a precision mismatch is most likely to turn into a grader false negative, so a reader can price it.
+Sixty verdicted rows were drawn by seed 8675309 from the sorted verdicted ids into a file outside the KB and the repo, each carrying the question, the gold, the leader and the full text of its gold evidence emails. Every row was read against its evidence and judged leader-correct or leader-wrong before the key was opened; the tally was then computed mechanically against the key. Five rows were judged wrong: in four the leader carried a different amount or date than the evidence states; in one the leader and the gold counted a duration in different units and the evidence shown did not settle it, so it was counted wrong (the conservative side). Two rows were judged correct although the leader gave a date at coarser precision than the gold — named as the class a precision mismatch is most likely to turn into a grader false negative, so a reader can price it.
 
 | | grader CORRECT | grader WRONG |
 |---|---:|---:|
@@ -52,40 +53,40 @@ Type × lane cross-tab on the verdicted ticks (P9): all 195 verdicted ticks are 
 ## 3b. X3a–c — the harness controls, and the one that fired
 
 - **X3a** (K = n reproduces LOO byte-for-byte on the fake client): `tests/test_p3_gate_folds.py`, green on the read tree.
-- **X3b** (one fold re-run twice → identical `p1`s), read on the real engine after the run (16:00–16:07 UTC): fold 8 (19 questions, train 176) re-run twice through the harness's own `probe_heldout` — 19/19 rows identical between the runs and identical to the run's recorded `heldout-FULL.jsonl` rows (max |Δ`p1`| = 0.0); 159 s and 169 s per spawn. **PASS.**
-- **X3c** (the `leader-credence+p-none` variant reproduces FULL's policy): **fails by its letter.** FULL commits on 10 of 195 held-out ticks; the control on 0; `leader-credence-only` on 0 (control ≡ leader-credence-only on all 195). The ten are all `n-candidates=1` (77 of the other 185 are), 9 of 10 `p-none<0.20`, leader credence 6 in ≥0.90 · 3 in 0.80–0.90 · 1 in 0.50–0.70; all ten sit in one fold, whose engine returned `p1` 0.949–0.950 on them where the control's returned 0.865–0.874; over all 195 ticks `p1`(FULL) − `p1`(control) has mean +0.004 and max +0.083; 8 of the 10 are correct. The frozen consequence — STOP, re-scope by amendment, no reading taken — is enacted by **Amendment 5** (deviation 6): X3c is not a control under `G-3` (breaking the ablation it checks would turn it GREEN, not RED); it froze `r49`'s *empirical* S4 finding as a harness check, and the harness ground it stood for is carried by X3a, X3b, the three variants sharing ids and folds, and the ablated variants reproducing `r49`'s degenerate `p1` ≈ 0.86. Re-scoped as this reading (**X3c′**), whose consequence for X4 is none — the verdict is invariant across the variants. What X3c′ says about the engine: on this corpus the candidate-count family is the only one that ever lifts `p1` over the commit bar; `r49` found it inert on 238 ticks. Registered as `GD-33` and `M-36`.
+- **X3b** (one fold re-run twice → identical `p1`s), read on the real engine after the run through the harness's own `probe_heldout`: fold 8 (19 questions, no commit; 16:00–16:07 UTC) and, at the self-review's demand, fold 2 (20 questions, the fold carrying all ten commits; 17:39–17:45 UTC) — each re-run twice, every row identical between the runs and identical to the run's recorded `heldout-FULL.jsonl` rows (max |Δ`p1`| = 0.0; the ten commits reproduced). **PASS.**
+- **X3c** (the `leader-credence+p-none` variant reproduces FULL's policy): **fails by its letter.** FULL commits on 10 of 195 held-out ticks; the control on 0; `leader-credence-only` on 0 (control ≡ leader-credence-only on all 195). What the ten are: all `n-candidates=1`, 9 of 10 `p-none<0.20`, leader credence 6 in ≥0.90 · 3 in 0.80–0.90 · 1 in 0.50–0.70, 8 of 10 correct — and all in ONE fold, whose held-out set is exactly 10 single-candidate rows (all committed, `p1` 0.949–0.950) and 10 others (0.8595–0.8620); across the other nine folds 68 single-candidate rows with `p-none<0.20` reach a maximum `p1` of 0.896 and none commits. Over all 195 ticks `p1`(FULL) − `p1`(control) has mean +0.004 and max +0.083. So the reading is **spawn-level**: one of ten engines lifted `p1` by ≈ 0.08 on its single-candidate rows; whether the candidate-count family or that spawn's training set did it is not separated (FULL and the control differ by three families, no single-family ablation was run, and a fold-specific alternative — training-set sensitivity or rung placement, `#19` / `GD-15` — is open). The frozen consequence — STOP, re-scope by amendment, no reading taken — is enacted by **Amendment 5** (deviation 6). Its ground, tested rather than asserted: on a feature-sensitive fake engine (`p1` 0.95 iff the tick carries `n-candidates=1`, else 0.86) the X3c check reads red as built (10/20 actions differ), **green when the ablation is made a no-op** (0/20 — `features_for` ignoring `families`), and red again when the ablation is mis-wired (variants swapped, 10/20). X3c is therefore blind to exactly the no-op defect: `G-3`'s test, applied to a pre-registered KILL by analogy (`GD-33`), says a clause that turns GREEN when the mechanism it checks is removed is not a control for that mechanism. It froze `r49`'s *empirical* S4 finding as a harness check; the harness ground it stood for is carried by X3a, X3b, the three variants sharing ids and folds, and the ablated variants reproducing `r49`'s degenerate `p1` ≈ 0.86. Re-scoped as this reading (**X3c′**), whose consequence for X4 is none — the verdict is invariant across the variants. Registered as `GD-33` and `M-36`.
 
 ## 4. X4 — the pooled-prior read
 
-**Primary — quintiles of leader credence** (readable at n ≥ 30; 90% Jeffreys interval on realised):
+**Primary — quintiles of leader credence** (readable at n ≥ 30; 90% Jeffreys interval on realised — exact Beta quantiles):
 
 | quintile [edges) | n | realised [90% CI] | mean held-out `p1` | `p1` − realised |
 |---|---:|---:|---:|---:|
-| q1 [0.053, 0.313) | 39 | 0.538 [0.409, 0.666] | 0.8600 | +0.322 |
-| q2 [0.314, 0.584) | 39 | 0.821 [0.712, 0.913] | 0.8604 | +0.040 |
-| q3 [0.610, 0.894) | 39 | 0.949 [0.875, 1.000] | 0.8774 | -0.071 |
-| q4 [0.895, 0.925) | 39 | 0.923 [0.840, 0.985] | 0.8779 | -0.045 |
-| q5 [0.925, 0.990) | 39 | 0.974 [0.914, 1.000] | 0.8741 | -0.100 |
+| q1 [0.053, 0.313) | 39 | 0.538 [0.408, 0.665] | 0.8600 | +0.322 |
+| q2 [0.314, 0.584) | 39 | 0.821 [0.704, 0.903] | 0.8604 | +0.040 |
+| q3 [0.610, 0.894) | 39 | 0.949 [0.865, 0.985] | 0.8774 | -0.071 |
+| q4 [0.895, 0.925) | 39 | 0.923 [0.830, 0.972] | 0.8779 | -0.045 |
+| q5 [0.925, 0.990) | 39 | 0.974 [0.904, 0.995] | 0.8741 | -0.100 |
 
-Spearman ρ (realised vs quintile index, harness) 0.9; ECE over these cells 0.11563754933173478.
+Spearman ρ (realised vs quintile index, harness) 0.9; ECE over these cells 0.115.
 
 **Secondary — `r49`'s fixed leader-credence buckets** (upper three readable at n ≥ 30, lower two at n ≥ 15):
 
 | leader bucket | n | realised [90% CI] | mean held-out `p1` | `p1` − realised |
 |---|---:|---:|---:|---:|
-| lt50 | 70 | 0.671 [0.578, 0.760] | 0.8600 | +0.189 |
-| 50-70 | 19 | 0.789 [0.625, 0.925] | 0.8679 | +0.078 |
-| 70-80 | 7 | 1.000 [0.805, 1.000] | 0.8668 | -0.133 (unreadable) |
-| 80-90 | 22 | 1.000 [0.929, 1.000] | 0.8830 | -0.117 (unreadable) |
-| ge90 | 77 | 0.948 [0.899, 0.985] | 0.8761 | -0.072 |
+| lt50 | 70 | 0.671 [0.575, 0.758] | 0.8600 | +0.189 |
+| 50-70 | 19 | 0.789 [0.610, 0.908] | 0.8679 | +0.078 |
+| 70-80 | 7 | 1.000 [0.768, 1.000] | 0.8668 | -0.133 (unreadable) |
+| 80-90 | 22 | 1.000 [0.917, 1.000] | 0.8830 | -0.117 (unreadable) |
+| ge90 | 77 | 0.948 [0.894, 0.978] | 0.8761 | -0.072 |
 
-The `leader-credence+p-none` and `leader-credence-only` variants read the same verdict on the same rows: mean `p1` spans 0.010 and 0.006, realised identical, ρ 0.90, ECE over `p1`-deciles 0.106 and 0.107.
+The `leader-credence+p-none` and `leader-credence-only` variants read the same verdict on the same rows: mean `p1` spans 0.010 and 0.006, realised identical, ρ 0.90, ECE over `p1`-deciles 0.106 and 0.107. Intervals are exact Jeffreys (Beta quantiles); the verdict rule uses none of them.
 
 **Rule applied** (frozen; evaluator sha `99b4434e80751626…`, written and tested on synthetic tables before any held-out row
 existed): five of five quintiles readable at n ≥ 30 (39 each); mean `p1` span 0.0179 < 0.05 ✓; realised span 0.436 > 0.15 ✓; ρ 0.900 ≥ 0.6 ✓ → **CONFIRMED (quintile form)**. The fixed form is not read: 70–80 (n = 7) and 80–90 (n = 22) are unreadable at n ≥ 30, so P3′ holds. REFUTED's conjuncts are not met (max |gap| 0.322 > 0.10; ρ ≥ 0.6). The same script applied to the other two variants' cells in `a1_a2.json` reads CONFIRMED on each (spans 0.0104 and 0.0060).
 
 **Power asymmetry, repeated beside the verdict:** at n ≈ 36 per cell CONFIRMED is the powered direction (a 0.15 monotone
-span is detectable); REFUTED is weak. Here the powered direction is the one that fired, on a span nearly three times its bar and a ρ well clear of 0.6; the lowest and highest cells' 90% intervals ([0.409, 0.666] vs [0.914, 1.000]) do not overlap. What this n cannot do is bound the *size* of the pull in the middle cells (q2–q4 gaps +0.04 / −0.07 / −0.05 sit inside ±0.10 intervals) — so the claim carried to proplang#26 is the shape, never a per-cell number.
+span is detectable); REFUTED is weak. Here the powered direction is the one that fired, on a span nearly three times its bar and a ρ well clear of 0.6; the lowest and highest cells' 90% intervals ([0.408, 0.665] vs [0.904, 0.995]) do not overlap. What this n cannot do is bound the *size* of the pull in the middle cells (q2–q4 gaps +0.04 / −0.07 / −0.05 sit inside ±0.10 intervals) — so the claim carried to proplang#26 is the shape, never a per-cell number.
 
 ### 4.1 For `DR-DECISION-1` §2.1 (A-CAL) — delivered here, not as an edit to that document
 
@@ -104,34 +105,36 @@ span is detectable); REFUTED is weak. Here the powered direction is the one that
 | q9 [0.873, 0.873) | 19 | 0.947 | 0.8728 | -0.075 |
 | q10 [0.873, 0.950) | 20 | 0.850 | 0.9195 | +0.070 |
 
-ECE over `p1`-deciles **0.11269889546525991** (P8 ≤ 0.05).
+ECE over `p1`-deciles **0.112** (P8 ≤ 0.05).
 
-A-CAL's step-0 read on this corpus: **ECE 0.113** over `p1`-deciles (0.116 over the leader-credence quintiles). The pooled `p1` sits in [0.860, 0.950] with 185 of 195 rows inside [0.860, 0.874], while realised across those deciles runs 0.526 → 1.000 — so the condition under which Chow's rule is optimal (Fumera, Roli & Giacinto 2000: true posteriors) is not met on this corpus at this n. Per-lane not tested: these rows are 39.5% `quantity` by the lane regex and the rest `exact`, with no per-lane cell readable at n ≥ 30. Annotation for §2.1: *A-CAL held on ATM-Bench's email subset, 195 verdicted ticks, 2026-09-06 — the owner-corpus read (`r49`, 238 ticks) stands beside it.* Delivered here because the document is untracked (deviation 5).
+A-CAL's step-0 read on this corpus: **ECE 0.113** over `p1`-deciles (0.116 over the leader-credence quintiles). The pooled `p1` sits in [0.860, 0.950]: 177 of 195 rows inside [0.860, 0.874], 185 below 0.897, ten at 0.95; realised across the deciles runs 0.526 → 1.000 while the predictor moves by 0.013 over nine of them. Marginally the predictor is close (mean `p1` 0.870 vs base rate 0.841); conditionally it is flat — so the condition under which Chow's rule is optimal (Fumera, Roli & Giacinto 2000: true posteriors) is not met on this corpus at this n. Per-lane not tested: these rows are 39.5% `quantity` by the lane regex and the rest `exact`, with no per-lane cell readable at n ≥ 30. Annotation for §2.1: *A-CAL held on ATM-Bench's email subset, 195 verdicted ticks, 2026-09-06 — the owner-corpus read (`r49`, 238 ticks) stands beside it.* Delivered here because the document is untracked (deviation 5).
 
 ## 5. X6, X7, X10
 
-**X6 — the A3 differential at `frozen-elicitations`, `M-34` verdict: PASS**, P(Δ > 0.05) **0.984**, Δ̄ **+0.424** [+0.127, +0.766] (20 000 draws, seed 8675309) — recorded, never a §18 bar. The shape is the mirror of `r49`'s: the membrane arm commits on **10 of 195** held-out ticks (8 ✓ / 2 ✗, answer rate 0.05) against the baseline's 77 (60 ✓ / 17 ✗, 0.39). The disagreement region is 75 rows: abstain×report 71 (mean Δ +1.253 — the baseline's 17 wrong commits at `u_wrong` −9 outweigh its 54 correct ones), report×abstain 4 (−1.500: 3 ✓ 1 ✗), report×report 6 (0). Marginal commits n = 4 at rate 0.750, measured reach outside [0.900, 0.900] — no straddle. P4's straddle clause holds; its FAIL does not, and the differential is carried by the baseline's over-assertion, not by marginal commits. Under the control variant (0 commits) the same reads PASS 0.996 / +0.476 [+0.180, +0.821]. Δ_spend reads 0.000 **structurally** — the harness's paired file carries the typed act and its correctness only, no spend, so the baseline's metered $40.58 never enters; the same zero as `r49`'s for a different reason (`r49`'s rows had null costs; these carry 361/361 numeric costs the join does not read).
+**X6 — the A3 differential at `frozen-elicitations`, recorded under `M-34`, never a §18 bar.** The harness's own artefacts (`a3_gate-FULL.md`, as run) read **PASS**, P(Δ > 0.05) 0.984, Δ̄ +0.424 [+0.127, +0.766] — and the self-review found why: `build_paired` graded the typed arm by the verdict of record (`y`, the vendored matcher) and the baseline arm by the fairfight row's `asserted_correct`, which is `answer_matches` — the reading the frozen verdict clause says decides nothing. Two graders, one differential (deviation 7; Amendment 6). **Re-graded by the verdict of record — the reading of record — X6 reads FAIL**: P(Δ > 0.05) **0.008**, Δ̄ **−0.240** [−0.387, −0.059] (20 000 draws, seed 8675309), the control variant FAIL 0.024 / −0.189 [−0.329, −0.002]. The arms: membrane 8 ✓ / 2 ✗ / 185 withheld (answer rate 0.05); baseline 73 ✓ / 4 ✗ / 118 (0.39) by the verdict of record, where the harness grader had read it 60 ✓ / 17 ✗ — the 13 rows are the one-way matcher-disagreement class Amendment 4 counted (35 over the 195). The disagreement region is 75 rows: abstain×report 71, **68 ✓ / 3 ✗** (mean Δ −0.577; the harness grading had it 55 / 16 at +1.253), report×abstain 4 (3 ✓ 1 ✗, −1.500), report×report 6 (0). Marginal commits n = 4 at rate 0.750, measured reach outside [0.900, 0.900] — no straddle. **P4 is confirmed in letter (FAIL, no straddle) and refuted in mechanism**: the differential is under-assertion — the membrane withholds on 68 rows the baseline answers correctly — not the marginal commits (4). The mirror of `r49`'s over-assertion. `r49`'s own reading is untouched by the two-grader structure: there the membrane's report set contained the baseline's (zero abstain×report) and the 26 shared commits never disagreed, so the baseline's grader never entered its Δ. Δ_spend reads 0.000 **structurally** — the paired file carries the act and its correctness only, no spend, so the baseline's metered $40.58 never enters (the same zero as `r49`'s for a different reason: `r49`'s rows had null costs; these carry 361/361 numeric costs the join does not read).
 
-**X7 — the `u_wrong` curve** (`u_wrong_curve.py`, the same 195 held-out ticks re-scored at each grid point; the ruled regime's point ★ and the run's pricing point ◆ coincide at −9):
+**X7 — the `u_wrong` curve** (`u_wrong_curve.py` on the same 195 held-out ticks re-scored at each grid point, the baseline arm graded by the verdict of record; ◆ the run's pricing point and ★ the ruled point coincide at −9):
 
-A sensitivity deliverable, **never a verdict** (`M-4`): the same held-out ticks re-scored at each grid point of the identified latent; the ruled regime's point (`-9.0`) and the run's own pricing point (`-8.999307289508993`) are marked, not preferred.
+A sensitivity deliverable, **never a verdict** (`M-4`): the same held-out ticks re-scored at each grid point of the identified latent; the ruled regime's point (`-9.0`) and the run's own pricing point (`-8.999`) are marked, not preferred.
 
 | u_wrong | implied bar | effective bar | coverage | selective risk | joined | marginal n / rate | P(Δ>δ) | Δ̄ [5%, 95%] |
 |---:|---:|---:|---:|---:|---:|---|---:|---|
-| -1.0 | 0.5000 | 0.501 | 1.000 | 0.159 | 195 | 118 / 0.771 | 1.000 | +0.461 [+0.365, +0.555] |
-| -4.0 | 0.8000 | 0.800 | 1.000 | 0.159 | 195 | 118 / 0.771 | 0.910 | +0.246 [-0.001, +0.484] |
-| -5.131 | 0.8369 | 0.837 | 1.000 | 0.159 | 195 | 118 / 0.771 | 0.740 | +0.164 [-0.139, +0.459] |
-| -7.4285 | 0.8814 | 0.882 | 0.087 | 0.176 | 195 | 6 / 0.833 | 0.952 | +0.298 [+0.054, +0.574] |
-| -9.0 ★ | 0.9000 | 0.900 | 0.051 | 0.200 | 195 | 4 / 0.750 | 0.986 | +0.427 [+0.131, +0.755] |
-| -12.0 | 0.9231 | 0.924 | 0.051 | 0.200 | 195 | 4 / 0.750 | 0.998 | +0.659 [+0.270, +1.090] |
+| -1.0 | 0.5000 | 0.501 | 1.000 | 0.159 | 195 | 118 / 0.771 | 1.000 | +0.327 [+0.244, +0.409] |
+| -4.0 | 0.8000 | 0.800 | 1.000 | 0.159 | 195 | 118 / 0.771 | 0.113 | -0.089 [-0.287, +0.095] |
+| -5.131 | 0.8369 | 0.837 | 1.000 | 0.159 | 195 | 118 / 0.771 | 0.012 | -0.245 [-0.490, -0.019] |
+| -7.4285 | 0.8814 | 0.882 | 0.087 | 0.176 | 195 | 6 / 0.833 | 0.001 | -0.265 [-0.380, -0.136] |
+| -9.0 ★ | 0.9000 | 0.900 | 0.051 | 0.200 | 195 | 4 / 0.750 | 0.007 | -0.241 [-0.388, -0.067] |
+| -12.0 | 0.9231 | 0.924 | 0.051 | 0.200 | 195 | 4 / 0.750 | 0.033 | -0.210 [-0.397, +0.015] |
 
 ◆ the run's pricing point · ★ the ruled regime's point (`M-34`). Implied bar = the break-even; effective bar = where the engine's restricted argmax actually flips to respond (a cheap `ask` can hold it above the break-even). Coverage = the share of held-out ticks the policy commits at the effective bar; selective risk = the wrong rate among them; δ = the gate's frozen materiality.
+
+The coverage and selective-risk columns are the policy's alone and are identical under either grader; the Δ columns are the verdict-of-record ones (under the harness grader every point from −4 down read positive). The −9 row's P(Δ>δ) 0.007 / Δ̄ −0.241 differs from X6's 0.008 / −0.240 because the curve holds U at the point while the gate integrates over P(U).
 
 ### 5.1 For `OPEN-QUESTIONS-utility` OQ-0′ (c′) — delivered here, not as an edit to that document
 
 At the ruled point (−9, bar 0.900) coverage is **0.051** with selective risk 0.200 (2 of 10); at −7.4285 (0.882) 0.087 / 0.176; at −5.131 and below the effective bar (≤ 0.837) sits under the pooled `p1`'s floor (0.860), so coverage is 1.000 and the selective risk is the base rate 0.159 (31 of 195). What (c′) — *rule a target risk, derive `u_wrong`* — has to bite on here: **nothing between 0.837 and 0.900**. Coverage falls from 1.000 to 0.087 across that interval because the pooled `p1` has almost no mass in it, so a target-risk rule on this corpus chooses between accepting the base rate and abstaining on 91–95% of rows; the curve is a step, not a slope, until `p1` carries the feature's gradient (§4). A sensitivity deliverable, never a verdict (`M-4`); delivered here because the document is untracked (deviation 5).
 
-**X10 (descriptive, n = 3).** Of the 14 email-only abstention questions, **11 posted no decision row at all** — the executor withheld before any posterior existed (the fairfight scorer files all 20 no-decision questions as withholds, 15 rightly and 5 wrongly: 11 abstention · 8 `open_end` · 1 `number`), so on this corpus the NONE atom's public gold is mostly exercised by 'nothing to decide over', never by `p_none`. On the 3 that did post: mean `p_none` 0.103 (median 0.140), mean leader credence 0.897 — against the 197 `number` rows' mean `p_none` 0.177 (median 0.168) and mean leader credence 0.651. **P7 REFUTED on n = 3**: the abstention rows that reached a posterior look like confident answers, not like doubt. A reading, never a verdict.
+**X10 (descriptive, n = 3).** Of the 14 email-only abstention questions, **11 posted no decision row at all** — the executor withheld before any posterior existed (the fairfight scorer files all 20 no-decision questions as withholds, 15 rightly and 5 wrongly: 11 abstention · 8 `open_end` · 1 `number`), so on this corpus the NONE atom's public gold is mostly exercised by 'nothing to decide over', never by `p_none`. On the 3 that did post: mean `p_none` 0.103 (median 0.140), mean leader credence 0.897 — against the 197 `number`-typed decision rows' (195 of them verdicted) mean `p_none` 0.177 (median 0.168) and mean leader credence 0.651. **P7 REFUTED on n = 3**: the abstention rows that reached a posterior look like confident answers, not like doubt. A reading, never a verdict.
 
 ## 6. Blind predictions, scored
 
@@ -140,8 +143,8 @@ At the ruled point (−9, bar 0.900) coverage is **0.051** with selective risk 0
 | P1 | verdicted ticks ∈ [120, 190] | 195 | REFUTED (5 above the interval) |
 | P2 | typed report rate on the 381 ∈ 0.30–0.50 | 0.407 | CONFIRMED |
 | P3 | X4 CONFIRMED on the quintile read | CONFIRMED | CONFIRMED |
-| P3′ | fixed upper three not all readable | 70–80 n = 7 · 80–90 n = 22 · ≥90 n = 77 | CONFIRMED |
-| P4 | X6 FAIL, marginal commits in 70–90, no straddle | PASS 0.984 / +0.424 [+0.127, +0.766]; marginal 4 @ 0.750; no straddle | REFUTED (PASS, not FAIL; the no-straddle clause holds) |
+| P3′ | fixed upper three not all readable | 70–80 n = 7 · 80–90 n = 22 · ≥90 n = 77 | CONFIRMED in letter (the fixed form is unreadable); ground refuted — ge90 holds 77, the unreadable cells are 70–80 and 80–90 |
+| P4 | X6 FAIL, marginal commits in 70–90, no straddle | FAIL 0.008 / −0.240 [−0.387, −0.059] by the verdict of record (as-run harness-graded PASS 0.984 / +0.424); marginal 4 @ 0.750; no straddle | CONFIRMED in letter (FAIL, no straddle); ground refuted — under-assertion (68 withheld-correct rows), not marginal commits (4) |
 | P5 | grader FN ≤ 0.05; `answer_matches` alone > 0.10 | 0.050 / 0.283 | CONFIRMED (the grader at the boundary: 3/60) |
 | P6 | X7 coverage < 0.30 at −9, > 0.60 at −1 | 0.051 / 1.000 | CONFIRMED |
 | P7 | abstention rows' mean p_none > number rows' | 0.103 vs 0.177 | REFUTED (n = 3) |
@@ -150,7 +153,7 @@ At the ruled point (−9, bar 0.900) coverage is **0.051** with selective risk 0
 
 ## 7. Consequence enacted
 
-**The frozen CONFIRMED branch.** A comment on proplang#26 (posted 2026-09-07: https://github.com/gfrmin/proplang/issues/26#issuecomment-5560495676) with the quintile table, the fixed-bucket table, the audit and the pins, worded as corroboration at ~1× n on a second corpus — nothing new is asked; Amendment 5 is disclosed in it. `DR-DECISION-1` §2.1 receives its first reliability diagram and ECE (§4.1) and OQ-0′ (c′) X7's table (§5.1), both delivered here (deviation 5). Nothing deploys; no bar moves; §18's counters do not move; `M-1` is not engaged. **Next: the corpus-pooling recon opens as its own $0 checkpoint (`A-13`), sized in the foldable unit (`M-35`)**, its pre-registration frozen before any download. Registered en route: `GD-33` (X3c's disposition) and `M-36` (an ablation is not a control).
+**The frozen CONFIRMED branch.** A comment on proplang#26 (posted 2026-09-06 16:14 UTC, edited 2026-09-07 with the self-review's corrections: https://github.com/gfrmin/proplang/issues/26#issuecomment-5560495676) with the quintile table, the fixed-bucket table, the audit and the pins, worded as corroboration at ~1× n on a second corpus — nothing new is asked; Amendment 5 is disclosed in it, and X6 is not quoted there. `DR-DECISION-1` §2.1 receives its first reliability diagram and ECE (§4.1) and OQ-0′ (c′) X7's table (§5.1), both delivered here (deviation 5). Nothing deploys; no bar moves; §18's counters do not move; `M-1` is not engaged. **Next: the corpus-pooling recon opens as its own $0 checkpoint (`A-13`), sized in the foldable unit (`M-35`)**, its pre-registration frozen before any download. Registered en route: `GD-33` and `M-36` (an ablation is not a control), `GD-34` and `M-37` (a differential grades both arms with one grader).
 
 ## 8. Deviations, disclosed
 
@@ -165,7 +168,8 @@ At the ruled point (−9, bar 0.900) coverage is **0.051** with selective risk 0
    edited by the owner out of band and off-limits to this agent; the pre-registration's "gets" clauses are discharged by
    delivering the reliability diagram + ECE and X7's table under headings that name their destination, for the owner to
    carry across.
-6. **X3c fired by its letter after the run, and Amendment 5 is dated but not blind.** The harness writes X3c's, X4's and X6's artefacts in one run, and the runbook applied the X4 rule (15:51 UTC) before the control was checked (15:53 UTC). The amendment names what had been seen when it was written (X4 CONFIRMED under two variants, X6 PASS, X7, X9), touches no rule, cell, threshold or branch, and would read the same had X4 read REFUTED or INCONCLUSIVE — the test it states for itself. No re-run was bought: X3b certifies the artefacts deterministic to the last digit, so the post-amendment read is the same rule on the same rows. Disclosed in the proplang#26 comment.
+6. **X3c fired by its letter after the run, and Amendment 5 is dated but not blind.** The harness writes X3c's, X4's and X6's artefacts in one run, and the runbook applied the X4 rule (15:51 UTC) before the control was checked (15:53 UTC). The amendment names what had been seen when it was written, touches no rule, cell, threshold or branch, and would read the same had X4 read REFUTED or INCONCLUSIVE — the test it states for itself. No engine re-run was bought for the reading: X3b certifies the artefacts deterministic on two folds, including the one carrying every commit. Disclosed in the proplang#26 comment.
+7. **The A3 join graded its two arms with two graders; found by the self-review after the first commit, fixed in the harness, both gradings published (Amendment 6, dated and informed).** `p3_gate.build_paired` took the baseline arm's correctness from the fairfight row's `asserted_correct` — `answer_matches` — while the typed arm carried the verdict of record; the frozen verdict clause said `answer_matches` decides nothing, and it decided one arm. The fix routes a baseline REPORT through `verdicts_by_question` (the same `y`; majority per question, tie → wrong), lands with a RED test and a no-op mutation (RED), names the grader in `a3_meta` (`baseline_grader`), and the A3 phase was re-run from the persisted held-out rows without an engine spawn — the as-run artefacts stay on disk beside the re-graded ones. The change also governs the owner-KB path from here: its baseline arm will be graded by the Claude verdicts of record; `r49`'s reading is untouched (containment — zero abstain×report, shared commits agreeing). Registered `GD-34`, `M-37`.
 
 ## 9. Method notes
 
@@ -176,7 +180,7 @@ At the ruled point (−9, bar 0.900) coverage is **0.051** with selective risk 0
   verdict and so never enter the keyed replay.
 - The audit file and its key were written outside the KB and the repo, read on-machine, and deleted after the tally; no
   value from either appears in any pushed artefact.
-- `a1_a2.json` carries three variants — `leader-credence-only` is the A1/A2 default set's third; `--gate-variants` selects only the A3 pair — so its X4 read is reported too (§4). Held-out commits by fold: 10 in one fold, 0 in the other nine (§3b). The runbook's step order put the X4 verdict before the X3 controls, a sequencing defect disclosed in deviation 6. The unit's third engine probe was not projected in Amendment 4 (which priced two variants); wall stayed inside the projection.
+- `a1_a2.json` carries three variants — `leader-credence-only` is the A1/A2 default set's third; `--gate-variants` selects only the A3 pair — so its X4 read is reported too (§4). Held-out commits by fold: 10 in one fold, 0 in the other nine (§3b). The runbook's step order put the X4 verdict before the X3 controls (deviation 6). Amendment 4 projected 25–40 min of engine time for two variants: those two probes took 33.2 min; the third, un-projected probe added 8.9 min and the unit's wall was 43.7 min. Realised-rate intervals are exact Jeffreys (Beta quantiles), computed after the review found the renderer's normal approximation; no verdict uses them.
 
 ## 10. X9 — blast radius
 

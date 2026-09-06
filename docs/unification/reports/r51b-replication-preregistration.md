@@ -172,3 +172,21 @@ whose verdict is invariant across the three variants (the same frozen rule reads
 0.010 / 0.006, realised identical, ρ 0.90). This amendment touches no X4 rule, cell, threshold or branch and would read the
 same had X4 read REFUTED or INCONCLUSIVE. No re-run is bought: X3b certifies the artefacts deterministic, so the reading of
 record is the frozen rule applied after this amendment to the same rows. Registered: `GD-33`, `M-36`.
+
+**Amendment 6 — 2026-09-07, after the run and after the first commit of the read: the A3 differential graded its two arms
+with two graders; fixed in the harness, both gradings published. Dated, informed — disclosed.** The self-review of the read
+found that `p3_gate.build_paired` grades the typed arm by the verdict of record (the keyed tick's `y`, the vendored matcher)
+and the baseline arm by the fairfight row's `asserted_correct`, which is `answer_matches` — the reading this document's
+Verdict clause says "decides nothing". It decided one arm. On the 195 joined rows the baseline's 77 reports read 60 ✓ / 17 ✗
+under the harness grader and **73 ✓ / 4 ✗** under the verdict of record (the 13 are the one-way disagreement class Amendment
+4 counted). **Rule enacted:** the verdict of record grades BOTH arms — `verdicts_by_question` (majority per question, tie →
+wrong, mirroring `question_acts`) feeds `build_paired`, which re-grades a baseline REPORT and leaves withholdings untouched;
+`a3_meta` names the grader (`baseline_grader`); `u_wrong_curve.py` binds the same call. Landed with a RED test, a no-op
+mutation (RED), the suite green (3 331), ruff and mypy clean. **The A3 phase was re-run from the persisted held-out rows —
+no engine spawn — into `r51b-regraded/`, the as-run artefacts kept beside it.** Reading of record: X6 **FAIL**, P(Δ > 0.05)
+0.008, Δ̄ −0.240 [−0.387, −0.059] (control FAIL 0.024 / −0.189); as run it had read PASS 0.984 / +0.424. P4 is confirmed in
+letter (FAIL, no straddle) and refuted in mechanism (under-assertion, not marginal commits). X4, X7's coverage and risk
+columns, X10 and X9 are untouched (none reads the baseline arm). The owner-KB path inherits the rule (its baseline arm will
+be graded by the Claude verdicts of record); `r49`'s reading is untouched by construction — zero abstain×report rows and the
+26 shared commits agreeing, so its baseline grader never entered Δ. This amendment softens nothing: it moves a by-product
+from PASS to FAIL, in the direction the blind prediction named. Registered: `GD-34`, `M-37`.
