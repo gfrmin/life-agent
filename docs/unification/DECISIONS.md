@@ -1498,4 +1498,45 @@ sunk design).
 KB read only as aggregate counts of its decision and verdict logs (X9's manifest was never
 needed — nothing was built to threaten it).
 
+**Reaction.** The owner ruled the same evening, interviewed
+(`conferrals/r51-successor-conferral.md`): `r51b` now, the pooling recon after → `A-13`,
+`GD-32`.
+
+## GD-32 · 2026-09-06 · r51b — the replication's own forks
+
+**The fork.** `A-13` opens the pre-registered instrument on a known sample of 198 gradeable
+questions (≤ 198 verdicted ticks). What the known n changes, and what it must not.
+
+**Ruled (owner).** Option 1 of the successor conferral: `r51b` now, then the pooling recon.
+
+**Decided here (`D-3`), and why.**
+
+1. **Cells re-cut to the known n before any outcome exists** — quintiles of leader credence
+   readable at n ≥ 30 (≈ 36 per cell), the fixed buckets secondary at 30 / 15, `p1`-decile
+   reliability and ECE descriptive. `M-3` forbids moving a rule after seeing a *result*; a sample
+   size is a fact of the instrument, and cutting ten cells of ≈ 18 rows would have made every
+   verdict INCONCLUSIVE by construction. This is the whole reason the successor is a new
+   pre-registration and not an amendment to `r51`.
+2. **Tolerances made power-consistent**: REFUTED at |mean `p1` − realised| ≤ 0.10 over ≥ 4
+   readable quintiles (2·SE ≈ 0.13 at n ≈ 36; `r51`'s 0.05 was inside noise), with ρ < 0.6;
+   CONFIRMED unchanged (0.05 / 0.15 / ρ ≥ 0.6). The power asymmetry — CONFIRMED is the powered
+   direction — is disclosed in the pre-registration and repeated beside the verdict.
+3. **The claim is bounded in advance**: any CONFIRMED is corroboration at ~1× n on a second
+   corpus, never power, in those words on proplang#26; a REFUTED is "does not replicate on a
+   public corpus at ~1× n". The small-n objection stays open either way.
+4. **The pooling recon opens after the read, not alongside it** — one instrument per checkpoint
+   (`M-28`'s discipline applied to attention), and the recon is sized in the foldable unit
+   (`M-35`) so it cannot repeat `r51`'s premise error.
+5. **Everything else is inherited verbatim** from `r51`'s pre-registration: the vendored
+   matcher as the verdict, answer-typed gradeability, the 60-row blind audit with its 0.10 VOID
+   ceiling, K = 10 sorted-rank folds, the declared Ū source, X9's blast radius, X10, the
+   fail-closed gold writer and the one docstring clause (`M-3` names it again here).
+
+**Alternatives rejected.** Deciles at n ≥ 18 (INCONCLUSIVE by construction); LOO (≈ 4 h for no
+gain at this n); running several passes to inflate ticks (repeats are not evidence — `M-35`);
+opening the pooling recon first (the owner chose the reading in hand).
+
+**Not done, deliberately.** No §18 bar is read; no counter moves; nothing deploys, enables or
+swaps; no gauge or regime change; no proplang edit; no ATM-Bench content in tree.
+
 **Reaction.** *(open)*
