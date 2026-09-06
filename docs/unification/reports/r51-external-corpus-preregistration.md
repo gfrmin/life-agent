@@ -318,6 +318,18 @@ rule, prediction or consequence branch changes.** Lesson, for the amendment reco
 pin is verified only by a `curl` of the raw file at the sha; a rendered or summarised fetch
 is not a source.
 
+**Amendment 2 — 2026-09-06, after the recon, before any build.** Read against the frozen
+clauses: **X1 KILLs** — email-only ∧ `number`-typed QA = **198** < 200 (main set; the hard set
+adds 2 email-only rows, both `open_end`). X3e met exactly (360 / 139 / 514; the released `qtype`
+field, which the recon disclosure wrongly said did not exist, agrees with the detector on all
+1,013 rows). P1 and P1′ confirmed; P2 refuted (`quantity` on 79 / 198 = 40%); P9 refuted (14
+email-only abstention rows). **A premise corrected**: the harness folds one tick per verdicted
+decision and the owner's log shows exactly one decision per question per pass, so a pass here
+yields ≤ 198 ticks (≈ 0.8× `r49`'s 238) — the "~1,000 ticks / ~10× n" in Cost counted QA pairs
+as ticks and is withdrawn (`M-35`). No bar moves (`M-4`); the frozen X1 branch is enacted:
+nothing built, report `r51-external-corpus.md`, `GD-31`. HF revision
+`78e826dc07e97466b2f54443831ef9a83ab8b27c`; corpus on-machine only.
+
 Expected further entries, each named here so they are not deviations: the recon counts (X1,
 X3e); the `--expect-ticks` / `--expect-questions` pins and the harness-match cross-tab after the
 gold pass; the X3d audit tally (TP/FP/FN/TN); the timing-probe constant; the X9 manifests.
