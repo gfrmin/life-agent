@@ -73,10 +73,12 @@ from this repo, never committed; **abstention items number 25** (paper App. C.1;
 printed beside it is the paper's own arithmetic error, 25/1,038 = 2.4%), so the abstention leg is
 a small named secondary (X10), not a primary; the paper's 360 / 139 / 514 number / list / open
 split is produced by a deterministic **answer-text** detector (`qtype_utils.detect_qtype`, line
-121, falling back from an optional `qtype` key at `evaluate_qa.py:357`); numbers are graded by
+176 — *Amendment 1*; falling back from an optional `qtype` key via `normalize_qtype_value`,
+`evaluate_qa.py:913`); numbers are graded by
 exact match after resolving relative dates against the question's "Today is …" anchor, stripping
 currency breakdowns and parentheticals, and normalising (`_deterministic_accuracy_core`,
-`evaluate_qa.py:211`, returning `tuple[bool, str]`; `deterministic_accuracy -> bool` at 294);
+`evaluate_qa.py:181`, returning `tuple[bool, str]`; `deterministic_accuracy -> bool` at 304 —
+*Amendment 1*);
 lists by Jaccard; open-ended by an LLM judge. The π\* baseline is NOT needed — the A3 differential
 baselines on the credence executor arm — so the priced pass is single-digit dollars.
 
@@ -254,7 +256,10 @@ In order, each under TDD with a mutation battery: (2e) ATM-Bench's evaluator ven
 sha into `scripts/atm_bench/vendored/` — `normalizer.py` and `qtype_utils.py` copied, the
 `ABSTENTION_PHRASES` constant copied out of a `config.py` that is itself not vendorable (it
 imports the project's OpenAI/vLLM configuration), `_deterministic_accuracy_core` and
-`deterministic_accuracy` extracted from `evaluate_qa.py` with only the imports they need; the
+`deterministic_accuracy` extracted from `evaluate_qa.py` together with the four date/token
+helpers the core calls that live in that file and not in the normalizer
+(`date_component_match`, `date_token_match`, `dates_match`, `tokens_match` — *Amendment 1*),
+with only the imports they need; the
 only edit to copied text is the import path, disclosed in a `SOURCE` file and pinned by a sha
 test; the directory excluded from ruff/mypy by a named entry. (2c) `p3_gate.py`: k-fold
 `probe_heldout` (K = n ≡ LOO), a declared Ū source (`boot` | `current`, the label carrying the
@@ -291,6 +296,28 @@ quote any ATM-Bench content.
 
 ## Amendment log (blind, dated)
 
-*None yet.* Expected entries, each named here so they are not deviations: the recon counts (X1,
+**Amendment 1 — 2026-09-06, after the freeze commit `62a880f`, before any download.** The
+evaluator line pins in the recon disclosure were wrong and are corrected in place (marked
+*Amendment 1*). Read by `curl` of the raw files at the pinned sha
+`ef4e5dff1a47ec71213a06e359f02753defa8fb1` — which is also HEAD of the repository's `main`
+(last push 2026-08-13; the evaluator directory last changed 2026-06-01): `normalizer.py` is 745
+lines; `qtype_utils.py` 191 with `detect_qtype` at 176; `evaluate_qa.py` 1,370 with
+`_deterministic_accuracy_core` at 181 (→ `tuple[bool, str]`), `deterministic_accuracy` at 304
+(→ `bool`) and the `qtype` fallback `normalize_qtype_value` at 913; `config.py` 98 lines with
+`ABSTENTION_PHRASES` = **seven** strings (one the "no evidnece" typo-duplicate, kept verbatim),
+importing `memqa.global_config` and therefore not vendorable. The plan's revision-3 numbers
+(574 / 159:121 / 211 / 294 / 357 / 105 lines / eight strings) match no ref of the repository
+and are withdrawn; revision 2's were right. **Every mechanism claim holds at the sha**:
+`detect_qtype` is answer-only; the core resolves relative dates against
+`extract_reference_date(question)`, strips parentheticals and currency breakdowns, matches
+codes exactly, then compares normalised text; `is_abstention` is a substring test over the
+phrase list. One consequence for the build: the core calls four helpers defined in
+`evaluate_qa.py` itself (`date_component_match` 145, `date_token_match` 151, `dates_match`
+163, `tokens_match` 177), so `matcher.py` extracts six functions, not two. **No criterion,
+rule, prediction or consequence branch changes.** Lesson, for the amendment record: a line
+pin is verified only by a `curl` of the raw file at the sha; a rendered or summarised fetch
+is not a source.
+
+Expected further entries, each named here so they are not deviations: the recon counts (X1,
 X3e); the `--expect-ticks` / `--expect-questions` pins and the harness-match cross-tab after the
 gold pass; the X3d audit tally (TP/FP/FN/TN); the timing-probe constant; the X9 manifests.
