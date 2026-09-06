@@ -126,6 +126,9 @@ def test_write_phases_roundtrips_marks_spans_and_totals(tmp_path: Path) -> None:
 # --- M-33: the regime record + the marginal-commit table ----------------------------------
 
 
+READING = P3.UBarReading({k: float(v) for k, v in PRICING.items()}, "all-to-date", "boot", None)
+
+
 def _pairing() -> GATE.RegimePairing:
     return GATE.regime_pairing(pricing_u_bar=PRICING, pricing_policy="all-to-date",
                                scoring_u_bar=_posterior().u_bar(),
@@ -133,7 +136,7 @@ def _pairing() -> GATE.RegimePairing:
 
 
 def test_regime_record_carries_both_policies_break_evens_and_u_bars_at_full_precision() -> None:
-    rec = P3.regime_record(_pairing(), pricing_u_bar=PRICING,
+    rec = P3.regime_record(_pairing(), pricing=READING,
                            scoring_u_bar=_posterior().u_bar())
     assert rec["pricing"]["policy"] == "all-to-date"
     assert rec["scoring"]["policy"] == "frozen-elicitations"
@@ -184,10 +187,10 @@ def test_run_differential_meta_carries_regimes_and_the_marginal_table(tmp_path: 
     rows, h2q, baseline_rows = _p3b_fixture()
     P3.run_differential(rows, variant="FULL", families=tuple(P3.LR.ALL_FAMILIES), h2q=h2q,
                         baseline_rows=baseline_rows, baseline_arm="deliberative",
-                        posterior=_posterior(), pairing=_pairing(), pricing_u_bar=PRICING,
+                        posterior=_posterior(), pairing=_pairing(), u_bar_reading=READING,
                         oracle_p=0.9, out=tmp_path, draws=400, seed=7, log=lambda _m: None)
     meta = json.loads((tmp_path / "a3_meta-FULL.json").read_text())
-    assert meta["regimes"] == P3.regime_record(_pairing(), pricing_u_bar=PRICING,
+    assert meta["regimes"] == P3.regime_record(_pairing(), pricing=READING,
                                                scoring_u_bar=_posterior().u_bar())
     assert meta["marginal_commits"] == {"n": 0, "correct": 0, "rate": None,
                                         "abstain_x_report": 0}
@@ -215,7 +218,7 @@ def test_run_differential_logs_the_pairing_at_the_measured_marginal_rate(tmp_pat
     lines: list[str] = []
     P3.run_differential(rows, variant="FULL", families=tuple(P3.LR.ALL_FAMILIES), h2q=h2q,
                         baseline_rows=baseline, baseline_arm="deliberative",
-                        posterior=_posterior(), pairing=_pairing(), pricing_u_bar=PRICING,
+                        posterior=_posterior(), pairing=_pairing(), u_bar_reading=READING,
                         oracle_p=0.9, out=tmp_path, draws=400, seed=7, log=lines.append)
     text = "\n".join(lines)
     assert "pairing-sensitive" in text and "0.750" in text
@@ -233,7 +236,7 @@ def test_run_differential_says_so_when_no_commit_is_marginal(tmp_path: Path) -> 
     lines: list[str] = []
     P3.run_differential(rows, variant="FULL", families=tuple(P3.LR.ALL_FAMILIES), h2q=h2q,
                         baseline_rows=baseline_rows, baseline_arm="deliberative",
-                        posterior=_posterior(), pairing=_pairing(), pricing_u_bar=PRICING,
+                        posterior=_posterior(), pairing=_pairing(), u_bar_reading=READING,
                         oracle_p=0.9, out=tmp_path, draws=400, seed=7, log=lines.append)
     text = "\n".join(lines)
     assert "no marginal commits" in text and "pairing-sensitive" not in text

@@ -146,4 +146,5 @@ def test_no_network_or_judge_dependency_in_the_vendored_package() -> None:
     """`evaluate_qa.py` imports requests/openai/tqdm for the LLM judge; the extraction must not."""
     for p in VENDORED.glob("*.py"):
         text = p.read_text(encoding="utf-8")
-        assert not re.search(r"^\s*(import|from)\s+(requests|openai|tqdm|memqa)\b", text, re.M), p.name
+        hit = re.search(r"^\s*(import|from)\s+(requests|openai|tqdm|memqa)\b", text, re.M)
+        assert hit is None, p.name
