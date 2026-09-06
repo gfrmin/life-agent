@@ -1679,4 +1679,10 @@ counting QA pairs as ticks (`M-35`); the owner-corpus band rate as the constant 
 **Not done, deliberately.** No download before this commit; nothing built; no §18 counter moves; no proplang
 comment.
 
-**Reaction.** *(open)*
+**Reaction.** 2026-09-07 — read the same day (`r52-pooling-recon.md`, $0): Y0 PASS (360 / 139 / 514 exactly);
+Y1 KILL at both constants, as the frozen text said it must — 437 pooled gradeable (ATM 198 + LongMemEval 142 +
+LoCoMo 97) → 65 / 101 band rows against 385; Y1′ 14 / 9 ATM-sized corpora. Every fork above was exercised as
+decided (the answer-typed rule with the frozen casting; the lower constant; nothing built). P1 half refuted
+(LoCoMo 97, below [200, 500] — its numbers sit in one category), P2's interval refuted with its KILL clause and
+sizing confirmed, P3 and P4′ confirmed. The pooling route is closed at one pass each; what to build next is live
+for the owner (`RULINGS` §5, `conferrals/r52-successor-conferral.md`).

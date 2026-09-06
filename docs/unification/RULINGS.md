@@ -128,7 +128,15 @@ what to build next, and to §4's two carried items.
 Everything else — scope, sequencing, method, measurement design, consequence branches, FAIL
 handling, spend — is derivable and is delegated.
 
-**Nothing is live in this class (2026-09-06, evening).** The last four entries were RESOLVED by
+**ONE item is live in this class (2026-09-07):**
+
+- **What to build after `r52`'s KILL?** `r51b` read CONFIRMED (`GD-32`–`GD-34`) and `r52` read Y1 KILL
+  (`GD-35`): pooling the public labelled corpora that exist reaches 65–101 band rows against 385, so
+  the pooling route is closed at one pass each. Posed with four priced options and a recommendation
+  (`conferrals/r52-successor-conferral.md`: the verdict re-supply on the 87-row band backlog ·
+  the two-corpus corroboration build · hold for proplang#26 · the §17.6 named builds). **OPEN.**
+
+The four entries before it were RESOLVED by
 interview (`conferrals/a3-regime-conferral.md` on 2026-09-05; `conferrals/external-corpus-
 conferral.md` and `conferrals/r51-successor-conferral.md` on 2026-09-06 — `AskUserQuestion`,
 priced options with a recommendation first, `M-17`'s form):
