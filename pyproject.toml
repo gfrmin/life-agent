@@ -59,6 +59,9 @@ packages = ["src/pkm", "src/life_agent"]
 [tool.ruff]
 # pkm holds to 88; life_agent code is ~100 wide. 100 satisfies both (pkm's longest line is 84).
 line-length = 100
+# r51b 2e: ATM-Bench's evaluator is vendored byte-for-byte at a pinned sha (its SOURCE names the
+# one edit per file); upstream style is not ours to lint.
+extend-exclude = ["scripts/atm_bench/vendored"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "UP", "B", "SIM", "RUF"]
@@ -86,6 +89,8 @@ known-first-party = ["life_agent", "pkm"]
 # design rather than finding bugs (a full tests pass surfaced 0 production bugs). pytest
 # is the gate for tests.
 files = ["src", "scripts"]
+# r51b 2e: the vendored ATM-Bench evaluator is upstream code at a pinned sha, not ours to type.
+exclude = ['^scripts/atm_bench/vendored/']
 warn_unreachable = true
 warn_unused_ignores = true
 warn_redundant_casts = true
@@ -121,3 +126,8 @@ markers = [
     "llm: tests requiring live LLM API calls (non-deterministic; opt-in via -m llm)",
     "system: tests running heavy ML producers (docling/tesseract); non-deterministic output, opt-in via -m system",
 ]
+
+[[tool.mypy.overrides]]
+# r51b 2e: followed imports into the vendored ATM-Bench evaluator are not checked (pinned upstream code).
+module = ["atm_bench.vendored.*"]
+ignore_errors = true
