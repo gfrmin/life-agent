@@ -138,3 +138,18 @@ are archived too, so the reading's decision log starts empty; the full pass runs
 
 Expected further entries: the `--expect-*` pins and the harness-match cross-tab after the gold
 pass; the X3d tally; the timing constant; the X9 after-manifest.
+
+**Amendment 4 — 2026-09-06, after the gold pass and the audit, before any held-out `p1` exists.**
+The pass `ff-atm-baseline-20260906c` finished at 15:00:23 UTC (6 h 32 min of wall from the 08:28:26 UTC launch; 381 answers, 361
+decisions, $40.58 — $0.107/q against Amendment 3's projected $0.223/q). The gold pass wrote
+**195 verdicts over 195 questions** (eligible 340 · not gradeable 145 · no
+question 0 · already verdicted 0 · correct 164 · wrong 31; a second run appended nothing), so the
+harness runs with `--expect-ticks 195 --expect-questions 195`; band rows (0.7 ≤ leader credence < 0.9)
+29, so X5 is under-powered as predicted (P5 of `r51`) and is published as such. The harness-match cross-tab:
+`answer_matches` agrees with the vendored matcher on 160 verdicts and disagrees on 35
+(all 35 one way: the vendored matcher reads correct where `answer_matches` reads wrong, never the reverse). **X3d, the blind audit:** 60 rows sampled by seed 8675309 from the sorted verdicted ids, each read
+against its evidence emails on-machine and judged before the key was opened — TP 52 · FN 3 · FP 0 ·
+TN 5, **FN-rate 0.050 against the 0.10 ceiling → X4 STANDS**; precision 1.000, recall
+0.945; `answer_matches` on the same rows would have read FN-rate 0.283. Both files were deleted after the
+tally; nothing from them is quoted. **Timing constant:** one spawn folding 195 ticks read 0.472 (92.1 s in all; super-linear in depth: 0.172 at 50 ticks, 0.247 at 100, 0.355 at 150) s per
+tick-fold, so K = 10 projects ≈ 25–40 min of engine time for both variants (20 spawns each folding ~176 ticks at ~70 s, plus 390 decide ticks). No criterion, prediction or branch changes.
