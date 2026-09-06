@@ -291,3 +291,24 @@ def test_rank_tables_cut_the_primary_on_leader_credence_quintiles_and_the_reliab
     assert [c["key"] for c in tables["cells_p1"]] == ["p1"] * 10
     assert tables["summary_leader_credence"]["spearman"] == pytest.approx(1.0)
     assert tables["cells_leader_credence"][0]["lo"] == 0.5
+
+
+def test_write_heldout_rows_is_variant_suffixed_and_round_trips(tmp_path) -> None:
+    # X7 needs the per-tick (p1, y) the run probed; the harness now persists them beside
+    # a1_a2.json, one file per variant, and reads them back as the same HeldoutTick rows
+    rows = [P3.HeldoutTick("q1", 0.9, 0.87, 1, True), P3.HeldoutTick("q2", None, None, 0, False)]
+    path = P3.write_heldout_rows(tmp_path, "FULL", rows)
+    assert path == tmp_path / "heldout-FULL.jsonl"
+    assert P3.read_heldout_rows(path) == rows
+    assert P3.write_heldout_rows(tmp_path, "leader-credence+p-none", rows).name == \
+        "heldout-leader-credence+p-none.jsonl"
+
+
+def test_commit_bar_for_is_the_restricted_argmax_flip_not_the_break_even() -> None:
+    # a cheap ask holds the commit bar above the break-even; an expensive one lets them meet
+    cheap = {**U_BAR, "lambda_int": 0.1}
+    dear = {**U_BAR, "lambda_int": 5.0}
+    assert P3.commit_bar_for(dear) == pytest.approx(GATE.break_even(dear), abs=0.001)
+    assert P3.commit_bar_for(cheap) > GATE.break_even(cheap) + 0.05
+    assert P3.commit_bar_for({**U_BAR, "u_wrong": -1e9}) is None or \
+        P3.commit_bar_for({**U_BAR, "u_wrong": -1e9}) >= 0.999

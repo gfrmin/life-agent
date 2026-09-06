@@ -211,6 +211,31 @@ def probe_heldout(
     return rows
 
 
+def commit_bar_for(u_bar: Mapping[str, float]) -> float | None:
+    """The EFFECTIVE commit bar under ``u_bar``: the smallest p1 (1/1000 grid) at which
+    `coarse._gather`'s restricted argmax (gather deleted, ask + abstain kept) picks respond —
+    NOT `world.respond_threshold` (the full-menu bar) and NOT the break-even alone: a cheap
+    ``ask`` can outbid ``respond`` well above the break-even. ONE spelling (`M-7`), bound by
+    `main` and by `u_wrong_curve.py`."""
+    return next((p / 1000 for p in range(1001) if LR.commits_respond(u_bar, p / 1000)), None)
+
+
+def write_heldout_rows(out: Path, variant: str, rows: Sequence[HeldoutTick]) -> Path:
+    """r51b: the per-tick (p1, y) the run probed, persisted beside ``a1_a2.json`` — one
+    variant-suffixed file, so X7's `u_wrong` curve can re-score the SAME ticks at other
+    bars without another engine spawn. Ids are the anonymous question hashes."""
+    out.mkdir(parents=True, exist_ok=True)
+    path = out / f"heldout-{variant}.jsonl"
+    path.write_text("".join(json.dumps(asdict(r), sort_keys=True) + "\n" for r in rows),
+                    encoding="utf-8")
+    return path
+
+
+def read_heldout_rows(path: Path) -> list[HeldoutTick]:
+    return [HeldoutTick(**json.loads(line))
+            for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
 # --- pricing A1 (pure) -------------------------------------------------------------------
 
 
@@ -786,8 +811,7 @@ def main(argv: list[str] | None = None) -> int:
     # (gather deleted, ask + abstain kept) picks respond — NOT world.respond_threshold, which
     # is the full-menu bar (respond must also outbid gather, ≈0.994). The commit rule the flip
     # would run is the restricted one, so this is the number that governs.
-    commit_bar = next((p / 1000 for p in range(1001)
-                       if LR.commits_respond(u_bar, p / 1000)), None)
+    commit_bar = commit_bar_for(u_bar)
     full_bar = W.respond_threshold(u_bar)
     print(f"keyed replay: {len(keyed)} ticks / {len(groups)} questions; "
           f"commit bar (gather-exhausted, incl ask) p1 ≈ "
@@ -834,6 +858,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"\n=== A1/A2 held-out variant: {name} (families={list(fams)}) ===")
         mark(f"probe:{name}")
         rows = probe_heldout(keyed, u_bar, args.engine, fams, folds=args.folds, log=print)
+        write_heldout_rows(args.out, name, rows)
         mark(f"price:{name}")
         at_bar = price_at_u_bar(rows, u_bar, oracle_p=LK._ORACLE_P)
         mean, q05, q95 = price_under_pu(rows, posterior, oracle_p=LK._ORACLE_P,
