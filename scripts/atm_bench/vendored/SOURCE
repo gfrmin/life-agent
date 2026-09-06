@@ -1,0 +1,20 @@
+# SOURCE — provenance of scripts/atm_bench/vendored/ (r51b 2e)
+
+upstream: https://github.com/JingbiaoMei/ATM-Bench  (MIT — LICENSE-ATM-Bench is the upstream LICENSE byte-for-byte)
+sha:      ef4e5dff1a47ec71213a06e359f02753defa8fb1  (= HEAD of main at vendoring; last evaluator change 2026-06-01)
+vendored: 2026-09-06
+
+upstream originals (sha256):
+  memqa/utils/evaluator/normalizer.py  1980cce4fbd572d11d2317725cb955d99cf55cf20e8645cd4ba6908fbdcf0e3d
+  memqa/utils/evaluator/qtype_utils.py  9186fe0f409b99384a0d78c988d1dbdfd66a74546f254ce1f1ed46e3cc115518
+  memqa/utils/evaluator/evaluate_qa.py  0581963c1c6b9729398d8007f3d40664b2c026499c9cbf0436a92f77dcb1b66e
+  memqa/utils/evaluator/config.py  2a72ab0c4b18a31570bcfe014d877dac3be648de85393d67f0b09d3e6b9fc179
+  LICENSE  e0de4445f9fdc0a5189592d7c97c6de1add6b63887fe7110509fc7957b7bcf1f
+
+vendored files (sha256 after the edit named; pinned in tests/test_atm_vendored.py):
+  normalizer.py   94ea230f8175b5a595b25ca863f2040bdb13b4ccb83a4850d852438db8e546cf   edit: ONE import line, `from memqa.utils.evaluator.config import ABSTENTION_PHRASES` -> `from .abstention import ABSTENTION_PHRASES`
+  qtype_utils.py  4496c003de8a2d71bc4f10b245b9e0f2902764fdb45143e9c1783a0a9703faf3   edit: ONE import line, `from memqa.utils.evaluator.normalizer import (` -> `from .normalizer import (`
+  abstention.py   a8745b2020992a942843d9bdf38a43efc534ee0ccdf1bbe590f2f5529f8f3a75   the ABSTENTION_PHRASES block of config.py, verbatim (config.py not vendorable: imports memqa.global_config)
+  matcher.py      b2fcb976c1b678c29cc57560f8cc4de423f39e62255319c0d1bfe4349a3343c7   exact line slices of evaluate_qa.py 145-178 and 181-307; imports ours (no requests/openai/tqdm/EVALUATOR_CONFIG)
+
+no other edit; no vendored logic changed (a behaviour change goes in a wrapper, tested).

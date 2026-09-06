@@ -27,6 +27,7 @@ import argparse
 import glob
 import json
 import sys
+from collections.abc import Iterable
 from typing import Any
 
 import yaml
@@ -67,17 +68,22 @@ def _question_texts() -> dict[str, str]:
     return id_map
 
 
-def _eligible() -> dict[str, DEC.DecisionEvent]:
+def eligible_from(decisions: Iterable[DEC.DecisionEvent]) -> dict[str, DEC.DecisionEvent]:
     """Latest row per decision_id, for decisions a verdict can bind to: a ``decision_id``
     plus a nameable leader (non-empty candidates + credences). Narrative rows (no
     candidates) are out of scope — the ``correct`` dimension is about ASSERTING the
-    leader, which needs a leader."""
+    leader, which needs a leader. ONE eligibility rule: ``scripts/gold_verdicts.py`` binds
+    it too (r51b)."""
     out: dict[str, DEC.DecisionEvent] = {}
-    for d in DEC.read(config.DECISIONS_LOG):
+    for d in decisions:
         ps = d.posterior_summary or {}
         if d.decision_id and ps.get("candidates") and ps.get("credences"):
             out[d.decision_id] = d
     return out
+
+
+def _eligible() -> dict[str, DEC.DecisionEvent]:
+    return eligible_from(DEC.read(config.DECISIONS_LOG))
 
 
 def _owner_verdicted(eligible: dict[str, DEC.DecisionEvent]) -> set[str]:

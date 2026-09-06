@@ -5,7 +5,10 @@ question's own verdict before probing it (in-sample, +0.043 EU/q). P3 removes ea
 question's *entire* set of verdict ticks from the fold before probing it — grouped
 leave-one-question-out (LOO) — so the priced commit policy is a genuine forecast. The
 protocol, arms, bar, and decision rule are frozen blind in
-`docs/membrane/p3-pre-registration.md` (committed before this ran).
+`docs/membrane/p3-pre-registration.md` (committed before this ran). r51b generalises the
+grouping to K folds (`--folds K`, sorted-rank round-robin, one engine per fold; K = n is LOO
+byte-for-byte) and lets the pricing Ū come from the KB's live fold (`--u-bar-source current`)
+where a second KB root has no shadow log — the source rides on the pairing's label.
 
 Pure logic (hermetically tested in `tests/test_p3_gate.py`): the question-keyed verdict join,
 the LOO grouping, per-tick pricing, question-level act aggregation, and the recomputed-hash
@@ -121,44 +124,89 @@ class HeldoutTick:
     respond: bool
 
 
+def assign_folds(question_ids: Sequence[str], k: int) -> dict[str, int]:
+    """Sorted-rank round-robin (r51b): ``question_id`` is already sha256(text)
+    (`decisions.question_id`), so sorted order is pseudo-random w.r.t. time and content; fold
+    sizes differ by at most one; deterministic; independent of ledger order; no second hash.
+    K = n gives every question its own fold."""
+    ordered = sorted(set(question_ids))
+    return {q: i % k for i, q in enumerate(ordered)}
+
+
+def folds_for(n_questions: int, requested: int | None) -> int:
+    """``None`` → grouped LOO (K = n, P3's protocol); otherwise 2 ≤ K ≤ n, or refuse."""
+    if requested is None:
+        return n_questions
+    if not 2 <= requested <= n_questions:
+        raise ValueError(f"--folds must lie in [2, {n_questions}] (got {requested})")
+    return requested
+
+
+def fold_order(groups: Mapping[str, Sequence[Any]], fold_of: Mapping[str, int]) -> list[int]:
+    """Folds in order of FIRST APPEARANCE among the keyed replay's question groups — at K = n
+    that is exactly the grouped-LOO loop's order, so rows are byte-identical."""
+    seen: list[int] = []
+    for qid in groups:
+        f = fold_of[qid]
+        if f not in seen:
+            seen.append(f)
+    return seen
+
+
 def probe_heldout(
     keyed: Sequence[KeyedTick], u_bar: Mapping[str, float], engine: str,
     families: Sequence[str] = tuple(LR.ALL_FAMILIES),
-    *, log: Callable[[str], None] = lambda _m: None, read_timeout_s: float = 300.0,
+    *, folds: int | None = None,
+    log: Callable[[str], None] = lambda _m: None, read_timeout_s: float = 300.0,
 ) -> list[HeldoutTick]:
-    """Grouped-LOO forecast: for each question, fold every OTHER question's ticks, then probe
-    this question's leader-credence-bearing ticks and record the engine's commit
-    (``respond`` iff ``commits_respond`` at the probed p1). One fresh engine per question."""
+    """Grouped held-out forecast. ``folds=None`` is grouped leave-one-question-out: one fresh
+    engine per question, folded on every OTHER question's ticks, then that question's
+    leader-credence-bearing ticks probed and the engine's commit recorded (``respond`` iff
+    ``commits_respond`` at the probed p1). ``folds=K`` (r51b) assigns questions to K folds by
+    sorted-rank round-robin and spawns ONE engine per fold, folded on the other folds' ticks,
+    probing each member question's ticks at the fold's depth — K = n reproduces LOO
+    byte-for-byte (`tests/test_p3_gate_folds.py`). A fold with nothing to probe spawns
+    nothing; its ticks still train the others."""
     groups = group_by_question(keyed)
+    k = folds_for(len(groups), folds)
+    fold_of = (assign_folds(list(groups), k) if folds is not None
+               else {qid: i for i, qid in enumerate(groups)})
+    order = fold_order(groups, fold_of)
     rows: list[HeldoutTick] = []
-    for qi, (qid, my_ticks) in enumerate(groups.items(), 1):
-        train = [t for t in keyed if t.question_id != qid]
-        probe = [t for t in my_ticks if t.summary.leader_credence is not None]
-        if not probe:
+    for fi, f in enumerate(order, 1):
+        members = [qid for qid in groups if fold_of[qid] == f]
+        probes = {qid: [t for t in groups[qid] if t.summary.leader_credence is not None]
+                  for qid in members}
+        if not any(probes.values()):
             continue
+        train = [t for t in keyed if fold_of[t.question_id] != f]
         client = MembraneClient.spawn([engine], log=lambda _m: None,
                                       read_timeout_s=read_timeout_s)
         try:
             hs = client.request(LR.handshake_for(u_bar, families))
             if not hs.get("ok"):
-                log(f"[{qid}] handshake refused: {hs!r}")
+                log(f"[fold {f}: {members}] handshake refused: {hs!r}")
                 continue
             t = 0
             for tick in train:
                 client.request(
                     LR.evidence_tick_for(tick.summary, float(t), families, tick.y))
                 t += 1
-            for tick in probe:
-                dec = client.request({"tick": {
-                    "features": LR.features_for(tick.summary, float(t), families),
-                    "menu": [W.ACT_NAME]}})
-                p1 = LR._p1(dec)
-                respond = p1 is not None and LR.commits_respond(u_bar, p1)
-                rows.append(HeldoutTick(qid, tick.summary.leader_credence, p1, tick.y, respond))
+            for qid in members:
+                for tick in probes[qid]:
+                    dec = client.request({"tick": {
+                        "features": LR.features_for(tick.summary, float(t), families),
+                        "menu": [W.ACT_NAME]}})
+                    p1 = LR._p1(dec)
+                    respond = p1 is not None and LR.commits_respond(u_bar, p1)
+                    rows.append(HeldoutTick(qid, tick.summary.leader_credence, p1, tick.y,
+                                            respond))
         finally:
             client.shutdown()
-        n_resp = sum(1 for r in rows if r.question_id == qid and r.respond)
-        log(f"  [{qi}/{len(groups)}] {qid}: {len(probe)} tick(s) "
+        n_probe = sum(len(v) for v in probes.values())
+        n_resp = sum(1 for r in rows if fold_of[r.question_id] == f and r.respond)
+        who = members[0] if len(members) == 1 else f"fold {f} ({len(members)} questions)"
+        log(f"  [{fi}/{len(order)}] {who}: {n_probe} tick(s) "
             f"(train={len(train)}, responded={n_resp})")
     return rows
 
@@ -234,6 +282,105 @@ def price_under_pu(rows: Sequence[HeldoutTick], posterior: Any, *, oracle_p: flo
     per_draw.sort()
     return (sum(per_draw) / n_draws, per_draw[int(0.05 * n_draws)],
             per_draw[min(int(0.95 * n_draws), n_draws - 1)])
+
+
+# --- r51b: rank cells on a named key + the calibration summary (pure) --------------------
+
+
+@dataclass(frozen=True)
+class Cell:
+    """One rank-cell of ``key`` over the held-out rows: its published edges (the cell's own
+    min/max of the key), size, realised rate, mean held-out p1 and commit count."""
+
+    name: str
+    key: str
+    lo: float
+    hi: float
+    n: int
+    correct: float
+    mean_p1: float | None
+    n_respond: int
+
+    def as_record(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+def quantile_cells(rows: Sequence[HeldoutTick], key: str, *, k: int) -> list[Cell]:
+    """``k`` contiguous rank-cells of ``key`` (``leader_credence`` for the PRIMARY table, ``p1``
+    for the reliability diagram) over the rows that carry it. Edges are the cell's own
+    min/max, published; ties are broken by a stable sort on question id, so a flat, heavily
+    tied key still yields ``k`` cells of near-equal size (the r51 pre-registration's reason
+    for cutting the primary cells on the FEATURE, never on ``p1``)."""
+    carrying = [r for r in rows if getattr(r, key) is not None]
+    ordered = sorted(carrying, key=lambda r: (getattr(r, key), r.question_id))
+    n = len(ordered)
+    cells: list[Cell] = []
+    for i in range(k):
+        chunk = ordered[i * n // k:(i + 1) * n // k]
+        if not chunk:
+            continue
+        vals = [float(getattr(r, key)) for r in chunk]
+        ps = [r.p1 for r in chunk if r.p1 is not None]
+        cells.append(Cell(
+            name=f"q{i + 1}", key=key, lo=min(vals), hi=max(vals), n=len(chunk),
+            correct=sum(r.y for r in chunk) / len(chunk),
+            mean_p1=(st.mean(ps) if ps else None),
+            n_respond=sum(1 for r in chunk if r.respond)))
+    return cells
+
+
+def _ranks(xs: Sequence[float]) -> list[float]:
+    """Average ranks (ties share the mean of the ranks they span)."""
+    order = sorted(range(len(xs)), key=lambda i: xs[i])
+    ranks = [0.0] * len(xs)
+    i = 0
+    while i < len(order):
+        j = i
+        while j + 1 < len(order) and xs[order[j + 1]] == xs[order[i]]:
+            j += 1
+        for m in range(i, j + 1):
+            ranks[order[m]] = (i + j) / 2 + 1
+        i = j + 1
+    return ranks
+
+
+def calibration_summary(cells: Sequence[Cell]) -> dict[str, Any]:
+    """ECE (size-weighted |mean p1 - realised| over cells carrying a p1), the per-cell
+    reliability rows, and Spearman rho of realised rate against cell index — X4's
+    monotonicity guard (the pooled shape is credence flat, truth RISING with the feature;
+    noise cannot pass rho >= 0.6 the way it can pass a span)."""
+    gaps = [(c.n, abs(m - c.correct)) for c in cells if (m := c.mean_p1) is not None]
+    total = sum(n for n, _ in gaps)
+    ece = (sum(n * g for n, g in gaps) / total) if total else None
+    rel = [{"name": c.name, "n": c.n, "mean_p1": c.mean_p1, "correct": c.correct,
+            "gap": (None if c.mean_p1 is None else c.mean_p1 - c.correct)} for c in cells]
+    rho: float | None = None
+    if len(cells) >= 2:
+        idx = _ranks([float(i) for i in range(len(cells))])
+        rate = _ranks([c.correct for c in cells])
+        mi, mr = st.mean(idx), st.mean(rate)
+        num = sum((a - mi) * (b - mr) for a, b in zip(idx, rate, strict=True))
+        den = (sum((a - mi) ** 2 for a in idx) * sum((b - mr) ** 2 for b in rate)) ** 0.5
+        rho = (num / den) if den else 0.0
+    return {"ece": ece, "reliability": rel, "spearman": rho}
+
+
+RANK_TABLES: tuple[tuple[str, str, int], ...] = (
+    ("leader-credence quintiles (primary)", "leader_credence", 5),
+    ("p1 deciles (reliability)", "p1", 10),
+)
+
+
+def rank_tables(rows: Sequence[HeldoutTick]) -> dict[str, Any]:
+    """The rank-cell tables the record carries beside the fixed buckets: the PRIMARY read
+    cut on the FEATURE (leader-credence quintiles), the reliability diagram cut on ``p1``
+    (deciles) — each with its calibration summary."""
+    out: dict[str, Any] = {}
+    for _label, key, k in RANK_TABLES:
+        cells = quantile_cells(rows, key, k=k)
+        out[f"cells_{key}"] = [c.as_record() for c in cells]
+        out[f"summary_{key}"] = calibration_summary(cells)
+    return out
 
 
 # --- A3 the differential gate: question-level acts + the hash join (pure) -----------------
@@ -382,15 +529,63 @@ def write_phases(out: Path, marks: Sequence[PhaseMark]) -> Path:
 # --- M-33: the regimes a differential spans are part of its record ------------------------
 
 
-def regime_record(pairing: RegimePairing, *, pricing_u_bar: Mapping[str, float],
+U_BAR_SOURCES: tuple[str, ...] = ("boot", "current")
+
+
+@dataclass(frozen=True)
+class UBarReading:
+    """The pricing Ū a run used, with its provenance. ``source`` is ``boot`` (the shadow log's
+    boot row — the owner-KB default), ``current`` (the KB's live ``current_u_bar`` fold; r51b —
+    a second KB root has no shadow log) or ``override`` (reproduction only, never a reading).
+    ``policy`` is the LABEL the pairing prints, and the source rides on it
+    (``all-to-date@boot`` / ``<policy>@current``) so a record can never again leave the source
+    to inference (`M-33`). Disclosed: boot runs print ``all-to-date@boot`` where r49/r50
+    printed ``all-to-date``."""
+
+    u_bar: dict[str, float]
+    policy: str
+    source: str
+    fold_version: str | None
+
+
+def resolve_u_bar(source: str, *, override_json: str | None,
+                  boot: Callable[[], Mapping[str, float] | None],
+                  current: Callable[[], tuple[Mapping[str, float], str, str]],
+                  ) -> UBarReading | None:
+    """One resolution rule for the pricing Ū. An override wins and is labelled as such;
+    ``boot`` refuses (``None``) without a boot row — the refusal r44 introduced, kept
+    verbatim; ``current`` reads ``(u_bar, fold_version, policy)`` from the live fold and
+    names the policy the fold RETURNED (`M-7`), never a literal."""
+    if override_json:
+        u = {str(k): float(v) for k, v in json.loads(override_json).items()}
+        return UBarReading(u, "Ū-override", "override", None)
+    if source == "boot":
+        b = boot()
+        if b is None:
+            return None
+        from life_agent.core import lookup as LK
+
+        return UBarReading({str(k): float(v) for k, v in b.items()},
+                           f"{LK.U_BAR_POLICY}@boot", "boot", None)
+    if source == "current":
+        live, fold_version, policy = current()
+        return UBarReading({str(k): float(v) for k, v in live.items()},
+                           f"{policy}@current", "current", fold_version)
+    raise ValueError(f"unknown --u-bar-source {source!r}; declared: {U_BAR_SOURCES}")
+
+
+def regime_record(pairing: RegimePairing, *, pricing: UBarReading,
                   scoring_u_bar: Mapping[str, float]) -> dict[str, Any]:
-    """Both regimes, both break-evens and BOTH Ū at full precision. r49b found that
-    ``a3_meta`` stored none of these, so an offline reader had to infer the regimes a past
-    run spanned — this checkpoint's own finding in miniature."""
+    """Both regimes, both break-evens and BOTH Ū at full precision — and, since r51b, the
+    pricing Ū's SOURCE and fold version. r49b found that ``a3_meta`` stored none of these, so
+    an offline reader had to infer the regimes a past run spanned — this checkpoint's own
+    finding in miniature."""
     return {
         "pricing": {"policy": pairing.pricing_policy,
                     "break_even": pairing.pricing_break_even,
-                    "u_bar": {k: float(v) for k, v in pricing_u_bar.items()}},
+                    "u_bar": {k: float(v) for k, v in pricing.u_bar.items()},
+                    "source": pricing.source,
+                    "fold_version": pricing.fold_version},
         "scoring": {"policy": pairing.scoring_policy,
                     "break_even": pairing.scoring_break_even,
                     "u_bar": {k: float(v) for k, v in scoring_u_bar.items()}},
@@ -427,7 +622,7 @@ def run_differential(rows: Sequence[HeldoutTick], *, variant: str,
                      families: Sequence[str], h2q: Mapping[str, str],
                      baseline_rows: Sequence[dict[str, Any]], baseline_arm: str,
                      posterior: Any, pairing: RegimePairing,
-                     pricing_u_bar: Mapping[str, float],
+                     u_bar_reading: UBarReading,
                      oracle_p: float, out: Path, draws: int, seed: int,
                      log: Callable[[str], None] = print) -> Any:
     """One A3 differential gate (membrane held-out acts vs the credence baseline) for one
@@ -493,14 +688,14 @@ def run_differential(rows: Sequence[HeldoutTick], *, variant: str,
         "delta_mean": gate.delta_mean,
         "delta_lo": gate.delta_lo, "delta_hi": gate.delta_hi,
         "draws": draws, "seed": seed,
-        "regimes": regime_record(pairing, pricing_u_bar=pricing_u_bar,
+        "regimes": regime_record(pairing, pricing=u_bar_reading,
                                  scoring_u_bar=posterior.u_bar()),
         "marginal_commits": marginal,
     }, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return gate
 
 
-def main(argv: list[str] | None = None) -> int:
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--engine", default=LR.DEFAULT_ENGINE)
     parser.add_argument("--baseline-run", type=Path,
@@ -527,7 +722,20 @@ def main(argv: list[str] | None = None) -> int:
         help="pin the boot Ū to this JSON dict (e.g. P3's Ū, for the engine byte-compat "
              "reproduction). The record names it; NEVER used for a reading — the reading's "
              "Ū is the boot row, and the p3b pre-registration disclosed why the two differ")
-    args = parser.parse_args(argv)
+    parser.add_argument(
+        "--folds", type=int, default=None, metavar="K",
+        help="r51b: K folds by sorted-rank round-robin, one engine per fold (default: "
+             "grouped leave-one-question-out, K = n — the owner-KB reading, byte-identical)")
+    parser.add_argument(
+        "--u-bar-source", choices=U_BAR_SOURCES, default="boot",
+        help="r51b: where the pricing Ū comes from — the shadow log's boot row (default; "
+             "refuses without one) or the KB's live current_u_bar fold (a second KB root has "
+             "no shadow log). The source rides on the pairing's label either way.")
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
 
     import life_agent.core.gate as GATE
     import life_agent.core.lookup as LK
@@ -556,13 +764,24 @@ def main(argv: list[str] | None = None) -> int:
               f"{args.expect_questions}. The ledger moved — re-cut the "
               f"pre-registration for the new window rather than reading over it.")
         return 2
-    u_bar = R.latest_boot_u_bar(R.load_shadow_records(C.membrane_shadow_log()), "said@1")
-    if args.u_bar_override:
-        u_bar = {str(k): float(v) for k, v in json.loads(args.u_bar_override).items()}
-        print(f"Ū OVERRIDDEN (reproduction mode, not a reading): {u_bar}")
-    if u_bar is None:
+    k_folds = folds_for(len(groups), args.folds)
+    fold_of = assign_folds(list(groups), k_folds) if args.folds is not None else None
+    mark("fold")
+    brain = LK.shared_brain()
+    # r51b: the pricing Ū's source is declared, resolved once, and rides on the label
+    reading = resolve_u_bar(
+        args.u_bar_source, override_json=args.u_bar_override,
+        boot=lambda: R.latest_boot_u_bar(
+            R.load_shadow_records(C.membrane_shadow_log()), "said@1"),
+        current=lambda: LK.current_u_bar(brain))
+    if reading is None:
         print("no boot u_bar on the shadow log; cannot run.")
         return 1
+    if reading.source == "override":
+        print(f"Ū OVERRIDDEN (reproduction mode, not a reading): {reading.u_bar}")
+    u_bar = reading.u_bar
+    print(f"pricing Ū: source={reading.source} · label={reading.policy}"
+          + (f" · fold_version={reading.fold_version}" if reading.fold_version else ""))
     # the EFFECTIVE commit bar: the smallest p1 at which coarse._gather's restricted argmax
     # (gather deleted, ask + abstain kept) picks respond — NOT world.respond_threshold, which
     # is the full-menu bar (respond must also outbid gather, ≈0.994). The commit rule the flip
@@ -581,8 +800,6 @@ def main(argv: list[str] | None = None) -> int:
     variants = {"FULL": tuple(LR.ALL_FAMILIES),
                 "leader-credence-only": ("leader-credence",),
                 "leader-credence+p-none": ("leader-credence", "p-none")}
-    mark("fold")
-    brain = LK.shared_brain()
     model = UT.load_model(LCFG.UTILITY_MODEL)
     evidence: list[UT.Evidence] = list(UT.load_elicitations(LCFG.UTILITY_ELICITATIONS, model))
     posterior = UT.posterior(brain, model, evidence, policy="frozen-elicitations")
@@ -595,8 +812,7 @@ def main(argv: list[str] | None = None) -> int:
     # the pairing is declared here, before a single engine is spawned. This DECLARES; it
     # does not prefer a regime (the regime question is open — r49b §5).
     pairing = GATE.regime_pairing(
-        pricing_u_bar=u_bar,
-        pricing_policy=("Ū-override" if args.u_bar_override else LK.U_BAR_POLICY),
+        pricing_u_bar=u_bar, pricing_policy=reading.policy,
         scoring_u_bar=posterior.u_bar(), scoring_policy=posterior.policy)
     print(GATE.render_regime_pairing(pairing, reach_rate=None))
 
@@ -606,12 +822,18 @@ def main(argv: list[str] | None = None) -> int:
         print(f"REFUSED: unknown --gate-variants {unknown} (declared: {list(variants)})")
         return 2
 
-    results: dict[str, Any] = {"variants": {}}
+    sizes = ([sum(1 for f in fold_of.values() if f == i) for i in range(k_folds)]
+             if fold_of is not None else [1] * k_folds)
+    results: dict[str, Any] = {"variants": {},
+                               "folds": {"k": k_folds, "loo": args.folds is None,
+                                         "sizes": sizes}}
+    print(f"folds: K={k_folds}" + (" (grouped LOO)" if args.folds is None else
+                                    f" sizes={sizes}"))
     rows_by_variant: dict[str, list[HeldoutTick]] = {}
     for name, fams in variants.items():
         print(f"\n=== A1/A2 held-out variant: {name} (families={list(fams)}) ===")
         mark(f"probe:{name}")
-        rows = probe_heldout(keyed, u_bar, args.engine, fams, log=print)
+        rows = probe_heldout(keyed, u_bar, args.engine, fams, folds=args.folds, log=print)
         mark(f"price:{name}")
         at_bar = price_at_u_bar(rows, u_bar, oracle_p=LK._ORACLE_P)
         mean, q05, q95 = price_under_pu(rows, posterior, oracle_p=LK._ORACLE_P,
@@ -628,6 +850,18 @@ def main(argv: list[str] | None = None) -> int:
             mp1 = f"{b['mean_p1']:.4f}" if b["mean_p1"] is not None else "n/a"
             print(f"    {b['bucket']:>6} n={b['n']:>3} correct={b['correct']:.3f} "
                   f"mean_p1={mp1} respond={b['n_respond']:>3} EU/q={b['policy_eu']:+.3f}")
+        # r51b: the rank-cell tables ride BESIDE the fixed buckets (the owner-KB reader still
+        # sees the record it saw in r49/r50 first) — leader-credence quintiles are the
+        # PRIMARY read, p1 deciles the reliability diagram
+        at_bar.update(rank_tables(rows))
+        fmt = lambda x: "n/a" if x is None else f"{x:.4f}"  # noqa: E731
+        for label, key, _k in RANK_TABLES:
+            summ = at_bar[f"summary_{key}"]
+            print(f"  {label}: ECE={fmt(summ['ece'])} · Spearman rho={fmt(summ['spearman'])}")
+            for c in at_bar[f"cells_{key}"]:
+                print(f"    {c['name']:>3} [{c['lo']:.4f}, {c['hi']:.4f}] n={c['n']:>3} "
+                      f"correct={c['correct']:.3f} mean_p1={fmt(c['mean_p1'])} "
+                      f"respond={c['n_respond']:>3}")
 
     # A3: the differential gate per requested variant (P3's record is FULL; p3b adds
     # the coarsened arm — each writes its OWN suffixed artifacts, no clobber)
@@ -643,7 +877,7 @@ def main(argv: list[str] | None = None) -> int:
         run_differential(rows_by_variant[name], variant=name,
                          families=variants[name], h2q=h2q,
                          baseline_rows=baseline_rows, baseline_arm=args.baseline_arm,
-                         posterior=posterior, pairing=pairing, pricing_u_bar=u_bar,
+                         posterior=posterior, pairing=pairing, u_bar_reading=reading,
                          oracle_p=LK._ORACLE_P, out=args.out,
                          draws=args.draws, seed=args.seed)
     mark("end")
