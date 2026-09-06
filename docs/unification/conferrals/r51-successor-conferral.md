@@ -49,6 +49,9 @@ priced options, a recommendation first (`M-17`'s form).
 4. **Hold.** proplang#26 is the open demand; nothing opens until it is answered or the owner
    supplies rows.
 
-## RULING
+## RULING (owner, 2026-09-06)
 
-*(open — awaiting the owner)*
+**Option 1: `r51b` now, the pooling recon after.** Registered as `A-13`; the forks inside the
+replication as `GD-32`; its pre-registration (`reports/r51b-replication-preregistration.md`)
+frozen in the same commit, before any build. Options 3 and 4 stay named; option 2 opens after
+`r51b` reads, as its own $0 checkpoint.

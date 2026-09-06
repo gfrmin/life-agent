@@ -91,6 +91,7 @@ not cited below.
 | **A-10 · sequencing is continuous** | — | PRINCIPLES §9 as amended | Eval-gated, not dogfood-gated. Open the next checkpoint as soon as its preconditions are met. |
 | **A-11 · §18's next rung is engine-side demand** | 2026-09-05 | owner, interviewed (`a3-regime-conferral`) | With B closed on its own KILL (`GD-28`: no host-side family separates the 70–90 band; the verdict supply binds), the next §18 iteration is **the engine-side pooled-prior hypothesis, filed as demand** on proplang (#26) with `r49` S4's table attached — held-out `p1` pulled toward ~0.86 in both directions — never edited from here (`M-23`/`GD-14`). Offered and **not chosen**: re-supplying the Claude verdict channel (104 unverdicted questions exist — ≈23 band rows at the band's 22% share against the ≈330 the split needs, so it cannot reach BF 10 on the existing pool), C's baseline-spend re-record, and holding §18 for the K-cap / §11's exit. Each stays named; none opens. The next gate run, whatever earns it, sizes D. |
 | **A-12 · the queue's next build is an external labelled corpus** | 2026-09-06 | owner, interviewed in plan mode (`external-corpus-conferral`) | With the ruled queue empty after `GD-29`, the next build is **`r51`: an external, public, labelled corpus (ATM-Bench) read by the existing harness over a SECOND KB root** — the pooled-prior hypothesis (proplang#26) at ~10× the verdict supply, the A3 differential and the `u_wrong` curve as by-products; pre-registered before download (`r51-external-corpus-preregistration`), NOT a §18 bar, no gauge change, nothing deploys, the owner's KB byte-untouched. Offered and **not chosen**: docs-only external anchors, ruling `u_wrong` by convention (an objective change), and a hold. Each stays named; none opens. |
+| **A-13 · after r51's KILL: the 1×-n replication, then the pooling recon** | 2026-09-06 | owner, interviewed (`r51-successor-conferral`) | With `r51` closed on X1 (`GD-31`, `M-35`), the next build is **`r51b`**: the pre-registered instrument built on ATM-Bench's 198 gradeable email-only questions with cells re-cut blind to the known n, one pass, K = 10 — read as **corroboration at ~1× n, never power** — delivering A-CAL's first reliability/ECE read, the A3 differential under `M-34` on a public corpus, and the `u_wrong` curve (X7); **then the corpus-pooling recon opens at $0**, sized in the foldable unit. Offered and **not chosen** first: the pooling recon alone, the Claude verdict re-supply, a hold. |
 
 ## §4 CARRIED AND UNSETTLED — RESOLVED 2026-08-31
 
@@ -125,14 +126,10 @@ what to build next, and to §4's two carried items.
 Everything else — scope, sequencing, method, measurement design, consequence branches, FAIL
 handling, spend — is derivable and is delegated.
 
-**One item is live in this class (2026-09-06): what to build next.** `r51` closed the same day
-it opened, on its own X1 KILL (`GD-31`: 198 email-only number-typed questions against a bar of
-200, and the corpus's foldable supply is ≈ 0.8× `r49`'s, not 10× — `M-35`), so the ruled queue
-is empty again. `conferrals/r51-successor-conferral.md` carries the evidence, four priced options
-and a recommendation; **awaiting the owner**. The three entries before it were RESOLVED by
-interview (`conferrals/a3-regime-conferral.md` on 2026-09-05 and
-`conferrals/external-corpus-conferral.md` on 2026-09-06 — `AskUserQuestion`, priced options
-with a recommendation first, `M-17`'s form):
+**Nothing is live in this class (2026-09-06, evening).** The last four entries were RESOLVED by
+interview (`conferrals/a3-regime-conferral.md` on 2026-09-05; `conferrals/external-corpus-
+conferral.md` and `conferrals/r51-successor-conferral.md` on 2026-09-06 — `AskUserQuestion`,
+priced options with a recommendation first, `M-17`'s form):
 
 - **Does the A3 gate keep its blind regime?** Posed by `r49b` after the `s18-bar-conferral`'s
   original question — *which utility is the bar quoted at?* — was withdrawn as mis-classified
@@ -150,6 +147,10 @@ with a recommendation first, `M-17`'s form):
   priced options. **RULED: `r51`, an external labelled corpus read over a second KB root**
   → `A-12`, `GD-30`. Offered and NOT chosen: docs-only external anchors, ruling `u_wrong`
   by convention, and a hold.
+- **What to build after `r51`'s KILL?** `r51` closed the day it opened (`GD-31`: 198 gradeable
+  questions against a bar of 200; the foldable supply ≈ 0.8× `r49`'s, not 10× — `M-35`).
+  **RULED: `r51b`, the 1×-n replication on the 198, then the corpus-pooling recon** → `A-13`,
+  `GD-32`. Offered and NOT chosen first: the pooling recon alone, the verdict re-supply, a hold.
 
 *(Distinct from governance, and unchanged: acts that touch third parties or destroy data are
 confirmed before they are taken. That is ordinary operating caution, not a keypress this project
