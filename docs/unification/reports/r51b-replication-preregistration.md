@@ -106,5 +106,35 @@ marks. No production unit restarted.
 
 ## Amendment log (blind, dated)
 
-*None yet.* Expected: the `--expect-*` pins and the harness-match cross-tab after the gold pass;
-the X3d tally; the timing constant; the X9 manifests.
+**Amendment 3 — 2026-09-06, after the build and the pilots, before any `p1` or verdict exists.**
+Tree pins: repo `e9275c7` (the merged build, PRs #182 + #183); engine `~/.local/bin/proplang-host`
+sha256 `71998f6556f5…`; corpus `Jingbiao/ATM-Bench` at HF revision
+`78e826dc07e97466b2f54443831ef9a83ab8b27c`, built into a second root by `build_kb.py` (6,742
+emails, 381 questions, 198 gradeable, 14 abstention rows, the two gauge files copied) and
+pinned as `atm-bench-20260906` (digest `50a73805…`, 6,742 artifacts / 6,919 chunks).
+**X2a PASSES**: the second build run wrote nothing (0 new paths, 0 re-extractions, 0 emails
+rewritten) and `pin_corpus verify` reads MATCH. The root is not a git tree and carries no
+`membrane/` directory; the owner KB's ten X9 files hash identically to the before-manifest.
+**X2b, honestly**: the first two pilots ran on a stack whose deliberate edge was silently dead
+— transient `systemd --user` units inherit the manager's PATH, which lacks the local bin the
+`claude` binary lives in, so the bridge's deliberate subprocess failed on every call while the
+decision rows were still stamped `deliberate@…` (zero tool-call logs, zero deliberate records,
+zero spend; the deployed bridge unit sets its PATH explicitly, which is the recipe now used).
+Both pilots and one aborted full pass (24 decisions) are archived under the root outside the
+KB's live paths and read for nothing. The third pilot, on the corrected stack: 20 questions in
+≈ 10 min, 19 decisions (`lookup` 18, `narrative` 1), **5 reports, 4 of them right by the
+harness bucket** (`CORRECT` 4 · `CONFIDENT_WRONG` 1 · `RIGHTLY_WITHHELD` 3 · `WRONGLY_WITHHELD`
+12) — the report conjunct holds; the deliberate edge fired on 11 questions (52 tool calls, no
+declines, all recorded), **$4.46 in total → $0.223 per question, ABOVE the frozen $0.10**. The
+cost conjunct therefore STOPs the pass and this amendment re-prices it: the "≤ $3" assumed run
+14's warm deliberates; here every deliberate is cold at ≈ $0.41 a call on 55% of questions, so
+the 381-question pass projects ≈ **$85** and ≈ 3.2 h. Spend is delegated (`RULINGS` §5) and
+no outcome exists to pick on, so **the pass proceeds at the measured price, on the frozen
+population of 381**. One observation for the report: the corrected pilot's decision set is
+IDENTICAL to the dead-edge pilots' (the same 5 reports, the same buckets) — eleven deliberates
+searched and returned and moved no decision on these twenty. The third pilot's calibration rows
+are archived too, so the reading's decision log starts empty; the full pass runs as
+`ff-atm-baseline-20260906c`. No criterion, prediction or branch changes.
+
+Expected further entries: the `--expect-*` pins and the harness-match cross-tab after the gold
+pass; the X3d tally; the timing constant; the X9 after-manifest.
