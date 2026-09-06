@@ -1658,14 +1658,16 @@ corpora, which gradeability rule, which band constant, and what the KILL is.
 **Decided here (`D-3`), and why.**
 
 1. **Candidates: ATM-Bench's email subset (read), LongMemEval-cleaned, LoCoMo's released ten conversations**
-   — the three personal-memory corpora with human evidence labels and answers a deterministic matcher can type;
+   — the three personal-memory corpora with human evidence labels and answers a deterministic matcher may be able to type;
    CRAG stays rejected (web QA, not personal memory — `r51-successor-conferral`).
 2. **Gradeability is `r51`'s rule unchanged**: `detect_qtype(answer) == "number"` under the vendored matcher,
    applied to each corpus's answer field; a corpus whose answers cannot be typed is counted, never graded; no
    LLM judge in any verdict path (`M-37`'s one-grader rule applies to any later differential).
 3. **The band constant is the LOWER of the two measured rates, 0.149** (`r51b`: 29/195) against `r49`'s 0.231 —
    the projection cannot be flattered by the owner corpus's higher band share. P2 is sized on it: pooled
-   gradeable ∈ [500, 900] projects to [75, 134] band rows — a KILL at 385 even at the higher constant.
+   gradeable ∈ [498, 898] projects to [74, 134] band rows — a KILL at 385 even at the higher constant. **Y1
+   is foreclosed by arithmetic at the frozen constant** (the answerable pool's ceiling projects 334) and the
+   pre-registration says so before download; the recon's information is the sizing (Y1′) and Y2–Y4.
 4. **Producer cost is priced, not built**: a transcript producer per conversation-shaped corpus, a questions
    writer, a manifest, priced by analogy with `scripts/atm_bench/build_kb.py`; nothing is built on a KILL.
 5. **Controls before verdicts (`M-36`)** is stated in the pre-registration so the build successor inherits it,
