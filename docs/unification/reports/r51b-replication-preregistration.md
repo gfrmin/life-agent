@@ -106,5 +106,87 @@ marks. No production unit restarted.
 
 ## Amendment log (blind, dated)
 
-*None yet.* Expected: the `--expect-*` pins and the harness-match cross-tab after the gold pass;
-the X3d tally; the timing constant; the X9 manifests.
+**Amendment 3 — 2026-09-06, after the build and the pilots, before any `p1` or verdict exists.**
+Tree pins: repo `e9275c7` (the merged build, PRs #182 + #183); engine `~/.local/bin/proplang-host`
+sha256 `71998f6556f5…`; corpus `Jingbiao/ATM-Bench` at HF revision
+`78e826dc07e97466b2f54443831ef9a83ab8b27c`, built into a second root by `build_kb.py` (6,742
+emails, 381 questions, 198 gradeable, 14 abstention rows, the two gauge files copied) and
+pinned as `atm-bench-20260906` (digest `50a73805…`, 6,742 artifacts / 6,919 chunks).
+**X2a PASSES**: the second build run wrote nothing (0 new paths, 0 re-extractions, 0 emails
+rewritten) and `pin_corpus verify` reads MATCH. The root is not a git tree and carries no
+`membrane/` directory; the owner KB's ten X9 files hash identically to the before-manifest.
+**X2b, honestly**: the first two pilots ran on a stack whose deliberate edge was silently dead
+— transient `systemd --user` units inherit the manager's PATH, which lacks the local bin the
+`claude` binary lives in, so the bridge's deliberate subprocess failed on every call while the
+decision rows were still stamped `deliberate@…` (zero tool-call logs, zero deliberate records,
+zero spend; the deployed bridge unit sets its PATH explicitly, which is the recipe now used).
+Both pilots and one aborted full pass (24 decisions) are archived under the root outside the
+KB's live paths and read for nothing. The third pilot, on the corrected stack: 20 questions in
+≈ 10 min, 19 decisions (`lookup` 18, `narrative` 1), **5 reports, 4 of them right by the
+harness bucket** (`CORRECT` 4 · `CONFIDENT_WRONG` 1 · `RIGHTLY_WITHHELD` 3 · `WRONGLY_WITHHELD`
+12) — the report conjunct holds; the deliberate edge fired on 11 questions (52 tool calls, no
+declines, all recorded), **$4.46 in total → $0.223 per question, ABOVE the frozen $0.10**. The
+cost conjunct therefore STOPs the pass and this amendment re-prices it: the "≤ $3" assumed run
+14's warm deliberates; here every deliberate is cold at ≈ $0.41 a call on 55% of questions, so
+the 381-question pass projects ≈ **$85** and ≈ 3.2 h. Spend is delegated (`RULINGS` §5) and
+no outcome exists to pick on, so **the pass proceeds at the measured price, on the frozen
+population of 381**. One observation for the report: the corrected pilot's decision set is
+IDENTICAL to the dead-edge pilots' (the same 5 reports, the same buckets) — eleven deliberates
+searched and returned and moved no decision on these twenty. The third pilot's calibration rows
+are archived too, so the reading's decision log starts empty; the full pass runs as
+`ff-atm-baseline-20260906c`. No criterion, prediction or branch changes.
+
+Expected further entries: the `--expect-*` pins and the harness-match cross-tab after the gold
+pass; the X3d tally; the timing constant; the X9 after-manifest.
+
+**Amendment 4 — 2026-09-06, after the gold pass and the audit, before any held-out `p1` exists.**
+The pass `ff-atm-baseline-20260906c` finished at 15:00:23 UTC (6 h 32 min of wall from the 08:28:26 UTC launch; 381 answers, 361
+decisions, $40.58 — $0.107/q against Amendment 3's projected $0.223/q). The gold pass wrote
+**195 verdicts over 195 questions** (eligible 340 · not gradeable 145 · no
+question 0 · already verdicted 0 · correct 164 · wrong 31; a second run appended nothing), so the
+harness runs with `--expect-ticks 195 --expect-questions 195`; band rows (0.7 ≤ leader credence < 0.9)
+29, so X5 is under-powered as predicted (P5 of `r51`) and is published as such. The harness-match cross-tab:
+`answer_matches` agrees with the vendored matcher on 160 verdicts and disagrees on 35
+(all 35 one way: the vendored matcher reads correct where `answer_matches` reads wrong, never the reverse). **X3d, the blind audit:** 60 rows sampled by seed 8675309 from the sorted verdicted ids, each read
+against its evidence emails on-machine and judged before the key was opened — TP 52 · FN 3 · FP 0 ·
+TN 5, **FN-rate 0.050 against the 0.10 ceiling → X4 STANDS**; precision 1.000, recall
+0.945; `answer_matches` on the same rows would have read FN-rate 0.283. Both files were deleted after the
+tally; nothing from them is quoted. **Timing constant:** one spawn folding 195 ticks read 0.472 (92.1 s in all; super-linear in depth: 0.172 at 50 ticks, 0.247 at 100, 0.355 at 150) s per
+tick-fold, so K = 10 projects ≈ 25–40 min of engine time for both variants (20 spawns each folding ~176 ticks at ~70 s, plus 390 decide ticks). No criterion, prediction or branch changes.
+
+**Amendment 5 — 2026-09-07 (HKT; written from 16:00 UTC on 2026-09-06), after the run: X3b read, X3c fired by its letter and
+re-scoped. NOT blind — disclosed.** The harness run (`r51b-gate`, 15:07–15:51 UTC, 43 min 42 s) writes X3c's, X4's and X6's
+artefacts together, and the runbook applied X4's frozen rule (15:51 UTC) before the X3 controls were checked (15:53 UTC);
+when this amendment was written its author had seen X4 read CONFIRMED under FULL and `leader-credence+p-none`, X6 PASS, X7
+and X9. **X3b** was then read on the real engine (16:00–16:07 UTC): fold 8 re-run twice through the harness's own
+`probe_heldout` — 19/19 rows identical between the runs and identical to the recorded `heldout-FULL.jsonl` rows, max |Δ`p1`|
+0 — **PASS**. **X3c fails by its letter**: FULL commits on 10 of 195 held-out ticks, the control on 0 (`leader-credence-only`
+also 0, and the control ≡ it on all 195); the ten are all `n-candidates=1`, all in one fold, at `p1` 0.949–0.950 where the
+control reads 0.865–0.874. The frozen consequence (STOP; re-scope by amendment; no reading taken) is enacted here. **Ground:**
+X3c is not a control in `G-3`'s sense — breaking the family ablation it checks would make the variants identical and turn it
+GREEN, not RED — it froze `r49`'s *empirical* S4 finding (three families inert on 238 ticks) as a harness check, and the
+harness ground it stood for is carried by X3a (unit: K = n byte-identical to LOO), X3b (above), the three variants sharing
+ids and folds, and the ablated variants reproducing `r49`'s degenerate `p1` ≈ 0.86 (0.8584 there). **Re-scope: X3c becomes
+X3c′, a reading — the per-variant policy table and the discriminating indicator, published — with no consequence for X4,**
+whose verdict is invariant across the three variants (the same frozen rule reads CONFIRMED on each: mean `p1` spans 0.018 /
+0.010 / 0.006, realised identical, ρ 0.90). This amendment touches no X4 rule, cell, threshold or branch and would read the
+same had X4 read REFUTED or INCONCLUSIVE. No re-run is bought: X3b certifies the artefacts deterministic, so the reading of
+record is the frozen rule applied after this amendment to the same rows. Registered: `GD-33`, `M-36`.
+
+**Amendment 6 — 2026-09-07, after the run and after the first commit of the read: the A3 differential graded its two arms
+with two graders; fixed in the harness, both gradings published. Dated, informed — disclosed.** The self-review of the read
+found that `p3_gate.build_paired` grades the typed arm by the verdict of record (the keyed tick's `y`, the vendored matcher)
+and the baseline arm by the fairfight row's `asserted_correct`, which is `answer_matches` — the reading this document's
+Verdict clause says "decides nothing". It decided one arm. On the 195 joined rows the baseline's 77 reports read 60 ✓ / 17 ✗
+under the harness grader and **73 ✓ / 4 ✗** under the verdict of record (the 13 are the one-way disagreement class Amendment
+4 counted). **Rule enacted:** the verdict of record grades BOTH arms — `verdicts_by_question` (majority per question, tie →
+wrong, mirroring `question_acts`) feeds `build_paired`, which re-grades a baseline REPORT and leaves withholdings untouched;
+`a3_meta` names the grader (`baseline_grader`); `u_wrong_curve.py` binds the same call. Landed with a RED test, a no-op
+mutation (RED), the suite green (3 331), ruff and mypy clean. **The A3 phase was re-run from the persisted held-out rows —
+no engine spawn — into `r51b-regraded/`, the as-run artefacts kept beside it.** Reading of record: X6 **FAIL**, P(Δ > 0.05)
+0.008, Δ̄ −0.240 [−0.387, −0.059] (control FAIL 0.024 / −0.189); as run it had read PASS 0.984 / +0.424. P4 is confirmed in
+letter (FAIL, no straddle) and refuted in mechanism (under-assertion, not marginal commits). X4, X7's coverage and risk
+columns, X10 and X9 are untouched (none reads the baseline arm). The owner-KB path inherits the rule (its baseline arm will
+be graded by the Claude verdicts of record); `r49`'s reading is untouched by construction — zero abstain×report rows and the
+26 shared commits agreeing, so its baseline grader never entered Δ. This amendment softens nothing: it moves a by-product
+from PASS to FAIL, in the direction the blind prediction named. Registered: `GD-34`, `M-37`.

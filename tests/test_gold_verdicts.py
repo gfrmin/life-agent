@@ -232,3 +232,23 @@ def test_audit_sample_is_seeded_and_writes_nothing_to_the_kb(kb: Path, tmp_path:
     assert again.read_bytes() == out.read_bytes()             # seeded
     assert sorted(p.relative_to(kb) for p in kb.rglob("*") if p.is_file()) == before
     assert {p: p.read_bytes() for p in kb.rglob("*") if p.is_file()} == snapshot
+
+
+def test_audit_sample_can_carry_the_evidence_emails_beside_each_blind_row(
+        kb: Path, tmp_path: Path) -> None:
+    # X3d deliberates each row AGAINST THE CORPUS: with --evidence-dir the blind rows carry
+    # the bodies of the emails the question's notes name (ids → files), still no verdict
+    _seed(kb, _decision("d1", QUESTIONS[1]["question"], ["12"], [0.9]))
+    assert GV.main(["grade", "--kb", str(kb)]) == 0
+    emails = tmp_path / "emails"
+    emails.mkdir()
+    (emails / "email000000000002.eml").write_bytes(
+        b"Subject: Chairs\r\nMessage-ID: <email000000000002@atm-bench>\r\n\r\n"
+        b"Twelve chairs were ordered for the hall.\r\n")   # PII-OK: synthetic
+    out = tmp_path / "audit.jsonl"
+    assert GV.main(["audit-sample", "--kb", str(kb), "--n", "5", "--seed", "1",
+                    "--out", str(out), "--evidence-dir", str(emails)]) == 0
+    (row,) = [json.loads(line) for line in out.read_text(encoding="utf-8").splitlines()]
+    assert set(row) == {"decision_id", "question", "gold", "leader", "evidence"}
+    assert row["evidence"] == {"email000000000002": "Subject: Chairs\n\n"
+                                                    "Twelve chairs were ordered for the hall."}

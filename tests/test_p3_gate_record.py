@@ -240,3 +240,54 @@ def test_run_differential_says_so_when_no_commit_is_marginal(tmp_path: Path) -> 
                         oracle_p=0.9, out=tmp_path, draws=400, seed=7, log=lines.append)
     text = "\n".join(lines)
     assert "no marginal commits" in text and "pairing-sensitive" not in text
+
+
+# --- r51b Amendment 6: the baseline arm is graded by the verdict of record ------------------
+
+
+def test_verdicts_by_question_take_the_majority_over_a_questions_ticks_tie_wrong() -> None:
+    """ONE rule for the verdict of record per question (mirrors `question_acts`' tie → wrong)."""
+    rows = [P3.HeldoutTick("a", 0.9, 0.86, 1, False), P3.HeldoutTick("a", 0.9, 0.86, 0, False),
+            P3.HeldoutTick("b", 0.9, 0.86, 1, False), P3.HeldoutTick("c", 0.5, 0.86, 0, False)]
+    assert P3.verdicts_by_question(rows) == {"a": False, "b": True, "c": False}
+
+
+def test_build_paired_grades_a_baseline_report_by_the_verdict_of_record_when_given() -> None:
+    """r51b found the A3 join grading its two arms with two graders: the typed arm by the
+    keyed verdict (`y`), the baseline by the fairfight row's `asserted_correct` — which is
+    `answer_matches`, the reading the pre-registration says decides nothing. With verdicts
+    given, a baseline REPORT is graded by the verdict of record; a withholding is untouched;
+    without verdicts the join is what it was (the r49/r50 record path)."""
+    h1, h2 = DEC.question_id("question q1?"), DEC.question_id("question q2?")
+    acts = {h1: GATE.RealisedResponse("abstain"), h2: GATE.RealisedResponse("abstain")}
+    h2q = {h1: "q1", h2: "q2"}
+    baseline = [{"question_id": "q1", "answerable": True, "asserted": True,
+                 "asserted_correct": False, "bucket": "x"},        # answer_matches says wrong
+                {"question_id": "q2", "answerable": True, "asserted": False,
+                 "asserted_correct": False, "bucket": "x"}]
+    paired, _, _ = P3.build_paired(acts, h2q, baseline, verdicts={h1: True, h2: True})
+    by = {p.question_id: p.mono for p in paired}
+    assert by["q1"].action == "report" and by["q1"].correct is True    # the verdict of record
+    assert by["q2"].action == "abstain" and by["q2"].correct is None   # a withholding has none
+    plain, _, _ = P3.build_paired(acts, h2q, baseline)
+    assert {p.question_id: p.mono for p in plain}["q1"].correct is False
+
+
+def test_run_differential_names_its_baseline_grader_in_the_meta(tmp_path: Path) -> None:
+    rows, h2q, baseline = _heldout([("q1", False, True, True), ("q2", False, False, True)])
+    P3.run_differential(rows, variant="FULL", families=tuple(P3.LR.ALL_FAMILIES), h2q=h2q,
+                        baseline_rows=baseline, baseline_arm="deliberative",
+                        posterior=_posterior(), pairing=_pairing(), u_bar_reading=READING,
+                        oracle_p=0.9, out=tmp_path, draws=400, seed=7, log=lambda _m: None,
+                        verdicts=P3.verdicts_by_question(rows))
+    meta = json.loads((tmp_path / "a3_meta-FULL.json").read_text())
+    assert meta["baseline_grader"] == "verdict-of-record"
+    paired = [json.loads(line)
+              for line in (tmp_path / "a3_paired-FULL.jsonl").read_text().splitlines()]
+    by = {p["question_id"]: p["mono"] for p in paired}
+    assert by["q1"]["correct"] is True and by["q2"]["correct"] is False   # y, not asserted_correct
+    P3.run_differential(rows, variant="H", families=tuple(P3.LR.ALL_FAMILIES), h2q=h2q,
+                        baseline_rows=baseline, baseline_arm="deliberative",
+                        posterior=_posterior(), pairing=_pairing(), u_bar_reading=READING,
+                        oracle_p=0.9, out=tmp_path, draws=400, seed=7, log=lambda _m: None)
+    assert json.loads((tmp_path / "a3_meta-H.json").read_text())["baseline_grader"] == "harness"

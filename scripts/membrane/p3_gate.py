@@ -211,6 +211,31 @@ def probe_heldout(
     return rows
 
 
+def commit_bar_for(u_bar: Mapping[str, float]) -> float | None:
+    """The EFFECTIVE commit bar under ``u_bar``: the smallest p1 (1/1000 grid) at which
+    `coarse._gather`'s restricted argmax (gather deleted, ask + abstain kept) picks respond —
+    NOT `world.respond_threshold` (the full-menu bar) and NOT the break-even alone: a cheap
+    ``ask`` can outbid ``respond`` well above the break-even. ONE spelling (`M-7`), bound by
+    `main` and by `u_wrong_curve.py`."""
+    return next((p / 1000 for p in range(1001) if LR.commits_respond(u_bar, p / 1000)), None)
+
+
+def write_heldout_rows(out: Path, variant: str, rows: Sequence[HeldoutTick]) -> Path:
+    """r51b: the per-tick (p1, y) the run probed, persisted beside ``a1_a2.json`` — one
+    variant-suffixed file, so X7's `u_wrong` curve can re-score the SAME ticks at other
+    bars without another engine spawn. Ids are the anonymous question hashes."""
+    out.mkdir(parents=True, exist_ok=True)
+    path = out / f"heldout-{variant}.jsonl"
+    path.write_text("".join(json.dumps(asdict(r), sort_keys=True) + "\n" for r in rows),
+                    encoding="utf-8")
+    return path
+
+
+def read_heldout_rows(path: Path) -> list[HeldoutTick]:
+    return [HeldoutTick(**json.loads(line))
+            for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
 # --- pricing A1 (pure) -------------------------------------------------------------------
 
 
@@ -408,6 +433,18 @@ def question_acts(rows: Sequence[HeldoutTick]) -> dict[str, Any]:
     return acts
 
 
+def verdicts_by_question(rows: Sequence[HeldoutTick]) -> dict[str, bool]:
+    """The verdict of record per question, from the keyed ticks the harness folds: the
+    majority label over the question's ticks, tie → wrong (the anti-flattering side, as in
+    `question_acts`). ONE rule (`M-7`): the same `y` that grades the typed arm grades the
+    baseline's reports in `build_paired` — r51b Amendment 6 found the A3 join grading its two
+    arms with two graders (the fairfight row's `asserted_correct` is `answer_matches`)."""
+    by_q: dict[str, list[int]] = {}
+    for r in rows:
+        by_q.setdefault(r.question_id, []).append(int(r.y))
+    return {qid: 2 * sum(ys) > len(ys) for qid, ys in by_q.items()}
+
+
 def hash_to_qid(questions: Sequence[Mapping[str, Any]]) -> dict[str, str]:
     """{question_id_hash: corpus_id} via ``DEC.question_id`` recompute — the deterministic join
     from the anonymous verdict hashes to the fair-fight baseline's ``q2-*`` ids."""
@@ -416,12 +453,16 @@ def hash_to_qid(questions: Sequence[Mapping[str, Any]]) -> dict[str, str]:
 
 def build_paired(
     membrane_acts: Mapping[str, Any], h2q: Mapping[str, str],
-    baseline_rows: Sequence[dict[str, Any]],
+    baseline_rows: Sequence[dict[str, Any]], *,
+    verdicts: Mapping[str, bool] | None = None,
 ) -> tuple[list[Any], list[str], list[str]]:
     """A3 pairing: ``PairedOutcome(typed=membrane held-out act, mono=baseline realised act)``
     over the questions that (a) have a held-out membrane act, (b) map to a corpus id, and
     (c) appear in the baseline arm. Returns (paired, only_membrane_named, only_baseline_named)
-    — unjoined questions are named, never silently dropped."""
+    — unjoined questions are named, never silently dropped. ``verdicts`` (question hash →
+    verdict of record, `verdicts_by_question`) re-grades a baseline REPORT by the same verdict
+    that grades the typed arm; a withholding and a scoped report are untouched; ``None``
+    keeps the fairfight row's own `asserted_correct` (the r49/r50 record path)."""
     from fairfight import loss_ledger as LL
 
     import life_agent.core.gate as GATE
@@ -435,9 +476,13 @@ def build_paired(
             continue
         brow = by_qid[qid]
         joined_corpus_ids.add(qid)
+        mono = LL.actual_response(brow)
+        if verdicts is not None and vhash in verdicts and mono.action == "report":
+            mono = GATE.RealisedResponse("report", correct=bool(verdicts[vhash]),
+                                         cost_usd=mono.cost_usd)
         paired.append(GATE.PairedOutcome(
             question_id=qid, answerable=bool(brow.get("answerable", bool(brow.get("answer", "")))),
-            typed=act, mono=LL.actual_response(brow)))
+            typed=act, mono=mono))
     only_membrane = sorted(h for h in membrane_acts if h2q.get(h) not in by_qid)
     only_baseline = sorted(q for q in by_qid if q not in joined_corpus_ids)
     return paired, only_membrane, only_baseline
@@ -624,7 +669,8 @@ def run_differential(rows: Sequence[HeldoutTick], *, variant: str,
                      posterior: Any, pairing: RegimePairing,
                      u_bar_reading: UBarReading,
                      oracle_p: float, out: Path, draws: int, seed: int,
-                     log: Callable[[str], None] = print) -> Any:
+                     log: Callable[[str], None] = print,
+                     verdicts: Mapping[str, bool] | None = None) -> Any:
     """One A3 differential gate (membrane held-out acts vs the credence baseline) for one
     lattice variant, with VARIANT-SUFFIXED artifacts — a second variant (or a re-run)
     must never clobber another's record (the runs-3/4 clobber lesson). The lattice under
@@ -635,9 +681,10 @@ def run_differential(rows: Sequence[HeldoutTick], *, variant: str,
     import life_agent.core.gate as GATE
 
     acts = question_acts(list(rows))
-    paired, only_m, only_b = build_paired(acts, h2q, baseline_rows)
+    paired, only_m, only_b = build_paired(acts, h2q, baseline_rows, verdicts=verdicts)
+    baseline_grader = "verdict-of-record" if verdicts is not None else "harness"
     log(f"  joined {len(paired)} questions  ·  membrane-only (non-v2/live) {len(only_m)}  "
-        f"·  baseline-only {len(only_b)}")
+        f"·  baseline-only {len(only_b)}  ·  baseline graded by {baseline_grader}")
     gate = GATE.delta_posterior(paired, posterior, oracle_p=oracle_p,
                                 n_draws=draws, seed=seed)
     marginal = marginal_commits(paired)
@@ -682,7 +729,7 @@ def run_differential(rows: Sequence[HeldoutTick], *, variant: str,
         "variant": variant,
         "families": list(families),
         "indicators": [n for f in families for n in LR.FAMILY_NAMES[f]],
-        "n_joined": len(paired),
+        "n_joined": len(paired), "baseline_grader": baseline_grader,
         "membrane_only": only_m, "baseline_only": only_b,
         "verdict": verdict, "p_delta_gt": gate.p_delta_gt,
         "delta_mean": gate.delta_mean,
@@ -786,8 +833,7 @@ def main(argv: list[str] | None = None) -> int:
     # (gather deleted, ask + abstain kept) picks respond — NOT world.respond_threshold, which
     # is the full-menu bar (respond must also outbid gather, ≈0.994). The commit rule the flip
     # would run is the restricted one, so this is the number that governs.
-    commit_bar = next((p / 1000 for p in range(1001)
-                       if LR.commits_respond(u_bar, p / 1000)), None)
+    commit_bar = commit_bar_for(u_bar)
     full_bar = W.respond_threshold(u_bar)
     print(f"keyed replay: {len(keyed)} ticks / {len(groups)} questions; "
           f"commit bar (gather-exhausted, incl ask) p1 ≈ "
@@ -834,6 +880,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"\n=== A1/A2 held-out variant: {name} (families={list(fams)}) ===")
         mark(f"probe:{name}")
         rows = probe_heldout(keyed, u_bar, args.engine, fams, folds=args.folds, log=print)
+        write_heldout_rows(args.out, name, rows)
         mark(f"price:{name}")
         at_bar = price_at_u_bar(rows, u_bar, oracle_p=LK._ORACLE_P)
         mean, q05, q95 = price_under_pu(rows, posterior, oracle_p=LK._ORACLE_P,
@@ -879,7 +926,8 @@ def main(argv: list[str] | None = None) -> int:
                          baseline_rows=baseline_rows, baseline_arm=args.baseline_arm,
                          posterior=posterior, pairing=pairing, u_bar_reading=reading,
                          oracle_p=LK._ORACLE_P, out=args.out,
-                         draws=args.draws, seed=args.seed)
+                         draws=args.draws, seed=args.seed,
+                         verdicts=verdicts_by_question(rows_by_variant[name]))
     mark("end")
     write_phases(args.out, marks)
     print("\n" + render_phase_summary(marks))
