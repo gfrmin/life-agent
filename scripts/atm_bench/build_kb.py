@@ -88,7 +88,9 @@ def eml_bytes(rec: Mapping[str, Any]) -> bytes:
     dt = _parse_ts(rec.get("timestamp"))
     if dt is not None:
         msg["Date"] = format_datetime(dt)
-    subject = str(rec.get("short_summary") or "").strip()
+    # 80 of the released summaries carry a line break; a header value may not (the stdlib
+    # refuses it) and the producer renders one header per line — collapse all whitespace
+    subject = " ".join(str(rec.get("short_summary") or "").split())
     if subject:
         msg["Subject"] = subject
     msg["Message-ID"] = f"<{rec['id']}@{CORPUS}>"

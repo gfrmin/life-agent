@@ -239,3 +239,11 @@ def test_main_refuses_a_gauge_source_without_both_files(tmp_path: Path) -> None:
     rc = B.main(["--emails", str(emails), "--qa", str(qa), "--out", str(tmp_path / "o"),
                  "--store", str(tmp_path / "s"), "--gauge-from", str(real), "--no-pkm"])
     assert rc == 2
+
+
+def test_eml_subject_collapses_line_breaks_and_runs_of_whitespace() -> None:
+    # the released summaries can carry a line break; a header value may not (the stdlib
+    # refuses it), and the producer renders one header per line anyway
+    rec = {**REC, "short_summary": "Parcel\r\n collected\n\tat the depot"}
+    msg = _parse(B.eml_bytes(rec))
+    assert msg["Subject"] == "Parcel collected at the depot"
