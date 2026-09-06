@@ -32,6 +32,14 @@ reading the decision's actual candidate against the corpus; mechanically project
 grader's output through this log would silently re-create the extraction channel at
 owner-verdict authority. ``evidence`` names what the deliberation read (KB-side paths —
 the log lives under ``$LIFE_AGENT_KB``, never in the public tree).
+
+**Scope of that rule (2026-09-06, `GD-30`).** It protects the OWNER's ledger from grader
+output at verdict authority. It does not forbid a gold verdict on a NON-owner KB, where a
+human-annotated benchmark answer IS the truth measurement: such rows carry a non-default
+``issuer`` (``gold:<corpus>``), are written only by ``scripts/gold_verdicts.py`` into a KB
+that declares itself external (``external-corpus.json`` at its root — the writer refuses
+any other, because readers are issuer-blind by design and a gold row on the owner's ledger
+would supersede a deliberated one), and never enter the owner's log.
 """
 from __future__ import annotations
 
