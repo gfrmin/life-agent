@@ -278,3 +278,16 @@ def test_fixed_buckets_unchanged_on_owner_default_path() -> None:
     assert set(rec) == {"n", "policy_eu_per_q", "respond_all_eu_per_q", "p1_spread",
                         "n_respond", "buckets"}
     assert [b["bucket"] for b in rec["buckets"]] == ["50-70", "70-80", "80-90", "ge90"]
+
+
+def test_rank_tables_cut_the_primary_on_leader_credence_quintiles_and_the_reliability_on_p1_deciles(
+        ) -> None:
+    # the record main writes: the PRIMARY read is cut on the FEATURE (five cells), the
+    # reliability diagram on p1 (ten) — never the other way round (r51 Cells)
+    tables = P3.rank_tables(_rows())
+    assert set(tables) == {"cells_leader_credence", "summary_leader_credence", "cells_p1",
+                           "summary_p1"}
+    assert [c["key"] for c in tables["cells_leader_credence"]] == ["leader_credence"] * 5
+    assert [c["key"] for c in tables["cells_p1"]] == ["p1"] * 10
+    assert tables["summary_leader_credence"]["spearman"] == pytest.approx(1.0)
+    assert tables["cells_leader_credence"][0]["lo"] == 0.5

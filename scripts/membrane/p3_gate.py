@@ -365,6 +365,24 @@ def calibration_summary(cells: Sequence[Cell]) -> dict[str, Any]:
     return {"ece": ece, "reliability": rel, "spearman": rho}
 
 
+RANK_TABLES: tuple[tuple[str, str, int], ...] = (
+    ("leader-credence quintiles (primary)", "leader_credence", 5),
+    ("p1 deciles (reliability)", "p1", 10),
+)
+
+
+def rank_tables(rows: Sequence[HeldoutTick]) -> dict[str, Any]:
+    """The rank-cell tables the record carries beside the fixed buckets: the PRIMARY read
+    cut on the FEATURE (leader-credence quintiles), the reliability diagram cut on ``p1``
+    (deciles) — each with its calibration summary."""
+    out: dict[str, Any] = {}
+    for _label, key, k in RANK_TABLES:
+        cells = quantile_cells(rows, key, k=k)
+        out[f"cells_{key}"] = [c.as_record() for c in cells]
+        out[f"summary_{key}"] = calibration_summary(cells)
+    return out
+
+
 # --- A3 the differential gate: question-level acts + the hash join (pure) -----------------
 
 
@@ -835,18 +853,15 @@ def main(argv: list[str] | None = None) -> int:
         # r51b: the rank-cell tables ride BESIDE the fixed buckets (the owner-KB reader still
         # sees the record it saw in r49/r50 first) — leader-credence quintiles are the
         # PRIMARY read, p1 deciles the reliability diagram
-        for label, key, kq in (("leader-credence quintiles (primary)", "leader_credence", 5),
-                               ("p1 deciles (reliability)", "p1", 10)):
-            cells = quantile_cells(rows, key, k=kq)
-            summ = calibration_summary(cells)
-            at_bar[f"cells_{key}"] = [c.as_record() for c in cells]
-            at_bar[f"summary_{key}"] = summ
-            fmt = lambda x: "n/a" if x is None else f"{x:.4f}"  # noqa: E731
+        at_bar.update(rank_tables(rows))
+        fmt = lambda x: "n/a" if x is None else f"{x:.4f}"  # noqa: E731
+        for label, key, _k in RANK_TABLES:
+            summ = at_bar[f"summary_{key}"]
             print(f"  {label}: ECE={fmt(summ['ece'])} · Spearman rho={fmt(summ['spearman'])}")
-            for c in cells:
-                print(f"    {c.name:>3} [{c.lo:.4f}, {c.hi:.4f}] n={c.n:>3} "
-                      f"correct={c.correct:.3f} mean_p1={fmt(c.mean_p1)} "
-                      f"respond={c.n_respond:>3}")
+            for c in at_bar[f"cells_{key}"]:
+                print(f"    {c['name']:>3} [{c['lo']:.4f}, {c['hi']:.4f}] n={c['n']:>3} "
+                      f"correct={c['correct']:.3f} mean_p1={fmt(c['mean_p1'])} "
+                      f"respond={c['n_respond']:>3}")
 
     # A3: the differential gate per requested variant (P3's record is FULL; p3b adds
     # the coarsened arm — each writes its OWN suffixed artifacts, no clobber)

@@ -13,7 +13,6 @@ compatible with this repo's AGPL with the notice kept.
 from __future__ import annotations
 
 import hashlib
-import re
 import sys
 from pathlib import Path
 
@@ -127,12 +126,11 @@ def test_vendored_files_match_pinned_sha256() -> None:
 
 def test_reversing_the_import_rewrite_reproduces_the_upstream_bytes() -> None:
     """The ONLY edit to a copied module is its import path: putting the upstream spelling
-    back must hash to the upstream original recorded in SOURCE."""
+    back must hash to the upstream original recorded in SOURCE (the hash equality is the
+    whole proof — a second edit, or the rewrite appearing twice, breaks it)."""
     for name, (ours, theirs) in REWRITE.items():
-        text = (VENDORED / name).read_text(encoding="utf-8")
-        assert text.count(ours) == 1, f"{name}: the rewritten import must appear exactly once"
-        restored = text.replace(ours, theirs)
-        assert _sha(restored.encode("utf-8")) == UPSTREAM_SHA256[f"memqa/utils/evaluator/{name}"]
+        restored = (VENDORED / name).read_bytes().replace(ours.encode(), theirs.encode())
+        assert _sha(restored) == UPSTREAM_SHA256[f"memqa/utils/evaluator/{name}"], name
 
 
 def test_source_records_the_upstream_sha_and_every_original_hash() -> None:
@@ -143,8 +141,16 @@ def test_source_records_the_upstream_sha_and_every_original_hash() -> None:
 
 
 def test_no_network_or_judge_dependency_in_the_vendored_package() -> None:
-    """`evaluate_qa.py` imports requests/openai/tqdm for the LLM judge; the extraction must not."""
+    """`evaluate_qa.py` imports requests/openai/tqdm for the LLM judge and the whole
+    ``memqa`` package; the extraction must import none of them — resolved by AST, so a
+    name in a docstring is not an import."""
+    import ast
+
+    banned = {"requests", "openai", "tqdm", "memqa"}
     for p in VENDORED.glob("*.py"):
-        text = p.read_text(encoding="utf-8")
-        hit = re.search(r"^\s*(import|from)\s+(requests|openai|tqdm|memqa)\b", text, re.M)
-        assert hit is None, p.name
+        tree = ast.parse(p.read_text(encoding="utf-8"))
+        imported = {alias.name.split(".")[0] for node in ast.walk(tree)
+                    if isinstance(node, ast.Import) for alias in node.names}
+        imported |= {(node.module or "").split(".")[0] for node in ast.walk(tree)
+                     if isinstance(node, ast.ImportFrom) and node.level == 0}
+        assert not (imported & banned), (p.name, sorted(imported & banned))
