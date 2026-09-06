@@ -801,7 +801,20 @@ material for that candidate only.
   bar), `run_eval` now declares the pairing the classic gate spans, and `r49` carries a dated
   note; and **the next §18 rung is engine-side demand** — the pooled-prior hypothesis filed as
   proplang#26 with `r49` S4 attached (`A-11`); the verdict re-supply, C's spend re-record and a
-  §18 hold were offered and not chosen. `RULINGS` §5 has nothing live.
+  §18 hold were offered and not chosen. `RULINGS` §5 had nothing live.
+  **`r51` OPENED and CLOSED 2026-09-06 (`A-12`, `GD-30`/`GD-31`, $0): X1 KILLs.** The owner chose
+  (plan-mode interview, `conferrals/external-corpus-conferral.md`) an external labelled corpus —
+  ATM-Bench, read by the existing harness over a second KB root — to test the pooled-prior
+  hypothesis at ~10× the verdict supply. Pre-registration frozen before download (`401c494`);
+  the recon read **198** email-only number-typed questions against the frozen bar of **200** —
+  KILL by the letter, and by its ground more strongly than written: the owner's log shows exactly
+  **one decision per question per pass**, so a pass yields ≤ 198 verdicted ticks, ≈ 0.8× `r49`'s
+  238, not 10× (`M-35`: size a supply in the unit the instrument folds). The benchmark's own
+  detector reproduced the paper's 360 / 139 / 514 exactly; the lane regex read `quantity` on
+  only 40% of number-typed answers (P2 refuted). Nothing built, nothing deployed, no proplang
+  comment; the corpus stays on-machine, never in tree. **What to build next is live in
+  `RULINGS` §5** (`conferrals/r51-successor-conferral.md`: the 1×-n replication, a corpus-pooling
+  recon, the verdict re-supply, or hold).
 
 ## `src/pkm` — the KB core (Python, uv, DuckDB): key files
 

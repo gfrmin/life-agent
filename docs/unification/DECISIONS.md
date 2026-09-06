@@ -1454,4 +1454,48 @@ report.
 swaps; no gauge or regime change; no proplang edit (a comment on #26 only on the branch that
 earns it); no ATM-Bench content in tree.
 
+**Reaction.** *Closed the same day by the checkpoint's own recon:* X1 KILLed at 198 < 200 and the
+10× premise was withdrawn (`GD-31`, `M-35`). Nothing in the build list above was built; the
+docstring clause was never made. The owner's reaction to the choice itself stays open.
+
+## GD-31 · 2026-09-06 · r51 closes on X1 — the corpus cannot move the supply
+
+**The fork.** The recon read 198 email-only `number`-typed questions against the frozen X1 bar
+of 200 (`r51-external-corpus.md` §2), and found the pre-registration's "~10× n" premise false
+in the unit that matters (§3: one decision per question per pass; ≤ 198 ticks ≈ 0.8× `r49`'s).
+What the KILL closes, what it leaves, and whether anything is salvaged now.
+
+**Decided here (`D-3`), and why.**
+
+1. **The KILL stands as fired, letter and ground.** No amendment lowers the bar by two rows
+   (`M-4`); and the ground is stronger than the letter — at 200 the supply would still have
+   been ≈ 0.8×, so a softened bar would have bought a build for a reading the pre-registration
+   could not deliver (every decile at n ≥ 60 needs ≥ 600 ticks; at most three would have been
+   readable).
+2. **Nothing is built, deliberately.** The vendored evaluator, the k-fold harness, the gold
+   writer, the KB builder and the docstring clause were all conditional on X1; building any of
+   them "since the design exists" would be work without a reading to earn it. The designs stay
+   in the pre-registration for a successor.
+3. **The premise error is registered, not just disclosed** (`M-35`), because it is a class:
+   `r49`'s 238 / 141 already carries ≈ 1.7 passes of the same questions folded as independent
+   rows, and the next external-corpus proposal would make the same count.
+4. **proplang#26 gets no comment.** The branch says nothing; a "we tried and could not" note
+   would be noise on a demand whose evidence is unchanged.
+5. **The corpus stays on-machine** (data volume, outside every git tree, `REVISION.json`
+   beside it) under its licence — a successor should not re-download; nothing from it is in
+   tree.
+6. **What to build next goes to the owner** (`RULINGS` §5's class, live) with a conferral
+   (`conferrals/r51-successor-conferral.md`: the 1×-n replication, corpus-pooling recon, the
+   verdict re-supply, a hold — each priced, a recommendation first). Not decided here: it is
+   the one class the register reserves.
+
+**Alternatives rejected.** Amend X1 to 190 (result-picking on the sample, `M-4`); count the
+hard set or repeated passes toward the bar (0 usable rows; repeats are not evidence); build
+the instrument anyway as "infrastructure" (`A-10` opens checkpoints on preconditions, not on
+sunk design).
+
+**Not done, deliberately.** No `src/` change; no run; no restart; no proplang act; the owner's
+KB read only as aggregate counts of its decision and verdict logs (X9's manifest was never
+needed — nothing was built to threaten it).
+
 **Reaction.** *(open)*
