@@ -89,6 +89,7 @@ not cited below.
 | **A-9 · shape scales stay at 1.0** | 2026-08-29 | `conferral-1` ruling 1 | The `quantity` scale opt-in is declined; every shape ships inert. The units-lever arc (r28–r31) subsequently **closed** — r31 FAIL on K6, nothing deployed. |
 | **A-10 · sequencing is continuous** | — | PRINCIPLES §9 as amended | Eval-gated, not dogfood-gated. Open the next checkpoint as soon as its preconditions are met. |
 | **A-11 · §18's next rung is engine-side demand** | 2026-09-05 | owner, interviewed (`a3-regime-conferral`) | With B closed on its own KILL (`GD-28`: no host-side family separates the 70–90 band; the verdict supply binds), the next §18 iteration is **the engine-side pooled-prior hypothesis, filed as demand** on proplang (#26) with `r49` S4's table attached — held-out `p1` pulled toward ~0.86 in both directions — never edited from here (`M-23`/`GD-14`). Offered and **not chosen**: re-supplying the Claude verdict channel (104 unverdicted questions exist — ≈23 band rows at the band's 22% share against the ≈330 the split needs, so it cannot reach BF 10 on the existing pool), C's baseline-spend re-record, and holding §18 for the K-cap / §11's exit. Each stays named; none opens. The next gate run, whatever earns it, sizes D. |
+| **A-12 · the queue's next build is an external labelled corpus** | 2026-09-06 | owner, interviewed in plan mode (`external-corpus-conferral`) | With the ruled queue empty after `GD-29`, the next build is **`r51`: an external, public, labelled corpus (ATM-Bench) read by the existing harness over a SECOND KB root** — the pooled-prior hypothesis (proplang#26) at ~10× the verdict supply, the A3 differential and the `u_wrong` curve as by-products; pre-registered before download (`r51-external-corpus-preregistration`), NOT a §18 bar, no gauge change, nothing deploys, the owner's KB byte-untouched. Offered and **not chosen**: docs-only external anchors, ruling `u_wrong` by convention (an objective change), and a hold. Each stays named; none opens. |
 
 ## §4 CARRIED AND UNSETTLED — RESOLVED 2026-08-31
 
@@ -123,9 +124,10 @@ what to build next, and to §4's two carried items.
 Everything else — scope, sequencing, method, measurement design, consequence branches, FAIL
 handling, spend — is derivable and is delegated.
 
-**Nothing is live in this class (2026-09-05).** The last two entries were RESOLVED the same day
-by interview (`conferrals/a3-regime-conferral.md` — `AskUserQuestion`, priced options with a
-recommendation first, `M-17`'s form):
+**Nothing is live in this class (2026-09-06).** The last three entries were RESOLVED by
+interview (`conferrals/a3-regime-conferral.md` on 2026-09-05 and
+`conferrals/external-corpus-conferral.md` on 2026-09-06 — `AskUserQuestion`, priced options
+with a recommendation first, `M-17`'s form):
 
 - **Does the A3 gate keep its blind regime?** Posed by `r49b` after the `s18-bar-conferral`'s
   original question — *which utility is the bar quoted at?* — was withdrawn as mis-classified
@@ -139,6 +141,10 @@ recommendation first, `M-17`'s form):
   engine-side pooled-prior hypothesis is filed as demand** (proplang#26, `M-23`/`GD-14`) →
   `A-11`. Offered and NOT chosen: re-supplying the Claude verdict channel, C's baseline-spend
   re-record, and holding §18 for the K-cap / §11's exit — each stays named, none opens.
+- **What to build with the ruled queue empty?** Posed in plan mode on 2026-09-06 with four
+  priced options. **RULED: `r51`, an external labelled corpus read over a second KB root**
+  → `A-12`, `GD-30`. Offered and NOT chosen: docs-only external anchors, ruling `u_wrong`
+  by convention, and a hold.
 
 *(Distinct from governance, and unchanged: acts that touch third parties or destroy data are
 confirmed before they are taken. That is ordinary operating caution, not a keypress this project

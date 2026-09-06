@@ -1394,3 +1394,64 @@ verdict re-supply, the spend re-record, the K-cap and §11's exit stay named. No
 `M-1` is not engaged. D stays unsized until a gate run records `M-32` marks.
 
 **Reaction.** *(open)*
+
+## GD-30 · 2026-09-06 · r51 — an external labelled corpus as the engine's calibration instrument
+
+**The fork.** With the ruled queue empty after `GD-29`, the owner chose by interview
+(`conferrals/external-corpus-conferral.md`, `A-12`) to read the pooled-prior hypothesis on an
+external, public, labelled corpus. The forks inside that choice are this entry's: how the
+external rows become verdicts the harness can fold, what is vendored to grade them, what the one
+`src/` edit is, and what the instrument may and may not read.
+
+**Ruled (owner).** Option 1 of four — the external-corpus pre-registration — and nothing else
+(`A-12`).
+
+**Decided here (`D-3`), and why.**
+
+1. **The verdict is the benchmark's own matcher, vendored at pinned sha** (`scripts/atm_bench/
+   vendored/`, MIT into AGPL with notice; the import-path rewrite the only edit, sha-pinned). The
+   harness's `answer_matches` is a token-run substring rule and the lane classifier a 0.74 regex;
+   on date and currency answers both manufacture false "wrong"s, and every false wrong lowers a
+   cell's realised rate while leaving `p1` untouched — i.e. biases the primary read toward the
+   branch that posts evidence on proplang#26. The benchmark's matcher resolves relative dates
+   against the question's anchor and normalises; it is the rule the paper's own numbers were
+   produced with. `answer_matches` is still computed, as a cross-tab, and decides nothing.
+2. **Gradeability is typed by the ANSWER** (`detect_qtype(answer) == "number"`), the lane by
+   the question; the cross-tab is an output. A regex over the question cannot know that an
+   answer is a date.
+3. **A grader-error ceiling with a blind audit** (X3d, 60 rows, FN-rate > 0.10 voids X4). The
+   instrument's own verdict path is the largest validity risk and it is audited before any `p1`
+   exists.
+4. **Gold verdicts ride the existing `ClaudeVerdictEvent` with a non-default issuer**
+   (`gold:<corpus>`) and are written ONLY into a KB carrying `external-corpus.json`; the writer
+   refuses (rc 2) without it. Issuer-blind supersession means a `gold:*` row on the owner's
+   ledger would supersede a deliberated one, so the manifest refusal is the one guard, and it
+   fails closed. **The one `src/` edit** is a dated docstring clause in `core/claude_verdicts.py`
+   scoping "every verdict must be deliberated, never batch-derived" to the owner's ledger —
+   named in the pre-registration before it is made (`M-3`).
+5. **Primary cells on leader credence, K = 10 folds by sorted-rank round-robin, the pricing Ū
+   from the external KB's live fold with the source in the label** (`all-to-date@boot` /
+   `<policy>@current` — a disclosed record change: boot runs print a suffix `r49`/`r50` did not).
+   Reasons in the pre-registration's Frozen rules.
+6. **The "never values" rule is scoped**: it is the owner-KB PII rule; on a consented public
+   corpus it narrows to *nothing pushed carries an ATM value*, and values are read on-machine
+   only where the pre-registration requires (the audit).
+
+**Alternatives rejected.** Grading with the harness's matcher (biased, above); an LLM judge in
+the verdict path (a second instrument inside the measurement); LOO at ~1,000 ticks (≈133 h);
+`p1`-decile primary cells (arbitrary under the very hypothesis tested; noise passes the span bar
+about half the time); a fresh event type for gold verdicts (a second declaration of one
+relation, `M-6`'s class); a new daemon or bridge binary (the deployed daemon is stateless and
+shareable; the second bridge runs the module directly because `bin/answer-bridge` re-sources
+`.env`).
+
+**Enacted so far.** The pre-registration (`r51-external-corpus-preregistration.md`), the
+conferral, `A-12`, this entry — all before any download. The build, the second stack, the read
+and the report follow the pre-registration's own sequencing; this entry is completed with the
+report.
+
+**Not done, deliberately.** No §18 bar is read; no counter moves; nothing deploys, enables or
+swaps; no gauge or regime change; no proplang edit (a comment on #26 only on the branch that
+earns it); no ATM-Bench content in tree.
+
+**Reaction.** *(open)*
