@@ -1646,3 +1646,37 @@ held-out rows are persisted and X3b certifies them).
 **Not done, deliberately.** No decide-path change; nothing deploys; `r49` not re-read.
 
 **Reaction.** *(open)*
+
+## GD-35 · 2026-09-07 · r52 — the pooling recon's own forks
+
+**The fork.** `A-13` opens the corpus-pooling recon after `r51b`: a $0 count of whether public labelled corpora,
+pooled, can reach the ≈385 band rows `GD-28` priced as binding, in the unit the instrument folds (`M-35`). Which
+corpora, which gradeability rule, which band constant, and what the KILL is.
+
+**Ruled (owner).** `A-13`: the pooling recon opens after the replication, sized in the foldable unit.
+
+**Decided here (`D-3`), and why.**
+
+1. **Candidates: ATM-Bench's email subset (read), LongMemEval-cleaned, LoCoMo's released ten conversations**
+   — the three personal-memory corpora with human evidence labels and answers a deterministic matcher may be able to type;
+   CRAG stays rejected (web QA, not personal memory — `r51-successor-conferral`).
+2. **Gradeability is `r51`'s rule unchanged**: `detect_qtype(answer) == "number"` under the vendored matcher,
+   applied to each corpus's answer field; a corpus whose answers cannot be typed is counted, never graded; no
+   LLM judge in any verdict path (`M-37`'s one-grader rule applies to any later differential).
+3. **The band constant is the LOWER of the two measured rates, 0.149** (`r51b`: 29/195) against `r49`'s 0.231 —
+   the projection cannot be flattered by the owner corpus's higher band share. P2 is sized on it: pooled
+   gradeable ∈ [498, 898] projects to [74, 134] band rows — a KILL at 385 even at the higher constant. **Y1
+   is foreclosed by arithmetic at the frozen constant** (the answerable pool's ceiling projects 334) and the
+   pre-registration says so before download; the recon's information is the sizing (Y1′) and Y2–Y4.
+4. **Producer cost is priced, not built**: a transcript producer per conversation-shaped corpus, a questions
+   writer, a manifest, priced by analogy with `scripts/atm_bench/build_kb.py`; nothing is built on a KILL.
+5. **Controls before verdicts (`M-36`)** is stated in the pre-registration so the build successor inherits it,
+   though the recon's only KILL is a count.
+
+**Alternatives rejected.** A single larger corpus (none with evidence labels and typed answers was found);
+counting QA pairs as ticks (`M-35`); the owner-corpus band rate as the constant (flatters the projection).
+
+**Not done, deliberately.** No download before this commit; nothing built; no §18 counter moves; no proplang
+comment.
+
+**Reaction.** *(open)*
