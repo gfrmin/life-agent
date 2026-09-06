@@ -1539,4 +1539,59 @@ opening the pooling recon first (the owner chose the reading in hand).
 **Not done, deliberately.** No §18 bar is read; no counter moves; nothing deploys, enables or
 swaps; no gauge or regime change; no proplang edit; no ATM-Bench content in tree.
 
+**Reaction.** 2026-09-07 — read (`r51b-replication.md`): X4 **CONFIRMED** on the quintile form under
+every variant (five cells of 39, all readable; mean held-out `p1` spans 0.018, realised spans 0.436,
+ρ 0.90); the audit ceiling held (FN-rate 0.050); every fork above was exercised as decided — the
+cells at n ≥ 30 on quintiles, the deliberate edge live, the pricing Ū from the external KB's live
+fold at break-even 0.900 (coincident with the gate's by number, divergent by label; `M-34`'s
+INCONCLUSIVE structurally impossible, as the Scope clause said). Consequence enacted: the CONFIRMED
+branch — the proplang#26 comment worded as corroboration at ~1× n; A-CAL's reliability diagram and
+ECE (0.113) and OQ-0′ (c′)'s X7 table delivered in the report. Predictions: P2, P3, P3′, P5, P6
+confirmed; P1 (195 against [120, 190]), P4 (X6 PASS, not FAIL), P7 (n = 3), P8 (ECE 0.113) refuted;
+P9 as pre-read. One control clause (X3c) fired on the informative outcome — `GD-33`. `A-13`'s
+pooling recon opens next.
+
+## GD-33 · 2026-09-07 · r51b — a control clause that fired on the informative outcome
+
+**The fork.** X3c ("the `leader-credence+p-none` variant reproduces FULL's policy") KILLed by its
+letter after the run: FULL commits on 10 of 195 held-out ticks, the control on 0. Its frozen
+consequence is STOP, re-scope by a dated blind amendment, no reading taken — and the amendment could
+not be blind: the harness writes the control's and the verdict's artefacts in one run, and the
+runbook applied X4's rule before checking the controls.
+
+**Ruled.** `G-3` (owner, 2026-08-31): a control counts as a control only if removing what it
+controls for turns it RED. Removing the family ablation X3c checks makes every variant identical —
+GREEN. So X3c was never a control: it froze `r49`'s *empirical* S4 finding (three families inert on
+238 ticks) as a harness check, and its KILL fires exactly when the ablation is informative. `G-3`
+determines the fork (`RULINGS` §2); this entry publishes the enactment.
+
+**Decided here (`D-3`), and why.**
+
+1. **The KILL stands as fired by its letter** (the `GD-16` / `GD-25` shape: letter met, ground
+   refuted) and its consequence is enacted by Amendment 5 — dated, informed, disclosing what had
+   been seen — not by a re-run: X3b, read on the real engine, gives 19/19 rows identical across two
+   spawns and identical to the record, so a re-run would reproduce the artefacts byte for byte.
+2. **X3c is re-scoped as X3c′, a reading**: FULL 10 commits (8 correct), the control 0,
+   `leader-credence-only` 0 (≡ the control on all 195); the ten all `n-candidates=1` (77 of the
+   other 185 are), 9 of 10 `p-none<0.20`, all in one fold, at `p1` 0.949–0.950 against 0.865–0.874
+   under the control. On this corpus the candidate-count family is the only one that ever lifts
+   `p1` over the commit bar; on the owner's it moved nothing (`r49` S4).
+3. **No consequence for X4** — its verdict is invariant across the three variants (mean `p1`
+   spans 0.018 / 0.010 / 0.006, realised identical, ρ 0.90 on each), which is the $0 evidence that
+   the KILL's ground cannot reach the verdict. X6 is quoted per variant, as it always was to be.
+4. **The result-picking test is stated in the amendment**: the same re-scope would have been
+   written had X4 read REFUTED or INCONCLUSIVE; nothing in X4's rule, cells, thresholds or branches
+   moves; the proplang#26 comment discloses the amendment.
+5. **The runbook's step order was a defect** (verdict before controls), disclosed in the report;
+   the successor's runbook checks X3 before any verdict rule is applied.
+
+**Alternatives rejected.** Enacting "no reading is taken" literally and handing the corroboration
+to the pooling recon (the recon is $0 and cannot re-read X4; the owner chose this reading — `A-13`
+— and the KILL's ground does not touch it); a 44-minute deterministic re-run as the "re-read"
+(X3b already certifies it — theatre); an owner interview (not an objective change, and `G-3`
+determines the fork).
+
+**Not done, deliberately.** No rule, cell, threshold or branch of X4 changed; no §18 bar read;
+nothing deploys; `M-1` not engaged.
+
 **Reaction.** *(open)*

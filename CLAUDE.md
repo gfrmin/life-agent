@@ -815,6 +815,26 @@ material for that candidate only.
   comment; the corpus stays on-machine, never in tree. **What to build next is live in
   `RULINGS` §5** (`conferrals/r51-successor-conferral.md`: the 1×-n replication, a corpus-pooling
   recon, the verdict re-supply, or hold).
+  **`r51b` IS READ (2026-09-06, `A-13`, `GD-32`, $40.58): X4 CONFIRMED.** The owner chose the
+  1×-n replication first (`conferrals/r51-successor-conferral.md`), and it was built and read as
+  pre-registered (frozen `18f7840`; four blind amendments): the 381 email-only ATM-Bench
+  questions answered through a second bridge over a second KB root, the 198 number-typed ones
+  verdicted by the benchmark's own matcher (195 ticks / 195 questions — P1 REFUTED (5 above the
+  interval)), a blind 60-row grader audit (FN-rate 0.050 — X4 STANDS), then the harness at K = 10
+  with cells cut blind to the n as quintiles of leader credence. Five of five quintiles readable
+  at n = 39: mean held-out `p1` spans 0.018 while realised spans 0.436 (0.538 → 0.974), ρ 0.90 —
+  **CONFIRMED under every variant**, the pooled shape corroborated on a corpus the owner did not
+  author; ECE 0.113 (P8 refuted); the fixed form unreadable (P3′). X6's differential read PASS
+  0.984 / +0.424 [+0.127, +0.766] — the mirror of `r49`: 10 commits against the baseline's 77,
+  carried by the baseline's 17 wrong reports, no straddle under `M-34` (recorded, never a §18
+  bar); X7's `u_wrong` curve carries the first implied-bar/coverage/selective-risk table for
+  OQ-0′ (c′); X10 the abstention rows' `p_none`. The CONFIRMED branch fired: proplang#26 carries
+  the table as corroboration at ~1× n. One control clause (X3c) KILLed on the informative outcome
+  — the candidate-count family, inert on the owner's corpus, carries all ten commits here — and
+  is re-scoped by an informed, disclosed Amendment 5 (`GD-33`; `M-36`: an ablation is not a
+  control). Nothing deploys, no bar or counter moves, the owner KB is byte-untouched (X9), and no
+  benchmark content is in tree. **Next: the corpus-pooling recon opens as its own $0 checkpoint
+  (`A-13`), sized in the foldable unit (`M-35`).**
 
 ## `src/pkm` — the KB core (Python, uv, DuckDB): key files
 

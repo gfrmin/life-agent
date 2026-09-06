@@ -153,3 +153,22 @@ TN 5, **FN-rate 0.050 against the 0.10 ceiling → X4 STANDS**; precision 1.000,
 0.945; `answer_matches` on the same rows would have read FN-rate 0.283. Both files were deleted after the
 tally; nothing from them is quoted. **Timing constant:** one spawn folding 195 ticks read 0.472 (92.1 s in all; super-linear in depth: 0.172 at 50 ticks, 0.247 at 100, 0.355 at 150) s per
 tick-fold, so K = 10 projects ≈ 25–40 min of engine time for both variants (20 spawns each folding ~176 ticks at ~70 s, plus 390 decide ticks). No criterion, prediction or branch changes.
+
+**Amendment 5 — 2026-09-07 (HKT; written from 16:00 UTC on 2026-09-06), after the run: X3b read, X3c fired by its letter and
+re-scoped. NOT blind — disclosed.** The harness run (`r51b-gate`, 15:07–15:51 UTC, 43 min 42 s) writes X3c's, X4's and X6's
+artefacts together, and the runbook applied X4's frozen rule (15:51 UTC) before the X3 controls were checked (15:53 UTC);
+when this amendment was written its author had seen X4 read CONFIRMED under FULL and `leader-credence+p-none`, X6 PASS, X7
+and X9. **X3b** was then read on the real engine (16:00–16:07 UTC): fold 8 re-run twice through the harness's own
+`probe_heldout` — 19/19 rows identical between the runs and identical to the recorded `heldout-FULL.jsonl` rows, max |Δ`p1`|
+0 — **PASS**. **X3c fails by its letter**: FULL commits on 10 of 195 held-out ticks, the control on 0 (`leader-credence-only`
+also 0, and the control ≡ it on all 195); the ten are all `n-candidates=1`, all in one fold, at `p1` 0.949–0.950 where the
+control reads 0.865–0.874. The frozen consequence (STOP; re-scope by amendment; no reading taken) is enacted here. **Ground:**
+X3c is not a control in `G-3`'s sense — breaking the family ablation it checks would make the variants identical and turn it
+GREEN, not RED — it froze `r49`'s *empirical* S4 finding (three families inert on 238 ticks) as a harness check, and the
+harness ground it stood for is carried by X3a (unit: K = n byte-identical to LOO), X3b (above), the three variants sharing
+ids and folds, and the ablated variants reproducing `r49`'s degenerate `p1` ≈ 0.86 (0.8584 there). **Re-scope: X3c becomes
+X3c′, a reading — the per-variant policy table and the discriminating indicator, published — with no consequence for X4,**
+whose verdict is invariant across the three variants (the same frozen rule reads CONFIRMED on each: mean `p1` spans 0.018 /
+0.010 / 0.006, realised identical, ρ 0.90). This amendment touches no X4 rule, cell, threshold or branch and would read the
+same had X4 read REFUTED or INCONCLUSIVE. No re-run is bought: X3b certifies the artefacts deterministic, so the reading of
+record is the frozen rule applied after this amendment to the same rows. Registered: `GD-33`, `M-36`.
