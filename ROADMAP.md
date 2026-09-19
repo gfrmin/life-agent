@@ -44,9 +44,8 @@ and a clone over someone else's mail works end to end.
 
 ## Doors on the owner's side
 
-- proplang: publish a release (tag + `proplang-host` + sha256) — asked in
-  [gfrmin/proplang#28](https://github.com/gfrmin/proplang/issues/28); then set `RELEASE_TAG`
-  in `config/engine.lock`.
+- proplang: released as `doctrine-sitting-r1` (= `94fd4eb`, 2026-09-19;
+  [gfrmin/proplang#28](https://github.com/gfrmin/proplang/issues/28)); pinned in `config/engine.lock`.
 - hkaddresses: extract the core into its own public repo, with life-agent as the second
   domain — asked in `renavondata/hkaddresses#27`.
 - tannen: `m5-close` is closed (2026-09-19); J2 pins it.

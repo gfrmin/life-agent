@@ -1,9 +1,11 @@
 # The decider engine (proplang-host), pinned in one place. `make engine` reads this.
-# RELEASE_TAG is empty until proplang publishes a release; until then `make engine` builds
-# COMMIT from source (GHC 9.10.3 via ghcup, ~2 min) and the sha256 below only verifies a
-# downloaded release asset (a local cabal build is not bit-reproducible).
+# With RELEASE_TAG set, `make engine` downloads the public release asset and installs it only
+# if its sha256 matches SHA256; with RELEASE_TAG empty it builds COMMIT from source
+# (GHC 9.10.3 + cabal via ghcup). Release doctrine-sitting-r1 is the author-signed tag at
+# COMMIT; a fresh-worktree build reproduced SHA256 on the build machine (not tested across
+# toolchains). The asset is dynamically linked: it needs glibc and libgmp.so.10.
 REPO=gfrmin/proplang
-COMMIT=94fd4eb
-RELEASE_TAG=
+COMMIT=94fd4ebbc0bc2cb6d14af25f049270008822365c
+RELEASE_TAG=doctrine-sitting-r1
 ASSET=proplang-host
 SHA256=71998f6556f53314affd089a41eff5eb2b5cd749e56661f702989f744b8cf3c6
