@@ -143,6 +143,14 @@ def score_paired(set_name: str, lines: Iterable[str]) -> list[Row]:
                                                                         strict=True)])]
 
 
+def score_typed(set_name: str, lines: Iterable[str]) -> list[Row]:
+    """The typed row alone, from a typed-only archive (``scripts/score_typed.py``): a set
+    with no recorded oracle. Censored rows are excluded."""
+    typed = [_response(r["typed"]) for ln in lines if ln.strip()
+             for r in [json.loads(ln)] if not r.get("censored")]
+    return [summarise(set_name, "typed", typed)]
+
+
 def load_sets(path: Path = SETS) -> dict[str, dict[str, Any]]:
     return yaml.safe_load(path.read_text(encoding="utf-8"))["sets"]
 
@@ -168,9 +176,10 @@ def score(kb: Path | None, sets: Mapping[str, Mapping[str, Any]]
         if digest != spec["sha256"]:
             raise SystemExit(f"{name}: sha256 {digest} != pinned {spec['sha256']} "
                              f"({f}) — the pinned bytes moved; re-pin deliberately")
-        if spec["kind"] != "paired":
+        scorer = {"paired": score_paired, "typed": score_typed}.get(spec["kind"])
+        if scorer is None:
             raise SystemExit(f"{name}: unknown kind {spec['kind']!r}")
-        rows += score_paired(name, data.decode("utf-8").splitlines())
+        rows += scorer(name, data.decode("utf-8").splitlines())
     return rows, skipped
 
 

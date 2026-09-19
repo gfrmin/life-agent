@@ -57,6 +57,7 @@ from life_agent.core import deliberate as DL
 from life_agent.core import derivations as D
 from life_agent.core import expansion as EXP
 from life_agent.core import gather_outcomes as GO
+from life_agent.core import gather_row as GR
 from life_agent.core import joint_extract as JE
 from life_agent.core import lookup as LK
 from life_agent.core import matching as MATCH
@@ -1138,11 +1139,11 @@ class BridgeServer(HTTPServer):
 
 
 def _build_decider(u_bar: Callable[[], dict[str, float]]) -> DCD.Decider:
-    """The decider under the current Ū plus the measured recovery rates of the two
-    information acts (`core.decide`'s rows read them from u_bar)."""
+    """The decider under the current Ū plus the measured information rows: the fitted gather
+    row (`core.gather_row`) and the ask's recovery rate (`core.decide`'s rows read both from
+    u_bar)."""
     def priced_u_bar() -> dict[str, float]:
-        return {**u_bar(),
-                DEC_RULE.RECOVERY_KEY: GO.recovery_rate(config.GATHER_OUTCOMES_LOG),
+        return {**u_bar(), **GR.load(config.GATHER_ROW),
                 DEC_RULE.ASK_RECOVERY_KEY: RX.ask_recovery_rate(config.DECISIONS_LOG,
                                                                 config.REACTIONS_LOG)}
     return DCD.Decider(priced_u_bar)

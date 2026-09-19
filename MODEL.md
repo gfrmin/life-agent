@@ -74,7 +74,7 @@ ties to the first-listed row:
 |---|---|---|
 | `respond` | commit the leader span with its citation | `u_correct = +1` if right, `u_wrong = −9` if wrong |
 | `abstain` | decline | `u_abstain = 0` |
-| `gather` | run the cheapest unapplied evidence transform, then decide again | the transform's price; recovers the answer at the measured rate `r_g` |
+| `gather` | run the cheapest unapplied evidence transform, then decide again | the transform's price; the measured value of the gather sequence (below) |
 | `ask` | ask the owner a clarifying question | the owner's attention; recovers the answer at the measured rate `r_a` |
 | `escalate@r` | hand the question to rung `r` (J1–J2) | the rung's price, and its learned reliability `p_r` |
 
@@ -85,11 +85,14 @@ alone the commit bar is `p* = |u_wrong|/(1 + |u_wrong|)` — Chow's reject rule,
 prior (the same α/β = 9 as hkaddresses' `loss.yaml`), 0.84 folded today. The bar is derived,
 never set.
 
-**Evidence rows are priced at a rate, never as perfect information.** `gather` and `ask`
-recover the answer with probability `r` (else the question ends as an abstain): EU =
-`r·u_correct + (1 − r)·u_abstain − price`. `r_g` is measured from the gather-outcome log and
-`r_a` from recorded ask verdicts; an unmeasured rate takes its Beta(1, 1) mean, 0.5. A
-preposterior over the current posterior is a door (ROADMAP).
+**Evidence rows are measured, never perfect information.** `gather` is priced by what the
+gather sequence was observed to end in: per leader state (right or wrong), the chances of a
+correct report, a wrong one, or a withhold (`core/gather_row.py`: a two-component mixture
+over recorded episodes, weighted by each episode's starting `p1`, fit by EM under a
+Dirichlet(2, 2, 2) prior; `scripts/fit_gather_row.py` fits it from the m5-base sequences).
+The row is linear in `p1` like the others. Unfitted, both states read the prior mean and
+gathering never pays. `ask` recovers the answer at a measured rate `r_a` (Beta(1, 1) mean
+0.5 unmeasured). A preposterior over the current posterior is a door (ROADMAP).
 
 **Escalation.** A rung fires only when `p_r·u_correct + (1 − p_r)·u_wrong − λ$·price`
 beats every local action, so at `u_wrong = −9` a rung needs `p_r` above 0.90 net of price.

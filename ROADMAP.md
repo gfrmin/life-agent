@@ -27,8 +27,8 @@ and a clone over someone else's mail works end to end.
 - **J1 — The decider.** The candidate posterior (`answer_brain.jl` → `core/posterior.py`,
   pinned to the 314 m5-base exchanges) and the utility folds (credence-skin → local
   quadrature, pinned to recorded boot Ū); the act is the host Bayes act
-  (`core/decide.bayes_act`, `core/decider.py`, `core/enact.py`) with gather and ask priced at
-  measured recovery rates; the Julia daemon, the credence skin and the in-process lanes
+  (`core/decide.bayes_act`, `core/decider.py`, `core/enact.py`) with gather priced from
+  recorded gather sequences and ask at a measured recovery rate; the Julia daemon, the credence skin and the in-process lanes
   retire; rule 5 becomes the ΔU merge rule. The board re-scores the typed arm live.
 - **J2 — Escalate + origin.** `core/oracle.py` rungs as rows `bayes_act` ranks, each with a
   Beta reliability folded from its verdicts; disclosure rows in the write-once recorder;
@@ -53,7 +53,7 @@ same recorded decisions.
 - **tannen** as the write-once store, at its `m5-close` tag, once the MVP is live.
 - **The ER core** (J5): hkaddresses extracts it into its own public repo, with life-agent as
   the second domain (`renavondata/hkaddresses#27`).
-- **Gather as a preposterior** over the current posterior, replacing the constant recovery
-  rate.
+- **Gather as a preposterior** over the current posterior, replacing the fitted
+  sequence row (`core/gather_row.py`).
 
 `u_wrong` re-elicitation is the owner's alone (it moves every bar, including escalation's).

@@ -31,7 +31,6 @@ from typing import Any
 
 from life_agent.core.decide import (  # the rows and the act live in core; re-exported here
     ACTIONS,
-    RECOVERY_KEY,
     argmax_action,
     argmax_crossings,
     eu_by_action,
@@ -39,7 +38,7 @@ from life_agent.core.decide import (  # the rows and the act live in core; re-ex
     utility_by_action,
 )
 
-__all__ = ["ACTIONS", "RECOVERY_KEY", "argmax_action", "argmax_crossings", "eu_by_action",
+__all__ = ["ACTIONS", "argmax_action", "argmax_crossings", "eu_by_action",
            "respond_threshold", "utility_by_action"]
 
 # --- the affordance vocabulary (ONE writable name; grid values are world-owned) ----------
@@ -185,11 +184,6 @@ FEASIBILITY: dict[str, str] = {"gather": "gather-open"}
 # of the option the host would enact). Like feasibility names, a namespace member with NO
 # guard, read only by the utility sentence, which subtracts it from the row.
 PRICES: dict[str, str] = {"gather": "gather-cost"}
-
-# The u_bar key carrying gather's measured recovery rate r = P(the question ends in a report
-# | a gather was enacted) (:func:`life_agent.core.gather_outcomes.recovery_rate`). Absent,
-# r = 1: the myopic perfect-information row.
-
 
 # [§3.3 · M-9] feature bucketing — the sensor vocabulary of g and of the world
 # (model inputs, never control flow).

@@ -106,26 +106,6 @@ def warm_counts(path: Path, probe: str) -> dict[str, Any] | None:
                          for k, (n1, n0) in sorted(counts.items())]}
 
 
-def recovery_rate(path: Path, *,
-                  excluded_days: tuple[str, ...] = PRC.GATHER_EXCLUDED_DAYS) -> float:
-    """The measured recovery rate of an enacted gather — P(the question ended in a report
-    | a gather was enacted), pooled over every actuator — as the Beta(1, 1) posterior mean
-    ``(n1 + 1) / (n + 2)``. Rows whose ``tx_time`` falls on an excluded day are not read.
-    An absent log reads as no rows (0.5)."""
-    n1 = n = 0
-    if path.exists():
-        with path.open(encoding="utf-8") as f:
-            for line in f:
-                if not line.strip():
-                    continue
-                row = json.loads(line)
-                if str(row.get("tx_time") or "")[:10] in excluded_days:
-                    continue
-                n += 1
-                n1 += bool(row.get("recovered"))
-    return (n1 + 1) / (n + 2)
-
-
 def grow_block(path: Path) -> dict[str, Any]:
     """[§3.3 · GO-2] (cold prior: an actuator with no rows carries None ⇒ the
     daemon's declared cold prior — correct, declared.) The `/decide` grow block: the

@@ -103,18 +103,3 @@ def _rows(path: Path, rows: list[tuple[str, bool]]) -> None:
         encoding="utf-8")
 
 
-def test_recovery_rate_is_the_pooled_beta_1_1_mean(tmp_path: Path) -> None:
-    log = tmp_path / "gather_outcomes.jsonl"
-    _rows(log, [("2026-08-21", True), ("2026-08-21", False), ("2026-08-25", False)])
-    assert GO.recovery_rate(log, excluded_days=()) == (1 + 1) / (3 + 2)
-
-
-def test_recovery_rate_skips_the_excluded_window(tmp_path: Path) -> None:
-    log = tmp_path / "gather_outcomes.jsonl"
-    _rows(log, [("2026-08-21", False), ("2026-08-26", True), ("2026-08-26", True)])
-    assert GO.recovery_rate(log, excluded_days=("2026-08-26",)) == 1 / 3
-    assert "2026-08-26" in GO.PRC.GATHER_EXCLUDED_DAYS  # run 17's window, by default
-
-
-def test_recovery_rate_without_a_log_is_the_prior_mean(tmp_path: Path) -> None:
-    assert GO.recovery_rate(tmp_path / "absent.jsonl") == 0.5

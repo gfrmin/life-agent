@@ -13,14 +13,17 @@ expected utility, ties to the first-listed action in :data:`ACTIONS`.
   abstain only above ``-u_wrong / (u_correct - u_wrong)`` (0.90 at the declared prior
   ``u_wrong = -9``; the LIVE bar moves with the reaction fold, so never quote 0.90 as
   today's value — read :func:`respond_threshold`);
-- ``gather`` and ``ask``: information acts, each priced by a **measured recovery rate**
-  ``r`` (a gather or an ask ends in a report with probability r, otherwise in a withhold)
-  and its own cost. Absent a measurement, ``r`` is the Beta(1, 1) prior mean 0.5 — never
-  the perfect-information row, which is an upper bound and overvalued gathering until it
-  was measured (0.093 over 2 182 gathers).
+- ``gather``: the measured value of entering the gather sequence (:mod:`life_agent.core.
+  gather_row`): per leader state ``y``, the fitted chances that the sequence ends in a
+  correct report, a wrong one, or a withhold, priced at the owner's utilities, less the
+  attention cost ``kappa_att``. Unmeasured, both states read the Dirichlet prior mean (1/3
+  each), under which gathering is not worth its cost;
+- ``ask``: priced by a **measured recovery rate** ``r`` (an ask ends in a report with
+  probability r, otherwise in a withhold) less ``lambda_int``; unmeasured, ``r`` is the
+  Beta(1, 1) mean 0.5. Never the perfect-information row, which is an upper bound.
 
-The rows are a declared **evidence model** for the information acts, not the preposterior
-over the current posterior; that is a door in ``ROADMAP.md``.
+The information rows are **measured evidence models**, not the preposterior over the current
+posterior; that is a door in ``ROADMAP.md``.
 
 ``u_wrong``/``lambda_int``/``kappa_att`` are :class:`life_agent.core.utility.UtilityPosterior`
 latents; ``u_correct``/``u_abstain`` its gauge constants. The proplang world
@@ -32,13 +35,13 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 
 from life_agent.core import answer_shape as AS
+from life_agent.core import gather_row as GR
 
 #: The actions, in tie-break order: the first-listed wins an exact tie, so ``abstain`` is
 #: the safe default when nothing is better.
 ACTIONS: tuple[str, ...] = ("abstain", "gather", "ask", "respond")
 
-#: u_bar keys carrying the measured recovery rates of the two information acts.
-RECOVERY_KEY = "gather_recovery"
+#: The u_bar key carrying the ask's measured recovery rate.
 ASK_RECOVERY_KEY = "ask_recovery"
 
 #: The Beta(1, 1) prior mean an unmeasured recovery rate reads as.
@@ -54,11 +57,17 @@ def utility_by_action(u_bar: Mapping[str, float]) -> dict[str, tuple[float, floa
     u_wrong = float(u_bar.get("u_wrong", -9.0))
     q = abs(float(u_bar.get("lambda_int", 0.1)))
     g = abs(float(u_bar.get("kappa_att", 0.02)))
-    r_gather = float(u_bar.get(RECOVERY_KEY, PRIOR_RECOVERY))
     r_ask = float(u_bar.get(ASK_RECOVERY_KEY, PRIOR_RECOVERY))
+    gr = {k: float(u_bar.get(k, GR.PRIOR[k])) for k in GR.KEYS}
+
+    def gathered(p_right: float, p_wrong: float) -> float:
+        return (p_right * u_correct + p_wrong * u_wrong
+                + (1.0 - p_right - p_wrong) * u_abstain - g)
+
     return {
         "abstain": (u_abstain, u_abstain),
-        "gather": (u_abstain - g, r_gather * u_correct + (1.0 - r_gather) * u_abstain - g),
+        "gather": (gathered(gr["gather_right_if_wrong"], gr["gather_wrong_if_wrong"]),
+                   gathered(gr["gather_right_if_right"], gr["gather_wrong_if_right"])),
         "ask": (u_abstain - q, r_ask * u_correct + (1.0 - r_ask) * u_abstain - q),
         "respond": (u_wrong, u_correct),
     }

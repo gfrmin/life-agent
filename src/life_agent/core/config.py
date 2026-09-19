@@ -82,6 +82,10 @@ OUTCOMES_LOG = KB / "calibration" / "outcomes.jsonl"
 # no EU decision is ever made unlogged.
 DECISIONS_LOG = KB / "calibration" / "decisions.jsonl"
 
+# The fitted gather row (core/gather_row; scripts/fit_gather_row.py writes it). Absent, the
+# decider prices gathering at the row's prior.
+GATHER_ROW = KB / "calibration" / "gather_row.json"
+
 # The aggregate family's generator registry (design §9, r21): the DATA lives out of
 # tree (schedules cite owner documents); the loader/schema are in
 # life_agent.core.aggregate. EVIDENCE_ROOT anchors the entries' citation paths.

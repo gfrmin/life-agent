@@ -10,10 +10,19 @@ import pytest
 
 from life_agent.core import decide as DEC
 from life_agent.core import decider as DCD
+from life_agent.core import gather_row as GR
 from life_agent.core import posterior as POST
 
+
+def _gather(right_if_right: float, wrong_if_right: float = 0.0, right_if_wrong: float = 0.0,
+            wrong_if_wrong: float = 0.0) -> dict[str, float]:
+    """A gather row: the sequence's chances of ending right / wrong per leader state."""
+    return GR.as_u_bar({"right": right_if_right, "wrong": wrong_if_right},
+                       {"right": right_if_wrong, "wrong": wrong_if_wrong})
+
+
 _U = {"u_correct": 1.0, "u_abstain": 0.0, "u_wrong": -9.0, "lambda_int": 1.0,
-      "kappa_att": 0.02, DEC.RECOVERY_KEY: 0.1, DEC.ASK_RECOVERY_KEY: 0.5}
+      "kappa_att": 0.02, **_gather(0.1), DEC.ASK_RECOVERY_KEY: 0.5}
 
 _OBS = [{"reports": 1, "group": 0, "authority": 1.0, "subject_factor": 1.0,
          "time_factor": 1.0, "competition_factor": 1.0},
@@ -34,7 +43,7 @@ def _payload(**kw: Any) -> dict[str, Any]:
 
 def test_the_bayes_act_is_the_row_argmax_at_p1() -> None:
     assert DEC.bayes_act(_U, 0.99) == "respond"
-    assert DEC.bayes_act(_U, 0.5) == "gather"  # a cheap 10%-recovery read beats waiting
+    assert DEC.bayes_act(_U, 0.5) == "gather"  # a cheap read that sometimes recovers
     assert DEC.bayes_act(_U, 0.5, gather_open=False) == "abstain"
     bar = DEC.respond_threshold(_U)
     assert bar is not None and 0.8 < bar < 0.95
@@ -43,7 +52,7 @@ def test_the_bayes_act_is_the_row_argmax_at_p1() -> None:
 
 
 def test_gather_is_ranked_only_while_open_and_pays_its_price() -> None:
-    u = {**_U, DEC.RECOVERY_KEY: 0.9, "kappa_att": 0.0}
+    u = {**_U, **_gather(0.9), "kappa_att": 0.0}
     assert DEC.bayes_act(u, 0.6) == "gather"
     assert DEC.bayes_act(u, 0.6, gather_open=False) == "abstain"
     assert DEC.bayes_act(u, 0.6, gather_cost=10.0) == "abstain"
@@ -61,11 +70,44 @@ def test_p_correct_is_the_map_credence() -> None:
 
 
 def test_no_information_act_is_priced_as_perfect_information() -> None:
-    """Perfect information is an upper bound: with the rates unmeasured both rows read the
-    Beta(1, 1) prior mean, so neither can be worth u_correct when asserting would be right."""
-    rows = DEC.utility_by_action({"u_correct": 1.0, "u_abstain": 0.0, "lambda_int": 0.0,
-                                  "kappa_att": 0.0})
-    assert rows["gather"][1] == rows["ask"][1] == DEC.PRIOR_RECOVERY < 1.0
+    """Perfect information is an upper bound: unmeasured, the ask reads the Beta(1, 1) mean
+    and the gather row its Dirichlet prior mean, so neither is worth u_correct when asserting
+    would be right."""
+    rows = DEC.utility_by_action({"u_correct": 1.0, "u_abstain": 0.0, "u_wrong": -9.0,
+                                  "lambda_int": 0.0, "kappa_att": 0.0})
+    assert rows["ask"][1] == DEC.PRIOR_RECOVERY < 1.0
+    assert rows["gather"] == pytest.approx(((1.0 - 9.0) / 3.0, (1.0 - 9.0) / 3.0))
+
+
+def test_the_gather_row_prices_its_fitted_outcomes_at_the_owner_utilities() -> None:
+    u = {"u_correct": 1.0, "u_abstain": 0.0, "u_wrong": -9.0, "kappa_att": 0.05,
+         **_gather(0.9, 0.02, 0.2, 0.05)}
+    wrong, right = DEC.utility_by_action(u)["gather"]
+    assert right == pytest.approx(0.9 - 9.0 * 0.02 - 0.05)
+    assert wrong == pytest.approx(0.2 - 9.0 * 0.05 - 0.05)
+
+
+def test_the_gather_row_fit_recovers_its_generating_outcomes() -> None:
+    import random
+
+    rng = random.Random(7)
+    t_r = {"right": 0.9, "wrong": 0.03, "declined": 0.07}
+    t_w = {"right": 0.2, "wrong": 0.05, "declined": 0.75}
+    eps = []
+    for _ in range(4000):
+        p1 = rng.random()
+        t = t_r if rng.random() < p1 else t_w
+        x = rng.random()
+        eps.append((p1, "right" if x < t["right"] else
+                    "wrong" if x < t["right"] + t["wrong"] else "declined"))
+    f_r, f_w = GR.fit(eps)
+    for o in GR.OUTCOMES:
+        assert f_r[o] == pytest.approx(t_r[o], abs=0.04)
+        assert f_w[o] == pytest.approx(t_w[o], abs=0.04)
+
+
+def test_an_absent_fit_reads_the_prior(tmp_path: Path) -> None:
+    assert GR.load(tmp_path / "none.json") == GR.PRIOR
 
 
 # --- the decider -------------------------------------------------------------------------
@@ -89,7 +131,7 @@ def test_a_certain_leader_is_reported_and_an_uncertain_one_withheld() -> None:
 
 
 def test_gather_closes_when_every_option_is_applied() -> None:
-    u = {**_U, "u_wrong": -100.0, DEC.RECOVERY_KEY: 0.9, "kappa_att": 0.0}
+    u = {**_U, "u_wrong": -100.0, **_gather(0.9), "kappa_att": 0.0}
     open_ = DCD.decide(_payload(), u)
     closed = DCD.decide(_payload(applied_probes=["corroborate_a"]), u)
     assert open_["effector"] == "gather" and open_["probe"] == "corroborate_a"

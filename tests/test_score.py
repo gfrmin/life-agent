@@ -121,6 +121,20 @@ def test_the_board_shows_u_per_question_only_with_a_gauge() -> None:
     assert priced.splitlines()[6].endswith(f"| {G.total(_board(typed)) / typed.rows:+.3f} | — |")
 
 
+def test_a_typed_set_scores_the_typed_row_alone(tmp_path: Path) -> None:
+    import hashlib
+
+    lines = [json.dumps({"question_id": f"g{i}", "censored": c,
+                         "typed": {"action": a, "correct": ok, "cost_usd": 0.01}})
+             for i, (a, ok, c) in enumerate([("report", True, False), ("report", False, False),
+                                             ("abstain", None, False), ("report", True, True)])]
+    (tmp_path / "t.jsonl").write_text("\n".join(lines), encoding="utf-8")
+    sha = hashlib.sha256((tmp_path / "t.jsonl").read_bytes()).hexdigest()
+    rows, _ = S.score(tmp_path, {"g": {"kind": "typed", "path": "t.jsonl", "sha256": sha}})
+    ((r),) = rows
+    assert (r.arm, r.rows, r.right, r.wrong, r.declined) == ("typed", 3, 1, 1, 1)
+
+
 def test_a_moved_pin_refuses(tmp_path: Path) -> None:
     (tmp_path / "p.jsonl").write_text("\n".join(LINES), encoding="utf-8")
     sets = {"x": {"kind": "paired", "path": "p.jsonl", "sha256": "0" * 64}}

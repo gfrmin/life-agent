@@ -882,12 +882,16 @@ def test_ready_reports_the_decider(deps: BridgeDeps) -> None:
     assert payload["decider"] == {"enabled": True, "kind": "fake"}
 
 
-def test_the_built_decider_reads_the_current_u_bar_and_the_recovery_rates(
+def test_the_built_decider_reads_the_current_u_bar_and_the_information_rows(
         monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """The bridge's decider ranks under Ū plus the two measured recovery rates; with no
-    outcome logs both read as the Beta(1, 1) prior mean."""
+    """The bridge's decider ranks under Ū plus the fitted gather row and the ask's measured
+    recovery rate, all read per decision. A fitted row that recovers the leader makes a
+    middling posterior gather; with no fit the prior row never gathers."""
+    import json
+
     from life_agent.core import config
-    monkeypatch.setattr(config, "GATHER_OUTCOMES_LOG", tmp_path / "none.jsonl")
+    from life_agent.core import gather_row as GR
+    monkeypatch.setattr(config, "GATHER_ROW", tmp_path / "gather_row.json")
     monkeypatch.setattr(config, "DECISIONS_LOG", tmp_path / "none-d.jsonl")
     monkeypatch.setattr(config, "REACTIONS_LOG", tmp_path / "none-r.jsonl")
     calls: list[int] = []
@@ -905,6 +909,15 @@ def test_the_built_decider_reads_the_current_u_bar_and_the_recovery_rates(
     assert view["effector"] == "report" and view["value"] == "y"
     assert calls == [1]  # Ū is read per decision, so a reaction fold moves the next one
     assert decider.status() == {"kind": "host"}
+
+    split = [{**obs[0], "reports": 0}, {**obs[1], "group": 1}]  # one witness each: p1 0.48
+    middling = {**_DECIDE_BODY, "candidates": ["x", "y"], "observations": split,
+                "rho": 0.8, "transforms": [{"probe": "corroborate_a", "kind": "voi",
+                                            "cost": 0.004}]}
+    assert decider.decide("q2", middling)["effector"] == "abstain"   # the prior row
+    (tmp_path / "gather_row.json").write_text(json.dumps({"u_bar": GR.as_u_bar(
+        {"right": 0.9, "wrong": 0.02}, {"right": 0.2, "wrong": 0.05})}), encoding="utf-8")
+    assert decider.decide("q2", middling)["effector"] == "gather"    # the fitted row
 
 
 # --- malformed / unknown / method ------------------------------------------------------
