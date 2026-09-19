@@ -126,6 +126,16 @@ def test_retrieve_without_terms_uses_raw_question(
     assert seen["query"] == "am i a contractor?"
 
 
+def test_retrieve_reports_the_rerank_spend(
+        deps: BridgeDeps, monkeypatch: pytest.MonkeyPatch) -> None:
+    from life_agent.core import rerank as RR
+    monkeypatch.setattr(RET, "retrieve_set", lambda conn, query, k: [])
+    monkeypatch.setattr(RR, "rerank", lambda q, pool, k, root=None: ([], 0.047))
+    _, lexical = _call(deps, "POST", "/retrieve", {"question": "q?"})
+    _, reranked = _call(deps, "POST", "/retrieve", {"question": "q?", "rerank": True})
+    assert lexical["cost_usd"] == 0.0 and reranked["cost_usd"] == 0.047
+
+
 # --- /extract: the single-source (brain-blindness) assertion ---------------------------
 
 def test_extract_is_exactly_to_abstract_observations(

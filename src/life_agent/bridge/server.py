@@ -205,8 +205,9 @@ def _retrieve(deps: BridgeDeps, p: Payload) -> Payload:
     # evidence the next /decide sees; discovery over a closed candidate set is outside net_voi.
     if p.get("rerank"):
         pool = RET.retrieve_set(deps.conn, query, RR.RERANK_POOL)
-        return {"hits": RR.rerank_hits(question, pool, k)}
-    return {"hits": RET.retrieve_set(deps.conn, query, k)}
+        hits, cost = RR.rerank(question, pool, k, root=deps.root)
+        return {"hits": hits, "cost_usd": cost}
+    return {"hits": RET.retrieve_set(deps.conn, query, k), "cost_usd": 0.0}
 
 
 def _extract(deps: BridgeDeps, p: Payload) -> Payload:

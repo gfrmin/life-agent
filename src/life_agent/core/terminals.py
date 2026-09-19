@@ -28,23 +28,6 @@ _retrieve_set = retrieve_set
 EXPAND_MODEL = EXP.EXPAND_MODEL
 EXPAND_SYSTEM = EXP.EXPAND_SYSTEM
 
-# Reranking: BM25 ranks by surface-word overlap, so for ~8 of the eval's retrieval misses
-# the gold sits at lexical rank 36-132 (probe_gold_rank) — buried below literary PDFs that
-# share the question's words but not its fact. A listwise reranker reads a WIDE lexical pool
-# and selects the chunks that actually carry the answer, pulling the buried gold into the
-# top-k (measured: Sonnet rescued 7/8 with zero regression, ~20k input tokens/question).
-# Sonnet (not the synthesis default) because it reads the whole pool and accepts temperature.
-RERANK_MODEL = "claude-sonnet-4-6"
-RERANK_POOL = 150  # lexical chunks fed to the reranker (covers the deepest addressable gold)
-RERANK_SYSTEM = (
-    "You are a retrieval reranker for a personal-assistant corpus (English AND Hebrew). "
-    "Given a QUESTION and a numbered list of document SNIPPETS, identify the snippets most "
-    "likely to contain the EXACT fact needed to answer it. Prefer the specific, current, "
-    "authoritative source (an official record, a form, a bill) over generic or incidental "
-    "mentions of the same words. Return ONLY a JSON array of the {k} most relevant snippet "
-    "numbers, best first — no prose."
-)
-
 # --- retrieval over the LIVE corpus --------------------------------------- #
 def _pkm_root() -> Path | None:
     """The pkm knowledge root, or None when unresolvable. None disables derivation
@@ -253,41 +236,6 @@ def _expand_terms(question: str, *, model: str = EXPAND_MODEL,
         r.text,               # its own — different raw, different hit-bucket counter)
         on_refusal=((lambda: _count("expand_refusal", hit=False))
                     if root is not None else None))
-
-
-def _rerank_hits(question: str, pool: list[dict[str, Any]], k: int, *,
-                 model: str = RERANK_MODEL) -> list[dict[str, Any]]:
-    """Impure edge: a listwise reranker reads the wide lexical POOL and returns its top-k
-    hits, reordered so the chunk that actually carries the answer leads. Fail-open — any
-    error (API down, unparseable reply) returns the lexical top-k unchanged, so reranking
-    can only improve recall, never break the path. The returned dicts are the pool's own
-    (same artifact_cache_key / chunk_text / origin / score), so every downstream key and
-    citation is unaffected. A short or garbled reply is backfilled from the lexical head, so
-    the result is never fewer (or worse on the tail) than lexical retrieval alone."""
-    if len(pool) <= k:
-        return pool[:k]
-    snippets = "\n".join(
-        f"[{i + 1}] {h['chunk_text'][:280].strip().replace(chr(10), ' ')}"
-        for i, h in enumerate(pool))
-    user = f"QUESTION: {question}\n\nSNIPPETS:\n{snippets}"
-    try:
-        r = C.anthropic_complete(RERANK_SYSTEM.format(k=k), user, model=model, max_tokens=400)
-    except SystemExit:
-        return pool[:k]
-    m = re.search(r"\[[\s\d,]*\]", r.text)
-    picks = [int(n) for n in re.findall(r"\d+", m.group(0))] if m else []
-    seen: set[int] = set()
-    ordered: list[dict[str, Any]] = []
-    for n in picks:  # reranker order first, valid + de-duplicated
-        if 1 <= n <= len(pool) and n not in seen:
-            seen.add(n)
-            ordered.append(pool[n - 1])
-    for i, h in enumerate(pool, 1):  # backfill from the lexical head to guarantee k
-        if len(ordered) >= k:
-            break
-        if i not in seen:
-            ordered.append(h)
-    return ordered[:k]
 
 
 def _cards_from_set(hits: list[dict[str, Any]],

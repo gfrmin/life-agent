@@ -14,11 +14,11 @@ into ``u_bar`` so :func:`life_agent.core.decide.utility_by_action` prices the ga
 linear in ``p1`` like every other row. Unmeasured, both distributions are the prior mean
 (1/3 each), under which gathering is not worth its cost.
 
-The episodes are recorded decision sequences (``scripts/fit_gather_row.py`` builds them
-from the m5-base A-loop fixtures, graded by exact match against the gold). The fit is the
-value of the whole sequence under the policy that recorded it, applied at every step: a
-measured evidence model, not the preposterior over the current posterior (a door in
-``ROADMAP.md``).
+The episodes are the recorded decides that chose ``gather`` (``scripts/fit_gather_row.py``
+builds them from the m5-base A-loop fixtures, every step of every sequence, graded by exact
+match against the gold): the value of gathering on from a state under the policy that
+recorded it. A measured evidence model, not the preposterior over the current posterior (a
+door in ``ROADMAP.md``); steps of one question are not independent draws.
 """
 from __future__ import annotations
 

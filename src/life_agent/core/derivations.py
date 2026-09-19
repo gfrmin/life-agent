@@ -59,6 +59,7 @@ LOOKUP_CONFIRM_VERSION = "1"
 LOOKUP_ANSWER_VERSION = "1"
 NARRATIVE_ANSWER_VERSION = "1"
 JOINT_EXTRACT_VERSION = "1"
+RERANK_VERSION = "1"
 TEMPORAL_INTENT_VERSION = "1"
 DELIBERATE_VERSION = "1"
 
@@ -87,6 +88,7 @@ CONTENT_TYPE_LOOKUP_CONFIRM = "application/x-ask-lookup-confirm+json"
 CONTENT_TYPE_LOOKUP_ANSWER = "application/x-ask-lookup-answer+json"
 CONTENT_TYPE_NARRATIVE_ANSWER = "application/x-ask-narrative-answer+json"
 CONTENT_TYPE_JOINT_EXTRACT = "application/x-ask-joint-extract+json"
+CONTENT_TYPE_RERANK = "application/x-ask-rerank+json"
 CONTENT_TYPE_TEMPORAL_INTENT = "application/x-ask-temporal-intent+json"
 CONTENT_TYPE_DELIBERATE_ANSWER = "application/x-ask-deliberate-answer+json"
 
@@ -344,6 +346,28 @@ def joint_extract_key(question: str, chunk_set_sha: str, *, model: str,
                     producer_version=JOINT_EXTRACT_VERSION, producer_config={},
                     schema_version=3, inputs=inputs,
                     content_type=CONTENT_TYPE_JOINT_EXTRACT)
+
+
+def rerank_key(question: str, pool_sha: str, *, k: int, model: str, prompt_template: str,
+               temperature: float, max_tokens: int) -> StageKey:
+    """Key for the listwise rerank: the question and the content hash of the exact snippet
+    list the model reads (the early-cutoff hinge — a pool with the same snippets replays).
+    Recorded so a re-ask reorders identically, and every re-read keyed on the reranked
+    chunk set replays with it."""
+    inputs = {"k": k, "pool": pool_sha, "question": question}
+    input_hash = _sha256(canonical_json(inputs))
+    cache_key = compute_cache_key(
+        input_hash, "life_agent.ask.rerank", RERANK_VERSION, {},
+        schema_version=3,
+        model_identity=_llm_identity(model, temperature, max_tokens),
+        engine_version=ENGINE_VERSION,
+        prompt_template_hash=_sha256(prompt_template),
+        output_schema=TEXT_OUTPUT_SCHEMA,
+    )
+    return StageKey(cache_key=cache_key, input_hash=input_hash,
+                    producer_name="life_agent.ask.rerank",
+                    producer_version=RERANK_VERSION, producer_config={},
+                    schema_version=3, inputs=inputs, content_type=CONTENT_TYPE_RERANK)
 
 
 def deliberate_key(question: str, corpus_digest: str, *, model: str,

@@ -220,8 +220,10 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str,
     def _evidence(rr: bool, ex: bool) -> tuple[list[dict[str, Any]], dict[str, Any],
                                                dict[str, Any]]:
         nonlocal spend_usd
-        hits = _obj(post, f"{bridge}/retrieve",
-                    {"question": question, "k": k, "rerank": rr, "expand": ex})["hits"]
+        got = _obj(post, f"{bridge}/retrieve",
+                   {"question": question, "k": k, "rerank": rr, "expand": ex})
+        hits = got["hits"]
+        spend_usd += float(got.get("cost_usd") or 0.0)  # the rerank's spend (0 when replayed)
         hit_keys = list(dict.fromkeys(h["artifact_cache_key"] for h in hits))
         subj_reply = _obj(post, f"{bridge}/probe/subject", {"hit_keys": hit_keys})
         subj = subj_reply["subject_state"]

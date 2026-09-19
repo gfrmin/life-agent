@@ -118,7 +118,7 @@ def test_poison_grow_actuator_prices_are_frozen_whole() -> None:
     """F1, the recall half — the grow menu is priced data too."""
     got = tuple((a["probe"], a["cost"], a["alpha0"], a["beta0"])
                 for a in PRC.GROW_ACTUATORS)
-    assert got == (("retrieve_rerank", 0.004, 3.0, 7.0),
+    assert got == (("retrieve_rerank", 0.047, 3.0, 7.0),
                    ("retrieve_expand", 0.006, 3.5, 6.5),
                    ("re_extract_strong", 0.020, 4.0, 6.0)), (
         "a grow actuator was re-priced — same argmax move, same debt"

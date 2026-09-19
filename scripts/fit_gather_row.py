@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """fit_gather_row — measure the gather row from recorded decision sequences.
 
-Each m5-base A-loop fixture records one question's full exchange with the bridge. Its first
-``/decide`` request fixes the starting posterior (``p1`` from :mod:`life_agent.core.posterior`
-over the recorded observations); its final output, graded by exact match against the gold
-in the question set, is the outcome (``right`` / ``wrong`` / ``declined``). The episodes fit
+Each m5-base A-loop fixture records one question's full exchange with the bridge. Every
+``/decide`` that chose ``gather`` is an episode: its posterior (``p1`` from
+:mod:`life_agent.core.posterior` over the observations it carried) and the question's final
+output, graded by exact match against the gold in the question set (``right`` / ``wrong`` /
+``declined``). A late gather, taken after earlier ones failed to lift the leader, is its own
+episode at its own ``p1``, so the fit sees what gathering is worth from each state. The episodes fit
 :mod:`life_agent.core.gather_row`, written to ``$LIFE_AGENT_KB/calibration/gather_row.json``
 (the bridge prices the gather row from it at boot). Prints counts only.
 
@@ -28,25 +30,30 @@ from life_agent.core import gather_row as GR
 from life_agent.core import posterior as POST
 
 
-def episode(fixture: dict, gold: dict) -> tuple[float, str] | None:
-    """``(p1 at the first decide, graded outcome)`` for one recorded A-loop question, or None
-    when it never reached ``/decide`` with a candidate."""
-    decides = [w for w in fixture["wire"] if w["seam"] == "http"
-               and str(w["request"].get("url", "")).endswith("/decide")]
-    if not decides:
-        return None
-    req = decides[0]["request"]["payload"]
-    n = len(req.get("candidates") or [])
-    if n == 0:
-        return None
-    credences, _ = POST.candidate_posterior(n, list(req.get("observations") or []),
-                                            float(req["rho"]))
+def episodes(fixture: dict, gold: dict) -> list[tuple[float, str]]:
+    """``(p1, graded outcome)`` for every recorded ``/decide`` that chose ``gather`` with a
+    candidate on the table."""
     out = fixture["outputs"]
-    if out["effector"] != "report":
-        return DEC.p_correct(credences), "declined"
-    ok = GATE.realised_report([str(a) for a in out["asserted"]], gold.get("answer", ""),
-                              gold.get("answer_variants", []))
-    return DEC.p_correct(credences), ("right" if ok else "wrong")
+    if out["effector"] == "report":
+        ok = GATE.realised_report([str(a) for a in out["asserted"]], gold.get("answer", ""),
+                                  gold.get("answer_variants", []))
+        outcome = "right" if ok else "wrong"
+    else:
+        outcome = "declined"
+    eps: list[tuple[float, str]] = []
+    for w in fixture["wire"]:
+        if w["seam"] != "http" or not str(w["request"].get("url", "")).endswith("/decide"):
+            continue
+        resp = w["response"]
+        resp = json.loads(resp) if isinstance(resp, str) else resp
+        req = w["request"]["payload"]
+        n = len(req.get("candidates") or [])
+        if resp.get("effector") != "gather" or n == 0:
+            continue
+        credences, _ = POST.candidate_posterior(n, list(req.get("observations") or []),
+                                                float(req["rho"]))
+        eps.append((DEC.p_correct(credences), outcome))
+    return eps
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -61,7 +68,7 @@ def main(argv: list[str] | None = None) -> int:
     if not files:
         print(f"no A-loop fixtures under {a.fixtures}", file=sys.stderr)
         return 2
-    episodes: list[tuple[float, str]] = []
+    found: list[tuple[float, str]] = []
     h = hashlib.sha256()
     for f in files:
         qid = f.stem.rsplit("aloop-", 1)[1]
@@ -69,17 +76,15 @@ def main(argv: list[str] | None = None) -> int:
             continue
         data = f.read_bytes()
         h.update(data)
-        ep = episode(json.loads(data), gold[qid])
-        if ep is not None:
-            episodes.append(ep)
-    t_right, t_wrong = GR.fit(episodes)
+        found += episodes(json.loads(data), gold[qid])
+    t_right, t_wrong = GR.fit(found)
     row = GR.as_u_bar(t_right, t_wrong)
     Path(a.out).write_text(json.dumps({
-        "u_bar": row, "n_episodes": len(episodes),
-        "outcomes": dict(Counter(o for _, o in episodes)),
+        "u_bar": row, "n_episodes": len(found),
+        "outcomes": dict(Counter(o for _, o in found)),
         "fixtures_sha256": h.hexdigest(), "prior": "Dirichlet(2,2,2) posterior mode, EM"},
         indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    print(f"{len(episodes)} episodes {dict(Counter(o for _, o in episodes))} → "
+    print(f"{len(found)} gather steps {dict(Counter(o for _, o in found))} → "
           + ", ".join(f"{k} {v:.3f}" for k, v in row.items()))
     return 0
 

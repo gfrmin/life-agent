@@ -88,7 +88,7 @@ never set.
 **Evidence rows are measured, never perfect information.** `gather` is priced by what the
 gather sequence was observed to end in: per leader state (right or wrong), the chances of a
 correct report, a wrong one, or a withhold (`core/gather_row.py`: a two-component mixture
-over recorded episodes, weighted by each episode's starting `p1`, fit by EM under a
+over every recorded decide that chose to gather, weighted by its `p1`, fit by EM under a
 Dirichlet(2, 2, 2) prior; `scripts/fit_gather_row.py` fits it from the m5-base sequences).
 The row is linear in `p1` like the others. Unfitted, both states read the prior mean and
 gathering never pays. `ask` recovers the answer at a measured rate `r_a` (Beta(1, 1) mean

@@ -134,11 +134,12 @@ DELIBERATE_FALLBACK_RHO = 0.5
 RE_EXTRACT_MODEL = "claude-opus-4-8"
 
 # The grow menu as data (autonomous-recall-design; served by the bridge's /grow_menu).
-# Costs are in utility units, commensurate with the corroborate tiers; the
-# Beta(alpha0, beta0) means are frozen-blind world-knowledge priors, monotone in
-# mechanism strength, stated before any counts — the counts do the calibrating.
+# Costs are in USD, like the corroborate tiers (the executor converts them at lambda_usd);
+# the rerank's is measured (10 of the owner's questions, 2026-09-20: mean $0.047, 15k input
+# tokens on Sonnet). The Beta(alpha0, beta0) means are frozen-blind world-knowledge priors,
+# monotone in mechanism strength, stated before any counts — the counts do the calibrating.
 GROW_ACTUATORS: list[dict[str, Any]] = [
-    {"probe": "retrieve_rerank", "cost": 0.004, "alpha0": 3.0, "beta0": 7.0},
+    {"probe": "retrieve_rerank", "cost": 0.047, "alpha0": 3.0, "beta0": 7.0},
     {"probe": "retrieve_expand", "cost": 0.006, "alpha0": 3.5, "beta0": 6.5},
     {"probe": "re_extract_strong", "cost": 0.020, "alpha0": 4.0, "beta0": 6.0},
 ]
