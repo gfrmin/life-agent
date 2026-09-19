@@ -416,12 +416,10 @@ def submit_reaction(event: R.ReactionEvent, *, reactions_path: Path,
     (``"bridge"`` / ``"direct"``), and never writes BOTH (the bridge owns the append on its
     own path).
 
-    Why route it at all: ``bridge/server.py``'s ``/log_reaction`` is the ONLY caller of
-    ``MembraneShadow.submit_reaction``, so a verdict appended directly here reaches the
-    membrane shadow only at the NEXT boot's snapshot replay (`shadow.boot_snapshot`) — late,
-    not lost. ask-live is the primary dogfood surface, so its verdicts go through the bridge
-    like Jarvis's already do (`core/ask_client.react`), and the shadow's live evidence stream
-    is the real one rather than a Jarvis-only sample.
+    Why route it at all: ``bridge/server.py``'s ``/log_reaction`` is the ONLY place a verdict
+    folds into the decider live, so a verdict appended directly here reaches it only at the
+    NEXT boot's replay (`membrane.boot.boot_snapshot`) — late, not lost. ask-live's verdicts
+    go through the bridge like Jarvis's already do (`core/ask_client.react`).
 
     Fail-open, deliberately: the reaction log is the source of truth for the utility fold —
     a verdict must never be LOST because the bridge is down, misconfigured, or 404s on a
@@ -446,7 +444,7 @@ def _record_reaction(question: str, verdict: str) -> None:
     the decision it grades by ``decision_id`` (the answer's cache key). The producer
     (`reactions.load_reactions`) decides what folds — v0 conditions u(wrong) only on clean
     lookup abstain-verdicts; everything else is recorded, not folded. Written through
-    :func:`submit_reaction` (bridge-first, so the membrane shadow sees it live). Fail-open
+    :func:`submit_reaction` (bridge-first, so the decider folds it live). Fail-open
     and named: a calibration-log write must never break the dogfood loop."""
     decision_id = (EXECUTOR_LAST if EXECUTOR_LAST
                    else TERM.LOOKUP_LAST.answer_cache_key if TERM.LOOKUP_LAST is not None

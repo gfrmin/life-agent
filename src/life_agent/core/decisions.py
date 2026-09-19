@@ -140,8 +140,7 @@ def question_id(question: str) -> str:
 
     NOT the same namespace as an eval/fair-fight CORPUS id (``q-001``, an
     ``OutcomeVector.question_id``). Bridging those two namespaces is a deliberate,
-    named join through the questions file that assigned the corpus ids — see
-    ``life_agent.membrane.shadow.warm_question_id_map``."""
+    named join through the questions file that assigned the corpus ids."""
     return hashlib.sha256(question.encode("utf-8")).hexdigest()[:QUESTION_ID_CHARS]
 
 

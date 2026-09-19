@@ -269,10 +269,36 @@ def _http_err(code: int) -> Exception:
 
 def test_post_json_retries_5xx_then_succeeds(monkeypatch: Any) -> None:
     calls, sleeps = _urlopen_seq(
-        monkeypatch, [_http_err(500), _http_err(503), b'{"ok": true}'])
+        monkeypatch, [_http_err(500), _http_err(502), b'{"ok": true}'])
     assert AC.post_json("http://x/decide", {}) == {"ok": True}
     assert calls["n"] == 3                       # two retries bought the answer
     assert len(sleeps) == 2 and sleeps == sorted(sleeps)   # bounded, backing off
+
+
+def test_post_json_never_retries_a_503(monkeypatch: Any) -> None:
+    """503 is the bridge saying its decider is unavailable; a retry would only re-boot it
+    inside the request."""
+    import urllib.error
+
+    import pytest
+    calls, sleeps = _urlopen_seq(monkeypatch, [_http_err(503), b'{"ok": true}'])
+    with pytest.raises(urllib.error.HTTPError):
+        AC.post_json("http://x/decide", {})
+    assert calls["n"] == 1 and sleeps == []
+
+
+def test_a_stack_that_times_out_mid_question_is_down(monkeypatch: Any) -> None:
+    from life_agent.core import recorder as REC
+
+    def hang(*_a: Any, **_k: Any) -> Any:
+        raise TimeoutError("timed out")
+
+    monkeypatch.setattr(EX, "decide_via_loop", hang)
+    recorded: list[str] = []
+    monkeypatch.setattr(REC, "record_unavailable", lambda question, **kw: recorded.append(question))
+    reply, decision_id = _answer("q?", post=lambda u, p: {}, get=lambda u: {},
+                                 check_ready=False)
+    assert reply == AC.DOWN and decision_id is None and recorded == ["q?"]
 
 
 def test_post_json_never_retries_4xx(monkeypatch: Any) -> None:

@@ -38,6 +38,17 @@ def gather_options(payload: dict[str, Any]) -> list[str]:
     return out
 
 
+def gather_cost(payload: dict[str, Any]) -> float:
+    """The price of the gather that would be enacted (the cheapest open option), in the
+    request's own units (the executor has already converted it to utility); 0 when none."""
+    options = gather_options(payload)
+    if not options:
+        return 0.0
+    rows = [t for t in payload.get("transforms") or [] if t.get("kind") == "voi"]
+    rows += list((payload.get("grow") or {}).get("actuators") or [])
+    return min(float(r.get("cost") or 0.0) for r in rows if str(r.get("probe")) == options[0])
+
+
 def gather_open(payload: dict[str, Any]) -> bool:
     """Whether the world's gather row is open for this request."""
     return bool(gather_options(payload))

@@ -40,6 +40,8 @@ class BootSnapshot:
     n_source_records: int
     n_skipped_lines: int = 0
     verdict_actions: list[str] = field(default_factory=list)
+    # the decision each row folds, index-aligned: the decider never folds one twice
+    verdict_decision_ids: list[str] = field(default_factory=list)
     # boot() also takes outcome evidence; this snapshot supplies none.
     outcome_replay: list[tuple[str, W.DecideSummary, int]] = field(default_factory=list)
 
@@ -84,6 +86,7 @@ def boot_snapshot(decisions_path: Path, reactions_path: Path, *,
 
     replay: list[tuple[W.DecideSummary, int]] = []
     actions: list[str] = []
+    ids: list[str] = []
     for decision_id, r in latest.items():
         d = by_id.get(decision_id)
         y = verdict_y(d.chosen_action, r.valence) if d is not None else None
@@ -91,6 +94,7 @@ def boot_snapshot(decisions_path: Path, reactions_path: Path, *,
             continue
         replay.append((W.summary_from_decision_event(asdict(d)), y))
         actions.append(d.chosen_action)
+        ids.append(decision_id)
 
     for decision_id, cv in CV.latest_by_decision(claude).items():
         d = by_id.get(decision_id)
@@ -101,7 +105,9 @@ def boot_snapshot(decisions_path: Path, reactions_path: Path, *,
             continue  # an owner verdict on the same decision takes precedence
         replay.append((W.summary_from_decision_event(asdict(d)), CV.y(cv)))
         actions.append(d.chosen_action)
+        ids.append(decision_id)
 
     return BootSnapshot(verdict_replay=replay,
                         n_source_records=len(decisions) + len(reactions) + len(claude),
-                        n_skipped_lines=s1 + s2 + s3, verdict_actions=actions)
+                        n_skipped_lines=s1 + s2 + s3, verdict_actions=actions,
+                        verdict_decision_ids=ids)

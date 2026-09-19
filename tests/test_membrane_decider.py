@@ -96,6 +96,12 @@ def test_the_tick_says_whether_gather_is_open() -> None:
     assert opens == [1.0, 0.0]
 
 
+def test_the_tick_carries_the_price_of_the_gather_that_would_be_enacted() -> None:
+    eng = _Engine("abstain")
+    _decider([eng]).decide("q1", _payload())
+    assert eng.ticks()[0]["features"][W.PRICES["gather"]] == 0.004
+
+
 def test_a_dead_engine_is_named_and_rebooted_on_the_next_request() -> None:
     dying, fresh = _Engine(die_after=1), _Engine("ask")
     d = _decider([dying, fresh])
@@ -136,6 +142,24 @@ def test_an_unbound_or_undeclared_verdict_does_not_fold() -> None:
     assert d.observe_reaction("nope", "good") is False
     d.bind("d2", "q2", {"chosen_action": "gather", "posterior_summary": {}})
     assert d.observe_reaction("d2", "good") is False
+
+
+def test_a_verdict_the_boot_replayed_is_not_folded_again_live() -> None:
+    """An owner verdict on a decision the boot already folded (e.g. a Claude verdict,
+    replayed after a re-boot) must not count twice."""
+    s = W.DecideSummary(1, 0.9, 0.05, 2, False, False, False)
+    eng = _Engine()
+    d = _decider([eng], BOOT.BootSnapshot([(s, 1)], 2, verdict_decision_ids=["d1"]))
+    d.boot()
+    d.bind("d1", "q1", {"chosen_action": "abstain", "posterior_summary": {}})
+    assert d.observe_reaction("d1", "bad") is False
+    assert [t["evidence"] for t in eng.ticks()] == [1]
+
+
+def test_a_live_tick_never_claims_a_grow_pass_the_replay_cannot() -> None:
+    eng = _Engine("abstain")
+    _decider([eng]).decide("q1", _payload(grow={"actuators": [{"probe": "r", "cost": 0.1}]}))
+    assert eng.ticks()[0]["features"]["grow-pass=1"] == 0.0
 
 
 def test_a_verdict_before_boot_is_left_to_the_boot_replay() -> None:

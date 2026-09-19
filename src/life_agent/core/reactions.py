@@ -70,7 +70,7 @@ VALENCES: dict[str, frozenset[str]] = {"verdict": frozenset({"good", "bad"})}
 #       is-identity (``membrane.session._VERDICT_Y``); a second spelling cannot exist.
 #   (2) the Claude channel's y (``claude_verdicts.y``: the ``correct`` bit and nothing
 #       else), admitted under OWNER ≻ CLAUDE precedence by SOURCE (M-6) — enforced at
-#       the merge in ``membrane.shadow.boot_snapshot``, where an owner's routable
+#       the merge in ``membrane.boot.boot_snapshot``, where an owner's routable
 #       verdict on the same decision overrules the Claude one.
 #   (3) the utility-evidence branches in this module (R-3: which verdicts become
 #       utility evidence): ``_lookup_reaction`` (the implied abstain-threshold datum,

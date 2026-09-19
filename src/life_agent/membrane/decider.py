@@ -6,8 +6,9 @@ over the pinned ``proplang-host`` engine and answers ``/decide`` synchronously:
     request → candidate posterior (core/posterior) → DecideSummary → engine act
             → enactment (membrane/coarse) → the executor's view
 
-It boots from the decision ⋈ verdict join (:func:`life_agent.membrane.shadow.boot_snapshot`)
-and folds each later verdict as one evidence tick. The engine is the decider: when it is
+It boots from the decision ⋈ verdict join (:func:`life_agent.membrane.boot.boot_snapshot`)
+and folds each later verdict as one evidence tick; a decision is folded at most once per
+engine life, whether by the boot replay or live. The engine is the decider: when it is
 down, :meth:`Decider.decide` raises :class:`DeciderUnavailableError` and nothing substitutes for
 it. A failed engine is re-booted from a fresh snapshot on the next request.
 
@@ -42,10 +43,14 @@ class DeciderUnavailableError(RuntimeError):
 
 def summary(payload: Mapping[str, Any], credences: list[float],
             p_none: float) -> W.DecideSummary:
-    """The world's view of one request and its posterior, with gather's feasibility."""
+    """The world's view of one request and its posterior, with gather's feasibility and the
+    price of the gather that would be enacted."""
     base = W.summary_from_payload(dict(payload), {"credences": credences, "p_none": p_none})
-    return W.DecideSummary(**{**base.__dict__,
-                              "gather_open": CO.gather_open(dict(payload))})
+    # grow_pass is False: recorded decisions do not carry it, so a live tick must not sit in
+    # a feature cell the boot replay can never fill.
+    return W.DecideSummary(**{**base.__dict__, "grow_pass": False,
+                              "gather_open": CO.gather_open(dict(payload)),
+                              "gather_cost": CO.gather_cost(dict(payload))})
 
 
 class Decider:
@@ -61,6 +66,7 @@ class Decider:
         self._log = log
         self._lock = threading.Lock()
         self._session: MembraneSession | None = None
+        self._declared: Mapping[str, float] = {}  # the numbers the live handshake declared
         self._by_question: dict[str, W.DecideSummary] = {}
         self._by_decision: dict[str, tuple[str, W.DecideSummary]] = {}
         self._folded: set[str] = set()
@@ -73,17 +79,19 @@ class Decider:
             return self._session
         client = self._spawn()
         try:
-            session = MembraneSession(client, u_bar=self._u_bar(), log=self._log)
+            declared = self._u_bar()
+            session = MembraneSession(client, u_bar=declared, log=self._log)
             snap = self._snapshot()
             session.boot(verdict_replay=snap.verdict_replay,
                          outcome_replay=snap.outcome_replay)
+            self._folded = set(snap.verdict_decision_ids)
         except Exception:
             with contextlib.suppress(Exception):
                 client.shutdown()
             raise
         self._log(f"life-agent decider: booted, {len(snap.verdict_replay)} verdicts replayed, "
                   f"models={session.engine.get('models')}")
-        self._session = session
+        self._session, self._declared = session, declared
         return session
 
     def _fail(self, e: Exception) -> DeciderUnavailableError:
@@ -120,7 +128,8 @@ class Decider:
     def decide(self, question_id: str, payload: Mapping[str, Any]) -> dict[str, Any]:
         """Rank one ``/decide`` request and return the executor's view: ``effector``,
         ``value``, ``probe``, ``credences``, ``p_none``, plus the engine's ``act``, its
-        ``p1`` readout and ``eu`` (the enacted row's expected utility at that ``p1``)."""
+        ``p1`` readout and ``eu`` (the enacted row's expected utility at that ``p1``, under the
+        handshake's numbers and before any per-tick price)."""
         candidates = list(payload.get("candidates") or [])
         credences, p_none = POST.candidate_posterior(
             len(candidates), list(payload.get("observations") or []), float(payload["rho"]))
@@ -135,7 +144,7 @@ class Decider:
             _trim(self._by_question)
         view = CO.enact(choice.action, dict(payload), credences, p_none)
         p1 = choice.readouts.get("p1")
-        eu = (W.eu_by_action(self._u_bar(), float(p1))[choice.action]
+        eu = (W.eu_by_action(self._declared, float(p1))[choice.action]
               if isinstance(p1, (int, float)) and not isinstance(p1, bool) else None)
         return {**view, "act": choice.action, "p1": p1, "eu": eu}
 
@@ -155,13 +164,15 @@ class Decider:
         second verdict on the same decision does not; with no engine booted, the next boot
         replays it from the reactions log, so it is not folded twice)."""
         bound = self._by_decision.get(decision_id)
-        if bound is None or decision_id in self._folded:
+        if bound is None:
             return False
         action, s = bound
         y = verdict_y(action, valence)
         if y is None:
             return False
         with self._lock:
+            if decision_id in self._folded:
+                return False
             self._folded.add(decision_id)
             if self._session is None:
                 return False  # the next boot replays it from the reactions log

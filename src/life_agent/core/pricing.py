@@ -143,6 +143,11 @@ GROW_ACTUATORS: list[dict[str, Any]] = [
     {"probe": "re_extract_strong", "cost": 0.020, "alpha0": 4.0, "beta0": 6.0},
 ]
 
+# The gather-outcome rows the recovery rate (core/gather_outcomes.recovery_rate) never reads:
+# run 17's window (gate-20260826T025059, 2026-08-26), whose grows were enacted after every
+# terminal rather than by a decider's choice, so its rows describe a different policy.
+GATHER_EXCLUDED_DAYS: tuple[str, ...] = ("2026-08-26",)
+
 # The reliability prior column (§3.2, D-2): where each edge's trust STARTS, wide on
 # purpose (the refuted fiat Beta(17,3) taught that trust is earned from evidence).
 # ("extract", "value"): the local extractor, one cell. ("eval_claim", *): the claim

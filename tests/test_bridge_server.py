@@ -889,6 +889,15 @@ def test_decide_rejects_a_request_it_cannot_rank(deps: BridgeDeps, body: dict[st
     assert fake.decide_calls == []
 
 
+def test_a_request_the_decider_cannot_parse_is_400_not_500(deps: BridgeDeps) -> None:
+    class _Strict(_FakeDecider):
+        def decide(self, question_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+            raise KeyError("reports")
+
+    status, payload = _call(_with_decider(deps, _Strict()), "POST", "/decide", _DECIDE_BODY)
+    assert status == 400 and "malformed" in payload["error"]
+
+
 def test_log_decision_binds_the_decision_for_its_verdict(deps: BridgeDeps) -> None:
     fake = _FakeDecider()
     deps2 = _with_decider(deps, fake)

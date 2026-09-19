@@ -49,12 +49,13 @@ _RETRY_SLEEPS = (0.5, 2.0)
 def _retrying[T](attempt: Callable[[], T]) -> T:
     """Run ``attempt``; on a TRANSIENT failure (HTTP 5xx, connection error, timeout)
     sleep and retry, once per entry in :data:`_RETRY_SLEEPS`; the final attempt's error
-    propagates with its own name. HTTPError < 500 re-raises immediately."""
+    propagates with its own name. HTTPError < 500 re-raises immediately, and so does 503:
+    the bridge saying its decider is unavailable, which a retry would only make re-boot."""
     for delay in _RETRY_SLEEPS:
         try:
             return attempt()
         except urllib.error.HTTPError as e:
-            if e.code < 500:
+            if e.code < 500 or e.code == 503:
                 raise
         except (urllib.error.URLError, TimeoutError):
             pass
@@ -227,6 +228,9 @@ def drive(question: str, k: int = 20, *, bridge: str | None = None,
         if e.code != 503:
             raise
         print(f"  (decider unavailable: {e.reason})")
+        return _down(question, run_id)
+    except (urllib.error.URLError, TimeoutError) as e:
+        print(f"  (stack unreachable mid-question: {e})")
         return _down(question, run_id)
     return DriveResult(view, post_decision(post, bridge, question, view, run_id=run_id))
 

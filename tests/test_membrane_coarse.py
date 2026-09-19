@@ -79,3 +79,10 @@ def test_withholding_acts_carry_no_value(act: str, effector: str) -> None:
 def test_an_undeclared_act_raises() -> None:
     with pytest.raises(ValueError, match="undeclared"):
         CO.enact("escalate", _payload(), [0.4, 0.3], 0.3)
+
+
+def test_gather_cost_is_the_price_of_the_option_that_would_be_enacted() -> None:
+    assert CO.gather_cost(_payload()) == 0.004
+    assert CO.gather_cost(_payload(applied_probes=["corroborate_a"])) == 0.008
+    done = _payload(applied_probes=["corroborate_a", "corroborate_b", "retrieve_rerank"])
+    assert CO.gather_cost(done) == 0.0

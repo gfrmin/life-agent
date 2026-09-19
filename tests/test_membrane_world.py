@@ -292,7 +292,8 @@ def test_shadow_features_t_passthrough() -> None:
 
 
 def test_shadow_features_all_emitted_keys_are_declared_indicators() -> None:
-    declared = set(W.indicator_names()) | set(W.FEASIBILITY.values())
+    declared = (set(W.indicator_names()) | set(W.FEASIBILITY.values())
+                | set(W.PRICES.values()))
     s = _summary(n_candidates=2, leader_credence=0.75, p_none=0.3, n_obs=5,
                  era_split=True, owner_scoped=True, grow_pass=True)
     feats = W.shadow_features(s, t=1.0)
@@ -344,26 +345,28 @@ def test_utility_by_action_covers_every_affordance() -> None:
 # --- utility_said(): the drift gate (the sentence MUST equal the pairs) --------------------
 
 
-def _eval_said(expr: object, *, act: float, y: int, open_: float = 1.0) -> object:
+def _eval_said(expr: object, *, act: float, y: int, open_: float = 1.0,
+               cost: float = 0.0) -> object:
     """A small pure evaluator for the ``said@1`` accepted subset (``parseSaid``:
     var, c, +, -, *, get, if, >, =). The whole point is a SECOND, independent reading of the
     sentence: if this and :func:`world.utility_by_action` disagree, the wire declaration has
     silently drifted from the host-side arithmetic. ``var 1`` is the outcome residue y;
     ``get "act"`` is the chosen affordance's grid value under evaluation; ``get`` on a
-    feasibility name reads ``open_``."""
+    feasibility name reads ``open_``, on a price name ``cost``."""
     if not isinstance(expr, list):
         raise ValueError(f"not a sentence node: {expr!r}")
     op = expr[0]
 
     def ev(e: object) -> object:
-        return _eval_said(e, act=act, y=y, open_=open_)
+        return _eval_said(e, act=act, y=y, open_=open_, cost=cost)
 
     if op == "c":
         return expr[1]
     if op == "var":
         return {1: y}[expr[1]]  # only the outcome residue is declared
     if op == "get":
-        return {"act": act, **{n: open_ for n in W.FEASIBILITY.values()}}[expr[1]]
+        return {"act": act, **{n: open_ for n in W.FEASIBILITY.values()},
+                **{n: cost for n in W.PRICES.values()}}[expr[1]]
     if op == "+":
         return ev(expr[1]) + ev(expr[2])  # type: ignore[operator]
     if op == "-":
@@ -411,6 +414,37 @@ def test_a_closed_affordance_reads_the_infeasible_value_below_every_row(
             got = _eval_said(said, act=v, y=y, open_=0.0)
             want = floor if name in W.FEASIBILITY else pairs[name][y]
             assert got == pytest.approx(want), f"{name} y={y} closed"
+
+
+def test_gather_is_priced_at_its_measured_recovery_rate() -> None:
+    """A gather ends in a report with probability r: worth r·u_correct + (1-r)·u_abstain
+    when asserting now would be right, and u_abstain when it would be wrong (less its
+    cost either way). Absent a measured r, the myopic perfect-information row."""
+    base = {"u_correct": 1.0, "u_abstain": 0.0, "kappa_att": 0.05}
+    assert W.utility_by_action({**base, W.RECOVERY_KEY: 0.1})["gather"] == pytest.approx(
+        (-0.05, 0.1 - 0.05))
+    assert W.utility_by_action(base)["gather"] == pytest.approx((-0.05, 1.0 - 0.05))
+
+
+def test_the_tick_price_of_a_gather_is_subtracted_in_the_sentence() -> None:
+    said = W.utility_said(LIVE_U_BAR)
+    pairs = W.utility_by_action(LIVE_U_BAR)
+    v = dict(W.AFFORDANCES)["gather"]
+    for y in (0, 1):
+        got = _eval_said(said, act=v, y=y, cost=0.3)
+        assert got == pytest.approx(pairs["gather"][y] - 0.3)
+    # the price touches the gather row only
+    for name, value in W.AFFORDANCES:
+        if name != "gather":
+            assert _eval_said(said, act=value, y=1, cost=0.3) == pytest.approx(pairs[name][1])
+
+
+def test_a_measured_recovery_lets_respond_win_below_the_perfect_information_bar() -> None:
+    """The live failure the measured row fixes: under perfect information, gather beat
+    respond below p1 ≈ 0.99, so every question walked every gather before answering."""
+    u = {"u_wrong": -9.0, "kappa_att": 0.05, "lambda_int": 1.0}  # λ_int as folded live
+    assert W.argmax_action(u, 0.95) == "gather"
+    assert W.argmax_action({**u, W.RECOVERY_KEY: 0.1}, 0.95) == "respond"
 
 
 def test_utility_said_uses_only_the_accepted_subset() -> None:
@@ -486,16 +520,18 @@ def test_handshake_decl_namespace_is_t_then_indicators_then_act() -> None:
     namespace = decl["world"]["namespace"]
     assert namespace[0] == "t"                       # RIDER 2: t first
     assert namespace[-1] == W.ACT_NAME               # the one writable name, last
-    assert set(namespace) == {"t", W.ACT_NAME, *W.indicator_names(), *W.FEASIBILITY.values()}
-    # every indicator + every feasibility name + t + act, no more
-    assert len(namespace) == len(W.indicator_names()) + len(W.FEASIBILITY) + 2
+    assert set(namespace) == {"t", W.ACT_NAME, *W.indicator_names(), *W.FEASIBILITY.values(),
+                              *W.PRICES.values()}
+    # every indicator + every feasibility and price name + t + act, no more
+    assert len(namespace) == (len(W.indicator_names()) + len(W.FEASIBILITY) + len(W.PRICES)
+                              + 2)
 
 
 def test_feasibility_names_carry_no_guard() -> None:
     """A feasibility name is read by the utility only: a guard on it would let the engine
     learn from availability, which is a fact about the menu, not about the outcome."""
     guarded = {g["name"] for g in W.handshake_decl({})["world"]["guards"]}
-    assert not guarded & set(W.FEASIBILITY.values())
+    assert not guarded & (set(W.FEASIBILITY.values()) | set(W.PRICES.values()))
 
 
 def test_shadow_features_reads_gather_open_off_the_summary() -> None:

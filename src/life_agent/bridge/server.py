@@ -74,6 +74,7 @@ from life_agent.core import volatility as VOL
 from life_agent.core.llm import LLMResult
 from life_agent.membrane import boot as BOOT
 from life_agent.membrane import decider as DCD
+from life_agent.membrane import world as MW
 from life_agent.membrane.client import MembraneClient
 
 HOST = os.environ.get("LIFE_AGENT_BRIDGE_HOST", "127.0.0.1")
@@ -897,6 +898,8 @@ def _decide(deps: BridgeDeps, p: Payload) -> Payload:
         return deps.decider.decide(question_id, p)
     except DCD.DeciderUnavailableError as e:
         raise BridgeError(503, str(e)) from e
+    except (KeyError, TypeError, ValueError) as e:
+        raise BridgeError(400, f"malformed /decide request ({type(e).__name__}: {e})") from e
 
 
 #: [r33 RC-1] the ONE content-addressed decision-id rule — declared in
@@ -1193,10 +1196,14 @@ def _build_decider(u_bar: Callable[[], dict[str, float]]) -> DCD.Decider | None:
     if command is None:
         print("life-agent bridge: no decider engine (run `make engine`); /decide answers 503")
         return None
+    def priced_u_bar() -> dict[str, float]:
+        # the handshake's numbers: Ū plus gather's measured recovery rate
+        return {**u_bar(), MW.RECOVERY_KEY: GO.recovery_rate(config.GATHER_OUTCOMES_LOG)}
+
     decider = DCD.Decider(
         spawn=lambda: MembraneClient.spawn(
             command, read_timeout_s=config.membrane_read_timeout_s()),
-        u_bar=u_bar,
+        u_bar=priced_u_bar,
         snapshot=lambda: BOOT.boot_snapshot(
             config.DECISIONS_LOG, config.REACTIONS_LOG,
             claude_verdicts_path=config.CLAUDE_VERDICTS_LOG))
