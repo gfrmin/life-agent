@@ -1,0 +1,40 @@
+{
+  "rows": [
+    {
+      "set": "owner",
+      "arm": "typed",
+      "rows": 104,
+      "right": 61,
+      "wrong": 2,
+      "esc_right": 0,
+      "esc_wrong": 0,
+      "declined": 41,
+      "usd_per_q": 0.0036035423076923078,
+      "s_per_q": null
+    },
+    {
+      "set": "owner",
+      "arm": "oracle",
+      "rows": 104,
+      "right": 95,
+      "wrong": 6,
+      "esc_right": 0,
+      "esc_wrong": 0,
+      "declined": 3,
+      "usd_per_q": 0.37513827403846156,
+      "s_per_q": null
+    },
+    {
+      "set": "owner",
+      "arm": "router",
+      "rows": 104,
+      "right": 97,
+      "wrong": 5,
+      "esc_right": 36,
+      "esc_wrong": 3,
+      "declined": 2,
+      "usd_per_q": 0.15352633557692308,
+      "s_per_q": null
+    }
+  ]
+}

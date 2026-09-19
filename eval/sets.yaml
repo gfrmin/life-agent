@@ -1,0 +1,23 @@
+# The scoreboard's sets. `path` is relative to $LIFE_AGENT_KB (owner data never enters the
+# repo); `sha256` pins the bytes, so a board row names exactly what it scored. A set whose
+# file is absent is listed as "not scored" with the reason, never silently dropped.
+#
+# kind: paired — one JSONL row per question, `typed` and `mono` (the recorded oracle) arms
+# on the same row, as a gate run archives them. The board scores three arms from it:
+# typed, oracle, and router (typed where typed asserted, otherwise the oracle — a
+# recombination of recorded responses, no model call).
+sets:
+  owner:
+    kind: paired
+    path: eval/gate-outside-option/paired-gate-20260826T083356.jsonl
+    sha256: 1c4e5a5a0c2080414ee462054dcfd76d4a4acb53e27627696d86cf466e329768
+    note: run 18 (2026-08-26), the owner's 104 questions; a pin until J1 re-scores live
+  atm:
+    kind: pending
+    note: ATM-Bench email-only number-typed (198); scored from J3 (`make sets`)
+  live:
+    kind: pending
+    note: the live stream since the reset; scored from J4
+  sample:
+    kind: pending
+    note: synthetic sample KB (scripts/bootstrap-sample.sh); scored end to end from J3

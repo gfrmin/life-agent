@@ -1,0 +1,9 @@
+# The decider engine (proplang-host), pinned in one place. `make engine` reads this.
+# RELEASE_TAG is empty until proplang publishes a release; until then `make engine` builds
+# COMMIT from source (GHC 9.10.3 via ghcup, ~2 min) and the sha256 below only verifies a
+# downloaded release asset (a local cabal build is not bit-reproducible).
+REPO=gfrmin/proplang
+COMMIT=94fd4eb
+RELEASE_TAG=
+ASSET=proplang-host
+SHA256=71998f6556f53314affd089a41eff5eb2b5cd749e56661f702989f744b8cf3c6
