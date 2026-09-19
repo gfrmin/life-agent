@@ -280,40 +280,6 @@ def test_log_entry_records_unverified_line() -> None:
 
 # --- the narrative scorer seam (foundations §7 wiring) ---------------------- #
 
-def test_narrative_scored_returns_labeled_render(monkeypatch) -> None:
-    from life_agent.core import narrative as N
-
-    fake = SimpleNamespace(rendered="- claim — credence 0.900\n\nfooter",
-                           answer_cache_key="nk")
-    monkeypatch.setattr(N, "narrative_answer", lambda *a, **k: fake)
-    ask.TERM.STAGES_LAST = {"synthesize": "sk"}
-    out = ask._narrative_scored(Path("/fake/root"), "q?", "raw prose [1]", _cards())
-    assert out == fake.rendered
-    assert ask.TERM.NARRATIVE_LAST is fake
-    assert ask.TERM.STAGES_LAST["narrative_answer"] == "nk"
-
-
-def test_narrative_scored_fail_open_is_named(monkeypatch, capsys) -> None:
-    from life_agent.core import narrative as N
-
-    def _boom(*a, **k):
-        raise RuntimeError("fold exploded")
-
-    monkeypatch.setattr(N, "narrative_answer", _boom)
-    ask.TERM.NARRATIVE_LAST = None
-    out = ask._narrative_scored(Path("/fake/root"), "q?", "raw prose [1]", _cards())
-    assert out == "raw prose [1]"  # the proposal still reaches the owner
-    assert ask.TERM.NARRATIVE_LAST is None
-    printed = capsys.readouterr().out
-    assert N.GRAMMAR["fallthrough"].format(reason="failed: fold exploded") in printed
-
-
-def test_narrative_scored_disabled_seam_returns_prose() -> None:
-    # the conftest autouse stub (narrative_answer -> None) IS the disabled seam
-    out = ask._narrative_scored(Path("/fake/root"), "q?", "raw prose [1]", _cards())
-    assert out == "raw prose [1]"
-
-
 # --- the executor read-path (--executor) ----------------------------------- #
 
 def test_answer_via_executor_renders_logs_and_binds(monkeypatch) -> None:
@@ -458,10 +424,8 @@ def test_answer_via_executor_abstains_named_when_daemon_down(monkeypatch) -> Non
 
 def test_record_reaction_binds_verdict_to_executor_decision(monkeypatch, tmp_path) -> None:
     # The in-session g/b verdict must bind to the EXECUTOR's logged decision id — else the fold
-    # never joins it. Mirrors the legacy path's bind via LOOKUP_LAST.answer_cache_key.
+    # never joins it.
     monkeypatch.setattr(ask, "EXECUTOR_LAST", "ab-deadbeef")
-    monkeypatch.setattr(ask.TERM, "LOOKUP_LAST", None)
-    monkeypatch.setattr(ask.TERM, "NARRATIVE_LAST", None)
     log = tmp_path / "reactions.jsonl"
     monkeypatch.setattr(ask.C, "REACTIONS_LOG", log)
     ask._record_reaction("my passport?", "GOOD")
@@ -470,22 +434,9 @@ def test_record_reaction_binds_verdict_to_executor_decision(monkeypatch, tmp_pat
     assert rec["valence"] == "good"
 
 
-def test_ask_once_defaults_to_executor_when_ready(monkeypatch) -> None:
-    # 2c: the executor is the DEFAULT read-path — a ready daemon answers through it.
-    monkeypatch.setattr(ask, "_executor_ready", lambda: True)
-    monkeypatch.setattr(ask, "answer_via_executor", lambda q, k: ("EXEC", [], {}))
-    monkeypatch.setattr(ask, "answer", lambda *a, **k: ("LEGACY", [], {}))
-    monkeypatch.setattr(ask, "capture", lambda *a, **k: None)
-    seen: dict[str, str] = {}
-    monkeypatch.setattr(ask, "render", lambda text, *a, **k: seen.update(text=text))
-    ask.ask_once(None, "my passport?", 20)
-    assert seen["text"] == "EXEC"
-
-
 def test_ask_once_always_drives_the_one_path(monkeypatch) -> None:
-    # M5 (r15, B-1/B-5): the dispatch died — ask_once drives the executor surface
-    # unconditionally; a down stack is the DRIVER's terminals-only branch, never a
-    # host-side flip here.
+    # ask_once drives the executor surface unconditionally; a down stack is named by the
+    # driver, never a host-side flip here.
     monkeypatch.setattr(ask, "_executor_ready", lambda: False)
     monkeypatch.setattr(ask, "answer_via_executor", lambda q, k: ("EXEC", [], {}))
     monkeypatch.setattr(ask, "capture", lambda *a, **k: None)
@@ -495,13 +446,12 @@ def test_ask_once_always_drives_the_one_path(monkeypatch) -> None:
     assert seen["text"] == "EXEC"
 
 
-def test_ask_once_clears_stale_executor_decision_on_legacy(monkeypatch) -> None:
-    # Bug guard: a prior executor answer's id must NOT bind a later legacy answer's verdict.
-    # ask_once resets EXECUTOR_LAST before dispatch, so the in-process fallback leaves no stale id
-    # for _record_reaction (which checks EXECUTOR_LAST first) to mis-join.
+def test_ask_once_clears_stale_executor_decision_when_the_stack_is_down(monkeypatch) -> None:
+    # Bug guard: a prior executor answer's id must NOT bind a later answer's verdict. ask_once
+    # resets EXECUTOR_LAST before driving, so a down stack leaves no stale id for
+    # _record_reaction to mis-join.
     monkeypatch.setattr(ask, "EXECUTOR_LAST", "ab-stale")
-    monkeypatch.setattr(ask, "_executor_ready", lambda: False)  # daemon down → legacy fallback
-    monkeypatch.setattr(ask, "answer", lambda *a, **k: ("LEGACY", [], {}))
+    monkeypatch.setattr(ask, "_executor_ready", lambda: False)
     monkeypatch.setattr(ask, "capture", lambda *a, **k: None)
     monkeypatch.setattr(ask, "render", lambda *a, **k: None)
     ask.ask_once(None, "q?", 20)

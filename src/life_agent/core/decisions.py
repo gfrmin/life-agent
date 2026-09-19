@@ -63,11 +63,9 @@ ACTIONS: frozenset[str] = frozenset({"report", "report_scoped", "hedge",
                                      "ask_clarify", "abstain"})
 
 # Per-family action subsets of ACTIONS — the single vocabulary, named once and imported by
-# the families (never re-declared in a family module). The ordering is load-bearing: lookup
-# maps brain.optimise's finite action indices through LOOKUP_ACTION_ORDER. NARRATIVE is the
-# restricted set {report, abstain} — a *principled* restriction (hedge/report_scoped over a
-# per-claim posterior are not yet defined; that is the deferred recency/u_hedged work), not an
-# accident. The subset and partition invariants (these <= ACTIONS; LOOKUP - NARRATIVE == the
+# the families (never re-declared in a family module). NARRATIVE is the restricted set
+# {report, abstain} the recorded narrative rows carry (the lane is retired; its rows still
+# fold). The subset and partition invariants (these <= ACTIONS; LOOKUP - NARRATIVE == the
 # lookup-only actions; gate's assert/withhold union == ACTIONS) are drift-gated in
 # tests/test_decide.py.
 LOOKUP_ACTION_ORDER: tuple[str, ...] = ("report", "hedge", "ask_clarify", "abstain",
@@ -76,9 +74,9 @@ NARRATIVE_ACTION_ORDER: tuple[str, ...] = ("report", "abstain")
 
 # The DECLARED DECISION SPACE the act was ranked over (module-collapse-design.md §2.3). One
 # rule, two spaces: `full` = the transformations and the terminals (the daemon up),
-# `terminals-only` = the terminals alone (the daemon unavailable — the skin ranks the same
-# terminals over the same posterior and the same Ū). The regime is a FACT OF AVAILABILITY
-# recorded on the decision, never a choice: nothing may prefer one regime when both are
+# `terminals-only` = the terminals alone (recorded by the retired in-process leaves, which
+# ranked the same terminals over the same posterior and the same Ū). The regime is a FACT OF
+# AVAILABILITY recorded on the decision, never a choice: nothing may prefer one regime when both are
 # available, and a terminals-only decision is not a fallback lane — it is the same ranking
 # with an empty transformation set, honestly recorded.
 #
@@ -130,7 +128,7 @@ def decision_id_for(question: str, retrieval_keys: list[str],
 def question_id(question: str) -> str:
     """The ONE derivation of a decision's ``question_id`` from the question text: sha256
     of the raw text, first :data:`QUESTION_ID_CHARS` hex chars. Every producer of a
-    ``DecisionEvent`` (``core/lookup.py``, ``core/narrative.py``, ``bridge/server.py``),
+    ``DecisionEvent`` (``core/recorder.py``, ``bridge/server.py``),
     every reaction writer (``scripts/ask.py``), and the membrane mirror
     (``core/shadow_mirror.py``'s callers) key on this — a second, hand-copied spelling
     anywhere silently splits the id namespace and every join across it reads as "no

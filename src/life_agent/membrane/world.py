@@ -145,7 +145,7 @@ def summary_from_decision_event(event: dict[str, Any]) -> DecideSummary:
     plain dict — e.g. off ``json.loads`` of a decisions.jsonl line) via its
     ``posterior_summary``. The three live-only flags (``era_split``, ``owner_scoped``,
     ``grow_pass``) are not recorded in either family's ``posterior_summary``
-    (``core/lookup.py``/``core/narrative.py``) and always read ``False`` here — the warm
+    and always read ``False`` here — the warm
     path never claims a live-only signal it doesn't have. The lookup family's
     ``posterior_summary`` carries ``candidates``/``credences``/``p_none``/``n_obs``
     directly; the narrative family's does not (it carries ``n_proposed``/

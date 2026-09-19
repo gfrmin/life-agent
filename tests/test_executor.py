@@ -1345,11 +1345,8 @@ def _withhold_view(**overrides: Any) -> dict[str, Any]:
 def test_render_view_withhold_is_honest_only_lane_retired(monkeypatch) -> None:
     # §13 adoption (2026-08-17): honest-withhold-only. The uncalibrated dual-lane render
     # is REMOVED, not flag-gated — a stale LIFE_AGENT_FALLBACK_LANE=1 in the env changes
-    # nothing, and no synthesize call can fire from a withholding render.
-    import life_agent.core.synthesis as SYN
+    # nothing.
     monkeypatch.setenv("LIFE_AGENT_FALLBACK_LANE", "1")
-    monkeypatch.setattr(SYN, "synthesize",
-                        lambda *a, **k: (_ for _ in ()).throw(AssertionError("called")))
     out = EX.render_view(_withhold_view())
     assert "No answer asserted" in out and "uncalibrated" not in out
 

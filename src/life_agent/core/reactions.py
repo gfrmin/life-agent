@@ -173,14 +173,18 @@ def _lookup_reaction(r: ReactionEvent, d: DEC.DecisionEvent) -> UT.Reaction | No
                        threshold=_abstain_threshold(p))
 
 
+# The recorded narrative decisions' withheld-all abstain reason (the lane is retired; its
+# recorded verdicts still fold).
+REASON_ALL_WITHHELD = "all claims below the inclusion threshold"
+
+
 def _narrative_reaction(r: ReactionEvent, d: DEC.DecisionEvent) -> UT.MarginReaction | None:
     """A clean narrative ``ALL_WITHHELD`` abstain-verdict → a joint (u(wrong), κ_att) margin
     observation at the marginal claim's ``p_max`` (§7.1). Both valences fold (the ``bad`` rows
     are the only counter-pressure); the ``bad`` rows are coverage-gated; ``NO_CLAIMS`` (no
     ``p_max``) does not fold. The which-claim residual is left unmeasured — the §14 successor
     must elicit it cheaply (a bit per claim), never as free text."""
-    from life_agent.core import narrative as N  # lazy: keep the import graph acyclic
-    if d.posterior_summary.get("abstain_reason") != N.REASON_ALL_WITHHELD:
+    if d.posterior_summary.get("abstain_reason") != REASON_ALL_WITHHELD:
         return None
     raw = d.posterior_summary.get("marginal_credence")
     if raw is None:

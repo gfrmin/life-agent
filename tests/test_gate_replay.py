@@ -132,22 +132,7 @@ def test_paired_dict_names_its_baseline_arm() -> None:
 # --- gate_paired_outcomes with the replay baseline ----------------------------------------
 
 class _FakeAsk:
-    """The production path stub: typed pass answers; a families=False call would be the
-    monolithic arm — with a replay baseline it must never fire."""
-
-    ABSTENTION = "ABSTAIN-SENTINEL"
-
-    def __init__(self) -> None:
-        self.LOOKUP_LAST: Any = None
-        self.NARRATIVE_LAST: Any = None
-        # M5 (r15): run_eval reads the canonical state home ask.TERM.*_LAST — the fake
-        # mirrors the module shape (its own attrs stay for the older read paths).
-        self.TERM = self
-        self.calls: list[dict[str, Any]] = []
-
-    def answer(self, conn: Any, question: str, k: int, **kw: Any) -> tuple[str, list, dict]:
-        self.calls.append(kw)
-        return self.ABSTENTION, [], {}
+    """An ask stub with no executor: a gate that reached it would fail loudly."""
 
 
 def _questions() -> list[dict[str, Any]]:
@@ -155,21 +140,9 @@ def _questions() -> list[dict[str, Any]]:
              "answer_variants": [], "fuzzy": False, "answerable": True}]
 
 
-def test_gate_pairs_typed_against_the_replay_arm(tmp_path: Path) -> None:
-    replay = {"q2-001": _row("q2-001", "P123 [doc.pdf]")}
-    paired = RE.gate_paired_outcomes(None, _questions(), 20, _FakeAsk(), replay=replay)
-    (p,) = paired
-    assert p.mono.action == "report"
-    assert p.mono.correct is True
-    assert p.typed.action == "abstain"
-
-
-def test_gate_replay_never_runs_the_monolithic_pass(tmp_path: Path) -> None:
-    fake = _FakeAsk()
-    RE.gate_paired_outcomes(None, _questions(), 20, fake, replay={
-        "q2-001": _row("q2-001", "P123")})
-    assert all(c.get("families") is not False for c in fake.calls)
-    assert not any("families" in c for c in fake.calls)
+def test_gate_without_a_replay_refuses() -> None:
+    with pytest.raises(ValueError, match="replay"):
+        RE.gate_paired_outcomes(None, _questions(), 20, _FakeAsk())
 
 
 def test_gate_replay_missing_question_is_named_never_dropped() -> None:
@@ -628,14 +601,6 @@ def test_gate_loo_resets_the_hold_out_when_the_run_voids() -> None:
     assert fake.EXECUTOR_HOLD_OUT_QUESTION_ID is None
 
 
-def test_gate_loo_on_the_family_arm_refuses() -> None:
-    # the family arm folds no curves — a LOO reading over it would be a silent no-op
-    # wearing the held-out label; refuse loudly
-    with pytest.raises(ValueError, match="executor"):
-        RE.gate_paired_outcomes(None, _questions(), 20, _FakeAsk(),
-                                replay={"q2-001": _row("q2-001", "P123")}, loo=True)
-
-
 def test_gate_loo_without_executor_flag_refuses(monkeypatch, capsys) -> None:
     # CLI precondition: --gate-loo without --gate-executor is refused BEFORE any state
     # is touched — there is no curve fold on the family arm to hold anything out of
@@ -652,7 +617,8 @@ def test_gate_loo_with_deliberate_disabled_refuses(monkeypatch, capsys) -> None:
     # shape. Refused before any state is touched.
     monkeypatch.setenv("LIFE_AGENT_DELIBERATE", "0")
     monkeypatch.setattr(sys, "argv",
-                        ["run_eval.py", "--gate", "--gate-executor", "--gate-loo"])
+                        ["run_eval.py", "--gate", "--gate-executor", "--gate-replay", "x",
+                         "--gate-loo"])
     monkeypatch.setattr(RE, "load_questions",
                         lambda p: (_ for _ in ()).throw(AssertionError("state touched")))
     assert RE.main() == 2

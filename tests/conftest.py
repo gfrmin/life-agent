@@ -35,27 +35,6 @@ def _hermetic_decisions_log(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> 
 
 
 @pytest.fixture(autouse=True)
-def _hermetic_lookup(monkeypatch: pytest.MonkeyPatch) -> None:
-    """No test routes through the lookup family unless it asks to: the router would
-    call the live local model and the family would spawn the Julia skin. Tests of the
-    family itself bind the real functions by name at import time (tests/test_lookup.py),
-    which this attribute patch deliberately does not reach."""
-    from life_agent.core import lookup as LK
-
-    monkeypatch.setattr(LK, "lookup_answer", lambda *a, **k: None)
-
-
-@pytest.fixture(autouse=True)
-def _hermetic_narrative(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Same reasoning for the narrative family (it spawns the Julia skin for Ū and
-    appends to the live decision log): stubbed to None — ask.answer's disabled seam —
-    unless the test binds the real functions by name (tests/test_narrative.py)."""
-    from life_agent.core import narrative as N
-
-    monkeypatch.setattr(N, "narrative_answer", lambda *a, **k: None)
-
-
-@pytest.fixture(autouse=True)
 def _hermetic_mirror(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """The C5 dual-write hooks fire inside every typed writer. Their default stream root is
     the configured KB's ``ledger/`` — which, with ``LIFE_AGENT_KB`` exported and a test that
@@ -101,10 +80,10 @@ def _hermetic_pkm_root(request: pytest.FixtureRequest, tmp_path_factory: pytest.
 
 @pytest.fixture(autouse=True)
 def _hermetic_executor(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The executor (credence answer-brain daemon) is ask's DEFAULT read-path, but it needs the
-    live daemon/bridge; no hermetic test may reach for it. Stub readiness to False so ask
-    deterministically takes the in-process fallback (the prior default) without a localhost
-    probe. Tests of the executor path override this by name (tests/test_ask.py)."""
+    """The executor is ask's one read-path, but it needs the live bridge; no hermetic test
+    may reach for it. Stub readiness to False so ask deterministically reads the stack as
+    down without a localhost probe. Tests of the executor path override this by name
+    (tests/test_ask.py)."""
     import sys
 
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
@@ -113,7 +92,7 @@ def _hermetic_executor(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(ask, "_executor_ready", lambda: False)
 
 
-# --- the synthetic KB for the ledger tests (test_ledger_golden / test_ledger_migrate / …) ------
+# --- the synthetic KB for the ledger tests (test_ledger_migrate / test_ledger_mirror / …) ------
 # PII-OK: synthetic — every value below is invented; the marker string exists only to prove the
 # harness output never prints record values.
 import json  # noqa: E402
@@ -124,7 +103,7 @@ from life_agent.core import decisions as DEC  # noqa: E402
 from life_agent.core import gather_outcomes as GO  # noqa: E402
 from life_agent.core import outcomes as O  # noqa: E402
 from life_agent.core import reactions as RX  # noqa: E402
-from life_agent.ledger import golden as G  # noqa: E402
+from life_agent.ledger.paths import Paths  # noqa: E402
 from life_agent.tasks import events as TEV  # noqa: E402
 from life_agent.trips import events as REV  # noqa: E402
 from pkm.cache import content_file, lineage_file, meta_file  # noqa: E402
@@ -156,7 +135,7 @@ def _edge_outcome(grade: str, p: float, lineage: str, tx: str) -> O.OutcomeEvent
 
 
 @pytest.fixture
-def ledger_kb(tmp_path: Path) -> tuple[Path, G.Paths]:
+def ledger_kb(tmp_path: Path) -> tuple[Path, Paths]:
     root = tmp_path / "kb"
     (root / "utility").mkdir(parents=True)
     (root / "calibration").mkdir()
@@ -167,7 +146,7 @@ def ledger_kb(tmp_path: Path) -> tuple[Path, G.Paths]:
     (root / "utility" / "elicitations.jsonl").write_text(
         json.dumps({"tx_time": "2026-01-01T00:00:00+00:00", "latent": "u_wrong",
                     "stated_value": -9.0, "noise_sigma": 0.5}) + "\n", encoding="utf-8")
-    p = G.Paths(
+    p = Paths(
         tasks_ledger=root / "tasks" / "events.jsonl", trips_ledger=root / "trips" / "events.jsonl",
         outcomes=root / "calibration" / "outcomes.jsonl",
         decisions=root / "calibration" / "decisions.jsonl",

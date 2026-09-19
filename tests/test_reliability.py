@@ -40,19 +40,10 @@ def test_an_undeclared_edge_cell_is_loud() -> None:
 
 
 def test_the_fold_lives_once() -> None:
-    # drift gate: the instruments BIND the one fold — no second Beta fold in lookup or
-    # narrative. Narrative keeps
-    # exactly two beta creates, neither a D-2 fold: the coverage posterior (the
-    # open-world tail is its own belief — amendment 3) and the per-claim cell-state
-    # materialization (it re-instantiates an ALREADY-COMPUTED posterior (a, b) for the
-    # EU decision — no prior + conditioning, so nothing to unify).
+    # drift gate: the instruments BIND the one fold — no second Beta fold in lookup.
     src = Path(__file__).resolve().parent.parent / "src/life_agent/core"
     lookup_src = (src / "lookup.py").read_text(encoding="utf-8")
-    narrative_src = (src / "narrative.py").read_text(encoding="utf-8")
     assert '"type": "beta"' not in lookup_src
-    assert narrative_src.count('"type": "beta"') == 2
-    assert "_COVERAGE_PRIOR[0]" in narrative_src          # 1: the open-world tail
-    assert "a, b = cells_ab[cell]" in narrative_src       # 2: posterior re-materialized
 
 
 def test_the_extractor_mean_replays_the_recorded_rho() -> None:

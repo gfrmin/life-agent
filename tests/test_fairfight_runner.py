@@ -570,35 +570,14 @@ def test_cost_status_competitor_no_reported_status_keeps_estimated_fallback() ->
 # --- --fresh: threads no_cache into the in-process arms, recorded in run_meta -----------
 
 
-def test_fresh_flag_recorded_in_arm_configs_and_threaded_to_impls(
+def test_only_the_baseline_arm_has_a_default_implementation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     kb = _kb(tmp_path, monkeypatch)
     _write_questions(kb, [_q()])
     args = _args(tmp_path, arms="baseline,inprocess,synthesis", fresh=True)
-
-    # default_arm_impls closes over args.fresh — capture what each in-process arm passes.
-    impls = RF.default_arm_impls(args)
-    captured: dict[str, Any] = {}
-
-    def _cap_synth(q: dict, k: int, *, fresh: bool = False) -> AB.RawAnswer:
-        captured["synthesis_fresh"] = fresh
-        return _raw(question_id=q["id"])
-
-    def _cap_baseline(q: dict, k: int, *, path: str, fresh: bool = False) -> AB.RawAnswer:
-        captured[f"{path}_fresh"] = fresh
-        return _raw(question_id=q["id"])
-
-    monkeypatch.setattr(RF.AS, "answer_synthesis", _cap_synth)
-    monkeypatch.setattr(RF.AB, "answer_baseline", _cap_baseline)
-    impls["synthesis"]({"id": "q-001", "question": "x?"})
-    impls["inprocess"]({"id": "q-001", "question": "x?"})
-    impls["baseline"]({"id": "q-001", "question": "x?"})
-    assert captured["synthesis_fresh"] is True
-    assert captured["inprocess_fresh"] is True
-    # the executor path has no cache knob — answer_baseline(path="executor") is called
-    # WITHOUT fresh (default False); --fresh is a no-op there by design.
-    assert captured["executor_fresh"] is False
+    # the in-process arms are retired: nothing answers under them by default
+    assert set(RF.default_arm_impls(args)) == {"baseline"}
 
     # run_meta records the flag per in-process arm; baseline records false (no knob).
     meta = RF._build_run_meta(

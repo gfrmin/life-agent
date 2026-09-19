@@ -33,7 +33,6 @@ import os
 import re
 import signal
 import sys
-import time
 from collections.abc import Callable
 from contextvars import ContextVar
 from dataclasses import dataclass
@@ -61,14 +60,12 @@ from life_agent.core import gather_outcomes as GO
 from life_agent.core import joint_extract as JE
 from life_agent.core import lookup as LK
 from life_agent.core import matching as MATCH
-from life_agent.core import narrative as NARR
 from life_agent.core import outcomes as O
 from life_agent.core import pricing as PRICING
 from life_agent.core import probes as P
 from life_agent.core import reactions as RX
 from life_agent.core import rerank as RR
 from life_agent.core import retrieval as RET
-from life_agent.core import synthesis as SYN
 from life_agent.core import volatility as VOL
 from life_agent.core.llm import LLMResult
 
@@ -174,7 +171,7 @@ def _covariates(c: Payload) -> LK.HitCovariates:
 def _route(deps: BridgeDeps, p: Payload) -> Payload | None:
     r = LK.route_question(deps.root, _req_str(p, "question"), client=deps.client)
     if r is None:
-        return None                          # not a typed lookup → the brain's narrative case
+        return None                          # not a verbatim point fact → declined
     # Currency has ONE source of truth: the volatility table (the curated world-knowledge prior),
     # not
     # the route model's `time_indexed` guess. The model called "mobile phone number" permanent
@@ -942,12 +939,11 @@ _TERMINAL_ACTIONS: frozenset[str] = frozenset(DEC.LOOKUP_ACTION_ORDER)
 
 
 def _log_decision(deps: BridgeDeps, p: Payload) -> Payload:
-    """Append one answer-brain terminal decision to the calibration decision log, shaped
-    exactly as the lookup family's own decisions (:func:`core.lookup.decide_and_record`), so
-    the owner's one-bit verdict folds into u(wrong) through the EXISTING reaction loop with no
-    new fold code (:func:`core.reactions.load_reactions`). The body posts the decision the
-    governor enacted; the bridge owns the write — the daemon stays stateless, the body
-    string-blind. Returns the ``decision_id`` the owner reacts against."""
+    """Append one terminal decision to the calibration decision log, shaped as a lookup
+    decision row, so the owner's one-bit verdict folds into u(wrong) through the EXISTING
+    reaction loop with no new fold code (:func:`core.reactions.load_reactions`). The body
+    posts the decision it enacted; the bridge owns the write, the body stays string-blind.
+    Returns the ``decision_id`` the owner reacts against."""
     question = _req_str(p, "question")
     retrieval_keys = [str(x) for x in _req_list(p, "retrieval_keys")]
     decision = p.get("decision")
@@ -1030,41 +1026,11 @@ def _log_reaction(deps: BridgeDeps, p: Payload) -> Payload:
 
 Handler = Callable[[BridgeDeps, Payload], "Payload | None"]
 
-def _narrative(deps: BridgeDeps, p: Payload) -> Payload:
-    """The narrative family (foundations §7) — the answer-brain's SECOND family, run when the typed
-    router declines (a list / aggregate / compound question). Retrieve with the full recall
-    (expansion + rerank), synthesize a CITED answer, then `narrative_answer` audits each claim
-    against
-    its cited card and includes it only if grounded AND EU-positive. Gate-safe by construction: an
-    ungrounded or weak claim is dropped → abstain; it never confidently asserts a wrong value. The
-    PII profile stays bridge-side (synthesis resolves "my"/"I" via it). `asserted` = the included
-    claims' text, so the grader matches the gold inside a grounded claim."""
-    question = _req_str(p, "question")
-    k = int(p.get("k", _DEFAULT_K))
-    terms = EXP.expand_terms(question, root=deps.root)
-    pool = RET.retrieve_set(deps.conn, RET.build_query(question, terms), RR.RERANK_POOL)
-    hits = RR.rerank_hits(question, pool, k)
-    t0 = time.monotonic()
-    text, _key, _cached, s_cost = SYN.synthesize(deps.root, question, hits, deps.profile)
-    s_latency = time.monotonic() - t0
-    dates = P.probe_recency(deps.conn, deps.root,
-                            list(dict.fromkeys(h["artifact_cache_key"] for h in hits)))
-    cards = SYN.cards_from_hits(hits, dates)
-    nv = NARR.narrative_answer(deps.root, question, text, cards,
-                               cost_usd=s_cost, latency_s=s_latency,
-                               instrument=SYN.INSTRUMENT)
-    asserted = [c.text for c in nv.claims if c.included]
-    return {"action": nv.action, "asserted": asserted, "rendered": nv.rendered,
-            "hits": hits,  # the synthesis context, so the grader's channel diagnostics stay honest
-            "claims": [{"text": c.text, "credence": c.credence, "included": c.included}
-                       for c in nv.claims]}
-
 
 _POST: dict[str, Handler] = {
     "/route": _route,
     "/retrieve": _retrieve,
     "/extract": _extract,
-    "/narrative": _narrative,
     "/probe/recency": _probe_recency,
     "/probe/subject": _probe_subject,
     "/probe/authority": _probe_authority,
@@ -1131,8 +1097,8 @@ class _Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(data)
         except (BrokenPipeError, ConnectionResetError):
-            # the caller timed out and hung up while a slow read (a /narrative
-            # rerank+synthesize) was in flight — there is no one to answer, and an
+            # the caller timed out and hung up while a slow read (an /extract or a
+            # deliberate probe) was in flight — there is no one to answer, and an
             # exception escaping here on a keep-alive connection wedged the whole
             # single-threaded server (run-6 void, 2026-08-17). Drop the connection;
             # the next accept() must still be served.
@@ -1185,8 +1151,8 @@ def _build_decider(u_bar: Callable[[], dict[str, float]]) -> DCD.Decider:
 def build_deps() -> BridgeDeps:
     """Open the warm, server-side handles once (move-3 §1): the read-only catalogue (FTS
     loaded, so a running extraction never blocks the bridge and vice-versa), the extraction
-    client, the owner profile, and a lazy u_bar (the credence skin spawns on first `/utility`
-    only). The decider is constructed last, off this same `_u_bar` (`_build_decider`)."""
+    client, the owner profile, and a lazy u_bar (folded on first use). The decider is
+    constructed last, off this same `_u_bar` (`_build_decider`)."""
     from life_agent.tasks import read
 
     root = read.pkm_root()

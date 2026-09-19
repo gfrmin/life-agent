@@ -1,9 +1,7 @@
-"""The lookup family (life_agent.core.lookup) — foundations §4, hermetic.
+"""The lookup family's evidence shaping (life_agent.core.lookup) — foundations §4, hermetic.
 
-The conftest autouse fixture stubs ``lookup.lookup_answer`` for every OTHER test; this
-file binds the real functions by name at import time, which the attribute patch
-deliberately does not reach. The local model is faked (the subject.py client pattern),
-the brain is a scripted transport, and §18.9 records land under ``migrated_root``.
+The model is faked (the subject.py client pattern) and §18.9 records land under
+``migrated_root``.
 
 Run: uv run --project . python -m pytest tests/test_lookup.py
 """
@@ -18,17 +16,12 @@ from typing import Any
 import pytest
 
 from life_agent.core import config
-from life_agent.core import decisions as DEC
 from life_agent.core import lookup as LK
-from life_agent.core.brain import Brain
 from life_agent.core.lookup import (
     Observation,
-    action_utilities,
     authority_for,
     candidates_from,
-    lookup_answer,
     observe_hits,
-    render,
     route_question,
 )
 from pkm.transform import ModelResponse
@@ -312,21 +305,6 @@ def test_observe_hits_competition_survives_a_warm_replay(migrated_root: Path) ->
     assert obs2[0].obs_cache_key == obs1[0].obs_cache_key
 
 
-def test_lookup_posterior_folds_the_competition_factor_into_the_group_covariate() -> None:
-    transport = ScriptedTransport()
-    brain = Brain(transport)
-    competed = dataclasses.replace(_obs("k" * 64, "42"), n_competing=1,
-                                   competition_factor=0.5)
-    LK.lookup_posterior(brain, [competed], ["42"], (4.0, 4.0))
-    kernels = [r["params"]["kernel"] for r in transport.sent if r["method"] == "condition"]
-    assert kernels and kernels[0]["covariate"] == pytest.approx(0.95 * 0.5)
-    # uncontested: the covariate is untouched
-    transport2 = ScriptedTransport()
-    LK.lookup_posterior(Brain(transport2), [_obs("k" * 64, "42")], ["42"], (4.0, 4.0))
-    k2 = [r["params"]["kernel"] for r in transport2.sent if r["method"] == "condition"]
-    assert k2 and k2[0]["covariate"] == pytest.approx(0.95)
-
-
 # --- the posterior's pure parts -----------------------------------------------------------
 
 def _obs(key: str, value: str, n: int = 1, authority: float = 0.95,
@@ -545,102 +523,12 @@ def test_parse_date_unambiguous_and_ambiguous() -> None:
     assert LK._parse_date("13/13/1990") is None              # invalid
 
 
-# temper_scales + observation_densities are RETIRED (the §4.2 host tempering / per-obs likelihood
-# rows): the exact correlated-evidence model is now the engine's group_noisy_channel kernel over a
-# carried rho-latent labelled_mixture (lookup_posterior). The likelihood math is tested engine-side
-# (test/test_group_noisy_channel.jl); the body ships the per-document covariate + reports as data.
-
-
-def test_action_utilities_under_u_bar() -> None:
-    ub = {"u_correct": 1.0, "u_abstain": 0.0, "u_wrong": -5.0, "u_wrong_scoped": -2.0,
-          "u_hedged": 0.4, "lambda_int": 1.0, "kappa_att": 0.05}
-    # report is per-candidate report_j; report_scoped is per DATED candidate too
-    # (M5/r15 L-3): each row flat at its engine-computed scoped_eu_j.
-    u = action_utilities([0.7, 0.2, 0.1], ub, scoped={1: 0.16})  # two candidates + NONE
-    assert u["report_0"] == [1.0, -5.0, -5.0]    # asserts candidate 0; truth elsewhere → wrong
-    assert u["report_1"] == [-5.0, 1.0, -5.0]    # asserts candidate 1
-    assert u["hedge"] == [0.4, 0.4, -5.0]        # misleads only when truth is NONE
-    assert u["ask_clarify"] == [pytest.approx(0.9 * 1.0 - 1.0)] * 3
-    assert u["abstain"] == [0.0, 0.0, 0.0]
-    assert u["report_scoped_1"] == [pytest.approx(0.16)] * 3
-    assert "report_scoped" not in u and "report_scoped_0" not in u
-
-
-def test_action_utilities_no_scoped_rows_without_a_dated_record() -> None:
-    # no datable record ⇒ NO scoped rows at all (M5/r15 L-3: an empty option set has no
-    # EU mass — the old always-present flat row died with the host pick of V_s).
-    ub = {"u_correct": 1.0, "u_abstain": 0.0, "u_wrong": -5.0, "u_wrong_scoped": -2.0,
-          "u_hedged": 0.4, "lambda_int": 1.0, "kappa_att": 0.05}
-    u = action_utilities([0.6, 0.4], ub, scoped={})
-    assert not any(a.startswith("report_scoped") for a in u)
-
-
-# --- render (the credence grammar) --------------------------------------------------------
-
-def _result(action: str, **kw) -> LK.LookupResult:
-    base = dict(
-        question="q?", construct="the value", action=action, eu=0.5,
-        candidates=("V1", "V2"), credences=(0.7, 0.2), p_none=0.1,
-        observations=(_obs("a" * 64, "V1", n=1), _obs("b" * 64, "V2", n=3)),
-        n_hits=5, n_indeterminate=3, utility_fold_version="f" * 64,
-        answer_cache_key="k" * 64, rendered="")
-    base.update(kw)
-    return LK.LookupResult(**base)
-
-
-def test_render_report_carries_credence_citation_and_footer() -> None:
-    text = render(_result("report"))
-    assert "V1 — credence 0.700 [1]" in text
-    assert "none-of-retrieved 0.100" in text
-    assert "decision report (EU 0.50)" in text
-    assert "5 hits → 2 grounded observations · 3 indeterminate" in text
-
-
-def test_render_hedge_names_alternatives_with_credences() -> None:
-    text = render(_result("hedge"))
-    assert "V1 (0.700) [1]" in text and "V2 (0.200) [3]" in text
-
-
-def test_render_scoped_names_as_of_value_and_currency_gap() -> None:
-    # report_scoped states the freshest record's value scoped to its date, names the gap.
-    text = render(_result("report_scoped", scoped_value="V1", as_of="2019-05-01",
-                          scoped_p=0.88))
-    assert "As of 2019-05-01: V1 — credence 0.880 [1]" in text
-    assert "I may be missing a newer one" in text
-    assert "decision report_scoped" in text
-
-
-def test_render_abstain_names_reason_and_shows_held_back_candidates() -> None:
-    # an abstain must surface the candidate(s) it withheld, with credences, so the owner can
-    # verdict the *decision* against what it was sitting on — not a blind "should you have
-    # answered?" (the candidate is the held-back "thinking"; report/hedge already show it).
-    text = render(_result("abstain"))
-    assert LK.REASON_DISPERSED in text
-    assert "V1 (0.700) [1]" in text and "V2 (0.200) [3]" in text
-    assert "decision abstain" in text
-
-
-def test_render_abstain_without_candidates_omits_held_back() -> None:
-    # genuine nothing-to-show (all observations indeterminate): no "Held back:" dangling.
-    # And the reason must be the TRUE one (interaction contract): with zero candidates no
-    # posterior ever existed, so "dispersed posterior" would assert a dispersion that never
-    # happened — the named reason is a claim about the decision, not a filler string.
-    r = LK.LookupResult(
-        question="q?", construct="c", action="abstain", eu=0.0,
-        candidates=(), credences=(), p_none=1.0, observations=(),
-        n_hits=2, n_indeterminate=2, utility_fold_version="f" * 64,
-        answer_cache_key="k" * 64, rendered="")
-    text = render(r)
-    assert LK.REASON_NO_OBSERVATIONS in text
-    assert LK.REASON_DISPERSED not in text
-    assert "Held back" not in text
-
+# --- the credence grammar -----------------------------------------------------------------
 
 def test_grammar_templates_all_render() -> None:
     # drift gate: every template formats with its declared slots
     LK.GRAMMAR["report"].format(value="v", p=0.5, cites="[1]")
     LK.GRAMMAR["report_scoped"].format(value="v", as_of="2019-01-01", p=0.5, cites="[1]")
-    LK.GRAMMAR["report_interval"].format(lo="lo", hi="hi", p=0.5, cites="[1]")
     LK.GRAMMAR["hedge"].format(alts="a")
     LK.GRAMMAR["ask_clarify"].format(alts="a")
     LK.GRAMMAR["abstain"].format(reason="r")
@@ -650,61 +538,6 @@ def test_grammar_templates_all_render() -> None:
     LK.GRAMMAR["fallthrough"].format(reason="r")
     # the fallback_lane templates were removed at §13 adoption (honest-withhold-only)
     assert "fallback_lane" not in LK.GRAMMAR and "fallback_lane_failed" not in LK.GRAMMAR
-
-
-# --- the family end to end (scripted brain) -----------------------------------------------
-
-class ScriptedTransport:
-    """create/condition/weights/marginalise/expect/read_params/optimise over scripted replies.
-    The lookup rho-latent path: create_state(labelled_mixture) + condition(group_noisy_channel) +
-    `expect` (the V-marginal onehots, uniform-scripted) + `optimise` (a string `report_j`/action
-    name → decide maps `report_j`→report)."""
-
-    def __init__(self, optimise_action: str = "report_0") -> None:
-        self.sent: list[dict] = []
-        self._optimise_action = optimise_action
-
-    def send(self, line: str) -> None:
-        self.sent.append(json.loads(line))
-
-    def recv(self) -> str:
-        req = self.sent[-1]
-        method = req["method"]
-        if method == "create_state":
-            n = sum(1 for r in self.sent if r["method"] == "create_state")
-            result: object = {"state_id": f"s_{n}"}
-        elif method == "condition":
-            result = {"state_id": req["params"]["state_id"], "log_marginal": -0.1}
-        elif method == "weights":
-            creates = [r for r in self.sent if r["method"] == "create_state"]
-            idx = int(req["params"]["state_id"].split("_")[1]) - 1
-            params = creates[idx]["params"]
-            # the lookup V-marginal is a `reliability_categorical` (v_log_weights); other
-            # categorical states carry a `space`. Scripted uniform of the right atom count.
-            n = (len(params["v_log_weights"]) if params["type"] == "reliability_categorical"
-                 else len(params["space"]["values"]))
-            result = {"weights": [1.0 / n] * n}
-        elif method == "marginal":
-            # the utility joint fold's per-coordinate readout → a NEW scalar state (mean/expect)
-            n = sum(1 for r in self.sent if r["method"] == "marginal")
-            result = {"state_id": f"m_{n}"}
-        elif method == "mean":
-            # the utility continuous-latent fold's causal mean readout (scripted neutral)
-            result = {"mean": 0.0}
-        elif method == "expect":
-            # the V-marginal onehots / scoped tabular: Σ v_i over a UNIFORM belief (scripted)
-            vals = req["params"]["function"].get("values", [1.0])
-            result = {"value": sum(vals) / len(vals)}
-        elif method == "read_params":
-            result = {"type": "beta", "alpha": 1.0, "beta": 1.0}
-        elif method == "optimise":
-            result = {"action": self._optimise_action, "eu": 0.42}
-        else:
-            result = "ok"
-        return json.dumps({"jsonrpc": "2.0", "id": req["id"], "result": result})
-
-    def close(self) -> None:
-        pass
 
 
 MODEL_YAML = """\
@@ -722,7 +555,7 @@ endpoint_mass_warn: 0.01
 """
 
 
-# --- r30 step 2: current_u_bar shapes per question and folds the engine posterior ONCE ------
+# --- r30 step 2: current_u_bar shapes per question and folds the posterior ONCE -----------
 
 def test_current_u_bar_defaults_to_the_anchor_shape(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -777,159 +610,6 @@ def test_current_u_bar_undeclared_scales_give_the_same_u_bar_for_every_shape(
         shaped, version_s, _ = LK.current_u_bar(shape=shape)
         assert shaped == exact
         assert version_s == version_e
-
-
-def test_decide_and_record_classifies_the_question_and_asks_for_that_shape(
-        migrated_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    # C5: decide_and_record classifies its OWN question and routes it through
-    # current_u_bar's shape parameter — never a second scale computation.
-    model_path = tmp_path / "model.yaml"
-    model_path.write_text(MODEL_YAML, encoding="utf-8")
-    monkeypatch.setattr(config, "UTILITY_MODEL", model_path)
-    monkeypatch.setattr(config, "UTILITY_ELICITATIONS", tmp_path / "elicit.jsonl")
-    monkeypatch.setattr(LK, "_U_BAR_RAW", None)
-    monkeypatch.setattr(LK, "_U_BAR_SHAPED", {})
-    seen_shapes: list[str] = []
-    real_current_u_bar = LK.current_u_bar
-
-    def _spy(*, shape: str = "exact"):
-        seen_shapes.append(shape)
-        return real_current_u_bar(shape=shape)
-
-    monkeypatch.setattr(LK, "current_u_bar", _spy)
-    route = FakeClient({"lookup": True, "construct": "the total"})
-    extract = FakeClient({"found": True, "value": "12345", "quote": "total 12345"})
-    brain = Brain(ScriptedTransport(optimise_action="report_0"))
-    hits = [_hit("a" * 64, "your total 12345 is recorded")]
-    lookup_answer(migrated_root, "how many items in total do I have?", hits,
-                 brain=brain, route_client=route, extract_client=extract,
-                 decisions_path=tmp_path / "decisions.jsonl", run_id="test")
-    assert seen_shapes == ["quantity"]
-
-
-def test_lookup_answer_end_to_end(migrated_root: Path, tmp_path: Path,
-                                  monkeypatch: pytest.MonkeyPatch) -> None:
-    model_path = tmp_path / "model.yaml"
-    model_path.write_text(MODEL_YAML, encoding="utf-8")
-    monkeypatch.setattr(config, "UTILITY_MODEL", model_path)
-    monkeypatch.setattr(config, "UTILITY_ELICITATIONS", tmp_path / "elicit.jsonl")
-    monkeypatch.setattr(LK, "_U_BAR_RAW", None)  # no cross-test fold cache
-    monkeypatch.setattr(LK, "_U_BAR_SHAPED", {})
-    decisions_path = tmp_path / "decisions.jsonl"
-
-    route = FakeClient({"lookup": True, "construct": "the ID"})
-    extract = FakeClient({"found": True, "value": "12345", "quote": "ID 12345"})
-    brain = Brain(ScriptedTransport(optimise_action="report_0"))  # report_j → report
-    hits = [_hit("a" * 64, "your ID 12345 is recorded")]
-
-    result = lookup_answer(migrated_root, "what is my ID?", hits,
-                           brain=brain, route_client=route, extract_client=extract,
-                           decisions_path=decisions_path, run_id="test")
-    assert result is not None
-    assert result.action == "report" and result.candidates == ("12345",)
-    assert "credence" in result.rendered
-    assert len(result.utility_fold_version) == 64
-
-    # the decision is logged — no EU decision unlogged
-    logged = DEC.read(decisions_path)
-    assert len(logged) == 1
-    assert logged[0].family == "lookup" and logged[0].chosen_action == "report"
-    assert logged[0].utility_fold_version == result.utility_fold_version
-
-    # the answer artifact is on the ledger with observation lineage
-    from pkm.cache import content_file, lineage_file, meta_file
-    assert meta_file(migrated_root, result.answer_cache_key).exists()
-    lineage = json.loads(lineage_file(migrated_root, result.answer_cache_key)
-                         .read_text(encoding="utf-8"))["inputs"]
-    assert [e["role"] for e in lineage] == ["observation"]
-
-    # the §4.1 covariates are decision inputs — recorded with the answer (audit)
-    content = json.loads(content_file(migrated_root, result.answer_cache_key)
-                         .read_text(encoding="utf-8"))
-    assert content["time_indexed"] is False
-    assert content["covariates"] == [
-        {"obs": result.observations[0].obs_cache_key,
-         "subject_factor": 1.0, "time_factor": 1.0,
-         "n_competing": 0, "competition_factor": 1.0}]
-
-
-@pytest.mark.parametrize(("second_key", "n_obs"), [("a" * 64, 1), ("b" * 64, 2)],
-                         ids=["same-artefact", "other-artefact"])
-def test_lookup_answer_lineage_inputs_are_unique(migrated_root: Path, tmp_path: Path,
-                                                 monkeypatch: pytest.MonkeyPatch,
-                                                 second_key: str, n_obs: int) -> None:
-    """Two hits with IDENTICAL chunk text share one extract key (the key hashes the chunk, not
-    the artefact — :func:`observe_hits`), so two observations can carry one ``obs_cache_key``;
-    across two artefacts a value-only quote keeps both through :func:`dedup_correlated`, while
-    within ONE artefact r09c A1 counts them once. The answer's lineage must still name that
-    observation ONCE (§18.9: ``artifact_lineage`` is keyed (artifact, input)) either way."""
-    model_path = tmp_path / "model.yaml"
-    model_path.write_text(MODEL_YAML, encoding="utf-8")
-    monkeypatch.setattr(config, "UTILITY_MODEL", model_path)
-    monkeypatch.setattr(config, "UTILITY_ELICITATIONS", tmp_path / "elicit.jsonl")
-    monkeypatch.setattr(LK, "_U_BAR_RAW", None)
-    monkeypatch.setattr(LK, "_U_BAR_SHAPED", {})
-    route = FakeClient({"lookup": True, "construct": "the ID"})
-    extract = FakeClient({"found": True, "value": "12345", "quote": "12345"})  # value-only quote
-    brain = Brain(ScriptedTransport(optimise_action="report_0"))
-    hits = [_hit("a" * 64, "your ID 12345 is recorded"),
-            _hit(second_key, "your ID 12345 is recorded")]           # identical chunk text
-
-    result = lookup_answer(migrated_root, "what is my ID?", hits,
-                           brain=brain, route_client=route, extract_client=extract,
-                           decisions_path=tmp_path / "decisions.jsonl", run_id="test")
-    assert result is not None
-    assert len(result.observations) == n_obs                          # A1: one per (doc, value)
-    assert len({o.obs_cache_key for o in result.observations}) == 1   # ONE extract key throughout
-    from pkm.cache import lineage_file
-    lineage = json.loads(lineage_file(migrated_root, result.answer_cache_key)
-                         .read_text(encoding="utf-8"))["inputs"]
-    assert [e["cache_key"] for e in lineage] == [result.observations[0].obs_cache_key]
-
-
-def test_lookup_answer_none_when_not_routed(migrated_root: Path) -> None:
-    route = FakeClient({"lookup": False})
-    assert lookup_answer(migrated_root, "summarise my week", [],
-                         route_client=route) is None
-
-
-def test_lookup_answer_none_on_zero_grounded_observations(
-        migrated_root: Path) -> None:
-    route = FakeClient({"lookup": True, "construct": "x"})
-    extract = FakeClient({"found": False})
-    out = lookup_answer(migrated_root, "what is x?",
-                        [_hit("a" * 64, "nothing here")],
-                        route_client=route, extract_client=extract)
-    assert out is None  # coverage fallthrough — the narrative path answers
-
-
-def test_lookup_answer_scope_modulates_recency(monkeypatch: Any,
-                                               tmp_path: Path) -> None:
-    # The temporal-scope finish: a historical/as_of question suppresses the present-tense decay
-    # (you want the era value, not the current one); present/unscoped keep the construct's verdict.
-    # Gate-safe — it only removes a penalty. Seam test: capture the time_indexed observe_hits gets.
-    captured: dict[str, bool] = {}
-    monkeypatch.setattr(
-        LK, "route_question",
-        lambda root, q, client=None: LK.Route(construct="bank", time_indexed=True))
-
-    def _fake_observe(root: Path, q: str, hits: list[Any], **kw: Any) -> tuple[list[Any], int]:
-        captured["time_indexed"] = kw["time_indexed"]
-        return [], 0  # zero observations ⇒ lookup_answer returns None before any decision
-
-    monkeypatch.setattr(LK, "observe_hits", _fake_observe)
-
-    # call the REAL lookup_answer imported at module top (the autouse _hermetic_lookup stubs
-    # LK.lookup_answer to None, but our import bound the real function before that fixture ran).
-    assert lookup_answer(tmp_path, "what was my bank in 2022?", [],
-                         scope="historical") is None
-    assert captured["time_indexed"] is False
-    lookup_answer(tmp_path, "what is my bank?", [], scope="present")
-    assert captured["time_indexed"] is True          # present keeps the route verdict
-    lookup_answer(tmp_path, "my bank as of X?", [], scope="as_of")
-    assert captured["time_indexed"] is False
-    lookup_answer(tmp_path, "my bank?", [], scope="unscoped")
-    assert captured["time_indexed"] is True
 
 
 # --- confirm (value-targeted independent confirmation — §14 confirm_indep) ----------------

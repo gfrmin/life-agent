@@ -1,16 +1,10 @@
 #!/usr/bin/env python3
 """ask — the dogfood "ask anything" REPL over the LIVE pkm catalogue, with citations.
 
-Phase-1 dogfood interface. One command -> an `ask> ` loop that, per question:
-retrieves top-k chunks from the whole live corpus (BM25 FTS, Hebrew-aware), has the
-pinned answer model synthesise a concise answer that cites [n] into those chunks, then
-captures a one-key good/bad verdict into a dated session log under
-$LIFE_AGENT_KB. The captured misses are the FAILURES-driven spec for what to build next.
-
-This is pure composition of the comparison harness: it is `phase1_answer.answer_one`
-minus the frozen-snapshot filter (dogfood asks over the whole corpus, not a pinned S)
-and minus the per-question hand-written search_queries (the raw question IS the query —
-an honest "ask anything" test that surfaces retrieval gaps as signal).
+One command -> an `ask> ` loop that, per question, answers through the one executor
+(:func:`life_agent.core.ask_client.drive`: the bridge's decider over the live corpus),
+renders the reply with its citations, then captures a one-key good/bad verdict into a dated
+session log under $LIFE_AGENT_KB. The captured misses are the spec for what to build next.
 
 Run (from the repo root, for pkm.retrieval + duckdb). One-shot argv is the SAME line
 grammar as the REPL (docs/interaction-contract.md):
@@ -54,21 +48,17 @@ import life_agent.tasks.events as ev
 import life_agent.tasks.knowledge as knowledge
 from life_agent.core import terminals as TERM
 
-# The in-process family orchestration was ABSORBED into the package at M5 (r15,
-# design §2.2/§2.3): life_agent.core.terminals is the terminals-only regime's body,
-# reached by the one driver's down-branch and by this REPL. The bindings below keep
-# this script's public names stable for the instrument arms and their tests; the
-# canonical home of the state seams (*_LAST) is TERM.
+# The retrieval helpers and the per-question state seams (*_LAST) live in
+# life_agent.core.terminals; the bindings below keep this script's public names stable for
+# the instrument arms and their tests.
 from life_agent.core.retrieval import build_query  # noqa: F401 — probe-script surface
 
-answer = TERM.answer
 connect = TERM.connect
 retrieve = TERM.retrieve
 _retrieve_set = TERM._retrieve_set
 _pkm_root = TERM._pkm_root
 _is_lock_error = TERM._is_lock_error
 _cards_from_set = TERM._cards_from_set
-_narrative_scored = TERM._narrative_scored
 _clean_terms = TERM._clean_terms
 _expand_terms = TERM._expand_terms
 _rerank_hits = TERM._rerank_hits
@@ -78,7 +68,6 @@ EXPAND_MODEL = TERM.EXPAND_MODEL
 RERANK_MODEL = TERM.RERANK_MODEL
 RERANK_POOL = TERM.RERANK_POOL
 RERANK_SYSTEM = TERM.RERANK_SYSTEM
-ANSWER_SYSTEM = TERM.ANSWER_SYSTEM
 TemporalReport = TERM.TemporalReport
 owner_question = TERM.owner_question
 reset_cache_stats = TERM.reset_cache_stats
@@ -306,7 +295,6 @@ def answer_via_executor(question: str, k: int
     fallback must never silently switch a gate's arm — r13 amendment 4)."""
     global EXECUTOR_LAST, EXECUTOR_VIEW_LAST
     TERM.TEMPORAL_LAST = TERM.SUBJECT_LAST = TERM.INTENT_LAST = None
-    TERM.LOOKUP_LAST = TERM.NARRATIVE_LAST = None
     TERM.STAGES_LAST = {}
     EXECUTOR_LAST = None
     EXECUTOR_VIEW_LAST = None
@@ -446,11 +434,7 @@ def _record_reaction(question: str, verdict: str) -> None:
     lookup abstain-verdicts; everything else is recorded, not folded. Written through
     :func:`submit_reaction` (bridge-first, so the decider folds it live). Fail-open
     and named: a calibration-log write must never break the dogfood loop."""
-    decision_id = (EXECUTOR_LAST if EXECUTOR_LAST
-                   else TERM.LOOKUP_LAST.answer_cache_key if TERM.LOOKUP_LAST is not None
-                   else TERM.NARRATIVE_LAST.answer_cache_key
-                   if TERM.NARRATIVE_LAST is not None
-                   else "")
+    decision_id = EXECUTOR_LAST or ""
     try:
         submit_reaction(R.ReactionEvent(
             tx_time=O.now_iso(), question_id=DEC.question_id(question),
@@ -513,12 +497,9 @@ def ask_once(conn: duckdb.DuckDBPyConnection, question: str, k: int,
              recent: bool = False) -> list[tuple[str, str]]:
     """Answer + render + capture. Returns the derive targets the answer's
     reports named as underived (doc_date and doc_subject alike — empty when
-    neither filter ran) so the REPL can offer `/derive`. The credence answer-brain executor
-    (the daemon decides) is the DEFAULT read-path; when its daemon/bridge is down it falls back
-    to the TERMINALS-ONLY regime inside the driver (M5, §2.3 — the leaves answer over T
-    with the regime recorded), NAMED when even that cannot run. The dispatch died at M5
-    (B-1/B-5): availability decides, never a flag. Temporal scoping (/since …) is not
-    yet wired into the executor, so a scoped question is NAMED and answered unscoped."""
+    neither filter ran) so the REPL can offer `/derive`. The executor answers; a down
+    stack is NAMED, never substituted. Temporal scoping (/since …) is not yet wired into
+    the executor, so a scoped question is NAMED and answered unscoped."""
     global EXECUTOR_LAST
     EXECUTOR_LAST = None  # clean per-question state; the dispatched path sets its own id
     if since is not None or until is not None or recent:

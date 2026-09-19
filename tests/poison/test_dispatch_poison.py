@@ -27,9 +27,6 @@ _SRC = _ROOT / "src" / "life_agent"
 # called.
 
 _QUESTION_CONSUMERS: dict[str, frozenset[str]] = {
-    "terminals.answer": frozenset({
-        "_expand_terms", "_narrative_scored", "_rerank_hits", "build_query",
-        "intent_verdict", "lookup_answer", "owner_question", "synthesize"}),
     "executor.decide_via_loop": frozenset({"_obj", "post", "run_pass"}),
 }
 

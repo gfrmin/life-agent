@@ -204,7 +204,7 @@ _SUBSTRING_PROOF_BASELINE: dict[str, int] = {
     "test_pricing_table.py::test_no_priced_constant_is_declared_outside_the_table": 2,
     "test_pricing_table.py::test_realised_utility_report_branch_is_spelled_through_the_atom": 1,
     "test_recorder.py::test_the_family_leaves_do_not_append_the_decision_ledger_themselves": 1,
-    "test_reliability.py::test_the_fold_lives_once": 5,
+    "test_reliability.py::test_the_fold_lives_once": 1,
     "test_seam.py::test_only_the_seam_calls_optimise": 1,
     "test_seam.py::test_only_the_seam_posts_decide": 1,
 }

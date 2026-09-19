@@ -15,7 +15,7 @@ from life_agent.core import reactions as RX
 from life_agent.ledger import migrate as MIG
 from life_agent.ledger import mirror as M
 from life_agent.ledger import sources as SRC
-from life_agent.ledger.golden import Paths
+from life_agent.ledger.paths import Paths
 from life_agent.ledger.store import LedgerStore
 from life_agent.tasks import events as TEV
 from tests.conftest import LEDGER_MARKER, _reaction

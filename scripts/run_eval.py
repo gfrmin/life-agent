@@ -252,104 +252,6 @@ def _append_outcomes(events: list, log_path: Path | None = None) -> Path:
     return log
 
 
-def lookup_claim_rows(q: dict, lk) -> list[dict]:
-    """Pure: per-claim grading rows for one routed lookup result (foundations §3 —
-    every answer is a claim set). Each candidate is the binary claim "V = candidate"
-    with its asserted credence; the none-of-the-retrieved atom is the claim "V is not
-    among the candidates". Correctness via the shared token-boundary matcher; an
-    unanswerable question (no ground-truth value) makes every candidate claim false
-    and the none claim true."""
-    rows: list[dict] = []
-    any_match = False
-    for cand, cred in zip(lk.candidates, lk.credences, strict=True):
-        correct = bool(q.get("answer")) and answer_matches(
-            q["answer"], q.get("answer_variants", []), cand)
-        any_match = any_match or correct
-        rows.append({"claim": cand, "probability": cred, "correct": correct})
-    rows.append({"claim": "(none of the retrieved)", "probability": lk.p_none,
-                 "correct": not any_match})
-    return rows
-
-
-def lookup_outcome(q: dict, lk, row: dict, *, run_id: str):
-    """One credence-bearing outcome event for one lookup claim — the first events
-    proper scoring can consume (probability is set)."""
-    import life_agent.core.lookup as LK
-    import life_agent.core.outcomes as O
-
-    return O.OutcomeEvent(
-        tx_time=O.now_iso(), run_id=run_id, question_id=str(q["id"]),
-        claim=str(row["claim"]), construct=str(lk.construct),
-        grade="CORRECT" if row["correct"] else "INCORRECT", grader="eval_lookup",
-        # the extract hash pins the EXACT instrument these claims grade (§2): a
-        # prompt change starts a new reliability posterior, never pooling the old
-        instrument_identity={"producer_name": "life_agent.ask.lookup_answer",
-                             "extract_prompt_hash": LK.extract_instrument_hash()},
-        lineage_keys=(lk.answer_cache_key,),
-        probability=float(row["probability"]),
-    )
-
-
-def narrative_claim_rows(q: dict, nv) -> list[dict]:
-    """Pure: the gradeable claim rows for one narrative-family result (§7 move 2's
-    evidence). Deterministically gradeable claims only: one containing the gold
-    answer (token-boundary, variants) grades CORRECT; one containing a wrong-subject
-    distractor (and not the gold) grades INCORRECT. Everything else is ungradeable at
-    claim level and emits nothing — DISCLOSED selection on the grading channel: the
-    stream reaches value-bearing claims, so cells it cannot reach stay at their wide
-    priors (narrative.py docstring, move 2)."""
-    rows: list[dict] = []
-    for c in nv.claims:
-        has_gold = bool(q.get("answer")) and answer_matches(
-            q["answer"], q.get("answer_variants", []), c.text)
-        has_distractor = any(answer_matches(d, [], c.text)
-                             for d in (q.get("distractors") or []))
-        if not has_gold and not has_distractor:
-            continue
-        rows.append({"claim": c.text[:200], "probability": c.credence,
-                     "correct": has_gold,
-                     "signals": {"audit_cell": c.cell, "included": c.included}})
-    return rows
-
-
-def narrative_claim_outcome(q: dict, nv, row: dict, *, run_id: str):
-    """One credence-bearing outcome event for one narrative claim — the population
-    stream the per-cell Beta fold conditions on (grader ``eval_claim``)."""
-    import life_agent.core.narrative as N
-    import life_agent.core.outcomes as O
-
-    return O.OutcomeEvent(
-        tx_time=O.now_iso(), run_id=run_id, question_id=str(q["id"]),
-        claim=str(row["claim"]), construct="claim",
-        grade="CORRECT" if row["correct"] else "INCORRECT", grader="eval_claim",
-        instrument_identity=N.instrument_identity(),
-        lineage_keys=(nv.answer_cache_key,),
-        probability=float(row["probability"]),
-        signals=dict(row["signals"]),
-    )
-
-
-def coverage_outcome(q: dict, nv, *, run_id: str):
-    """One proposal-coverage event (§7 move 3): did the proposal set contain the gold
-    claim at all? A MISSED event is an observed proposer miss — the open-world tail's
-    evidence. Answerable questions only (None otherwise: nothing to propose)."""
-    import life_agent.core.narrative as N
-    import life_agent.core.outcomes as O
-
-    if not q.get("answer"):
-        return None
-    proposed = any(answer_matches(q["answer"], q.get("answer_variants", []), c.text)
-                   for c in nv.claims)
-    return O.OutcomeEvent(
-        tx_time=O.now_iso(), run_id=run_id, question_id=str(q["id"]),
-        claim=str(q["answer"]), construct="proposal-coverage",
-        grade="PROPOSED" if proposed else "MISSED", grader="eval_coverage",
-        instrument_identity=N.instrument_identity(),
-        lineage_keys=(nv.answer_cache_key,),
-        signals={"n_claims": len(nv.claims)},
-    )
-
-
 def edge_outcome(q: dict, event: dict, *, run_id: str):
     """One attributed outcome for ONE answer-proposing firing's RAW proposal — the
     per-edge reliability curve's evidence (Δ1). Grades the event's ``value`` against
@@ -559,32 +461,6 @@ def dedup_edge_events(events: list, seen: set) -> list:
 # model live in life_agent.core.gate. Each policy is graded on ONE common answer-grounded
 # scale (gold token-containment), so the comparison values them identically.
 
-def _typed_response(lk, nv, typed_text: str, q: dict, abstention: str):
-    """The typed policy's realised answer on one question, from the family decisions the
-    production path just took (LOOKUP_LAST / NARRATIVE_LAST)."""
-    import life_agent.core.gate as GATE
-
-    gold, variants = q.get("answer", ""), q.get("answer_variants", [])
-    if lk is not None:
-        if lk.action == "report":
-            asserted = [lk.candidates[0]] if lk.candidates else []
-        elif lk.action == "hedge":
-            asserted = list(lk.candidates)
-        else:  # abstain | ask_clarify — a withholding
-            return GATE.RealisedResponse(action=lk.action, correct=None)
-        return GATE.RealisedResponse(
-            action=lk.action, correct=GATE.realised_report(asserted, gold, variants))
-    if nv is not None:
-        if nv.action == "report":
-            asserted = [c.text for c in nv.claims if c.included]
-            return GATE.RealisedResponse(
-                action="report", correct=GATE.realised_report(asserted, gold, variants))
-        return GATE.RealisedResponse(action="abstain", correct=None)
-    # no family decided: the weak-retrieval abstention (shared with the monolithic) or
-    # the family seam disabled — either way the typed path asserted nothing
-    return GATE.RealisedResponse(action="abstain", correct=None)
-
-
 def withheld_reason(view: dict, *, available: bool):
     """WHY the typed arm withheld (gate.WITHHELD_REASONS) — foundations §14.
 
@@ -671,19 +547,6 @@ def executor_run_stats(typed_views: list) -> dict:
             # slot's sum; a question can pay without the deliberate edge ever firing
             "spend_usd": sum(float(v.get("spend_usd") or 0.0)
                              for _, v in typed_views)}
-
-
-def _monolithic_response(mono_text: str, q: dict, abstention: str):
-    """The monolithic instrument's realised answer: the raw synthesize prose, graded by
-    the same gold-containment. It abstains only where retrieval is too weak to synthesize
-    (the guard it shares with the typed path)."""
-    import life_agent.core.gate as GATE
-
-    if mono_text == abstention:
-        return GATE.RealisedResponse(action="abstain", correct=None)
-    correct = GATE.realised_report([mono_text], q.get("answer", ""),
-                                   q.get("answer_variants", []))
-    return GATE.RealisedResponse(action="report", correct=correct)
 
 
 def load_replay_answers(path: Path) -> dict[str, dict]:
@@ -1121,41 +984,34 @@ def _git_info(repo_dir: Path) -> dict:
 
 def gate_paired_outcomes(conn, questions: list[dict], k: int, ask,
                          replay: dict[str, dict] | None = None,
-                         typed_arm: str = "family",
+                         typed_arm: str = "executor",
                          typed_views: list | None = None,
                          loo: bool = False) -> list:
     """Run the typed policy over the corpus and pair it against the baseline arm per
-    question. The typed pass is the in-process production answer path (the
-    gather-augmented loop died at M5, r15) — or, with
-    ``typed_arm="executor"``, the executor surface (ask.answer_via_executor: the
-    daemon/bridge loop the priced transform menu lives on — the ONLY arm that can carry
-    the deliberate edge; a mid-run down stack VOIDS the reading loudly, and
-    ``typed_views`` collects each (question, view) pair for the attributed-outcome
-    writer). The baseline is the monolithic pass (families=False → raw synthesize
-    prose) — or, with ``replay``, the raw-deliberative outside option replayed from a
-    stored run (Δ2): the join is STRICT, a question the replay lacks is named and
-    refused, never silently dropped.
+    question. The typed pass is the executor surface (``ask.answer_via_executor``: the
+    bridge's decider); a mid-run down stack VOIDS the reading loudly, and ``typed_views``
+    collects each (question, view) pair for the attributed-outcome writer. The baseline
+    is the outside option replayed from a stored run (``replay``): the join is STRICT, a
+    question the replay lacks is named and refused, never silently dropped.
 
-    ``loo=True`` (executor arm only) is the held-out reading's discipline: before each
-    question the module hold-out (ask.EXECUTOR_HOLD_OUT_QUESTION_ID) is set to that
-    question's id, so the executor's per-question curve fold excludes the question's
-    own graded outcome rows — grouped leave-one-question-out (the p3_gate precedent;
-    in-sample curves = §17.4's leakage re-enacted). Cleared after the run, voided or
-    not, so nothing leaks into a later live ask's fold."""
+    ``loo=True`` is the held-out reading's discipline: before each question the module
+    hold-out (ask.EXECUTOR_HOLD_OUT_QUESTION_ID) is set to that question's id, so the
+    executor's per-question curve fold excludes the question's own graded outcome rows —
+    grouped leave-one-question-out. Cleared after the run, voided or not, so nothing leaks
+    into a later live ask's fold."""
     import life_agent.core.gate as GATE
 
-    if loo and typed_arm != "executor":
+    if typed_arm != "executor":
+        raise ValueError(f"unknown typed arm {typed_arm!r}: the executor is the only arm "
+                         "(the in-process family arm is retired)")
+    if replay is None:
+        raise ValueError("the gate needs a replay baseline (the monolithic arm is retired)")
+    missing = sorted(str(q["id"]) for q in questions if str(q["id"]) not in replay)
+    if missing:
         raise ValueError(
-            "loo holds curves out of the EXECUTOR arm's per-question fold — the "
-            "family arm folds no curves, so a LOO reading over it would be a silent "
-            "no-op wearing the held-out label (pass typed_arm='executor')")
-    if replay is not None:
-        missing = sorted(str(q["id"]) for q in questions if str(q["id"]) not in replay)
-        if missing:
-            raise ValueError(
-                f"replay baseline lacks {len(missing)} question(s): {missing} — "
-                "the corpora must match (no silent drop; pass the run that answered "
-                "these questions)")
+            f"replay baseline lacks {len(missing)} question(s): {missing} — "
+            "the corpora must match (no silent drop; pass the run that answered "
+            "these questions)")
     available = gold_available(conn, questions)
     n_unavailable = sum(1 for v in available.values() if not v)
     if n_unavailable:
@@ -1164,34 +1020,25 @@ def gate_paired_outcomes(conn, questions: list[dict], k: int, ask,
     paired = []
     try:
         for q in questions:
-            if typed_arm == "executor":
-                if loo:
-                    ask.EXECUTOR_HOLD_OUT_QUESTION_ID = str(q["id"])
-                ask.answer_via_executor(q["question"], k)
-                view = ask.EXECUTOR_VIEW_LAST
-                if view is None:
-                    raise RuntimeError(
-                        f"executor view missing for {q['id']} — the daemon/bridge went "
-                        "down mid-run; the reading is void (fix the stack and rerun)")
-                typed = _typed_response_executor(
-                    view, q, available=available.get(str(q["id"]), True))
-                if typed_views is not None:
-                    typed_views.append((q, view))
-            else:
-                typed_text, _, _ = ask.answer(conn, q["question"], k)
-                lk, nv = ask.TERM.LOOKUP_LAST, ask.TERM.NARRATIVE_LAST  # capture before next call
-                typed = _typed_response(lk, nv, typed_text, q, ask.ABSTENTION)
-            if replay is not None:
-                mono = _replay_response(replay[str(q["id"])], q)
-            else:
-                mono_text, _, _ = ask.answer(conn, q["question"], k, families=False)
-                mono = _monolithic_response(mono_text, q, ask.ABSTENTION)
+            if loo:
+                ask.EXECUTOR_HOLD_OUT_QUESTION_ID = str(q["id"])
+            ask.answer_via_executor(q["question"], k)
+            view = ask.EXECUTOR_VIEW_LAST
+            if view is None:
+                raise RuntimeError(
+                    f"executor view missing for {q['id']} — the bridge went down "
+                    "mid-run; the reading is void (fix the stack and rerun)")
+            typed = _typed_response_executor(
+                view, q, available=available.get(str(q["id"]), True))
+            if typed_views is not None:
+                typed_views.append((q, view))
+            mono = _replay_response(replay[str(q["id"])], q)
             answerable = bool(q.get("answerable", bool(q.get("answer"))))
             paired.append(GATE.PairedOutcome(
                 question_id=str(q["id"]), answerable=answerable, typed=typed, mono=mono))
             tmark = "·" if not typed.asserts() else ("✓" if typed.correct else "✗")
             mmark = "·" if not mono.asserts() else ("✓" if mono.correct else "✗")
-            blabel = "delib" if replay is not None else "mono"
+            blabel = "delib"
             print(f"  {q['id']}: typed {tmark}{typed.action[:6]:<6} "
                   f"{blabel} {mmark}{mono.action[:6]}")
     finally:
@@ -1220,33 +1067,6 @@ def _paired_to_dict(p, baseline: str = "monolithic", *, run_id: str = "",
                       "cost_usd": p.typed.cost_usd, "withheld": p.typed.withheld},
             "mono": {"action": p.mono.action, "correct": p.mono.correct,
                      "cost_usd": p.mono.cost_usd, "withheld": p.mono.withheld}}
-
-
-def format_lookup_report(rows: list[dict], k: int, elapsed: float) -> str:
-    n_routed = sum(1 for r in rows if r["routed"])
-    actions = Counter(r["action"] for r in rows if r["routed"])
-    reports = [r for r in rows if r["action"] == "report"]
-    n_report_correct = sum(1 for r in reports if r["top_correct"])
-    lines = [
-        "# Lookup-family eval log (Ask v0 — credence-bearing claims)",
-        "",
-        f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M')}   k={k}   elapsed={elapsed:.1f}s",
-        "",
-        f"Routed to lookup: {n_routed}/{len(rows)}   actions: "
-        + " · ".join(f"{a}={c}" for a, c in sorted(actions.items())),
-        f"Report accuracy: {n_report_correct}/{len(reports)} top candidates correct.",
-        "",
-        "| ID | action | top candidate | p | correct | Q |",
-        "|---|---|---|---|---|---|",
-    ]
-    for r in rows:
-        if not r["routed"]:
-            lines.append(f"| {r['id']} | narrative | — | — | — | {r['question'][:44]} |")
-            continue
-        ok = {True: "✓", False: "✗", None: "—"}[r["top_correct"]]
-        lines.append(f"| {r['id']} | {r['action']} | {r['top'][:28]} | {r['top_p']:.2f} "
-                     f"| {ok} | {r['question'][:44]} |")
-    return "\n".join(lines) + "\n"
 
 
 # --- synthesis grader (end-to-end: the advertisable hallucination-rate number) ----------
@@ -1345,57 +1165,6 @@ def _synthesis_judge_once(q: dict, answer_text: str, sources: list[dict], rubric
         return None
 
 
-def synthesis_grade(conn, q: dict, k: int, *, fresh: bool = False) -> dict:
-    """End-to-end grade for one question: synthesise via the production path, audit citations
-    deterministically, then judge (modal-of-N). Returns a row consumed by ``synthesis_rates``.
-    ``fresh`` bypasses the ask derivation cache (recomputes; never overwrites)."""
-    here = str(Path(__file__).resolve().parent)
-    sys.path.insert(0, here)
-    sys.path.insert(0, str(Path(__file__).resolve().parent / "comparison"))
-    import ask
-    import citation_guard
-    from blind_judge import _rubric_text, modal
-
-    text, cards, _ = ask.answer(conn, q["question"], k, no_cache=fresh)
-    # §18.9 stage cache keys of THIS answer (outcome lineage; empty on the pre-key paths)
-    lineage_keys = tuple(ask.TERM.STAGES_LAST[s] for s in ("retrieve", "synthesize")
-                         if s in ask.TERM.STAGES_LAST)
-    nv = ask.TERM.NARRATIVE_LAST  # the §7 claim set behind this answer (None off-path)
-    lk = ask.TERM.LOOKUP_LAST
-    # the production path's own decision: an EU abstention asserts nothing — the
-    # deterministic decline verdict, not the judge, classifies it (classifier v2)
-    declined = ((nv is not None and nv.action == "abstain")
-                or (lk is not None and lk.action in ("abstain", "ask_clarify")))
-    sources = [{"n": c.n, "text": c.text} for c in cards]
-    audit = citation_guard.audit(text, cards)
-    rubric = _rubric_text()
-
-    faith: list[int] = []
-    cite: list[int] = []
-    served: set[str] = set()
-    for _ in range(_JUDGE_N):
-        j = _synthesis_judge_once(q, text, sources, rubric)
-        if not j:
-            continue
-        faith.append(j["faithfulness"])
-        cite.append(j["citation_fidelity"])
-        served.add(j["_served"])
-
-    f_modal, c_modal = modal(faith), modal(cite)
-    answerable = bool(q.get("answerable", bool(q.get("answer"))))
-    verdict = _classify_synthesis(
-        faithfulness=f_modal, citation_fidelity=c_modal,
-        structural_unsupported=bool(audit.unsupported), answerable=answerable,
-        declined=declined,
-    )
-    return {
-        "id": q["id"], "question": q["question"], "answerable": answerable,
-        "faithfulness": f_modal, "citation_fidelity": c_modal, "structural_ok": audit.ok,
-        "answer": text[:140].replace("\n", " "), "served": sorted(served),
-        "lineage_keys": lineage_keys, "_nv": nv, **verdict,
-    }
-
-
 def archive_gate_artifacts(gate_dir: Path, *, run_id: str) -> list[Path]:
     """Copy the fixed-path gate artifacts to run-id-suffixed names, mechanically.
 
@@ -1414,61 +1183,6 @@ def archive_gate_artifacts(gate_dir: Path, *, run_id: str) -> list[Path]:
             dst.write_bytes(src.read_bytes())
             archived.append(dst)
     return archived
-
-
-def _cache_line(cache: dict[str, int]) -> str:
-    """One line of per-stage derivation-cache hit rates for the report ('' when empty)."""
-    if not cache:
-        return ""
-    parts = []
-    for stage in ("expand", "retrieve", "synthesize"):
-        hits = cache.get(f"{stage}.hit", 0)
-        total = hits + cache.get(f"{stage}.miss", 0)
-        if total:
-            parts.append(f"{stage} {hits}/{total}")
-    # the issue-#56 refusal signal is its own part, NOT a cache stage: refusals over
-    # expand ATTEMPTS (a rate the owner can read directly), cached count named.
-    n_ref = cache.get("expand_refusal.hit", 0) + cache.get("expand_refusal.miss", 0)
-    if n_ref:
-        n_att = cache.get("expand.hit", 0) + cache.get("expand.miss", 0)
-        parts.append(f"expand refusals {n_ref}/{n_att} "
-                     f"({cache.get('expand_refusal.hit', 0)} cached)")
-    return f"Derivation cache hits: {' · '.join(parts)}" if parts else ""
-
-
-def format_synthesis_report(rows: list[dict], rates: dict, k: int, elapsed: float,
-                            cache: dict[str, int] | None = None) -> str:
-    def _pct(x: float | None) -> str:
-        return "n/a" if x is None else f"{100 * x:.0f}%"
-
-    lines = [
-        "# Synthesis eval log (end-to-end: grounded + hallucination rate)",
-        "",
-        f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M')}   k={k}   elapsed={elapsed:.1f}s   "
-        f"judge=modal-of-{_JUDGE_N}",
-        *([cl, ""] if (cl := _cache_line(cache or {})) else [""]),
-        f"**Hallucination rate: {_pct(rates['hallucination_rate'])}** "
-        f"({rates['n_hallucinated']}/{rates['n']} answers fabricated / wrong-subject / mis-cited).",
-        f"**Grounded-answer rate: {_pct(rates['grounded_rate'])}** "
-        f"({rates['n_grounded']}/{rates['n_answerable']} answerable questions).",
-        f"**Declined (EU abstention on answerable): {_pct(rates.get('declined_rate'))}** "
-        f"({rates.get('n_declined', 0)}/{rates['n_answerable']}).",
-        f"**Abstention-honesty: {_pct(rates['abstention_honesty'])}** "
-        f"({rates['n_honest']}/{rates['n_unanswerable']} known-unanswerable questions).",
-        "",
-        "Every emitted *verbatim* fact is additionally verified at answer time to appear in its "
-        "cited source (deterministic citation guard); the rates above are the LLM-judge measure of "
-        "semantic faithfulness.",
-        "",
-        "| ID | faith | cite | struct | verdict | Q |",
-        "|---|---|---|---|---|---|",
-    ]
-    for r in rows:
-        v = synthesis_grade_label(r)
-        struct = "ok" if r["structural_ok"] else "⚠"
-        lines.append(f"| {r['id']} | {r['faithfulness']} | {r['citation_fidelity']} | {struct} "
-                     f"| {v} | {r['question'][:48]} |")
-    return "\n".join(lines) + "\n"
 
 
 def format_report(results: list[dict], k: int, elapsed: float) -> str:
@@ -1528,27 +1242,9 @@ def main() -> int:
     )
     parser.add_argument("--rebuild-index", action="store_true", help="rebuild FTS first")
     parser.add_argument(
-        "--synthesis", action="store_true",
-        help=(
-            "run the end-to-end synthesis grader (LLM judge) → "
-            "hallucination/grounded/abstention rates"
-        ),
-    )
-    parser.add_argument(
-        "--fresh", action="store_true",
-        help="bypass the ask derivation cache: recompute every answer "
-             "(recording stays write-once — existing derivations stand)",
-    )
-    parser.add_argument(
-        "--lookup", action="store_true",
-        help="run the lookup-family eval: route every question through the production "
-             "answer path, grade the typed family's credence-bearing claims, and "
-             "report proper scores (log/Brier) — the first calibrated numbers",
-    )
-    parser.add_argument(
         "--gate", action="store_true",
         help="run the decision-weighted adoption gate (bayesian-foundations §8): the "
-             "typed families vs the monolithic instrument over the corpus, P(Δ>δ) "
+             "executor arm vs a recorded replay over the corpus, P(Δ>δ) "
              "integrated over the utility posterior → eval/gate/{report.md,paired.jsonl}",
     )
     parser.add_argument(
@@ -1633,6 +1329,11 @@ def main() -> int:
         # table) — a second, differently-rolled judge section would be two readings
         print("REFUSED: --judge-grade adopts the judge, so the flip table IS the "
               "disagreement table — drop --judge-shadow.")
+        return 2
+    if args.gate and not (args.gate_executor and args.gate_replay):
+        print("REFUSED: --gate runs the executor arm against a recorded replay — pass "
+              "--gate-executor and --gate-replay (the in-process family arm and the "
+              "monolithic baseline are retired).")
         return 2
     if args.judge_grade and not (args.gate_executor and args.gate_replay):
         # the family arm captures no per-value asserts and a LIVE mono baseline's prose
@@ -1967,108 +1668,6 @@ def main() -> int:
               f"mono {ar(d.mono_answer_rate)} · disagreement {d.disagreement_n}/{d.n}")
         # the gate reads evidence; it makes no graded claims and logs no decisions
         return 0 if result.passed else 1
-
-    if args.lookup:
-        print(f"Running lookup-family eval (k={args.k}) over {len(questions)} questions "
-              f"(production answer path; route + extraction cached, so re-runs are "
-              f"near-free) …")
-        sys.path.insert(0, str(Path(__file__).resolve().parent))
-        import ask
-
-        t0 = time.monotonic()
-        run_id = f"eval-lookup-{datetime.now().strftime('%Y%m%dT%H%M%S')}"
-        rows: list[dict] = []
-        events: list = []
-        for q in questions:
-            ask.answer(conn, q["question"], args.k)
-            lk = ask.TERM.LOOKUP_LAST
-            if lk is None:
-                rows.append({"id": q["id"], "question": q["question"],
-                             "routed": False, "action": None, "top": "",
-                             "top_p": 0.0, "top_correct": None})
-                print(f"  · {q['id']}: narrative")
-                continue
-            claim_rows = lookup_claim_rows(q, lk)
-            events.extend(lookup_outcome(q, lk, row, run_id=run_id)
-                          for row in claim_rows)
-            top = lk.candidates[0] if lk.candidates else "(none)"
-            top_correct = claim_rows[0]["correct"] if lk.candidates else None
-            rows.append({"id": q["id"], "question": q["question"], "routed": True,
-                         "action": lk.action, "top": top,
-                         "top_p": lk.credences[0] if lk.credences else 0.0,
-                         "top_correct": top_correct})
-            mark = "✓" if top_correct else "✗"
-            print(f"  {mark} {q['id']}: {lk.action} — {top[:36]!r} "
-                  f"p={rows[-1]['top_p']:.2f}")
-        elapsed = time.monotonic() - t0
-
-        out = _kb_root() / "eval/lookup_log.md"
-        out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(format_lookup_report(rows, args.k, elapsed), encoding="utf-8")
-        print(f"\nLookup report → {out}")
-        if not args.no_outcomes and events:
-            _append_outcomes(events)
-        n_routed = sum(1 for r in rows if r["routed"])
-        reports = [r for r in rows if r["action"] == "report"]
-        print(f"  routed {n_routed}/{len(rows)} · report accuracy "
-              f"{sum(1 for r in reports if r['top_correct'])}/{len(reports)}")
-        return 0
-
-    if args.synthesis:
-        import json
-
-        print(f"Running synthesis grader (k={args.k}) over {len(questions)} questions "
-              f"(production answer path + deterministic citation audit + modal-of-{_JUDGE_N} "
-              f"LLM judge) …")
-        sys.path.insert(0, str(Path(__file__).resolve().parent))
-        import ask
-
-        ask.reset_cache_stats()
-        t0 = time.monotonic()
-        rows = [synthesis_grade(conn, q, args.k, fresh=args.fresh) for q in questions]
-        elapsed = time.monotonic() - t0
-        rates = synthesis_rates(rows)
-        cache = ask.cache_stats()
-
-        out = _kb_root() / "eval/synthesis_log.md"
-        out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(format_synthesis_report(rows, rates, args.k, elapsed, cache),
-                       encoding="utf-8")
-
-        sys.path.insert(0, str(Path(__file__).resolve().parent / "comparison"))
-        import _common as JC
-        served = sorted({s for r in rows for s in r["served"]})
-        (_kb_root() / "eval/judge_meta.json").write_text(
-            json.dumps({"judge_model": JC.JUDGE_MODEL, "served": served, "n_modal": _JUDGE_N,
-                        "rubric": "rubric_v1.yaml"}, indent=2), encoding="utf-8")
-
-        print(f"\nSynthesis report → {out}")
-        print(f"  hallucination-rate={rates['hallucination_rate']}  "
-              f"grounded-rate={rates['grounded_rate']}  "
-              f"abstention-honesty={rates['abstention_honesty']}")
-        if (cl := _cache_line(cache)):
-            print(f"  {cl}")
-
-        if not args.no_outcomes:
-            run_id = f"eval-synthesis-{datetime.now().strftime('%Y%m%dT%H%M%S')}"
-            events = [synthesis_outcome(row, run_id=run_id) for row in rows]
-            # §7 slice 3: the claim-level + proposal-coverage streams (the narrative
-            # family's population and open-world-tail evidence — §8 grader 1)
-            n_claim = n_cov = 0
-            for q, row in zip(questions, rows, strict=True):
-                nv = row.get("_nv")
-                if nv is None:
-                    continue
-                for crow in narrative_claim_rows(q, nv):
-                    events.append(narrative_claim_outcome(q, nv, crow, run_id=run_id))
-                    n_claim += 1
-                cov = coverage_outcome(q, nv, run_id=run_id)
-                if cov is not None:
-                    events.append(cov)
-                    n_cov += 1
-            print(f"  narrative streams: {n_claim} claim events · {n_cov} coverage events")
-            _append_outcomes(events)
-        return 0 if (rates["hallucination_rate"] or 0.0) == 0.0 else 1
 
     print(f"Running answer-grounded eval (k={args.k}) over {len(questions)} questions …")
     t0 = time.monotonic()

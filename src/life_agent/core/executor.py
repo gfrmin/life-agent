@@ -606,43 +606,27 @@ def _cites(value: str, hits: list[dict[str, Any]]) -> str:
 
 
 def render_view(view: View) -> str:
-    """Render an executor view in the SHARED credence grammar (``lookup.GRAMMAR``) — the same
-    interaction-contract strings the in-process lookup family renders, so the owner sees one
-    consistent reply whichever path answered, and the posterior is named in the footer (nothing
-    silent). A narrative view is already rendered bridge-side and passes through verbatim; otherwise
-    the asserted value is cited to the hit cards that carry it."""
+    """Render an executor view in the credence grammar (``lookup.GRAMMAR``), the posterior
+    named in the footer (nothing silent). A view that carries its own ``rendered`` text (a
+    declined route) passes through verbatim; otherwise the asserted value is cited to the hit
+    cards that carry it."""
     rendered = view.get("rendered")
     if rendered:
         return str(rendered)
     eff = view["effector"]
     cands, creds, hits = view["candidates"], view["credences"], view["hits"]
     asserted = view["asserted"]
-    # The daemon returns credences in CANDIDATE order (server.jl w[1:k]), NOT weight-sorted, and
-    # the reported value is the MAP/leader — usually not index 0. Reorder leader-first so creds[0]
-    # is the leader's credence and `alts` is weight-ordered (as lookup.render + the bridge's
-    # /log_decision guard do); else a report shows the first-extracted candidate's probability.
+    # The decider returns credences in CANDIDATE order, NOT weight-sorted, and the reported
+    # value is the MAP/leader — usually not index 0. Reorder leader-first so creds[0] is the
+    # leader's credence and `alts` is weight-ordered (as the bridge's /log_decision guard
+    # does); else a report shows the first-extracted candidate's probability.
     if creds and len(creds) == len(cands):
         order = DEC.leader_order(creds)   # D-4: the one leader label-view
         cands = [cands[j] for j in order]
         creds = [creds[j] for j in order]
     alts = " · ".join(f"{v} ({p:.3f}) {_cites(v, hits)}".rstrip()
                       for v, p in zip(cands, creds, strict=False))
-    claim = (view.get("aggregate") or {}).get("totals") or []
-    if eff == "report" and claim:
-        # r30b: the claim is a RANGE — the SAME contract string the in-process family renders
-        # (one grammar across surfaces), with the endpoints echoed as the candidates' own
-        # display strings and the credence the range's own coverage mass.
-        t = claim[0]
-        lo, hi = float(t["lo"]), float(t["hi"])
-        covered = [c for c in cands
-                   if (v := AS.numeric_value(c)) is not None and lo <= v <= hi]
-        ns = sorted({n for c in covered for n in _cite_ns(c, hits)})
-        body = LK.GRAMMAR["report_interval"].format(
-            lo=(asserted[0] if asserted else t["lo"]),
-            hi=(asserted[-1] if asserted else t["hi"]),
-            p=float((view.get("aggregate") or {}).get("p") or 0.0),
-            cites="".join(f"[{n}]" for n in ns)).rstrip()
-    elif eff == "report" and asserted:
+    if eff == "report" and asserted:
         v = asserted[0]
         body = LK.GRAMMAR["report"].format(value=v, p=(creds[0] if creds else 0.0),
                                            cites=_cites(v, hits))

@@ -123,24 +123,29 @@ def readout(decisions: list[dict[str, Any]], outcomes: list[dict[str, Any]],
 
 
 def bar_summary(*, now_iso: str | None = None) -> dict[str, Any]:
-    """r33 A6 (owner-ruled MONITOR ONLY): the DEPLOYED assert bar p† beside the
-    declared-prior bar, both through ``scripts/bar_audit.py``'s machinery — the fold and
-    the bisection of the imported ``decide.u_assert``, never a re-implementation, so
-    neither 0.90 nor the live value is ever hard-coded here. r32 priced the drift
-    (0.900 → 0.837, monotone: only abstain-verdicts fold and nothing pushes back until a
-    wrong commit); this line is its watch. GUARDED: the computation needs the live brain,
-    and a watch must never be a dependency — any failure returns ``{"error": ...}`` and
-    the report renders the unavailability by name."""
+    """r33 A6 (owner-ruled MONITOR ONLY): the live respond-vs-abstain bar p† beside the
+    declared-prior bar. Both fold the owner's utility model through the deployed fold
+    (``utility.posterior``, under the decider's declared policy) and read the break-even
+    through ``gate.break_even`` — so neither 0.90 nor the live value is ever hard-coded
+    here. The live fold takes the elicitations and reactions up to ``now_iso``; the
+    declared bar folds none. GUARDED: a watch must never be a dependency — any failure
+    returns ``{"error": ...}`` and the report renders the unavailability by name."""
     try:
-        import bar_audit as BA
-
+        from life_agent.core import config as CFG
+        from life_agent.core import gate as GATE
         from life_agent.core import lookup as LK
-        brain = LK.shared_brain()
+        from life_agent.core import reactions as RX
+        from life_agent.core import utility as UT
+
         stamp = now_iso or datetime.now(UTC).isoformat()
-        u_now, _version, n_events = BA.u_bar_as_of(brain, stamp)
-        declared = BA.indifference_point(BA.u_bar_from(brain, []))
-        return {"p_dagger": BA.indifference_point(u_now), "declared": declared,
-                "n_events": n_events}
+        model = UT.load_model(CFG.UTILITY_MODEL)
+        events: list[Any] = list(UT.load_elicitations(CFG.UTILITY_ELICITATIONS, model))
+        events += RX.load_reactions(CFG.REACTIONS_LOG, CFG.DECISIONS_LOG)
+        events = [e for e in events if str(e.tx_time) <= stamp]
+        u_now = UT.posterior(model, events, policy=LK.U_BAR_POLICY).u_bar()
+        u_declared = UT.posterior(model, [], policy=LK.U_BAR_POLICY).u_bar()
+        return {"p_dagger": GATE.break_even(u_now), "declared": GATE.break_even(u_declared),
+                "n_events": len(events)}
     except Exception as e:  # the watch degrades to a named line, never a dead report
         return {"error": str(e)[:200]}
 

@@ -2,10 +2,7 @@
 
 * **The decider:** the executor loop's ``POST {bridge}/decide`` — a :class:`Decide` request
   over the caller's injected transport. The bridge's decider (the candidate posterior, then
-  the proplang engine) ranks; the reply view is the committed act.
-* **The in-process skin (retiring):** the lookup family's ``optimise`` and the narrative
-  family's per-claim ``optimise`` — a :class:`SkinOptimise` request. Neither is reachable
-  from :func:`life_agent.core.ask_client.drive` any more; both go with ``core/brain.py``.
+  :func:`life_agent.core.decide.bayes_act`) ranks; the reply view is the committed act.
 * **Declared gates:** a host observation that pre-empts any ranking (the stack is down) is
   declared into the seam via ``gates=`` — the seam commits abstain from the observation and
   names the gate, instead of a scattered ``if`` refusing the question.
@@ -19,8 +16,6 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from life_agent.core.brain import Brain
-
 # The decide endpoint path — single-source (the drift gate keeps the literal out of every
 # other module).
 DECIDE_PATH = "/decide"
@@ -32,15 +27,6 @@ GATE_EXECUTOR_DOWN = "executor_down"     # the bridge or its decider is unreacha
 
 # The executor's transport seam shape (executor.Post, restated to avoid an import cycle).
 Post = Callable[[str, dict[str, Any]], "dict[str, Any] | None"]
-
-
-@dataclass(frozen=True)
-class SkinOptimise:
-    """One ``brain.optimise`` on a live state (retiring with ``core/brain.py``)."""
-    brain: Brain
-    state_id: str
-    actions: dict[str, Any]
-    preference: dict[str, Any]
 
 
 @dataclass(frozen=True)
@@ -62,7 +48,7 @@ class SeamDecision:
     view: dict[str, Any] | None = None
 
 
-def commit(request: Decide | SkinOptimise | None, *,
+def commit(request: Decide | None, *,
            gates: Sequence[str] = ()) -> SeamDecision:
     """Commit exactly one act. A declared gate observation pre-empts: the seam chooses
     abstain from the observation alone, naming the gate. Otherwise the decider decides. A
@@ -70,10 +56,6 @@ def commit(request: Decide | SkinOptimise | None, *,
     if gates:
         return SeamDecision(action="abstain", eu=None, gate=gates[0])
     assert request is not None, "commit() needs a request or a declared gate"
-    if isinstance(request, SkinOptimise):
-        action, eu = request.brain.optimise(
-            request.state_id, actions=request.actions, preference=request.preference)
-        return SeamDecision(action=action, eu=eu)
     reply = request.post(f"{request.bridge}{DECIDE_PATH}", request.payload)
     assert reply is not None, f"{request.bridge}{DECIDE_PATH} returned null"
     raw_eu = reply.get("eu")
