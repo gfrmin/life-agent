@@ -13,11 +13,12 @@ expected utility, ties to the first-listed action in :data:`ACTIONS`.
   abstain only above ``-u_wrong / (u_correct - u_wrong)`` (0.90 at the declared prior
   ``u_wrong = -9``; the LIVE bar moves with the reaction fold, so never quote 0.90 as
   today's value — read :func:`respond_threshold`);
-- ``gather``: the measured value of entering the gather sequence (:mod:`life_agent.core.
-  gather_row`): per leader state ``y``, the fitted chances that the sequence ends in a
-  correct report, a wrong one, or a withhold, priced at the owner's utilities, less the
-  attention cost ``kappa_att``. Unmeasured, both states read the Dirichlet prior mean (1/3
-  each), under which gathering is not worth its cost;
+- ``gather``: the measured value of gathering on (:mod:`life_agent.core.gather_row`): per
+  leader state ``y``, the fitted chances that the question ends in a correct report, a
+  wrong one, or a withhold, priced at the owner's utilities, less the attention cost
+  ``kappa_att``. The decider sets the row for the number of gathers already applied.
+  Unmeasured, both states read the Dirichlet prior mean (1/3 each), under which gathering
+  is not worth its cost;
 - ``ask``: priced by a **measured recovery rate** ``r`` (an ask ends in a report with
   probability r, otherwise in a withhold) less ``lambda_int``; unmeasured, ``r`` is the
   Beta(1, 1) mean 0.5. Never the perfect-information row, which is an upper bound.

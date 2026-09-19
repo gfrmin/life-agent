@@ -106,8 +106,28 @@ def test_the_gather_row_fit_recovers_its_generating_outcomes() -> None:
         assert f_w[o] == pytest.approx(t_w[o], abs=0.04)
 
 
-def test_an_absent_fit_reads_the_prior(tmp_path: Path) -> None:
-    assert GR.load(tmp_path / "none.json") == GR.PRIOR
+def test_an_absent_fit_leaves_the_prior(tmp_path: Path) -> None:
+    assert GR.load(tmp_path / "none.json") == {}
+    assert GR.at_step(_U, 2) == _U
+
+
+def test_the_decider_prices_gather_at_the_step_it_is_on(tmp_path: Path) -> None:
+    """Returns fall with every gather already applied: the row for the current step, and the
+    last fitted step beyond it."""
+    import json
+
+    rows = {"0": _gather(0.9, 0.02, 0.2, 0.05), "1": _gather(0.5, 0.05, 0.05, 0.04),
+            "3": _gather(0.1, 0.02, 0.02, 0.01)}
+    path = tmp_path / "gather_row.json"
+    path.write_text(json.dumps({"steps": rows}), encoding="utf-8")
+    fitted = {**_U, **GR.load(path)}
+    assert GR.at_step(fitted, 0)["gather_right_if_right"] == 0.9
+    assert GR.at_step(fitted, 2)["gather_right_if_right"] == 0.5   # step 2 unfitted: step 1
+    assert GR.at_step(fitted, 7)["gather_right_if_right"] == 0.1   # capped at MAX_STEP
+    split = [{**_OBS[0], "reports": 0}, _OBS[1]]                   # p1 0.48
+    first = DCD.decide(_payload(observations=split), fitted)
+    later = DCD.decide(_payload(observations=split, applied_probes=["x", "y", "z"]), fitted)
+    assert first["effector"] == "gather" and later["effector"] != "gather"
 
 
 # --- the decider -------------------------------------------------------------------------

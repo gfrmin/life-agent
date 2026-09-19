@@ -6,7 +6,8 @@ Each m5-base A-loop fixture records one question's full exchange with the bridge
 :mod:`life_agent.core.posterior` over the observations it carried) and the question's final
 output, graded by exact match against the gold in the question set (``right`` / ``wrong`` /
 ``declined``). A late gather, taken after earlier ones failed to lift the leader, is its own
-episode at its own ``p1``, so the fit sees what gathering is worth from each state. The episodes fit
+episode at its own ``p1`` and step (the gathers already applied); one row is fit per step, so
+the fit sees what gathering is worth from each state. The episodes fit
 :mod:`life_agent.core.gather_row`, written to ``$LIFE_AGENT_KB/calibration/gather_row.json``
 (the bridge prices the gather row from it at boot). Prints counts only.
 
@@ -30,9 +31,9 @@ from life_agent.core import gather_row as GR
 from life_agent.core import posterior as POST
 
 
-def episodes(fixture: dict, gold: dict) -> list[tuple[float, str]]:
-    """``(p1, graded outcome)`` for every recorded ``/decide`` that chose ``gather`` with a
-    candidate on the table."""
+def episodes(fixture: dict, gold: dict) -> list[tuple[int, float, str]]:
+    """``(step, p1, graded outcome)`` for every recorded ``/decide`` that chose ``gather`` with
+    a candidate on the table; ``step`` is the number of gathers already applied."""
     out = fixture["outputs"]
     if out["effector"] == "report":
         ok = GATE.realised_report([str(a) for a in out["asserted"]], gold.get("answer", ""),
@@ -40,7 +41,7 @@ def episodes(fixture: dict, gold: dict) -> list[tuple[float, str]]:
         outcome = "right" if ok else "wrong"
     else:
         outcome = "declined"
-    eps: list[tuple[float, str]] = []
+    eps: list[tuple[int, float, str]] = []
     for w in fixture["wire"]:
         if w["seam"] != "http" or not str(w["request"].get("url", "")).endswith("/decide"):
             continue
@@ -52,7 +53,8 @@ def episodes(fixture: dict, gold: dict) -> list[tuple[float, str]]:
             continue
         credences, _ = POST.candidate_posterior(n, list(req.get("observations") or []),
                                                 float(req["rho"]))
-        eps.append((DEC.p_correct(credences), outcome))
+        step = min(len(req.get("applied_probes") or []), GR.MAX_STEP)
+        eps.append((step, DEC.p_correct(credences), outcome))
     return eps
 
 
@@ -68,7 +70,7 @@ def main(argv: list[str] | None = None) -> int:
     if not files:
         print(f"no A-loop fixtures under {a.fixtures}", file=sys.stderr)
         return 2
-    found: list[tuple[float, str]] = []
+    found: list[tuple[int, float, str]] = []
     h = hashlib.sha256()
     for f in files:
         qid = f.stem.rsplit("aloop-", 1)[1]
@@ -77,15 +79,17 @@ def main(argv: list[str] | None = None) -> int:
         data = f.read_bytes()
         h.update(data)
         found += episodes(json.loads(data), gold[qid])
-    t_right, t_wrong = GR.fit(found)
-    row = GR.as_u_bar(t_right, t_wrong)
+    steps = {}
+    for st in range(GR.MAX_STEP + 1):
+        eps = [(p1, o) for s_, p1, o in found if s_ == st]
+        t_right, t_wrong = GR.fit(eps)
+        steps[str(st)] = {**GR.as_u_bar(t_right, t_wrong), "n": len(eps)}
+        print(f"step {st}: {len(eps)} gathers {dict(Counter(o for _, o in eps))} → "
+              + ", ".join(f"{k} {steps[str(st)][k]:.3f}" for k in GR.KEYS))
     Path(a.out).write_text(json.dumps({
-        "u_bar": row, "n_episodes": len(found),
-        "outcomes": dict(Counter(o for _, o in found)),
-        "fixtures_sha256": h.hexdigest(), "prior": "Dirichlet(2,2,2) posterior mode, EM"},
+        "steps": steps, "fixtures_sha256": h.hexdigest(),
+        "prior": "Dirichlet(2,2,2) posterior mode, EM, per step"},
         indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    print(f"{len(found)} gather steps {dict(Counter(o for _, o in found))} → "
-          + ", ".join(f"{k} {v:.3f}" for k, v in row.items()))
     return 0
 
 

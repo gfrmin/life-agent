@@ -14,11 +14,14 @@ into ``u_bar`` so :func:`life_agent.core.decide.utility_by_action` prices the ga
 linear in ``p1`` like every other row. Unmeasured, both distributions are the prior mean
 (1/3 each), under which gathering is not worth its cost.
 
-The episodes are the recorded decides that chose ``gather`` (``scripts/fit_gather_row.py``
-builds them from the m5-base A-loop fixtures, every step of every sequence, graded by exact
-match against the gold): the value of gathering on from a state under the policy that
-recorded it. A measured evidence model, not the preposterior over the current posterior (a
-door in ``ROADMAP.md``); steps of one question are not independent draws.
+The row is conditioned on the state beyond ``p1`` that decides what another gather can still
+find: the number of gathers already applied (``step``, capped at :data:`MAX_STEP`). The fit is
+one row per step; :func:`at_step` selects the row for a decision. The episodes are the
+recorded decides that chose ``gather`` (``scripts/fit_gather_row.py`` builds them from the
+m5-base A-loop fixtures, graded by exact match against the gold): the value of gathering on
+from a state under the policy that recorded it. A measured evidence model, not the
+preposterior over the current posterior (a door in ``ROADMAP.md``); steps of one question are
+not independent draws.
 """
 from __future__ import annotations
 
@@ -33,6 +36,9 @@ KEYS: tuple[str, ...] = ("gather_right_if_right", "gather_wrong_if_right",
                          "gather_right_if_wrong", "gather_wrong_if_wrong")
 
 PRIOR: dict[str, float] = {k: 1.0 / 3.0 for k in KEYS}
+
+#: Steps at or beyond this share one row.
+MAX_STEP = 3
 
 
 def fit(episodes: Sequence[tuple[float, str]], *, alpha: float = 2.0,
@@ -66,9 +72,25 @@ def as_u_bar(t_right: Mapping[str, float], t_wrong: Mapping[str, float]) -> dict
             "gather_right_if_wrong": t_wrong["right"], "gather_wrong_if_wrong": t_wrong["wrong"]}
 
 
+def step_key(key: str, step: int) -> str:
+    return f"{key}@{step}"
+
+
 def load(path: Path) -> dict[str, float]:
-    """The fitted row recorded at ``path``, or the prior when there is none."""
+    """The per-step fitted rows recorded at ``path`` as u_bar keys (``<key>@<step>``), or none
+    when there is no fit (the decider then reads the prior)."""
     if not path.is_file():
-        return dict(PRIOR)
-    row = json.loads(path.read_text(encoding="utf-8"))["u_bar"]
-    return {k: float(row[k]) for k in KEYS}
+        return {}
+    steps = json.loads(path.read_text(encoding="utf-8"))["steps"]
+    return {step_key(k, int(st)): float(row[k]) for st, row in steps.items() for k in KEYS}
+
+
+def at_step(u_bar: Mapping[str, float], applied: int) -> dict[str, float]:
+    """``u_bar`` with the gather row of the fitted step for ``applied`` gathers (the largest
+    fitted step not above ``min(applied, MAX_STEP)``); unchanged when nothing is fitted."""
+    out = dict(u_bar)
+    for st in range(min(applied, MAX_STEP), -1, -1):
+        if all(step_key(k, st) in u_bar for k in KEYS):
+            out.update({k: float(u_bar[step_key(k, st)]) for k in KEYS})
+            break
+    return out

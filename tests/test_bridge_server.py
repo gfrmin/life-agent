@@ -925,8 +925,8 @@ def test_the_built_decider_reads_the_current_u_bar_and_the_information_rows(
                 "rho": 0.8, "transforms": [{"probe": "corroborate_a", "kind": "voi",
                                             "cost": 0.004}]}
     assert decider.decide("q2", middling)["effector"] == "abstain"   # the prior row
-    (tmp_path / "gather_row.json").write_text(json.dumps({"u_bar": GR.as_u_bar(
-        {"right": 0.9, "wrong": 0.02}, {"right": 0.2, "wrong": 0.05})}), encoding="utf-8")
+    (tmp_path / "gather_row.json").write_text(json.dumps({"steps": {"0": GR.as_u_bar(
+        {"right": 0.9, "wrong": 0.02}, {"right": 0.2, "wrong": 0.05})}}), encoding="utf-8")
     assert decider.decide("q2", middling)["effector"] == "gather"    # the fitted row
 
 

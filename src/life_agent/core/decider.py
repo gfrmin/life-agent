@@ -17,6 +17,7 @@ from typing import Any
 
 from life_agent.core import decide as DEC
 from life_agent.core import enact as EN
+from life_agent.core import gather_row as GR
 from life_agent.core import posterior as POST
 
 
@@ -29,6 +30,7 @@ def decide(payload: Mapping[str, Any], u_bar: Mapping[str, float]) -> dict[str, 
     credences, p_none = POST.candidate_posterior(
         len(candidates), list(payload.get("observations") or []), float(payload["rho"]))
     p1 = DEC.p_correct(credences)
+    u_bar = GR.at_step(u_bar, len(payload.get("applied_probes") or []))
     gather_open, gather_cost = EN.gather_open(dict(payload)), EN.gather_cost(dict(payload))
     act = DEC.bayes_act(u_bar, p1, gather_open=gather_open, gather_cost=gather_cost)
     view = EN.enact(act, dict(payload), credences, p_none)
