@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# answer-bridge — the life-agent capability bridge (move-3-design): a stateless JSON-over-HTTP
-# service the answer-brain pi-mono body fetches for route/retrieve/extract/probe/utility.
+# answer-bridge — the life-agent capability bridge: the JSON-over-HTTP service the executor
+# calls for route/retrieve/extract/probe/utility, and the decider (/decide) over the engine
+# `make engine` installs.
 # Sources .env (LIFE_AGENT_KB / PKM_CONFIG), then runs the service warm (one read-only catalogue
 # handle + extraction client at boot). Localhost-bound; the owner profile + utility stay
 # server-side. Ctrl-C to stop.

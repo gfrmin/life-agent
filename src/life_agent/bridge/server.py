@@ -2,18 +2,20 @@
 
 Wraps life-agent's body-side reads — route / retrieve / extract / probe / utility — as
 discrete endpoints, each a thin wrapper of an existing, tested function, so the answer-brain
-pi-mono body (Move 4) has a warm, independently-tested backend beside the daemon's `/decide`
-(Move 2). The split is load-bearing: the **bridge gathers and shapes evidence; the daemon
-decides**. No posterior is built here; `gather.py`'s policy stays out (it becomes the brain's
-VOI job) — `/extract` takes `time_indexed` + `covariates` as INPUTS, it never computes them.
+executor has a warm, independently-tested backend. The bridge gathers and shapes evidence,
+and hosts the one decider: ``POST /decide`` hands the request to
+:class:`life_agent.membrane.decider.Decider`, which computes the candidate posterior and asks
+the proplang engine for the act. With no engine, ``/decide`` answers 503 and names why; no
+other code ranks acts. `/extract` takes `time_indexed` + `covariates` as INPUTS, it never
+computes them.
 
 The two writes are the verdict-emission seam: `/log_decision` (the body posts the terminal
 decision the governor enacted, appended to the calibration decision log `core.decisions` shaped
 exactly as the lookup family's own decisions) and `/log_reaction` (the owner's one-bit good/bad
 verdict on a logged decision, appended to `core.reactions` — the in-session counterpart of
 ask-live's `/react`). Together they let the owner's verdict fold into u(wrong) through the
-EXISTING reaction loop with no new fold code. The bridge owns these writes because the daemon
-is stateless and the body string-blind; it still does NOT decide (it records what it was told).
+EXISTING reaction loop with no new fold code, and each verdict is folded into the decider as
+one evidence tick.
 
 **Stateless reads**: every read endpoint is a pure function of (corpus, request); the body
 holds the growing hit set + accumulated covariates and resends them each refinement (uniform
@@ -29,11 +31,11 @@ source of that mapping, so the brain stays string-blind.
 """
 from __future__ import annotations
 
-import contextlib
 import os
 import re
 import signal
 import sys
+import threading
 import time
 from collections.abc import Callable
 from contextvars import ContextVar
@@ -70,7 +72,9 @@ from life_agent.core import retrieval as RET
 from life_agent.core import synthesis as SYN
 from life_agent.core import volatility as VOL
 from life_agent.core.llm import LLMResult
-from life_agent.membrane import shadow as MEM
+from life_agent.membrane import boot as BOOT
+from life_agent.membrane import decider as DCD
+from life_agent.membrane.client import MembraneClient
 
 HOST = os.environ.get("LIFE_AGENT_BRIDGE_HOST", "127.0.0.1")
 PORT = int(os.environ.get("LIFE_AGENT_BRIDGE_PORT", "8798"))  # adjacent to the daemon's 8799
@@ -79,12 +83,6 @@ _DEFAULT_K = 20
 # high constant reliability for v0; Slice 3 calibrates this from verdicts (calib(c)) instead.
 _JOINT_MODEL = "claude-opus-4-8"
 _JOINT_RHO = 0.95
-
-# The shadow supervisor's sizing (Task 5) — a long-lived-daemon queue/respawn budget, not
-# tuned per-deployment (config.py governs WHICH engine/forms/paths; these three are fixed).
-_MEMBRANE_QUEUE_SIZE = 1024
-_MEMBRANE_MAX_RESPAWNS = 3
-_MEMBRANE_RESPAWN_BACKOFF_S = 60.0
 
 Payload = dict[str, Any]
 
@@ -96,12 +94,8 @@ class BridgeDeps:
     ask-session). ``profile`` + ``u_bar`` are the PII the body never sends; they are read
     here and only their summaries cross the wire.
 
-    ``membrane`` is the shadow supervisor (Task 5 of the membrane-shadow feature) —
-    ``None`` by default (and whenever `LIFE_AGENT_MEMBRANE_COMMAND` is unset), which is
-    ZERO behaviour change on every endpoint below: `/decide-support` fast-paths to a
-    disabled reply, and the `/log_decision`/`/log_reaction` folds are no-ops. It never
-    decides anything on the real answer path — it only ever observes live traffic
-    fed to it beside the real decision, off in its own worker thread."""
+    ``decider`` is the one decider (:class:`life_agent.membrane.decider.Decider`);
+    ``None`` when no engine is installed or configured, and then ``/decide`` answers 503."""
 
     root: Path
     conn: duckdb.DuckDBPyConnection      # read-only catalogue (FTS loaded) — retrieval + probes
@@ -109,19 +103,20 @@ class BridgeDeps:
     profile: str                         # owner profile, loaded server-side (never over the wire)
     # the utility posterior's u_bar, SHAPED for one requested answer shape (r30, lazy
     # brain) — /utility reads the shape off the request; every other caller (e.g.
-    # _build_membrane) fixes its own.
+    # _build_decider) fixes its own.
     u_bar: Callable[[str], dict[str, float]]
     decisions_path: Path                 # calibration decision log — /log_decision appends here
     reactions_path: Path                 # calibration reaction log — /log_reaction appends here
     fold_version: Callable[[], str]      # current utility fold version (pins the logged decision)
     gather_outcomes_path: Path           # gather-outcome log — /log_gather writes, /grow_menu reads
-    membrane: MEM.MembraneShadow | None = None  # the shadow supervisor; None = disabled
+    decider: DCD.Decider | None = None   # the one decider; None = no engine
 
 
 class BridgeError(Exception):
     """A request the bridge rejects with a 4xx — malformed body, missing field, bad value,
-    unknown route. Carries the status; ``dispatch`` maps it to a JSON error response (the
-    bridge never lets one bad request crash the warm loop)."""
+    unknown route — or a 503 when the decider is unavailable. Carries the status;
+    ``dispatch`` maps it to a JSON error response (the bridge never lets one bad request
+    crash the warm loop)."""
 
     def __init__(self, status: int, message: str) -> None:
         super().__init__(message)
@@ -885,45 +880,23 @@ def _log_gather(deps: BridgeDeps, p: Payload) -> Payload:
     return {"logged": True}
 
 
-# --- /decide-support: the shadow's per-tick feed, off live traffic (never on the ---------
-# --- decision path itself — MembraneShadow.submit_decide is enqueue-only and never raises) -
+# --- /decide: the one decider ------------------------------------------------------------
 
-def _decide_support(deps: BridgeDeps, p: Payload) -> Payload:
-    """The membrane shadow's per-tick feed: the executor posts the SAME `/decide`
-    request/reply pair it just acted on, once per decide tick (a hot-path call). Disabled
-    (the default) returns immediately, before any field parsing — no side effects, no
-    validation cost, since there is nothing to feed. Enabled: parses `question_id`/
-    `payload`/`dec` (a 400 on a malformed body, same shape every other handler uses) then
-    hands them to `submit_decide`, itself guaranteed never to raise — the `try/except`
-    below is defense-in-depth so this handler NEVER raises past itself regardless."""
-    if deps.membrane is None:
-        return {"ok": False, "disabled": True}
+def _decide(deps: BridgeDeps, p: Payload) -> Payload:
+    """Rank one request (:meth:`life_agent.membrane.decider.Decider.decide`). 503 when there
+    is no engine or it failed; the executor then reports the stack unavailable."""
+    if deps.decider is None:
+        raise BridgeError(503, "no decider engine: run `make engine` or set "
+                               "LIFE_AGENT_MEMBRANE_COMMAND")
     question_id = _req_str(p, "question_id")
-    payload = p.get("payload")
-    dec = p.get("dec")
-    if not isinstance(payload, dict):
-        raise BridgeError(400, "field 'payload' must be a JSON object")
-    if not isinstance(dec, dict):
-        raise BridgeError(400, "field 'dec' must be a JSON object")
-    with contextlib.suppress(Exception):
-        deps.membrane.submit_decide(question_id, payload, dec)
-    return {"ok": True}
-
-
-def _gate_support(deps: BridgeDeps, p: Payload) -> Payload:
-    """The shadow's seam-gate feed (M2 advisory): `scripts/ask.py` mirrors each declared
-    gate pre-emption (`core.seam.commit(None, gates=...)` — weak-retrieval / executor-down)
-    here so the ledger can say how often the host abstained before any engine saw the
-    question, and what the engine would have done instead. Same contract as
-    `/decide-support`: disabled fast-path before any parsing; `submit_gate` is enqueue-only
-    and never raises, the suppress is defense-in-depth."""
-    if deps.membrane is None:
-        return {"ok": False, "disabled": True}
-    question_id = _req_str(p, "question_id")
-    gate = _req_str(p, "gate")
-    with contextlib.suppress(Exception):
-        deps.membrane.submit_gate(question_id, gate)
-    return {"ok": True}
+    if not _req_list(p, "candidates"):
+        raise BridgeError(400, "field 'candidates' must be non-empty")
+    if "rho" not in p:
+        raise BridgeError(400, "missing field 'rho'")
+    try:
+        return deps.decider.decide(question_id, p)
+    except DCD.DeciderUnavailableError as e:
+        raise BridgeError(503, str(e)) from e
 
 
 #: [r33 RC-1] the ONE content-addressed decision-id rule — declared in
@@ -1033,9 +1006,8 @@ def _log_decision(deps: BridgeDeps, p: Payload) -> Payload:
         # was ranked under, with the defaults NAMED when the caller stated neither
         regime=regime, policy=policy, defaulted=defaulted)
     DEC.append(deps.decisions_path, event)
-    if deps.membrane is not None:
-        with contextlib.suppress(Exception):
-            deps.membrane.submit_decision(decision_id, event.question_id, asdict(event))
+    if deps.decider is not None:
+        deps.decider.bind(decision_id, event.question_id, asdict(event))
     return {"decision_id": decision_id}
 
 
@@ -1058,9 +1030,12 @@ def _log_reaction(deps: BridgeDeps, p: Payload) -> Payload:
     RX.append(deps.reactions_path, RX.ReactionEvent(
         tx_time=O.now_iso(), question_id=d.question_id, decision_id=decision_id,
         kind="verdict", valence=valence))
-    if deps.membrane is not None:
-        with contextlib.suppress(Exception):
-            deps.membrane.submit_reaction(decision_id, valence)
+    if deps.decider is not None:
+        try:
+            deps.decider.observe_reaction(decision_id, valence)
+        except DCD.DeciderUnavailableError as e:
+            # the reaction row is written; the decider's next boot replays it
+            print(f"life-agent bridge: verdict not folded live ({e})")
     folds = d.chosen_action == "abstain"  # only abstain verdicts move the fold (reactions §4.4)
     return {"valence": valence, "family": d.family, "chosen_action": d.chosen_action,
             "folds": folds}
@@ -1112,35 +1087,29 @@ _POST: dict[str, Handler] = {
     "/log_decision": _log_decision,
     "/log_reaction": _log_reaction,
     "/log_gather": _log_gather,
-    "/decide-support": _decide_support,
-    "/gate-support": _gate_support,
+    "/decide": _decide,
 }
 _GET: dict[str, Handler] = {"/utility": _utility, "/grow_menu": _grow_menu}
 
 
-def _membrane_ready_block(deps: BridgeDeps) -> Payload:
-    """`GET /ready`'s membrane block: `stats()` when enabled, `{"enabled": false}`
-    otherwise. `stats()` is documented never to raise, but this is a liveness endpoint —
-    defense-in-depth so a membrane failure can never take `/ready` itself down."""
-    if deps.membrane is None:
+def _decider_ready_block(deps: BridgeDeps) -> Payload:
+    """`GET /ready`'s decider block: whether an engine is configured and booted."""
+    if deps.decider is None:
         return {"enabled": False}
-    try:
-        return deps.membrane.stats()
-    except Exception:
-        return {"enabled": True, "stats_error": True}
+    return {"enabled": True, **deps.decider.status()}
 
 
 def dispatch(deps: BridgeDeps, method: str, path: str,
              body: bytes) -> tuple[int, Payload | None]:
     """Route one request to its endpoint and return ``(status, payload)``. Holds no state;
     every 4xx is returned (never raised past here), so a bad request never crashes the loop.
-    ``GET /ready`` is transport liveness plus the membrane shadow's own liveness (its
-    ``stats()``, guarded fail-open) — no other reasoning, no other deps touched."""
+    ``GET /ready`` is transport liveness plus the decider's status — no other deps
+    touched."""
     try:
         if method == "GET":
             route, _, query = path.partition("?")
             if route == "/ready":
-                return 200, {"status": "ok", "membrane": _membrane_ready_block(deps)}
+                return 200, {"status": "ok", "decider": _decider_ready_block(deps)}
             handler = _GET.get(route)
             if handler is None:
                 raise BridgeError(404, f"no GET endpoint {route!r}")
@@ -1214,46 +1183,39 @@ class BridgeServer(HTTPServer):
         self.deps = deps
 
 
-def _build_membrane(u_bar: Callable[[], dict[str, float]]) -> MEM.MembraneShadow | None:
-    """Construct + start the shadow supervisor iff `LIFE_AGENT_MEMBRANE_COMMAND` is set —
-    its absence (the default) returns `None`, which is ZERO behaviour change on the bridge
-    (`BridgeDeps.membrane` docstring). Both construction and `start()` can raise (a Task 4
-    review finding: `start()` raises `RuntimeError` on a double-start, and the underlying
-    `Thread.start()` can also raise) — caught here so a shadow that fails to come up can
-    NEVER prevent the bridge itself from serving; it only ever falls back to disabled."""
+def _build_decider(u_bar: Callable[[], dict[str, float]]) -> DCD.Decider | None:
+    """The decider over the configured engine (``config.membrane_command``), or ``None``
+    when no engine is configured. Its boot replays every recorded verdict (minutes at a few
+    hundred ticks), so it runs on a background thread: the bridge serves at once, and a
+    ``/decide`` that arrives mid-boot waits for it. A failed boot is printed and retried on
+    the next ``/decide``."""
     command = config.membrane_command()
     if command is None:
+        print("life-agent bridge: no decider engine (run `make engine`); /decide answers 503")
         return None
-    try:
-        cfg = MEM.ShadowConfig(
-            command=command, forms=config.membrane_utility_forms(),
-            log_path=config.membrane_shadow_log(),
-            read_timeout_s=config.membrane_read_timeout_s(),
-            queue_size=_MEMBRANE_QUEUE_SIZE, max_respawns=_MEMBRANE_MAX_RESPAWNS,
-            respawn_backoff_s=_MEMBRANE_RESPAWN_BACKOFF_S,
-            categorical=config.membrane_categorical(),
-        )
-        warm_vectors_dir = config.membrane_warm_vectors_dir()
-        shadow = MEM.MembraneShadow(
-            cfg, u_bar=u_bar,
-            snapshot=lambda: MEM.boot_snapshot(
-                config.DECISIONS_LOG, config.REACTIONS_LOG, warm_vectors_dir,
-                claude_verdicts_path=config.CLAUDE_VERDICTS_LOG),
-        )
-        shadow.start()
-        return shadow
-    except Exception as e:
-        print(f"life-agent bridge: membrane shadow failed to start, disabling "
-              f"({type(e).__name__}: {e})")
-        return None
+    decider = DCD.Decider(
+        spawn=lambda: MembraneClient.spawn(
+            command, read_timeout_s=config.membrane_read_timeout_s()),
+        u_bar=u_bar,
+        snapshot=lambda: BOOT.boot_snapshot(
+            config.DECISIONS_LOG, config.REACTIONS_LOG,
+            claude_verdicts_path=config.CLAUDE_VERDICTS_LOG))
+
+    def boot() -> None:
+        try:
+            decider.boot()
+        except DCD.DeciderUnavailableError as e:
+            print(f"life-agent bridge: decider boot failed, retrying on next /decide ({e})")
+
+    threading.Thread(target=boot, name="decider-boot", daemon=True).start()
+    return decider
 
 
 def build_deps() -> BridgeDeps:
     """Open the warm, server-side handles once (move-3 §1): the read-only catalogue (FTS
     loaded, so a running extraction never blocks the bridge and vice-versa), the extraction
     client, the owner profile, and a lazy u_bar (the credence skin spawns on first `/utility`
-    only). The membrane shadow (Task 5) is constructed last, off this same `_u_bar` — see
-    `_build_membrane` for the disabled-by-default / never-blocks-boot contract."""
+    only). The decider is constructed last, off this same `_u_bar` (`_build_decider`)."""
     from life_agent.tasks import read
 
     root = read.pkm_root()
@@ -1274,26 +1236,16 @@ def build_deps() -> BridgeDeps:
                       decisions_path=config.DECISIONS_LOG,
                       reactions_path=config.REACTIONS_LOG, fold_version=_fold_version,
                       gather_outcomes_path=config.GATHER_OUTCOMES_LOG,
-                      # the membrane shadow is off the decision path (docstring above) and
-                      # classifies nothing itself — fixed at the anchor shape, decoupled
-                      # from whatever shape a live /utility request asks for.
-                      membrane=_build_membrane(lambda: _u_bar(AS.DEFAULT_SHAPE)))
+                      # the handshake declares the anchor shape's utility once
+                      # (decider module docstring: per-tick utility is unshipped)
+                      decider=_build_decider(lambda: _u_bar(AS.DEFAULT_SHAPE)))
 
 
 def _shutdown(server: BridgeServer) -> None:
-    """The SIGTERM/SIGINT cleanup: close the shadow (if one is running) so its on-close
-    `stats` record — the counters the post-hoc report reads — actually flushes, then exit.
-    systemd stops services with SIGTERM, and the OS's default disposition for that signal
-    kills the process without ever unwinding into `main()`'s own code (no `finally`, no
-    `atexit`) — so without an installed handler `deps.membrane.close()` never runs in
-    production. `close()` is exception-suppressed: a shadow's own cleanup failing must
-    never block shutdown (the same fail-open posture every other membrane call site
-    takes). `sys.exit(0)` then unwinds normally back through `main()`'s own
-    `try/finally` (`server.shutdown()`/`server_close()`) — the same SIGTERM convention
-    `reach/jarvis.py` already uses."""
-    if server.deps.membrane is not None:
-        with contextlib.suppress(Exception):
-            server.deps.membrane.close()
+    """The SIGTERM/SIGINT cleanup: stop the decider's engine subprocess, then exit through
+    ``main()``'s own ``try/finally`` (the convention ``reach/jarvis.py`` uses)."""
+    if server.deps.decider is not None:
+        server.deps.decider.close()
     sys.exit(0)
 
 
@@ -1308,8 +1260,7 @@ def main() -> None:
     print(f"life-agent capability bridge → http://{HOST}:{PORT}")
     print("  POST /route /retrieve /extract /probe/{recency,subject,authority,corroborate}")
     print("  POST /log_decision /log_reaction   (answer-brain verdict-emission seam)")
-    print("  POST /decide-support   (membrane shadow per-tick feed; no-op unless enabled)")
-    print("  POST /gate-support     (membrane shadow seam-gate feed; no-op unless enabled)")
+    print("  POST /decide           (the decider: posterior + proplang engine)")
     print("  GET  /utility /ready")
     try:
         server.serve_forever()

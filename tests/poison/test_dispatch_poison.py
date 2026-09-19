@@ -82,7 +82,7 @@ def test_poison_the_bridge_serves_no_second_stage_router() -> None:
         "/route", "/retrieve", "/extract", "/narrative", "/probe/recency",
         "/probe/subject", "/probe/authority", "/probe/corroborate", "/probe/confirm",
         "/probe/deliberate", "/log_decision", "/log_reaction", "/log_gather",
-        "/decide-support", "/gate-support"}
+        "/decide"}
     extra = set(server._POST) - declared
     assert not extra, (
         f"the bridge serves undeclared endpoint(s) {sorted(extra)} — a second-stage "

@@ -175,12 +175,10 @@ def test_poison_every_directive_in_use_is_classified() -> None:
 
 # --- the wrappers: behaviour, against a sandbox HOME ----------------------------------
 
-#: The one wrapper that does NOT hand off with `uv run --project "$root"` (it starts two
-#: background services first) and so has its own fixture below. Declared as an EXCEPTION
-#: rather than by listing the other nine: a hard-coded list of wrappers is a census whose
-#: universe is a list, and a wrapper added later would simply never be checked — the exact
-#: defect (row 22) this milestone exists to close, in the guard that closes it.
-_WRAPPER_EXCEPTIONS = frozenset({"answer-brain"})
+#: Wrappers that do NOT hand off with `uv run --project "$root"` and so need their own
+#: fixture. Declared as EXCEPTIONS rather than by listing the others: the DIRECTORY is the
+#: universe, so a wrapper added later is covered the moment it is added.
+_WRAPPER_EXCEPTIONS: frozenset[str] = frozenset()
 
 
 def wrappers(root: Path) -> tuple[str, ...]:
@@ -243,30 +241,3 @@ def test_poison_every_wrapper_resolves_this_repo_from_a_sandbox_home(tmp_path: P
             f"bin/{name} resolved its project root to "
             f"{argv[argv.index('--project') + 1]!r}, not this repo ({_ROOT}) — it is "
             f"reading the environment, not its own location")
-
-
-def test_poison_the_one_home_relative_default_follows_home_and_is_overridable(
-        tmp_path: Path) -> None:
-    """`bin/answer-brain` is the single wrapper with a `$HOME`-relative default (a sibling
-    checkout). A default that FOLLOWS HOME is portable; one that names a box is not.
-
-    MUST FAIL if that default is ever hard-coded to one box's path — killed by re-spelling
-    it as an absolute path under somebody's home, after which the sandbox run below names
-    that path instead of the sandbox's, and the override leg proves nothing."""
-    env, _args, linkdir = _sandbox(tmp_path)
-    link = linkdir / "answer-brain"
-    link.symlink_to(_ROOT / "bin" / "answer-brain")
-
-    under_home = str(Path(env["HOME"]) / "git" / "credence")
-    r = subprocess.run([str(link)], env=env, cwd=str(tmp_path),
-                       capture_output=True, text=True, timeout=60)
-    assert r.returncode == 1 and under_home in r.stderr, (
-        f"the default did not follow HOME — it refused with: {r.stderr.strip()}")
-
-    elsewhere = tmp_path / "other-checkout"
-    r2 = subprocess.run([str(link)], env={**env, "CREDENCE_DIR": str(elsewhere)},
-                        cwd=str(tmp_path), capture_output=True, text=True, timeout=60)
-    assert r2.returncode == 1 and str(elsewhere) in r2.stderr, (
-        f"CREDENCE_DIR did not override the default — it refused with: {r2.stderr.strip()}")
-    assert under_home not in r2.stderr, (
-        "CREDENCE_DIR did not override the default — the wrapper still looked under HOME")

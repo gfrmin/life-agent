@@ -56,9 +56,9 @@ counted as independent. Duplicates are removed first (§5 dedup: quote, document
 ## 3. Inference
 
 Prior: `P(NONE) = 0.5`, the rest uniform over the `K` candidates. Posterior by conditioning on
-each observation in order, in log space (`prob_eps = 1e-12`). Today this fold runs in the Julia
-answer-brain daemon; J1 ports it to `core/posterior.py`, pinned bit-for-bit to 314 recorded
-exchanges, and J5 replaces it with the published core.
+each observation in order, in log space (`prob_eps = 1e-12`). The fold runs in
+`core/posterior.py`, pinned to the Julia engine's 605 recorded decides (within 1e-15; the last
+ulp differs), and J5 replaces it with the published core.
 
 **A-CAL — the posterior is calibrated.** The commit bar is a threshold on the posterior's
 value, so the argmax is only sound if the credences mean what they say. It is measured

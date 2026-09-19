@@ -203,8 +203,8 @@ def answer_baseline(
         if path == "executor":
             if not ask._executor_ready():
                 raise RuntimeError(
-                    "executor unreachable — the answer-brain daemon/bridge is down "
-                    f"(bridge={ask.EXECUTOR_BRIDGE!r} daemon={ask.EXECUTOR_DAEMON!r}); "
+                    "executor unreachable — the bridge or its decider is down "
+                    f"(bridge={ask.EXECUTOR_BRIDGE!r}); "
                     "no silent in-process fallback for the baseline arm — the runner decides")
             text, raw_cards, _scores = ask.answer_via_executor(q["question"], k)
             cards = [{"n": c.n, "text": c.text, "origin": c.origin} for c in raw_cards]

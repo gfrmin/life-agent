@@ -1,214 +1,81 @@
-"""Hermetic tests for :mod:`life_agent.membrane.coarse` — M3, the coarse menu live.
-
-Two pure surfaces, no wire and no subprocess:
-
-* :func:`coarse.map_action` — the engine's coarse affordance mapped onto an ENACTABLE
-  daemon-view rewrite, with every transitional rule and degradation named (agreement
-  passthrough; override to abstain/ask; respond → host-MAP value; gather → the daemon's
-  own probe on agreement, else the cheapest unapplied voi transform, else the restricted
-  argmax over the enactable remainder at the engine's own p1 under the world's one
-  utility source).
-* :func:`coarse.live_decide` — the host-side consult closure the seam commits through:
-  posts one `/decide-live`, and on ANY failure (down bridge, not-ok reply, malformed
-  reply) returns the DECLARED abstain (`seam.GATE_ENGINE_DOWN`), never a silent host
-  choice.
-
-Fixture values are synthetic (public repo, PRINCIPLES §12) — no owner data.
-"""
+"""The enactment of the engine's coarse act (membrane/coarse.py): determined by the act and
+the request alone, never a second ranking."""
 from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 from life_agent.membrane import coarse as CO
 
-# The same hand-computable utility the report tests use: eu_by_action(p1) =
-#   abstain: 0 · gather: p1 - 0.02 · ask: p1 - 0.1 · respond: 5*p1 - 4
-_U_BAR = {"u_correct": 1.0, "u_abstain": 0.0, "u_wrong": -4.0,
-          "lambda_int": 0.1, "kappa_att": 0.02}
-
-_VOI_TRANSFORMS: list[dict[str, Any]] = [
+_TRANSFORMS = [
     {"name": "recency", "probe": "recency", "kind": "guard", "trigger": "era_split"},
-    {"name": "corroborate_haiku", "probe": "corroborate_haiku", "kind": "voi",
-     "trigger": "below_bar", "rho": 0.80, "cost": 0.004},
-    {"name": "corroborate_sonnet", "probe": "corroborate_sonnet", "kind": "voi",
-     "trigger": "below_bar", "rho": 0.90, "cost": 0.012},
+    {"name": "b", "probe": "corroborate_b", "kind": "voi", "cost": 0.012},
+    {"name": "a", "probe": "corroborate_a", "kind": "voi", "cost": 0.004},
 ]
+_GROW = {"actuators": [{"probe": "retrieve_rerank", "cost": 0.008}]}
 
 
 def _payload(**kw: Any) -> dict[str, Any]:
-    base: dict[str, Any] = {
-        "candidates": ["alpha", "beta"], "observations": [1, 2], "rho": 0.8,
-        "u_bar": dict(_U_BAR), "era_split": False, "owner_scoped": False,
-        "applied_probes": [], "transforms": [dict(t) for t in _VOI_TRANSFORMS],
-    }
+    base: dict[str, Any] = {"candidates": ["x", "y"], "applied_probes": [],
+                            "transforms": _TRANSFORMS, "grow": _GROW}
     base.update(kw)
     return base
 
 
-def _dec(**kw: Any) -> dict[str, Any]:
-    base: dict[str, Any] = {
-        "effector": "abstain", "value": None, "probe": None,
-        "credences": [0.2, 0.3], "p_none": 0.5, "eu": 0.0, "n_obs": 2,
-    }
-    base.update(kw)
-    return base
+def test_gather_options_are_cheapest_first_across_transforms_and_grow() -> None:
+    assert CO.gather_options(_payload()) == ["corroborate_a", "retrieve_rerank",
+                                             "corroborate_b"]
 
 
-# --- agreement: the engine's coarse class matches the daemon's — fine selection stays
-# --- the daemon's (the transitional rule), the view passes through UNCHANGED -------------
+def test_guard_transforms_are_never_gather_options() -> None:
+    assert "recency" not in CO.gather_options(_payload())
 
 
-def test_agreement_passes_the_daemon_view_through_verbatim() -> None:
-    for effector, engine in (("report", "respond"), ("report_scoped", "respond"),
-                             ("hedge", "respond"), ("ask_clarify", "ask"),
-                             ("abstain", "abstain"), ("miss", "abstain")):
-        dec = _dec(effector=effector, value="alpha" if engine == "respond" else None)
-        view, degraded = CO.map_action(_payload(), dec, engine, {"p1": 0.3})
-        assert view == dec, effector
-        assert degraded is None
+def test_applied_probes_close_their_option() -> None:
+    p = _payload(applied_probes=["corroborate_a", "retrieve_rerank"])
+    assert CO.gather_options(p) == ["corroborate_b"]
 
 
-def test_gather_agreement_keeps_the_daemon_scheduled_probe() -> None:
-    dec = _dec(effector="gather", probe="corroborate_sonnet")
-    view, degraded = CO.map_action(_payload(), dec, "gather", {"p1": 0.3})
-    assert view == dec
-    assert degraded is None
+def test_gather_is_open_until_every_option_is_applied() -> None:
+    assert CO.gather_open(_payload())
+    done = _payload(applied_probes=["corroborate_a", "corroborate_b", "retrieve_rerank"])
+    assert not CO.gather_open(done)
+    assert not CO.gather_open({"candidates": ["x"]})
 
 
-# --- overrides: the engine chose a different coarse act ---------------------------------
+def test_gather_enacts_the_cheapest_open_option() -> None:
+    view = CO.enact("gather", _payload(), [0.4, 0.3], 0.3)
+    assert (view["effector"], view["probe"]) == ("gather", "corroborate_a")
 
 
-def test_engine_abstain_overrides_a_daemon_report() -> None:
-    view, degraded = CO.map_action(
-        _payload(), _dec(effector="report", value="alpha"), "abstain", {"p1": 0.3})
-    assert view["effector"] == "abstain"
-    assert view["value"] is None
-    assert degraded is None
-    # the posterior fields survive the rewrite — the footer render stays honest
-    assert view["credences"] == [0.2, 0.3]
-    assert view["p_none"] == 0.5
+def test_gather_with_nothing_open_is_a_contract_error_not_a_fallback() -> None:
+    done = _payload(applied_probes=["corroborate_a", "corroborate_b", "retrieve_rerank"])
+    with pytest.raises(ValueError, match="no gather option"):
+        CO.enact("gather", done, [0.4, 0.3], 0.3)
 
 
-def test_engine_ask_overrides_to_ask_clarify() -> None:
-    view, degraded = CO.map_action(
-        _payload(), _dec(effector="abstain"), "ask", {"p1": 0.3})
-    assert view["effector"] == "ask_clarify"
-    assert view["value"] is None
-    assert degraded is None
+def test_respond_asserts_the_map_candidate_not_index_zero() -> None:
+    view = CO.enact("respond", _payload(), [0.1, 0.85], 0.05)
+    assert (view["effector"], view["value"]) == ("report", "y")
 
 
-def test_engine_respond_reports_the_host_map_value() -> None:
-    # credences are in CANDIDATE order; the MAP value is the argmax, not index 0
-    view, degraded = CO.map_action(
-        _payload(candidates=["alpha", "beta"]),
-        _dec(effector="abstain", credences=[0.2, 0.3]), "respond", {"p1": 0.99})
-    assert view["effector"] == "report"
-    assert view["value"] == "beta"
-    assert degraded is None
+def test_respond_ties_break_in_candidate_order() -> None:
+    assert CO.enact("respond", _payload(), [0.45, 0.45], 0.1)["value"] == "x"
 
 
-def test_engine_respond_with_no_candidates_degrades_to_abstain() -> None:
-    view, degraded = CO.map_action(
-        _payload(candidates=[]), _dec(effector="abstain", credences=[]),
-        "respond", {"p1": 0.99})
-    assert view["effector"] == "abstain"
-    assert degraded == "respond_no_value"
+def test_respond_without_one_credence_per_candidate_raises() -> None:
+    with pytest.raises(ValueError):
+        CO.enact("respond", _payload(), [0.9], 0.1)
 
 
-def test_engine_respond_with_mismatched_credences_degrades_to_abstain() -> None:
-    view, degraded = CO.map_action(
-        _payload(candidates=["alpha", "beta"]),
-        _dec(effector="abstain", credences=[0.4]), "respond", {"p1": 0.99})
-    assert view["effector"] == "abstain"
-    assert degraded == "respond_no_value"
+@pytest.mark.parametrize(("act", "effector"), [("abstain", "abstain"), ("ask", "ask_clarify")])
+def test_withholding_acts_carry_no_value(act: str, effector: str) -> None:
+    view = CO.enact(act, _payload(), [0.4, 0.3], 0.3)
+    assert (view["effector"], view["value"], view["probe"]) == (effector, None, None)
+    assert view["credences"] == [0.4, 0.3] and view["p_none"] == 0.3
 
 
-# --- engine gather on a daemon terminal: transitional fine selection ---------------------
-
-
-def test_engine_gather_selects_the_cheapest_unapplied_voi_transform() -> None:
-    view, degraded = CO.map_action(
-        _payload(), _dec(effector="abstain"), "gather", {"p1": 0.3})
-    assert view["effector"] == "gather"
-    assert view["probe"] == "corroborate_haiku"  # menu order; guards are never selected
-    assert degraded is None
-
-
-def test_engine_gather_skips_already_applied_probes() -> None:
-    view, degraded = CO.map_action(
-        _payload(applied_probes=["corroborate_haiku"]),
-        _dec(effector="abstain"), "gather", {"p1": 0.3})
-    assert view["probe"] == "corroborate_sonnet"
-    assert degraded is None
-
-
-def test_gather_exhausted_falls_to_restricted_argmax_ask() -> None:
-    # all voi probes applied; at p1=0.3 the enactable remainder prices
-    # abstain 0 · ask 0.2 · respond -2.5 → ask
-    view, degraded = CO.map_action(
-        _payload(applied_probes=["corroborate_haiku", "corroborate_sonnet"]),
-        _dec(effector="abstain"), "gather", {"p1": 0.3})
-    assert view["effector"] == "ask_clarify"
-    assert degraded == "gather_exhausted"
-
-
-def test_gather_exhausted_low_p1_abstains() -> None:
-    # p1=0.05: abstain 0 · ask -0.05 · respond -3.75 → abstain
-    view, degraded = CO.map_action(
-        _payload(applied_probes=["corroborate_haiku", "corroborate_sonnet"]),
-        _dec(effector="report", value="alpha"), "gather", {"p1": 0.05})
-    assert view["effector"] == "abstain"
-    assert view["value"] is None
-    assert degraded == "gather_exhausted"
-
-
-def test_gather_exhausted_high_p1_responds_with_map_value() -> None:
-    # p1=0.99: respond 0.95 beats ask 0.89 → report the MAP candidate
-    view, degraded = CO.map_action(
-        _payload(applied_probes=["corroborate_haiku", "corroborate_sonnet"]),
-        _dec(effector="abstain", credences=[0.2, 0.3]), "gather", {"p1": 0.99})
-    assert view["effector"] == "report"
-    assert view["value"] == "beta"
-    assert degraded == "gather_exhausted"
-
-
-def test_gather_exhausted_without_p1_abstains_named() -> None:
-    view, degraded = CO.map_action(
-        _payload(applied_probes=["corroborate_haiku", "corroborate_sonnet"]),
-        _dec(effector="abstain"), "gather", {})
-    assert view["effector"] == "abstain"
-    assert degraded == "no_p1"
-
-
-def test_gather_exhausted_without_u_bar_abstains_named() -> None:
-    p = _payload(applied_probes=["corroborate_haiku", "corroborate_sonnet"])
-    del p["u_bar"]
-    view, degraded = CO.map_action(p, _dec(effector="abstain"), "gather", {"p1": 0.3})
-    assert view["effector"] == "abstain"
-    assert degraded == "no_p1"
-
-
-# --- live_decide: the seam's consult closure ---------------------------------------------
-
-
-
-
-def test_agreement_returns_the_identical_daemon_view_object() -> None:
-    """A DECLARED contract, not an incidental one (r46 leg A, criterion S6).
-
-    The agreement branch returns `dec` *itself* while every other branch builds a fresh
-    dict, so `map_action(...)[0] is dec` **is** the agreement predicate. The shadow's tap
-    reads exactly that to record `mapped_echo`, rather than re-deriving agreement from
-    `REAL_TO_MEMBRANE` — which would be `M-7`'s re-implemented constant. Changing any
-    branch to return a copy silently converts every echo into an apparent engine
-    contribution, so the identity is pinned here.
-    """
-    dec = {"credences": [0.8], "p_none": 0.1, "effector": "report"}
-    payload = {"candidates": ["a"], "transforms": []}
-
-    agreed, degraded = CO.map_action(payload, dec, "respond", {"p1": 0.7})
-    assert agreed is dec
-    assert degraded is None
-
-    overridden, _ = CO.map_action(payload, {**dec, "effector": "abstain"}, "respond", {"p1": 0.7})
-    assert overridden is not dec
+def test_an_undeclared_act_raises() -> None:
+    with pytest.raises(ValueError, match="undeclared"):
+        CO.enact("escalate", _payload(), [0.4, 0.3], 0.3)

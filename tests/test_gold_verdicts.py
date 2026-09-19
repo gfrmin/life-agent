@@ -25,7 +25,7 @@ import gold_verdicts as GV
 
 from life_agent.core import claude_verdicts as CV
 from life_agent.core import decisions as DEC
-from life_agent.membrane import shadow as SH
+from life_agent.membrane import boot as BOOT
 
 # PII-OK: every value below is synthetic ATM-Bench-shaped QA (invented dates, amounts, ids)
 QUESTIONS = [
@@ -165,19 +165,17 @@ def test_rerun_appends_nothing(kb: Path) -> None:
     assert len(_events(kb)) == 2
 
 
-def test_rows_replay_through_shadow_reader_and_keyed_replay(kb: Path) -> None:
-    # the row shape the harness actually folds (`M-7`): shadow's reader → keyed replay → y
+def test_rows_replay_through_the_decider_boot(kb: Path) -> None:
+    # the row shape the decider actually folds: its boot join reads them as y ticks
     decisions = [_decision("d1", QUESTIONS[1]["question"], ["12"], [0.9]),
                  _decision("d2", QUESTIONS[0]["question"], ["2023-12-15"], [0.9])]
     _seed(kb, *decisions)
     assert GV.main(["grade", "--kb", str(kb)]) == 0
-    events = SH._read_claude_verdicts(kb / "calibration" / "claude_verdicts.jsonl")
-    # the p3 harness is archived (J0 reset); the decider's boot replay re-homes it at J1
-    p3 = pytest.importorskip("membrane.p3_gate", reason="archived at J0: archive/scripts/membrane")
-    ticks = p3.keyed_verdict_replay(decisions, [], events)
-    assert [(t.question_id, t.y) for t in ticks] == [
-        (DEC.question_id(QUESTIONS[1]["question"]), 1),
-        (DEC.question_id(QUESTIONS[0]["question"]), 0)]
+    cal = kb / "calibration"
+    snap = BOOT.boot_snapshot(cal / "decisions.jsonl", cal / "reactions.jsonl",
+                              claude_verdicts_path=cal / "claude_verdicts.jsonl")
+    assert [y for _s, y in snap.verdict_replay] == [1, 0]
+    assert snap.n_skipped_lines == 0
 
 
 # --- the one guard --------------------------------------------------------------------------

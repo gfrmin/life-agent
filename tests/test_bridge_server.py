@@ -27,13 +27,13 @@ import pytest
 from life_agent.bridge import server as bridge_server
 from life_agent.bridge.observations import to_abstract_observations
 from life_agent.bridge.server import BridgeDeps, BridgeServer, dispatch
-from life_agent.core import config
 from life_agent.core import decisions as DEC
 from life_agent.core import lookup as LK
 from life_agent.core import probes as P
 from life_agent.core import reactions as RX
 from life_agent.core import retrieval as RET
 from life_agent.core.lookup import Observation
+from life_agent.membrane import decider as DCD
 
 # --- fixtures: fake deps + a dispatch helper ------------------------------------------
 
@@ -814,296 +814,147 @@ def test_log_reaction_bad_valence_is_400(deps: BridgeDeps) -> None:
     assert status == 400
 
 
-# --- the membrane shadow: /decide-support, the log_decision/log_reaction folds, /ready ---
-# The bridge is the shadow's ONLY production touchpoint (Task 5): a fake stands in for
-# MembraneShadow (never a real spawned binary in a test — the shadow's own hermetic tests
-# already cover its internals). The cardinal rule under test here is the fail-open one: the
-# shadow must never change an existing endpoint's reply, whether disabled (deps.membrane is
-# None, the default the `deps` fixture already gives every other test in this file) or
-# enabled-but-raising.
+# --- the decider: /decide, the verdict folds, /ready -------------------------------------
+# A fake stands in for membrane.decider.Decider (its own tests cover it against a scripted
+# and the pinned engine). Under test here: the bridge serves it, names its absence, and
+# hands it every recorded decision and verdict.
 
 
 @dataclasses.dataclass
-class _FakeMembrane:
-    """Duck-types the bridge's use of MembraneShadow: submit_decide/submit_decision/
-    submit_reaction (call-recording, optionally raising) + stats()."""
+class _FakeDecider:
+    view: dict[str, Any] = dataclasses.field(default_factory=lambda: {
+        "effector": "abstain", "value": None, "probe": None, "credences": [0.4],
+        "p_none": 0.6, "act": "abstain", "p1": 0.3, "eu": 0.0})
+    down: bool = False
+    decide_calls: list[tuple[str, dict[str, Any]]] = dataclasses.field(default_factory=list)
+    bind_calls: list[tuple[str, str, dict[str, Any]]] = dataclasses.field(default_factory=list)
+    reaction_calls: list[tuple[str, str]] = dataclasses.field(default_factory=list)
 
-    submit_decide_calls: list[tuple[str, dict[str, Any], dict[str, Any]]] = dataclasses.field(
-        default_factory=list)
-    submit_decision_calls: list[tuple[str, str, dict[str, Any]]] = dataclasses.field(
-        default_factory=list)
-    submit_reaction_calls: list[tuple[str, str]] = dataclasses.field(default_factory=list)
-    submit_gate_calls: list[tuple[str, str]] = dataclasses.field(default_factory=list)
-    stats_value: dict[str, Any] = dataclasses.field(
-        default_factory=lambda: {"forms": {}, "drops": 0})
-    raise_on_submit_decide: bool = False
-    raise_on_submit_decision: bool = False
-    raise_on_submit_reaction: bool = False
-    raise_on_submit_gate: bool = False
-    raise_on_stats: bool = False
-    decide_live_calls: list[tuple[str, dict[str, Any], dict[str, Any]]] = dataclasses.field(
-        default_factory=list)
-    decide_live_value: dict[str, Any] | None = None
-    raise_on_decide_live: bool = False
+    def decide(self, question_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        self.decide_calls.append((question_id, payload))
+        if self.down:
+            raise DCD.DeciderUnavailableError("the decider engine is unavailable (EOF)")
+        return self.view
 
-    def submit_decide(self, question_id: str, payload: dict[str, Any],
-                      dec: dict[str, Any]) -> None:
-        self.submit_decide_calls.append((question_id, payload, dec))
-        if self.raise_on_submit_decide:
-            raise RuntimeError("boom: submit_decide")
+    def bind(self, decision_id: str, question_id: str, event: dict[str, Any]) -> None:
+        self.bind_calls.append((decision_id, question_id, event))
 
-    def submit_decision(self, decision_id: str, question_id: str, event: dict[str, Any]) -> None:
-        self.submit_decision_calls.append((decision_id, question_id, event))
-        if self.raise_on_submit_decision:
-            raise RuntimeError("boom: submit_decision")
+    def observe_reaction(self, decision_id: str, valence: str) -> bool:
+        self.reaction_calls.append((decision_id, valence))
+        if self.down:
+            raise DCD.DeciderUnavailableError("the decider engine is unavailable (EOF)")
+        return True
 
-    def submit_reaction(self, decision_id: str, valence: str) -> None:
-        self.submit_reaction_calls.append((decision_id, valence))
-        if self.raise_on_submit_reaction:
-            raise RuntimeError("boom: submit_reaction")
-
-    def submit_gate(self, question_id: str, gate: str) -> None:
-        self.submit_gate_calls.append((question_id, gate))
-        if self.raise_on_submit_gate:
-            raise RuntimeError("boom: submit_gate")
-
-    def decide_live(self, question_id: str, payload: dict[str, Any],
-                    dec: dict[str, Any]) -> dict[str, Any] | None:
-        self.decide_live_calls.append((question_id, payload, dec))
-        if self.raise_on_decide_live:
-            raise RuntimeError("boom: decide_live")
-        return self.decide_live_value
-
-    def stats(self) -> dict[str, Any]:
-        if self.raise_on_stats:
-            raise RuntimeError("boom: stats")
-        return self.stats_value
+    def status(self) -> dict[str, object]:
+        return {"booted": not self.down, "t": 3, "last_error": ""}
 
 
-def _with_membrane(deps: BridgeDeps, membrane: _FakeMembrane) -> BridgeDeps:
-    return dataclasses.replace(deps, membrane=membrane)
+def _with_decider(deps: BridgeDeps, decider: _FakeDecider) -> BridgeDeps:
+    return dataclasses.replace(deps, decider=decider)  # type: ignore[arg-type]
 
 
-# --- /decide-support: disabled fast-path, enabled submit, never raises -------------------
-
-def test_decide_support_disabled_is_the_deps_fixture_default(deps: BridgeDeps) -> None:
-    # deps.membrane is None by default (every OTHER test in this file relies on exactly
-    # this — absence must be zero behaviour change on every other endpoint).
-    assert deps.membrane is None
+_DECIDE_BODY: dict[str, Any] = {"question_id": "q1", "candidates": ["x"], "observations": [],
+                                "rho": 0.8}
 
 
-def test_decide_support_disabled_fast_path_no_validation(deps: BridgeDeps) -> None:
-    # disabled must return immediately — no field validation at all, even on a body
-    # missing every required field, since this sits on the executor's hot path once per
-    # decide tick and must never pay parse cost when there is no shadow to feed.
-    status, payload = _call(deps, "POST", "/decide-support", {})
-    assert status == 200
-    assert payload == {"ok": False, "disabled": True}
+def test_decide_without_a_decider_is_503_and_names_the_fix(deps: BridgeDeps) -> None:
+    assert deps.decider is None
+    status, payload = _call(deps, "POST", "/decide", _DECIDE_BODY)
+    assert status == 503 and "make engine" in payload["error"]
 
 
-def test_decide_support_enabled_calls_submit_decide(deps: BridgeDeps) -> None:
-    fake = _FakeMembrane()
-    deps2 = _with_membrane(deps, fake)
-    body = {"question_id": "q-1", "payload": {"candidates": ["a"]},
-            "dec": {"credences": [0.9], "effector": "report"}}
-    status, payload = _call(deps2, "POST", "/decide-support", body)
-    assert status == 200
-    assert payload == {"ok": True}
-    assert fake.submit_decide_calls == [("q-1", body["payload"], body["dec"])]
+def test_decide_returns_the_deciders_view(deps: BridgeDeps) -> None:
+    fake = _FakeDecider()
+    status, payload = _call(_with_decider(deps, fake), "POST", "/decide", _DECIDE_BODY)
+    assert status == 200 and payload == fake.view
+    assert fake.decide_calls == [("q1", _DECIDE_BODY)]
 
 
-def test_decide_support_enabled_malformed_body_is_400(deps: BridgeDeps) -> None:
-    fake = _FakeMembrane()
-    deps2 = _with_membrane(deps, fake)
-    status, payload = _call(deps2, "POST", "/decide-support",
-                            {"question_id": "q-1", "payload": "not-a-dict", "dec": {}})
-    assert status == 400
-    assert "error" in payload
-    assert fake.submit_decide_calls == []
+def test_a_down_engine_is_503_not_a_substitute_answer(deps: BridgeDeps) -> None:
+    status, payload = _call(_with_decider(deps, _FakeDecider(down=True)), "POST", "/decide",
+                            _DECIDE_BODY)
+    assert status == 503 and "EOF" in payload["error"]
 
 
-def test_decide_support_enabled_missing_question_id_is_400(deps: BridgeDeps) -> None:
-    fake = _FakeMembrane()
-    deps2 = _with_membrane(deps, fake)
-    status, _payload = _call(deps2, "POST", "/decide-support", {"payload": {}, "dec": {}})
-    assert status == 400
-    assert fake.submit_decide_calls == []
+@pytest.mark.parametrize(("body", "missing"), [
+    ({**_DECIDE_BODY, "candidates": []}, "candidates"),
+    ({k: v for k, v in _DECIDE_BODY.items() if k != "rho"}, "rho"),
+    ({k: v for k, v in _DECIDE_BODY.items() if k != "question_id"}, "question_id"),
+])
+def test_decide_rejects_a_request_it_cannot_rank(deps: BridgeDeps, body: dict[str, Any],
+                                                 missing: str) -> None:
+    fake = _FakeDecider()
+    status, payload = _call(_with_decider(deps, fake), "POST", "/decide", body)
+    assert status == 400 and missing in payload["error"]
+    assert fake.decide_calls == []
 
 
-def test_decide_support_never_raises_when_submit_decide_raises(deps: BridgeDeps) -> None:
-    fake = _FakeMembrane(raise_on_submit_decide=True)
-    deps2 = _with_membrane(deps, fake)
-    status, payload = _call(deps2, "POST", "/decide-support",
-                            {"question_id": "q-1", "payload": {}, "dec": {}})
-    assert status == 200
-    assert payload == {"ok": True}          # the reply is unchanged by the raise
-    assert len(fake.submit_decide_calls) == 1
-
-
-# --- /log_decision + /log_reaction: fold into the shadow, fail-open ----------------------
-
-def test_log_decision_folds_into_membrane_submit_decision(deps: BridgeDeps) -> None:
-    fake = _FakeMembrane()
-    deps2 = _with_membrane(deps, fake)
+def test_log_decision_binds_the_decision_for_its_verdict(deps: BridgeDeps) -> None:
+    fake = _FakeDecider()
+    deps2 = _with_decider(deps, fake)
     status, payload = _call(deps2, "POST", "/log_decision",
                             {"question": "my mobile?", "retrieval_keys": ["d1", "d0"],
                              "decision": _decision()})
     assert status == 200
-    assert len(fake.submit_decision_calls) == 1
-    decision_id, question_id, event = fake.submit_decision_calls[0]
-    assert decision_id == payload["decision_id"]
+    (decision_id, question_id, event), = fake.bind_calls
+    assert decision_id == payload["decision_id"] == event["decision_id"]
     assert question_id == DEC.read(deps2.decisions_path)[0].question_id
     assert event["chosen_action"] == "abstain"
-    assert event["decision_id"] == decision_id
 
 
-def test_log_decision_reply_unchanged_when_submit_decision_raises(deps: BridgeDeps) -> None:
-    fake = _FakeMembrane(raise_on_submit_decision=True)
-    deps2 = _with_membrane(deps, fake)
-    status, payload = _call(deps2, "POST", "/log_decision",
-                            {"question": "q", "retrieval_keys": ["d0"], "decision": _decision()})
-    assert status == 200
-    assert "decision_id" in payload
-    assert len(DEC.read(deps2.decisions_path)) == 1     # the real append is unaffected
-    assert len(fake.submit_decision_calls) == 1          # the shadow still saw the attempt
-
-
-def test_log_reaction_folds_into_membrane_submit_reaction(deps: BridgeDeps) -> None:
-    fake = _FakeMembrane()
-    deps2 = _with_membrane(deps, fake)
+def test_log_reaction_folds_the_verdict_into_the_decider(deps: BridgeDeps) -> None:
+    fake = _FakeDecider()
+    deps2 = _with_decider(deps, fake)
     did = _log_a_decision(deps2, effector="abstain")
     status, payload = _call(deps2, "POST", "/log_reaction",
                             {"decision_id": did, "valence": "bad"})
-    assert status == 200
-    assert fake.submit_reaction_calls == [(did, "bad")]
-    assert payload["folds"] is True   # the existing reply is untouched by the fold
+    assert status == 200 and payload["folds"] is True
+    assert fake.reaction_calls == [(did, "bad")]
 
 
-def test_log_reaction_reply_unchanged_when_submit_reaction_raises(deps: BridgeDeps) -> None:
-    fake = _FakeMembrane(raise_on_submit_reaction=True)
-    deps2 = _with_membrane(deps, fake)
+def test_a_verdict_the_engine_cannot_fold_is_still_recorded(deps: BridgeDeps) -> None:
+    fake = _FakeDecider()
+    deps2 = _with_decider(deps, fake)
     did = _log_a_decision(deps2, effector="abstain")
-    status, payload = _call(deps2, "POST", "/log_reaction",
-                            {"decision_id": did, "valence": "bad"})
+    fake.down = True
+    status, _payload = _call(deps2, "POST", "/log_reaction",
+                             {"decision_id": did, "valence": "bad"})
     assert status == 200
-    assert payload["folds"] is True
-    events = RX.read(deps2.reactions_path)
-    assert len(events) == 1                          # the real append is unaffected
-    assert fake.submit_reaction_calls == [(did, "bad")]
+    assert len(RX.read(deps2.reactions_path)) == 1   # the next boot replays it
 
 
-# --- GET /ready: the membrane block, both states ------------------------------------------
-
-def test_ready_membrane_disabled(deps: BridgeDeps) -> None:
-    status, payload = _call(deps, "GET", "/ready")
-    assert status == 200
-    assert payload == {"status": "ok", "membrane": {"enabled": False}}
+def test_ready_reports_the_decider(deps: BridgeDeps) -> None:
+    assert _call(deps, "GET", "/ready")[1] == {"status": "ok", "decider": {"enabled": False}}
+    payload = _call(_with_decider(deps, _FakeDecider()), "GET", "/ready")[1]
+    assert payload["decider"] == {"enabled": True, "booted": True, "t": 3, "last_error": ""}
 
 
-def test_ready_membrane_enabled_reports_stats(deps: BridgeDeps) -> None:
-    fake = _FakeMembrane(stats_value={"forms": {"said@1": {"alive": True}}, "drops": 2})
-    deps2 = _with_membrane(deps, fake)
-    status, payload = _call(deps2, "GET", "/ready")
-    assert status == 200
-    assert payload["status"] == "ok"
-    assert payload["membrane"] == {"forms": {"said@1": {"alive": True}}, "drops": 2}
+def test_build_decider_is_none_without_an_engine(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(bridge_server.config, "membrane_command", lambda: None)
+    assert bridge_server._build_decider(lambda: {}) is None
 
 
-def test_ready_membrane_stats_raising_does_not_crash_ready(deps: BridgeDeps) -> None:
-    # `_membrane_ready_block`'s try/except is load-bearing, not cosmetic: `dispatch` only
-    # catches `BridgeError`, so an uncaught exception out of `stats()` would propagate past
-    # dispatch and (over real HTTP) become a 500 on `GET /ready`; `core/ask_client.py`'s
-    # `_ready()` treats any non-2xx as the bridge being down, so a misbehaving shadow would
-    # present as an apparent outage of the production answer path — exactly what this
-    # feature must never cause. Pin that the guard holds: a raising stats() still yields a
-    # 200 with the rest of the ready block intact, the membrane sub-block carrying an error
-    # marker instead of propagating.
-    fake = _FakeMembrane(raise_on_stats=True)
-    deps2 = _with_membrane(deps, fake)
-    status, payload = _call(deps2, "GET", "/ready")
-    assert status == 200
-    assert payload is not None
-    assert payload["status"] == "ok"
-    assert payload["membrane"] == {"enabled": True, "stats_error": True}
+def test_a_failed_boot_still_serves_and_retries(monkeypatch: pytest.MonkeyPatch) -> None:
+    def refuse(*_a: Any, **_k: Any) -> Any:
+        raise OSError("no such engine")
 
+    started: list[Any] = []
 
-# --- build_deps' _build_membrane: iff LIFE_AGENT_MEMBRANE_COMMAND is set, never lets a ----
-# --- construction/start failure prevent the bridge from serving --------------------------
+    class _Inline:
+        def __init__(self, target: Any, **_k: Any) -> None:
+            self.target = target
 
-class _FakeShadowInstance:
-    def __init__(self, cfg: Any, *, u_bar: Any, snapshot: Any) -> None:
-        self.cfg = cfg
-        self.u_bar = u_bar
-        self.snapshot = snapshot
-        self.start_called = False
+        def start(self) -> None:
+            started.append(self)
+            self.target()
 
-    def start(self) -> None:
-        self.start_called = True
-
-
-class _RaisingOnInitShadow:
-    def __init__(self, *_a: Any, **_k: Any) -> None:
-        raise RuntimeError("boom: construction")
-
-
-class _RaisingOnStartShadow:
-    def __init__(self, *_a: Any, **_k: Any) -> None:
-        pass
-
-    def start(self) -> None:
-        raise RuntimeError("boom: start (e.g. double-start, or Thread.start() failure)")
-
-
-def test_build_membrane_disabled_when_no_command(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv(config.MEMBRANE_COMMAND_ENV, raising=False)
-    assert bridge_server._build_membrane(lambda: {}) is None
-
-
-def test_build_membrane_constructs_and_starts_when_command_set(
-        monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setenv(config.MEMBRANE_COMMAND_ENV, "fake-govhost --flag")
-    monkeypatch.setattr(config, "KB", tmp_path)
-    # DECISIONS_LOG/REACTIONS_LOG/CLAUDE_VERDICTS_LOG are precomputed at import time off the
-    # REAL KB, so patching config.KB alone would not move them — pin all three under tmp_path,
-    # or the snapshot closure below would touch whatever real calibration logs exist on disk.
-    # (The Claude verdict log joined boot_snapshot in the verdict-channel PR; before it had any
-    # rows this test passed by accident — n_source_records read 0 only because the file was
-    # empty. It must be pinned like the other two.)
-    monkeypatch.setattr(config, "DECISIONS_LOG", tmp_path / "calibration" / "decisions.jsonl")
-    monkeypatch.setattr(config, "REACTIONS_LOG", tmp_path / "calibration" / "reactions.jsonl")
-    monkeypatch.setattr(
-        config, "CLAUDE_VERDICTS_LOG", tmp_path / "calibration" / "claude_verdicts.jsonl")
-    monkeypatch.setattr(bridge_server.MEM, "MembraneShadow", _FakeShadowInstance)
-    result = bridge_server._build_membrane(lambda: {"u_wrong": -5.0})
-    assert isinstance(result, _FakeShadowInstance)
-    assert result.start_called is True
-    assert result.cfg.command == ["fake-govhost", "--flag"]
-    assert result.cfg.forms == ("said@1",)                   # the declared default
-    assert result.cfg.log_path == tmp_path / "membrane" / "shadow.jsonl"
-    assert result.cfg.queue_size == bridge_server._MEMBRANE_QUEUE_SIZE
-    assert result.cfg.max_respawns == bridge_server._MEMBRANE_MAX_RESPAWNS
-    assert result.cfg.respawn_backoff_s == bridge_server._MEMBRANE_RESPAWN_BACKOFF_S
-    assert result.u_bar()["u_wrong"] == -5.0
-    # `snapshot` reads config.DECISIONS_LOG/REACTIONS_LOG (empty under the tmp KB pinned
-    # above) — calling it must not raise, proving the closure captured usable paths.
-    snap = result.snapshot()
-    assert snap.n_source_records == 0
-
-
-def test_build_membrane_falls_back_to_none_when_construction_raises(
-        monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setenv(config.MEMBRANE_COMMAND_ENV, "fake-govhost")
-    monkeypatch.setattr(config, "KB", tmp_path)
-    monkeypatch.setattr(bridge_server.MEM, "MembraneShadow", _RaisingOnInitShadow)
-    assert bridge_server._build_membrane(lambda: {}) is None
-
-
-def test_build_membrane_falls_back_to_none_when_start_raises(
-        monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setenv(config.MEMBRANE_COMMAND_ENV, "fake-govhost")
-    monkeypatch.setattr(config, "KB", tmp_path)
-    monkeypatch.setattr(bridge_server.MEM, "MembraneShadow", _RaisingOnStartShadow)
-    assert bridge_server._build_membrane(lambda: {}) is None
+    monkeypatch.setattr(bridge_server.config, "membrane_command", lambda: ["proplang-host-absent"])
+    monkeypatch.setattr(bridge_server.MembraneClient, "spawn", refuse)
+    monkeypatch.setattr(bridge_server.threading, "Thread", _Inline)
+    decider = bridge_server._build_decider(lambda: {})
+    assert len(started) == 1   # the boot runs off the serving thread
+    assert decider is not None and decider.status()["booted"] is False
+    assert "no such engine" in str(decider.status()["last_error"])
 
 
 # --- malformed / unknown / method ------------------------------------------------------
@@ -1178,8 +1029,8 @@ def test_http_ready(live_bridge: tuple[str, dict[str, Any]]) -> None:
     base, _ = live_bridge
     status, payload = _http(base, "GET", "/ready")
     assert status == 200
-    # deps.membrane is None (the fixture's default) over this live server too.
-    assert payload == {"status": "ok", "membrane": {"enabled": False}}
+    # deps.decider is None (the fixture's default) over this live server too.
+    assert payload == {"status": "ok", "decider": {"enabled": False}}
 
 
 def test_http_malformed_body_is_400(live_bridge: tuple[str, dict[str, Any]]) -> None:
@@ -1209,94 +1060,39 @@ def test_http_statelessness_interleaved_request_does_not_perturb_repeat(
 # SIGTERM. `_install_shutdown_handlers` itself (the two `signal.signal` registrations) is
 # intentionally not exercised here: it is one line of stdlib wiring around `_shutdown`.
 
-class _FakeCloseableMembrane:
-    def __init__(self, *, raises: bool = False) -> None:
+class _FakeCloseableDecider:
+    def __init__(self) -> None:
         self.closed = False
-        self._raises = raises
 
     def close(self) -> None:
         self.closed = True
-        if self._raises:
-            raise RuntimeError("boom")
 
 
 class _FakeShutdownDeps:
-    def __init__(self, membrane: _FakeCloseableMembrane | None) -> None:
-        self.membrane = membrane
+    def __init__(self, decider: _FakeCloseableDecider | None) -> None:
+        self.decider = decider
 
 
 class _FakeShutdownServer:
-    def __init__(self, membrane: _FakeCloseableMembrane | None) -> None:
-        self.deps = _FakeShutdownDeps(membrane)
+    def __init__(self, decider: _FakeCloseableDecider | None) -> None:
+        self.deps = _FakeShutdownDeps(decider)
 
 
-def test_shutdown_closes_membrane_then_exits() -> None:
-    membrane = _FakeCloseableMembrane()
+def test_shutdown_closes_the_decider_then_exits() -> None:
+    decider = _FakeCloseableDecider()
     with pytest.raises(SystemExit) as exc:
-        bridge_server._shutdown(_FakeShutdownServer(membrane))  # type: ignore[arg-type]
+        bridge_server._shutdown(_FakeShutdownServer(decider))  # type: ignore[arg-type]
     assert exc.value.code == 0
-    assert membrane.closed is True
+    assert decider.closed is True
 
 
-def test_shutdown_is_fail_open_when_close_raises() -> None:
-    """A raising close() must not prevent shutdown — the process still exits cleanly."""
-    membrane = _FakeCloseableMembrane(raises=True)
-    with pytest.raises(SystemExit) as exc:
-        bridge_server._shutdown(_FakeShutdownServer(membrane))  # type: ignore[arg-type]
-    assert exc.value.code == 0
-    assert membrane.closed is True  # close() ran (and raised) before the suppress
-
-
-def test_shutdown_with_no_membrane_still_exits() -> None:
+def test_shutdown_with_no_decider_still_exits() -> None:
     with pytest.raises(SystemExit) as exc:
         bridge_server._shutdown(_FakeShutdownServer(None))  # type: ignore[arg-type]
     assert exc.value.code == 0
 
 
-# --- /gate-support: the seam's gate pre-emptions reach the shadow (M2) -------------------
-
-def test_gate_support_disabled_fast_path_no_validation(deps: BridgeDeps) -> None:
-    status, payload = _call(deps, "POST", "/gate-support", {})
-    assert status == 200
-    assert payload == {"ok": False, "disabled": True}
-
-
-def test_gate_support_enabled_calls_submit_gate(deps: BridgeDeps) -> None:
-    fake = _FakeMembrane()
-    deps2 = _with_membrane(deps, fake)
-    status, payload = _call(deps2, "POST", "/gate-support",
-                            {"question_id": "q-1", "gate": "weak_retrieval"})
-    assert status == 200
-    assert payload == {"ok": True}
-    assert fake.submit_gate_calls == [("q-1", "weak_retrieval")]
-
-
-def test_gate_support_enabled_missing_gate_is_400(deps: BridgeDeps) -> None:
-    fake = _FakeMembrane()
-    deps2 = _with_membrane(deps, fake)
-    status, _payload = _call(deps2, "POST", "/gate-support", {"question_id": "q-1"})
-    assert status == 400
-    assert fake.submit_gate_calls == []
-
-
-def test_gate_support_enabled_missing_question_id_is_400(deps: BridgeDeps) -> None:
-    fake = _FakeMembrane()
-    deps2 = _with_membrane(deps, fake)
-    status, _payload = _call(deps2, "POST", "/gate-support", {"gate": "weak_retrieval"})
-    assert status == 400
-    assert fake.submit_gate_calls == []
-
-
-def test_gate_support_never_raises_when_submit_gate_raises(deps: BridgeDeps) -> None:
-    fake = _FakeMembrane(raise_on_submit_gate=True)
-    deps2 = _with_membrane(deps, fake)
-    status, payload = _call(deps2, "POST", "/gate-support",
-                            {"question_id": "q-1", "gate": "weak_retrieval"})
-    assert status == 200
-    assert payload == {"ok": True}
-
-
-# --- /decide-live: the M3 synchronous coarse-menu consult --------------------------------
+# --- /probe/deliberate ------------------------------------------------------------------
 
 def _deliberate_result(**overrides: Any) -> Any:
     from life_agent.core import deliberate as DL

@@ -9,7 +9,6 @@ names the fold fate in ask-live's own vocabulary — never implying every verdic
 """
 from __future__ import annotations
 
-import hashlib
 from typing import Any
 
 from life_agent.core import ask_client as AC
@@ -58,9 +57,8 @@ def test_answer_renders_and_binds_the_decision(monkeypatch: Any) -> None:
 
 
 def test_answer_route_null_binds_nothing(monkeypatch: Any) -> None:
-    # the route-null question's decision is the NARRATIVE family's, recorded by that leaf —
-    # the poster stays silent. (The routed miss used to sit here too; since r33 RC-1 it
-    # binds a reactable regime="miss" row — pinned below.)
+    # the route-null question is declined as not a point fact — the poster stays silent.
+    # (A routed miss binds a reactable regime="miss" row — pinned below.)
     view = _fake_view("miss")
     view["candidates"], view["credences"], view["route"] = [], [], None
     monkeypatch.setattr(EX, "decide_via_loop", lambda *a, **k: view)
@@ -68,43 +66,6 @@ def test_answer_route_null_binds_nothing(monkeypatch: Any) -> None:
                                    get=lambda u: {}, check_ready=False)
     assert decision_id is None                   # nothing foldable to bind
     assert reply                                 # still a named reply, never empty
-
-
-def test_answer_wires_the_shared_shadow_mirror(monkeypatch: Any) -> None:
-    # Jarvis's real traffic is a production caller of EX.decide_via_loop too — its post must
-    # be shadow-wrapped through the SAME shared mirror scripts/ask.py installs, unconditionally.
-    # The mirror's own behaviour (URL gating, fail-open, timeout, breaker, body shape) is
-    # exercised once, directly, in tests/test_shadow_mirror.py — this is a wiring pin only.
-    def bare_post(url: str, payload: dict[str, Any]) -> dict[str, Any] | None:
-        return {"ok": True}
-
-    wrap_calls: list[tuple[Any, str, str]] = []
-
-    def sentinel_wrapped(url: str, body: dict[str, Any]) -> dict[str, Any] | None:
-        return {"sentinel": True}
-
-    def fake_shadow_wrapped_post(post: Any, bridge: str, question_id: str) -> Any:
-        wrap_calls.append((post, bridge, question_id))
-        return sentinel_wrapped
-
-    monkeypatch.setattr(AC.SM, "shadow_wrapped_post", fake_shadow_wrapped_post)
-
-    captured: dict[str, Any] = {}
-
-    def fake_decide_via_loop(question: str, k: int, **kwargs: Any) -> dict[str, Any]:
-        captured.update(kwargs)
-        return _fake_view("miss")  # not a LOOKUP_ACTION_ORDER effector — no extra /log_decision
-
-    monkeypatch.setattr(EX, "decide_via_loop", fake_decide_via_loop)
-    _answer("what is my passport number?", post=bare_post, get=lambda u: {},
-             check_ready=False)
-
-    assert len(wrap_calls) == 1
-    post_arg, bridge_arg, qid_arg = wrap_calls[0]
-    assert post_arg is bare_post  # the real (unwrapped) transport goes in
-    assert bridge_arg == AC.BRIDGE
-    assert qid_arg == hashlib.sha256(b"what is my passport number?").hexdigest()[:16]
-    assert captured["post"] is sentinel_wrapped  # decide_via_loop gets the WRAPPED post back
 
 
 def test_answer_names_a_down_stack(monkeypatch: Any) -> None:
@@ -154,36 +115,6 @@ def test_react_failure_is_named_not_silent() -> None:
         raise OSError("connection refused")
 
     assert "not recorded" in AC.react("ab-1", "good", post=post_boom)
-
-
-def test_post_json_gives_the_narrative_path_more_headroom(monkeypatch) -> None:
-    # the slow endpoint (cold expand + rerank + synthesize) outran the flat 300s
-    # budget and the hung-up client wedged the bridge (run-6 void, 2026-08-17)
-    import io
-    import json as _json
-
-    from life_agent.core import ask_client as AC
-
-    seen: dict = {}
-
-    class _R(io.BytesIO):
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *a):
-            return False
-
-    def fake_urlopen(req, timeout=None):
-        seen[req.full_url] = timeout
-        return _R(_json.dumps({"ok": True}).encode())
-
-    monkeypatch.setattr(AC.urllib.request, "urlopen", fake_urlopen)
-    AC.post_json("http://b/narrative", {})
-    AC.post_json("http://b/route", {})
-    AC.post_json("http://b/extract", {}, timeout=42)
-    assert seen["http://b/narrative"] == AC._SLOW_TIMEOUT > 300
-    assert seen["http://b/route"] == 300
-    assert seen["http://b/extract"] == 42
 
 
 def test_answer_offers_the_deliberate_menu_by_default(monkeypatch: Any) -> None:
@@ -238,25 +169,55 @@ def test_answer_passes_realised_accounting_through(monkeypatch: Any) -> None:
     assert dec["cost_usd"] == 0.0123 and dec["latency_s"] == 2.5
 
 
-def test_answer_down_stack_commits_the_gate_mirrors_and_records(monkeypatch: Any) -> None:
-    """B-2/A-1 die (r12 D2): the reach surface's seam-less DOWN bypass is gone — the one
-    driver commits the declared gate, mirrors it, and appends the §6.5 unavailability
-    record. The reply string is untouched (interaction contract)."""
+def test_answer_down_stack_commits_the_gate_and_records(monkeypatch: Any) -> None:
+    """A down stack commits the declared gate and appends the §6.5 unavailability record;
+    nothing answers in the decider's place."""
     from life_agent.core import recorder as REC
-    from life_agent.core import seam as SEAM
 
     monkeypatch.setattr(AC, "_ready", lambda: False)
-    mirrored: list[tuple[str, str, str]] = []
     recorded: list[dict[str, Any]] = []
-    monkeypatch.setattr(AC.SM, "mirror_gate",
-                        lambda bridge, qid, gate: mirrored.append((bridge, qid, gate)))
     monkeypatch.setattr(REC, "record_unavailable",
                         lambda question, **kw: recorded.append({"question": question, **kw}))
     reply, decision_id = _answer("q?")
     assert reply == AC.DOWN and decision_id is None
-    assert mirrored == [(AC.BRIDGE, AC.DEC.question_id("q?"), SEAM.GATE_EXECUTOR_DOWN)]
     assert len(recorded) == 1 and recorded[0]["question"] == "q?"
 
+
+def test_a_decider_that_answers_503_is_a_down_stack(monkeypatch: Any) -> None:
+    import urllib.error
+
+    from life_agent.core import recorder as REC
+
+    def refuse(*_a: Any, **_k: Any) -> Any:
+        raise urllib.error.HTTPError("http://b/decide", 503, "no engine", {}, None)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(EX, "decide_via_loop", refuse)
+    recorded: list[str] = []
+    monkeypatch.setattr(REC, "record_unavailable", lambda question, **kw: recorded.append(question))
+    reply, decision_id = _answer("q?", post=lambda u, p: {}, get=lambda u: {},
+                                 check_ready=False)
+    assert reply == AC.DOWN and decision_id is None and recorded == ["q?"]
+
+
+def test_the_ready_gate_needs_a_decider(monkeypatch: Any) -> None:
+    import io
+    import json as _json
+    import urllib.request as _ur
+
+    def serve(body: dict[str, Any]) -> Any:
+        class _R(io.BytesIO):
+            def __enter__(self) -> _R:
+                return self
+
+            def __exit__(self, *a: Any) -> bool:
+                return False
+
+        return lambda *a, **k: _R(_json.dumps(body).encode())
+
+    monkeypatch.setattr(_ur, "urlopen", serve({"status": "ok", "decider": {"enabled": False}}))
+    assert AC._ready() is False
+    monkeypatch.setattr(_ur, "urlopen", serve({"status": "ok", "decider": {"enabled": True}}))
+    assert AC._ready() is True
 
 def test_the_m2_shims_are_dead() -> None:
     # r13 mandate 3 (as amended): AC.answer and ask._edge_curves are deleted — callers

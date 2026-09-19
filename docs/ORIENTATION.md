@@ -24,19 +24,20 @@ posterior over candidate indices. That separation is the design commitment.
 scripts/ask.py / reach/jarvis.py
   └─ core/ask_client.drive
        └─ core/executor.run_pass     the loop; holds NO posterior and picks NO action
-            ├─ bridge/server.py      :8798 gathers and SHAPES evidence
-            │    ├─ /route           lane classifier (core/answer_shape.py)
-            │    ├─ /retrieve        BM25 over DuckDB FTS
-            │    ├─ /probe/*         subject, recency
-            │    ├─ /extract         LLM per chunk → candidates + integer observations
-            │    └─ /narrative       non-typed questions: rerank + LLM synthesis
-            └─ credence daemon       :8799 DECIDES — returns (effector, report_index)
+            └─ bridge/server.py      :8798 gathers and SHAPES evidence, and hosts the decider
+                 ├─ /route           lane classifier (core/answer_shape.py); not a point fact ⇒ declined
+                 ├─ /retrieve        BM25 over DuckDB FTS
+                 ├─ /probe/*         subject, recency, corroborate, deliberate
+                 ├─ /extract         LLM per chunk → candidates + integer observations
+                 └─ /decide          membrane/decider.py: core/posterior.py → proplang engine → act
 ```
 
-The bridge gathers evidence; the daemon decides. The proplang engine runs beside it as an
-enqueue-only shadow (`membrane/shadow.py`). **J1 changes this**: the posterior moves to
-`core/posterior.py`, proplang decides synchronously, the Julia daemon retires. **J2** adds
-escalation rungs and tannen records, and the narrative lane is replaced by escalation.
+The bridge gathers evidence and hosts the one decider: the candidate posterior is computed in
+`core/posterior.py` and the proplang engine (`make engine`) picks the act from
+{abstain, gather, ask, respond}; `membrane/coarse.py` enacts it. With no engine, `/decide`
+answers 503 and the reply says the decider is unavailable; nothing answers in its place.
+**J2** adds escalation rungs and tannen records; a question that is not a verbatim point fact
+is declined until then.
 
 ## Entry points
 

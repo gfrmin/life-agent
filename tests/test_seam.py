@@ -1,7 +1,7 @@
 """The M0 act-committing seam (life_agent.core.seam) — hermetic.
 
 One function commits acts (roadmap M0): the P1 skin `optimise` calls (lookup,
-per-claim narrative), the P2 daemon `/decide` POST, and the pre-empting gates
+per-claim narrative, retiring), the bridge `/decide` POST, and the pre-empting gates
 (weak retrieval, executor down) all pass through :func:`seam.commit`. These tests
 pin the dispatch contract and the drift gate that keeps the seam single-source.
 
@@ -92,9 +92,9 @@ def test_skin_optimise_action_is_verbatim() -> None:
     assert d.action == "report_2" and d.eu == -0.5
 
 
-# --- P2: the daemon /decide dispatch -----------------------------------------------------
+# --- the decider: the bridge /decide dispatch -----------------------------------------------------
 
-def test_daemon_decide_posts_and_returns_view() -> None:
+def test_decide_posts_and_returns_view() -> None:
     seen: list[tuple[str, dict[str, Any]]] = []
     reply = {"effector": "report", "value": "42", "credences": [0.9], "p_none": 0.05,
              "eu": 0.8}
@@ -104,21 +104,21 @@ def test_daemon_decide_posts_and_returns_view() -> None:
         return reply
 
     payload = {"candidates": ["42"], "observations": [1], "rho": 0.8}
-    d = S.commit(S.DaemonDecide(post=post, daemon="http://d:1", payload=payload))
+    d = S.commit(S.Decide(post=post, bridge="http://d:1", payload=payload))
     assert seen == [("http://d:1/decide", payload)]
     assert d.view is reply
     assert d.action == "report" and d.eu == 0.8 and d.gate is None
 
 
-def test_daemon_null_reply_asserts() -> None:
-    d = S.DaemonDecide(post=lambda url, payload: None, daemon="http://d:1", payload={})
+def test_decide_null_reply_asserts() -> None:
+    d = S.Decide(post=lambda url, payload: None, bridge="http://d:1", payload={})
     with pytest.raises(AssertionError):
         S.commit(d)
 
 
-def test_daemon_missing_eu_is_none() -> None:
-    d = S.commit(S.DaemonDecide(post=lambda u, p: {"effector": "miss"},
-                                daemon="http://d:1", payload={}))
+def test_decide_missing_eu_is_none() -> None:
+    d = S.commit(S.Decide(post=lambda u, p: {"effector": "miss"},
+                                bridge="http://d:1", payload={}))
     assert d.action == "miss" and d.eu is None
 
 
@@ -139,24 +139,13 @@ def test_only_the_seam_calls_optimise() -> None:
 
 
 def test_only_the_seam_posts_decide() -> None:
-    """The daemon `/decide` POST may be built only in seam.py. `/decide-support` (the
-    membrane shadow's mirror feed) and the bridge's server-side route table are not act
-    commits and are excluded by pattern, not by file list."""
+    """The `/decide` POST may be built only in seam.py. The bridge's server-side route
+    table serves it and is not an act commit."""
     pat = re.compile(r"""/decide["']""")
     offenders = [
         p.relative_to(SRC)
         for p in SRC.rglob("*.py")
-        if p.relative_to(SRC).as_posix() != "core/seam.py"
+        if p.relative_to(SRC).as_posix() not in ("core/seam.py", "bridge/server.py")
         and pat.search(p.read_text())
     ]
     assert offenders == []
-
-
-# --- M3: the live consult re-point (DaemonDecide.live) -----------------------------------
-
-def test_daemon_decide_without_live_is_unchanged() -> None:
-    d = S.commit(S.DaemonDecide(post=lambda u, p: {"effector": "hedge", "eu": 0.25},
-                                daemon="http://d:1", payload={}))
-    assert d.action == "hedge"
-    assert d.eu == 0.25
-    assert d.gate is None

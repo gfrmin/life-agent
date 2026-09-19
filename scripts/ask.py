@@ -248,9 +248,7 @@ def parse_line(line: str) -> Parsed:
 # to its content-addressed id). Flag-gated; the default path is untouched.
 # D-13: the stack URLs are read ONCE (ask_client); these are bindings, not reads.
 EXECUTOR_BRIDGE = AC.BRIDGE
-EXECUTOR_DAEMON = AC.DAEMON
-EXECUTOR_DOWN = ("No answer asserted — the executor is unavailable (the answer-brain "
-                 "daemon/bridge is not up; start it: bin/answer-brain).")
+EXECUTOR_DOWN = AC.DOWN
 # the last executor decision's id (the bridge's content-addressed "ab-…") — the in-session g/b
 # verdict binds to it (the executor analogue of LOOKUP_LAST.answer_cache_key); None when the last
 # answer was a miss / narrative / daemon-down (nothing foldable to bind).
@@ -286,14 +284,14 @@ def _http_get(url: str) -> dict[str, Any]:
 
 
 def _executor_ready() -> bool:
-    """Both services must answer /ready. The body never falls back SILENTLY — a down stack is
-    NAMED (interaction contract), never substituted with a different path's answer."""
-    for base in (EXECUTOR_BRIDGE, EXECUTOR_DAEMON):
-        try:
-            urllib.request.urlopen(f"{base}/ready", timeout=3)
-        except Exception:
-            return False
-    return True
+    """The bridge must answer /ready with a decider configured. The body never falls back —
+    a down stack is NAMED (interaction contract), never substituted with another answer."""
+    try:
+        with urllib.request.urlopen(f"{EXECUTOR_BRIDGE}/ready", timeout=3) as r:
+            status = json.loads(r.read())
+    except Exception:
+        return False
+    return bool((status.get("decider") or {}).get("enabled"))
 
 
 def answer_via_executor(question: str, k: int
@@ -316,17 +314,13 @@ def answer_via_executor(question: str, k: int
     # core/executor.py must not be edited to expose them) — absent (not a guessed 0), so a
     # consumer can tell "not tracked here" apart from "zero rounds fired".
     TERM.EFFORT_LAST = {}
-    r = AC.drive(question, k, bridge=EXECUTOR_BRIDGE, daemon=EXECUTOR_DAEMON,
+    r = AC.drive(question, k, bridge=EXECUTOR_BRIDGE,
                  post=_http_post, get=_http_get, run_id=EXECUTOR_RUN_ID,
                  ready=_executor_ready,
                  hold_out_question_id=EXECUTOR_HOLD_OUT_QUESTION_ID)
     if r.down:
         return (EXECUTOR_DOWN, [], {})
-    if r.view is None:
-        # the terminals-only regime answered (M5, §2.3): the leaf rendered the text
-        # and recorded the decision; cards/scores live in TERM's travel state.
-        EXECUTOR_LAST = r.decision_id
-        return (r.text or "", [], {})
+    assert r.view is not None  # drive returns a view whenever the stack is up
     view = r.view
     EXECUTOR_VIEW_LAST = view
     EXECUTOR_LAST = r.decision_id

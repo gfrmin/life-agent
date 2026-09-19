@@ -1719,9 +1719,9 @@ def main() -> int:
 
         if args.gate_executor and not ask._executor_ready():
             # a partial-stack run would read as policy behaviour — refuse, never degrade
-            print(f"REFUSED: --gate-executor needs the bridge + daemon up "
-                  f"({ask.EXECUTOR_BRIDGE}, {ask.EXECUTOR_DAEMON}) — start them "
-                  f"(bin/answer-brain) and rerun.")
+            print(f"REFUSED: --gate-executor needs the bridge and its decider up "
+                  f"({ask.EXECUTOR_BRIDGE}) — start it "
+                  f"(bin/answer-bridge) and rerun.")
             return 2
 
         t0 = time.monotonic()
