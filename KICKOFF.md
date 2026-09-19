@@ -11,8 +11,8 @@ history and `CHANGELOG.md` replace all of it. Read `CLAUDE.md`, `MODEL.md`, `ROA
 
 What survives is the model: a string-blind decider, a Bayes act under a stated loss
 (`u_wrong = −9`, bar 0.90), provenance on every answer, never invent. What changes is who owns
-what: **proplang** ranks actions, **tannen** holds the records, the **ER core** (hkaddresses,
-once published) holds the posterior; this repo declares the menu, the prices and the utility,
+what: **proplang** ranks actions, **tannen** holds the records, the **ER core** (its own public
+repo, extracted from hkaddresses) holds the posterior; this repo declares the menu, the prices and the utility,
 and shapes the evidence. One home per responsibility; delete the duplicates.
 
 The MVP is **reusable by a stranger**, answering **verbatim point facts only** (graded by

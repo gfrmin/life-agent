@@ -2,8 +2,8 @@
 
 The design authority for **how** a question becomes an answer. `CLAUDE.md` governs rules and
 working method; nothing here overrides it. The vocabulary (`World`, `Prior`, channel, `Loss`)
-is the entity-resolution core's, so that when hkaddresses publishes its core (WP4) this repo is
-a conforming second instance of it.
+is the entity-resolution core's, so that when the core is extracted from hkaddresses into its own public repo, this repo
+and hkaddresses are two conforming instances of it.
 
 One sentence: **an answer is a Bayes act under a stated loss, chosen by the proplang engine,
 over a posterior on candidate spans, where the likelihood is a noisy channel of typed

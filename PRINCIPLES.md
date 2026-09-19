@@ -16,7 +16,7 @@ space**, acting by **argmax expected utility** — under the Bayesian paradigm e
 agent is this one machine, and ours differs only in *which* utility it serves (the owner's) and
 *which* decisions it ranges over. **proplang** runs the optimisation (the ruled successor of
 credence, 2026-08-25); the candidate posterior is a separate entity-resolution core (hosted here
-until the one split out of hkaddresses is published — `MODEL.md`); the body supplies the utility
+until it is published as its own public repo, extracted from hkaddresses — `MODEL.md`); the body supplies the utility
 and the decisions. The engine + (our utility, our decisions) *is* the agent — not a library it
 calls (§16).
 
