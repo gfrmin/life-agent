@@ -116,7 +116,7 @@ def u_bar_as_of(brain: Any, tx_time: str, *, shape: str | None = None
     events += R.load_reactions(config.REACTIONS_LOG, config.DECISIONS_LOG)
     events = [e for e in events if str(e.tx_time) <= tx_time]
     version = UT.fold_version(model, events, LK.U_BAR_POLICY)
-    post = UT.posterior(brain, model, events, policy=LK.U_BAR_POLICY)
+    post = UT.posterior(model, events, policy=LK.U_BAR_POLICY)
     raw = post.u_bar()
     from life_agent.core import answer_shape as AS
     return shaped_u_bar(raw, shape or AS.DEFAULT_SHAPE), version, len(events)
@@ -127,7 +127,7 @@ def u_bar_from(brain: Any, events: list[Any]) -> dict[str, float]:
     bar's movement into what the model declares, what the elicitations said, and what the
     reaction stream did."""
     model = UT.load_model(config.UTILITY_MODEL)
-    post = UT.posterior(brain, model, events, policy=LK.U_BAR_POLICY)
+    post = UT.posterior(model, events, policy=LK.U_BAR_POLICY)
     from life_agent.core import answer_shape as AS
     return shaped_u_bar(post.u_bar(), AS.DEFAULT_SHAPE)
 

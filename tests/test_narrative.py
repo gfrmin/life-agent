@@ -312,7 +312,7 @@ def test_narrative_answer_classifies_the_question_when_u_bar_is_not_supplied(
     from life_agent.core import lookup as LK
     seen_shapes: list[str] = []
 
-    def _spy(brain, *, shape: str = "exact"):
+    def _spy(*, shape: str = "exact"):
         seen_shapes.append(shape)
         return dict(U), "fold-spy", "all-to-date"
 

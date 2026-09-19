@@ -19,6 +19,7 @@ from life_agent.core import decisions as DEC
 from life_agent.core import gate as G
 from life_agent.core import lookup as LK
 from life_agent.core import narrative as N
+from life_agent.core import pricing as PR
 from life_agent.core.decide import shaped_u_bar, u_assert
 
 # A representative Ū (gauge + the action-pricing latents); values mirror the family tests.
@@ -51,7 +52,7 @@ def _legacy_action_utilities(weights: list[float], u_bar: dict[str, float],
         f"report_{j}": [(u_bar["u_correct"] if i == j else u_wrong) for i in range(k)] + [u_wrong]
         for j in range(k)}
     out["hedge"] = [u_bar["u_hedged"]] * k + [u_wrong]
-    out["ask_clarify"] = [LK._ORACLE_P * u_bar["u_correct"] - u_bar["lambda_int"]] * (k + 1)
+    out["ask_clarify"] = [PR.ORACLE_P * u_bar["u_correct"] - u_bar["lambda_int"]] * (k + 1)
     out["abstain"] = [u_bar["u_abstain"]] * (k + 1)
     out["report_scoped"] = [scoped_eu] * (k + 1)
     return out

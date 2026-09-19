@@ -3,13 +3,10 @@
 Hermetic strata:
 1. Pure parts: model loading, grid/gauge validation, endpoint-mass monitoring (`near_bound`),
    Ū extraction, fold_version determinism.
-2. The fold's RPC choreography over a scripted transport: one CONTINUOUS `truncated_gaussian`
-   per uncoupled latent (and a single `truncated_mv_gaussian` for a coupled component),
-   conditioning in tx order through declared kernels (gaussian_known_var / logistic_reaction /
-   linear_gaussian / margin_reaction), reading moments via mean/expect/marginal — no host grid.
-3. ``@pytest.mark.system``: the live Julia fold against an independent Python quadrature of the
-   continuous model (truncated-normal prior x elicitation x continuous-τ reaction) — the real
-   numerical check.
+2. The fold's numbers: against a dense independent quadrature of the continuous model, in the
+   directions evidence must move it, and on coupled components.
+3. The replay pin: every recorded proplang-shadow boot's Ū, re-folded from the evidence that
+   existed at that boot (needs the owner's KB).
 
 Run: uv run --project . python -m pytest tests/test_utility.py
 """
@@ -23,7 +20,6 @@ import pytest
 import yaml
 
 from life_agent.core import answer_shape as AS
-from life_agent.core import brain as B
 from life_agent.core import utility as U
 
 MODEL_YAML = """\
@@ -154,8 +150,7 @@ def test_a_declared_shape_latent_is_parsed_like_any_other(tmp_path: Path) -> Non
 
 
 def test_undeclared_shape_latents_are_absent_from_u_bar(model: U.UtilityModel) -> None:
-    t = SeqTransport()
-    post = U.posterior(B.Brain(t), model, [], policy="all-to-date")
+    post = U.posterior(model, [], policy="all-to-date")
     assert not (set(U.SHAPE_LATENT_NAMES) & set(post.u_bar()))
 
 
@@ -233,82 +228,24 @@ def test_load_elicitations_round_trip_and_bad_latent_loud(
         U.load_elicitations(p, model)
 
 
-# --- the fold: RPC choreography over a scripted transport --------------------------------
+# --- the fold ------------------------------------------------------------------------------
 
-class SeqTransport:
-    """Replies per method with scripted results; records every request."""
-
-    def __init__(self) -> None:
-        self.sent: list[dict] = []
-        self._n_states = 0
-        self._n_marg = 0
-
-    def send(self, line: str) -> None:
-        self.sent.append(json.loads(line))
-
-    def recv(self) -> str:
-        req = self.sent[-1]
-        method = req["method"]
-        if method == "create_state":
-            self._n_states += 1
-            result: object = {"state_id": f"s_{self._n_states}"}
-        elif method == "condition":
-            result = {"state_id": req["params"]["state_id"], "log_marginal": -0.1}
-        elif method == "marginal":
-            # a coordinate marginal of the joint → a NEW scalar state the fold reads with
-            # mean/expect (its own id namespace so create-order `s_n` mapping stays clean).
-            self._n_marg += 1
-            result = {"state_id": f"m_{self._n_marg}"}
-        elif method == "mean":
-            result = {"mean": -1.0}   # scripted (choreography asserts the RPC seq, not the value)
-        elif method == "expect":
-            result = {"value": 2.0}   # scripted variance (centered_power E[(x-mean)^2])
-        else:
-            result = "ok"
-        return json.dumps({"jsonrpc": "2.0", "id": req["id"], "result": result})
-
-    def close(self) -> None:
-        pass
-
-
-def test_fold_choreography_partitions_by_latent_and_orders_events(
+def test_the_fold_partitions_by_latent_and_keeps_untouched_priors(
         model: U.UtilityModel) -> None:
-    t = SeqTransport()
-    b = B.Brain(t)
     events: list[U.Evidence] = [
         U.Elicitation(tx_time="t1", latent="u_wrong", stated_value=-8.0, noise_sigma=2.0),
         U.Reaction(tx_time="t2", latent="u_wrong", reacted=True, sign=-1.0, threshold=0.0),
         U.Elicitation(tx_time="t3", latent="lambda_int", stated_value=0.5, noise_sigma=1.0),
     ]
-    post = U.posterior(b, model, events, policy="all-to-date")
-
-    creates = [r for r in t.sent if r["method"] == "create_state"]
-    conditions = [r for r in t.sent if r["method"] == "condition"]
-    destroys = [r for r in t.sent if r["method"] == "destroy_state"]
-    # one CONTINUOUS truncated_gaussian per latent — never for the gauge pins, never for τ
-    assert len(creates) == len(U.REQUIRED_LATENTS)
-    assert all(r["params"]["type"] == "truncated_gaussian" for r in creates)
-    assert len(destroys) == len(creates)
-    # three conditions total, in tx order within each latent
-    assert len(conditions) == 3
-    # the u_wrong elicitation kernel is a Gaussian observation (gaussian_known_var → NormalNormal);
-    # the body declares only the noise variance, no host density grid.
-    k0 = conditions[0]["params"]["kernel"]
-    assert k0 == {"type": "gaussian_known_var", "variance": 4.0}   # noise_sigma=2 ⇒ variance 4
-    assert conditions[0]["params"]["observation"] == -8.0
-    # the reaction kernel is the continuous-τ logistic_reaction — only (sign, threshold, τ-prior),
-    # NO τ-grid; the engine integrates τ and x internally.
-    k1 = conditions[1]["params"]["kernel"]
-    assert k1["type"] == "logistic_reaction" and k1["sign"] == -1.0 and k1["threshold"] == 0.0
-    assert (k1["tau_mu"] == model.tau.prior_mu and k1["tau_sigma"] == model.tau.prior_sigma
-            and k1["tau_lo"] == model.tau.grid.lo and k1["tau_hi"] == model.tau.grid.hi)
-    assert conditions[1]["params"]["observation"] == 1.0
-
-    # posterior carries every latent, gauge pins intact, fold version stamped
+    prior = U.posterior(model, [], policy="all-to-date")
+    post = U.posterior(model, events, policy="all-to-date")
     assert set(post.latents) == set(U.REQUIRED_LATENTS)
     assert post.u_bar()["u_correct"] == 1.0 and post.u_bar()["u_abstain"] == 0.0
-    assert post.n_events == 3
-    assert len(post.fold_version) == 64
+    assert post.n_events == 3 and len(post.fold_version) == 64
+    assert post.latents["u_wrong"].mean < prior.latents["u_wrong"].mean
+    assert post.latents["lambda_int"].mean < prior.latents["lambda_int"].mean
+    for name in ("u_hedged", "kappa_att", "lambda_usd", "u_wrong_scoped"):
+        assert post.latents[name] == prior.latents[name]
 
 
 def test_fold_version_changes_with_events(model: U.UtilityModel) -> None:
@@ -339,19 +276,17 @@ def test_endpoint_warnings(model: U.UtilityModel) -> None:
     assert inner_post.endpoint_warnings(threshold=0.01) == []
 
 
-# --- live: the skin's fold against an independent Python reference -----------------------
+# --- the fold against an independent dense reference ---------------------------------------
 
 def _ref_uwrong_moments(spec: U.LatentSpec, tau: U.LatentSpec, *, stated: float,
                         noise_sigma: float, sign: float, threshold: float) -> tuple[float, float]:
-    """A STRICT independent host oracle for the continuous u_wrong fold: a dense quadrature of the
-    declared model — TruncatedNormal(spec) prior x gaussian_known_var elicitation x continuous-τ
-    logistic reaction — over the support [lo,hi]. Mirrors the engine model EXACTLY (the same
-    32-pt τ marginalisation; a 40k-pt x grid the engine's 64-pt grid must converge to). This is a
-    test oracle, not host belief arithmetic: it never feeds a decision."""
+    """An independent dense quadrature of the continuous u_wrong model — truncated-normal prior x
+    Gaussian elicitation x tau-marginalised logistic reaction — on a 40k-point grid the fold's
+    64-point grid must converge to (the same 32-point tau marginalisation)."""
     lo, hi, nx, n_tau = spec.grid.lo, spec.grid.hi, 40001, 32
     tstep = (tau.grid.hi - tau.grid.lo) / n_tau
 
-    def react_logp1(x: float) -> float:  # P(react=1 | x) marginalising τ — the engine's form
+    def react_logp1(x: float) -> float:  # P(react=1 | x) marginalising τ
         p1 = z = 0.0
         for k in range(1, n_tau + 1):
             t = tau.grid.lo + (k - 0.5) * tstep
@@ -372,38 +307,27 @@ def _ref_uwrong_moments(spec: U.LatentSpec, tau: U.LatentSpec, *, stated: float,
     return mean, var
 
 
-@pytest.mark.system
-def test_live_fold_matches_reference_and_moves_u_wrong_correctly(
+def test_the_fold_matches_a_dense_reference_and_moves_u_wrong_down(
         model: U.UtilityModel) -> None:
-    if not (B._DEV_REPO or B._DEV_SERVER):
-        pytest.skip("set $CREDENCE_REPO or $CREDENCE_SKIN_SERVER to spawn a dev engine")
     events: list[U.Evidence] = [
         U.Elicitation(tx_time="t1", latent="u_wrong", stated_value=-8.0, noise_sigma=2.0),
         U.Reaction(tx_time="t2", latent="u_wrong", reacted=True, sign=-1.0, threshold=0.0),
     ]
-    with B.Brain.spawn() as b:
-        b.initialize()
-        prior = U.posterior(b, model, [])          # the engine's own prior fold — the baseline
-        post = U.posterior(b, model, events, policy="all-to-date")
+    prior = U.posterior(model, [], policy="all-to-date")
+    post = U.posterior(model, events, policy="all-to-date")
 
     uw = post.latents["u_wrong"]
-    # the verdict-shaped evidence must move Ū(u_wrong) down vs the engine's prior fold
     assert uw.mean < prior.latents["u_wrong"].mean
-    # strict independent reference: the engine's 64-pt quadrature must converge to a dense host one
     ref_mean, ref_var = _ref_uwrong_moments(
         model.latents["u_wrong"], model.tau, stated=-8.0, noise_sigma=2.0, sign=-1.0, threshold=0.0)
     assert uw.mean == pytest.approx(ref_mean, abs=1e-2)
     assert uw.variance == pytest.approx(ref_var, abs=1e-2)
 
 
-@pytest.mark.system
-def test_live_reaction_loop_good_on_abstain_lowers_u_wrong(
+def test_the_reaction_loop_good_on_abstain_lowers_u_wrong(
         model: U.UtilityModel, tmp_path: Path) -> None:
-    """The §4.4 loop end to end through the real skin: a good-on-abstain verdict, joined
-    to its decision by decision_id, produces a Reaction that lowers Ū(u_wrong) — the
-    owner's behaviour, not a fabricated number, moving the belief."""
-    if not (B._DEV_REPO or B._DEV_SERVER):
-        pytest.skip("set $CREDENCE_REPO or $CREDENCE_SKIN_SERVER to spawn a dev engine")
+    """The §4.4 loop end to end: a good-on-abstain verdict, joined to its decision by
+    decision_id, produces a Reaction that lowers Ū(u_wrong)."""
     from life_agent.core import decisions as DEC
     from life_agent.core import reactions as R
 
@@ -418,10 +342,8 @@ def test_live_reaction_loop_good_on_abstain_lowers_u_wrong(
     events = R.load_reactions(rpath, dpath)
     assert len(events) == 1  # the producer folds the clean abstain row
 
-    with B.Brain.spawn() as b:
-        b.initialize()
-        prior = U.posterior(b, model, [])          # the engine's own prior fold — the baseline
-        post = U.posterior(b, model, list(events))
+    prior = U.posterior(model, [], policy="all-to-date")
+    post = U.posterior(model, list(events), policy="all-to-date")
     assert post.latents["u_wrong"].mean < prior.latents["u_wrong"].mean
 
 
@@ -434,95 +356,41 @@ def _margin_good(p: float) -> U.MarginReaction:
         offset=-(p ** 2), reacted=True, sign=-1.0, tau_group="narrative")
 
 
-def test_margin_reaction_folds_on_one_joint_grid(model: U.UtilityModel) -> None:
-    t = SeqTransport()
-    post = U.posterior(B.Brain(t), model, [_margin_good(0.6)], policy="all-to-date")
-    creates = [r for r in t.sent if r["method"] == "create_state"]
-    conditions = [r for r in t.sent if r["method"] == "condition"]
-    marginals = [r for r in t.sent if r["method"] == "marginal"]
-    # one JOINT `truncated_mv_gaussian` over the two coupled latents {u_wrong, κ_att} — the engine
-    # owns the joint grid, the body declares only continuous data; the three untouched latents
-    # (u_wrong_scoped, u_hedged, lambda_int) are 1-D `truncated_gaussian`s. NO host grid anywhere.
-    mv = [c for c in creates if c["params"]["type"] == "truncated_mv_gaussian"]
-    trunc = [c for c in creates if c["params"]["type"] == "truncated_gaussian"]
-    assert len(creates) == 5 and len(mv) == 1 and len(trunc) == 4  # +lambda_usd (uncoupled)
-    assert len(mv[0]["params"]["mu"]) == 2  # exactly the two coupled latents, no others
-    # the margin couples them via a `margin_reaction` kernel carrying a length-2 coefficient vector
-    jk = conditions[0]["params"]["kernel"]
-    assert jk["type"] == "margin_reaction" and len(jk["coeffs"]) == 2
-    # each coupled latent is read back with a `marginal` (one per coordinate) — no host arithmetic
-    assert len(marginals) == 2 and {m["params"]["axis"] for m in marginals} == {0, 1}
-    # the readout flows through to the posterior (scripted mean/variance from the wire)
-    uw, ka = post.latents["u_wrong"], post.latents["kappa_att"]
-    assert uw.mean == -1.0 and uw.variance == 2.0 and uw.lo == model.latents["u_wrong"].grid.lo
-    assert ka.mean == -1.0 and ka.lo == model.latents["kappa_att"].grid.lo
-
-
 def test_lookup_and_narrative_u_wrong_share_one_joint(model: U.UtilityModel) -> None:
     # a lookup Reaction on u_wrong and a narrative MarginReaction co-occur u_wrong, so they
-    # fold on ONE joint grid — never u_wrong 1-D then narrative joint (the interleave error)
-    t = SeqTransport()
+    # fold as ONE component — never u_wrong 1-D then a separate narrative joint
     events: list[U.Evidence] = [
         U.Reaction(tx_time="t1", latent="u_wrong", reacted=True, sign=-1.0, threshold=0.5),
         _margin_good(0.6),
     ]
-    U.posterior(B.Brain(t), model, events, policy="all-to-date")
-    creates = [r for r in t.sent if r["method"] == "create_state"]
-    conditions = [r for r in t.sent if r["method"] == "condition"]
-    # u_wrong is absorbed into ONE joint `truncated_mv_gaussian` with κ_att — never a standalone
-    # u_wrong 1-D state then a separate narrative joint (the interleave error). Exactly one mv joint
-    # (the 2 coupled latents) + 3 one-dimensional truncated_gaussians (the uncoupled latents).
-    mv = [c for c in creates if c["params"]["type"] == "truncated_mv_gaussian"]
-    trunc = [c for c in creates if c["params"]["type"] == "truncated_gaussian"]
-    assert len(mv) == 1 and len(mv[0]["params"]["mu"]) == 2 and len(trunc) == 4
-    joint_idx = next(i for i, c in enumerate(creates)
-                     if c["params"]["type"] == "truncated_mv_gaussian")
-    joint_id = f"s_{joint_idx + 1}"  # SeqTransport assigns create-state ids in create order
-    # both events (lookup Reaction + narrative MarginReaction) condition the SAME joint state
-    assert sum(1 for c in conditions if c["params"]["state_id"] == joint_id) == 2
+    comps = U._components(model.latents, events)
+    assert frozenset({"u_wrong", "kappa_att"}) in comps
+    assert all(len(c) == 1 for c in comps if "u_wrong" not in c)
 
 
-@pytest.mark.system
-def test_live_narrative_good_on_abstain_moves_both_latents(model: U.UtilityModel) -> None:
-    """The §7.1 joint fold end to end through the real skin: a good-on-abstain verdict
-    ("right to withhold") is a low-margin observation, pushing u(wrong) DOWN and κ_att UP
-    jointly; the untouched latents stay at their prior."""
-    if not (B._DEV_REPO or B._DEV_SERVER):
-        pytest.skip("set $CREDENCE_REPO or $CREDENCE_SKIN_SERVER to spawn a dev engine")
-    with B.Brain.spawn() as b:
-        b.initialize()
-        prior = U.posterior(b, model, [])          # the engine's continuous prior fold
-        post = U.posterior(b, model, [_margin_good(0.6)])
-
-    # Both prior and posterior are now CONTINUOUS engine folds: the coupled latents' joint is a
-    # `truncated_mv_gaussian` whose per-coordinate marginal (n_per=64 at d=2) equals the 1-D
-    # truncated prior (n=64). So baseline directly against the engine prior fold — no host grid,
-    # no representation split (Phase B retired `_fold_joint`'s host grid).
+def test_narrative_good_on_abstain_moves_both_latents(model: U.UtilityModel) -> None:
+    """The §7.1 joint fold: a good-on-abstain verdict ("right to withhold") is a low-margin
+    observation, pushing u(wrong) DOWN and κ_att UP jointly; the untouched latents stay at
+    their prior."""
+    prior = U.posterior(model, [], policy="all-to-date")
+    post = U.posterior(model, [_margin_good(0.6)], policy="all-to-date")
     assert post.latents["u_wrong"].mean < prior.latents["u_wrong"].mean
     assert post.latents["kappa_att"].mean > prior.latents["kappa_att"].mean
     # u_hedged is UNCOUPLED → its own 1-D fold; it stays at its prior
     assert post.latents["u_hedged"].mean == pytest.approx(prior.latents["u_hedged"].mean)
 
 
-@pytest.mark.system
 def test_lookup_u_wrong_marginal_is_invariant_when_pulled_into_a_joint(
         model: U.UtilityModel) -> None:
-    """A margin reaction flat in u(wrong) (coeff 0) structurally pulls it into the {u_wrong, κ_att}
-    joint, but — independent prior product, lookup likelihood flat in κ_att — the joint factorises,
-    so the marginalised u(wrong) equals the 1-D fold. Now that BOTH paths are the engine's
-    continuous quadrature on the SAME u_wrong grid (the 1-D `truncated_gaussian` and the mv joint's
-    u_wrong axis are both the 64-pt midpoint grid over [lo,hi]), and the flat margin depends only on
-    κ_att (so it factors out of the u_wrong marginal, up to a constant that cancels),
-    the marginalised u(wrong) equals the 1-D fold to machine precision."""
-    if not (B._DEV_REPO or B._DEV_SERVER):
-        pytest.skip("set $CREDENCE_REPO or $CREDENCE_SKIN_SERVER to spawn a dev engine")
+    """A margin reaction flat in u(wrong) (coeff 0) pulls it into the {u_wrong, κ_att} joint,
+    but the joint factorises (independent prior, lookup likelihood flat in κ_att), and the 1-D
+    grid and the joint's u_wrong axis are the same 64 midpoints — so the marginalised u(wrong)
+    equals the 1-D fold to machine precision."""
     lookup = U.Reaction(tx_time="t", latent="u_wrong", reacted=True, sign=-1.0, threshold=0.5)
     flat = U.MarginReaction(tx_time="t", coeffs=(("kappa_att", -1.0), ("u_wrong", 0.0)),
                             offset=0.0, reacted=True, sign=-1.0, tau_group="narrative")
-    with B.Brain.spawn() as b:
-        b.initialize()
-        one_d = U.posterior(b, model, [lookup])
-        joint = U.posterior(b, model, [lookup, flat])
+    one_d = U.posterior(model, [lookup], policy="all-to-date")
+    joint = U.posterior(model, [lookup, flat], policy="all-to-date")
     uw_1d, uw_joint = one_d.latents["u_wrong"], joint.latents["u_wrong"]
     assert uw_joint.mean == pytest.approx(uw_1d.mean, abs=1e-9)
     assert uw_joint.variance == pytest.approx(uw_1d.variance, abs=1e-9)
@@ -534,7 +402,7 @@ def test_lookup_u_wrong_marginal_is_invariant_when_pulled_into_a_joint(
 def test_posterior_requires_a_policy(model: U.UtilityModel) -> None:
     # the regime indicator is a required keyword — no old spelling survives (design §3.1)
     with pytest.raises(TypeError):
-        U.posterior(B.Brain(SeqTransport()), model, [])  # type: ignore[call-arg]
+        U.posterior(model, [])  # type: ignore[call-arg]
 
 
 def test_frozen_elicitations_refuses_the_projection(model: U.UtilityModel) -> None:
@@ -544,7 +412,7 @@ def test_frozen_elicitations_refuses_the_projection(model: U.UtilityModel) -> No
     ev: list[U.Evidence] = [U.Reaction(tx_time="t1", latent="u_wrong", reacted=True,
                                        sign=-1.0, threshold=0.0)]
     with pytest.raises(ValueError, match="frozen-elicitations"):
-        U.posterior(B.Brain(SeqTransport()), model, ev, policy="frozen-elicitations")
+        U.posterior(model, ev, policy="frozen-elicitations")
 
 
 def test_all_to_date_accepts_the_projection_and_stamps_the_policy(
@@ -553,14 +421,14 @@ def test_all_to_date_accepts_the_projection_and_stamps_the_policy(
         U.Elicitation(tx_time="t1", latent="u_wrong", stated_value=-8.0, noise_sigma=2.0),
         U.Reaction(tx_time="t2", latent="u_wrong", reacted=True, sign=-1.0, threshold=0.0),
     ]
-    post = U.posterior(B.Brain(SeqTransport()), model, ev, policy="all-to-date")
+    post = U.posterior(model, ev, policy="all-to-date")
     assert post.policy == "all-to-date"
     assert post.fold_version == U.fold_version(model, ev, "all-to-date")
 
 
 def test_an_unknown_policy_is_refused(model: U.UtilityModel) -> None:
     with pytest.raises(ValueError, match="policy"):
-        U.posterior(B.Brain(SeqTransport()), model, [], policy="everything")
+        U.posterior(model, [], policy="everything")
 
 
 def test_fold_version_covers_the_policy(model: U.UtilityModel) -> None:
@@ -576,3 +444,50 @@ def test_fold_version_covers_the_policy(model: U.UtilityModel) -> None:
 def test_fold_version_requires_the_policy(model: U.UtilityModel) -> None:
     with pytest.raises(TypeError):
         U.fold_version(model, [])  # type: ignore[call-arg]
+
+
+# --- the replay pin: every recorded boot's Ū -----------------------------------------------
+
+# The proplang shadow logged Ū at each of its 23 boots (2026-07-18 → 2026-09-12), folded by
+# the credence skin. Re-folding the evidence that existed at each boot must reproduce it; the
+# boots span three evidence sets (11, 12-13 and 55 events). Julia's exp/log round differently
+# from libm in the last ulp, so the tolerance is the measured residue (4.4e-16 relative).
+_MODEL_SHA = "b4fdc98741e4c1d92bab8f3a03c7ce412e70a02f6f2bb0160da5f71af7860cd4"
+_ELICITATIONS_SHA = "710ed2a9feff31316bb5a1fb2c629e7587dd633e10c37d5f64025340634f45b2"
+_BOOT_REL_TOL = 1e-15
+
+
+def test_the_fold_replays_every_recorded_boot_u_bar() -> None:
+    import hashlib
+    import os
+    from datetime import UTC, datetime
+
+    from life_agent.core import reactions as R
+
+    kb = Path(os.environ.get("LIFE_AGENT_KB") or "/nonexistent")
+    shadow = kb / "membrane" / "shadow.jsonl"
+    model_path, elicit = kb / "utility" / "model.yaml", kb / "utility" / "elicitations.jsonl"
+    if not (shadow.is_file() and model_path.is_file()):
+        pytest.skip("needs the owner's KB ($LIFE_AGENT_KB with membrane/shadow.jsonl and "
+                    "utility/model.yaml); owner data, not buildable")
+    for path, sha in ((model_path, _MODEL_SHA), (elicit, _ELICITATIONS_SHA)):
+        assert hashlib.sha256(path.read_bytes()).hexdigest() == sha, (
+            f"{path.name} changed since the boots were recorded; re-pin deliberately")
+    model = U.load_model(model_path)
+    events: list[U.Evidence] = [
+        *U.load_elicitations(elicit, model),
+        *R.load_reactions(kb / "calibration" / "reactions.jsonl",
+                          kb / "calibration" / "decisions.jsonl")]
+    boots = [row for row in map(json.loads, shadow.read_text(encoding="utf-8").splitlines())
+             if row.get("kind") == "boot" and row.get("u_bar")]
+    assert len(boots) >= 23
+    folds: dict[int, dict[str, float]] = {}
+    for boot in boots:
+        at = datetime.fromtimestamp(boot["ts"], UTC).isoformat()
+        seen = [e for e in events if str(e.tx_time) <= at]
+        if len(seen) not in folds:
+            folds[len(seen)] = U.posterior(model, seen, policy="all-to-date").u_bar()
+        got = folds[len(seen)]
+        for name, want in boot["u_bar"].items():
+            assert abs(got[name] - want) <= _BOOT_REL_TOL * max(1.0, abs(want)), (at, name)
+    assert len(folds) >= 3

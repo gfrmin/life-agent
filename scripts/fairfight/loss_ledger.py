@@ -56,7 +56,7 @@ MODELLING_CHOICES: tuple[str, ...] = (
     "the oracle.",
     "regret = realised_utility(oracle) - realised_utility(actual), priced by "
     "life_agent.core.gate.realised_utility under u ~ P(U); ask_clarify would be priced at "
-    "oracle_p (life_agent.core.lookup._ORACLE_P), though neither act uses it in v1.",
+    "oracle_p (life_agent.core.pricing.ORACLE_P), though neither act uses it in v1.",
     "empirical pi* (v2): the reference arm's REALISED acts, mapped by the same actual-act "
     "rule and priced under the SAME u draw as the arm's act (paired sampling). Unlike the "
     "dominating oracle, pi* is a fallible, UNAUDITED policy (until its oracle-vs-gold "
@@ -522,19 +522,18 @@ def main() -> int:
     args = parser.parse_args()
 
     import life_agent.core.config as LCFG
-    import life_agent.core.lookup as LK
+    import life_agent.core.pricing as PR
     import life_agent.core.utility as UT
 
     # the FULL utility posterior, folded from the FROZEN model + elicitations (the same wiring
     # the adoption gate uses; blind discipline — untouched here)
-    brain = LK.shared_brain()
     model = UT.load_model(LCFG.UTILITY_MODEL)
     evidence: list[UT.Evidence] = list(UT.load_elicitations(LCFG.UTILITY_ELICITATIONS, model))
-    posterior = UT.posterior(brain, model, evidence, policy="frozen-elicitations")
+    posterior = UT.posterior(model, evidence, policy="frozen-elicitations")
     for warning in posterior.endpoint_warnings(model.endpoint_mass_warn):
         print(f"  ⚠ {warning}")
 
-    ledger = load_and_build(args.run_dir, args.arm, posterior, oracle_p=LK._ORACLE_P,
+    ledger = load_and_build(args.run_dir, args.arm, posterior, oracle_p=PR.ORACLE_P,
                             n_samples=args.samples, seed=args.seed,
                             pi_star_run_dir=args.pi_star_run_dir,
                             pi_star_arm=args.pi_star_arm or None)

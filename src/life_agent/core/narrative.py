@@ -221,7 +221,7 @@ def population_posteriors(brain: Brain, outcomes_path: Path = config.OUTCOMES_LO
     by_cell = _cell_observations(outcomes_path)
     post: dict[str, tuple[float, float]] = {}
     for cell in _CELL_PRIORS:
-        post[cell] = REL.reliability(brain, "eval_claim", cell, by_cell[cell])
+        post[cell] = REL.reliability("eval_claim", cell, by_cell[cell])
     return post
 
 
@@ -464,7 +464,7 @@ def narrative_answer(root: Path, question: str, text: str,
         # r30 (C5): this question's own answer shape prices its own decision — never a
         # separate rescoring, always through current_u_bar's one seam.
         u_bar, utility_fold_version, _policy = LK.current_u_bar(
-            b, shape=AS.answer_space(question))
+            shape=AS.answer_space(question))
 
     opath = outcomes_path if outcomes_path is not None else config.OUTCOMES_LOG
     cards = list(cards)
