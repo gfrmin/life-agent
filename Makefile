@@ -1,0 +1,42 @@
+.PHONY: check test-all score score-quick data sets engine
+
+PY := uv run python
+# pytest workers; 1 runs single-process.
+WORKERS ?= 6
+
+# ruff + the default test tier (no live model calls, no heavy producers), under two minutes.
+# A test that needs data you have not built skips and names what builds it.
+check:
+	uv run ruff check .
+	uv run pytest -q -n $(WORKERS)
+
+# Everything, including live-LLM and heavy-producer tests (non-deterministic; costs money).
+test-all:
+	uv run ruff check .
+	uv run pytest -q -n $(WORKERS) -m "llm or system or not (llm or system)"
+
+# The full board -> SCOREBOARD.md + eval/scoreboard.json, committed with the change. Run once
+# per PR; rule 5 (wrong may not rise > 0.2 pp on any row without the owner) is read here.
+score:
+	$(PY) -m eval.score --gate --write
+
+# While iterating: print the board, write nothing.
+score-quick:
+	$(PY) -m eval.score --gate
+
+# Your data -> pkm: every enabled root in data-sources.yaml (maildir or filetree).
+data:
+	$(PY) scripts/ingest_sources.py
+
+# The ATM-Bench external KB (a second LIFE_AGENT_KB root). Needs the released files:
+#   make sets ATM_EMAILS=... ATM_QA=... ATM_OUT=... ATM_STORE=...
+# Idempotent: a second run writes nothing. The corpus is CC-BY-NC and never enters the repo.
+sets:
+	@test -n "$(ATM_EMAILS)" -a -n "$(ATM_QA)" -a -n "$(ATM_OUT)" -a -n "$(ATM_STORE)" || \
+	  { echo "usage: make sets ATM_EMAILS=… ATM_QA=… ATM_OUT=… ATM_STORE=…" >&2; exit 2; }
+	$(PY) scripts/atm_bench/build_kb.py --emails $(ATM_EMAILS) --qa $(ATM_QA) \
+	  --out $(ATM_OUT) --store $(ATM_STORE) --gauge-from $${LIFE_AGENT_KB:?set LIFE_AGENT_KB}
+
+# The pinned decider engine (config/engine.lock) -> ~/.local/bin/proplang-host.
+engine:
+	scripts/engine.sh

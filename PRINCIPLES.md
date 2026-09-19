@@ -14,9 +14,11 @@ on it**. Two layers: the KB *derives* (pkm); the agent *decides* (life_agent). E
 belongs to exactly one. The agent is, exactly, a **belief**, a **utility**, and a **decision
 space**, acting by **argmax expected utility** — under the Bayesian paradigm every autonomous
 agent is this one machine, and ours differs only in *which* utility it serves (the owner's) and
-*which* decisions it ranges over. **credence** holds the belief and runs the optimisation; the
-body supplies the utility and the decisions. credence + (our utility, our decisions) *is* the
-agent — not a library it calls (§16).
+*which* decisions it ranges over. **proplang** runs the optimisation (the ruled successor of
+credence, 2026-08-25); the candidate posterior is a separate entity-resolution core (hosted here
+until the one split out of hkaddresses is published — `MODEL.md`); the body supplies the utility
+and the decisions. The engine + (our utility, our decisions) *is* the agent — not a library it
+calls (§16).
 
 **§2. The KB layer — trustworthy transformations.** Trust is structural, not aspirational.
 Every derived artifact is **cited** (traceable to source bytes), **content-addressed**
@@ -33,7 +35,7 @@ with a stronger model, derive a new artifact, route to another model — each an
 cost and a *modelled, uncertain* outcome, ranked by value of information (§16). Believing,
 computing, and answering are one EU ranking over one space; only outward **write-actions** wait
 on the goals/utility model. The destination is decision-theoretic autonomy:
-value-of-information-driven ask / proceed / block. That is why **credence** is the brain and not
+value-of-information-driven ask / proceed / block. That is why the **decision engine** is the brain and not
 optional, and why a **goals/utility model is owed before any autonomous write-action**.
 
 **§4. Prime directive — compose, don't rebuild.** ~90% of the building blocks exist in the
@@ -97,7 +99,7 @@ publicly; never use `tailscale serve`/funnel.
 
 **§14. Resolved decisions.** Do not relitigate without new evidence:
 - **First win:** ask-anything search with citations. **Scope:** text-first.
-- **Memory = pkm extended**; **brain = credence**; this repo is the composition root —
+- **Memory = pkm extended**; **brain = proplang** (credence until 2026-09-19); this repo is the composition root —
   capabilities compose over seams (§5), they don't merge into one app.
 - **The Phase-0 compiled wiki is retired**: built, measured against retrieval
   ([`SPEC-comparison.md`](./SPEC-comparison.md) is the frozen record), and rejected — compiling
@@ -131,7 +133,7 @@ publicly; never use `tailscale serve`/funnel.
   declared evidence policies (frozen-elicitations for the gate, all-to-date for the decider —
   a regime indicator, not a flag), one utility atom (`u_assert`) from which every host
   spelling derives, one price table, one poster recording every decision once with its
-  regime and policy. Adopted on the module-collapse census (`docs/unification/reports/
+  regime and policy. Adopted on the module-collapse census (`archive/docs/unification/reports/
   r00-collapse-census.md` + addendum) and the reviewed design (`docs/module-collapse-design.md`);
   its behaviour-preservation instrument is the decision-equivalence fixture set (design §7),
   and each checkpoint of its migration is eval-gated (design §8).

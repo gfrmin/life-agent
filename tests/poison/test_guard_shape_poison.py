@@ -198,37 +198,13 @@ _EXEMPT = {"poison/test_guard_shape_poison.py"}
 # than its property. For a RATCHET a false positive costs one pinned line; a false negative
 # is a guard that cannot see the next violation. The measured set is pinned as measured.
 _SUBSTRING_PROOF_BASELINE: dict[str, int] = {
-    "poison/test_oracle_poison.py::test_poison_the_demand_log_names_the_same_transform": 1,
-    "test_collapse_record.py::test_only_the_collapse_instrument_installs_a_shared_brain": 1,
-    "test_guard_register.py::test_the_headline_count_equals_the_rows_it_counts": 1,
     "test_k1_family_deletion.py::test_deleted_family_symbols_resolve_nowhere": 1,
     "test_loss_ledger.py::test_write_outputs_lands_both_files_under_run_dir": 1,
-    "test_m5_absorption.py::test_ask_has_no_gather_fork": 1,
-    "test_m5_absorption.py::test_ask_has_no_weak_retrieval_predicate": 3,
-    "test_m5_absorption.py::test_ask_once_has_no_dispatch_choice": 1,
-    "test_m5_absorption.py::test_bridge_has_no_decide_live_endpoint": 2,
-    "test_m5_absorption.py::test_drive_has_no_live_branch": 2,
-    "test_m5_absorption.py::test_shadow_keeps_the_feed_not_the_live_half": 2,
-    # r34 CONVERTED one of this guard's two substring proofs to a word-bounded regex:
-    # the bare substring `LK._candidate_key(c) == vk` also matches the confirm probe's
-    # `== vkey`, so the old spelling would have passed on the wrong line. 2 -> 1.
-    "test_m6_declaration.py::test_d11_the_lattice_join_is_one_declaration": 1,
-    "test_m6_declaration.py::test_d13_the_stack_urls_are_read_once": 4,
-    "test_m6_declaration.py::test_d15_the_declaration_names_every_branch": 5,
-    "test_m7_register.py::test_d6_executor_withhold_derives_from_the_one_vocabulary": 1,
-    "test_m7_register.py::test_the_register_headings_equal_the_census": 1,
     "test_pricing_table.py::test_lambda_usd_has_one_source_and_fails_loud": 1,
     "test_pricing_table.py::test_no_priced_constant_is_declared_outside_the_table": 2,
     "test_pricing_table.py::test_realised_utility_report_branch_is_spelled_through_the_atom": 1,
     "test_recorder.py::test_the_family_leaves_do_not_append_the_decision_ledger_themselves": 1,
-    # r34 A0.3: an ABSENCE proof, the opposite polarity to the class this rule polices. It
-    # asserts NO src/ module mentions the governance log; a mention in a comment makes it
-    # FAIL, never pass, so the r23 F10 failure mode (a comment satisfying the substring while
-    # the chain is re-spelled) cannot apply. An AST call-check would be strictly weaker here —
-    # it cannot see the comment that is itself the first step toward a fold input.
-    "test_rulings_register.py::test_the_governance_log_is_unfoldable": 1,
     "test_reliability.py::test_the_fold_lives_once": 5,
-    "test_replay_audit.py::test_the_arms_of_one_question_share_a_retrieval_draw": 1,
     "test_seam.py::test_only_the_seam_calls_optimise": 1,
     "test_seam.py::test_only_the_seam_posts_decide": 1,
 }

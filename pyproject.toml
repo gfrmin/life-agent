@@ -47,6 +47,7 @@ dev = [
     "ruff>=0.6",
     "types-PyYAML>=6.0",
     "types-jsonschema>=4.26.0.20260408",
+    "pytest-xdist>=3.8.0",
 ]
 
 [build-system]
@@ -61,7 +62,7 @@ packages = ["src/pkm", "src/life_agent"]
 line-length = 100
 # r51b 2e: ATM-Bench's evaluator is vendored byte-for-byte at a pinned sha (its SOURCE names the
 # one edit per file); upstream style is not ours to lint.
-extend-exclude = ["scripts/atm_bench/vendored"]
+extend-exclude = ["scripts/atm_bench/vendored", "archive"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "UP", "B", "SIM", "RUF"]
@@ -88,9 +89,9 @@ known-first-party = ["life_agent", "pkm"]
 # None-guard, partial protocol stand-ins — so strict body-checking there fights the test
 # design rather than finding bugs (a full tests pass surfaced 0 production bugs). pytest
 # is the gate for tests.
-files = ["src", "scripts"]
+files = ["src", "scripts", "eval"]
 # r51b 2e: the vendored ATM-Bench evaluator is upstream code at a pinned sha, not ours to type.
-exclude = ['^scripts/atm_bench/vendored/']
+exclude = ['^scripts/atm_bench/vendored/', '^archive/']
 warn_unreachable = true
 warn_unused_ignores = true
 warn_redundant_casts = true

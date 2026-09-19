@@ -57,16 +57,14 @@ def test_numeric_value_parses_the_first_number(text: object, expected: float | N
 
 def test_numeric_value_is_the_only_parser_the_graders_use(
         monkeypatch: pytest.MonkeyPatch) -> None:
-    """C7 — run_eval and aggregate_eval BIND the decision-side parser, never a second copy.
+    """C7 — run_eval BINDS the decision-side parser, never a second copy (aggregate_eval
+    archived at J0).
 
     Agreement is not enough: two identical regexes agree until one is edited. This drives the
-    binding — a redefined parser must be visible through BOTH grading entry points, which is
-    false the moment either holds a copy of its own."""
+    binding — a redefined parser must be visible through the grading entry point, which is
+    false the moment it holds a copy of its own."""
     import importlib
     run_eval = importlib.import_module("run_eval")
-    agg = importlib.import_module("aggregate_eval")
-    # aggregate_eval binds by IDENTITY — the strongest form; there is nothing to diverge.
-    assert agg._numeric is AS.numeric_value
     # run_eval folds over gold + variants, so identity cannot hold; drive the binding instead.
     monkeypatch.setattr(AS, "numeric_value", lambda _text: 42.0)
     assert run_eval._numeric_gold("210", []) == 42.0

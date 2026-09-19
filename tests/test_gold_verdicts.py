@@ -22,7 +22,6 @@ sys.path.insert(0, "scripts")
 
 import claude_verdict as CLI
 import gold_verdicts as GV
-import membrane.p3_gate as P3
 
 from life_agent.core import claude_verdicts as CV
 from life_agent.core import decisions as DEC
@@ -173,7 +172,9 @@ def test_rows_replay_through_shadow_reader_and_keyed_replay(kb: Path) -> None:
     _seed(kb, *decisions)
     assert GV.main(["grade", "--kb", str(kb)]) == 0
     events = SH._read_claude_verdicts(kb / "calibration" / "claude_verdicts.jsonl")
-    ticks = P3.keyed_verdict_replay(decisions, [], events)
+    # the p3 harness is archived (J0 reset); the decider's boot replay re-homes it at J1
+    p3 = pytest.importorskip("membrane.p3_gate", reason="archived at J0: archive/scripts/membrane")
+    ticks = p3.keyed_verdict_replay(decisions, [], events)
     assert [(t.question_id, t.y) for t in ticks] == [
         (DEC.question_id(QUESTIONS[1]["question"]), 1),
         (DEC.question_id(QUESTIONS[0]["question"]), 0)]

@@ -36,11 +36,6 @@ jobs:
       - name: Sync dependencies
         run: uv sync
 
-      - name: Lint (ruff)
-        # Whole tree (incl. .githooks): scoping to src/tests/scripts let the PII
-        # guard's own lint rot unnoticed.
-        run: uv run ruff check .
-
       - name: Typecheck (mypy — strict on src, lenient on scripts; see pyproject)
         run: uv run mypy
 
@@ -69,10 +64,11 @@ jobs:
           fi
           echo "harness positive control reported a real failure, as required"
 
-      - name: Tests
-        # `system`-marked tests need heavy producer runtime (tesseract binary,
-        # docling models) not present on a minimal runner; they run locally.
-        run: uv run pytest -m "not llm and not system"
+      - name: make check (ruff over the whole tree + the default test tier)
+        # Ruff covers .githooks too: scoping it to src/tests/scripts let the PII guard's own
+        # lint rot unnoticed. The default tier excludes `llm`/`system` (live model calls,
+        # heavy producer runtimes); tests needing owner data skip and say so.
+        run: make check WORKERS=4
 
       - name: PII guard (shapes-only over the tracked tree)
         run: uv run python .githooks/pii_check.py --shapes-only

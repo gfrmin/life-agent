@@ -23,7 +23,7 @@ guard still works is a violation someone planted, watching it die.
 Almost all guard code anywhere is *instrumented* and gets called done. This register exists
 so that the difference between "has a checker" and "is checked" stays visible.
 
-## The method — ruled 2026-08-31 (owner, `RULINGS.md` `G-3`)
+## The method — ruled 2026-08-31 (owner, `archive/docs/unification/RULINGS.md` `G-3`)
 
 > **A guard must name the universe it checked and fail when that universe is empty; and a
 > control counts as a control only if removing what it controls for turns it RED —

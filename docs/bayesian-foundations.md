@@ -2847,7 +2847,7 @@ on this list. Answers land here by amendment, citing their evidence.
   read here — the probe's observations are not in the records.
 
 - **r07 READ (2026-08-22 pass 1, three arms, 67 of 104; 2026-08-23 pass 2, deployed only, 73
-  of 104; $0 across every pass; report `docs/unification/reports/r07-recorded-replay.md`, THE
+  of 104; $0 across every pass; report `archive/docs/unification/reports/r07-recorded-replay.md`, THE
   READING).** Fidelity 66/67 and 72/73 with the SAME divergent row both times; the no-site
   control reads 9/9 and the 7 of r06's 8 disagreeing control rows that replayed all agree with
   the record — **the 28% floor was the decide layer** (prediction 1 CONFIRMED at 100%).
@@ -2964,7 +2964,7 @@ on this list. Answers land here by amendment, citing their evidence.
   known-and-uncovered source with a measured incidence and a named witness.
 
 - **§6.13 REPAIRED — the window is no longer the sampler (r08, 2026-08-23/24,
-  `docs/unification/reports/r08-window-determinism.md`, $0).** Fix (b) of the three named
+  `archive/docs/unification/reports/r08-window-determinism.md`, $0).** Fix (b) of the three named
   candidates, frozen blind in r08's pre-registration and landed under TDD (`src/pkm/
   retrieval.py`, SPEC 0.18.2): the declared total order goes into the SQL before `LIMIT`, so
   the engine cuts a declared prefix. The baseline first reproduced the defect and decomposed
@@ -2987,7 +2987,7 @@ on this list. Answers land here by amendment, citing their evidence.
   the standing arbitrariness record.
 
 - **r09 — the §5-deduped JOIN is on the decision path; the replace branch is retired at the
-  probe sites (2026-08-24, `docs/unification/reports/r09-deduped-join.md`, $0, register
+  probe sites (2026-08-24, `archive/docs/unification/reports/r09-deduped-join.md`, $0, register
   §6.12).** Ruling 1 enacted under its own frozen pre-registration (committed before any
   `src/` change): the §5 dedup key rides every wire observation (quote, doc_key, and
   value_norm — the third field C2's identity forced in TDD, disclosed as the checkpoint's
@@ -3055,8 +3055,8 @@ on this list. Answers land here by amendment, citing their evidence.
 
 - **r09e + the entity-key conferral + r10 — the tree of record read, one ruling enacted, one
   lever refused by its own bar (2026-08-25, all $0,
-  `docs/unification/reports/{r09e-tree-of-record,r10-entity-key}.md`,
-  `docs/unification/conferrals/entity-key-conferral.md`).** r09e replayed run 13's record on
+  `archive/docs/unification/reports/{r09e-tree-of-record,r10-entity-key}.md`,
+  `archive/docs/unification/conferrals/entity-key-conferral.md`).** r09e replayed run 13's record on
   the parked tree itself: 66/104 readable (the §18.9 warm-through grows the readable set pass
   over pass — 58 → 66 → 68 across three passes); two of run 13's four wrong rows still commit
   wrong, one is repaired to withheld, one is cold, so **a gate run on this tree fails a
@@ -3088,7 +3088,7 @@ on this list. Answers land here by amendment, citing their evidence.
 
 - **Run 14 — the gate PASSES and the §6.12 deployment block CLOSES (2026-08-25,
   `gate-20260825T102725`; typed arm $0.69 live, mono archived at $39.01; the ruled tail of
-  `docs/unification/conferrals/run14-conferral.md`, option A at full delegation).** The
+  `archive/docs/unification/conferrals/run14-conferral.md`, option A at full delegation).** The
   pre-fire tail ran as ruled, same day as the cap raise. (1) *The warm pass* (~$0.09 of the
   $5 cap) found and fixed a warm-instrument defect: the first firing warmed the DEPLOYED
   trajectory's frontier, which the $0 replay lane never visits, because `rerank_hits` is
@@ -3174,7 +3174,7 @@ on this list. Answers land here by amendment, citing their evidence.
   first whose evidence sets are reproducible by construction rather than by cache residency.
 
 - **The baseline re-record — `m2-base` replaces m0-5 as the ladder's fixture set of record
-  (2026-08-25, `docs/unification/reports/r11-baseline-rerecord.md`, $0.0388 of a delegated
+  (2026-08-25, `archive/docs/unification/reports/r11-baseline-rerecord.md`, $0.0388 of a delegated
   $8 cap).** r07 ruling 2's rider, due once the JOIN tree merged and deployed (run 14's
   PASS, same day). The instrument first closed its own named gap: metered spend —
   `spent_usd` **derived** on the manifest from the instrument-seam wire exchanges (the
@@ -3193,8 +3193,8 @@ on this list. Answers land here by amendment, citing their evidence.
 
 - **Hand-priced VOI mis-prices recall when exercised at full reach — the engine's grow
   priors are the named cause of run 17's FAIL (2026-08-26, owner ruling on
-  `docs/unification/conferrals/run17-conferral.md`; evidence
-  `docs/unification/reports/r15-collapse-m5.md`, G3 + mechanism).** M5's A2 removed the
+  `archive/docs/unification/conferrals/run17-conferral.md`; evidence
+  `archive/docs/unification/reports/r15-collapse-m5.md`, G3 + mechanism).** M5's A2 removed the
   executor's report-economy latch on probe-measured evidence (62/63 recorded
   economy-class reports flip to a scheduled re-read when shown the grow block — a real
   engine preference, not an artefact), and the priced gate then measured what exercising
@@ -3231,7 +3231,7 @@ on this list. Answers land here by amendment, citing their evidence.
   refinement of it. What r29 does NOT settle: whether the flat utility gauge caused run 17.
   It is consistent and unrefuted (g/cost 2.6x-12.5x, uniform across questions by
   construction) but isolating it needs the engine re-run under rescaled units.
-  **r30 (2026-08-29, `docs/unification/reports/r30-units-lever.md`) builds the units
+  **r30 (2026-08-29, `archive/docs/unification/reports/r30-units-lever.md`) builds the units
   lever the gauge critique named — question-dependent VOI/regret scales — as a documented
   no-op.** `core/decide.shaped_u_bar` is the one seam: `exact` is the anchor
   (u_correct/u_wrong pass through unscaled, the standing §4.4 convention), each other
@@ -3253,7 +3253,7 @@ on this list. Answers land here by amendment, citing their evidence.
   has no frozen similarity/window parameters to fold against. Both are named open items for
   a future checkpoint with its own pre-registration, not silently dropped.
 
-  **r30b (2026-08-29, `docs/unification/reports/r30b-interval-claims.md`, $0) builds the
+  **r30b (2026-08-29, `archive/docs/unification/reports/r30b-interval-claims.md`, $0) builds the
   claim space the units lever needed something to scale: the INTERVAL claim.** On a
   `quantity` question the answer may be a range, priced as one more tabular row over the
   same K+1 atoms — `u_assert(x_j, Ū)` at candidate j, where `x_j` is the r21-frozen Winkler
