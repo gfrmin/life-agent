@@ -13,7 +13,7 @@ dest="${ENGINE_BIN:-$HOME/.local/bin/proplang-host}"
 work="$(mktemp -d)"; trap 'rm -rf "$work"' EXIT
 
 if [ -n "$RELEASE_TAG" ]; then
-  gh release download "$RELEASE_TAG" -R "$REPO" -p "$ASSET" -D "$work"
+  curl -fsSL -o "$work/$ASSET" "https://github.com/$REPO/releases/download/$RELEASE_TAG/$ASSET"
   got="$(sha256sum "$work/$ASSET" | cut -c1-64)"
   if [ "$got" != "$SHA256" ]; then
     echo "error: $ASSET sha256 $got != pinned $SHA256 — not installed" >&2; exit 1
