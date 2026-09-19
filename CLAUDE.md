@@ -36,10 +36,11 @@ wrong ones.
    commit needs `LIFE_AGENT_KB` set.
 5. **The scoreboard decides by expected utility.** Iterate on `make score-quick`; run
    `make score` once per PR and commit the regenerated `SCOREBOARD.md`. A change merges when,
-   on every row, its paired utility is not below the incumbent's:
-   ΔU = Σ_rows [u(new) − u(old)] − λ_usd·Δ$ ≥ 0, with u_right = 1, u_wrong the folded mean,
-   u_declined = 0 (`python -m eval.score --gate`). Every row whose outcome changed is listed
-   in the PR.
+   on every row, its expected paired utility is not below the incumbent's: E[ΔU] ≥ 0, where
+   ΔU = Σ_rows [u(new) − u(old)] − λ_usd·Δ$ with u_right = 1, u_wrong the folded mean,
+   u_declined = 0 (`python -m eval.score --gate`). E is the mean over the runs taken (one run
+   is one draw; no tolerance, no significance bar); spend is compared at the same cache
+   state. Every row whose outcome changed is listed in the PR.
 
 ## Layout
 

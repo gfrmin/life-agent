@@ -135,5 +135,6 @@ Each is a test or a failing check, not a guideline.
 `eval/score.py` → `SCOREBOARD.md`. Per set and arm: rows · right · wrong · escalated-right ·
 escalated-wrong · declined · $/q · U/q · s/q. Sets: `owner` (the owner's 104 questions),
 `atm` (ATM-Bench email-only number-typed, 198), `live` (the stream since the reset), `sample`
-(synthetic, CI). Rule 5: a change merges when no row's utility falls against the committed
-board, both priced at the folded gauge (`eval.score --gate`).
+(synthetic, CI). Every row is graded by exact match. Rule 5: a change merges when no row's
+expected utility falls against the committed board, both priced at the folded gauge
+(`eval.score --gate`; the expectation is the mean over the runs taken).

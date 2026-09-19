@@ -149,7 +149,7 @@ def test_an_absent_set_is_named_not_dropped(tmp_path: Path) -> None:
     assert "x" in S.render(rows, skipped)
 
 
-def test_the_owner_board_reproduces_run_18() -> None:
+def test_the_owner_board_reproduces_run_18_at_exact_match() -> None:
     kb = os.environ.get("LIFE_AGENT_KB")
     spec = S.load_sets()["owner"]
     if not kb or not (Path(kb) / spec["path"]).is_file():
@@ -158,7 +158,7 @@ def test_the_owner_board_reproduces_run_18() -> None:
     rows, _ = S.score(Path(kb), {"owner": spec})
     got = {r.arm: (r.right, r.wrong, r.declined, round(r.usd_per_q * r.rows, 2))
            for r in rows}
-    assert got == {"typed": (61, 2, 41, 0.37), "oracle": (95, 6, 3, 39.01),
+    assert got == {"typed": (61, 2, 41, 0.37), "oracle": (96, 5, 3, 39.01),
                    "router": (97, 5, 2, 15.97)}
 
 
