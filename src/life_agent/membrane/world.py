@@ -84,6 +84,10 @@ class DecideSummary:
     # NOT an indicator family — the vocabulary changes only if the census (S2) names one.
     # Appended last with a default so every positional construction stays valid.
     runner_up_credence: float = 0.0
+    # Feasibility, not belief: whether an unapplied gather remains for this question. It is
+    # read only by the utility sentence (:func:`utility_said`), never by a guard, so a
+    # closed gather is removed from the argmax without touching what the engine learns.
+    gather_open: bool = True
 
 
 def runner_up(credences: Sequence[float]) -> float:
@@ -151,6 +155,12 @@ _CREDENCE_BUCKETS: tuple[str, ...] = ("lt50", "50to70", "70to80", "80to90", "ge9
 _P_NONE_BUCKETS: tuple[str, ...] = ("lt20", "20to50", "ge50")
 _OBS_BUCKETS: tuple[str, ...] = ("0", "1to2", "3plus")
 _FLAG_FAMILIES: tuple[str, ...] = ("era-split", "owner-scoped", "grow-pass")
+
+# The feasibility names: one per affordance that can be unavailable on a tick. Each is a
+# namespace member with NO guard, read only by the utility sentence, which sends the row it
+# gates to :func:`infeasible_value` when the name reads 0 (DR-ESCALATE-1 §5: unavailability
+# is feasibility, never a low score the argmax could still pick).
+FEASIBILITY: dict[str, str] = {"gather": "gather-open"}
 
 
 # [§3.3 · M-9] feature bucketing — the sensor vocabulary of g and of the world
@@ -230,6 +240,7 @@ def shadow_features(s: DecideSummary, t: float) -> dict[str, float]:
         feats["owner-scoped=1"] = 1.0
     if s.grow_pass:
         feats["grow-pass=1"] = 1.0
+    feats[FEASIBILITY["gather"]] = 1.0 if s.gather_open else 0.0
     return feats
 
 
@@ -276,26 +287,40 @@ def _lin(u0: float, u1: float) -> list[object]:
     return ["+", ["c", u0], ["*", ["var", 1], ["c", u1 - u0]]]
 
 
+def infeasible_value(u_bar: Mapping[str, float]) -> float:
+    """The value an unavailable row takes: one unit below every declared value, so it sits
+    strictly below the worst row EU at every belief and the argmax can never pick it
+    (abstain is always available and always above it)."""
+    values = [v for pair in utility_by_action(u_bar).values() for v in pair]
+    return min(values) - 1.0
+
+
 def utility_said(u_bar: Mapping[str, float]) -> list[object]:
     """The ``said@1`` utility sentence (membrane-wire.md §2 as amended at step-8:
     UTILITY IS A SENTENCE, evaluated at the tick's features): nested
     ``if (= (get act) (c <grid value>))`` branches over :data:`AFFORDANCES`, each arm
     the affordance's (u0, u1) pair linear in the outcome residue. Actions are features
     on the re-derived wire, so the sentence reads the CHOSEN act through
-    ``["get", "act"]`` — the assignment under evaluation binds it. Built from
-    :func:`utility_by_action`, never re-spelled, so the declaration and the host
-    arithmetic share one source. Uses only the wire's accepted subset
-    (``parseSaid``: var, c, +, -, *, get, if, >, =) — verified against the built engine in the
-    B0 spike (2026-07-19)."""
+    ``["get", "act"]`` — the assignment under evaluation binds it. An affordance named in
+    :data:`FEASIBILITY` is further gated on its feasibility feature: open, its pair;
+    closed, :func:`infeasible_value`. Built from :func:`utility_by_action`, never
+    re-spelled, so the declaration and the host arithmetic share one source. Uses only the
+    wire's accepted subset (``parseSaid``: var, c, +, -, *, get, if, >, =)."""
     pairs = utility_by_action(u_bar)
+    floor = infeasible_value(u_bar)
+
+    def arm(name: str) -> list[object]:
+        row = _lin(*pairs[name])
+        if name not in FEASIBILITY:
+            return row
+        return ["if", [">", ["get", FEASIBILITY[name]], ["c", 0.5]], row, ["c", floor]]
+
     names_in_grid_order = [name for name, _ in AFFORDANCES]
     # innermost arm = the LAST affordance (no trailing test needed: the engine only
     # evaluates the sentence at declared grid points).
-    last = names_in_grid_order[-1]
-    expr: list[object] = _lin(*pairs[last])
+    expr: list[object] = arm(names_in_grid_order[-1])
     for name in reversed(names_in_grid_order[:-1]):
-        expr = ["if", ["=", ["get", ACT_NAME], ["c", _VALUE_FOR[name]]],
-                _lin(*pairs[name]), expr]
+        expr = ["if", ["=", ["get", ACT_NAME], ["c", _VALUE_FOR[name]]], arm(name), expr]
     return expr
 
 
@@ -467,21 +492,23 @@ def clock_price(u_bar: Mapping[str, float]) -> float:
     is the seam to the substituting chooser. Its price is therefore DERIVED to make it
     unreachable under this world's own utility rather than raised until it stops firing:
     `pickWire` ranks the think row at `thinkValue - price`, and `thinkValue` is bounded above
-    by the best achievable row value, so a price one unit beyond the utility's full span puts
-    the think row strictly below the worst row EU at every belief."""
+    by the best achievable row value, so a price one unit beyond the utility's full span
+    (down to :func:`infeasible_value`) puts the think row strictly below the worst row EU at
+    every belief."""
     values = [v for pair in utility_by_action(u_bar).values() for v in pair]
-    return (max(values) - min(values)) + 1.0
+    return (max(values) - infeasible_value(u_bar)) + 1.0
 
 
 def handshake_decl(u_bar: Mapping[str, float], *, utility_form: str = "said@1") -> dict[str, Any]:
     """The full handshake line (membrane-wire.md §2 as amended through step-10):
-    ``namespace`` = ``["t"] + indicator_names() + [ACT_NAME]`` (RIDER 2: every writable
-    name is a namespace member, and membership is immutable), one singleton
+    ``namespace`` = ``["t"] + indicator_names() + FEASIBILITY names + [ACT_NAME]`` (RIDER 2:
+    every writable name is a namespace member, and membership is immutable), one singleton
     ``[0.5]``-grid guard per indicator, the menu as the ONE writable name with its grid
     (names+grids — the step-5 shape; grid order normative, wait first), and the utility
     as a ``said@1`` sentence. The tick features (``shadow_features``) and the writable
     name are DISJOINT by construction (ruling D-b2) — indicators are ``family=value``
-    strings and ``t``, never ``act``. No ``echo`` block: it died with the step-5 wire.
+    strings, feasibility names and ``t``, never ``act``; feasibility names carry no guard.
+    No ``echo`` block: it died with the step-5 wire.
     Raises :class:`ValueError` on an undeclared ``utility_form``."""
     if utility_form not in UTILITY_FORMS:
         raise ValueError(
@@ -491,7 +518,7 @@ def handshake_decl(u_bar: Mapping[str, float], *, utility_form: str = "said@1") 
     return {
         "membrane": 1,
         "world": {
-            "namespace": ["t", *names, ACT_NAME],
+            "namespace": ["t", *names, *FEASIBILITY.values(), ACT_NAME],
             "guards": [{"name": n, "grid": [0.5]} for n in names],
             "menu": [{"name": ACT_NAME, "grid": list(ACT_GRID)}],
             "codebooks": {"theta": theta_grid(u_bar)},

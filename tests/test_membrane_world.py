@@ -292,7 +292,7 @@ def test_shadow_features_t_passthrough() -> None:
 
 
 def test_shadow_features_all_emitted_keys_are_declared_indicators() -> None:
-    declared = set(W.indicator_names())
+    declared = set(W.indicator_names()) | set(W.FEASIBILITY.values())
     s = _summary(n_candidates=2, leader_credence=0.75, p_none=0.3, n_obs=5,
                  era_split=True, owner_scoped=True, grow_pass=True)
     feats = W.shadow_features(s, t=1.0)
@@ -344,34 +344,39 @@ def test_utility_by_action_covers_every_affordance() -> None:
 # --- utility_said(): the drift gate (the sentence MUST equal the pairs) --------------------
 
 
-def _eval_said(expr: object, *, act: float, y: int) -> object:
+def _eval_said(expr: object, *, act: float, y: int, open_: float = 1.0) -> object:
     """A small pure evaluator for the ``said@1`` accepted subset (``parseSaid``:
     var, c, +, -, *, get, if, >, =). The whole point is a SECOND, independent reading of the
     sentence: if this and :func:`world.utility_by_action` disagree, the wire declaration has
     silently drifted from the host-side arithmetic. ``var 1`` is the outcome residue y;
-    ``get "act"`` is the chosen affordance's grid value under evaluation."""
+    ``get "act"`` is the chosen affordance's grid value under evaluation; ``get`` on a
+    feasibility name reads ``open_``."""
     if not isinstance(expr, list):
         raise ValueError(f"not a sentence node: {expr!r}")
     op = expr[0]
+
+    def ev(e: object) -> object:
+        return _eval_said(e, act=act, y=y, open_=open_)
+
     if op == "c":
         return expr[1]
     if op == "var":
         return {1: y}[expr[1]]  # only the outcome residue is declared
     if op == "get":
-        return {"act": act}[expr[1]]
+        return {"act": act, **{n: open_ for n in W.FEASIBILITY.values()}}[expr[1]]
     if op == "+":
-        return _eval_said(expr[1], act=act, y=y) + _eval_said(expr[2], act=act, y=y)  # type: ignore[operator]
+        return ev(expr[1]) + ev(expr[2])  # type: ignore[operator]
     if op == "-":
-        return _eval_said(expr[1], act=act, y=y) - _eval_said(expr[2], act=act, y=y)  # type: ignore[operator]
+        return ev(expr[1]) - ev(expr[2])  # type: ignore[operator]
     if op == "*":
-        return _eval_said(expr[1], act=act, y=y) * _eval_said(expr[2], act=act, y=y)  # type: ignore[operator]
+        return ev(expr[1]) * ev(expr[2])  # type: ignore[operator]
     if op == "=":
-        return _eval_said(expr[1], act=act, y=y) == _eval_said(expr[2], act=act, y=y)
+        return ev(expr[1]) == ev(expr[2])
     if op == ">":
-        return _eval_said(expr[1], act=act, y=y) > _eval_said(expr[2], act=act, y=y)  # type: ignore[operator]
+        return ev(expr[1]) > ev(expr[2])  # type: ignore[operator]
     if op == "if":
-        cond = _eval_said(expr[1], act=act, y=y)
-        return _eval_said(expr[2], act=act, y=y) if cond else _eval_said(expr[3], act=act, y=y)
+        cond = ev(expr[1])
+        return ev(expr[2]) if cond else ev(expr[3])
     raise ValueError(f"unsupported op {op!r}")
 
 
@@ -389,6 +394,23 @@ def test_utility_said_sentence_equals_the_pairs_at_every_grid_point(
         for y in (0, 1):
             got = _eval_said(said, act=v, y=y)
             assert got == pytest.approx(pairs[name][y]), f"{name} y={y} under {u_bar}"
+
+
+@pytest.mark.parametrize("u_bar", [{}, LIVE_U_BAR])
+def test_a_closed_affordance_reads_the_infeasible_value_below_every_row(
+    u_bar: dict[str, float],
+) -> None:
+    """Feasibility is not a price: a closed row takes a value strictly below every declared
+    value, so no belief can make the argmax pick it, and every OPEN row is unchanged."""
+    said = W.utility_said(u_bar)
+    pairs = W.utility_by_action(u_bar)
+    floor = W.infeasible_value(u_bar)
+    assert floor < min(v for pair in pairs.values() for v in pair)
+    for name, v in W.AFFORDANCES:
+        for y in (0, 1):
+            got = _eval_said(said, act=v, y=y, open_=0.0)
+            want = floor if name in W.FEASIBILITY else pairs[name][y]
+            assert got == pytest.approx(want), f"{name} y={y} closed"
 
 
 def test_utility_said_uses_only_the_accepted_subset() -> None:
@@ -464,8 +486,22 @@ def test_handshake_decl_namespace_is_t_then_indicators_then_act() -> None:
     namespace = decl["world"]["namespace"]
     assert namespace[0] == "t"                       # RIDER 2: t first
     assert namespace[-1] == W.ACT_NAME               # the one writable name, last
-    assert set(namespace) == {"t", W.ACT_NAME, *W.indicator_names()}
-    assert len(namespace) == len(W.indicator_names()) + 2  # every indicator + t + act, no more
+    assert set(namespace) == {"t", W.ACT_NAME, *W.indicator_names(), *W.FEASIBILITY.values()}
+    # every indicator + every feasibility name + t + act, no more
+    assert len(namespace) == len(W.indicator_names()) + len(W.FEASIBILITY) + 2
+
+
+def test_feasibility_names_carry_no_guard() -> None:
+    """A feasibility name is read by the utility only: a guard on it would let the engine
+    learn from availability, which is a fact about the menu, not about the outcome."""
+    guarded = {g["name"] for g in W.handshake_decl({})["world"]["guards"]}
+    assert not guarded & set(W.FEASIBILITY.values())
+
+
+def test_shadow_features_reads_gather_open_off_the_summary() -> None:
+    for gather_open, want in ((True, 1.0), (False, 0.0)):
+        s = W.DecideSummary(1, 0.9, 0.05, 2, False, False, False, gather_open=gather_open)
+        assert W.shadow_features(s, 0.0)[W.FEASIBILITY["gather"]] == want
 
 
 def test_handshake_decl_guards_are_singleton_half_grids_over_the_indicators() -> None:
@@ -610,7 +646,7 @@ def test_the_clock_price_strictly_dominates_the_utility_span() -> None:
     for u_bar in ({}, {"u_correct": 100.0, "u_abstain": 90.0, "u_wrong": 0.0}):
         pairs = W.utility_by_action(u_bar)
         vals = [v for pair in pairs.values() for v in pair]
-        assert W.clock_price(u_bar) > max(vals) - min(vals)
+        assert W.clock_price(u_bar) > max(vals) - W.infeasible_value(u_bar)
 
 
 def test_shadow_features_covers_the_declared_namespace_minus_the_writable_name() -> None:
