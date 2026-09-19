@@ -154,3 +154,16 @@ RELIABILITY_PRIORS: dict[tuple[str, str], tuple[float, float]] = {
     ("eval_claim", "unsupported"): (1.0, 3.0),
     ("eval_claim", "unverifiable"): (2.0, 2.0),
 }
+
+# --- the channel half of the table (J1: the constants' one home) --------------------------
+
+# The stated noisy-channel parameters the candidate posterior (core/posterior.py) reads.
+# Priors, not measurements: calibration moves them, and a change here moves every credence.
+A_ALTERNATIVES = 10.0  # effective number of wrong values a misreport spreads over
+BETA_ANCESTRY = 0.3    # within-document temper: m chunks of one document count 1 + β·(m-1)
+BETA_MODEL = 0.7       # across-document temper: G documents read by one extractor, 1 + β·(G-1)
+# Prior mass on none-of-the-retrieved; the candidates share the rest uniformly. (Uniform
+# over K+1 let agreeing junk bury NONE at 0.98 credence on the first eval.)
+P_NONE_PRIOR = 0.5
+ORACLE_P = 0.9         # owner-as-oracle reliability, pricing ask_clarify
+PROB_EPS = 1e-12       # log-domain floor

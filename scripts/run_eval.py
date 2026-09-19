@@ -1703,6 +1703,7 @@ def main() -> int:
         import life_agent.core.config as LCFG
         import life_agent.core.gate as GATE
         import life_agent.core.lookup as LK
+        import life_agent.core.pricing as PR
         import life_agent.core.utility as UT
 
         replay = (load_replay_answers(Path(args.gate_replay).expanduser())
@@ -1877,7 +1878,7 @@ def main() -> int:
         for warning in post.endpoint_warnings(model.endpoint_mass_warn):
             print(f"  ⚠ {warning}")
 
-        result = GATE.delta_posterior(paired, post, oracle_p=LK._ORACLE_P)
+        result = GATE.delta_posterior(paired, post, oracle_p=PR.ORACLE_P)
         elapsed = time.monotonic() - t0
 
         # `M-33`/`M-34` (owner ruling 2026-09-05): the typed arm DECIDED under the live

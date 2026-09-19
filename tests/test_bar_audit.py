@@ -90,7 +90,7 @@ class TestReprice:
 
 class TestOracleRow:
     def test_ask_clarify_is_priced_from_the_deployed_oracle_constant(self) -> None:
-        from life_agent.core.lookup import _ORACLE_P
+        from life_agent.core.pricing import ORACLE_P as _ORACLE_P
 
         eus = BA.reprice([0.5, 0.5], U_DECLARED)
         expected = _ORACLE_P * U_DECLARED["u_correct"] - U_DECLARED["lambda_int"]

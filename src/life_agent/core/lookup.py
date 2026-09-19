@@ -22,9 +22,9 @@ stage on the ledger (system-design §3) and every modelling choice stated:
     decide     the decision logged (§8 — no EU decision is ever made unlogged)
 
 Stated channel parameters (each a prior choice calibration will move — §2, §14):
-``_A_ALTERNATIVES`` (effective wrong-value alternatives), ``reliability.PRIORS`` (the
+``A_ALTERNATIVES`` (effective wrong-value alternatives), ``reliability.PRIORS`` (the
 grounded-extraction reliability Beta prior, moved by audit outcomes — the
-``reliability_categorical`` rho prior the engine integrates exactly), ``_ORACLE_P``
+``reliability_categorical`` rho prior the engine integrates exactly), ``ORACLE_P``
 (the owner-as-oracle prior for pricing ask_clarify), the declared source-authority
 classes (§4.1's v0 lattice), and the §4.1 covariate factors (``_A_SUBJECT_*`` /
 ``_TIME_HALF_LIFE_YEARS`` / ``_A_TIME_UNKNOWN`` — doc_subject and doc_date enter
@@ -60,6 +60,7 @@ from life_agent.core import utility as UT
 from life_agent.core.brain import Brain
 from life_agent.core.dates import parse_date as _parse_date
 from life_agent.core.decide import shaped_u_bar, u_assert
+from life_agent.core.pricing import A_ALTERNATIVES, ORACLE_P, P_NONE_PRIOR
 
 # The route + extract instrument model (local Ollama deprecated 2026-08-17 — owner
 # directive, §14-registered; both verdicts are cached, so call counts are bounded by
@@ -181,24 +182,7 @@ CONFIRM_SCHEMA: dict[str, Any] = {
     },
 }
 
-# --- stated channel parameters (priors; calibration moves them — §2/§14) ---------------
-_A_ALTERNATIVES = 10.0   # effective number of wrong values a misreport spreads over
-# (the §4.2 ancestry/model tempering exponents are RETIRED — the exact group-noisy-channel
-#  + continuous rho-latent the `reliability_categorical` integrates replaces the host temper.)
-# The reliability prior for "this grounded observation's value IS the true V" —
-# end-to-end, construct validity included (a grounded form label or another person's
-# number is a wrong observation, not a misread). The first eval run refuted the original
-# Beta(17,3)=0.85 quote-fidelity prior for THIS construct (report accuracy 0/7): the
-# prior is now wide, and the eval's per-candidate claim outcomes condition it (see
-# extractor_reliability) — the instrument earns trust from evidence, never from fiat.
-# the extractor's Beta(4,4) prior now lives in the ONE reliability table
-# (core/reliability.PRIORS[("extract", "value")] — D-2, r13/M3)
-# The none-of-the-retrieved prior mass: the stated complement of an unproven extraction
-# channel — candidates share the rest uniformly. (Was uniform over K+1; the first eval
-# showed agreeing junk burying NONE at 0.98 credence.)
-_P_NONE_PRIOR = 0.5
-_ORACLE_P = 0.9          # owner-as-oracle prior mean for pricing ask_clarify (§4.4)
-_PROB_EPS = 1e-12
+# --- stated channel parameters: their one home is core/pricing.py (the channel half) ------
 # Candidate identity: a numeric identifier this many digits or longer is keyed on its
 # significant digits (leading zeros stripped) so OCR/format variants of ONE number collapse
 # instead of splitting posterior mass. Below it, identity stays the whitespace+case norm.
@@ -906,8 +890,8 @@ def lookup_posterior(brain: Brain, observations: list[Observation],
     V-marginal is an exact Beta-moment sum, NO grid. Returns (the rho-marginalised V weights with
     NONE last, the live state id — open for `optimise`; the caller destroys it)."""
     k = len(candidates)
-    # stated V prior: _P_NONE_PRIOR on none-of-the-retrieved, the rest uniform over candidates.
-    v_prior = [(1.0 - _P_NONE_PRIOR) / k] * k + [_P_NONE_PRIOR]
+    # stated V prior: P_NONE_PRIOR on none-of-the-retrieved, the rest uniform over candidates.
+    v_prior = [(1.0 - P_NONE_PRIOR) / k] * k + [P_NONE_PRIOR]
     alpha, beta = rho_ab
     state_id = brain.create_state({
         "type": "reliability_categorical",
@@ -932,7 +916,7 @@ def lookup_posterior(brain: Brain, observations: list[Observation],
         covariate = _covariate(o0) * min(o.competition_factor for o in group)
         reports = [keys.index(_candidate_key(o.value_raw)) + 1 for o in group]  # 1-based atom value
         kernel = {"type": "group_noisy_channel", "covariate": covariate,
-                  "n_alternatives": _A_ALTERNATIVES}
+                  "n_alternatives": A_ALTERNATIVES}
         brain.condition(state_id, kernel=kernel, observation=reports)
     return _v_marginal(brain, state_id), state_id
 
@@ -966,7 +950,7 @@ def action_utilities(weights: list[float], u_bar: dict[str, float], *,
     for j in range(k):
         out[f"report_{j}"] = [(u_correct if i == j else u_wrong) for i in range(k)] + [u_wrong]
     out["hedge"] = [u_bar["u_hedged"]] * k + [u_wrong]
-    out["ask_clarify"] = [_ORACLE_P * u_bar["u_correct"] - u_bar["lambda_int"]] * (k + 1)
+    out["ask_clarify"] = [ORACLE_P * u_bar["u_correct"] - u_bar["lambda_int"]] * (k + 1)
     out["abstain"] = [u_bar["u_abstain"]] * (k + 1)
     for j, eu_j in sorted((scoped or {}).items()):
         out[f"report_scoped_{j}"] = [eu_j] * (k + 1)
@@ -1277,9 +1261,9 @@ def decide_and_record(root: Path, question: str, construct: str,
          "time_factor": o.time_factor, "n_competing": o.n_competing,
          "competition_factor": o.competition_factor}
         for o in observations]
-    params = {"A": _A_ALTERNATIVES, "oracle_p": _ORACLE_P,
+    params = {"A": A_ALTERNATIVES, "oracle_p": ORACLE_P,
               "competition_cap": _COMPETITION_CAP,
-              "p_none_prior": _P_NONE_PRIOR, "rho": list(rho),
+              "p_none_prior": P_NONE_PRIOR, "rho": list(rho),
               "a_subject_other": _A_SUBJECT_OTHER,
               "p_owner_indet": _P_OWNER_GIVEN_INDET,
               "time_half_life_years": _TIME_HALF_LIFE_YEARS,
