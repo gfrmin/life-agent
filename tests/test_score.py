@@ -63,12 +63,62 @@ def test_s_per_q_is_blank_until_every_row_carries_latency() -> None:
     assert _by_arm()["typed"].s_per_q is None
 
 
-def test_rule_5_fires_only_beyond_the_tolerance() -> None:
-    row = S.summarise("t", "typed", [S.Response(True, False, 0.0)] + [
-        S.Response(True, True, 0.0)] * 99)                           # 1.0% wrong
-    assert S.gate([row], [{"set": "t", "arm": "typed", "rows": 100, "wrong": 1}]) == []
-    assert S.gate([row], [{"set": "t", "arm": "typed", "rows": 1000, "wrong": 9}]) == []
-    assert S.gate([row], [{"set": "t", "arm": "typed", "rows": 1000, "wrong": 7}]) != []
+G = S.Gauge(u_right=1.0, u_wrong=-9.0, u_declined=0.0, lambda_usd=2.0)
+
+
+def _board(row: S.Row) -> dict:
+    from dataclasses import asdict
+    return asdict(row)
+
+
+def test_the_gauge_prices_a_row_from_its_counts() -> None:
+    row = S.summarise("t", "typed", [S.Response(True, True, 0.5), S.Response(True, False, 0.0),
+                                     S.Response(False, None, 0.5)])
+    # 1 right - 9 wrong + 0 declined - 2/$ x $1.00 spent
+    assert G.total(_board(row)) == pytest.approx(1.0 - 9.0 - 2.0)
+
+
+def test_rule_5_passes_a_change_that_trades_declines_for_right_answers() -> None:
+    old = S.summarise("t", "typed", [S.Response(False, None, 0.0)] * 10)
+    new = S.summarise("t", "typed", [S.Response(True, True, 0.0)] * 10)
+    assert S.gate([new], [_board(old)], G) == []
+
+
+def test_rule_5_blocks_one_wrong_that_nine_rights_do_not_pay_for() -> None:
+    # at u_wrong -9 a wrong costs exactly nine rights: eight new rights and one new wrong
+    # lower U; nine and one leave it level (merges); ten and one raise it
+    old = S.summarise("t", "typed", [S.Response(False, None, 0.0)] * 20)
+
+    def new(k_right: int) -> S.Row:
+        return S.summarise("t", "typed", [S.Response(True, True, 0.0)] * k_right
+                           + [S.Response(True, False, 0.0)]
+                           + [S.Response(False, None, 0.0)] * (19 - k_right))
+    assert S.gate([new(8)], [_board(old)], G) != []
+    assert S.gate([new(9)], [_board(old)], G) == []
+    assert S.gate([new(10)], [_board(old)], G) == []
+
+
+def test_rule_5_charges_spend_at_lambda_usd() -> None:
+    old = S.summarise("t", "typed", [S.Response(True, True, 0.0)] * 4)
+    dearer = S.summarise("t", "typed", [S.Response(True, True, 0.25)] * 4)
+    assert S.gate([dearer], [_board(old)], G) != []       # same answers, $1 more
+    assert S.gate([old], [_board(dearer)], G) == []
+
+
+def test_rule_5_names_an_unpaired_row() -> None:
+    old = S.summarise("t", "typed", [S.Response(True, True, 0.0)] * 4)
+    new = S.summarise("t", "typed", [S.Response(True, True, 0.0)] * 5)
+    assert S.gate([new], [_board(old)], G) == ["t/typed: 4 -> 5 rows, not paired"]
+
+
+def test_the_board_shows_u_per_question_only_with_a_gauge() -> None:
+    rows = S.score_paired("t", LINES)
+    # the typed row: U/q then s/q (blank until latency) close the line
+    assert S.render(rows, {}).splitlines()[6].endswith("| — | — |")
+    priced = S.render(rows, {}, G)
+    typed = rows[0]
+    assert "u_wrong -9.0000" in priced
+    assert priced.splitlines()[6].endswith(f"| {G.total(_board(typed)) / typed.rows:+.3f} | — |")
 
 
 def test_a_moved_pin_refuses(tmp_path: Path) -> None:

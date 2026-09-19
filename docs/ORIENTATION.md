@@ -29,13 +29,14 @@ scripts/ask.py / reach/jarvis.py
                  ├─ /retrieve        BM25 over DuckDB FTS
                  ├─ /probe/*         subject, recency, corroborate, deliberate
                  ├─ /extract         LLM per chunk → candidates + integer observations
-                 └─ /decide          membrane/decider.py: core/posterior.py → proplang engine → act
+                 └─ /decide          core/decider.py: core/posterior.py → decide.bayes_act → enact
 ```
 
 The bridge gathers evidence and hosts the one decider: the candidate posterior is computed in
-`core/posterior.py` and the proplang engine (`make engine`) picks the act from
-{abstain, gather, ask, respond}; `membrane/coarse.py` enacts it. With no engine, `/decide`
-answers 503 and the reply says the decider is unavailable; nothing answers in its place.
+`core/posterior.py`, `core/decide.bayes_act` takes the expected-utility argmax over
+{abstain, gather, ask, respond} at the folded utility, and `core/enact.py` turns the act into
+a reply. With the bridge down the reply says the decider is unavailable; nothing answers in
+its place. proplang (`make engine`) is deferred behind the MVP.
 **J2** adds escalation rungs and tannen records; a question that is not a verbatim point fact
 is declined until then.
 
@@ -51,9 +52,9 @@ is declined until then.
 ## The gauge
 
 - `u_correct = +1`, `u_abstain = 0` — the two pins.
-- `u_wrong = −9` — elicited (the owner's 10:1). Commit bar `|u_wrong|/(1+|u_wrong|) = 0.90`,
-  Chow's reject rule. A reaction-conditioned fold of the same latent has read as soft as
-  −5.13 (bar 0.837); the elicited value governs, and re-eliciting it is the owner's call.
+- `u_wrong` — a posterior with prior mean −9 (the owner's 10:1), folded from reactions; the
+  decider reads the folded mean (−5.13 today, so the Chow bar `|u_wrong|/(1+|u_wrong|)` is
+  0.837; 0.90 at the prior). Re-eliciting it is the owner's call.
 - `lambda_usd ≈ 1.33` — the $↔utility rate, imputed from token counts, not metered.
 
 ## Where it stands
@@ -61,8 +62,10 @@ is declined until then.
 `SCOREBOARD.md`. On the owner's 104 questions (run 18): typed 61 right / 2 wrong / 41
 declined at $0.0036/q; the recorded oracle (Claude Code over the corpus) 95 / 6 / 3 at
 $0.375/q; the router — typed where it asserts, the oracle otherwise — 97 / 5 / 2 at $0.15/q.
-The router is the MVP's shape. Under `u_wrong = −9` an escalation rung is chosen only if its
-learned reliability clears 0.90 net of price, so rung 1 must be cheap and good.
+The router is the MVP's shape. An escalation rung is chosen only if its learned reliability
+clears the Chow bar net of price (0.837 at today's fold, 0.90 at the prior), so rung 1 must be
+cheap and good. At the folded gauge the typed and router rows are level on U/q (+0.483 and
++0.482): the router's extra right answers are paid for by its three extra wrongs and its spend.
 
 **A-CAL — the posterior is calibrated** — is the assumption everything rests on: the commit
 bar is a threshold on the posterior's value. Nothing yet establishes it; a reliability

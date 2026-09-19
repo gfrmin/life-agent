@@ -10,32 +10,26 @@ under `archive/` (tag `archive/unification-arc-v0`). None of it binds. The score
 history and `CHANGELOG.md` replace all of it. Read `CLAUDE.md`, `MODEL.md`, `ROADMAP.md`.
 
 What survives is the model: a string-blind decider, a Bayes act under a stated loss
-(`u_wrong = −9`, bar 0.90), provenance on every answer, never invent. What changes is who owns
-what: **proplang** ranks actions, **tannen** holds the records, the **ER core** (its own public
-repo, extracted from hkaddresses) holds the posterior; this repo declares the menu, the prices and the utility,
-and shapes the evidence. One home per responsibility; delete the duplicates.
+(`u_wrong` prior mean −9, folded from reactions; the bar derived), provenance on every answer,
+never invent. The act is the host's `core/decide.bayes_act`; the posterior is
+`core/posterior.py` until the **ER core** (its own public repo, extracted from hkaddresses)
+replaces it; **proplang** and **tannen** are doors after the MVP (`ROADMAP.md`). One home per
+responsibility; delete the duplicates.
 
 The MVP is **reusable by a stranger**, answering **verbatim point facts only** (graded by
 exact match) and escalating or declining everything else.
 
-## Next session — J1, the decider (in order, one commit each)
+## Next session — after J1 (in order, one commit each)
 
-1. **Port the candidate posterior.** credence's `apps/answer-brain/brain/answer_brain.jl`
-   (`temper_scales`, `observation_densities`, `candidate_posterior`) → `core/posterior.py`.
-   Constants (`A`, `β_ancestry`, `β_model`, `p_none`, `oracle_p`) move into `core/pricing.py`
-   as their one home. Pin: replay `$LIFE_AGENT_KB/eval/collapse-fixtures/m5-base` (314
-   exchanges, `decision.credences`/`p_none`) bit-for-bit; the fixture reader is at
-   `archive/src/life_agent/collapse/fixture.py` — lift it to `eval/replay.py`.
-2. **Port the utility folds.** `core/utility.py`'s `_fold_1d`/`_fold_joint` call the credence
-   skin; replace with a local fixed-grid quadrature. Pin: Ū on the recorded boot rows to
-   printed precision, per `fold_version`. Delete `core/brain.py`.
-3. **Put proplang on the path.** The bridge's enqueue-only shadow becomes a synchronous
-   `decide(summary)` at `executor.run_pass`'s terminal step; `coarse.map_action` is the
-   enactment; boot from the decision ⋈ verdict join. Menu gains `escalate` rows; its first
-   design task is the `said@1` form for a learned-reliability rung.
-4. **Price gather** from the measured recovery rate (`gather_outcomes.warm_counts`), run 17's
-   window (2026-08-26) excluded.
-5. **Retire Julia**: the answer-brain daemon, `ask_client.DAEMON`, the `/decide` proxy.
-6. `make score`; rule 5 holds or the owner decides.
+1. **The board.** Run a side-port bridge from the worktree (`LIFE_AGENT_BRIDGE_URL`;
+   production untouched), the typed arm (`scripts/fairfight/arm_baseline.py`) over the owner's
+   104 questions at the folded Ū, paired with the recorded oracle; pin it in `eval/sets.yaml`;
+   `make score`; rule 5 (ΔU ≥ 0 on every row) holds or the change does not merge.
+2. **`make golden`.** Generate a golden set from the corpus: sample documents, extract
+   verbatim point-fact spans, phrase one question per span, write (question, answer,
+   citation) under `$LIFE_AGENT_KB/eval/`, pin it as set `generated`, grade by exact match.
+3. **The owner's step** (a prepared script): stop the answer-brain daemon, restart the bridge
+   and jarvis, one Telegram ask shows the host decider on `/ready`.
+4. **J2**: escalation rungs as rows `bayes_act` ranks, origin on every reply.
 
 Tests that need owner data skip and say what they need. `make check` stays under two minutes.

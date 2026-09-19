@@ -14,8 +14,9 @@ on it**. Two layers: the KB *derives* (pkm); the agent *decides* (life_agent). E
 belongs to exactly one. The agent is, exactly, a **belief**, a **utility**, and a **decision
 space**, acting by **argmax expected utility** — under the Bayesian paradigm every autonomous
 agent is this one machine, and ours differs only in *which* utility it serves (the owner's) and
-*which* decisions it ranges over. **proplang** runs the optimisation (the ruled successor of
-credence, 2026-08-25); the candidate posterior is a separate entity-resolution core (hosted here
+*which* decisions it ranges over. The host's `core/decide.bayes_act` runs the optimisation
+(proplang, the ruled successor of credence, is deferred behind the MVP, 2026-09-19); the
+candidate posterior is a separate entity-resolution core (hosted here
 until it is published as its own public repo, extracted from hkaddresses — `MODEL.md`); the body supplies the utility
 and the decisions. The engine + (our utility, our decisions) *is* the agent — not a library it
 calls (§16).
@@ -99,7 +100,7 @@ publicly; never use `tailscale serve`/funnel.
 
 **§14. Resolved decisions.** Do not relitigate without new evidence:
 - **First win:** ask-anything search with citations. **Scope:** text-first.
-- **Memory = pkm extended**; **brain = proplang** (credence until 2026-09-19); this repo is the composition root —
+- **Memory = pkm extended**; **brain = the host Bayes act** (proplang deferred, 2026-09-19); this repo is the composition root —
   capabilities compose over seams (§5), they don't merge into one app.
 - **The Phase-0 compiled wiki is retired**: built, measured against retrieval
   ([`SPEC-comparison.md`](./SPEC-comparison.md) is the frozen record), and rejected — compiling

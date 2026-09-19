@@ -2,17 +2,19 @@
 
     uv run python -m eval.score                 # print the board
     uv run python -m eval.score --write         # also write SCOREBOARD.md + eval/scoreboard.json
-    uv run python -m eval.score --gate          # exit 1 if wrong% rose > 0.2 pp on any row
+    uv run python -m eval.score --gate          # exit 1 if ΔU < 0 on any row (rule 5)
 
-Counts only: no utility, no gauge, no posterior, so a reader can check a row without first
-accepting `u_wrong`. Sets are declared in `eval/sets.yaml`; their files live under
-`$LIFE_AGENT_KB` and are pinned by sha256.
+Sets are declared in `eval/sets.yaml`; their files live under `$LIFE_AGENT_KB` and are
+pinned by sha256.
 
 Columns, per (set, arm):
-  rows · right · wrong · esc-right · esc-wrong · declined · $/q · s/q
+  rows · right · wrong · esc-right · esc-wrong · declined · $/q · U/q · s/q
 `right`/`wrong` count every delivered answer (answered locally or escalated); the esc-
 columns are the escalated share of each. `declined` = no answer delivered. `s/q` is blank
-until the rows carry latency.
+until the rows carry latency. The counts need no gauge; `U/q` prices them at the folded
+utility mean (:class:`Gauge`): U = u_right·right + u_wrong·wrong + u_declined·declined -
+lambda_usd·$. Rule 5 compares U, not a wrong-rate: a row whose U fell against the committed
+board, both priced at today's gauge, does not merge.
 """
 from __future__ import annotations
 
@@ -34,8 +36,34 @@ REPO = Path(__file__).resolve().parent.parent
 SETS = REPO / "eval" / "sets.yaml"
 BOARD_MD = REPO / "SCOREBOARD.md"
 BOARD_JSON = REPO / "eval" / "scoreboard.json"
-#: Rule 5: wrong% on any row may not rise by more than this without the owner.
-WRONG_TOLERANCE_PP = 0.2
+
+
+@dataclass(frozen=True)
+class Gauge:
+    """The utility rule 5 prices a row at: the folded posterior means of the owner's utility
+    (``lookup.current_u_bar``), so the merge rule and the decider read one loss."""
+
+    u_right: float
+    u_wrong: float
+    u_declined: float
+    lambda_usd: float
+
+    def total(self, counts: Mapping[str, Any]) -> float:
+        """U summed over a row's questions, from its counts (a :class:`Row` as a dict, or a
+        committed board row)."""
+        return (self.u_right * counts["right"] + self.u_wrong * counts["wrong"]
+                + self.u_declined * counts["declined"]
+                - self.lambda_usd * counts["usd_per_q"] * counts["rows"])
+
+
+def folded_gauge() -> Gauge:
+    """Today's gauge: the utility posterior folded over the owner's elicitations and
+    reactions (needs ``$LIFE_AGENT_KB``)."""
+    from life_agent.core import lookup as LK
+
+    u, _version, _policy = LK.current_u_bar()
+    return Gauge(u_right=u["u_correct"], u_wrong=u["u_wrong"], u_declined=u["u_abstain"],
+                 lambda_usd=u["lambda_usd"])
 
 
 @dataclass(frozen=True)
@@ -63,10 +91,6 @@ class Row:
     declined: int
     usd_per_q: float
     s_per_q: float | None
-
-    @property
-    def wrong_pct(self) -> float:
-        return 100.0 * self.wrong / self.rows if self.rows else 0.0
 
 
 def _response(arm: Mapping[str, Any]) -> Response:
@@ -154,19 +178,26 @@ def _pct(k: int, n: int) -> str:
     return f"{k} ({100.0 * k / n:.1f}%)" if n else "0"
 
 
-def render(rows: Sequence[Row], skipped: Mapping[str, str]) -> str:
+def render(rows: Sequence[Row], skipped: Mapping[str, str], gauge: Gauge | None = None
+           ) -> str:
+    priced = ("unpriced (no gauge)" if gauge is None else
+              f"priced at the folded gauge u_right {gauge.u_right:g}, u_wrong "
+              f"{gauge.u_wrong:.4f}, u_declined {gauge.u_declined:g}, lambda_usd "
+              f"{gauge.lambda_usd:g}/$")
     out = ["# Scoreboard", "",
            "`python -m eval.score --write`. Counts over each set's rows; `right`/`wrong` "
            "include escalated answers, the esc- columns are their escalated share. "
-           f"Rule 5: `wrong` may not rise more than {WRONG_TOLERANCE_PP} pp on any row "
-           "without the owner.", "",
-           "| set | arm | rows | right | wrong | esc-right | esc-wrong | declined | $/q | s/q |",
-           "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|"]
+           f"`U/q` is {priced}. Rule 5: a change merges when no row's U falls against the "
+           "committed board at today's gauge (`--gate`).", "",
+           "| set | arm | rows | right | wrong | esc-right | esc-wrong | declined | $/q | U/q "
+           "| s/q |",
+           "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|"]
     for r in rows:
         s = "—" if r.s_per_q is None else f"{r.s_per_q:.1f}"
+        u = "—" if gauge is None or not r.rows else f"{gauge.total(asdict(r)) / r.rows:+.3f}"
         out.append(f"| {r.set} | {r.arm} | {r.rows} | {_pct(r.right, r.rows)} | "
                    f"{_pct(r.wrong, r.rows)} | {r.esc_right} | {r.esc_wrong} | "
-                   f"{_pct(r.declined, r.rows)} | {r.usd_per_q:.4f} | {s} |")
+                   f"{_pct(r.declined, r.rows)} | {r.usd_per_q:.4f} | {u} | {s} |")
     if skipped:
         out += ["", "Not scored:", ""]
         out += [f"- `{k}` — {v}" for k, v in skipped.items()]
@@ -180,13 +211,26 @@ def unscored_pins(sets: Mapping[str, Mapping[str, Any]], skipped: Mapping[str, s
     return sorted(k for k in skipped if sets[k]["kind"] != "pending")
 
 
-def gate(rows: Sequence[Row], baseline: Sequence[Mapping[str, Any]]) -> list[str]:
-    """Rule 5 violations: rows whose wrong% rose more than the tolerance over the baseline."""
-    base = {(b["set"], b["arm"]): 100.0 * b["wrong"] / b["rows"] for b in baseline
-            if b["rows"]}
-    return [f"{r.set}/{r.arm}: wrong {base[(r.set, r.arm)]:.1f}% -> {r.wrong_pct:.1f}%"
-            for r in rows if (r.set, r.arm) in base
-            and r.wrong_pct - base[(r.set, r.arm)] > WRONG_TOLERANCE_PP]
+def gate(rows: Sequence[Row], baseline: Sequence[Mapping[str, Any]], gauge: Gauge
+         ) -> list[str]:
+    """Rule 5 violations: rows whose U fell against the committed board, both priced at
+    ``gauge`` — ΔU = U(new) - U(old) < 0. A row scored over a different number of questions
+    is not paired with its baseline and is named too (re-pin the baseline deliberately)."""
+    base = {(b["set"], b["arm"]): b for b in baseline}
+    out: list[str] = []
+    for r in rows:
+        b = base.get((r.set, r.arm))
+        if b is None:
+            continue
+        if b["rows"] != r.rows:
+            out.append(f"{r.set}/{r.arm}: {b['rows']} -> {r.rows} rows, not paired")
+            continue
+        d = gauge.total(asdict(r)) - gauge.total(b)
+        if d < -1e-9:
+            out.append(f"{r.set}/{r.arm}: ΔU {d:+.3f} over {r.rows} rows "
+                       f"(right {b['right']}->{r.right}, wrong {b['wrong']}->{r.wrong}, "
+                       f"declined {b['declined']}->{r.declined})")
+    return out
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -195,16 +239,26 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--write", action="store_true",
                     help="write SCOREBOARD.md and eval/scoreboard.json")
     ap.add_argument("--gate", action="store_true",
-                    help="compare against the committed eval/scoreboard.json (rule 5)")
+                    help="ΔU against the committed eval/scoreboard.json at today's gauge "
+                         "(rule 5)")
     a = ap.parse_args(argv)
     kb_env = os.environ.get("LIFE_AGENT_KB")
     rows, skipped = score(Path(kb_env) if kb_env else None, load_sets())
-    text = render(rows, skipped)
+    gauge: Gauge | None
+    try:
+        gauge = folded_gauge() if kb_env else None
+    except Exception as e:  # the counts still print; the gate below refuses without a gauge
+        print(f"(no gauge: {type(e).__name__}: {e})", file=sys.stderr)
+        gauge = None
+    text = render(rows, skipped, gauge)
     print(text)
     if a.gate and BOARD_JSON.is_file():
-        bad = gate(rows, json.loads(BOARD_JSON.read_text(encoding="utf-8"))["rows"])
+        if gauge is None:
+            print("RULE 5: no gauge to price ΔU with (set LIFE_AGENT_KB)", file=sys.stderr)
+            return 2
+        bad = gate(rows, json.loads(BOARD_JSON.read_text(encoding="utf-8"))["rows"], gauge)
         if bad:
-            print("RULE 5: wrong rose beyond tolerance — needs the owner:\n  "
+            print("RULE 5: expected utility fell — does not merge:\n  "
                   + "\n  ".join(bad), file=sys.stderr)
             return 1
     if a.write:

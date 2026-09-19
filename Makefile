@@ -18,7 +18,7 @@ test-all:
 	uv run pytest -q -n $(WORKERS) -m "llm or system or not (llm or system)"
 
 # The full board -> SCOREBOARD.md + eval/scoreboard.json, committed with the change. Run once
-# per PR; rule 5 (wrong may not rise > 0.2 pp on any row without the owner) is read here.
+# per PR; rule 5 (no row's U may fall at today's folded gauge) is read here.
 score:
 	$(PY) -m eval.score --gate --write
 
