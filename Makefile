@@ -4,10 +4,12 @@ PY := uv run python
 # pytest workers; 1 runs single-process.
 WORKERS ?= 6
 
-# ruff + the default test tier (no live model calls, no heavy producers), under two minutes.
-# A test that needs data you have not built skips and names what builds it.
+# ruff + mypy (as CI runs it) + the default test tier (no live model calls, no heavy
+# producers), under two minutes with mypy's cache warm. A test that needs data you have not
+# built skips and names what builds it.
 check:
 	uv run ruff check .
+	uv run mypy
 	uv run pytest -q -n $(WORKERS)
 
 # Everything, including live-LLM and heavy-producer tests (non-deterministic; costs money).

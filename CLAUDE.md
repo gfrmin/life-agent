@@ -54,8 +54,8 @@ archive/          the unification arc (tag archive/unification-arc-v0); historic
 
 ## How to work
 
-- **Sessions and commits.** One goal per session, small commits, `make check` (ruff + pytest,
-  under two minutes) green before each. Worktrees under a sibling `worktrees/life-agent/<name>`; merge
+- **Sessions and commits.** One goal per session, small commits, `make check` (ruff + mypy +
+  pytest, under two minutes) green before each. Worktrees under a sibling `worktrees/life-agent/<name>`; merge
   by PR. Commit and push when the owner asks or has delegated it.
 - **History.** Docstrings describe current behaviour only; history lives in git. End a session
   with a summary of at most 15 lines (what changed, the board delta, at most three questions

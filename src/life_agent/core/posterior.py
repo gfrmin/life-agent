@@ -40,8 +40,8 @@ def temper_scales(groups: Sequence[int]) -> list[float]:
 
 def reliability(rho: float, obs: Mapping[str, Any]) -> float:
     """The chance this observation names the truth."""
-    return (rho * obs["authority"] * obs["subject_factor"] * obs["time_factor"]
-            * obs.get("competition_factor", 1.0))
+    return float(rho * obs["authority"] * obs["subject_factor"] * obs["time_factor"]
+                 * obs.get("competition_factor", 1.0))
 
 
 def log_match_miss(r: float, scale: float) -> tuple[float, float]:

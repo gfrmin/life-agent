@@ -362,7 +362,7 @@ def _midpoints(lo: float, hi: float, n: int) -> list[float]:
 
 
 def _points_per_axis(d: int) -> int:
-    return min(64, max(1, math.floor(_MV_POINT_BUDGET ** (1 / d))))
+    return min(64, max(1, int(_MV_POINT_BUDGET ** (1 / d))))
 
 
 def _product(axes: list[list[float]]) -> list[tuple[float, ...]]:
@@ -466,8 +466,8 @@ def _fold(model: UtilityModel, comp: frozenset[str],
                 mass[(flat // stride[j]) % len(axis)] += wi
             marginals.append(_normalised([math.log(max(m, _FLOOR)) for m in mass]))
     out: dict[str, LatentPosterior] = {}
-    for name, spec, axis, lw in zip(names, specs, axes, marginals, strict=True):
-        mean, var = _moments(axis, lw)
+    for name, spec, axis, marginal in zip(names, specs, axes, marginals, strict=True):
+        mean, var = _moments(axis, marginal)
         out[name] = LatentPosterior(name=name, mean=mean, variance=var,
                                     lo=spec.grid.lo, hi=spec.grid.hi)
     return out
