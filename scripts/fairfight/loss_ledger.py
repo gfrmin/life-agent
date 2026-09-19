@@ -522,16 +522,14 @@ def main() -> int:
     args = parser.parse_args()
 
     import life_agent.core.config as LCFG
-    import life_agent.core.lookup as LK
     import life_agent.core.pricing as PR
     import life_agent.core.utility as UT
 
     # the FULL utility posterior, folded from the FROZEN model + elicitations (the same wiring
     # the adoption gate uses; blind discipline — untouched here)
-    brain = LK.shared_brain()
     model = UT.load_model(LCFG.UTILITY_MODEL)
     evidence: list[UT.Evidence] = list(UT.load_elicitations(LCFG.UTILITY_ELICITATIONS, model))
-    posterior = UT.posterior(brain, model, evidence, policy="frozen-elicitations")
+    posterior = UT.posterior(model, evidence, policy="frozen-elicitations")
     for warning in posterior.endpoint_warnings(model.endpoint_mass_warn):
         print(f"  ⚠ {warning}")
 

@@ -765,13 +765,12 @@ def test_current_u_bar_defaults_to_the_anchor_shape(
     monkeypatch.setattr(config, "UTILITY_ELICITATIONS", tmp_path / "elicit.jsonl")
     monkeypatch.setattr(LK, "_U_BAR_RAW", None)
     monkeypatch.setattr(LK, "_U_BAR_SHAPED", {})
-    brain = Brain(ScriptedTransport())
-    u_bar, _version, policy = LK.current_u_bar(brain)
+    u_bar, _version, policy = LK.current_u_bar()
     assert policy == LK.U_BAR_POLICY
-    assert u_bar == LK.current_u_bar(brain, shape="exact")[0]
+    assert u_bar == LK.current_u_bar(shape="exact")[0]
 
 
-def test_current_u_bar_folds_the_engine_posterior_once_across_shapes(
+def test_current_u_bar_folds_the_posterior_once_across_shapes(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     model_path = tmp_path / "model.yaml"
     model_path.write_text(MODEL_YAML, encoding="utf-8")
@@ -779,18 +778,20 @@ def test_current_u_bar_folds_the_engine_posterior_once_across_shapes(
     monkeypatch.setattr(config, "UTILITY_ELICITATIONS", tmp_path / "elicit.jsonl")
     monkeypatch.setattr(LK, "_U_BAR_RAW", None)
     monkeypatch.setattr(LK, "_U_BAR_SHAPED", {})
-    transport = ScriptedTransport()
-    brain = Brain(transport)
+    folds: list[int] = []
+    real_posterior = LK.UT.posterior
 
-    LK.current_u_bar(brain, shape="exact")
-    n_creates_after_first = sum(1 for r in transport.sent if r["method"] == "create_state")
-    assert n_creates_after_first > 0  # the engine fold really ran once
+    def _counting(*args, **kwargs):
+        folds.append(1)
+        return real_posterior(*args, **kwargs)
 
-    LK.current_u_bar(brain, shape="quantity")  # a DIFFERENT shape, same fold_version
-    n_creates_after_second = sum(1 for r in transport.sent if r["method"] == "create_state")
-    # the raw engine posterior is memoised per fold_version — a second SHAPE must not
-    # re-fold it; only decide.shaped_u_bar's cheap host arithmetic runs again.
-    assert n_creates_after_second == n_creates_after_first
+    monkeypatch.setattr(LK.UT, "posterior", _counting)
+    LK.current_u_bar(shape="exact")
+    assert len(folds) == 1
+    LK.current_u_bar(shape="quantity")  # a DIFFERENT shape, same fold_version
+    # the raw posterior is memoised per fold_version — a second SHAPE must not re-fold it;
+    # only decide.shaped_u_bar's cheap host arithmetic runs again.
+    assert len(folds) == 1
 
 
 def test_current_u_bar_undeclared_scales_give_the_same_u_bar_for_every_shape(
@@ -803,11 +804,10 @@ def test_current_u_bar_undeclared_scales_give_the_same_u_bar_for_every_shape(
     monkeypatch.setattr(config, "UTILITY_ELICITATIONS", tmp_path / "elicit.jsonl")
     monkeypatch.setattr(LK, "_U_BAR_RAW", None)
     monkeypatch.setattr(LK, "_U_BAR_SHAPED", {})
-    brain = Brain(ScriptedTransport())
     from life_agent.core import answer_shape as AS
-    exact, version_e, _ = LK.current_u_bar(brain, shape="exact")
+    exact, version_e, _ = LK.current_u_bar(shape="exact")
     for shape in AS.SCALED_SHAPES:
-        shaped, version_s, _ = LK.current_u_bar(brain, shape=shape)
+        shaped, version_s, _ = LK.current_u_bar(shape=shape)
         assert shaped == exact
         assert version_s == version_e
 
@@ -825,9 +825,9 @@ def test_decide_and_record_classifies_the_question_and_asks_for_that_shape(
     seen_shapes: list[str] = []
     real_current_u_bar = LK.current_u_bar
 
-    def _spy(brain: Brain, *, shape: str = "exact"):
+    def _spy(*, shape: str = "exact"):
         seen_shapes.append(shape)
-        return real_current_u_bar(brain, shape=shape)
+        return real_current_u_bar(shape=shape)
 
     monkeypatch.setattr(LK, "current_u_bar", _spy)
     route = FakeClient({"lookup": True, "construct": "the total"})

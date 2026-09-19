@@ -1868,13 +1868,12 @@ def main() -> int:
 
         # the FULL utility posterior (marginals, not just Ū — the gate samples P(U)),
         # folded from the FROZEN model + elicitations (blind discipline: untouched here)
-        brain = LK.shared_brain()
         model = UT.load_model(LCFG.UTILITY_MODEL)
         # widen to the Evidence union so the invariant list[...] matches posterior's
         # parameter (only Elicitations exist on this path; reactions fold elsewhere)
         evidence: list[UT.Evidence] = list(UT.load_elicitations(LCFG.UTILITY_ELICITATIONS,
                                                                  model))
-        post = UT.posterior(brain, model, evidence, policy="frozen-elicitations")
+        post = UT.posterior(model, evidence, policy="frozen-elicitations")
         for warning in post.endpoint_warnings(model.endpoint_mass_warn):
             print(f"  ⚠ {warning}")
 
@@ -1886,7 +1885,7 @@ def main() -> int:
         # a reaction landed mid-run — and this gate SCORES under the blind posterior above.
         # Declare the pairing so a marginal reach that straddles the two break-evens is
         # quoted INCONCLUSIVE rather than as a sign the pairing chose.
-        pricing_u_bar, _pricing_fold, pricing_policy = LK.current_u_bar(brain)
+        pricing_u_bar, _pricing_fold, pricing_policy = LK.current_u_bar()
         pairing = GATE.regime_pairing(
             pricing_u_bar=pricing_u_bar, pricing_policy=pricing_policy,
             scoring_u_bar=post.u_bar(), scoring_policy=post.policy)

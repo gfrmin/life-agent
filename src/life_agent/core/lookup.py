@@ -1110,8 +1110,7 @@ def set_shared_brain(brain: Brain | None) -> None:
 U_BAR_POLICY = "all-to-date"  # the decider's declared evidence regime (design §3.1, Q-O5)
 
 
-def current_u_bar(brain: Brain, *,
-                  shape: str = AS.DEFAULT_SHAPE) -> tuple[dict[str, float], str, str]:
+def current_u_bar(*, shape: str = AS.DEFAULT_SHAPE) -> tuple[dict[str, float], str, str]:
     """Ū from the utility posterior (fold of model + elicitations + the verdict→evidence
     projection — the ``all-to-date`` regime, declared once above), SCALED for one
     question's answer ``shape`` (r30, `decide.shaped_u_bar` — the ONLY place a scale
@@ -1130,7 +1129,7 @@ def current_u_bar(brain: Brain, *,
     events += R.load_reactions(config.REACTIONS_LOG, config.DECISIONS_LOG)
     version = UT.fold_version(model, events, U_BAR_POLICY)
     if _U_BAR_RAW is None or _U_BAR_RAW[0] != version:
-        post = UT.posterior(brain, model, events, policy=U_BAR_POLICY)
+        post = UT.posterior(model, events, policy=U_BAR_POLICY)
         for warning in post.endpoint_warnings(model.endpoint_mass_warn):
             print(f"  ⚠ {warning}")
         _U_BAR_RAW = (version, post.u_bar())
@@ -1212,7 +1211,7 @@ def decide_and_record(root: Path, question: str, construct: str,
     # r30 (C5): the question's own answer shape prices its own decision — never a
     # separate rescoring, always through current_u_bar's one seam.
     shape = AS.answer_space(question)
-    u_bar, fold_ver, _policy = current_u_bar(b, shape=shape)
+    u_bar, fold_ver, _policy = current_u_bar(shape=shape)
     rho = rho_override if rho_override is not None else extractor_reliability(b)
     candidates = candidates_from(observations)
     weights, state_id = lookup_posterior(b, observations, candidates, rho)
