@@ -221,7 +221,7 @@ def population_posteriors(brain: Brain, outcomes_path: Path = config.OUTCOMES_LO
     by_cell = _cell_observations(outcomes_path)
     post: dict[str, tuple[float, float]] = {}
     for cell in _CELL_PRIORS:
-        post[cell] = REL.reliability(brain, "eval_claim", cell, by_cell[cell])
+        post[cell] = REL.reliability("eval_claim", cell, by_cell[cell])
     return post
 
 

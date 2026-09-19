@@ -512,42 +512,16 @@ def _extractor_outcomes(outcomes_path: Path) -> list[float]:
     return obs
 
 
-def _extractor_rho_state(brain: Brain, outcomes_path: Path) -> str:
-    """The rho Beta(4,4) prior CONDITIONED OVER THE WIRE on the extractor's graded outcomes
-    (audit + eval_lookup). The live state id; the caller reads + destroys it. Never a host
-    `prior + correct` fold (Invariant 1: condition is the one learning mechanism, even though
-    Beta-Bernoulli conjugacy is exact)."""
-    return REL.conditioned_state(brain, "extract", "value",
-                                 _extractor_outcomes(outcomes_path))
+def extractor_reliability(outcomes_path: Path = config.OUTCOMES_LOG) -> tuple[float, float]:
+    """rho for "this observation's value is the true V" as a Beta (alpha, beta): the wide
+    Beta(4,4) prior conditioned on the extractor's graded outcomes. The system learns whether
+    to trust its own extractor from its own outcomes log — the §8 loop, closed."""
+    return REL.reliability("extract", "value", _extractor_outcomes(outcomes_path))
 
 
-def extractor_reliability(brain: Brain, outcomes_path: Path = config.OUTCOMES_LOG
-                          ) -> tuple[float, float]:
-    """rho for "this observation's value is the true V" as a Beta (alpha, beta) — the wide Beta(4,4)
-    prior conditioned over the wire on the graded evidence, read back via `read_params`. The
-    full posterior (not just its mean) so the lookup rho-latent carries the extractor's reliability
-    uncertainty exactly (the `reliability_categorical` rho prior, integrated analytically by the
-    engine). The system learns whether to trust its own extractor from its own outcomes log — the
-    §8 loop, closed, on the wire."""
-    sid = _extractor_rho_state(brain, outcomes_path)
-    try:
-        spec = brain.read_params(sid)
-        return float(spec["alpha"]), float(spec["beta"])
-    finally:
-        brain.destroy_state(sid)
-
-
-def extractor_reliability_mean(brain: Brain | None = None,
-                               outcomes_path: Path = config.OUTCOMES_LOG) -> float:
-    """The rho posterior MEAN (a wire readout via `mean`, not a host a/(a+b)) — the scalar the
-    string-blind bridge relays to the answer-brain. Same wire-conditioned Beta as
-    :func:`extractor_reliability`; `brain` defaults to the shared skin (bridge convenience)."""
-    b = brain if brain is not None else shared_brain()
-    sid = _extractor_rho_state(b, outcomes_path)
-    try:
-        return b.mean(sid)
-    finally:
-        b.destroy_state(sid)
+def extractor_reliability_mean(outcomes_path: Path = config.OUTCOMES_LOG) -> float:
+    """The rho posterior mean — the scalar the string-blind bridge relays to the decider."""
+    return REL.mean("extract", "value", _extractor_outcomes(outcomes_path))
 
 
 # --- route + observe (cached local-model instruments, the subject.py pattern) ----------
@@ -1212,7 +1186,7 @@ def decide_and_record(root: Path, question: str, construct: str,
     # separate rescoring, always through current_u_bar's one seam.
     shape = AS.answer_space(question)
     u_bar, fold_ver, _policy = current_u_bar(shape=shape)
-    rho = rho_override if rho_override is not None else extractor_reliability(b)
+    rho = rho_override if rho_override is not None else extractor_reliability()
     candidates = candidates_from(observations)
     weights, state_id = lookup_posterior(b, observations, candidates, rho)
     # r30b: the `quantity` shape's claim space — one priced row per interval proposal,

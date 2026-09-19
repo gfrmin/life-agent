@@ -196,45 +196,12 @@ def test_daemon_abstract_observations_collapse_correlated_duplicates(
     assert len(abstract) == 1  # the daemon sees one witness, not a saturating duplicate
 
 
-class _BetaBrain:
-    """A Beta-Bernoulli test-oracle brain (create_state/condition/read_params/mean) modelling the
-    conjugacy the body drives OVER THE WIRE for the rho Beta — no host `prior + correct` fold."""
-
-    def __init__(self) -> None:
-        self._s: dict[str, tuple[float, float]] = {}
-        self._n = 0
-
-    def create_state(self, spec: dict) -> str:
-        assert spec["type"] == "beta", spec
-        self._n += 1
-        sid = f"s_{self._n}"
-        self._s[sid] = (float(spec["alpha"]), float(spec["beta"]))
-        return sid
-
-    def destroy_state(self, sid: str) -> None:
-        self._s.pop(sid, None)
-
-    def condition(self, sid: str, *, kernel: dict, observation: float) -> float:
-        assert kernel == {"type": "bernoulli"}, kernel
-        a, b = self._s[sid]
-        self._s[sid] = (a + observation, b + (1.0 - observation))
-        return 0.0
-
-    def read_params(self, sid: str) -> dict:
-        a, b = self._s[sid]
-        return {"type": "beta", "alpha": a, "beta": b}
-
-    def mean(self, sid: str) -> float:
-        a, b = self._s[sid]
-        return a / (a + b)
-
-
 def test_extractor_reliability_learns_from_eval_outcomes(tmp_path: Path) -> None:
     from life_agent.core import outcomes as O
 
     log = tmp_path / "outcomes.jsonl"
-    # the rho Beta is wire-conditioned, read back as (alpha, beta); no evidence => wide Beta(4,4)
-    assert LK.extractor_reliability(_BetaBrain(), log) == (4.0, 4.0)
+    # no evidence => the wide Beta(4,4) prior
+    assert LK.extractor_reliability(log) == (4.0, 4.0)
     identity = {"producer_name": "life_agent.ask.lookup_answer",
                 "extract_prompt_hash": LK.extract_instrument_hash()}
     for grade in ("INCORRECT", "INCORRECT", "CORRECT"):
@@ -255,7 +222,7 @@ def test_extractor_reliability_learns_from_eval_outcomes(tmp_path: Path) -> None
         instrument_identity={"producer_name": "life_agent.ask.lookup_answer"},
         probability=0.9))
     # 1 correct + 2 incorrect on the current instrument → Beta(4+1, 4+2) (mean 5/11)
-    assert LK.extractor_reliability(_BetaBrain(), log) == (5.0, 6.0)
+    assert LK.extractor_reliability(log) == (5.0, 6.0)
 
 
 def test_authority_classes() -> None:
