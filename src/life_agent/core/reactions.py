@@ -199,6 +199,23 @@ def _narrative_reaction(r: ReactionEvent, d: DEC.DecisionEvent) -> UT.MarginReac
         tau_group="narrative")
 
 
+def ask_recovery_rate(decisions_path: Path, reactions_path: Path) -> float:
+    """The measured recovery rate of an enacted ask — P(the owner's reply settled it | an
+    ask_clarify was committed), read as the latest verdict on each ask decision, as the
+    Beta(1, 1) posterior mean ``(n_good + 1) / (n + 2)``. With no ask ever recorded (true
+    at 2026-09-19: 0 of 3 865 decisions) this is the prior mean 0.5, and the ask row is
+    priced by that prior alone (`core.decide`)."""
+    asks = {d.decision_id for d in DEC.read(decisions_path) if d.chosen_action == "ask_clarify"}
+    if not asks:
+        return 0.5
+    latest: dict[str, str] = {}
+    for r in read(reactions_path):
+        if r.decision_id in asks and r.kind == "verdict" and r.valence in ("good", "bad"):
+            latest[r.decision_id] = r.valence
+    n = len(latest)
+    return (sum(v == "good" for v in latest.values()) + 1) / (n + 2)
+
+
 def load_reactions(reactions_path: Path,
                    decisions_path: Path) -> list[UT.Reaction | UT.MarginReaction]:
     """Join verdicts ⋈ decisions by ``decision_id`` and emit utility evidence for the clean

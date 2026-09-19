@@ -33,8 +33,8 @@ from life_agent.core import recorder as REC
 from life_agent.core import seam as SEAM
 
 BRIDGE = os.environ.get("LIFE_AGENT_BRIDGE_URL", "http://127.0.0.1:8798")
-DOWN = ("No answer asserted — the decider is unavailable (the bridge or its engine is "
-        "not up; start the bridge, and run `make engine` if no engine is installed).")
+DOWN = ("No answer asserted — the decider is unavailable (the bridge is not up; "
+        "start the bridge).")
 # The fold-fate vocabulary — ask-live's /react wording, one voice across surfaces.
 FATE_FOLDS = "folds into the utility posterior on the next gate run"
 FATE_RECORDED = "recorded — not folded (only abstain verdicts move the fold)"
@@ -50,7 +50,7 @@ def _retrying[T](attempt: Callable[[], T]) -> T:
     """Run ``attempt``; on a TRANSIENT failure (HTTP 5xx, connection error, timeout)
     sleep and retry, once per entry in :data:`_RETRY_SLEEPS`; the final attempt's error
     propagates with its own name. HTTPError < 500 re-raises immediately, and so does 503:
-    the bridge saying its decider is unavailable, which a retry would only make re-boot."""
+    the bridge saying it cannot decide, which is a fact to name, not to retry."""
     for delay in _RETRY_SLEEPS:
         try:
             return attempt()
@@ -103,9 +103,8 @@ def _get(url: str) -> dict[str, Any]:
 
 
 def _ready() -> bool:
-    """The bridge must answer /ready with a decider configured — a down stack is named,
-    never guessed around. (A configured decider whose engine has died re-boots on the next
-    ``/decide``; if that fails, ``/decide`` answers 503 and :func:`drive` names it.)"""
+    """The bridge must answer /ready with its decider — a down stack is named, never
+    guessed around."""
     try:
         with urllib.request.urlopen(f"{BRIDGE}/ready", timeout=3) as r:
             status = json.loads(r.read())

@@ -1,19 +1,18 @@
-"""coarse.py — the enactment of the engine's coarse act.
+"""enact.py — the enactment of the decider's act.
 
-The engine picks one of the world's four affordances (abstain / gather / ask / respond);
-this module turns that act into what the executor does, given the ``/decide`` request it
-was ranked over. It ranks nothing: every rule below is determined by the act and the
-request alone.
+:func:`life_agent.core.decide.bayes_act` picks one of the four actions (abstain / gather
+/ ask / respond); this module turns that act into what the executor does, given the
+``/decide`` request it was ranked over. It ranks nothing: every rule below is determined by
+the act and the request alone.
 
-* **respond → the MAP candidate.** A binary ``respond`` asserts; the world never says
-  which candidate, so the host asserts the one with the most credence (candidate order
-  breaks ties). This is value selection, not act ranking, and it is the one host argmax
-  left on the path, disclosed as such in gfrmin/proplang#29 item 4.
+* **respond → the MAP candidate.** ``respond`` asserts the candidate with the most
+  credence (candidate order breaks ties): with ``u_correct`` equal across candidates this IS
+  the Bayes act's value, not a second ranking.
 * **gather → the cheapest unapplied gather option.** The options are the request's voi
   transforms and grow actuators, cheapest first (a stable sort, so menu order breaks
-  ties). Guard-kind transforms are never gather options. The world only lets the engine
-  choose gather while an option is open (:func:`gather_open`), so an empty list here is
-  a contract error, not a fallback.
+  ties). Guard-kind transforms are never gather options. The act ranks gather only while an
+  option is open (:func:`gather_open`), so an empty list here is a contract error, not a
+  fallback.
 * **ask → ask_clarify, abstain → abstain.**
 """
 from __future__ import annotations
@@ -21,7 +20,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
-from . import world as W
+from life_agent.core import decide as DEC
 
 
 def gather_options(payload: dict[str, Any]) -> list[str]:
@@ -56,7 +55,7 @@ def gather_open(payload: dict[str, Any]) -> bool:
 
 def enact(action: str, payload: dict[str, Any], credences: Sequence[float],
           p_none: float) -> dict[str, Any]:
-    """The executor's view of the engine's ``action``: ``effector`` plus ``value`` (the
+    """The executor's view of the decider's ``action``: ``effector`` plus ``value`` (the
     asserted candidate on a report) and ``probe`` (the gather to run)."""
     view: dict[str, Any] = {"credences": list(credences), "p_none": p_none,
                             "value": None, "probe": None}
@@ -73,7 +72,6 @@ def enact(action: str, payload: dict[str, Any], credences: Sequence[float],
     if action == "gather":
         options = gather_options(payload)
         if not options:
-            raise ValueError("the engine chose gather with no gather option open")
+            raise ValueError("gather was chosen with no gather option open")
         return {**view, "effector": "gather", "probe": options[0]}
-    raise ValueError(f"undeclared engine action {action!r} "
-                     f"(declared: {[a for a, _ in W.AFFORDANCES]})")
+    raise ValueError(f"undeclared action {action!r} (declared: {list(DEC.ACTIONS)})")

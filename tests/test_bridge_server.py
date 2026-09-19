@@ -33,7 +33,6 @@ from life_agent.core import probes as P
 from life_agent.core import reactions as RX
 from life_agent.core import retrieval as RET
 from life_agent.core.lookup import Observation
-from life_agent.membrane import decider as DCD
 
 # --- fixtures: fake deps + a dispatch helper ------------------------------------------
 
@@ -814,39 +813,24 @@ def test_log_reaction_bad_valence_is_400(deps: BridgeDeps) -> None:
     assert status == 400
 
 
-# --- the decider: /decide, the verdict folds, /ready -------------------------------------
-# A fake stands in for membrane.decider.Decider (its own tests cover it against a scripted
-# and the pinned engine). Under test here: the bridge serves it, names its absence, and
-# hands it every recorded decision and verdict.
+# --- the decider: /decide and /ready ----------------------------------------------------
+# A fake stands in for core.decider.Decider (its own tests cover the act). Under test here:
+# the bridge serves it, names its absence, and rejects what it cannot rank.
 
 
 @dataclasses.dataclass
 class _FakeDecider:
     view: dict[str, Any] = dataclasses.field(default_factory=lambda: {
         "effector": "abstain", "value": None, "probe": None, "credences": [0.4],
-        "p_none": 0.6, "act": "abstain", "p1": 0.3, "eu": 0.0})
-    down: bool = False
+        "p_none": 0.6, "act": "abstain", "p1": 0.4, "eu": 0.0})
     decide_calls: list[tuple[str, dict[str, Any]]] = dataclasses.field(default_factory=list)
-    bind_calls: list[tuple[str, str, dict[str, Any]]] = dataclasses.field(default_factory=list)
-    reaction_calls: list[tuple[str, str]] = dataclasses.field(default_factory=list)
 
     def decide(self, question_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         self.decide_calls.append((question_id, payload))
-        if self.down:
-            raise DCD.DeciderUnavailableError("the decider engine is unavailable (EOF)")
         return self.view
 
-    def bind(self, decision_id: str, question_id: str, event: dict[str, Any]) -> None:
-        self.bind_calls.append((decision_id, question_id, event))
-
-    def observe_reaction(self, decision_id: str, valence: str) -> bool:
-        self.reaction_calls.append((decision_id, valence))
-        if self.down:
-            raise DCD.DeciderUnavailableError("the decider engine is unavailable (EOF)")
-        return True
-
     def status(self) -> dict[str, object]:
-        return {"booted": not self.down, "t": 3, "last_error": ""}
+        return {"kind": "fake"}
 
 
 def _with_decider(deps: BridgeDeps, decider: _FakeDecider) -> BridgeDeps:
@@ -857,10 +841,10 @@ _DECIDE_BODY: dict[str, Any] = {"question_id": "q1", "candidates": ["x"], "obser
                                 "rho": 0.8}
 
 
-def test_decide_without_a_decider_is_503_and_names_the_fix(deps: BridgeDeps) -> None:
+def test_decide_without_a_decider_is_503(deps: BridgeDeps) -> None:
     assert deps.decider is None
     status, payload = _call(deps, "POST", "/decide", _DECIDE_BODY)
-    assert status == 503 and "make engine" in payload["error"]
+    assert status == 503 and "without a decider" in payload["error"]
 
 
 def test_decide_returns_the_deciders_view(deps: BridgeDeps) -> None:
@@ -868,12 +852,6 @@ def test_decide_returns_the_deciders_view(deps: BridgeDeps) -> None:
     status, payload = _call(_with_decider(deps, fake), "POST", "/decide", _DECIDE_BODY)
     assert status == 200 and payload == fake.view
     assert fake.decide_calls == [("q1", _DECIDE_BODY)]
-
-
-def test_a_down_engine_is_503_not_a_substitute_answer(deps: BridgeDeps) -> None:
-    status, payload = _call(_with_decider(deps, _FakeDecider(down=True)), "POST", "/decide",
-                            _DECIDE_BODY)
-    assert status == 503 and "EOF" in payload["error"]
 
 
 @pytest.mark.parametrize(("body", "missing"), [
@@ -892,78 +870,41 @@ def test_decide_rejects_a_request_it_cannot_rank(deps: BridgeDeps, body: dict[st
 def test_a_request_the_decider_cannot_parse_is_400_not_500(deps: BridgeDeps) -> None:
     class _Strict(_FakeDecider):
         def decide(self, question_id: str, payload: dict[str, Any]) -> dict[str, Any]:
-            raise KeyError("reports")
+            raise KeyError("rho")
 
     status, payload = _call(_with_decider(deps, _Strict()), "POST", "/decide", _DECIDE_BODY)
     assert status == 400 and "malformed" in payload["error"]
 
 
-def test_log_decision_binds_the_decision_for_its_verdict(deps: BridgeDeps) -> None:
-    fake = _FakeDecider()
-    deps2 = _with_decider(deps, fake)
-    status, payload = _call(deps2, "POST", "/log_decision",
-                            {"question": "my mobile?", "retrieval_keys": ["d1", "d0"],
-                             "decision": _decision()})
-    assert status == 200
-    (decision_id, question_id, event), = fake.bind_calls
-    assert decision_id == payload["decision_id"] == event["decision_id"]
-    assert question_id == DEC.read(deps2.decisions_path)[0].question_id
-    assert event["chosen_action"] == "abstain"
-
-
-def test_log_reaction_folds_the_verdict_into_the_decider(deps: BridgeDeps) -> None:
-    fake = _FakeDecider()
-    deps2 = _with_decider(deps, fake)
-    did = _log_a_decision(deps2, effector="abstain")
-    status, payload = _call(deps2, "POST", "/log_reaction",
-                            {"decision_id": did, "valence": "bad"})
-    assert status == 200 and payload["folds"] is True
-    assert fake.reaction_calls == [(did, "bad")]
-
-
-def test_a_verdict_the_engine_cannot_fold_is_still_recorded(deps: BridgeDeps) -> None:
-    fake = _FakeDecider()
-    deps2 = _with_decider(deps, fake)
-    did = _log_a_decision(deps2, effector="abstain")
-    fake.down = True
-    status, _payload = _call(deps2, "POST", "/log_reaction",
-                             {"decision_id": did, "valence": "bad"})
-    assert status == 200
-    assert len(RX.read(deps2.reactions_path)) == 1   # the next boot replays it
-
-
 def test_ready_reports_the_decider(deps: BridgeDeps) -> None:
     assert _call(deps, "GET", "/ready")[1] == {"status": "ok", "decider": {"enabled": False}}
     payload = _call(_with_decider(deps, _FakeDecider()), "GET", "/ready")[1]
-    assert payload["decider"] == {"enabled": True, "booted": True, "t": 3, "last_error": ""}
+    assert payload["decider"] == {"enabled": True, "kind": "fake"}
 
 
-def test_build_decider_is_none_without_an_engine(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(bridge_server.config, "membrane_command", lambda: None)
-    assert bridge_server._build_decider(lambda: {}) is None
+def test_the_built_decider_reads_the_current_u_bar_and_the_recovery_rates(
+        monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """The bridge's decider ranks under Ū plus the two measured recovery rates; with no
+    outcome logs both read as the Beta(1, 1) prior mean."""
+    from life_agent.core import config
+    monkeypatch.setattr(config, "GATHER_OUTCOMES_LOG", tmp_path / "none.jsonl")
+    monkeypatch.setattr(config, "DECISIONS_LOG", tmp_path / "none-d.jsonl")
+    monkeypatch.setattr(config, "REACTIONS_LOG", tmp_path / "none-r.jsonl")
+    calls: list[int] = []
 
+    def u_bar() -> dict[str, float]:
+        calls.append(1)
+        return {"u_correct": 1.0, "u_abstain": 0.0, "u_wrong": -9.0, "lambda_int": 1.0,
+                "kappa_att": 0.02}
 
-def test_a_failed_boot_still_serves_and_retries(monkeypatch: pytest.MonkeyPatch) -> None:
-    def refuse(*_a: Any, **_k: Any) -> Any:
-        raise OSError("no such engine")
-
-    started: list[Any] = []
-
-    class _Inline:
-        def __init__(self, target: Any, **_k: Any) -> None:
-            self.target = target
-
-        def start(self) -> None:
-            started.append(self)
-            self.target()
-
-    monkeypatch.setattr(bridge_server.config, "membrane_command", lambda: ["proplang-host-absent"])
-    monkeypatch.setattr(bridge_server.MembraneClient, "spawn", refuse)
-    monkeypatch.setattr(bridge_server.threading, "Thread", _Inline)
-    decider = bridge_server._build_decider(lambda: {})
-    assert len(started) == 1   # the boot runs off the serving thread
-    assert decider is not None and decider.status()["booted"] is False
-    assert "no such engine" in str(decider.status()["last_error"])
+    decider = bridge_server._build_decider(u_bar)
+    obs = [{"reports": 1, "group": g, "authority": 1.0, "subject_factor": 1.0,
+            "time_factor": 1.0, "competition_factor": 1.0} for g in (0, 1)] * 4
+    body = {**_DECIDE_BODY, "candidates": ["x", "y"], "observations": obs, "rho": 0.95}
+    view = decider.decide("q1", body)
+    assert view["effector"] == "report" and view["value"] == "y"
+    assert calls == [1]  # Ū is read per decision, so a reaction fold moves the next one
+    assert decider.status() == {"kind": "host"}
 
 
 # --- malformed / unknown / method ------------------------------------------------------
@@ -1069,35 +1010,9 @@ def test_http_statelessness_interleaved_request_does_not_perturb_repeat(
 # SIGTERM. `_install_shutdown_handlers` itself (the two `signal.signal` registrations) is
 # intentionally not exercised here: it is one line of stdlib wiring around `_shutdown`.
 
-class _FakeCloseableDecider:
-    def __init__(self) -> None:
-        self.closed = False
-
-    def close(self) -> None:
-        self.closed = True
-
-
-class _FakeShutdownDeps:
-    def __init__(self, decider: _FakeCloseableDecider | None) -> None:
-        self.decider = decider
-
-
-class _FakeShutdownServer:
-    def __init__(self, decider: _FakeCloseableDecider | None) -> None:
-        self.deps = _FakeShutdownDeps(decider)
-
-
-def test_shutdown_closes_the_decider_then_exits() -> None:
-    decider = _FakeCloseableDecider()
+def test_shutdown_exits_zero() -> None:
     with pytest.raises(SystemExit) as exc:
-        bridge_server._shutdown(_FakeShutdownServer(decider))  # type: ignore[arg-type]
-    assert exc.value.code == 0
-    assert decider.closed is True
-
-
-def test_shutdown_with_no_decider_still_exits() -> None:
-    with pytest.raises(SystemExit) as exc:
-        bridge_server._shutdown(_FakeShutdownServer(None))  # type: ignore[arg-type]
+        bridge_server._shutdown(object())  # type: ignore[arg-type]
     assert exc.value.code == 0
 
 

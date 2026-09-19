@@ -4,18 +4,16 @@ Wraps life-agent's body-side reads — route / retrieve / extract / probe / util
 discrete endpoints, each a thin wrapper of an existing, tested function, so the answer-brain
 executor has a warm, independently-tested backend. The bridge gathers and shapes evidence,
 and hosts the one decider: ``POST /decide`` hands the request to
-:class:`life_agent.membrane.decider.Decider`, which computes the candidate posterior and asks
-the proplang engine for the act. With no engine, ``/decide`` answers 503 and names why; no
-other code ranks acts. `/extract` takes `time_indexed` + `covariates` as INPUTS, it never
-computes them.
+:func:`life_agent.core.decider.decide`, which computes the candidate posterior and takes
+the Bayes act under the current Ū (rule 2). No other code ranks acts. `/extract` takes
+`time_indexed` + `covariates` as INPUTS, it never computes them.
 
 The two writes are the verdict-emission seam: `/log_decision` (the body posts the terminal
 decision the governor enacted, appended to the calibration decision log `core.decisions` shaped
 exactly as the lookup family's own decisions) and `/log_reaction` (the owner's one-bit good/bad
 verdict on a logged decision, appended to `core.reactions` — the in-session counterpart of
 ask-live's `/react`). Together they let the owner's verdict fold into u(wrong) through the
-EXISTING reaction loop with no new fold code, and each verdict is folded into the decider as
-one evidence tick.
+EXISTING reaction loop with no new fold code; the next decision reads the moved Ū.
 
 **Stateless reads**: every read endpoint is a pure function of (corpus, request); the body
 holds the growing hit set + accumulated covariates and resends them each refinement (uniform
@@ -35,11 +33,10 @@ import os
 import re
 import signal
 import sys
-import threading
 import time
 from collections.abc import Callable
 from contextvars import ContextVar
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from datetime import date, datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from json import JSONDecodeError, dumps, loads
@@ -54,6 +51,8 @@ from life_agent.bridge.observations import join_wire_observations, to_abstract_o
 from life_agent.core import answer_shape as AS
 from life_agent.core import config
 from life_agent.core import corpus as CORPUS
+from life_agent.core import decide as DEC_RULE
+from life_agent.core import decider as DCD
 from life_agent.core import decisions as DEC
 from life_agent.core import deliberate as DL
 from life_agent.core import derivations as D
@@ -72,10 +71,6 @@ from life_agent.core import retrieval as RET
 from life_agent.core import synthesis as SYN
 from life_agent.core import volatility as VOL
 from life_agent.core.llm import LLMResult
-from life_agent.membrane import boot as BOOT
-from life_agent.membrane import decider as DCD
-from life_agent.membrane import world as MW
-from life_agent.membrane.client import MembraneClient
 
 HOST = os.environ.get("LIFE_AGENT_BRIDGE_HOST", "127.0.0.1")
 PORT = int(os.environ.get("LIFE_AGENT_BRIDGE_PORT", "8798"))  # adjacent to the daemon's 8799
@@ -95,8 +90,9 @@ class BridgeDeps:
     ask-session). ``profile`` + ``u_bar`` are the PII the body never sends; they are read
     here and only their summaries cross the wire.
 
-    ``decider`` is the one decider (:class:`life_agent.membrane.decider.Decider`);
-    ``None`` when no engine is installed or configured, and then ``/decide`` answers 503."""
+    ``decider`` is the one decider (:class:`life_agent.core.decider.Decider`): the candidate
+    posterior, then the Bayes act under the current Ū. ``None`` only in a test harness built
+    without one; then ``/decide`` answers 503."""
 
     root: Path
     conn: duckdb.DuckDBPyConnection      # read-only catalogue (FTS loaded) — retrieval + probes
@@ -110,7 +106,7 @@ class BridgeDeps:
     reactions_path: Path                 # calibration reaction log — /log_reaction appends here
     fold_version: Callable[[], str]      # current utility fold version (pins the logged decision)
     gather_outcomes_path: Path           # gather-outcome log — /log_gather writes, /grow_menu reads
-    decider: DCD.Decider | None = None   # the one decider; None = no engine
+    decider: DCD.Decider | None = None   # the one decider
 
 
 class BridgeError(Exception):
@@ -884,11 +880,9 @@ def _log_gather(deps: BridgeDeps, p: Payload) -> Payload:
 # --- /decide: the one decider ------------------------------------------------------------
 
 def _decide(deps: BridgeDeps, p: Payload) -> Payload:
-    """Rank one request (:meth:`life_agent.membrane.decider.Decider.decide`). 503 when there
-    is no engine or it failed; the executor then reports the stack unavailable."""
+    """Rank one request (:func:`life_agent.core.decider.decide`)."""
     if deps.decider is None:
-        raise BridgeError(503, "no decider engine: run `make engine` or set "
-                               "LIFE_AGENT_MEMBRANE_COMMAND")
+        raise BridgeError(503, "the bridge was built without a decider")
     question_id = _req_str(p, "question_id")
     if not _req_list(p, "candidates"):
         raise BridgeError(400, "field 'candidates' must be non-empty")
@@ -896,8 +890,6 @@ def _decide(deps: BridgeDeps, p: Payload) -> Payload:
         raise BridgeError(400, "missing field 'rho'")
     try:
         return deps.decider.decide(question_id, p)
-    except DCD.DeciderUnavailableError as e:
-        raise BridgeError(503, str(e)) from e
     except (KeyError, TypeError, ValueError) as e:
         raise BridgeError(400, f"malformed /decide request ({type(e).__name__}: {e})") from e
 
@@ -1009,8 +1001,6 @@ def _log_decision(deps: BridgeDeps, p: Payload) -> Payload:
         # was ranked under, with the defaults NAMED when the caller stated neither
         regime=regime, policy=policy, defaulted=defaulted)
     DEC.append(deps.decisions_path, event)
-    if deps.decider is not None:
-        deps.decider.bind(decision_id, event.question_id, asdict(event))
     return {"decision_id": decision_id}
 
 
@@ -1033,12 +1023,6 @@ def _log_reaction(deps: BridgeDeps, p: Payload) -> Payload:
     RX.append(deps.reactions_path, RX.ReactionEvent(
         tx_time=O.now_iso(), question_id=d.question_id, decision_id=decision_id,
         kind="verdict", valence=valence))
-    if deps.decider is not None:
-        try:
-            deps.decider.observe_reaction(decision_id, valence)
-        except DCD.DeciderUnavailableError as e:
-            # the reaction row is written; the decider's next boot replays it
-            print(f"life-agent bridge: verdict not folded live ({e})")
     folds = d.chosen_action == "abstain"  # only abstain verdicts move the fold (reactions §4.4)
     return {"valence": valence, "family": d.family, "chosen_action": d.chosen_action,
             "folds": folds}
@@ -1096,7 +1080,8 @@ _GET: dict[str, Handler] = {"/utility": _utility, "/grow_menu": _grow_menu}
 
 
 def _decider_ready_block(deps: BridgeDeps) -> Payload:
-    """`GET /ready`'s decider block: whether an engine is configured and booted."""
+    """`GET /ready`'s decider block: whether the bridge has its decider (it always does
+    outside a test harness) and what kind it is."""
     if deps.decider is None:
         return {"enabled": False}
     return {"enabled": True, **deps.decider.status()}
@@ -1186,36 +1171,15 @@ class BridgeServer(HTTPServer):
         self.deps = deps
 
 
-def _build_decider(u_bar: Callable[[], dict[str, float]]) -> DCD.Decider | None:
-    """The decider over the configured engine (``config.membrane_command``), or ``None``
-    when no engine is configured. Its boot replays every recorded verdict (minutes at a few
-    hundred ticks), so it runs on a background thread: the bridge serves at once, and a
-    ``/decide`` that arrives mid-boot waits for it. A failed boot is printed and retried on
-    the next ``/decide``."""
-    command = config.membrane_command()
-    if command is None:
-        print("life-agent bridge: no decider engine (run `make engine`); /decide answers 503")
-        return None
+def _build_decider(u_bar: Callable[[], dict[str, float]]) -> DCD.Decider:
+    """The decider under the current Ū plus the measured recovery rates of the two
+    information acts (`core.decide`'s rows read them from u_bar)."""
     def priced_u_bar() -> dict[str, float]:
-        # the handshake's numbers: Ū plus gather's measured recovery rate
-        return {**u_bar(), MW.RECOVERY_KEY: GO.recovery_rate(config.GATHER_OUTCOMES_LOG)}
-
-    decider = DCD.Decider(
-        spawn=lambda: MembraneClient.spawn(
-            command, read_timeout_s=config.membrane_read_timeout_s()),
-        u_bar=priced_u_bar,
-        snapshot=lambda: BOOT.boot_snapshot(
-            config.DECISIONS_LOG, config.REACTIONS_LOG,
-            claude_verdicts_path=config.CLAUDE_VERDICTS_LOG))
-
-    def boot() -> None:
-        try:
-            decider.boot()
-        except DCD.DeciderUnavailableError as e:
-            print(f"life-agent bridge: decider boot failed, retrying on next /decide ({e})")
-
-    threading.Thread(target=boot, name="decider-boot", daemon=True).start()
-    return decider
+        return {**u_bar(),
+                DEC_RULE.RECOVERY_KEY: GO.recovery_rate(config.GATHER_OUTCOMES_LOG),
+                DEC_RULE.ASK_RECOVERY_KEY: RX.ask_recovery_rate(config.DECISIONS_LOG,
+                                                                config.REACTIONS_LOG)}
+    return DCD.Decider(priced_u_bar)
 
 
 def build_deps() -> BridgeDeps:
@@ -1244,15 +1208,12 @@ def build_deps() -> BridgeDeps:
                       reactions_path=config.REACTIONS_LOG, fold_version=_fold_version,
                       gather_outcomes_path=config.GATHER_OUTCOMES_LOG,
                       # the handshake declares the anchor shape's utility once
-                      # (decider module docstring: per-tick utility is unshipped)
                       decider=_build_decider(lambda: _u_bar(AS.DEFAULT_SHAPE)))
 
 
 def _shutdown(server: BridgeServer) -> None:
-    """The SIGTERM/SIGINT cleanup: stop the decider's engine subprocess, then exit through
-    ``main()``'s own ``try/finally`` (the convention ``reach/jarvis.py`` uses)."""
-    if server.deps.decider is not None:
-        server.deps.decider.close()
+    """The SIGTERM/SIGINT cleanup: exit through ``main()``'s own ``try/finally`` (the
+    convention ``reach/jarvis.py`` uses)."""
     sys.exit(0)
 
 
@@ -1267,7 +1228,7 @@ def main() -> None:
     print(f"life-agent capability bridge → http://{HOST}:{PORT}")
     print("  POST /route /retrieve /extract /probe/{recency,subject,authority,corroborate}")
     print("  POST /log_decision /log_reaction   (answer-brain verdict-emission seam)")
-    print("  POST /decide           (the decider: posterior + proplang engine)")
+    print("  POST /decide           (the decider: posterior + the Bayes act)")
     print("  GET  /utility /ready")
     try:
         server.serve_forever()

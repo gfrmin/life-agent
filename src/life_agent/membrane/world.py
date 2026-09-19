@@ -9,7 +9,9 @@ data/functions: the handshake world (namespace, guards, a names+grids menu, a
 ``said@1`` utility sentence) and the canonical per-tick feature encoding
 (:func:`shadow_features`) both the live executor loop and the decision-log replay path
 reduce to via one shared :class:`DecideSummary`. Nothing here spawns a process or reads
-a file — the shadow supervisor is the caller that does.
+a file. The utility ROWS and the act are :mod:`life_agent.core.decide`; this module builds
+the wire sentence from them. DEFERRED: the engine is off the ask path (ROADMAP.md doors)
+and this world is kept green for its return.
 
 The action vocabulary is ONE writable name, ``act``, whose grid VALUES encode the
 executor's four affordances folded to the world's binary predicate y = "asserting now
@@ -27,6 +29,19 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
+from life_agent.core.decide import (  # the rows and the act live in core; re-exported here
+    ACTIONS,
+    RECOVERY_KEY,
+    argmax_action,
+    argmax_crossings,
+    eu_by_action,
+    respond_threshold,
+    utility_by_action,
+)
+
+__all__ = ["ACTIONS", "RECOVERY_KEY", "argmax_action", "argmax_crossings", "eu_by_action",
+           "respond_threshold", "utility_by_action"]
+
 # --- the affordance vocabulary (ONE writable name; grid values are world-owned) ----------
 
 ACT_NAME = "act"
@@ -36,6 +51,7 @@ AFFORDANCES: tuple[tuple[str, float], ...] = (
     ("abstain", 1.0), ("gather", 2.0), ("ask", 3.0), ("respond", 4.0),
 )
 ACT_GRID: list[float] = [v for _, v in AFFORDANCES]
+assert tuple(name for name, _ in AFFORDANCES) == ACTIONS  # one order: ties first-listed
 VALUE_TO_ACTION: dict[float, str] = {v: name for name, v in AFFORDANCES}
 _VALUE_FOR: dict[str, float] = {name: v for name, v in AFFORDANCES}
 
@@ -49,7 +65,7 @@ UTILITY_FORMS: tuple[str, ...] = ("said@1",)
 # `ASSERT_ACTIONS`/`WITHHOLD_ACTIONS`, the daemon-scheduled "gather" steer, and the
 # zero-observation "miss") folded onto this world's four affordances. ONE source: the
 # offline report (`scripts/membrane/report.py`) and the M3 live mapping
-# (:mod:`life_agent.membrane.coarse`) both read this dict — a hand-copy in either place
+# (:mod:`life_agent.core.enact`) both read this dict — a hand-copy in either place
 # is exactly the drift the report's own legend warns against. `hedge -> respond` is a
 # declared modelling choice (assert-shaped but uncommitted — the report prints the
 # caveat beside its copy of the legend).
@@ -173,7 +189,6 @@ PRICES: dict[str, str] = {"gather": "gather-cost"}
 # The u_bar key carrying gather's measured recovery rate r = P(the question ends in a report
 # | a gather was enacted) (:func:`life_agent.core.gather_outcomes.recovery_rate`). Absent,
 # r = 1: the myopic perfect-information row.
-RECOVERY_KEY = "gather_recovery"
 
 
 # [§3.3 · M-9] feature bucketing — the sensor vocabulary of g and of the world
@@ -261,42 +276,6 @@ def shadow_features(s: DecideSummary, t: float) -> dict[str, float]:
 # --- the utility declaration ----------------------------------------------------------
 
 
-def utility_by_action(u_bar: Mapping[str, float]) -> dict[str, tuple[float, float]]:
-    """``{affordance: (u(y=0), u(y=1))}`` — THE one source of this world's utility
-    numbers: the ``said@1`` sentence (:func:`utility_said`) is BUILT from these pairs and
-    every host-side consumer (EU arithmetic, thresholds, the report's realized loss)
-    reads them here, so the wire declaration and the host arithmetic cannot drift.
-
-    ``u_wrong``/``lambda_int``/``kappa_att`` are the real
-    :meth:`life_agent.core.utility.UtilityPosterior.u_bar` keys (verified against
-    ``core/utility.py``'s ``REQUIRED_LATENTS`` + ``bridge/server.py``'s ``/utility``
-    handler); ``u_correct``/``u_abstain`` are its gauge constants. The ``.get``
-    fallbacks are this world's declared defaults when no posterior is available.
-
-    **``gather`` is priced at its measured recovery rate** ``r`` (``u_bar[RECOVERY_KEY]``):
-    worth ``u_abstain - cost`` when asserting now would be wrong (the next decision can
-    still withhold), and ``r·u_correct + (1-r)·u_abstain - cost`` when it would be right (a
-    gather ends in a report with probability ``r``, and otherwise in a withhold). The
-    tick's ``gather-cost`` feature is subtracted on top, in the sentence (:data:`PRICES`).
-    Without a measured ``r`` it is 1, the myopic perfect-information row, which overvalues
-    gathering: under it gather beat respond below p1 ≈ 0.99.
-
-    **``ask`` is still priced as myopic perfect information** — ``[u_abstain - cost,
-    u_correct - cost]``: having asked, you then take the correct act."""
-    u_correct = float(u_bar.get("u_correct", 1.0))
-    u_abstain = float(u_bar.get("u_abstain", 0.0))
-    u_wrong = float(u_bar.get("u_wrong", -9.0))
-    q = abs(float(u_bar.get("lambda_int", 0.1)))
-    g = abs(float(u_bar.get("kappa_att", 0.02)))
-    r = float(u_bar.get(RECOVERY_KEY, 1.0))
-    return {
-        "abstain": (u_abstain, u_abstain),
-        "gather": (u_abstain - g, r * u_correct + (1.0 - r) * u_abstain - g),
-        "ask": (u_abstain - q, u_correct - q),
-        "respond": (u_wrong, u_correct),
-    }
-
-
 def _lin(u0: float, u1: float) -> list[object]:
     """``u0 + var1 * (u1 - u0)`` in the priced grammar — the (y=0, y=1) pair as a
     sentence linear in the outcome residue ``["var", 1]``."""
@@ -343,52 +322,6 @@ def utility_said(u_bar: Mapping[str, float]) -> list[object]:
     return expr
 
 
-def eu_by_action(u_bar: Mapping[str, float], p1: float) -> dict[str, float]:
-    """``{affordance: EU}`` at credence ``p1`` = P(y=1): ``EU = (1-p1)·u(y=0) + p1·u(y=1)``.
-    The frozen engine does this arithmetic itself over the declared table; this is the same
-    arithmetic host-side, so the report can name WHICH action the world's own utility
-    prefers at a given p1 — and at which p1 it changes its mind — without asking the
-    engine."""
-    return {a: (1.0 - p1) * u0 + p1 * u1 for a, (u0, u1) in utility_by_action(u_bar).items()}
-
-
-def argmax_action(u_bar: Mapping[str, float], p1: float) -> str:
-    """The affordance this world's utility fires at ``p1`` — argmaxEU with ties resolved
-    FIRST-LISTED in :data:`AFFORDANCES` (= grid) order, the wire's own rule (wait — the
-    grid's first point, abstain — keeps ties), so this predicts the engine's chooser
-    rather than merely scoring it."""
-    eus = eu_by_action(u_bar, p1)
-    return min(enumerate(AFFORDANCES), key=lambda it: (-eus[it[1][0]], it[0]))[1][0]
-
-
-def respond_threshold(u_bar: Mapping[str, float]) -> float | None:
-    """The p1 above which ``respond`` STRICTLY wins the whole menu — the honest reachability
-    bar for the assert affordance, and the number the demand ledger tests against the
-    engine's attainable p1.
-
-    NOT merely respond-vs-abstain: the engine argmaxes over EVERY row, so respond must also
-    outbid the information actions, which under the perfect-information bake-in
-    (:func:`utility_by_action`) are worth more than abstain at any p1 above their own cost. Each
-    row's EU is linear in p1 and respond's slope (``u_correct - u_wrong``) is the steepest
-    (since ``u_wrong < u_abstain``), so respond overtakes each competitor at exactly one
-    crossing and the binding bar is the LAST of them.
-
-    ``None`` when respond can never overtake some row however high p1 goes (a competitor
-    rising at least as fast — only under a degenerate u_bar): a reachability statement, not
-    an error."""
-    pairs = utility_by_action(u_bar)
-    r0, r1 = pairs["respond"]
-    thresholds: list[float] = []
-    for action, (a0, a1) in pairs.items():
-        if action == "respond":
-            continue
-        denom = (r1 - r0) - (a1 - a0)
-        if denom <= 0:
-            return None
-        thresholds.append((a0 - r0) / denom)
-    return max(thresholds) if thresholds else None
-
-
 # --- r44 item 1: the emission codebook's grid (E3 — the grid IS the hypothesis space) --
 
 # The measured operating rate of this world's predicate y = "asserting now would be
@@ -424,29 +357,6 @@ _GRID_COLLISION: float = 5e-4
 # the 7e-3 that r44's own W6 measured as producing a 3.2e-3 p1 gap with no false clear
 # reachable. Read the report before changing this number.
 _GRID_LATTICE_BITS: int = 20
-
-
-def argmax_crossings(u_bar: Mapping[str, float]) -> list[float]:
-    """The p1 values in (0, 1) at which :func:`argmax_action` changes its mind — this
-    world's consumer thresholds, derived from the declared rows rather than assumed.
-
-    Every row is linear in p1, so a pair crosses at most once; the pair's crossing counts
-    only where the WHOLE argmax changes there (a crossing between two dominated rows is
-    not a threshold). Returned at full precision."""
-    rows = list(utility_by_action(u_bar).values())
-    out: list[float] = []
-    for i, (a0, a1) in enumerate(rows):
-        for b0, b1 in rows[i + 1:]:
-            denom = (a1 - a0) - (b1 - b0)
-            if denom == 0.0:
-                continue
-            p = (b0 - a0) / denom
-            eps = 1e-6
-            if not 0.0 + eps < p < 1.0 - eps:
-                continue
-            if argmax_action(u_bar, p - eps) != argmax_action(u_bar, p + eps):
-                out.append(p)
-    return sorted(set(out))
 
 
 def theta_grid(u_bar: Mapping[str, float]) -> list[float]:

@@ -1,8 +1,8 @@
 """The body's executor loop — enacts the decider's acts.
 
-PRINCIPLES §16: there is one optimiser. The *decision* lives in the bridge's ``/decide``
-(:mod:`life_agent.membrane.decider`: the candidate posterior, then the proplang engine's
-act). This module is the **body** that enacts it over the life-agent capability bridge:
+CLAUDE.md rule 2: there is one decider. The *decision* lives in the bridge's ``/decide``
+(:mod:`life_agent.core.decider`: the candidate posterior, then the Bayes act). This module
+is the **body** that enacts it over the life-agent capability bridge:
 
     route → retrieve → probe/{subject,recency} → extract → /decide
 

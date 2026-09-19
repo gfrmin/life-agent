@@ -309,19 +309,19 @@ def test_utility_by_action_uses_declared_fallbacks_on_empty_u_bar() -> None:
 
     assert pairs["respond"] == (-9.0, 1.0)        # (u_wrong fallback -9.0, u_correct 1.0)
     assert pairs["abstain"] == (0.0, 0.0)         # status-quo, constant in y
-    # gather/ask are priced as MYOPIC PERFECT INFORMATION: [u_abstain - cost, u_correct - cost]
-    # — having gathered, you take the correct act. NOT [-cost, -cost]: a row constant in y is a
-    # pure cost, and a pure cost can never beat abstain at any p1, unfiring the whole menu.
-    assert pairs["ask"] == (-0.1, 0.9)            # lambda_int fallback 0.1
-    assert pairs["gather"] == (-0.02, 0.98)       # kappa_att fallback 0.02
+    # gather/ask are information acts priced by a recovery rate r: [u_abstain - cost,
+    # r·u_correct + (1-r)·u_abstain - cost]; unmeasured, r is the Beta(1, 1) prior mean 0.5.
+    # NOT [-cost, -cost]: a row constant in y is a pure cost and can never beat abstain.
+    assert pairs["ask"] == (-0.1, 0.4)            # lambda_int fallback 0.1
+    assert pairs["gather"] == (-0.02, 0.48)       # kappa_att fallback 0.02
 
 
 def test_utility_by_action_honours_custom_u_bar() -> None:
     pairs = W.utility_by_action({"u_wrong": -4.0, "lambda_int": -0.3, "kappa_att": 0.5})
 
     assert pairs["respond"] == (-4.0, 1.0)
-    assert pairs["ask"] == (-0.3, 0.7)            # abs(-0.3) == 0.3, charged on both outcomes
-    assert pairs["gather"] == (-0.5, 0.5)
+    assert pairs["ask"] == (-0.3, 0.2)            # abs(-0.3) == 0.3, charged on both outcomes
+    assert pairs["gather"] == (-0.5, 0.0)
 
 
 def test_utility_by_action_information_actions_are_not_constant_in_y() -> None:
@@ -419,11 +419,20 @@ def test_a_closed_affordance_reads_the_infeasible_value_below_every_row(
 def test_gather_is_priced_at_its_measured_recovery_rate() -> None:
     """A gather ends in a report with probability r: worth r·u_correct + (1-r)·u_abstain
     when asserting now would be right, and u_abstain when it would be wrong (less its
-    cost either way). Absent a measured r, the myopic perfect-information row."""
+    cost either way). Absent a measured r, the Beta(1, 1) prior mean — never the
+    perfect-information row, which is an upper bound."""
     base = {"u_correct": 1.0, "u_abstain": 0.0, "kappa_att": 0.05}
     assert W.utility_by_action({**base, W.RECOVERY_KEY: 0.1})["gather"] == pytest.approx(
         (-0.05, 0.1 - 0.05))
-    assert W.utility_by_action(base)["gather"] == pytest.approx((-0.05, 1.0 - 0.05))
+    assert W.utility_by_action(base)["gather"] == pytest.approx((-0.05, 0.5 - 0.05))
+
+
+def test_ask_is_priced_at_its_recovery_rate_never_as_perfect_information() -> None:
+    from life_agent.core import decide as DEC
+    base = {"u_correct": 1.0, "u_abstain": 0.0, "lambda_int": 0.1}
+    assert W.utility_by_action({**base, DEC.ASK_RECOVERY_KEY: 0.2})["ask"] == pytest.approx(
+        (-0.1, 0.2 - 0.1))
+    assert W.utility_by_action(base)["ask"] == pytest.approx((-0.1, 0.5 - 0.1))
 
 
 def test_the_tick_price_of_a_gather_is_subtracted_in_the_sentence() -> None:
@@ -440,10 +449,12 @@ def test_the_tick_price_of_a_gather_is_subtracted_in_the_sentence() -> None:
 
 
 def test_a_measured_recovery_lets_respond_win_below_the_perfect_information_bar() -> None:
-    """The live failure the measured row fixes: under perfect information, gather beat
-    respond below p1 ≈ 0.99, so every question walked every gather before answering."""
+    """The live failure the measured row fixed: under perfect information (r = 1), gather
+    beat respond below p1 ≈ 0.99, so every question walked every gather before answering.
+    The measured r (0.093) and even the unmeasured prior (0.5) let respond win at 0.95."""
     u = {"u_wrong": -9.0, "kappa_att": 0.05, "lambda_int": 1.0}  # λ_int as folded live
-    assert W.argmax_action(u, 0.95) == "gather"
+    assert W.argmax_action({**u, W.RECOVERY_KEY: 1.0}, 0.95) == "gather"
+    assert W.argmax_action(u, 0.95) == "respond"
     assert W.argmax_action({**u, W.RECOVERY_KEY: 0.1}, 0.95) == "respond"
 
 
@@ -462,7 +473,7 @@ def test_eu_by_action_is_the_declared_table_read_at_p1() -> None:
     eus = W.eu_by_action(LIVE_U_BAR, 0.5)
     assert eus["abstain"] == pytest.approx(0.0)
     assert eus["respond"] == pytest.approx(0.5 * 1.0 + 0.5 * -5.9395)
-    assert eus["gather"] == pytest.approx(0.5 * 1.0 - 0.0344)
+    assert eus["gather"] == pytest.approx(0.5 * 0.5 - 0.0344)  # r unmeasured: the 0.5 prior
 
 
 def test_argmax_action_resolves_ties_first_listed() -> None:
@@ -484,12 +495,12 @@ def test_respond_threshold_is_a_function_of_utility_not_a_constant() -> None:
     assert default_vs_abstain == pytest.approx(0.9)
     assert live_vs_abstain == pytest.approx(0.8559, abs=1e-4)  # the live bar is LOWER
 
-    # ...but the engine argmaxes over the WHOLE menu, so the binding bar is respond vs the
-    # best information action, not vs abstain. Under the perfect-information bake-in gather
-    # is worth more than abstain at any p1 above its own cost, so the real bar is far higher.
+    # ...but the act ranks the WHOLE menu, so the binding bar is respond vs the best
+    # information action, not vs abstain. With gather's rate unmeasured here (r = 0.5) the
+    # crossing is (-g - u_wrong) / ((u_correct - u_wrong) - r) = 5.9051 / 6.4395.
     whole_menu = W.respond_threshold(LIVE_U_BAR)
     assert whole_menu is not None
-    assert whole_menu == pytest.approx(0.9942, abs=1e-4)
+    assert whole_menu == pytest.approx((5.9395 - 0.0344) / (6.9395 - 0.5), abs=1e-6)
     assert whole_menu > live_vs_abstain
 
 

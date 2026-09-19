@@ -1,12 +1,12 @@
-"""The enactment of the engine's coarse act (membrane/coarse.py): determined by the act and
-the request alone, never a second ranking."""
+"""The enactment of the decider's act (core/enact.py): determined by the act and the request
+alone, never a second ranking."""
 from __future__ import annotations
 
 from typing import Any
 
 import pytest
 
-from life_agent.membrane import coarse as CO
+from life_agent.core import enact as CO
 
 _TRANSFORMS = [
     {"name": "recency", "probe": "recency", "kind": "guard", "trigger": "era_split"},

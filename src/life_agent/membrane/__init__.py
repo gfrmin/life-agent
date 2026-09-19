@@ -1,9 +1,10 @@
-"""life_agent.membrane — the decider: the proplang engine, driven over JSON-lines stdio.
+"""life_agent.membrane — the proplang engine client, DEFERRED off the ask path.
 
-:mod:`~life_agent.membrane.client` is the transport; :mod:`~life_agent.membrane.world` the
-answer-domain world (features, feasibility, menu, utility); :mod:`~life_agent.membrane.session`
-one booted world driving decide and evidence ticks; :mod:`~life_agent.membrane.boot` the
-decision ⋈ verdict join a boot replays; :mod:`~life_agent.membrane.coarse` the enactment of
-the engine's act; and :mod:`~life_agent.membrane.decider` the synchronous decider the bridge
-serves at ``POST /decide``.
+The decider is :mod:`life_agent.core.decider` (the Bayes act over the local posterior).
+This package is kept green for the engine's return (``ROADMAP.md`` doors):
+:mod:`~life_agent.membrane.client` is the JSON-lines transport;
+:mod:`~life_agent.membrane.world` the answer-domain world (features, feasibility, menu,
+and the ``said@1`` sentence built from ``core.decide``'s rows);
+:mod:`~life_agent.membrane.session` one booted world driving decide and evidence ticks;
+:mod:`~life_agent.membrane.boot` the decision ⋈ verdict join a boot replays.
 """
