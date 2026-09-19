@@ -44,9 +44,10 @@ and a clone over someone else's mail works end to end.
 
 ## Doors on the owner's side
 
-- proplang: publish a release (tag the deployed `94fd4eb`, attach `proplang-host` + sha256),
-  then set `RELEASE_TAG` in `config/engine.lock`.
-- hkaddresses: the WP4 issue — the core leaves hkaddresses for its own public repo, and
-  life-agent (not a toy) is the second domain that proves it.
-- tannen: the `m5-close` sitting, then re-pin.
+- proplang: publish a release (tag + `proplang-host` + sha256) — asked in
+  [gfrmin/proplang#28](https://github.com/gfrmin/proplang/issues/28); then set `RELEASE_TAG`
+  in `config/engine.lock`.
+- hkaddresses: extract the core into its own public repo, with life-agent as the second
+  domain — asked in `renavondata/hkaddresses#27`.
+- tannen: `m5-close` is closed (2026-09-19); J2 pins it.
 - `u_wrong` re-elicitation is the owner's alone (it moves every bar, including escalation's).
