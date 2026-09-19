@@ -12,7 +12,7 @@ and a clone over someone else's mail works end to end.
 |---|---|
 | Rank actions by expected utility | **proplang** (the engine, via `membrane/`) |
 | Declare the menu, prices, utility | host (`membrane/world.py`, `core/pricing.py`, `core/utility.py`) |
-| Candidate posterior + claim lattice | **ER core** (host `core/posterior.py` until hkaddresses publishes it) |
+| Candidate posterior + claim lattice | **ER core** (host `core/posterior.py` until the core's own repo publishes) |
 | Action reliability, learned | **proplang** guards, fed by verdict ticks |
 | Evidence shaping | host (bridge, `core/lookup.py`, `core/matching.py`) |
 | Escalation rungs | host (`core/oracle.py`) |
@@ -39,13 +39,14 @@ and a clone over someone else's mail works end to end.
   decide + escalate in CI.
 - **J4 — Live.** jarvis serves asks with escalation; the production readout is a dead-man
   over the tannen store.
-- **J5 — The second domain.** Swap the posterior, lattice, loss and laws for hkaddresses'
-  published core at a pinned tag.
+- **J5 — The second domain.** Swap the posterior, lattice, loss and laws for the ER core's
+  own public repo at a pinned tag (hkaddresses consumes the same core).
 
 ## Doors on the owner's side
 
 - proplang: publish a release (tag the deployed `94fd4eb`, attach `proplang-host` + sha256),
   then set `RELEASE_TAG` in `config/engine.lock`.
-- hkaddresses: the WP4 issue naming life-agent as the second domain; the core must be public.
+- hkaddresses: the WP4 issue — the core leaves hkaddresses for its own public repo, and
+  life-agent (not a toy) is the second domain that proves it.
 - tannen: the `m5-close` sitting, then re-pin.
 - `u_wrong` re-elicitation is the owner's alone (it moves every bar, including escalation's).
