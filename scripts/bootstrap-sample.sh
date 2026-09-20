@@ -71,6 +71,15 @@ EOF
 # fail-closed guard. (For your real work, copy it into your real $LIFE_AGENT_KB.)
 cp -n "$root/config/pii-patterns.txt.example" "$LIFE_AGENT_KB/pii-patterns.txt" 2>/dev/null || true
 
+# The utility gauge — what a wrong answer costs relative to a right one. The decider
+# derives its commit bar from this, so a KB without it can retrieve but cannot DECIDE,
+# and the bridge fails folding a gauge that is not there. The shipped example is the
+# declared prior (u(correct) +1, u(wrong) -9 → bar 0.90) with no evidence folded; your
+# own verdicts move it once you start grading answers.
+mkdir -p "$LIFE_AGENT_KB/utility"
+cp -n "$root/config/utility-model.example.yaml" "$LIFE_AGENT_KB/utility/model.yaml" \
+  2>/dev/null || true
+
 run() { echo "+ pkm $*"; uv run --project "$root" pkm --config "$PKM_CONFIG" "$@"; }
 
 echo "== building the sample corpus =="

@@ -173,3 +173,43 @@ def test_the_board_is_never_written_from_less_than_every_pinned_set(tmp_path: Pa
             "y": {"kind": "pending", "note": "later"}}
     _, skipped = S.score(tmp_path, sets)
     assert S.unscored_pins(sets, skipped) == ["x"]
+
+
+# --- A set may name its own root (J3) --------------------------------------------------
+# Every set used to resolve against one $LIFE_AGENT_KB, which two of them are not: the
+# synthetic `sample` lives in the repo so a stranger can score it from a clone with no KB
+# at all, and the external `atm` corpus is deliberately its own KB root, named by an env
+# var so no machine-specific path enters this public file.
+
+def test_a_repo_rooted_set_scores_without_a_kb() -> None:
+    root, why = S.set_root({"root": "repo"}, None)
+    assert (root, why) == (S.REPO, "")
+
+
+def test_the_synthetic_sample_row_is_scored_from_the_repo_alone() -> None:
+    """The stranger's board row, end to end: no $LIFE_AGENT_KB, real pinned bytes.
+    Killed by resolving `sample` against the KB again, or by the archive leaving the tree."""
+    spec = S.load_sets()["sample"]
+    rows, skipped = S.score(None, {"sample": spec})
+    assert "sample" not in skipped, skipped
+    ((r),) = rows
+    assert (r.arm, r.rows, r.wrong) == ("typed", 14, 0)
+    assert r.right > 0, "the sample row asserts nothing — a decider that only declines"
+
+
+def test_an_env_rooted_set_says_which_variable_is_unset(monkeypatch) -> None:
+    monkeypatch.delenv("LIFE_AGENT_ATM_KB", raising=False)
+    root, why = S.set_root({"root_env": "LIFE_AGENT_ATM_KB"}, Path("/kb"))
+    assert root is None and "LIFE_AGENT_ATM_KB" in why
+
+
+def test_an_env_rooted_set_reads_from_its_own_root(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("LIFE_AGENT_ATM_KB", str(tmp_path))
+    root, why = S.set_root({"root_env": "LIFE_AGENT_ATM_KB"}, Path("/kb"))
+    assert (root, why) == (tmp_path, "")
+
+
+def test_a_set_with_no_root_declared_still_reads_the_kb(tmp_path: Path) -> None:
+    """The discriminating control: the default must not move."""
+    assert S.set_root({"path": "x.jsonl"}, tmp_path) == (tmp_path, "")
+

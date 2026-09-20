@@ -896,7 +896,8 @@ def test_the_built_decider_reads_the_current_u_bar_and_the_information_rows(
         monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """The bridge's decider ranks under Ū plus the fitted gather row and the ask's measured
     recovery rate, all read per decision. A fitted row that recovers the leader makes a
-    middling posterior gather; with no fit the prior row never gathers."""
+    middling posterior gather; a row that says gathering separates nothing makes it
+    withhold."""
     import json
 
     from life_agent.core import config
@@ -924,7 +925,16 @@ def test_the_built_decider_reads_the_current_u_bar_and_the_information_rows(
     middling = {**_DECIDE_BODY, "candidates": ["x", "y"], "observations": split,
                 "rho": 0.8, "transforms": [{"probe": "corroborate_a", "kind": "voi",
                                             "cost": 0.004}]}
-    assert decider.decide("q2", middling)["effector"] == "abstain"   # the prior row
+    # With no fit of its own the bridge reads the SHIPPED row (J3: an unfitted KB used to
+    # read the uniform prior, under which gathering never pays, so a fresh install declined
+    # every question it was ever asked — measured 14/14 on the sample corpus).
+    assert decider.decide("q2", middling)["effector"] == "gather"    # the shipped row
+    # A row that says gathering cannot separate a right leader from a wrong one: nothing
+    # is worth buying, so the act withholds. This is the control on the line above — it is
+    # the ROW that decides, not the code path.
+    (tmp_path / "gather_row.json").write_text(json.dumps({"steps": {"0": GR.as_u_bar(
+        {"right": 0.3, "wrong": 0.3}, {"right": 0.3, "wrong": 0.3})}}), encoding="utf-8")
+    assert decider.decide("q2", middling)["effector"] == "abstain"   # a useless row
     (tmp_path / "gather_row.json").write_text(json.dumps({"steps": {"0": GR.as_u_bar(
         {"right": 0.9, "wrong": 0.02}, {"right": 0.2, "wrong": 0.05})}}), encoding="utf-8")
     assert decider.decide("q2", middling)["effector"] == "gather"    # the fitted row

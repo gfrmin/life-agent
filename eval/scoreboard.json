@@ -47,6 +47,18 @@
       "declined": 123,
       "usd_per_q": 0.015094339622641508,
       "s_per_q": null
+    },
+    {
+      "set": "sample",
+      "arm": "typed",
+      "rows": 14,
+      "right": 8,
+      "wrong": 0,
+      "esc_right": 0,
+      "esc_wrong": 0,
+      "declined": 6,
+      "usd_per_q": 0.011857142857142856,
+      "s_per_q": null
     }
   ]
 }

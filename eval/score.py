@@ -159,6 +159,29 @@ def load_sets(path: Path = SETS) -> dict[str, dict[str, Any]]:
     return yaml.safe_load(path.read_text(encoding="utf-8"))["sets"]
 
 
+def set_root(spec: Mapping[str, Any], kb: Path | None) -> tuple[Path | None, str]:
+    """Where a set's `path` resolves, and why it cannot be read when it cannot.
+
+    Most sets are owner data and live under `$LIFE_AGENT_KB`, which is the default. Two
+    are not: a SYNTHETIC set may live in the repo, because it carries no personal data and
+    a board row a stranger can reproduce from a clone is worth more than one only the
+    owner can run; and an EXTERNAL corpus is deliberately its own KB root, named by an
+    environment variable so no machine-specific path enters this public file.
+    """
+    if spec.get("root") == "repo":
+        return REPO, ""
+    var = spec.get("root_env")
+    if var:
+        value = os.environ.get(str(var))
+        if not value:
+            return None, f"${var} unset — it names this set's own KB root"
+        root = Path(value).expanduser()
+        return (root, "") if root.is_dir() else (None, f"${var} is not a directory")
+    if kb is None:
+        return None, "LIFE_AGENT_KB unset"
+    return kb, ""
+
+
 def score(kb: Path | None, sets: Mapping[str, Mapping[str, Any]]
           ) -> tuple[list[Row], dict[str, str]]:
     """Every scorable set's rows, plus a reason for each set not scored."""
@@ -168,12 +191,16 @@ def score(kb: Path | None, sets: Mapping[str, Mapping[str, Any]]
         if spec["kind"] == "pending":
             skipped[name] = spec.get("note", "pending")
             continue
-        if kb is None:
-            skipped[name] = "LIFE_AGENT_KB unset"
+        root, why = set_root(spec, kb)
+        if root is None:
+            skipped[name] = why
             continue
-        f = kb / spec["path"]
+        f = root / spec["path"]
         if not f.is_file():
-            skipped[name] = f"absent: $LIFE_AGENT_KB/{spec['path']}"
+            where = ("the repo" if spec.get("root") == "repo"
+                     else f"${spec['root_env']}" if spec.get("root_env")
+                     else "$LIFE_AGENT_KB")
+            skipped[name] = f"absent: {where}/{spec['path']}"
             continue
         data = f.read_bytes()
         digest = hashlib.sha256(data).hexdigest()

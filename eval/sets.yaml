@@ -41,5 +41,19 @@ sets:
     kind: pending
     note: the live stream since the reset; scored from J4
   sample:
-    kind: pending
-    note: synthetic sample KB (scripts/bootstrap-sample.sh); scored end to end from J3
+    kind: typed
+    root: repo
+    path: eval/sample/typed-20260920.jsonl
+    sha256: 0673ee06a047c490bd305577f3eebfbb79f00dde12e3aa256e4bdc6b2f7f9b9e
+    note: >-
+      The one row a stranger can reproduce from a clone. The bundled synthetic corpus
+      (examples/sample-corpus, 8 documents, the fictional Ada Lovelace) built by
+      scripts/bootstrap-sample.sh; 14 questions generated from it by the same `make golden`
+      recipe the owner's set uses (eval/sample/questions.yaml, sha256 9a24703502...), answered
+      cold through a bridge over that sandbox. Synthetic by construction, so both the
+      questions and the archive live IN the repo and `root: repo` scores them with no
+      $LIFE_AGENT_KB at all. The gauge is the shipped example folded with no evidence (the
+      declared prior, u_wrong -9, bar 0.90) and the gather row is config/gather-row.example.json,
+      because a fresh KB has fitted neither — which is exactly the configuration a stranger
+      runs. 8 right / 0 wrong / 6 declined. Re-running it needs an API key; scoring the
+      pinned bytes needs nothing.

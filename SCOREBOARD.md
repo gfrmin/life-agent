@@ -8,9 +8,9 @@
 | owner | outside | 104 | 87 (83.7%) | 13 (12.5%) | 0 | 0 | 4 (3.8%) | 0.4135 | -0.355 | — |
 | owner | router | 104 | 90 (86.5%) | 11 (10.6%) | 42 | 11 | 3 (2.9%) | 0.2357 | +0.009 | — |
 | generated | typed | 212 | 85 (40.1%) | 4 (1.9%) | 0 | 0 | 123 (58.0%) | 0.0151 | +0.284 | — |
+| sample | typed | 14 | 8 (57.1%) | 0 (0.0%) | 0 | 0 | 6 (42.9%) | 0.0119 | +0.556 | — |
 
 Not scored:
 
 - `atm` — ATM-Bench email-only number-typed (198); scored from J3 (`make sets`)
 - `live` — the live stream since the reset; scored from J4
-- `sample` — synthetic sample KB (scripts/bootstrap-sample.sh); scored end to end from J3

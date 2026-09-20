@@ -1,0 +1,35 @@
+{
+  "format_version": 1,
+  "source": "Fitted by scripts/fit_gather_row.py from 385 recorded gather steps on the author's own corpus (EM under Dirichlet(2,2,2), one row per gathers-already-applied). These are aggregate probabilities: no question, document or value of that corpus is recoverable from them.",
+  "why": "A KB with no recorded outcomes has no fit, and the built-in prior is uniform \u2014 under it gathering is as likely to mislead as to help, so the act never gathers, the posterior stays dispersed and the system declines EVERYTHING. That is a decider that cannot start. This row is the starting point; yours replaces it as soon as you have graded outcomes (`scripts/fit_gather_row.py`).",
+  "steps": {
+    "0": {
+      "gather_right_if_right": 0.9260411486447072,
+      "gather_right_if_wrong": 0.19682773610771584,
+      "gather_wrong_if_right": 0.02544433149683301,
+      "gather_wrong_if_wrong": 0.05125844319824658,
+      "n": 101
+    },
+    "1": {
+      "gather_right_if_right": 0.8107196234132693,
+      "gather_right_if_wrong": 0.05177874311526343,
+      "gather_wrong_if_right": 0.05589513688719998,
+      "gather_wrong_if_wrong": 0.040348000495793734,
+      "n": 76
+    },
+    "2": {
+      "gather_right_if_right": 0.6698814809429436,
+      "gather_right_if_wrong": 0.0425688854060356,
+      "gather_wrong_if_right": 0.05355429124612728,
+      "gather_wrong_if_wrong": 0.03588620276034858,
+      "n": 61
+    },
+    "3": {
+      "gather_right_if_right": 0.17129800116938085,
+      "gather_right_if_wrong": 0.02091281266753123,
+      "gather_wrong_if_right": 0.02435742498664657,
+      "gather_wrong_if_wrong": 0.01460751230360815,
+      "n": 147
+    }
+  }
+}

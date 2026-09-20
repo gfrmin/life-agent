@@ -106,9 +106,40 @@ def test_the_gather_row_fit_recovers_its_generating_outcomes() -> None:
         assert f_w[o] == pytest.approx(t_w[o], abs=0.04)
 
 
-def test_an_absent_fit_leaves_the_prior(tmp_path: Path) -> None:
-    assert GR.load(tmp_path / "none.json") == {}
+def test_with_no_fit_and_no_shipped_row_the_prior_stands(tmp_path: Path) -> None:
+    assert GR.load(tmp_path / "none.json", fallback=tmp_path / "also-none.json") == {}
     assert GR.at_step(_U, 2) == _U
+
+
+# --- The shipped row: a KB with no fit must still be able to gather (J3) ---------------
+# Measured on the synthetic sample corpus before this existed: 14 questions, 14 declines,
+# ZERO gathers applied. Under the uniform prior a gather is as likely to mislead as to
+# help, so the act never buys one, the posterior never concentrates, and the system
+# declines everything it is ever asked. A decider that cannot start is not a safer one.
+
+def test_a_kb_with_no_fit_falls_back_to_the_shipped_row(tmp_path: Path) -> None:
+    """Killed by returning {} for an unfitted KB — which is what shipped a decliner."""
+    loaded = GR.load(tmp_path / "absent.json")
+    assert loaded, "an unfitted KB got no gather row at all"
+    assert all(GR.step_key(k, 0) in loaded for k in GR.KEYS)
+
+
+def test_the_shipped_row_makes_gathering_worth_something() -> None:
+    """The property, not the file's presence: it must say a gather helps a right leader
+    more than it helps a wrong one, and more than it corrupts a right one. Killed by
+    shipping the uniform prior under another name."""
+    row = GR.at_step(GR.load(Path("/absent")), 0)
+    assert row["gather_right_if_right"] > row["gather_right_if_wrong"]
+    assert row["gather_right_if_right"] > row["gather_wrong_if_right"]
+
+
+def test_a_fitted_kb_is_never_shadowed_by_the_shipped_row(tmp_path: Path) -> None:
+    """The discriminating control: your own measurement always wins."""
+    import json as _json
+    fit = tmp_path / "gather_row.json"
+    fit.write_text(_json.dumps({"steps": {"0": dict.fromkeys(GR.KEYS, 0.5)}}),
+                   encoding="utf-8")
+    assert GR.load(fit) == {GR.step_key(k, 0): 0.5 for k in GR.KEYS}
 
 
 def test_the_decider_prices_gather_at_the_step_it_is_on(tmp_path: Path) -> None:
