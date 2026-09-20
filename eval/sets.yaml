@@ -9,19 +9,19 @@
 sets:
   owner:
     kind: paired
-    path: eval/gate-outside-option/paired-gate-20260826T083356-strict-priced.jsonl
-    sha256: 643de3cfdb21fd8269bcea949453843f1c0afcf6721704fe782b409cb74a67d0
+    path: eval/gate-outside-option/paired-gate-20260920T160935-strict.jsonl
+    sha256: de0078c94030a2e7a4625071e1c0653cdc39d654c60ea85079c107d95e83d147
     note: >-
-      run 18 (2026-08-26), the owner's 104 questions, both arms on ONE GRADER and ONE PRICE
-      LIST. Grader: each arm is graded on the answer it commits, by exact match (the outside
-      option had replayed a prose run and counted a gold found anywhere in a paragraph:
-      0.897 against 0.805 on the same live answers; scripts/regrade_outside_option.py).
-      Prices: the typed arm's cost_usd is the menu's declared price of every probe it
-      applied, cache or no cache (scripts/recost_paired.py, from the run's m5-base A-loop
-      record, identical to it on 103 of 104 rows); it had been priced at what its warm
-      replays metered — $0.37 for a policy that called the deliberative rung on 40 questions
-      at $0.38 each. The outside arm is the live deliberative rung's ANSWER line at the cost
-      the call recorded. Incumbent until J1's arm replaces it.
+      J1's host Bayes act (core/decide.bayes_act) over the owner's 104 questions
+      (2026-09-20, corpus pin full-2026-06-11), both arms on ONE GRADER and ONE PRICE LIST:
+      each arm is graded on the answer it commits, by exact match, and priced at its declared
+      prices (the typed arm's applied probes at the menu's prices, cache or no cache; the
+      outside arm is the live deliberative rung's ANSWER line at the cost the call recorded).
+      Replaces run 18 (the Julia daemon, 2026-08-26: typed 61/2/41 at $20.95, U/q +0.220 on
+      the same grader and prices; its record is paired-gate-20260826T083356-strict-priced.jsonl).
+      The daemon's 13 extra right answers came with 2 wrongs and a policy that called the
+      deliberative rung on 40 questions at $0.38; at today's gauge that bundle is worth less
+      than abstaining.
   atm:
     kind: pending
     note: ATM-Bench email-only number-typed (198); scored from J3 (`make sets`)

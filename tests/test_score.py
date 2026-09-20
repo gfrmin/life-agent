@@ -149,12 +149,13 @@ def test_an_absent_set_is_named_not_dropped(tmp_path: Path) -> None:
     assert "x" in S.render(rows, skipped)
 
 
-def test_the_owner_board_reproduces_run_18_on_one_grader_and_one_price_list() -> None:
-    """The pinned incumbent, both arms graded on the answer they commit and priced at their
-    declared prices. The outside arm's 13 wrongs are the honest count: the prose grading
-    it replaced scored the same answers 5 wrong by accepting a gold that appeared anywhere
-    in a paragraph. The typed arm's $20.95 is the honest price: its warm replays metered
-    $0.37 for 40 calls to the deliberative rung at $0.38."""
+def test_the_owner_board_reproduces_the_host_act_on_one_grader_and_one_price_list() -> None:
+    """The pinned incumbent — J1's host Bayes act — both arms graded on the answer they
+    commit and priced at their declared prices. The outside arm's 13 wrongs are the honest
+    count: the prose grading it replaced scored the same answers 5 wrong by accepting a
+    gold that appeared anywhere in a paragraph. The typed arm's $1.44 is every probe it
+    applied at the menu's prices, cache or no cache (the daemon it replaced: 61/2/41 at
+    $20.95, forty calls to the deliberative rung its warm replays had metered at $0)."""
     kb = os.environ.get("LIFE_AGENT_KB")
     spec = S.load_sets()["owner"]
     if not kb or not (Path(kb) / spec["path"]).is_file():
@@ -163,8 +164,8 @@ def test_the_owner_board_reproduces_run_18_on_one_grader_and_one_price_list() ->
     rows, _ = S.score(Path(kb), {"owner": spec})
     got = {r.arm: (r.right, r.wrong, r.declined, round(r.usd_per_q * r.rows, 2))
            for r in rows}
-    assert got == {"typed": (61, 2, 41, 20.95), "outside": (87, 13, 4, 43.00),
-                   "router": (90, 11, 3, 38.03)}
+    assert got == {"typed": (48, 0, 56, 1.44), "outside": (87, 13, 4, 43.00),
+                   "router": (90, 11, 3, 24.51)}
 
 
 def test_the_board_is_never_written_from_less_than_every_pinned_set(tmp_path: Path) -> None:
