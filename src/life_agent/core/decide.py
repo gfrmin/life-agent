@@ -21,7 +21,13 @@ expected utility, ties to the first-listed action in :data:`ACTIONS`.
   is not worth its cost;
 - ``ask``: priced by a **measured recovery rate** ``r`` (an ask ends in a report with
   probability r, otherwise in a withhold) less ``lambda_int``; unmeasured, ``r`` is the
-  Beta(1, 1) mean 0.5. Never the perfect-information row, which is an upper bound.
+  Beta(1, 1) mean 0.5. Never the perfect-information row, which is an upper bound;
+- ``escalate@<rung>``: hand the question to a named outside answerer
+  (:mod:`life_agent.core.escalate`). Same shape as gather — the rung's own fitted chances of
+  ending right, wrong or withheld per leader state — less the rung's own declared price at
+  ``lambda_usd``. Unmeasured, the prior mean, under which escalating never pays. This row is
+  what makes withholding honest: the act's alternative to responding is the rung's value,
+  not a silent zero.
 
 The information rows are **measured evidence models**, not the preposterior over the current
 posterior; that is a door in ``ROADMAP.md``.
@@ -36,11 +42,14 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 
 from life_agent.core import answer_shape as AS
+from life_agent.core import escalate as ESC
 from life_agent.core import gather_row as GR
+from life_agent.core import outcome_mixture as MIX
 
 #: The actions, in tie-break order: the first-listed wins an exact tie, so ``abstain`` is
-#: the safe default when nothing is better.
-ACTIONS: tuple[str, ...] = ("abstain", "gather", "ask", "respond")
+#: the safe default when nothing is better. The escalation rungs are declared data
+#: (:data:`life_agent.core.pricing.ESCALATE_RUNGS`), so adding one adds a row here.
+ACTIONS: tuple[str, ...] = ("abstain", "gather", "ask", *ESC.ACTIONS, "respond")
 
 #: The u_bar key carrying the ask's measured recovery rate.
 ASK_RECOVERY_KEY = "ask_recovery"
@@ -59,19 +68,18 @@ def utility_by_action(u_bar: Mapping[str, float]) -> dict[str, tuple[float, floa
     q = abs(float(u_bar.get("lambda_int", 0.1)))
     g = abs(float(u_bar.get("kappa_att", 0.02)))
     r_ask = float(u_bar.get(ASK_RECOVERY_KEY, PRIOR_RECOVERY))
-    gr = {k: float(u_bar.get(k, GR.PRIOR[k])) for k in GR.KEYS}
+    priced = {"u_correct": u_correct, "u_wrong": u_wrong, "u_abstain": u_abstain}
 
-    def gathered(p_right: float, p_wrong: float) -> float:
-        return (p_right * u_correct + p_wrong * u_wrong
-                + (1.0 - p_right - p_wrong) * u_abstain - g)
-
-    return {
+    rows: dict[str, tuple[float, float]] = {
         "abstain": (u_abstain, u_abstain),
-        "gather": (gathered(gr["gather_right_if_wrong"], gr["gather_wrong_if_wrong"]),
-                   gathered(gr["gather_right_if_right"], gr["gather_wrong_if_right"])),
+        "gather": MIX.row(u_bar, GR.PREFIX, cost=g, **priced),
         "ask": (u_abstain - q, r_ask * u_correct + (1.0 - r_ask) * u_abstain - q),
-        "respond": (u_wrong, u_correct),
     }
+    for rung in ESC.RUNGS:
+        rows[ESC.action(rung)] = MIX.row(u_bar, ESC.action(rung),
+                                         cost=ESC.price(rung, u_bar), **priced)
+    rows["respond"] = (u_wrong, u_correct)
+    return rows
 
 
 def eu_by_action(u_bar: Mapping[str, float], p1: float) -> dict[str, float]:

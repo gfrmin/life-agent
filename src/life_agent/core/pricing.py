@@ -133,6 +133,20 @@ DELIBERATE_FALLBACK_RHO = 0.5
 # The strong re-read's model (the joint extract@<model> edge).
 RE_EXTRACT_MODEL = "claude-opus-4-8"
 
+# The escalation rungs (J2, ROADMAP): a rung ANSWERS the question itself, with its own
+# origin on the reply, at its own price and its own measured outcome distribution — a row
+# core/decide ranks beside respond/gather/ask/abstain, never a fallback. Costs are AUTHORED
+# IN USD like everything else here; core/decide converts at u_bar's lambda_usd.
+#
+# Rung 1 is the deliberative arm (core/deliberate, DELIBERATE_MODEL). Its price is the MEAN
+# of the 104 recorded verdicts in ff-v2-delib-20260719 (median $0.337, sd $0.15, max $1.59
+# — the mean is the right summary because the act pays the mean over many questions, but the
+# spread is why a per-rung budget is a door). A rung with no fitted row reads the mixture
+# prior and never fires, so declaring one here cannot spend money by itself.
+ESCALATE_RUNGS: list[dict[str, Any]] = [
+    {"rung": "1", "model": DELIBERATE_MODEL, "cost": 0.375},
+]
+
 # The grow menu as data (autonomous-recall-design; served by the bridge's /grow_menu).
 # Costs are in USD, like the corroborate tiers (the executor converts them at lambda_usd);
 # the rerank's is measured (10 of the owner's questions, 2026-09-20: mean $0.047, 15k input
