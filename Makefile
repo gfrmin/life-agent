@@ -58,21 +58,24 @@ data:
 #   make sets                                   # fetch to the default cache, then build
 #   make sets ATM_EMAILS=… ATM_QA=…             # build from files you already have
 #   make sets ATM_OUT=… ATM_STORE=…             # choose where the KB and store go
-ATM_DEST  ?= $(HOME)/.cache/life-agent/atm-bench # PII-OK: XDG cache under the invoking user's HOME, no real path
-ATM_OUT   ?= $(ATM_DEST)/kb-build
-ATM_STORE ?= $(ATM_DEST)/store
+# ATM_DEST defaults inside fetch.py (an XDG cache dir): the Makefile asks the script
+# where the corpus lives rather than spelling a path of its own.
+ATM_DEST_FLAG = $(if $(ATM_DEST),--dest "$(ATM_DEST)",)
 
 fetch-sets:
-	$(PY) scripts/atm_bench/fetch.py --dest "$(ATM_DEST)"
+	$(PY) scripts/atm_bench/fetch.py $(ATM_DEST_FLAG)
 
 sets: fetch-sets
-	@emails="$(ATM_EMAILS)"; qa="$(ATM_QA)"; \
+	@dest=$$($(PY) scripts/atm_bench/fetch.py $(ATM_DEST_FLAG) --print-dest); \
+	  emails="$(ATM_EMAILS)"; qa="$(ATM_QA)"; \
 	  if [ -z "$$emails" ] || [ -z "$$qa" ]; then \
-	    set -- $$($(PY) scripts/atm_bench/fetch.py --dest "$(ATM_DEST)" --print-paths); \
+	    set -- $$($(PY) scripts/atm_bench/fetch.py $(ATM_DEST_FLAG) --print-paths); \
 	    emails=$${emails:-$$1}; qa=$${qa:-$$2}; \
 	  fi; \
+	  out="$(ATM_OUT)"; [ -n "$$out" ] || out="$$dest/kb-build"; \
+	  store="$(ATM_STORE)"; [ -n "$$store" ] || store="$$dest/store"; \
 	  $(PY) scripts/atm_bench/build_kb.py --emails "$$emails" --qa "$$qa" \
-	    --out "$(ATM_OUT)" --store "$(ATM_STORE)" --gauge-from "$${LIFE_AGENT_KB:-}"
+	    --out "$$out" --store "$$store" --gauge-from "$${LIFE_AGENT_KB:-}"
 
 # The pinned decider engine (config/engine.lock) -> ~/.local/bin/proplang-host.
 engine:

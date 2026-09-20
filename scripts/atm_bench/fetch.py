@@ -6,9 +6,9 @@ files had to already be on disk and **where to get them was written down nowhere
 one step of the stranger's path that could not be followed. This is that step.
 
 The corpus is **CC-BY-NC-4.0**. It is downloaded to a cache on your machine and never
-enters this repo, never leaves it, and is not redistributed: `.gitignore` covers the
-default cache, `build_kb.py` writes its own KB outside the tree, and the board publishes
-counts.
+enters this repo and is not redistributed from it: the default destination is outside the
+working tree entirely (an XDG cache dir, so there is nothing for `.gitignore` to catch),
+`build_kb.py` writes its KB beside it, and the board publishes counts.
 
 Pinned by revision, so what a board row was scored on is a fact and not "whatever the
 dataset said that day". The revision below is the one this project measured; pass
@@ -80,10 +80,16 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--revision", default=REVISION)
     ap.add_argument("--print-paths", action="store_true",
                     help="print '<emails> <qa>' for an already-fetched dest and exit")
+    ap.add_argument("--print-dest", action="store_true",
+                    help="print the destination and exit (the Makefile asks for it rather "
+                         "than spelling a home-relative path of its own)")
     args = ap.parse_args(argv)
     dest = args.dest.expanduser()
 
     emails, qa = paths(dest)
+    if args.print_dest:
+        print(dest)
+        return 0
     if args.print_paths:
         if not already_there(dest):
             raise SystemExit(f"nothing fetched at {dest} — run this without --print-paths")
