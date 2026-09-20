@@ -29,16 +29,25 @@ not pay at this gauge (−0.50 a call), so a rung ships only when it beats absta
 
 ## Next session (in order, one commit each)
 
-1. **Production on the host act.** The owner's step runs as a rehearsed script right after
-   J1 merges: pull master, `systemctl --user daemon-reload` (the bridge unit changed), disable
-   the answer-brain daemon, restart the bridge and jarvis, `/ready` on :8798 shows
-   `"decider": {"kind": "host"}`. If it does not, run that script first.
-2. **J2 — origin on every reply.** PR #193 (`j2-origin`) is built and green: retarget to
-   master, undraft, merge. Disclosure records wait with the rung.
-3. **J3 — the stranger.** `make data` over any maildir or filetree; `make sets` builds
-   ATM-Bench on-machine (the `atm` row); fresh-clone smoke in CI; `SETUP.md` current.
-4. **J4 — live.** jarvis serving asks; the production readout as a dead-man over the
-   decision log; the `live` row.
+0. **Read the live stream first** (`make live`): days since the last live decision, the
+   action mix, the owner's verdicts, and the MVP exit test — calendar days out of seven
+   carrying live use. `make live-archive` turns the same stream into the board-shaped
+   archive that becomes set `live`. The production readout is now a dead-man: it exits
+   non-zero when the stream stops, and the weekly timer pages on that.
+1. **J3 — the stranger.** The ask path from a clone: `SETUP.md` never mentions the bridge,
+   yet every ask goes through it. Then `make data` completing the ingest (it registers
+   sources and stops), the fresh-clone smoke covering `/decide` and the origin lines with a
+   stubbed extractor (it proves retrieval only today), `make sets` fetching ATM-Bench at a
+   pinned revision, and the two pending rows — `sample` (synthetic, so its questions and
+   archive can live in the repo) and `atm`.
+2. **J4 — close it.** The dead-man is in. What remains is a week of live use: the exit
+   test counts calendar days carrying it, and only the owner asking moves that. Then pin
+   the `live` row from `make live-archive` with its coverage stated.
+
+Production is already on the host act (2026-09-20 19:10): the answer-brain daemon is
+disabled, bridge and jarvis serve, `/ready` on :8798 reports `"decider": {"kind": "host"}`.
+Roll back by re-enabling the daemon BY PATH from the credence repo — disabling removed its
+unit symlink.
 
 Open for the owner (ask-first): the menu's probe prices understate what the probes meter
 cold — +$0.046 a row on the golden run, extraction unpriced — and `u_wrong` re-elicitation.

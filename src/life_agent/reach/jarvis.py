@@ -229,14 +229,10 @@ def handle_action(parsed: dict[str, Any], user_id: int) -> str:
         if not q:
             return "What would you like to know?"
         r = ask_client.drive(q)
-        if r.down:
-            reply = ask_client.DOWN
-        elif r.view is None:
-            # the terminals-only regime answered (M5, §2.3): the leaf rendered the
-            # text and recorded the decision — same grading contract as the full lane.
-            reply = r.text or ask_client.DOWN
-        else:
-            reply = executor.render_view(r.view)
+        # Two outcomes only: the stack answered, or it is down. The terminals-only
+        # regime this once branched on retired with the in-process lanes (J1), and the
+        # branch outlived it unreachable — `DriveResult.view` is None iff `down`.
+        reply = ask_client.DOWN if r.view is None else executor.render_view(r.view)
         decision_id = r.decision_id
         LAST_DECISION_ID = decision_id
         if decision_id:

@@ -1,4 +1,4 @@
-.PHONY: check test-all score score-quick data sets engine golden
+.PHONY: check test-all score score-quick data sets engine golden live live-archive
 
 PY := uv run python
 # pytest workers; 1 runs single-process.
@@ -31,6 +31,16 @@ score-quick:
 # through a bridge with scripts/score_typed.py and pin the result as set `generated`.
 golden:
 	$(PY) scripts/make_golden.py
+
+# What the DEPLOYED arm is doing for the owner, read from the live stream alone (never a
+# gate run): days since the last live decision, the actions, the spend, the owner's
+# verdicts, and the MVP exit test — calendar days out of seven that carried live use.
+# `live-archive` turns the same stream into a board-shaped archive to pin as set `live`.
+live:
+	$(PY) scripts/live_readout.py
+
+live-archive:
+	$(PY) scripts/live_archive.py
 
 # Your data -> pkm: every enabled root in data-sources.yaml (maildir or filetree).
 data:

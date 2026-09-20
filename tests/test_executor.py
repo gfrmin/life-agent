@@ -119,6 +119,20 @@ def test_route_none_is_declined_without_retrieval() -> None:
     assert [u for u, _ in fake.calls if u.endswith("/narrative")] == []
 
 
+def test_the_declined_reply_is_the_origin_line_itself() -> None:
+    """Rule 3 by construction, not by coincidence. This reply is the one path that carries
+    its own `rendered` text through `render_view` verbatim, so it is the one that could
+    drift away from the grammar every other reply is built from. Killed by writing the
+    sentence by hand again, however closely it matches today."""
+    from life_agent.core import decisions as DEC
+    from life_agent.core import lookup as LK
+    assert LK.origin_line(
+        "declined", reason=DEC.REASON_NOT_POINT_FACT) == EX.DECLINED_NOT_POINT_FACT
+    view = _loop(FakeServices(route=None), "tell me about my week")
+    assert EX.render_view(view) == LK.origin_line(
+        "declined", reason=view["origin"]["reason"])
+
+
 def test_typed_report_is_terminal() -> None:
     fake = FakeServices(route={"construct": "passport number", "time_indexed": False},
                         decides=[{"effector": "report", "value": "P123",

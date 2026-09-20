@@ -148,14 +148,16 @@ def _menu(hold_out_question_id: str | None = None
 
 class DriveResult:
     """The one driver's return: the loop's ``view`` (``None`` on a down stack), the
-    ``decision_id`` a verdict can bind to (``None`` when nothing foldable was posted), the
-    ``down`` fact, and ``text`` (unused by the decided path; kept for the render seam)."""
+    ``decision_id`` a verdict can bind to (``None`` when nothing foldable was posted) and
+    the ``down`` fact. It carried a fourth field, ``text``, for a render seam the
+    terminals-only regime used; no caller has set it since J1 retired that regime, and a
+    field only ever read as None is a branch that cannot be tested."""
 
-    __slots__ = ("decision_id", "down", "text", "view")
+    __slots__ = ("decision_id", "down", "view")
 
     def __init__(self, view: dict[str, Any] | None, decision_id: str | None,
-                 down: bool = False, text: str | None = None) -> None:
-        self.view, self.decision_id, self.down, self.text = view, decision_id, down, text
+                 down: bool = False) -> None:
+        self.view, self.decision_id, self.down = view, decision_id, down
 
 
 def post_decision(post: Any, bridge: str, question: str, view: dict[str, Any], *,
