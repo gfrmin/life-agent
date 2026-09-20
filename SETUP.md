@@ -52,10 +52,28 @@ export LIFE_AGENT_KB=$PWD/examples/.sandbox/kb
 export PKM_CONFIG=$PWD/examples/.sandbox/pkm.yaml
 export ANTHROPIC_API_KEY=sk-ant-...        # your key
 
+bin/answer-bridge &                        # the decider — see below; leave it running
+
 bin/ask-live "what is my national ID number?"
 bin/ask-live "when does my passport expire?"
 bin/ask-live "how do I make money?"
 ```
+
+**The bridge is not optional.** Every ask goes through it: `bin/ask-live` and the Telegram
+bot both drive one loop (route → retrieve → probe → extract → **decide**) against
+`127.0.0.1:8798`, and the decider that ranks the actions runs there. With nothing
+listening you get *"No answer asserted — the decider is unavailable"* — which is the
+system refusing to answer rather than guessing, but it looks like a broken install. Run it
+in a second terminal (`bin/answer-bridge`), or install the unit once and forget it:
+
+```bash
+ln -s "$PWD"/packaging/life-agent-bridge.service ~/.config/systemd/user/   # PII-OK: standard XDG + repo-relative paths
+systemctl --user daemon-reload && systemctl --user enable --now life-agent-bridge
+curl -s 127.0.0.1:8798/ready        # {"status": "ok", "decider": {"kind": "host", ...}}
+```
+
+`/ready` answering with a decider is the one check worth making before you ask anything.
+Nothing here downloads an engine: the decider is this repo's own (`core/decide.bayes_act`).
 
 Each answer carries a `[n]` citation into a numbered source document. See
 [`examples/README.md`](./examples/README.md) for the full list and the
@@ -86,7 +104,7 @@ uv run --project . python scripts/ingest_sources.py --extract --chunk
 bin/ask-live "/tell My name is <you>"
 bin/ask-live "/tell My national ID is <id>"
 
-# e) ask
+# e) ask (the bridge from §2 must be up — it is where the decider runs)
 bin/ask-live "when does my passport expire?"
 ```
 

@@ -80,12 +80,15 @@ script: `scripts/ingest_sources.py --extract --chunk`). Teach it who you are wit
 
 The kernel ([`PRINCIPLES.md`](./PRINCIPLES.md)): **a knowledge base built from DAGs of
 trustworthy transformations, and a personal assistant — the life agent — making rational,
-utility-maximising decisions over it.** What exists today is the KB and its first consumers:
-the cited retrieval + synthesis read path (`bin/ask-live`) over [`pkm`](./src/pkm/)'s catalogue,
-and an event-sourced GTD (`life_agent.tasks`, reached over Telegram) that email auto-files into
-with citations. The decision-theoretic faculties (the Bayesian brain, the goals/utility model)
-and the agent-loop spine are future work — the spine deliberately an open decision. Status of
-every faculty: [`ROADMAP.md`](./ROADMAP.md).
+utility-maximising decisions over it.** Both halves exist today. The KB and its consumers: the
+cited read path (`bin/ask-live`) over [`pkm`](./src/pkm/)'s catalogue, and an event-sourced GTD
+(`life_agent.tasks`, reached over Telegram) that email auto-files into with citations. And the
+decision half: every answer is chosen by one Bayes act (`core/decide.bayes_act`) over a
+posterior on candidates, under a stated loss — a wrong answer costs about five times what a
+right one earns, folded from the owner's own verdicts, and the bar to commit is derived from
+that rather than declared. So the assistant answers, escalates or **declines**, says which on
+every reply, and is measured on a board: [`SCOREBOARD.md`](./SCOREBOARD.md). Status of every
+faculty: [`ROADMAP.md`](./ROADMAP.md).
 
 ## Your data stays yours
 
@@ -106,9 +109,11 @@ and push. See [`docs/kb-schema.md`](./docs/kb-schema.md) for the expected layout
 
 ```
 SETUP.md              clone → cited answer (start here as a user)
+MODEL.md              the decision model: the act, the loss, the bar
+SCOREBOARD.md         what the act scores on every pinned set (eval/score.py writes it)
 PRINCIPLES.md         the stable cross-phase principles (the philosophy; other docs defer to it)
 CONTRIBUTING.md       dogfood loop, the PII guard, the two-package rules
-ROADMAP.md            the plan (phases 0–3)
+ROADMAP.md            the plan (J0–J5, to the MVP)
 CLAUDE.md             operating manual for an agent working in this repo
 LICENSE               AGPL-3.0-or-later
 bin/

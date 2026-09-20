@@ -139,7 +139,12 @@ def load_registry(path: Path) -> Registry:
         raise RegistryError(
             f"registry not found: {path}\n"
             "It holds your real data roots and lives in $LIFE_AGENT_KB, outside "
-            "this public repo. See config/data-sources.example.yaml for the schema."
+            "this public repo. To start from the documented example:\n"
+            f"    mkdir -p {path.parent}\n"
+            f"    cp config/data-sources.example.yaml {path}\n"
+            f"    $EDITOR {path}      # point `roots` at your own folders\n"
+            "The example documents both kinds (maildir, filetree), includes/excludes "
+            "and availability; SETUP.md §3 walks the whole path."
         )
     data = yaml.safe_load(path.read_text(encoding="utf-8"))
     if not isinstance(data, dict) or data.get("version") != REGISTRY_VERSION:

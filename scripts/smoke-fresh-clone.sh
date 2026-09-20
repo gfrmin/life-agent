@@ -6,7 +6,13 @@
 # What this guarantees deterministically (no LLM, so no flakiness / no key):
 #   1. pkm resolves from this repo's src/, not a sibling ../pkm  (monorepo merge).
 #   2. The pipeline migrate→ingest→extract→chunk→rebuild-index→search works.
-#   3. Provenance is clean: the OWNER's id (123456789) retrieves to identity.md
+#   3. The bridge boots on that sandbox, /ready reports the HOST act, /decide commits
+#      on settled evidence and withholds on dispersed evidence, and both origin lines
+#      render (scripts/smoke_decide.py — a tripwire client fails the run if anything
+#      reaches a model). Retrieval alone was never the product: every ask goes through
+#      the bridge, so a clone could pass this smoke and still answer "the decider is
+#      unavailable" the first time it was asked anything.
+#   4. Provenance is clean: the OWNER's id (123456789) retrieves to identity.md
 #      and the partner DECOY's id (987654321) retrieves to partner-charles.md —
 #      never crossed. That separation is the substrate the synthesis-time
 #      identity guard (owner.md) relies on; the guard itself is an LLM behaviour
@@ -56,9 +62,13 @@ echo "== 2. provenance: each synthetic id retrieves to its OWN document =="
 assert_top_hit "123456789" "identity.md"          # the owner's id
 assert_top_hit "987654321" "partner-charles.md"   # the partner decoy's id — not crossed
 
-echo "== 3. PII guard runs clean on the committed tree (shapes-only) =="
+echo "== 3. the bridge boots and the act decides (no key, no network, no engine) =="
+uv run --project "$root" python "$root/scripts/smoke_decide.py" --sandbox "$sandbox" \
+  || fail "the decide smoke failed — a clone that retrieves but cannot decide answers nothing"
+
+echo "== 4. PII guard runs clean on the committed tree (shapes-only) =="
 uv run --project "$root" python "$root/.githooks/pii_check.py" --shapes-only \
   || fail "pii_check flagged tracked content"
 
 echo
-echo "SMOKE PASS: fresh checkout builds the sample and answers with clean provenance."
+echo "SMOKE PASS: fresh checkout builds the sample, retrieves with clean provenance, and decides."

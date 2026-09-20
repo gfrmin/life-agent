@@ -42,9 +42,14 @@ live:
 live-archive:
 	$(PY) scripts/live_archive.py
 
-# Your data -> pkm: every enabled root in data-sources.yaml (maildir or filetree).
+# Your data -> pkm: every enabled root in data-sources.yaml (maildir or filetree), then
+# extract and chunk, so what this registers is actually searchable when it returns. It
+# used to stop after registering — the store had the file list and no content, and the
+# next ask found nothing with no error to explain it. `pkm migrate` is idempotent and
+# both other callers (bootstrap-sample.sh, atm_bench/build_kb.py) already ran it first.
 data:
-	$(PY) scripts/ingest_sources.py
+	$(PY) -m pkm --config "$${PKM_CONFIG:-$$HOME/.config/life-agent/pkm.yaml}" migrate
+	$(PY) scripts/ingest_sources.py --extract --chunk
 
 # The ATM-Bench external KB (a second LIFE_AGENT_KB root). Needs the released files:
 #   make sets ATM_EMAILS=... ATM_QA=... ATM_OUT=... ATM_STORE=...

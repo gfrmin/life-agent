@@ -179,10 +179,27 @@ def _load_existing(sources_yaml: Path) -> list[dict]:
 
 
 def _pkm_root(pkm_config: Path) -> Path:
+    """Where the content store lives, per the pkm config. Both this file's absence and a
+    config without a `root_dir` are the same failure for a newcomer — the store has no
+    address — so both say what to copy rather than naming a key they have never seen."""
+    if not pkm_config.exists():
+        raise RegistryError(
+            f"pkm config not found: {pkm_config}\n"
+            "It names the content store this ingest writes into. To start from the "
+            "documented example:\n"
+            f"    mkdir -p {pkm_config.parent}\n"
+            f"    cp config/pkm.example.yaml {pkm_config}\n"
+            f"    $EDITOR {pkm_config}      # set `root_dir` (and your pandoc version)\n"
+            "Point $PKM_CONFIG elsewhere if you keep it somewhere else; SETUP.md §3 "
+            "walks the whole path."
+        )
     data = yaml.safe_load(pkm_config.read_text(encoding="utf-8"))
     root = data.get("root_dir")
     if not isinstance(root, str):
-        raise RegistryError(f"pkm config {pkm_config} has no string root_dir")
+        raise RegistryError(
+            f"pkm config {pkm_config} has no string root_dir — it names the directory "
+            "the content store lives in. See config/pkm.example.yaml."
+        )
     return Path(root).expanduser()
 
 
