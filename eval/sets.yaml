@@ -22,6 +22,18 @@ sets:
       The daemon's 13 extra right answers came with 2 wrongs and a policy that called the
       deliberative rung on 40 questions at $0.38; at today's gauge that bundle is worth less
       than abstaining.
+  generated:
+    kind: typed
+    path: eval/typed/gate-typed-20260920T120757.jsonl
+    sha256: 856caf2f258c73819f809ac1c51bb8770691596f1538af95cbfcaaaff4e0f7d1
+    note: >-
+      The generated golden set: 212 verbatim point-fact questions extracted from the owner's
+      corpus by the generator (claude-haiku-4-5-20251001, prompt sha ea86a53553e58005;
+      questions file sha256 2a548ef4239c4347 in $LIFE_AGENT_KB/eval/questions_generated.yaml).
+      J1's host Bayes act, run COLD (no derivation cache) on a second machine 2026-09-20 against the
+      corpus pin full-2026-06-11, priced at the menu's prices for the probes it applied
+      (metered $12.85 for the 212; the menu understates what the probes meter, see
+      CHANGELOG). First pin: this is the baseline, no incumbent.
   atm:
     kind: pending
     note: ATM-Bench email-only number-typed (198); scored from J3 (`make sets`)

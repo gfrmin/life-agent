@@ -19,17 +19,28 @@ responsibility; delete the duplicates.
 The MVP is **reusable by a stranger**, answering **verbatim point facts only** (graded by
 exact match) and escalating or declining everything else.
 
-## Next session — after J1 (in order, one commit each)
+## Where J1 left the board (2026-09-20)
 
-1. **The board.** Run a side-port bridge from the worktree (`LIFE_AGENT_BRIDGE_URL`;
-   production untouched), the typed arm (`scripts/fairfight/arm_baseline.py`) over the owner's
-   104 questions at the folded Ū, paired with the recorded oracle; pin it in `eval/sets.yaml`;
-   `make score`; rule 5 (ΔU ≥ 0 on every row) holds or the change does not merge.
-2. **`make golden`.** Generate a golden set from the corpus: sample documents, extract
-   verbatim point-fact spans, phrase one question per span, write (question, answer,
-   citation) under `$LIFE_AGENT_KB/eval/`, pin it as set `generated`, grade by exact match.
-3. **The owner's step** (a prepared script): stop the answer-brain daemon, restart the bridge
-   and jarvis, one Telegram ask shows the host decider on `/ready`.
-4. **J2**: escalation rungs as rows `bayes_act` ranks, origin on every reply.
+Two rows, both pinned in `eval/sets.yaml`, both on one grader and one price list: the owner
+set, typed 48/0/56 at $0.014 a question (U/q +0.443), and the generated golden set (212
+questions from the corpus, `make golden`), typed 85/4/123 cold at $0.015 a question (U/q
++0.284) — its first pin, so the baseline. The typed row is the MVP target; escalation does
+not pay at this gauge (−0.50 a call), so a rung ships only when it beats abstaining.
+
+## Next session (in order, one commit each)
+
+1. **Production on the host act.** The owner's step runs as a rehearsed script right after
+   J1 merges: pull master, `systemctl --user daemon-reload` (the bridge unit changed), disable
+   the answer-brain daemon, restart the bridge and jarvis, `/ready` on :8798 shows
+   `"decider": {"kind": "host"}`. If it does not, run that script first.
+2. **J2 — origin on every reply.** PR #193 (`j2-origin`) is built and green: retarget to
+   master, undraft, merge. Disclosure records wait with the rung.
+3. **J3 — the stranger.** `make data` over any maildir or filetree; `make sets` builds
+   ATM-Bench on-machine (the `atm` row); fresh-clone smoke in CI; `SETUP.md` current.
+4. **J4 — live.** jarvis serving asks; the production readout as a dead-man over the
+   decision log; the `live` row.
+
+Open for the owner (ask-first): the menu's probe prices understate what the probes meter
+cold — +$0.046 a row on the golden run, extraction unpriced — and `u_wrong` re-elicitation.
 
 Tests that need owner data skip and say what they need. `make check` stays under two minutes.
