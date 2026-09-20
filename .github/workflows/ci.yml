@@ -73,5 +73,5 @@ jobs:
       - name: PII guard (shapes-only over the tracked tree)
         run: uv run python .githooks/pii_check.py --shapes-only
 
-      - name: Fresh-clone smoke (sample corpus → cited retrieval, no API key)
+      - name: Fresh-clone smoke (sample corpus → cited retrieval → the act decides, no API key)
         run: scripts/smoke-fresh-clone.sh

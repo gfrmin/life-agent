@@ -121,6 +121,25 @@ def test_the_board_shows_u_per_question_only_with_a_gauge() -> None:
     assert priced.splitlines()[6].endswith(f"| {G.total(_board(typed)) / typed.rows:+.3f} | — |")
 
 
+def test_a_scored_row_carries_its_note_onto_the_board() -> None:
+    """A U/q is a claim about a population, and the clause naming that population is the
+    first thing a reader drops — `atm`'s five wrongs each name the gold fact in another
+    surface form, so a bare U/q on the board says something its note denies. Killed by
+    rendering notes for skipped sets only, which is what the board did until the `atm`
+    row was pinned."""
+    rows = S.score_paired("t", LINES)
+    board = S.render(rows, {}, G, {"t": "what   t\n  is", "other": "never scored"})
+    assert "- **`t`** — what t is" in board
+    assert "other" not in board
+
+
+def test_a_note_is_rendered_once_for_a_set_with_several_arms() -> None:
+    """`owner` is three rows from one set; its note belongs under the board once."""
+    rows = S.score_paired("t", LINES)
+    assert len({r.arm for r in rows}) > 1
+    assert S.render(rows, {}, G, {"t": "one note"}).count("- **`t`** —") == 1
+
+
 def test_a_typed_set_scores_the_typed_row_alone(tmp_path: Path) -> None:
     import hashlib
 
@@ -173,3 +192,43 @@ def test_the_board_is_never_written_from_less_than_every_pinned_set(tmp_path: Pa
             "y": {"kind": "pending", "note": "later"}}
     _, skipped = S.score(tmp_path, sets)
     assert S.unscored_pins(sets, skipped) == ["x"]
+
+
+# --- A set may name its own root (J3) --------------------------------------------------
+# Every set used to resolve against one $LIFE_AGENT_KB, which two of them are not: the
+# synthetic `sample` lives in the repo so a stranger can score it from a clone with no KB
+# at all, and the external `atm` corpus is deliberately its own KB root, named by an env
+# var so no machine-specific path enters this public file.
+
+def test_a_repo_rooted_set_scores_without_a_kb() -> None:
+    root, why = S.set_root({"root": "repo"}, None)
+    assert (root, why) == (S.REPO, "")
+
+
+def test_the_synthetic_sample_row_is_scored_from_the_repo_alone() -> None:
+    """The stranger's board row, end to end: no $LIFE_AGENT_KB, real pinned bytes.
+    Killed by resolving `sample` against the KB again, or by the archive leaving the tree."""
+    spec = S.load_sets()["sample"]
+    rows, skipped = S.score(None, {"sample": spec})
+    assert "sample" not in skipped, skipped
+    ((r),) = rows
+    assert (r.arm, r.rows, r.wrong) == ("typed", 14, 0)
+    assert r.right > 0, "the sample row asserts nothing — a decider that only declines"
+
+
+def test_an_env_rooted_set_says_which_variable_is_unset(monkeypatch) -> None:
+    monkeypatch.delenv("LIFE_AGENT_ATM_KB", raising=False)
+    root, why = S.set_root({"root_env": "LIFE_AGENT_ATM_KB"}, Path("/kb"))
+    assert root is None and "LIFE_AGENT_ATM_KB" in why
+
+
+def test_an_env_rooted_set_reads_from_its_own_root(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("LIFE_AGENT_ATM_KB", str(tmp_path))
+    root, why = S.set_root({"root_env": "LIFE_AGENT_ATM_KB"}, Path("/kb"))
+    assert (root, why) == (tmp_path, "")
+
+
+def test_a_set_with_no_root_declared_still_reads_the_kb(tmp_path: Path) -> None:
+    """The discriminating control: the default must not move."""
+    assert S.set_root({"path": "x.jsonl"}, tmp_path) == (tmp_path, "")
+

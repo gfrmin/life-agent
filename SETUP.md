@@ -52,10 +52,28 @@ export LIFE_AGENT_KB=$PWD/examples/.sandbox/kb
 export PKM_CONFIG=$PWD/examples/.sandbox/pkm.yaml
 export ANTHROPIC_API_KEY=sk-ant-...        # your key
 
+bin/answer-bridge &                        # the decider — see below; leave it running
+
 bin/ask-live "what is my national ID number?"
 bin/ask-live "when does my passport expire?"
 bin/ask-live "how do I make money?"
 ```
+
+**The bridge is not optional.** Every ask goes through it: `bin/ask-live` and the Telegram
+bot both drive one loop (route → retrieve → probe → extract → **decide**) against
+`127.0.0.1:8798`, and the decider that ranks the actions runs there. With nothing
+listening you get *"No answer asserted — the decider is unavailable"* — which is the
+system refusing to answer rather than guessing, but it looks like a broken install. Run it
+in a second terminal (`bin/answer-bridge`), or install the unit once and forget it:
+
+```bash
+ln -s "$PWD"/packaging/life-agent-bridge.service ~/.config/systemd/user/   # PII-OK: standard XDG + repo-relative paths
+systemctl --user daemon-reload && systemctl --user enable --now life-agent-bridge
+curl -s 127.0.0.1:8798/ready        # {"status": "ok", "decider": {"kind": "host", ...}}
+```
+
+`/ready` answering with a decider is the one check worth making before you ask anything.
+Nothing here downloads an engine: the decider is this repo's own (`core/decide.bayes_act`).
 
 Each answer carries a `[n]` citation into a numbered source document. See
 [`examples/README.md`](./examples/README.md) for the full list and the
@@ -86,7 +104,7 @@ uv run --project . python scripts/ingest_sources.py --extract --chunk
 bin/ask-live "/tell My name is <you>"
 bin/ask-live "/tell My national ID is <id>"
 
-# e) ask
+# e) ask (the bridge from §2 must be up — it is where the decider runs)
 bin/ask-live "when does my passport expire?"
 ```
 
@@ -153,6 +171,29 @@ asks `[g]ood / [b]ad / Enter` — one bit, logged to a dated journal at
 matter get promoted to `$LIFE_AGENT_KB/FAILURES.md` (template:
 [`docs/failures-template.md`](./docs/failures-template.md)); the failure log —
 not speculation — is what drives what gets built next.
+
+## 6. Optional: measure it
+
+The board (`SCOREBOARD.md`) is how this project decides anything: a change ships when no
+row's utility falls. Three of its rows you can run yourself.
+
+```bash
+make score          # score every pinned set you have the data for
+make golden         # generate questions from YOUR corpus, answers known by construction
+make sets           # fetch ATM-Bench at a pinned revision and build it as a second KB
+```
+
+`make score` works from a clone with no data at all — the `sample` row is scored from the
+synthetic corpus in the repo, so you can see what the act does before trusting it with
+anything of yours. `make golden` samples your own documents, extracts verbatim point facts
+and writes questions whose answers are known by construction; answer them with
+`scripts/score_typed.py` and pin the archive in `eval/sets.yaml`. `make sets` downloads an
+external email benchmark (**CC-BY-NC**: it lands in a cache on your machine, never in the
+repo, and is not redistributed from it).
+
+Your first runs will decline a lot, and that is the system working: it commits only above
+a bar derived from what a wrong answer costs you. Grade the answers you do get (`g`/`b`)
+and both the bar and the information rows move to your data.
 
 ## Reliability
 

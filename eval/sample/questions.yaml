@@ -1,0 +1,178 @@
+questions:
+- id: g-0001
+  question: What is the passport number on Ada Lovelace's British passport issued
+    on 18 April 2021?
+  answer: PX-009-EXAMPLE
+  answer_variants: []
+  answerable: true
+  subject: n/a
+  provenance:
+    artifact_cache_key: 75202d3f320996be7017382f1558eeda3a883f45677211eb387a5eddb0b73fce
+    chunk_index: 0
+  generator:
+    model: claude-haiku-4-5-20251001
+    prompt_sha: ea86a53553e58005
+- id: g-0002
+  question: What is the expiry date of Ada Lovelace's British passport issued on 18
+    April 2021?
+  answer: '2031-04-18'
+  answer_variants: []
+  answerable: true
+  subject: n/a
+  provenance:
+    artifact_cache_key: 75202d3f320996be7017382f1558eeda3a883f45677211eb387a5eddb0b73fce
+    chunk_index: 0
+  generator:
+    model: claude-haiku-4-5-20251001
+    prompt_sha: ea86a53553e58005
+- id: g-0003
+  question: What is the member number for Ada Lovelace's Newstead Health Cover policy?
+  answer: NHC-EXAMPLE-3380
+  answer_variants: []
+  answerable: true
+  subject: n/a
+  provenance:
+    artifact_cache_key: 963f75e581e17dc5f76340d70629076dab214927052ffe7beb3ebab24564ef98
+    chunk_index: 0
+  generator:
+    model: claude-haiku-4-5-20251001
+    prompt_sha: ea86a53553e58005
+- id: g-0004
+  question: What is the cover start date for Ada Lovelace's Newstead Health Cover
+    policy?
+  answer: '2024-01-01'
+  answer_variants: []
+  answerable: true
+  subject: n/a
+  provenance:
+    artifact_cache_key: 963f75e581e17dc5f76340d70629076dab214927052ffe7beb3ebab24564ef98
+    chunk_index: 0
+  generator:
+    model: claude-haiku-4-5-20251001
+    prompt_sha: ea86a53553e58005
+- id: g-0005
+  question: What is the national identity number on Ada Lovelace's national identity
+    card issued on 2019-03-04?
+  answer: '123456789'
+  answer_variants: []
+  answerable: true
+  subject: n/a
+  provenance:
+    artifact_cache_key: 7f10c99b0fac96f367d072d9c89b00424b3f2538a429522549cf59bcf7eb73b5
+    chunk_index: 0
+  generator:
+    model: claude-haiku-4-5-20251001
+    prompt_sha: ea86a53553e58005
+- id: g-0006
+  question: What is the date of birth on Ada Lovelace's national identity card?
+  answer: '1815-12-10'
+  answer_variants: []
+  answerable: true
+  subject: n/a
+  provenance:
+    artifact_cache_key: 7f10c99b0fac96f367d072d9c89b00424b3f2538a429522549cf59bcf7eb73b5
+    chunk_index: 0
+  generator:
+    model: claude-haiku-4-5-20251001
+    prompt_sha: ea86a53553e58005
+- id: g-0007
+  question: What is Ada's monthly retainer amount from Analytical Engine Works?
+  answer: 4,200
+  answer_variants: []
+  answerable: true
+  subject: n/a
+  provenance:
+    artifact_cache_key: 1ad618e0c82aec336325b6dd1221b0c8d667c35394585a6f982c0c5cde238075
+    chunk_index: 0
+  generator:
+    model: claude-haiku-4-5-20251001
+    prompt_sha: ea86a53553e58005
+- id: g-0008
+  question: What is Ada's per-session billing rate at Bernoulli Tutoring?
+  answer: '75'
+  answer_variants: []
+  answerable: true
+  subject: n/a
+  provenance:
+    artifact_cache_key: 1ad618e0c82aec336325b6dd1221b0c8d667c35394585a6f982c0c5cde238075
+    chunk_index: 0
+  generator:
+    model: claude-haiku-4-5-20251001
+    prompt_sha: ea86a53553e58005
+- id: g-0009
+  question: What is the monthly rent amount for the tenancy at 12 Analytical Lane
+    starting 2025-08-01?
+  answer: 1,650
+  answer_variants: []
+  answerable: true
+  subject: n/a
+  provenance:
+    artifact_cache_key: af39dce0893fa79cdf4ebebfe12ececb530a3e60446c27935f1c7d600804c598
+    chunk_index: 0
+  generator:
+    model: claude-haiku-4-5-20251001
+    prompt_sha: ea86a53553e58005
+- id: g-0010
+  question: What is the deposit amount held for the tenancy at 12 Analytical Lane
+    starting 2025-08-01?
+  answer: 2,475
+  answer_variants: []
+  answerable: true
+  subject: n/a
+  provenance:
+    artifact_cache_key: af39dce0893fa79cdf4ebebfe12ececb530a3e60446c27935f1c7d600804c598
+    chunk_index: 0
+  generator:
+    model: claude-haiku-4-5-20251001
+    prompt_sha: ea86a53553e58005
+- id: g-0011
+  question: What is the account reference number for Ada Lovelace's sole-trader current
+    account at Newstead Mutual?
+  answer: NM-EXAMPLE-4471-2093
+  answer_variants: []
+  answerable: true
+  subject: n/a
+  provenance:
+    artifact_cache_key: 97e3c7e772db14fdac96c5e01247c2ff57abe063b920626d2fd63c402db496e1
+    chunk_index: 0
+  generator:
+    model: claude-haiku-4-5-20251001
+    prompt_sha: ea86a53553e58005
+- id: g-0012
+  question: What is the address of the property for which Ada Lovelace pays monthly
+    rent?
+  answer: 12 Analytical Lane
+  answer_variants: []
+  answerable: true
+  subject: n/a
+  provenance:
+    artifact_cache_key: 97e3c7e772db14fdac96c5e01247c2ff57abe063b920626d2fd63c402db496e1
+    chunk_index: 0
+  generator:
+    model: claude-haiku-4-5-20251001
+    prompt_sha: ea86a53553e58005
+- id: g-0013
+  question: What is the registration plate of Ada Lovelace's 2022 Babbage Estate vehicle?
+  answer: ADA-1843
+  answer_variants: []
+  answerable: true
+  subject: n/a
+  provenance:
+    artifact_cache_key: b9e6986f469d2da210024032bb82fcc98f2c0e63669d177847c4b22003fa8b18
+    chunk_index: 0
+  generator:
+    model: claude-haiku-4-5-20251001
+    prompt_sha: ea86a53553e58005
+- id: g-0014
+  question: What is the policy reference number for Ada Lovelace's Difference Mutual
+    motor insurance?
+  answer: POL-EXAMPLE-55120
+  answer_variants: []
+  answerable: true
+  subject: n/a
+  provenance:
+    artifact_cache_key: b9e6986f469d2da210024032bb82fcc98f2c0e63669d177847c4b22003fa8b18
+    chunk_index: 0
+  generator:
+    model: claude-haiku-4-5-20251001
+    prompt_sha: ea86a53553e58005

@@ -37,7 +37,7 @@ The bridge gathers evidence and hosts the one decider: the candidate posterior i
 {abstain, gather, ask, respond} at the folded utility, and `core/enact.py` turns the act into
 a reply. With the bridge down the reply says the decider is unavailable; nothing answers in
 its place. proplang (`make engine`) is deferred behind the MVP.
-**J2** adds escalation rungs and tannen records; a question that is not a verbatim point fact
+**J2** added the origin on every reply; escalation rungs and tannen records wait; a question that is not a verbatim point fact
 is declined until then.
 
 ## Entry points
@@ -59,13 +59,24 @@ is declined until then.
 
 ## Where it stands
 
-`SCOREBOARD.md`. On the owner's 104 questions (run 18): typed 61 right / 2 wrong / 41
-declined at $0.0036/q; the recorded oracle (Claude Code over the corpus) 95 / 6 / 3 at
-$0.375/q; the router — typed where it asserts, the oracle otherwise — 97 / 5 / 2 at $0.15/q.
-The router is the MVP's shape. An escalation rung is chosen only if its learned reliability
-clears the Chow bar net of price (0.837 at today's fold, 0.90 at the prior), so rung 1 must be
-cheap and good. At the folded gauge the typed and router rows are level on U/q (+0.483 and
-+0.482): the router's extra right answers are paid for by its three extra wrongs and its spend.
+[`SCOREBOARD.md`](../SCOREBOARD.md) is the answer; these numbers are a snapshot of
+2026-09-20. Every row is graded on the answer it commits, by exact match, and priced at the
+menu's declared prices whether or not a cache served the call.
+
+- **owner** (104 authored questions): typed 48 right / 0 wrong / 56 declined, U/q **+0.443**.
+- **generated** (212 questions `make golden` extracted from the corpus, answered cold):
+  85 / 4 / 123, U/q **+0.284** — the first pin, so its own baseline.
+- The **outside option** (a strong model over the same corpus) reads 87 / 13 / 4 on that one
+  grader: **−0.355**. At a gauge where a wrong answer costs about five right ones, being
+  wrong one time in eight is worth less than declining, however good the prose.
+
+So the MVP's shape is the **typed row** — answer from your documents with provenance, or
+decline — not a router that escalates what it withholds. Escalation ships when a rung beats
+abstaining on the board, which no rung does today.
+
+Two things the board does not yet cover: `atm` (an external corpus, J3) and `live` (what the
+deployed arm does for its owner, J4 — the production readout is a dead-man over that stream,
+and `make live` reads it).
 
 **A-CAL — the posterior is calibrated** — is the assumption everything rests on: the commit
 bar is a threshold on the posterior's value. Nothing yet establishes it; a reliability

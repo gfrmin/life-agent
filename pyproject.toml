@@ -33,6 +33,9 @@ dependencies = [
     "beautifulsoup4>=4.12",
     # MCP stdio server for the `pkm serve` query surface (SPEC §17).
     "mcp>=1.0",
+    # `make sets` fetches ATM-Bench at a pinned revision (scripts/atm_bench/fetch.py).
+    # Already present transitively; declared because a documented path now imports it.
+    "huggingface-hub>=0.26",
 ]
 
 [project.scripts]

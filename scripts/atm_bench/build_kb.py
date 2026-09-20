@@ -145,14 +145,33 @@ def owner_profile() -> str:
             "I am the recipient of the emails in this corpus.\n")
 
 
-def copy_gauge(real_kb: Path, kb: Path) -> dict[str, str]:
-    """Exactly the two gauge files, byte-copied; their sha256s returned for the manifest."""
+def copy_gauge(real_kb: Path | None, kb: Path) -> dict[str, str]:
+    """The two gauge files, byte-copied; their sha256s returned for the manifest.
+
+    The external KB must be scored at the SAME utility as your own, or its row is not
+    comparable with the rest of the board — so the gauge is copied, never re-derived. A
+    reader with no gauge of their own (no elicitations recorded yet) gets the shipped
+    example, which is the declared prior; that is stated in the manifest by the sha, so a
+    row scored at the example gauge can never be mistaken for one scored at a measured
+    one. Without this fallback the target simply refused on a fresh machine.
+
+    Naming a gauge that is only half there is a different thing entirely, and still
+    refuses: a stated source that is not fully present is a claim that turned out false.
+    """
     shas: dict[str, str] = {}
     for rel in GAUGE_FILES:
-        src = real_kb / rel
-        if not src.is_file():
-            raise FileNotFoundError(f"gauge source missing: {src}")
-        data = src.read_bytes()
+        if real_kb is None:
+            # No gauge NAMED: the shipped example, folding nothing — the declared prior.
+            example = REPO / "config" / "utility-model.example.yaml"
+            data = example.read_bytes() if rel.endswith("model.yaml") else b""
+        else:
+            # A gauge WAS named: it must be all there. A KB missing half a gauge is a
+            # statement that turned out false, and scoring at the half that survived is
+            # how a row silently changes what it is priced at.
+            src = real_kb / rel
+            if not src.is_file():
+                raise FileNotFoundError(f"gauge source missing: {src}")
+            data = src.read_bytes()
         _write_if_changed(kb / rel, data)
         shas[rel] = _sha(data)
     return shas
@@ -215,7 +234,8 @@ def run_pkm_steps(repo: Path, pkm_yaml: Path, kb: Path, *,
 
 
 def build(emails: Sequence[Mapping[str, Any]], qas: Sequence[Mapping[str, Any]], *,
-          out: Path, store: Path, gauge_from: Path, hf_revision: str | None) -> dict[str, int]:
+          out: Path, store: Path, gauge_from: Path | None,
+          hf_revision: str | None) -> dict[str, int]:
     kb, emails_dir = out / "kb", out / "emails"
     written = unchanged = bad_ts = 0
     for rec in emails:
@@ -258,7 +278,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--qa", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--store", type=Path, required=True)
-    parser.add_argument("--gauge-from", type=Path, required=True, metavar="REAL_KB")
+    parser.add_argument("--gauge-from", type=Path, default=None, metavar="REAL_KB",
+                        help="a KB whose utility gauge this one is scored at (default: "
+                             "the shipped example, i.e. the declared prior)")
     parser.add_argument("--hf-revision", default=None)
     parser.add_argument("--no-pkm", action="store_true", help="write the layout only")
     return parser
@@ -269,7 +291,9 @@ def main(argv: list[str] | None = None) -> int:
     out, store = Path(args.out).expanduser(), Path(args.store).expanduser()
     try:
         counts = build(_load_list(Path(args.emails)), _load_list(Path(args.qa)), out=out,
-                       store=store, gauge_from=Path(args.gauge_from).expanduser(),
+                       store=store,
+                       gauge_from=(Path(args.gauge_from).expanduser()
+                                   if args.gauge_from else None),
                        hf_revision=args.hf_revision)
     except FileNotFoundError as e:
         print(f"REFUSED: {e}")

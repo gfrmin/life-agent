@@ -11,9 +11,10 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+REPO = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO / "scripts"))
 
-import ingest_sources
+import ingest_sources  # noqa: E402
 
 
 def test_ingest_alone_only_registers() -> None:
@@ -79,3 +80,38 @@ def test_an_optional_absent_root_is_skipped_not_fatal(tmp_path: Path) -> None:
     for root in keep:
         entries.extend(ingest_sources.entries_for_root(root, dry_run=True))
     assert [Path(e["path"]).name for e in entries] == ["a.md"]
+
+
+# --- The newcomer's two first errors: a store with no address, a registry with no roots.
+# J3's bar is "reusable by a stranger", and both of these used to name a key the reader
+# has never seen instead of the file to copy. The example files they point at are the
+# ones SETUP.md §3 already tells them to copy, so the message and the doc cannot drift
+# without this test noticing the file is gone.
+
+def test_a_missing_pkm_config_names_the_example_to_copy(tmp_path: Path) -> None:
+    """Killed by restoring the bare `has no string root_dir`, which fires on an absent
+    file too and reads as a malformed config the reader never wrote."""
+    import data_source_registry as REG
+    try:
+        ingest_sources._pkm_root(tmp_path / "nowhere" / "pkm.yaml")
+    except REG.RegistryError as e:
+        msg = str(e)
+    else:                                            # pragma: no cover - the failure case
+        raise AssertionError("an absent pkm config did not fail")
+    assert "config/pkm.example.yaml" in msg and "cp " in msg
+    assert (REPO / "config" / "pkm.example.yaml").is_file(), \
+        "the error names an example file that is not in the tree"
+
+
+def test_a_missing_registry_names_the_example_to_copy(tmp_path: Path) -> None:
+    import data_source_registry as REG
+    try:
+        REG.load_registry(tmp_path / "kb" / "config" / "data-sources.yaml")
+    except REG.RegistryError as e:
+        msg = str(e)
+    else:                                            # pragma: no cover - the failure case
+        raise AssertionError("an absent registry did not fail")
+    assert "config/data-sources.example.yaml" in msg and "cp " in msg
+    assert (REPO / "config" / "data-sources.example.yaml").is_file(), \
+        "the error names an example file that is not in the tree"
+

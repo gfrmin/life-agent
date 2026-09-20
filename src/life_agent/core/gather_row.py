@@ -53,13 +53,34 @@ def step_key(key: str, step: int) -> str:
     return f"{key}@{step}"
 
 
-def load(path: Path) -> dict[str, float]:
-    """The per-step fitted rows recorded at ``path`` as u_bar keys (``<key>@<step>``), or none
-    when there is no fit (the decider then reads the prior)."""
-    if not path.is_file():
-        return {}
+#: The row shipped with the repo, fitted on the author's corpus and published as aggregate
+#: probabilities (no question, document or value is recoverable from four rates per step).
+#: It is the STARTING row for a KB that has recorded no outcomes yet — see `load`.
+EXAMPLE = Path(__file__).resolve().parents[3] / "config" / "gather-row.example.json"
+
+
+def _steps(path: Path) -> dict[str, float]:
     steps = json.loads(path.read_text(encoding="utf-8"))["steps"]
     return {step_key(k, int(st)): float(row[k]) for st, row in steps.items() for k in KEYS}
+
+
+def load(path: Path, *, fallback: Path | None = None) -> dict[str, float]:
+    """The per-step fitted rows recorded at ``path`` as u_bar keys (``<key>@<step>``).
+
+    A KB with no fit falls back to the shipped row (:data:`EXAMPLE`), because the built-in
+    prior is UNIFORM: under it a gather is as likely to mislead as to help, so the act
+    never gathers, the posterior stays dispersed, and the system declines every question
+    it is ever asked. Measured on the synthetic sample corpus: 14 of 14 declined, zero
+    gathers applied. A decider that cannot start is not a safer decider.
+
+    The fallback is a starting point, not a claim about your corpus; `scripts/fit_gather_row.py`
+    replaces it with your own as soon as you have graded outcomes. Returns ``{}`` only when
+    neither exists, and then the decider reads the uniform prior — stated, never silent.
+    """
+    if path.is_file():
+        return _steps(path)
+    shipped = EXAMPLE if fallback is None else fallback
+    return _steps(shipped) if shipped.is_file() else {}
 
 
 def at_step(u_bar: Mapping[str, float], applied: int) -> dict[str, float]:
