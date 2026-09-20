@@ -52,8 +52,14 @@ and a clone over someone else's mail works end to end.
 - **J3 — The stranger.** `make data` over any maildir/filetree; `make sets` downloads and
   builds ATM-Bench; fresh-clone smoke covers decide + escalate in CI (no
   engine download on the stranger's path).
-- **J4 — Live.** jarvis serves asks with escalation; the production readout is a dead-man
-  over the decision log.
+- **J4 — Live.** jarvis serves asks; the production readout is a dead-man over the decision
+  log. *The dead-man landed 2026-09-20:* a stale window exits non-zero and the weekly timer
+  pages on it, so a stopped arm is loud instead of legible. "With escalation" is satisfied
+  as the board allows it: the deliberative rung sits on the priced menu and the act may buy
+  it, which is the only form escalation takes until a rung beats abstaining (J2). What
+  remains is use — the exit test counts calendar days carrying live traffic — and the
+  `live` row, produced by `scripts/live_archive.py` from the decision log joined to the
+  owner's verdicts on `decision_id`.
 - **J5 — The second domain.** Swap the posterior, lattice, loss and laws for the ER core's
   own public repo at a pinned tag (hkaddresses consumes the same core).
 

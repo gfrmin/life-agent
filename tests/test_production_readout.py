@@ -6,6 +6,7 @@ Run: uv run --project . python -m pytest tests/test_production_readout.py
 """
 from __future__ import annotations
 
+import json
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -158,7 +159,78 @@ def test_a_declared_root_that_is_present_but_empty_succeeds(tmp_path: Path,
     good = tmp_path / "kb"
     (good / "calibration").mkdir(parents=True)
     rc = PR.main(["--kb", str(good), "--out", str(tmp_path / "r.md")])
-    assert rc == 0, "a declared root that exists with no stream yet was treated as absent"
+    assert rc != 2, "a declared root that exists with no stream yet was treated as absent"
+    # It exits 1, not 0: an empty stream is stale (the dead-man below). The claim this
+    # test makes is about the ROOT check — absent is not the same as empty — and 2 is
+    # that check's code, so the two signals stay distinguishable.
+
+
+# --- The dead-man: the readout's own verdict, not a sentence in a file ------------------
+# docs/guards.md row 12: row 25 made a stopped watch visible IN the report, but nothing
+# asserted on it — "a stale readout is visible to whoever opens the file, which is the
+# same failure mode one layer up". The window flag was already computed; only the exit
+# code was missing, and bin/production-readout already turns non-zero into a /fail ping.
+
+def _kb_with(tmp_path: Path, rows: list[dict]) -> Path:
+    kb = tmp_path / "kb"
+    (kb / "calibration").mkdir(parents=True)
+    (kb / "calibration" / "decisions.jsonl").write_text(
+        "\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
+    return kb
+
+
+def _fresh_row() -> dict:
+    """One live decision, stamped now — the only thing that clears the bar."""
+    row = dict(DEC[1])
+    row["tx_time"] = datetime.now(UTC).isoformat()
+    return row
+
+
+def test_a_stream_that_stopped_fails_the_run(tmp_path: Path, monkeypatch) -> None:
+    """MUST FAIL if a stale stream can still exit 0. Killed by returning 0 unconditionally,
+    which is exactly the state guards.md row 12 describes."""
+    monkeypatch.setattr(PR, "bar_summary", lambda **k: {"error": "stubbed (hermetic)"})
+    kb = _kb_with(tmp_path, [DEC[1]])          # a real live row, ~a month old
+    out = tmp_path / "r.md"
+    assert PR.main(["--kb", str(kb), "--out", str(out)]) == 1
+    assert "STALE" in out.read_text(encoding="utf-8"), "the report and the exit disagree"
+
+
+def test_a_stream_that_moved_passes(tmp_path: Path, monkeypatch) -> None:
+    """The discriminating half: a watch that fails on everything is not a watch."""
+    monkeypatch.setattr(PR, "bar_summary", lambda **k: {"error": "stubbed (hermetic)"})
+    kb = _kb_with(tmp_path, [_fresh_row()])
+    out = tmp_path / "r.md"
+    assert PR.main(["--kb", str(kb), "--out", str(out)]) == 0
+    assert "STALE" not in out.read_text(encoding="utf-8")
+
+
+def test_the_report_is_written_even_when_the_run_fails(tmp_path: Path, monkeypatch) -> None:
+    """The exit code is the verdict, not a substitute for the readout: a failing run must
+    still leave the report behind, or the dead-man costs the owner the evidence."""
+    monkeypatch.setattr(PR, "bar_summary", lambda **k: {"error": "stubbed (hermetic)"})
+    kb = _kb_with(tmp_path, [DEC[1]])
+    out = tmp_path / "r.md"
+    PR.main(["--kb", str(kb), "--out", str(out)])
+    assert out.is_file() and out.read_text(encoding="utf-8").startswith("# Production readout")
+
+
+def test_allow_stale_reads_without_the_verdict(tmp_path: Path, monkeypatch) -> None:
+    """The hand-reading escape hatch. The timer must not pass it (see the docstring)."""
+    monkeypatch.setattr(PR, "bar_summary", lambda **k: {"error": "stubbed (hermetic)"})
+    kb = _kb_with(tmp_path, [DEC[1]])
+    assert PR.main(["--kb", str(kb), "--out", str(tmp_path / "r.md"), "--allow-stale"]) == 0
+
+
+def test_an_eval_only_stream_is_stale_however_fresh(tmp_path: Path, monkeypatch) -> None:
+    """The failure this watch exists for: the gate runs daily, the owner asks nothing, and
+    a readout that counted eval traffic would call that healthy. Killed by dropping the
+    run_id exclusion from the freshness window."""
+    monkeypatch.setattr(PR, "bar_summary", lambda **k: {"error": "stubbed (hermetic)"})
+    row = dict(DEC[2])                          # run_id gate-… , i.e. eval traffic
+    row["tx_time"] = datetime.now(UTC).isoformat()
+    assert PR.main(["--kb", str(_kb_with(tmp_path, [row])),
+                    "--out", str(tmp_path / "r.md")]) == 1
 
 
 # --- r33 A6 (owner-ruled MONITOR ONLY): the p† line — the bar drift, made visible -------

@@ -258,7 +258,7 @@ ORIGIN_REASONS: dict[str, str] = {
     "miss": "no admitted evidence",
     "dispersed": "the evidence does not settle on one answer",
     "asked": "the evidence does not settle it; worth asking you directly",
-    "not a point fact": "not a question with a single verbatim answer",
+    "not a point fact": "not a question with a single verbatim answer in your documents",
 }
 
 

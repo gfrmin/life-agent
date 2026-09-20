@@ -175,9 +175,13 @@ def _obj(post: Post, url: str, payload: dict[str, Any]) -> dict[str, Any]:
 
 
 # The reply to a question the router does not classify as a verbatim point fact. Such a
-# question is declined, not answered by a second lane (the MVP bar, CLAUDE.md).
-DECLINED_NOT_POINT_FACT = ("Declined: this isn't a question with a single verbatim answer "
-                           "in your documents.")
+# question is declined, not answered by a second lane (the MVP bar, CLAUDE.md). The line
+# is the ORIGIN's line, from the one renderer every other reply uses (rule 3: provenance
+# on every answer, by one derivation). It used to be a second, hand-written sentence that
+# happened to start with "Declined:" — a reply whose origin agreed with the grammar by
+# coincidence rather than by construction, and the only path where re-wording the grammar
+# would have left a stale first line behind.
+DECLINED_NOT_POINT_FACT = LK.origin_line("declined", reason=DEC.REASON_NOT_POINT_FACT)
 
 
 def decide_via_loop(question: str, k: int, *, bridge: str, post: Post, get: Get,

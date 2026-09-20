@@ -13,6 +13,15 @@ traffic (run_id prefixes ``gate-``, ``collapse-``); writes the report beside the
 ``$LIFE_AGENT_KB/calibration/readout.md`` and prints it. Default window: the deploy date
 (2026-08-25). Wire it to a weekly timer (packaging/production-readout.timer) on the box
 that carries the live stream.
+
+**It is a dead-man.** Exit 0 = a stream that moved inside the window; **exit 1 = STALE**,
+the same condition the report's window line names; exit 2 = a declared KB root that is not
+there. The report is written and printed either way — the exit code is what makes the
+silence loud, because the wrapper (``bin/production-readout``) turns a non-zero run into a
+monitor ``/fail`` ping. Before this, a stopped watch was a sentence in a file nobody opens
+(the gap stated in ``docs/guards.md``: "nothing reads the production readout"). An empty
+stream is stale too: an arm nobody exercises is an unmeasured configuration, not a pass.
+``--allow-stale`` reads the report without the verdict; the timer must never pass it.
 """
 from __future__ import annotations
 
@@ -229,6 +238,10 @@ def main(argv: list[str] | None = None) -> int:
                          "served, and this repo names no box.")
     ap.add_argument("--out", default=None,
                     help="report path (default: <first --kb>/calibration/readout.md)")
+    ap.add_argument("--allow-stale", action="store_true",
+                    help="read the report without the dead-man's verdict: exit 0 even when "
+                         "the stream is stale. For reading by hand; the timer must not pass "
+                         "it, or the watch stops being a watch.")
     args = ap.parse_args(argv)
     from life_agent.core import config as CFG
     roots = [Path(k).expanduser() for k in (args.kb or [])] or [CFG.KB]
@@ -266,6 +279,21 @@ def main(argv: list[str] | None = None) -> int:
     out.write_text(text, encoding="utf-8")
     print(text)
     print(f"→ {out}", file=sys.stderr)
+
+    # The dead-man. The report has said STALE since row 25; nothing ever asserted on it,
+    # which is the same failure one layer up — a watch whose silence is only visible to
+    # whoever opens the file. The window's own flag is the verdict, so the exit code and
+    # the report can never disagree.
+    if s["window"]["stale"] and not args.allow_stale:
+        w = s["window"]
+        age = ("no rows at all" if not w["newest"]
+               else f"newest row {w['age_days']} day(s) old")
+        sys.stderr.write(
+            f"production_readout: STALE — {age}, past the {STALE_AFTER_DAYS}-day bar. "
+            "The arm, the stream, or the box serving it has stopped; the report above is "
+            "about a population that is not moving. Exit 1 so the timer's monitor hears "
+            "it (--allow-stale to read without the verdict).\n")
+        return 1
     return 0
 
 

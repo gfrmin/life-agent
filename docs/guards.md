@@ -176,11 +176,15 @@ Folding these into a count would make the count look better and the tree no safe
    deployed reader of a unit file and cannot be invoked offline against a fake home, so
    nothing here expands `%h` the way the deployed reader would. The unit rule reads the
    file; only the wrapper half reads behaviour.
-12. **Nothing reads the production readout.** Row 25 makes a stopped watch visible *in* the
-   readout — a covered window, a newest-row age, the word STALE — but no job asserts on any
-   of it. A stale readout is visible to whoever opens the file, which is the same failure
-   mode one layer up. Making a watch's silence loud is a different milestone from making it
-   fail a build.
+12. ~~**Nothing reads the production readout.**~~ **CLOSED 2026-09-20 (J4).** Row 25 made a
+   stopped watch visible *in* the readout — a covered window, a newest-row age, the word
+   STALE — but no job asserted on any of it, so a stale readout was visible only to whoever
+   opened the file: the same failure mode one layer up. `scripts/production_readout.py`
+   now exits 1 on the window's own stale flag, which the weekly timer's wrapper
+   (`bin/production-readout`) turns into a monitor `/fail` ping. The verdict reads the
+   flag the report renders, so the two cannot disagree. Killed by returning 0
+   unconditionally (`tests/test_production_readout.py::test_a_stream_that_stopped_fails_the_run`,
+   and the eval-only control beside it: a gate run every day must not read as live use).
 13. **Two of the three `leader_order` sites are call-pinned, not behaviourally driven.** K3
    scoped all three from whole-module censuses to the named deployed function (row 22), and
    the declaration's own ordering is asserted on values. But only the bridge site was shown
