@@ -15,7 +15,7 @@ and a clone over someone else's mail works end to end.
 | Candidate posterior + claim lattice | host `core/posterior.py` (the **ER core** replaces it at J5) |
 | Action reliability, learned | host Beta folds from outcomes and verdicts (`core/reliability.py`, `core/gather_outcomes.py`, `core/reactions.py`) |
 | Evidence shaping | host (bridge, `core/lookup.py`, `core/matching.py`) |
-| Escalation rungs | host (`core/oracle.py`), priced as rows beside the others |
+| Escalation rungs | rows like any other, shipped only when one beats abstaining (J2) |
 | Decision / disclosure / verdict records | host write-once JSONL (`core/recorder.py`); **tannen** after the MVP |
 | Measurement | `eval/score.py` → `SCOREBOARD.md` |
 
@@ -30,9 +30,16 @@ and a clone over someone else's mail works end to end.
   (`core/decide.bayes_act`, `core/decider.py`, `core/enact.py`) with gather priced from
   recorded gather sequences and ask at a measured recovery rate; the Julia daemon, the credence skin and the in-process lanes
   retire; rule 5 becomes the ΔU merge rule. The board re-scores the typed arm live.
-- **J2 — Escalate + origin.** `core/oracle.py` rungs as rows `bayes_act` ranks, each with a
-  Beta reliability folded from its verdicts; disclosure rows in the write-once recorder;
-  origin on every reply.
+- **J2 — Origin, and escalation only if a rung earns it.** Origin on every reply and
+  disclosure rows in the write-once recorder stand. The escalate ROW is measured and does
+  not pay: the one rung with recorded verdicts (the deliberative edge) answers the owner's
+  104 at 87 right / 13 wrong / 4 declined on the grader the act faces, which at today's
+  gauge is −0.50 per escalation, and −0.04 even at zero price — a 12.5% wrong rate costs
+  more than an 84% right rate earns when `u_wrong` is −5.13. Its own confidence cannot
+  rescue it (best self-report bar 0.95: 67/3/24, +0.01 per question, because the call is
+  paid before the confidence is visible). So a rung ships when it beats abstaining on the
+  board, not before; `scripts/regrade_outside_option.py` is the measurement, and
+  `core/outcome_mixture.py` already holds the row's shape.
 - **J3 — The stranger.** `make data` over any maildir/filetree; `make sets` downloads and
   builds ATM-Bench; fresh-clone smoke covers decide + escalate in CI (no
   engine download on the stranger's path).

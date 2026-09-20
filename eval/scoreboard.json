@@ -14,26 +14,26 @@
     },
     {
       "set": "owner",
-      "arm": "oracle",
+      "arm": "outside",
       "rows": 104,
-      "right": 96,
-      "wrong": 5,
+      "right": 87,
+      "wrong": 13,
       "esc_right": 0,
       "esc_wrong": 0,
-      "declined": 3,
-      "usd_per_q": 0.37513827403846156,
+      "declined": 4,
+      "usd_per_q": 0.4134884038461539,
       "s_per_q": null
     },
     {
       "set": "owner",
       "arm": "router",
       "rows": 104,
-      "right": 97,
-      "wrong": 5,
-      "esc_right": 36,
-      "esc_wrong": 3,
-      "declined": 2,
-      "usd_per_q": 0.15352633557692308,
+      "right": 90,
+      "wrong": 11,
+      "esc_right": 29,
+      "esc_wrong": 9,
+      "declined": 3,
+      "usd_per_q": 0.16781932115384615,
       "s_per_q": null
     }
   ]

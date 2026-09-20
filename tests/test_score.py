@@ -38,10 +38,10 @@ def _by_arm() -> dict[str, S.Row]:
     return {r.arm: r for r in S.score_paired("t", LINES)}
 
 
-def test_typed_and_oracle_are_counted_as_recorded() -> None:
+def test_typed_and_outside_are_counted_as_recorded() -> None:
     rows = _by_arm()
     assert (rows["typed"].right, rows["typed"].wrong, rows["typed"].declined) == (1, 1, 3)
-    assert (rows["oracle"].right, rows["oracle"].wrong, rows["oracle"].declined) == (3, 1, 1)
+    assert (rows["outside"].right, rows["outside"].wrong, rows["outside"].declined) == (3, 1, 1)
 
 
 def test_router_escalates_exactly_the_typed_withholdings() -> None:
@@ -149,7 +149,10 @@ def test_an_absent_set_is_named_not_dropped(tmp_path: Path) -> None:
     assert "x" in S.render(rows, skipped)
 
 
-def test_the_owner_board_reproduces_run_18_at_exact_match() -> None:
+def test_the_owner_board_reproduces_run_18_on_one_grader() -> None:
+    """The pinned incumbent, both arms graded on the answer they commit. The outside arm's
+    13 wrongs are the honest count: the prose grading it replaced scored the same answers
+    5 wrong by accepting a gold that appeared anywhere in a paragraph."""
     kb = os.environ.get("LIFE_AGENT_KB")
     spec = S.load_sets()["owner"]
     if not kb or not (Path(kb) / spec["path"]).is_file():
@@ -158,8 +161,8 @@ def test_the_owner_board_reproduces_run_18_at_exact_match() -> None:
     rows, _ = S.score(Path(kb), {"owner": spec})
     got = {r.arm: (r.right, r.wrong, r.declined, round(r.usd_per_q * r.rows, 2))
            for r in rows}
-    assert got == {"typed": (61, 2, 41, 0.37), "oracle": (96, 5, 3, 39.01),
-                   "router": (97, 5, 2, 15.97)}
+    assert got == {"typed": (61, 2, 41, 0.37), "outside": (87, 13, 4, 43.00),
+                   "router": (90, 11, 3, 17.45)}
 
 
 def test_the_board_is_never_written_from_less_than_every_pinned_set(tmp_path: Path) -> None:

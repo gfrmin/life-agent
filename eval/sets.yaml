@@ -9,9 +9,16 @@
 sets:
   owner:
     kind: paired
-    path: eval/gate-outside-option/paired-gate-20260826T083356-exact.jsonl
-    sha256: 7829745986f9e3abdcfb2fd7e9281801a75ee1849ee9ff4b3d479860197abe9f
-    note: run 18 (2026-08-26), the owner's 104 questions, re-graded by exact match (scripts/regrade_paired.py); the incumbent until J1's arm replaces it
+    path: eval/gate-outside-option/paired-gate-20260826T083356-strict.jsonl
+    sha256: 4085133b06476985b135a97ca3cebb05ae4f92d92b5a824833b72b45033ae153
+    note: >-
+      run 18 (2026-08-26), the owner's 104 questions. BOTH arms on one grader: each is
+      graded on the answer it commits, by exact match. The typed arm always was; the
+      outside option was not — it replayed a prose run and counted as right whenever the
+      gold appeared anywhere in a paragraph, which on the same live answers is 0.897
+      against 0.805 (scripts/regrade_outside_option.py). The outside arm is now the live
+      deliberative rung's ANSWER line at the cost the call recorded. Incumbent until J1's
+      arm replaces it.
   atm:
     kind: pending
     note: ATM-Bench email-only number-typed (198); scored from J3 (`make sets`)

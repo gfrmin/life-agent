@@ -99,15 +99,15 @@ def _response(arm: Mapping[str, Any]) -> Response:
                     latency_s=arm.get("latency_s"))
 
 
-def route(typed: Response, oracle: Response) -> Response:
-    """The router: typed where typed asserted, otherwise the oracle. Cost is additive — an
-    escalated question paid the typed attempt and the oracle call."""
+def route(typed: Response, outside: Response) -> Response:
+    """The router: typed where typed asserted, otherwise the outside option. Cost is
+    additive — an escalated question paid the typed attempt and the outside call."""
     if typed.asserted:
         return typed
-    latency = (None if typed.latency_s is None or oracle.latency_s is None
-               else typed.latency_s + oracle.latency_s)
-    return Response(asserted=oracle.asserted, correct=oracle.correct,
-                    cost_usd=typed.cost_usd + oracle.cost_usd, escalated=True,
+    latency = (None if typed.latency_s is None or outside.latency_s is None
+               else typed.latency_s + outside.latency_s)
+    return Response(asserted=outside.asserted, correct=outside.correct,
+                    cost_usd=typed.cost_usd + outside.cost_usd, escalated=True,
                     latency_s=latency)
 
 
@@ -126,9 +126,9 @@ def summarise(set_name: str, arm: str, responses: Sequence[Response]) -> Row:
 
 
 def score_paired(set_name: str, lines: Iterable[str]) -> list[Row]:
-    """typed / oracle / router rows from a paired-rows archive. Censored rows (the typed arm
+    """typed / outside / router rows from a paired-rows archive. Censored rows (the typed arm
     could not read the corpus) are excluded from every arm alike."""
-    typed, oracle = [], []
+    typed, outside = [], []
     for ln in lines:
         if not ln.strip():
             continue
@@ -136,16 +136,16 @@ def score_paired(set_name: str, lines: Iterable[str]) -> list[Row]:
         if r.get("censored"):
             continue
         typed.append(_response(r["typed"]))
-        oracle.append(_response(r["mono"]))
+        outside.append(_response(r["mono"]))
     return [summarise(set_name, "typed", typed),
-            summarise(set_name, "oracle", oracle),
-            summarise(set_name, "router", [route(t, o) for t, o in zip(typed, oracle,
+            summarise(set_name, "outside", outside),
+            summarise(set_name, "router", [route(t, o) for t, o in zip(typed, outside,
                                                                         strict=True)])]
 
 
 def score_typed(set_name: str, lines: Iterable[str]) -> list[Row]:
     """The typed row alone, from a typed-only archive (``scripts/score_typed.py``): a set
-    with no recorded oracle. Censored rows are excluded."""
+    with no recorded outside. Censored rows are excluded."""
     typed = [_response(r["typed"]) for ln in lines if ln.strip()
              for r in [json.loads(ln)] if not r.get("censored")]
     return [summarise(set_name, "typed", typed)]
