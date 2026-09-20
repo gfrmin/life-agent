@@ -35,8 +35,31 @@ sets:
       (metered $12.85 for the 212; the menu understates what the probes meter, see
       CHANGELOG). First pin: this is the baseline, no incumbent.
   atm:
-    kind: pending
-    note: ATM-Bench email-only number-typed (198); scored from J3 (`make sets`)
+    kind: typed
+    root_env: LIFE_AGENT_ATM_KB
+    path: eval/typed/gate-typed-20260920T212441.jsonl
+    sha256: b2ad6f4919c5b6fb5dcf8f2a1e2d914ce2ab7bca0449d5721fda14349f1dafec
+    note: >-
+      Somebody else's corpus and somebody else's questions — the only row here whose
+      difficulty this project did not choose. ATM-Bench at pinned revision
+      78e826dc07e97466b2f54443831ef9a83ab8b27c, built into its own KB root by `make sets`
+      (6742 emails; CC-BY-NC, so it stays on the machine that built it and this row names
+      its root by environment variable rather than a path). 198 of the 381 questions: the
+      build marks the other 183 `fuzzy`, graded by resemblance, and a judge-graded row is
+      not on this board. J1's host Bayes act, COLD on a second machine 2026-09-20 at the
+      owner's folded gauge and the menu's declared prices ($2.02 for the 198; metered
+      $3.80). 26 right / 5 wrong / 167 declined, nothing censored — every gold chunk was
+      present, so the declines are the act's and not the catalogue's.
+      **Read the U/q as a floor, not an error rate.** All five wrongs were re-asked
+      through the same bridge and NONE is an invention: each named the gold fact in
+      another surface form (gold `June 30, 2024.` against `June 30th, 2024`; gold
+      `from 9:30am to 10:30am.` against `9:30am to 10:30am`; one, `July 4th` for
+      `July 4th, 2025.`, dropped the year). Exact match is the declared grader and this
+      row is scored by it unaltered, but ATM's gold is the dataset author's prose, not a
+      span lifted from the document: only 77 of the 198 golds appear verbatim in their own
+      cited email, so 121 of these questions do not meet this project's own MVP
+      precondition. Re-cutting the set on that precondition is an eval-question change and
+      is the owner's to take. First pin either way: the baseline, no incumbent.
   live:
     kind: pending
     note: the live stream since the reset; scored from J4

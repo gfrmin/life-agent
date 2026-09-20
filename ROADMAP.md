@@ -49,9 +49,20 @@ and a clone over someone else's mail works end to end.
   paid before the confidence is visible). So a rung ships when it beats abstaining on the
   board, not before; `scripts/regrade_outside_option.py` is the measurement, and
   `core/outcome_mixture.py` already holds the row's shape.
-- **J3 — The stranger.** `make data` over any maildir/filetree; `make sets` downloads and
-  builds ATM-Bench; fresh-clone smoke covers decide + escalate in CI (no
-  engine download on the stranger's path).
+- **J3 — The stranger.** *Landed 2026-09-20.* `make data` completes the ingest (it had
+  registered sources and stopped, leaving nothing searchable); `make sets` fetches
+  ATM-Bench at a pinned revision and builds its KB on your machine (CC-BY-NC: the corpus
+  lands outside the tree and is never redistributed from here); and the fresh-clone smoke
+  boots the real bridge with a tripwire in place of the extraction client, asserting that
+  `/ready` reports the **host** act, that `/decide` commits on settled evidence and
+  withholds on dispersed, and that both origin lines render — keyless, no network, no
+  engine download. The defect it exposed was in the decider itself: a KB with no fitted
+  gather row falls back to a uniform prior under which gathering never pays, so a fresh
+  install could only ever decline (14 of 14 on the bundled synthetic corpus).
+  `config/gather-row.example.json` ships the fitted row as the documented default, a KB's
+  own fit always winning; the same 14 then read 8 right / 0 wrong / 6 declined. Both
+  pending board rows are pinned: `sample`, the row a stranger reproduces from a clone, and
+  `atm`, the external benchmark at its own KB root (`root_env:` in `eval/sets.yaml`).
 - **J4 — Live.** jarvis serves asks; the production readout is a dead-man over the decision
   log. *The dead-man landed 2026-09-20:* a stale window exits non-zero and the weekly timer
   pages on it, so a stopped arm is loud instead of legible. "With escalation" is satisfied

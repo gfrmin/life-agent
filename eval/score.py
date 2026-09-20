@@ -218,8 +218,13 @@ def _pct(k: int, n: int) -> str:
     return f"{k} ({100.0 * k / n:.1f}%)" if n else "0"
 
 
-def render(rows: Sequence[Row], skipped: Mapping[str, str], gauge: Gauge | None = None
-           ) -> str:
+def render(rows: Sequence[Row], skipped: Mapping[str, str], gauge: Gauge | None = None,
+           notes: Mapping[str, str] | None = None) -> str:
+    """The board. A scored set's note is rendered UNDER its number, not only in
+    `eval/sets.yaml`: a U/q is a claim about a population, and the clause that says which
+    population is the first thing a reader drops. `atm` is why — its five wrong answers
+    each name the gold fact in another surface form, so the row measures the grader's
+    string sensitivity as much as the act, and a bare -0.012 says the opposite."""
     priced = ("unpriced (no gauge)" if gauge is None else
               f"priced at the folded gauge u_right {gauge.u_right:g}, u_wrong "
               f"{gauge.u_wrong:.4f}, u_declined {gauge.u_declined:g}, lambda_usd "
@@ -243,6 +248,15 @@ def render(rows: Sequence[Row], skipped: Mapping[str, str], gauge: Gauge | None 
     if skipped:
         out += ["", "Not scored:", ""]
         out += [f"- `{k}` — {v}" for k, v in skipped.items()]
+    scored = [r.set for r in rows]
+    carried = [(k, v) for k, v in (notes or {}).items() if k in scored]
+    if carried:
+        out += ["", "What each row is:", ""]
+        seen: set[str] = set()
+        for k, v in carried:
+            if k not in seen:
+                seen.add(k)
+                out.append(f"- **`{k}`** — {' '.join(str(v).split())}")
     return "\n".join(out) + "\n"
 
 
@@ -292,7 +306,8 @@ def main(argv: list[str] | None = None) -> int:
     except Exception as e:  # the counts still print; the gate below refuses without a gauge
         print(f"(no gauge: {type(e).__name__}: {e})", file=sys.stderr)
         gauge = None
-    text = render(rows, skipped, gauge)
+    text = render(rows, skipped, gauge,
+                  {k: str(v["note"]) for k, v in load_sets().items() if v.get("note")})
     print(text)
     if a.gate and BOARD_JSON.is_file():
         if gauge is None:

@@ -49,6 +49,18 @@
       "s_per_q": null
     },
     {
+      "set": "atm",
+      "arm": "typed",
+      "rows": 198,
+      "right": 26,
+      "wrong": 5,
+      "esc_right": 0,
+      "esc_wrong": 0,
+      "declined": 167,
+      "usd_per_q": 0.010181818181818183,
+      "s_per_q": null
+    },
+    {
       "set": "sample",
       "arm": "typed",
       "rows": 14,

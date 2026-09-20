@@ -121,6 +121,25 @@ def test_the_board_shows_u_per_question_only_with_a_gauge() -> None:
     assert priced.splitlines()[6].endswith(f"| {G.total(_board(typed)) / typed.rows:+.3f} | — |")
 
 
+def test_a_scored_row_carries_its_note_onto_the_board() -> None:
+    """A U/q is a claim about a population, and the clause naming that population is the
+    first thing a reader drops — `atm`'s five wrongs each name the gold fact in another
+    surface form, so a bare U/q on the board says something its note denies. Killed by
+    rendering notes for skipped sets only, which is what the board did until the `atm`
+    row was pinned."""
+    rows = S.score_paired("t", LINES)
+    board = S.render(rows, {}, G, {"t": "what   t\n  is", "other": "never scored"})
+    assert "- **`t`** — what t is" in board
+    assert "other" not in board
+
+
+def test_a_note_is_rendered_once_for_a_set_with_several_arms() -> None:
+    """`owner` is three rows from one set; its note belongs under the board once."""
+    rows = S.score_paired("t", LINES)
+    assert len({r.arm for r in rows}) > 1
+    assert S.render(rows, {}, G, {"t": "one note"}).count("- **`t`** —") == 1
+
+
 def test_a_typed_set_scores_the_typed_row_alone(tmp_path: Path) -> None:
     import hashlib
 
