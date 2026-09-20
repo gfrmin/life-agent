@@ -40,19 +40,12 @@ no_cache=True)``) so a warm cache can't mute the $ headline (zero model calls ->
    never had this problem: its retrieved set is ``chunk_text_full`` values across
    ``CompetitorResult.tool_log`` rows' ``results`` (the task brief's own instruction),
    already on hand.
-2. **Calibration writes.** ``ask.answer(..., families=True)`` (the ``inprocess``/
-   ``synthesis`` arms) routes through ``core.lookup.decide_and_record`` /
-   ``core.narrative.narrative_answer``, and NEITHER function ``ask.answer`` ever threads a
-   ``decisions_path`` override through — both default to
-   ``life_agent.core.config.DECISIONS_LOG``, the PRODUCTION calibration log. That
-   contradicts this task's "no production log contamination" requirement. Editing
-   ``ask.answer`` to add the missing parameter is out of scope (a frozen, already-reviewed
-   entrypoint). Since ``lookup.py``/``narrative.py`` resolve ``config.DECISIONS_LOG`` by
-   module-attribute lookup at call time (``from life_agent.core import config``), this
-   runner reassigns that ONE attribute to a shadow file under the run dir for the
-   in-process arms' duration (:func:`_redirect_decisions_log`) and restores it afterward,
-   even on failure. The ``baseline`` arm's out-of-process executor daemon is NOT reachable
-   this way — its own decision/gather-outcome writes to the live calibration log are a
+2. **Calibration writes.** An in-process writer resolves ``config.DECISIONS_LOG`` by
+   module-attribute lookup at call time (``from life_agent.core import config``), the
+   PRODUCTION calibration log by default; this runner reassigns that ONE attribute to a
+   shadow file under the run dir for the arms' duration (:func:`_redirect_decisions_log`) and
+   restores it afterward, even on failure. The ``baseline`` arm's out-of-process bridge is NOT
+   reachable this way — its own decision/gather-outcome writes to the live calibration log are a
    disclosed, unfixable-from-here side effect of hitting the real daemon (matching
    ``arm_baseline.py``'s own "daemon spend invisible" disclosure for cost). (Final-review
    IMPORTANT-3: the shadow is SEEDED from production's real ``decisions.jsonl`` at redirect
@@ -136,7 +129,6 @@ import life_agent.core.pricing as PRICING
 from fairfight import arm_baseline as AB
 from fairfight import arm_claude as AC
 from fairfight import arm_hermes as AH
-from fairfight import arm_synthesis as AS
 from fairfight import grading as G
 from fairfight import judge as J
 from life_agent.core.citation import audit as citation_audit
@@ -907,14 +899,11 @@ def default_conn_factory(db_path: Path) -> Any:
 
 
 def default_arm_impls(args: argparse.Namespace) -> dict[str, Callable[[dict[str, Any]], Any]]:
-    """The real per-arm callables, closed over ``--k``/``path`` — every one takes just
-    ``(q)``, the uniform shape :func:`_run_arm` (and a test's injected replacements) use."""
-    fresh = bool(getattr(args, "fresh", False))
-    return {
-        "baseline": lambda q: AB.answer_baseline(q, args.k, path="executor"),
-        "inprocess": lambda q: AB.answer_baseline(q, args.k, path="inprocess", fresh=fresh),
-        "synthesis": lambda q: AS.answer_synthesis(q, args.k, fresh=fresh),
-    }
+    """The real per-arm callables, closed over ``--k`` — every one takes just ``(q)``, the
+    uniform shape :func:`_run_arm` (and a test's injected replacements) use. The
+    ``inprocess`` and ``synthesis`` arms are retired: their names still grade recorded runs,
+    but nothing answers under them."""
+    return {"baseline": lambda q: AB.answer_baseline(q, args.k)}
 
 
 def run(
@@ -1007,6 +996,10 @@ def run(
             impls["deliberative"] = _bind_deliberative(delib_cfg)
         if arm_impls:
             impls.update(arm_impls)
+        retired = [a for a in arms if a not in impls]
+        if retired:
+            raise SystemExit(f"arm(s) {retired!r} have no implementation — the in-process "
+                             "arms (inprocess, synthesis) are retired")
 
         summaries: dict[str, dict[str, Any]] = {}
         with _redirect_decisions_log(run_dir):
@@ -1042,7 +1035,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="pkm config.yaml (default: $PKM_CONFIG or ~/.config/life-agent/pkm.yaml)")
     parser.add_argument("--k", type=int, default=20, help="top-k per question")
     parser.add_argument(
-        "--arms", default="baseline,inprocess,synthesis,competitor",
+        "--arms", default="baseline,competitor",
         help="comma list of arms to run (subset of baseline,inprocess,synthesis,"
              "competitor,oracle,deliberative; `oracle` — the FRONTIER BASELINE — and "
              "`deliberative` — the actual reference policy π* (claude -p, roadmap A1b) "

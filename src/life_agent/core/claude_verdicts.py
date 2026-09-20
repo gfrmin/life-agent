@@ -14,7 +14,7 @@ single-score question stays open.
 
 **A third reliability class** (proplang OB-12's register): denser than the owner's
 verdicts, more authoritative than the extraction ticks. It feeds the ENGINE's verdict
-evidence only (``membrane.shadow.boot_snapshot`` merges it under owner precedence) and
+evidence only (``membrane.boot.boot_snapshot`` merges it under owner precedence) and
 NEVER the utility posterior — P(U) is the owner's revealed preference, and a Claude
 verdict is a truth measurement, not a preference. The isolation is by construction:
 ``core.reactions.load_reactions`` reads a different file and is untouched.
@@ -110,7 +110,7 @@ def y(event: ClaudeVerdictEvent) -> int:
     correct"), and nothing else — completeness/grounding are recorded, not priced, until
     the deferred scalarization is decided. A branch of THE verdict→evidence projection
     (D-15 — the one declaration lives at ``core.reactions.VERDICT_Y``); admitted under
-    owner ≻ Claude precedence at the ``membrane.shadow.boot_snapshot`` merge."""
+    owner ≻ Claude precedence at the ``membrane.boot.boot_snapshot`` merge."""
     return event.dimensions["correct"]
 
 

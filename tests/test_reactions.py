@@ -16,7 +16,6 @@ from pathlib import Path
 import pytest
 
 from life_agent.core import decisions as DEC
-from life_agent.core import narrative as N
 from life_agent.core import reactions as R
 from life_agent.core import utility as UT
 
@@ -177,7 +176,7 @@ def test_narrative_all_withheld_good_folds_to_a_joint_margin(tmp_path: Path) -> 
     # good on ALL_WITHHELD at p_max ⇒ a MarginReaction coupling u_wrong and κ_att (§7.1)
     p = 0.6
     rpath, dpath = _write(
-        tmp_path, [_narrative_abstain("d1", p, reason=N.REASON_ALL_WITHHELD)],
+        tmp_path, [_narrative_abstain("d1", p, reason=R.REASON_ALL_WITHHELD)],
         [R.ReactionEvent(tx_time="t", question_id="q", decision_id="d1",
                          kind="verdict", valence="good")])
     out = R.load_reactions(rpath, dpath)
@@ -193,7 +192,7 @@ def test_narrative_bad_folds_as_counterpressure_when_coverage_clears_bar(
         tmp_path: Path) -> None:
     # coverage mean 3/4 = 0.75 ≥ 0.5 ⇒ the bad row is genuine counter-pressure (reacted False)
     rpath, dpath = _write(
-        tmp_path, [_narrative_abstain("d1", 0.6, reason=N.REASON_ALL_WITHHELD,
+        tmp_path, [_narrative_abstain("d1", 0.6, reason=R.REASON_ALL_WITHHELD,
                                       coverage=(3.0, 1.0))],
         [R.ReactionEvent(tx_time="t", question_id="q", decision_id="d1",
                          kind="verdict", valence="bad")])
@@ -204,7 +203,7 @@ def test_narrative_bad_folds_as_counterpressure_when_coverage_clears_bar(
 def test_narrative_bad_is_quarantined_below_the_coverage_bar(tmp_path: Path) -> None:
     # coverage mean 1/5 = 0.2 < 0.5 ⇒ likely a recall failure, recorded-not-folded
     rpath, dpath = _write(
-        tmp_path, [_narrative_abstain("d1", 0.6, reason=N.REASON_ALL_WITHHELD,
+        tmp_path, [_narrative_abstain("d1", 0.6, reason=R.REASON_ALL_WITHHELD,
                                       coverage=(1.0, 4.0))],
         [R.ReactionEvent(tx_time="t", question_id="q", decision_id="d1",
                          kind="verdict", valence="bad")])
@@ -214,7 +213,7 @@ def test_narrative_bad_is_quarantined_below_the_coverage_bar(tmp_path: Path) -> 
 def test_narrative_good_is_coverage_ungated(tmp_path: Path) -> None:
     # even at low coverage, a good (endorsing the *shown* withheld set) folds — §7.1
     rpath, dpath = _write(
-        tmp_path, [_narrative_abstain("d1", 0.6, reason=N.REASON_ALL_WITHHELD,
+        tmp_path, [_narrative_abstain("d1", 0.6, reason=R.REASON_ALL_WITHHELD,
                                       coverage=(1.0, 4.0))],
         [R.ReactionEvent(tx_time="t", question_id="q", decision_id="d1",
                          kind="verdict", valence="good")])
@@ -225,7 +224,7 @@ def test_narrative_good_is_coverage_ungated(tmp_path: Path) -> None:
 def test_narrative_no_claims_does_not_fold(tmp_path: Path) -> None:
     # NO_CLAIMS (no p_max) is a proposal/coverage failure, not a foldable utility call
     rpath, dpath = _write(
-        tmp_path, [_narrative_abstain("d1", None, reason=N.REASON_NO_CLAIMS)],
+        tmp_path, [_narrative_abstain("d1", None, reason="no claims proposed")],
         [R.ReactionEvent(tx_time="t", question_id="q", decision_id="d1",
                          kind="verdict", valence="good")])
     assert R.load_reactions(rpath, dpath) == []

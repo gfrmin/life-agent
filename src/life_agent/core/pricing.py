@@ -134,14 +134,38 @@ DELIBERATE_FALLBACK_RHO = 0.5
 RE_EXTRACT_MODEL = "claude-opus-4-8"
 
 # The grow menu as data (autonomous-recall-design; served by the bridge's /grow_menu).
-# Costs are in utility units, commensurate with the corroborate tiers; the
-# Beta(alpha0, beta0) means are frozen-blind world-knowledge priors, monotone in
-# mechanism strength, stated before any counts — the counts do the calibrating.
+# Costs are in USD, like the corroborate tiers (the executor converts them at lambda_usd);
+# the rerank's is measured (10 of the owner's questions, 2026-09-20: mean $0.047, 15k input
+# tokens on Sonnet). The Beta(alpha0, beta0) means are frozen-blind world-knowledge priors,
+# monotone in mechanism strength, stated before any counts — the counts do the calibrating.
 GROW_ACTUATORS: list[dict[str, Any]] = [
-    {"probe": "retrieve_rerank", "cost": 0.004, "alpha0": 3.0, "beta0": 7.0},
+    {"probe": "retrieve_rerank", "cost": 0.047, "alpha0": 3.0, "beta0": 7.0},
     {"probe": "retrieve_expand", "cost": 0.006, "alpha0": 3.5, "beta0": 6.5},
     {"probe": "re_extract_strong", "cost": 0.020, "alpha0": 4.0, "beta0": 6.0},
 ]
+
+
+def menu_price(probe: str) -> float:
+    """The declared USD price of one menu probe: the price the decider ranked it at, and
+    so the price the board charges for it whether or not a cache served the call (the
+    board prices the act, not the cache — a warm replay would otherwise read as free).
+    A guard probe (``recency``) is free; a probe offered as a guard AND a tier
+    (``corroborate_opus``) costs its tier price. An undeclared probe is loud: a menu that
+    grew without a price would otherwise ride at $0."""
+    prices: dict[str, float] = {}
+    for row in (*DEFAULT_TRANSFORMS, DELIBERATE_TRANSFORM, *GROW_ACTUATORS):
+        name = str(row["probe"])
+        prices[name] = max(prices.get(name, 0.0), float(row.get("cost") or 0.0))
+    if probe not in prices:
+        raise KeyError(f"no declared price for probe {probe!r} "
+                       f"(declared: {sorted(prices)})")
+    return prices[probe]
+
+
+def list_price(applied: list[str] | tuple[str, ...]) -> float:
+    """The declared price of a whole applied sequence (:func:`menu_price` per probe)."""
+    return sum(menu_price(str(p)) for p in applied)
+
 
 # The reliability prior column (§3.2, D-2): where each edge's trust STARTS, wide on
 # purpose (the refuted fiat Beta(17,3) taught that trust is earned from evidence).

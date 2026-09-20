@@ -9,7 +9,9 @@ data/functions: the handshake world (namespace, guards, a names+grids menu, a
 ``said@1`` utility sentence) and the canonical per-tick feature encoding
 (:func:`shadow_features`) both the live executor loop and the decision-log replay path
 reduce to via one shared :class:`DecideSummary`. Nothing here spawns a process or reads
-a file — the shadow supervisor is the caller that does.
+a file. The utility ROWS and the act are :mod:`life_agent.core.decide`; this module builds
+the wire sentence from them. DEFERRED: the engine is off the ask path (ROADMAP.md doors)
+and this world is kept green for its return.
 
 The action vocabulary is ONE writable name, ``act``, whose grid VALUES encode the
 executor's four affordances folded to the world's binary predicate y = "asserting now
@@ -27,6 +29,18 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
+from life_agent.core.decide import (  # the rows and the act live in core; re-exported here
+    ACTIONS,
+    argmax_action,
+    argmax_crossings,
+    eu_by_action,
+    respond_threshold,
+    utility_by_action,
+)
+
+__all__ = ["ACTIONS", "argmax_action", "argmax_crossings", "eu_by_action",
+           "respond_threshold", "utility_by_action"]
+
 # --- the affordance vocabulary (ONE writable name; grid values are world-owned) ----------
 
 ACT_NAME = "act"
@@ -36,6 +50,7 @@ AFFORDANCES: tuple[tuple[str, float], ...] = (
     ("abstain", 1.0), ("gather", 2.0), ("ask", 3.0), ("respond", 4.0),
 )
 ACT_GRID: list[float] = [v for _, v in AFFORDANCES]
+assert tuple(name for name, _ in AFFORDANCES) == ACTIONS  # one order: ties first-listed
 VALUE_TO_ACTION: dict[float, str] = {v: name for name, v in AFFORDANCES}
 _VALUE_FOR: dict[str, float] = {name: v for name, v in AFFORDANCES}
 
@@ -49,7 +64,7 @@ UTILITY_FORMS: tuple[str, ...] = ("said@1",)
 # `ASSERT_ACTIONS`/`WITHHOLD_ACTIONS`, the daemon-scheduled "gather" steer, and the
 # zero-observation "miss") folded onto this world's four affordances. ONE source: the
 # offline report (`scripts/membrane/report.py`) and the M3 live mapping
-# (:mod:`life_agent.membrane.coarse`) both read this dict — a hand-copy in either place
+# (:mod:`life_agent.core.enact`) both read this dict — a hand-copy in either place
 # is exactly the drift the report's own legend warns against. `hedge -> respond` is a
 # declared modelling choice (assert-shaped but uncommitted — the report prints the
 # caveat beside its copy of the legend).
@@ -84,6 +99,13 @@ class DecideSummary:
     # NOT an indicator family — the vocabulary changes only if the census (S2) names one.
     # Appended last with a default so every positional construction stays valid.
     runner_up_credence: float = 0.0
+    # Feasibility, not belief: whether an unapplied gather remains for this question. It is
+    # read only by the utility sentence (:func:`utility_said`), never by a guard, so a
+    # closed gather is removed from the argmax without touching what the engine learns.
+    gather_open: bool = True
+    # The price of the gather that would be enacted (the cheapest open option, in utility
+    # units), read only by the utility sentence (:data:`PRICES`).
+    gather_cost: float = 0.0
 
 
 def runner_up(credences: Sequence[float]) -> float:
@@ -122,7 +144,7 @@ def summary_from_decision_event(event: dict[str, Any]) -> DecideSummary:
     plain dict — e.g. off ``json.loads`` of a decisions.jsonl line) via its
     ``posterior_summary``. The three live-only flags (``era_split``, ``owner_scoped``,
     ``grow_pass``) are not recorded in either family's ``posterior_summary``
-    (``core/lookup.py``/``core/narrative.py``) and always read ``False`` here — the warm
+    and always read ``False`` here — the warm
     path never claims a live-only signal it doesn't have. The lookup family's
     ``posterior_summary`` carries ``candidates``/``credences``/``p_none``/``n_obs``
     directly; the narrative family's does not (it carries ``n_proposed``/
@@ -152,6 +174,16 @@ _P_NONE_BUCKETS: tuple[str, ...] = ("lt20", "20to50", "ge50")
 _OBS_BUCKETS: tuple[str, ...] = ("0", "1to2", "3plus")
 _FLAG_FAMILIES: tuple[str, ...] = ("era-split", "owner-scoped", "grow-pass")
 
+# The feasibility names: one per affordance that can be unavailable on a tick. Each is a
+# namespace member with NO guard, read only by the utility sentence, which sends the row it
+# gates to :func:`infeasible_value` when the name reads 0 (DR-ESCALATE-1 §5: unavailability
+# is feasibility, never a low score the argmax could still pick).
+FEASIBILITY: dict[str, str] = {"gather": "gather-open"}
+
+# The price names: one per affordance whose price depends on the tick (gather's is the price
+# of the option the host would enact). Like feasibility names, a namespace member with NO
+# guard, read only by the utility sentence, which subtracts it from the row.
+PRICES: dict[str, str] = {"gather": "gather-cost"}
 
 # [§3.3 · M-9] feature bucketing — the sensor vocabulary of g and of the world
 # (model inputs, never control flow).
@@ -230,44 +262,12 @@ def shadow_features(s: DecideSummary, t: float) -> dict[str, float]:
         feats["owner-scoped=1"] = 1.0
     if s.grow_pass:
         feats["grow-pass=1"] = 1.0
+    feats[FEASIBILITY["gather"]] = 1.0 if s.gather_open else 0.0
+    feats[PRICES["gather"]] = float(s.gather_cost)
     return feats
 
 
 # --- the utility declaration ----------------------------------------------------------
-
-
-def utility_by_action(u_bar: Mapping[str, float]) -> dict[str, tuple[float, float]]:
-    """``{affordance: (u(y=0), u(y=1))}`` — THE one source of this world's utility
-    numbers: the ``said@1`` sentence (:func:`utility_said`) is BUILT from these pairs and
-    every host-side consumer (EU arithmetic, thresholds, the report's realized loss)
-    reads them here, so the wire declaration and the host arithmetic cannot drift.
-
-    ``u_wrong``/``lambda_int``/``kappa_att`` are the real
-    :meth:`life_agent.core.utility.UtilityPosterior.u_bar` keys (verified against
-    ``core/utility.py``'s ``REQUIRED_LATENTS`` + ``bridge/server.py``'s ``/utility``
-    handler); ``u_correct``/``u_abstain`` are its gauge constants. The ``.get``
-    fallbacks are this world's declared defaults when no posterior is available.
-
-    **The information actions are priced as MYOPIC PERFECT INFORMATION** — ``gather``
-    and ``ask`` are worth ``[u_abstain - cost, u_correct - cost]``: having gathered (or
-    asked), you then take the CORRECT act. **FLAG — this OVERVALUES information,
-    deliberately and namedly** (register item 5): the pure-cost alternative is constant
-    in y and can never fire, and the gap between this bake-in and reality is exactly
-    what the shadow's differential MEASURES — never to be tuned away. The re-derived
-    engine prices actions as E[dU] over its own learned transition model (step-8);
-    whether that dissolves the v1 gather-bar pathology (respond's bar 0.994 vs the
-    engine p1 ceiling) is an EMPIRICAL question the v2 shadow answers. Owner-re-decidable."""
-    u_correct = float(u_bar.get("u_correct", 1.0))
-    u_abstain = float(u_bar.get("u_abstain", 0.0))
-    u_wrong = float(u_bar.get("u_wrong", -9.0))
-    q = abs(float(u_bar.get("lambda_int", 0.1)))
-    g = abs(float(u_bar.get("kappa_att", 0.02)))
-    return {
-        "abstain": (u_abstain, u_abstain),
-        "gather": (u_abstain - g, u_correct - g),
-        "ask": (u_abstain - q, u_correct - q),
-        "respond": (u_wrong, u_correct),
-    }
 
 
 def _lin(u0: float, u1: float) -> list[object]:
@@ -276,73 +276,44 @@ def _lin(u0: float, u1: float) -> list[object]:
     return ["+", ["c", u0], ["*", ["var", 1], ["c", u1 - u0]]]
 
 
+def infeasible_value(u_bar: Mapping[str, float]) -> float:
+    """The value an unavailable row takes: one unit below every declared value, so it sits
+    strictly below the worst row EU at every belief and the argmax can never pick it
+    (abstain is always available and always above it)."""
+    values = [v for pair in utility_by_action(u_bar).values() for v in pair]
+    return min(values) - 1.0
+
+
 def utility_said(u_bar: Mapping[str, float]) -> list[object]:
     """The ``said@1`` utility sentence (membrane-wire.md §2 as amended at step-8:
     UTILITY IS A SENTENCE, evaluated at the tick's features): nested
     ``if (= (get act) (c <grid value>))`` branches over :data:`AFFORDANCES`, each arm
     the affordance's (u0, u1) pair linear in the outcome residue. Actions are features
     on the re-derived wire, so the sentence reads the CHOSEN act through
-    ``["get", "act"]`` — the assignment under evaluation binds it. Built from
-    :func:`utility_by_action`, never re-spelled, so the declaration and the host
-    arithmetic share one source. Uses only the wire's accepted subset
-    (``parseSaid``: var, c, +, -, *, get, if, >, =) — verified against the built engine in the
-    B0 spike (2026-07-19)."""
+    ``["get", "act"]`` — the assignment under evaluation binds it. An affordance named in
+    :data:`FEASIBILITY` is further gated on its feasibility feature: open, its pair;
+    closed, :func:`infeasible_value`; an affordance named in :data:`PRICES` has its price
+    feature subtracted. Built from :func:`utility_by_action`, never
+    re-spelled, so the declaration and the host arithmetic share one source. Uses only the
+    wire's accepted subset (``parseSaid``: var, c, +, -, *, get, if, >, =)."""
     pairs = utility_by_action(u_bar)
+    floor = infeasible_value(u_bar)
+
+    def arm(name: str) -> list[object]:
+        row = _lin(*pairs[name])
+        if name in PRICES:
+            row = ["-", row, ["get", PRICES[name]]]
+        if name not in FEASIBILITY:
+            return row
+        return ["if", [">", ["get", FEASIBILITY[name]], ["c", 0.5]], row, ["c", floor]]
+
     names_in_grid_order = [name for name, _ in AFFORDANCES]
     # innermost arm = the LAST affordance (no trailing test needed: the engine only
     # evaluates the sentence at declared grid points).
-    last = names_in_grid_order[-1]
-    expr: list[object] = _lin(*pairs[last])
+    expr: list[object] = arm(names_in_grid_order[-1])
     for name in reversed(names_in_grid_order[:-1]):
-        expr = ["if", ["=", ["get", ACT_NAME], ["c", _VALUE_FOR[name]]],
-                _lin(*pairs[name]), expr]
+        expr = ["if", ["=", ["get", ACT_NAME], ["c", _VALUE_FOR[name]]], arm(name), expr]
     return expr
-
-
-def eu_by_action(u_bar: Mapping[str, float], p1: float) -> dict[str, float]:
-    """``{affordance: EU}`` at credence ``p1`` = P(y=1): ``EU = (1-p1)·u(y=0) + p1·u(y=1)``.
-    The frozen engine does this arithmetic itself over the declared table; this is the same
-    arithmetic host-side, so the report can name WHICH action the world's own utility
-    prefers at a given p1 — and at which p1 it changes its mind — without asking the
-    engine."""
-    return {a: (1.0 - p1) * u0 + p1 * u1 for a, (u0, u1) in utility_by_action(u_bar).items()}
-
-
-def argmax_action(u_bar: Mapping[str, float], p1: float) -> str:
-    """The affordance this world's utility fires at ``p1`` — argmaxEU with ties resolved
-    FIRST-LISTED in :data:`AFFORDANCES` (= grid) order, the wire's own rule (wait — the
-    grid's first point, abstain — keeps ties), so this predicts the engine's chooser
-    rather than merely scoring it."""
-    eus = eu_by_action(u_bar, p1)
-    return min(enumerate(AFFORDANCES), key=lambda it: (-eus[it[1][0]], it[0]))[1][0]
-
-
-def respond_threshold(u_bar: Mapping[str, float]) -> float | None:
-    """The p1 above which ``respond`` STRICTLY wins the whole menu — the honest reachability
-    bar for the assert affordance, and the number the demand ledger tests against the
-    engine's attainable p1.
-
-    NOT merely respond-vs-abstain: the engine argmaxes over EVERY row, so respond must also
-    outbid the information actions, which under the perfect-information bake-in
-    (:func:`utility_by_action`) are worth more than abstain at any p1 above their own cost. Each
-    row's EU is linear in p1 and respond's slope (``u_correct - u_wrong``) is the steepest
-    (since ``u_wrong < u_abstain``), so respond overtakes each competitor at exactly one
-    crossing and the binding bar is the LAST of them.
-
-    ``None`` when respond can never overtake some row however high p1 goes (a competitor
-    rising at least as fast — only under a degenerate u_bar): a reachability statement, not
-    an error."""
-    pairs = utility_by_action(u_bar)
-    r0, r1 = pairs["respond"]
-    thresholds: list[float] = []
-    for action, (a0, a1) in pairs.items():
-        if action == "respond":
-            continue
-        denom = (r1 - r0) - (a1 - a0)
-        if denom <= 0:
-            return None
-        thresholds.append((a0 - r0) / denom)
-    return max(thresholds) if thresholds else None
 
 
 # --- r44 item 1: the emission codebook's grid (E3 — the grid IS the hypothesis space) --
@@ -380,29 +351,6 @@ _GRID_COLLISION: float = 5e-4
 # the 7e-3 that r44's own W6 measured as producing a 3.2e-3 p1 gap with no false clear
 # reachable. Read the report before changing this number.
 _GRID_LATTICE_BITS: int = 20
-
-
-def argmax_crossings(u_bar: Mapping[str, float]) -> list[float]:
-    """The p1 values in (0, 1) at which :func:`argmax_action` changes its mind — this
-    world's consumer thresholds, derived from the declared rows rather than assumed.
-
-    Every row is linear in p1, so a pair crosses at most once; the pair's crossing counts
-    only where the WHOLE argmax changes there (a crossing between two dominated rows is
-    not a threshold). Returned at full precision."""
-    rows = list(utility_by_action(u_bar).values())
-    out: list[float] = []
-    for i, (a0, a1) in enumerate(rows):
-        for b0, b1 in rows[i + 1:]:
-            denom = (a1 - a0) - (b1 - b0)
-            if denom == 0.0:
-                continue
-            p = (b0 - a0) / denom
-            eps = 1e-6
-            if not 0.0 + eps < p < 1.0 - eps:
-                continue
-            if argmax_action(u_bar, p - eps) != argmax_action(u_bar, p + eps):
-                out.append(p)
-    return sorted(set(out))
 
 
 def theta_grid(u_bar: Mapping[str, float]) -> list[float]:
@@ -467,21 +415,22 @@ def clock_price(u_bar: Mapping[str, float]) -> float:
     is the seam to the substituting chooser. Its price is therefore DERIVED to make it
     unreachable under this world's own utility rather than raised until it stops firing:
     `pickWire` ranks the think row at `thinkValue - price`, and `thinkValue` is bounded above
-    by the best achievable row value, so a price one unit beyond the utility's full span puts
-    the think row strictly below the worst row EU at every belief."""
+    by the best achievable row value, so a price one unit beyond the utility's full span
+    (down to :func:`infeasible_value`) puts the think row strictly below the worst row EU at
+    every belief."""
     values = [v for pair in utility_by_action(u_bar).values() for v in pair]
-    return (max(values) - min(values)) + 1.0
+    return (max(values) - infeasible_value(u_bar)) + 1.0
 
 
 def handshake_decl(u_bar: Mapping[str, float], *, utility_form: str = "said@1") -> dict[str, Any]:
     """The full handshake line (membrane-wire.md §2 as amended through step-10):
-    ``namespace`` = ``["t"] + indicator_names() + [ACT_NAME]`` (RIDER 2: every writable
-    name is a namespace member, and membership is immutable), one singleton
-    ``[0.5]``-grid guard per indicator, the menu as the ONE writable name with its grid
-    (names+grids — the step-5 shape; grid order normative, wait first), and the utility
-    as a ``said@1`` sentence. The tick features (``shadow_features``) and the writable
-    name are DISJOINT by construction (ruling D-b2) — indicators are ``family=value``
-    strings and ``t``, never ``act``. No ``echo`` block: it died with the step-5 wire.
+    ``namespace`` = ``["t"] + indicator_names() + feasibility and price names + [ACT_NAME]``
+    (RIDER 2: every writable name is a namespace member, and membership is immutable), one
+    singleton ``[0.5]``-grid guard per indicator (feasibility and price names carry none),
+    the menu as the ONE writable name with its grid (names+grids — the step-5 shape; grid
+    order normative, wait first), and the utility as a ``said@1`` sentence. The tick
+    features (``shadow_features``) and the writable name are DISJOINT by construction
+    (ruling D-b2): never ``act``. No ``echo`` block: it died with the step-5 wire.
     Raises :class:`ValueError` on an undeclared ``utility_form``."""
     if utility_form not in UTILITY_FORMS:
         raise ValueError(
@@ -491,7 +440,7 @@ def handshake_decl(u_bar: Mapping[str, float], *, utility_form: str = "said@1") 
     return {
         "membrane": 1,
         "world": {
-            "namespace": ["t", *names, ACT_NAME],
+            "namespace": ["t", *names, *FEASIBILITY.values(), *PRICES.values(), ACT_NAME],
             "guards": [{"name": n, "grid": [0.5]} for n in names],
             "menu": [{"name": ACT_NAME, "grid": list(ACT_GRID)}],
             "codebooks": {"theta": theta_grid(u_bar)},

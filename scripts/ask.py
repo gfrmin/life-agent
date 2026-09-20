@@ -1,16 +1,10 @@
 #!/usr/bin/env python3
 """ask — the dogfood "ask anything" REPL over the LIVE pkm catalogue, with citations.
 
-Phase-1 dogfood interface. One command -> an `ask> ` loop that, per question:
-retrieves top-k chunks from the whole live corpus (BM25 FTS, Hebrew-aware), has the
-pinned answer model synthesise a concise answer that cites [n] into those chunks, then
-captures a one-key good/bad verdict into a dated session log under
-$LIFE_AGENT_KB. The captured misses are the FAILURES-driven spec for what to build next.
-
-This is pure composition of the comparison harness: it is `phase1_answer.answer_one`
-minus the frozen-snapshot filter (dogfood asks over the whole corpus, not a pinned S)
-and minus the per-question hand-written search_queries (the raw question IS the query —
-an honest "ask anything" test that surfaces retrieval gaps as signal).
+One command -> an `ask> ` loop that, per question, answers through the one executor
+(:func:`life_agent.core.ask_client.drive`: the bridge's decider over the live corpus),
+renders the reply with its citations, then captures a one-key good/bad verdict into a dated
+session log under $LIFE_AGENT_KB. The captured misses are the spec for what to build next.
 
 Run (from the repo root, for pkm.retrieval + duckdb). One-shot argv is the SAME line
 grammar as the REPL (docs/interaction-contract.md):
@@ -54,31 +48,22 @@ import life_agent.tasks.events as ev
 import life_agent.tasks.knowledge as knowledge
 from life_agent.core import terminals as TERM
 
-# The in-process family orchestration was ABSORBED into the package at M5 (r15,
-# design §2.2/§2.3): life_agent.core.terminals is the terminals-only regime's body,
-# reached by the one driver's down-branch and by this REPL. The bindings below keep
-# this script's public names stable for the instrument arms and their tests; the
-# canonical home of the state seams (*_LAST) is TERM.
+# The retrieval helpers and the per-question state seams (*_LAST) live in
+# life_agent.core.terminals; the bindings below keep this script's public names stable for
+# the instrument arms and their tests.
 from life_agent.core.retrieval import build_query  # noqa: F401 — probe-script surface
 
-answer = TERM.answer
 connect = TERM.connect
 retrieve = TERM.retrieve
 _retrieve_set = TERM._retrieve_set
 _pkm_root = TERM._pkm_root
 _is_lock_error = TERM._is_lock_error
 _cards_from_set = TERM._cards_from_set
-_narrative_scored = TERM._narrative_scored
 _clean_terms = TERM._clean_terms
 _expand_terms = TERM._expand_terms
-_rerank_hits = TERM._rerank_hits
 _corpus_digest = TERM._corpus_digest
 EXPAND_SYSTEM = TERM.EXPAND_SYSTEM
 EXPAND_MODEL = TERM.EXPAND_MODEL
-RERANK_MODEL = TERM.RERANK_MODEL
-RERANK_POOL = TERM.RERANK_POOL
-RERANK_SYSTEM = TERM.RERANK_SYSTEM
-ANSWER_SYSTEM = TERM.ANSWER_SYSTEM
 TemporalReport = TERM.TemporalReport
 owner_question = TERM.owner_question
 reset_cache_stats = TERM.reset_cache_stats
@@ -248,9 +233,7 @@ def parse_line(line: str) -> Parsed:
 # to its content-addressed id). Flag-gated; the default path is untouched.
 # D-13: the stack URLs are read ONCE (ask_client); these are bindings, not reads.
 EXECUTOR_BRIDGE = AC.BRIDGE
-EXECUTOR_DAEMON = AC.DAEMON
-EXECUTOR_DOWN = ("No answer asserted — the executor is unavailable (the answer-brain "
-                 "daemon/bridge is not up; start it: bin/answer-brain).")
+EXECUTOR_DOWN = AC.DOWN
 # the last executor decision's id (the bridge's content-addressed "ab-…") — the in-session g/b
 # verdict binds to it (the executor analogue of LOOKUP_LAST.answer_cache_key); None when the last
 # answer was a miss / narrative / daemon-down (nothing foldable to bind).
@@ -286,14 +269,14 @@ def _http_get(url: str) -> dict[str, Any]:
 
 
 def _executor_ready() -> bool:
-    """Both services must answer /ready. The body never falls back SILENTLY — a down stack is
-    NAMED (interaction contract), never substituted with a different path's answer."""
-    for base in (EXECUTOR_BRIDGE, EXECUTOR_DAEMON):
-        try:
-            urllib.request.urlopen(f"{base}/ready", timeout=3)
-        except Exception:
-            return False
-    return True
+    """The bridge must answer /ready with a decider configured. The body never falls back —
+    a down stack is NAMED (interaction contract), never substituted with another answer."""
+    try:
+        with urllib.request.urlopen(f"{EXECUTOR_BRIDGE}/ready", timeout=3) as r:
+            status = json.loads(r.read())
+    except Exception:
+        return False
+    return bool((status.get("decider") or {}).get("enabled"))
 
 
 def answer_via_executor(question: str, k: int
@@ -308,7 +291,6 @@ def answer_via_executor(question: str, k: int
     fallback must never silently switch a gate's arm — r13 amendment 4)."""
     global EXECUTOR_LAST, EXECUTOR_VIEW_LAST
     TERM.TEMPORAL_LAST = TERM.SUBJECT_LAST = TERM.INTENT_LAST = None
-    TERM.LOOKUP_LAST = TERM.NARRATIVE_LAST = None
     TERM.STAGES_LAST = {}
     EXECUTOR_LAST = None
     EXECUTOR_VIEW_LAST = None
@@ -316,17 +298,13 @@ def answer_via_executor(question: str, k: int
     # core/executor.py must not be edited to expose them) — absent (not a guessed 0), so a
     # consumer can tell "not tracked here" apart from "zero rounds fired".
     TERM.EFFORT_LAST = {}
-    r = AC.drive(question, k, bridge=EXECUTOR_BRIDGE, daemon=EXECUTOR_DAEMON,
+    r = AC.drive(question, k, bridge=EXECUTOR_BRIDGE,
                  post=_http_post, get=_http_get, run_id=EXECUTOR_RUN_ID,
                  ready=_executor_ready,
                  hold_out_question_id=EXECUTOR_HOLD_OUT_QUESTION_ID)
     if r.down:
         return (EXECUTOR_DOWN, [], {})
-    if r.view is None:
-        # the terminals-only regime answered (M5, §2.3): the leaf rendered the text
-        # and recorded the decision; cards/scores live in TERM's travel state.
-        EXECUTOR_LAST = r.decision_id
-        return (r.text or "", [], {})
+    assert r.view is not None  # drive returns a view whenever the stack is up
     view = r.view
     EXECUTOR_VIEW_LAST = view
     EXECUTOR_LAST = r.decision_id
@@ -422,12 +400,10 @@ def submit_reaction(event: R.ReactionEvent, *, reactions_path: Path,
     (``"bridge"`` / ``"direct"``), and never writes BOTH (the bridge owns the append on its
     own path).
 
-    Why route it at all: ``bridge/server.py``'s ``/log_reaction`` is the ONLY caller of
-    ``MembraneShadow.submit_reaction``, so a verdict appended directly here reaches the
-    membrane shadow only at the NEXT boot's snapshot replay (`shadow.boot_snapshot`) — late,
-    not lost. ask-live is the primary dogfood surface, so its verdicts go through the bridge
-    like Jarvis's already do (`core/ask_client.react`), and the shadow's live evidence stream
-    is the real one rather than a Jarvis-only sample.
+    Why route it at all: ``bridge/server.py``'s ``/log_reaction`` is the ONLY place a verdict
+    folds into the decider live, so a verdict appended directly here reaches it only at the
+    NEXT boot's replay (`membrane.boot.boot_snapshot`) — late, not lost. ask-live's verdicts
+    go through the bridge like Jarvis's already do (`core/ask_client.react`).
 
     Fail-open, deliberately: the reaction log is the source of truth for the utility fold —
     a verdict must never be LOST because the bridge is down, misconfigured, or 404s on a
@@ -452,13 +428,9 @@ def _record_reaction(question: str, verdict: str) -> None:
     the decision it grades by ``decision_id`` (the answer's cache key). The producer
     (`reactions.load_reactions`) decides what folds — v0 conditions u(wrong) only on clean
     lookup abstain-verdicts; everything else is recorded, not folded. Written through
-    :func:`submit_reaction` (bridge-first, so the membrane shadow sees it live). Fail-open
+    :func:`submit_reaction` (bridge-first, so the decider folds it live). Fail-open
     and named: a calibration-log write must never break the dogfood loop."""
-    decision_id = (EXECUTOR_LAST if EXECUTOR_LAST
-                   else TERM.LOOKUP_LAST.answer_cache_key if TERM.LOOKUP_LAST is not None
-                   else TERM.NARRATIVE_LAST.answer_cache_key
-                   if TERM.NARRATIVE_LAST is not None
-                   else "")
+    decision_id = EXECUTOR_LAST or ""
     try:
         submit_reaction(R.ReactionEvent(
             tx_time=O.now_iso(), question_id=DEC.question_id(question),
@@ -521,12 +493,9 @@ def ask_once(conn: duckdb.DuckDBPyConnection, question: str, k: int,
              recent: bool = False) -> list[tuple[str, str]]:
     """Answer + render + capture. Returns the derive targets the answer's
     reports named as underived (doc_date and doc_subject alike — empty when
-    neither filter ran) so the REPL can offer `/derive`. The credence answer-brain executor
-    (the daemon decides) is the DEFAULT read-path; when its daemon/bridge is down it falls back
-    to the TERMINALS-ONLY regime inside the driver (M5, §2.3 — the leaves answer over T
-    with the regime recorded), NAMED when even that cannot run. The dispatch died at M5
-    (B-1/B-5): availability decides, never a flag. Temporal scoping (/since …) is not
-    yet wired into the executor, so a scoped question is NAMED and answered unscoped."""
+    neither filter ran) so the REPL can offer `/derive`. The executor answers; a down
+    stack is NAMED, never substituted. Temporal scoping (/since …) is not yet wired into
+    the executor, so a scoped question is NAMED and answered unscoped."""
     global EXECUTOR_LAST
     EXECUTOR_LAST = None  # clean per-question state; the dispatched path sets its own id
     if since is not None or until is not None or recent:

@@ -1,21 +1,10 @@
-"""life_agent.membrane — the proplang membrane shadow.
+"""life_agent.membrane — the proplang engine client, DEFERRED off the ask path.
 
-A Python host driving the frozen `proplang-host` decider binary over JSON-lines
-stdio, shadow-logging its choices beside the production answer executor (never on the
-decision path itself — see the feature's design doc).
-
-Task 1 (:mod:`life_agent.membrane.client`) is the transport only: a spawnable,
-dependency-injectable ``MembraneClient`` plus the wire's compact-JSON encoding
-contract. Task 2 (:mod:`life_agent.membrane.world`) is the answer-domain world
-declaration (features, menu, utility). Task 3 (:mod:`life_agent.membrane.session`) is
-``MembraneSession`` — one booted world driving decide/verdict/outcome ticks. Task 4
-(:mod:`life_agent.membrane.shadow`) is ``MembraneShadow`` — the supervisor: one worker
-thread running every declared utility form's session off the same live traffic, a
-bounded enqueue-only submit surface, respawn-with-fresh-snapshot on a session failure,
-and the append-only shadow log. Task 5 (:mod:`life_agent.bridge.server`) wires
-`submit_*` into the real bridge: `POST /decide-support` feeds `submit_decide`, and
-`/log_decision`/`/log_reaction` fold into `submit_decision`/`submit_reaction` beside
-their existing appends — disabled by default (`LIFE_AGENT_MEMBRANE_COMMAND` unset), and
-every submit is fail-open, so the shadow can never break, block, or slow an enacted
-answer.
+The decider is :mod:`life_agent.core.decider` (the Bayes act over the local posterior).
+This package is kept green for the engine's return (``ROADMAP.md`` doors):
+:mod:`~life_agent.membrane.client` is the JSON-lines transport;
+:mod:`~life_agent.membrane.world` the answer-domain world (features, feasibility, menu,
+and the ``said@1`` sentence built from ``core.decide``'s rows);
+:mod:`~life_agent.membrane.session` one booted world driving decide and evidence ticks;
+:mod:`~life_agent.membrane.boot` the decision ⋈ verdict join a boot replays.
 """

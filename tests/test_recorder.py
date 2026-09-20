@@ -129,7 +129,7 @@ def test_the_family_leaves_do_not_append_the_decision_ledger_themselves() -> Non
     here at the source level (the pattern ``tests/test_seam.py`` pins ``.optimise`` with),
     and at the store level by the fixture replay's one-event-per-decision bodies."""
     root = Path(__file__).resolve().parents[1] / "src" / "life_agent" / "core"
-    for leaf in ("lookup.py", "narrative.py"):
+    for leaf in ("lookup.py",):
         src = (root / leaf).read_text(encoding="utf-8")
         assert "DEC.append(" not in src, (
             f"{leaf} appends the decision ledger itself — the one recorder "

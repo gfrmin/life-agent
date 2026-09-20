@@ -1,23 +1,21 @@
-"""The body's executor loop — enacts the credence answer-brain daemon's VOI schedule.
+"""The body's executor loop — enacts the decider's acts.
 
-PRINCIPLES §16: there is one optimiser. The *decision* lives in the credence daemon
-(``gather_decide`` / ``terminal_decide``) — it prices the per-question transform MENU by
-``net_voi - cost`` and arg-maxes. This module is the **body** that enacts that schedule over
-the life-agent capability bridge:
+CLAUDE.md rule 2: there is one decider. The *decision* lives in the bridge's ``/decide``
+(:mod:`life_agent.core.decider`: the candidate posterior, then the Bayes act). This module
+is the **body** that enacts it over the life-agent capability bridge:
 
     route → retrieve → probe/{subject,recency} → extract → /decide
 
-then, while the daemon returns ``gather`` (a scheduled transform), enact the named probe
-(acknowledge recency, or re-read at the scheduled corroborate tier) and re-decide — until a
-terminal effector. A cheap lexical pass runs first; a withholding terminal escalates recall
-breadth once (``grow``: rerank, then native-script expansion).
+then, while the decider returns ``gather`` (with the probe to run), enact the named probe
+(a corroborate re-read, a deliberate read, or a recall grow) and re-decide — until a
+terminal effector.
 
 Lifted verbatim from ``scripts/eval_executor.py`` so the eval harness AND the production
 read-path drive the SAME executor, not two implementations (§4 compose, don't rebuild). The
-two HTTP services are injected as ``post`` / ``get`` callables, so the whole control flow is
-hermetically testable without a live daemon, and the caller owns the transport (urllib in the
-eval harness; the same, or a pooled client, in production). The body holds NO posterior and
-picks NO action; it only shapes evidence and enacts what the daemon scheduled.
+bridge's endpoints are injected as ``post`` / ``get`` callables, so the whole control flow is
+hermetically testable without a live bridge, and the caller owns the transport. The body
+holds NO posterior and picks NO action; it only shapes evidence and enacts what the decider
+chose.
 """
 from __future__ import annotations
 
@@ -28,7 +26,6 @@ from typing import Any
 from life_agent.bridge import observations as SO
 from life_agent.core import answer_shape as AS
 from life_agent.core import calibration as CAL
-from life_agent.core import decide as DEC_ATOM
 from life_agent.core import decisions as DEC
 from life_agent.core import deliberate as DL
 from life_agent.core import gather_outcomes as GO
@@ -45,8 +42,8 @@ Curves = dict[str, CAL.ReliabilityCurve] | None
 
 # The transport seams, injected by the caller (PRINCIPLES §5): ``post(url, payload)`` returns the
 # decoded JSON object, or ``None`` for ``/route`` on a non-typed question; ``get(url)`` returns the
-# decoded JSON object. The loop builds the URLs from the ``bridge`` / ``daemon`` base strings, so a
-# fake can route on the suffix.
+# decoded JSON object. The loop builds the URLs from the ``bridge`` base string, so a fake can
+# route on the suffix.
 Post = Callable[[str, dict[str, Any]], "dict[str, Any] | None"]
 Get = Callable[[str], dict[str, Any]]
 
@@ -113,12 +110,6 @@ def menu_transforms(curves: Curves) -> list[dict[str, Any]]:
                      DELIBERATE_TRANSFORM["rho"], _DELIBERATE_FALLBACK_RHO)})
     return rows
 
-# A withholding/miss terminal — the daemon declined to assert. It is the SENSOR condition for
-# re-asking WITH the grow block (run_pass), never a body-side decision to grow (E-13/E-14, M1).
-# D-6 (M7): a DERIVED view of the one vocabulary — the non-full-report terminals plus
-# the miss reason (the terminals after which the grow offer may fire; hedge withholds
-# the committed value, so it counts).
-_WITHHOLD = frozenset({"miss"}) | (DEC.ACTIONS - {"report", "report_scoped"})
 
 # The unpriced attribution defaults every no-edge View return site spreads — consumers
 # INDEX these keys (never .get), so a new attribution key is ONE edit here plus the
@@ -183,44 +174,41 @@ def _obj(post: Post, url: str, payload: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-def decide_via_loop(question: str, k: int, *, bridge: str, daemon: str, post: Post, get: Get,
+# The reply to a question the router does not classify as a verbatim point fact. Such a
+# question is declined, not answered by a second lane (the MVP bar, CLAUDE.md).
+DECLINED_NOT_POINT_FACT = ("Declined: this isn't a question with a single verbatim answer "
+                           "in your documents.")
+
+
+def decide_via_loop(question: str, k: int, *, bridge: str, post: Post, get: Get,
                     transforms: list[dict[str, Any]] | None = None,
                     curves: Curves = None) -> View:
-    """Drive one question through the live loop: route, then the daemon-priced pass.
+    """Drive one question through the live loop: route, then the decided pass.
 
-    A declined route (``/route`` → null) is the NARRATIVE family — synthesize a cited answer,
-    audit each claim, include only grounded + EU-positive claims; gate-safe by construction.
-
-    A typed route runs :func:`run_pass`. Recall is DECIDED BY THE DAEMON — the loop ships the
-    sensor buckets + the grow menu (bridge ``/grow_menu``: actuators with body-persisted warm
-    counts) into ``/decide``, the daemon prices the grow argmax by the engine gather VOI
-    (``grow_value`` over the structure-BMA ``g``), and the body enacts the named probe and logs
-    the outcome (``/log_gather`` — the structure-observe stream). There is no body-side
-    cascade and no ``p_none >= leader`` gate: P(NONE) enters only as a bucketed *sensor*
-    (E-13/E-14 died at M1, and ``LIFE_AGENT_GROW_LANE`` retired with them — this is the lane).
-    The M3 membrane live consult died at M5 (Q8): the daemon's decision is the act."""
+    A declined route (``/route`` → null) is not a verbatim point fact: the question is
+    declined with no retrieval. A typed route runs :func:`run_pass`."""
     transforms = DEFAULT_TRANSFORMS if transforms is None else transforms
     route = post(f"{bridge}/route", {"question": question})
     if route is None:
-        nv = _obj(post, f"{bridge}/narrative", {"question": question})
-        return {"effector": nv["action"], "asserted": nv["asserted"], "candidates": [],
+        return {"effector": "abstain", "asserted": [], "candidates": [],
                 "credences": [], "p_none": None, "eu": None, "n_obs": 0,
-                "hits": nv.get("hits", []), "route": None, "rendered": nv.get("rendered"),
+                "hits": [], "route": None, "rendered": DECLINED_NOT_POINT_FACT,
                 "n_indeterminate": 0, "question": question,
-                **_UNPRICED_ATTRIBUTION, "edge_events": [], "spend_usd": 0.0}
-    return run_pass(question, k, route, bridge=bridge, daemon=daemon, post=post, get=get,
+                **_UNPRICED_ATTRIBUTION, "edge_events": [], "spend_usd": 0.0,
+                "applied": []}
+    return run_pass(question, k, route, bridge=bridge, post=post, get=get,
                     rerank=False, expand=False, transforms=transforms,
                     curves=curves)
 
 
-def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemon: str,
+def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str,
              post: Post, get: Get, rerank: bool, expand: bool = False,
              transforms: list[dict[str, Any]] | None = None,
              curves: Curves = None) -> View:
     """One retrieve→probe→extract→decide pass at a given recall breadth, enacting each
-    scheduled transform the daemon returns. The daemon also prices the grow menu (recall
-    actuators), and each enactment is logged to ``/log_gather``. Returns
-    the normalized view ``{effector, asserted, candidates, credences, p_none, eu, hits, route}``."""
+    gather the decider chooses (the transform menu and the grow actuators), each grow
+    logged to ``/log_gather``. Returns the normalized view ``{effector, asserted,
+    candidates, credences, p_none, eu, hits, route}``."""
     transforms = DEFAULT_TRANSFORMS if transforms is None else transforms
 
     # the question's TOTAL metered spend — base instruments (subject/extract cache
@@ -233,8 +221,10 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
     def _evidence(rr: bool, ex: bool) -> tuple[list[dict[str, Any]], dict[str, Any],
                                                dict[str, Any]]:
         nonlocal spend_usd
-        hits = _obj(post, f"{bridge}/retrieve",
-                    {"question": question, "k": k, "rerank": rr, "expand": ex})["hits"]
+        got = _obj(post, f"{bridge}/retrieve",
+                   {"question": question, "k": k, "rerank": rr, "expand": ex})
+        hits = got["hits"]
+        spend_usd += float(got.get("cost_usd") or 0.0)  # the rerank's spend (0 when replayed)
         hit_keys = list(dict.fromkeys(h["artifact_cache_key"] for h in hits))
         subj_reply = _obj(post, f"{bridge}/probe/subject", {"hit_keys": hit_keys})
         subj = subj_reply["subject_state"]
@@ -345,7 +335,7 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
                 "n_indeterminate": int(ext.get("indeterminate", 0) or 0),
                 "n_competing": int(ext.get("n_competing", 0) or 0),
                 **_UNPRICED_ATTRIBUTION, "edge_events": edge_events,
-                "spend_usd": spend_usd}
+                "spend_usd": spend_usd, "applied": list(applied)}
     # r30 (C5): this question's own answer shape prices its own grow-menu pricing too —
     # the SAME seam current_u_bar's other callers route through. The anchor shape omits
     # the query param entirely (never a wire change for the majority-`exact` case r29
@@ -383,54 +373,27 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
 
     cand_comp = _cand_comp(ext, candidates)
 
-    # r30b: the `quantity` shape's claim space, rebuilt per decide from the CURRENT candidate
-    # list — the loop may mint one mid-question, and a row spans the K+1 atoms of the posterior
-    # it is ranked against, so a stale row spans the wrong space. Built by the SAME declaration
-    # the in-process family ranks (C3): the daemon receives finished tabular rows and supplies
-    # no utility arithmetic of its own, so the Winkler grade is never re-spelled off this repo.
-    # Empty off-shape ⇒ the wire carries no `extra_actions` key at all (C2).
-    intervals: tuple[DEC_ATOM.IntervalOption, ...] = ()
+    question_id = DEC.question_id(question)
 
-    def _decide(observations: list[Any], r: float, era_split: bool, applied: list[str],
-                sensors: dict[str, str] | None = None) -> View:
-        nonlocal intervals
-        intervals = DEC_ATOM.interval_options(candidates, u_bar, shape=shape)
+    def _decide(observations: list[Any], r: float, era_split: bool,
+                applied: list[str]) -> View:
         payload: dict[str, Any] = {
-            # r09 D1: the correlation key (quote, doc_key) is wire-only — the brain stays
+            # r09 D1: the correlation key (quote, doc_key) is wire-only — the decider stays
             # string-blind, so the decide post strips it while the loop's channel keeps it
+            "question_id": question_id,
             "candidates": candidates, "observations": SO.strip_wire_keys(observations),
             "rho": r, "u_bar": u_bar,
             "era_split": era_split, "owner_scoped": owner, "applied_probes": applied,
             "transforms": transforms}
-        if intervals:
-            # `act` names the SPEECH ACT the row belongs to, so the daemon's eligibility
-            # predicates (the owner-scoped attribution guard, the §2-A rescue gate) keep
-            # asking "did this commit?" instead of matching a wire name (C5).
-            payload["extra_actions"] = [{"name": o.name, "act": "report",
-                                         "values": list(o.values)} for o in intervals]
-        if sensors is not None and menu is not None:
-            payload["sensors"] = sensors
-            payload["grow"] = menu
-        # committed through the ONE act seam (roadmap M0); the reply view is the
-        # daemon's decision verbatim.
-        dec = SEAM.commit(SEAM.DaemonDecide(post=post, daemon=daemon,
-                                            payload=payload)).view
-        assert dec is not None  # a DaemonDecide commit always carries the reply view
-        if intervals and "n_extra_actions" not in dec:
-            # A decider predating `extra_actions` ignores unknown request keys, so the body
-            # would price rows nothing ranks and every reading would silently measure the
-            # pre-r30b action set. Silent degradation is the one outcome a gate reading
-            # cannot survive — fail loud, naming the requirement.
-            raise RuntimeError(
-                "the decider did not rank this question's extra_actions (no n_extra_actions "
-                "in its reply): it predates the body-priced terminal rows r30b requires. "
-                "Point CREDENCE_DIR at a checkout carrying them and restart the daemon.")
+        if menu is not None:
+            payload["grow"] = menu  # the grow actuators are gather options too
+        # committed through the ONE act seam; the reply view is the decider's verbatim.
+        dec = SEAM.commit(SEAM.Decide(post=post, bridge=bridge, payload=payload)).view
+        assert dec is not None  # a Decide commit always carries the reply view
         return dec
 
     dec = _decide(obs, rho, era, applied)
     grow_probes = ({str(a["probe"]) for a in menu["actuators"]} if menu is not None else set())
-    grow_asked = False
-    last_sensors: dict[str, str] = {}
     # §10 accounting for the terminal decision (decisions v2): the answer-proposing edge
     # that fired this pass and its realised price — "" / None when only the local channel ran.
     edge_instrument = ""
@@ -441,10 +404,14 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
     edge_value: str | None = None
     edge_conf: float | None = None
     edge_lineage: str | None = None
-    # bounded: each registry probe and each grow actuator fires at most once (dedup on the
-    # probe name); a grow costs two decides (the priced re-ask + the post-enactment decide).
-    for _ in range(2 + sum(t["kind"] == "voi" for t in transforms) + 2 * len(grow_probes)):
+    # bounded: each transform and each grow actuator fires at most once (dedup on the probe
+    # name), and the decider offers no gather once they are all applied.
+    for _ in range(2 + sum(t["kind"] == "voi" for t in transforms) + len(grow_probes)):
         eff, probe = dec["effector"], str(dec.get("probe") or "")
+        # the gather-outcome stream's context: the sensors at the moment a grow is enacted
+        last_sensors = GO.sensors_from(
+            candidates=candidates, credences=list(dec["credences"] or []),
+            p_none=dec["p_none"], indeterminate=int(ext.get("indeterminate") or 0))
         if eff == "gather" and probe == "recency":
             # recency is PRE-APPLIED in /extract (obs already decayed) → acknowledge and re-decide.
             applied = list(dict.fromkeys([*applied, "recency"]))
@@ -526,7 +493,6 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
                 rho, era = ext["rho"], ext["era_split"]
             enacted.append((probe, last_sensors, changed))
             applied = list(dict.fromkeys([*applied, probe]))
-            grow_asked = False
             dec = _decide(obs, rho, era, applied)
         elif eff == "gather" and probe == "deliberate":
             # The promoted A1b edge, daemon-scheduled: an agentic deliberative answer
@@ -612,35 +578,11 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
                                        cr.get("confidence"), cr["gather_rho"])
             enacted.append((probe, last_sensors, changed))
             applied = list(dict.fromkeys([*applied, probe]))
-            grow_asked = False
             dec = _decide(obs, rho, era, applied)
-        elif (eff in _WITHHOLD and not grow_asked
-              and (grow_probes - set(applied))):
-            # a WITHHOLDING terminal with unapplied grow actuators: re-ask WITH the grow
-            # block so the daemon prices recall. The withhold-only latch is MEASURED
-            # protection, not transport economy (r15 A5, the run-17 ruling): offering the
-            # block after every terminal enacted a real engine preference (A2's 62/63)
-            # and the priced gate read the exercised reach as harmful — answer rate
-            # 0.62 -> 0.49, dispersal on marginal reports. The latch stands until the
-            # hand-set grow priors are grounded in the gather-outcome stream
-            # (foundations §14, the hand-priced-VOI arc).
-            last_sensors = GO.sensors_from(
-                candidates=candidates, credences=list(dec["credences"] or []),
-                p_none=dec["p_none"], indeterminate=int(ext.get("indeterminate") or 0))
-            grow_asked = True
-            dec = _decide(obs, rho, era, applied, sensors=last_sensors)
         else:
             break
-    # r30b: an `interval_a_b` winner IS a report — the same speech act at a different
-    # precision (C5) — carrying its claim in the r21 `aggregate.totals` shape the frozen
-    # grader already reads. The wire name never escapes this seam.
-    chosen = DEC_ATOM.interval_by_name(intervals, dec["effector"])
-    if chosen is not None:
-        dec = {**dec, "effector": "report", "value": None}
     _log_outcomes(dec["effector"])
     asserted = [dec["value"]] if dec["effector"] == "report" and dec["value"] else []
-    if chosen is not None:
-        asserted = [chosen.lo_label, chosen.hi_label]
     return {"effector": dec["effector"], "asserted": asserted, "candidates": candidates,
             "credences": dec["credences"], "p_none": dec["p_none"], "eu": dec["eu"],
             "n_obs": len(obs), "hits": hits, "route": route, "question": question,
@@ -649,12 +591,8 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str, daemo
             "instrument": edge_instrument, "cost_usd": edge_cost,
             "latency_s": edge_latency, "instrument_value": edge_value,
             "instrument_confidence": edge_conf, "instrument_lineage": edge_lineage,
-            "edge_events": edge_events, "spend_usd": spend_usd,
-            **({"aggregate": {"claim": "interval", "totals": [chosen.claim()],
-                              "p": round(LK.interval_coverage(
-                                  candidates, [float(c) for c in (dec["credences"] or [])],
-                                  lo=chosen.lo, hi=chosen.hi), 6)}}
-               if chosen is not None else {})}
+            "edge_events": edge_events, "spend_usd": spend_usd, "applied": list(applied),
+            "engine_act": dec.get("act"), "p1": dec.get("p1")}
 
 
 # --- render (the executor's decision in the shared credence grammar) --------------------
@@ -671,43 +609,27 @@ def _cites(value: str, hits: list[dict[str, Any]]) -> str:
 
 
 def render_view(view: View) -> str:
-    """Render an executor view in the SHARED credence grammar (``lookup.GRAMMAR``) — the same
-    interaction-contract strings the in-process lookup family renders, so the owner sees one
-    consistent reply whichever path answered, and the posterior is named in the footer (nothing
-    silent). A narrative view is already rendered bridge-side and passes through verbatim; otherwise
-    the asserted value is cited to the hit cards that carry it."""
+    """Render an executor view in the credence grammar (``lookup.GRAMMAR``), the posterior
+    named in the footer (nothing silent). A view that carries its own ``rendered`` text (a
+    declined route) passes through verbatim; otherwise the asserted value is cited to the hit
+    cards that carry it."""
     rendered = view.get("rendered")
     if rendered:
         return str(rendered)
     eff = view["effector"]
     cands, creds, hits = view["candidates"], view["credences"], view["hits"]
     asserted = view["asserted"]
-    # The daemon returns credences in CANDIDATE order (server.jl w[1:k]), NOT weight-sorted, and
-    # the reported value is the MAP/leader — usually not index 0. Reorder leader-first so creds[0]
-    # is the leader's credence and `alts` is weight-ordered (as lookup.render + the bridge's
-    # /log_decision guard do); else a report shows the first-extracted candidate's probability.
+    # The decider returns credences in CANDIDATE order, NOT weight-sorted, and the reported
+    # value is the MAP/leader — usually not index 0. Reorder leader-first so creds[0] is the
+    # leader's credence and `alts` is weight-ordered (as the bridge's /log_decision guard
+    # does); else a report shows the first-extracted candidate's probability.
     if creds and len(creds) == len(cands):
         order = DEC.leader_order(creds)   # D-4: the one leader label-view
         cands = [cands[j] for j in order]
         creds = [creds[j] for j in order]
     alts = " · ".join(f"{v} ({p:.3f}) {_cites(v, hits)}".rstrip()
                       for v, p in zip(cands, creds, strict=False))
-    claim = (view.get("aggregate") or {}).get("totals") or []
-    if eff == "report" and claim:
-        # r30b: the claim is a RANGE — the SAME contract string the in-process family renders
-        # (one grammar across surfaces), with the endpoints echoed as the candidates' own
-        # display strings and the credence the range's own coverage mass.
-        t = claim[0]
-        lo, hi = float(t["lo"]), float(t["hi"])
-        covered = [c for c in cands
-                   if (v := AS.numeric_value(c)) is not None and lo <= v <= hi]
-        ns = sorted({n for c in covered for n in _cite_ns(c, hits)})
-        body = LK.GRAMMAR["report_interval"].format(
-            lo=(asserted[0] if asserted else t["lo"]),
-            hi=(asserted[-1] if asserted else t["hi"]),
-            p=float((view.get("aggregate") or {}).get("p") or 0.0),
-            cites="".join(f"[{n}]" for n in ns)).rstrip()
-    elif eff == "report" and asserted:
+    if eff == "report" and asserted:
         v = asserted[0]
         body = LK.GRAMMAR["report"].format(value=v, p=(creds[0] if creds else 0.0),
                                            cites=_cites(v, hits))

@@ -12,8 +12,8 @@ eval reproducible. The named successor is an LLM-elicited half-life **cached per
 same world-knowledge prior, generalised to any construct string) — a content-addressed derivation
 like any other; the keyword seed is the cold-start.
 
-This never reaches the credence brain: the bridge folds the half-life into each observation's
-`time_factor` (the parity boundary — the brain sees only the already-multiplied covariate). It is
+This never reaches the decider: the bridge folds the half-life into each observation's
+`time_factor` (the parity boundary — the decider sees only the already-multiplied covariate). It is
 the *currency* axis, distinct from *reliability* (calibrated from verdicts): a faithful read of a
 stale document is reliable but not current — two mechanisms, two knowledge sources.
 """

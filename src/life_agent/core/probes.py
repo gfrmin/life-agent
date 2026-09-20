@@ -29,7 +29,7 @@ selects **{recency, authority, corroborate}** and DESELECTS **{subject}** —
 "is the document *about* the owner" penalises the administrative records that merely
 *carry* the owner's current contact (a National-Insurance form's subject is not the
 owner, yet it lists his live number). ``probe_subject`` therefore WEIGHTS, never
-FILTERS (unlike ``ask._apply_subject_to_hits``, which drops ``not_owner``): a
+FILTERS (unlike an owner filter, which would drop ``not_owner``): a
 deselected weight degrades gracefully where a filter would delete the truth. Kept for
 the classes where whose-document IS the discriminator (the partner-ID class).
 """

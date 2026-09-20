@@ -10,8 +10,9 @@ loop), and returns the content-addressed ``decision_id`` the in-session verdict 
 own vocabulary — a report verdict is recorded-not-folded, said so, never implied to count.
 
 Transport is urllib by default; ``post``/``get`` are injectable so the whole client is
-hermetically testable (the executor's own seam, PRINCIPLES §5). A down stack is NAMED,
-never silently substituted (the contract's invariant 3).
+hermetically testable (the executor's own seam, PRINCIPLES §5). A down stack — the bridge,
+or the decider it hosts — is NAMED, never substituted: no other code answers in its place
+(the contract's invariant 3).
 """
 from __future__ import annotations
 
@@ -30,22 +31,14 @@ from life_agent.core import executor as EX
 from life_agent.core import lookup as LK
 from life_agent.core import recorder as REC
 from life_agent.core import seam as SEAM
-from life_agent.core import shadow_mirror as SM
 
 BRIDGE = os.environ.get("LIFE_AGENT_BRIDGE_URL", "http://127.0.0.1:8798")
-DAEMON = os.environ.get("ANSWER_BRAIN_URL", "http://127.0.0.1:8799")
-DOWN = ("No answer asserted — the executor is unavailable (the answer-brain "
-        "daemon/bridge is not up; start it: bin/answer-brain).")
+DOWN = ("No answer asserted — the decider is unavailable (the bridge is not up; "
+        "start the bridge).")
 # The fold-fate vocabulary — ask-live's /react wording, one voice across surfaces.
 FATE_FOLDS = "folds into the utility posterior on the next gate run"
 FATE_RECORDED = "recorded — not folded (only abstain verdicts move the fold)"
 
-
-# The narrative path (cold expand + 150-chunk rerank + synthesize, all cloud) can
-# legitimately outrun the default read timeout; a client that hangs up mid-read
-# leaves the single-threaded bridge writing to a dead socket (run-6 void).
-_SLOW_ENDPOINTS = ("/narrative",)
-_SLOW_TIMEOUT = 900
 
 # r33 A1 (conferral 2 §3.5, signature E): one live 5xx used to kill a whole ask — the ONE
 # transport now retries transient failures with bounded backoff. A 4xx is the bridge
@@ -56,12 +49,13 @@ _RETRY_SLEEPS = (0.5, 2.0)
 def _retrying[T](attempt: Callable[[], T]) -> T:
     """Run ``attempt``; on a TRANSIENT failure (HTTP 5xx, connection error, timeout)
     sleep and retry, once per entry in :data:`_RETRY_SLEEPS`; the final attempt's error
-    propagates with its own name. HTTPError < 500 re-raises immediately."""
+    propagates with its own name. HTTPError < 500 re-raises immediately, and so does 503:
+    the bridge saying it cannot decide, which is a fact to name, not to retry."""
     for delay in _RETRY_SLEEPS:
         try:
             return attempt()
         except urllib.error.HTTPError as e:
-            if e.code < 500:
+            if e.code < 500 or e.code == 503:
                 raise
         except (urllib.error.URLError, TimeoutError):
             pass
@@ -75,10 +69,9 @@ def post_json(url: str, payload: dict[str, Any], *,
     near-identical copies once hid the same defect). The bridge RETURNS a seam
     failure's name in the error body (server.py: "visible to the caller, never
     swallowed"); carry it in the raised error — the exception type stays HTTPError,
-    so the fail-open transport contract is untouched. ``timeout=None`` picks the
-    endpoint's budget (the slow narrative path gets more headroom)."""
+    so the fail-open transport contract is untouched."""
     if timeout is None:
-        timeout = _SLOW_TIMEOUT if url.endswith(_SLOW_ENDPOINTS) else 300
+        timeout = 300
     req = urllib.request.Request(url, data=json.dumps(payload).encode(),
                                  headers={"Content-Type": "application/json"}, method="POST")
 
@@ -110,13 +103,14 @@ def _get(url: str) -> dict[str, Any]:
 
 
 def _ready() -> bool:
-    """Both services must answer /ready — a down stack is named, never guessed around."""
-    for base in (BRIDGE, DAEMON):
-        try:
-            urllib.request.urlopen(f"{base}/ready", timeout=3)
-        except Exception:
-            return False
-    return True
+    """The bridge must answer /ready with its decider — a down stack is named, never
+    guessed around."""
+    try:
+        with urllib.request.urlopen(f"{BRIDGE}/ready", timeout=3) as r:
+            status = json.loads(r.read())
+    except Exception:
+        return False
+    return bool((status.get("decider") or {}).get("enabled"))
 
 
 def _edge_curves(hold_out_question_id: str | None = None
@@ -153,10 +147,9 @@ def _menu(hold_out_question_id: str | None = None
 
 
 class DriveResult:
-    """The one driver's return: the loop's ``view`` (``None`` on a down stack or a
-    terminals-only answer), the ``decision_id`` a verdict can bind to (``None`` when
-    nothing foldable was posted), the ``down`` fact, and — for a terminals-only answer
-    (M5, §2.3) — the leaf-rendered ``text``."""
+    """The one driver's return: the loop's ``view`` (``None`` on a down stack), the
+    ``decision_id`` a verdict can bind to (``None`` when nothing foldable was posted), the
+    ``down`` fact, and ``text`` (unused by the decided path; kept for the render seam)."""
 
     __slots__ = ("decision_id", "down", "text", "view")
 
@@ -175,8 +168,8 @@ def post_decision(post: Any, bridge: str, question: str, view: dict[str, Any], *
     ``regime: "miss"``, a real id the verdict can bind to, excluded from the fold — never
     a bridge post (the bridge derives ids for ranked decisions and stamps the current
     fold version, both wrong here). A route-null question's decision is the narrative
-    family's, recorded by that leaf. Fail-open by contract and NAMED: a calibration-log
-    write never breaks the answer."""
+    question (declined as not a point fact) posts nothing. Fail-open by contract and NAMED: a
+    calibration-log write never breaks the answer."""
     if view["route"] is not None and view["effector"] == "miss":
         try:
             return REC.record_miss(
@@ -199,7 +192,7 @@ def post_decision(post: Any, bridge: str, question: str, view: dict[str, Any], *
         n_competing=view.get("n_competing", 0),
         instrument=view.get("instrument"), cost_usd=view.get("cost_usd"),
         latency_s=view.get("latency_s"), run_id=run_id,
-        # regime is a FACT of availability (§2.3): the daemon decided, so the space was
+        # regime is a FACT of availability (§2.3): the decider decided, so the space was
         # full; policy derives from the decider's one declared regime — the same constant
         # current_u_bar folds under, so record and fold cannot diverge (M3, r13)
         regime="full", policy=LK.U_BAR_POLICY)
@@ -210,68 +203,42 @@ def post_decision(post: Any, bridge: str, question: str, view: dict[str, Any], *
         return None
 
 
-def _terminals_answer(question: str, k: int) -> tuple[str, str | None]:
-    """The terminals-only regime's enactment (M5, §2.3): open the catalogue read-only,
-    run the absorbed in-process body (`life_agent.core.terminals` — lazily imported so
-    the reach surface pays its weight only when the stack is down), and return the
-    leaf-rendered text with the decision_id the leaf recorded (a verdict binds to it
-    exactly as on the full regime). The leaves are the writers — the §18.9 node and the
-    ledger row landed with ``regime: "terminals-only"`` before this returns."""
-    from life_agent.core import terminals as TERM
-    conn = TERM.connect()
-    try:
-        text, _cards, _scores = TERM.answer(conn, question, k)
-    finally:
-        conn.close()
-    lk, nv = TERM.LOOKUP_LAST, TERM.NARRATIVE_LAST
-    decision_id = (lk.answer_cache_key if lk is not None
-                   else nv.answer_cache_key if nv is not None else None)
-    return text, decision_id
-
-
 def drive(question: str, k: int = 20, *, bridge: str | None = None,
-          daemon: str | None = None, post: Any = None, get: Any = None,
+          post: Any = None, get: Any = None,
           run_id: str | None = None, ready: Any = None,
           hold_out_question_id: str | None = None,
           check_ready: bool = True) -> DriveResult:
     """THE one driver (M2, design §5.1/Q-O6): the reach surface and the CLI answer through
-    this one function with one ``/log_decision`` body. Ready-gate → membrane wiring → the
-    priced menu → ``EX.decide_via_loop`` → the one poster. On a down stack the seam commits
-    the DECLARED gate observation, the gate is mirrored, and the §6.5 unavailability
-    record is appended (``regime: unavailable``, nothing to bind a verdict to) — the same
-    path on every surface (B-2/A-1 unified)."""
+    this one function with one ``/log_decision`` body. Ready-gate → the priced menu →
+    ``EX.decide_via_loop`` → the one poster. On a down stack (the bridge not answering, no
+    decider configured, or ``/decide`` answering 503) the seam commits the DECLARED gate
+    observation and the §6.5 unavailability record is appended (``regime: unavailable``,
+    nothing to bind a verdict to)."""
     bridge = bridge if bridge is not None else BRIDGE
-    daemon = daemon if daemon is not None else DAEMON
     if check_ready and not (ready if ready is not None else _ready)():
-        # The terminals-only regime (M5/r15, §2.3, Q1 signed): an unavailable daemon
-        # answers over T — the absorbed in-process body runs, its leaves rank by the
-        # skin and RECORD their decision with regime="terminals-only" — rather than
-        # going mute. Only when the terminals body itself cannot run (no catalogue, no
-        # skin) does the §6.5 unavailability record land: there, and only there, no
-        # optimiser ran.
-        try:
-            text, decision_id = _terminals_answer(question, k)
-            return DriveResult(None, decision_id, text=text)
-        except Exception as e:
-            print(f"  (terminals-only regime unavailable: {e})")
-        gated = SEAM.commit(None, gates=(SEAM.GATE_EXECUTOR_DOWN,))
-        assert gated.action == "abstain"
-        # M2 advisory mirror, fail-open: the bridge (which hosts the shadow) may be the
-        # very thing that is down — then this is an instant refusal, swallowed inside.
-        SM.mirror_gate(bridge, DEC.question_id(question), SEAM.GATE_EXECUTOR_DOWN)
-        REC.record_unavailable(question, run_id=run_id)
-        return DriveResult(None, None, down=True)
+        return _down(question, run_id)
     post = post if post is not None else _post
     get = get if get is not None else _get
-    # The ONE question_id derivation — the same key /log_decision stamps on the decision,
-    # so a mirrored decide tick and its decision join.
-    question_id = DEC.question_id(question)
-    wrapped = SM.shadow_wrapped_post(post, bridge, question_id)
     transforms, curves = _menu(hold_out_question_id)
-    view = EX.decide_via_loop(question, k, bridge=bridge, daemon=daemon,
-                              post=wrapped, get=get,
-                              transforms=transforms, curves=curves)
+    try:
+        view = EX.decide_via_loop(question, k, bridge=bridge, post=post, get=get,
+                                  transforms=transforms, curves=curves)
+    except urllib.error.HTTPError as e:
+        if e.code != 503:
+            raise
+        print(f"  (decider unavailable: {e.reason})")
+        return _down(question, run_id)
+    except (urllib.error.URLError, TimeoutError) as e:
+        print(f"  (stack unreachable mid-question: {e})")
+        return _down(question, run_id)
     return DriveResult(view, post_decision(post, bridge, question, view, run_id=run_id))
+
+
+def _down(question: str, run_id: str | None) -> DriveResult:
+    gated = SEAM.commit(None, gates=(SEAM.GATE_EXECUTOR_DOWN,))
+    assert gated.action == "abstain"
+    REC.record_unavailable(question, run_id=run_id)
+    return DriveResult(None, None, down=True)
 
 
 def react(decision_id: str, valence: str, *, post: Any = None) -> str:

@@ -70,7 +70,7 @@ VALENCES: dict[str, frozenset[str]] = {"verdict": frozenset({"good", "bad"})}
 #       is-identity (``membrane.session._VERDICT_Y``); a second spelling cannot exist.
 #   (2) the Claude channel's y (``claude_verdicts.y``: the ``correct`` bit and nothing
 #       else), admitted under OWNER ≻ CLAUDE precedence by SOURCE (M-6) — enforced at
-#       the merge in ``membrane.shadow.boot_snapshot``, where an owner's routable
+#       the merge in ``membrane.boot.boot_snapshot``, where an owner's routable
 #       verdict on the same decision overrules the Claude one.
 #   (3) the utility-evidence branches in this module (R-3: which verdicts become
 #       utility evidence): ``_lookup_reaction`` (the implied abstain-threshold datum,
@@ -173,14 +173,18 @@ def _lookup_reaction(r: ReactionEvent, d: DEC.DecisionEvent) -> UT.Reaction | No
                        threshold=_abstain_threshold(p))
 
 
+# The recorded narrative decisions' withheld-all abstain reason (the lane is retired; its
+# recorded verdicts still fold).
+REASON_ALL_WITHHELD = "all claims below the inclusion threshold"
+
+
 def _narrative_reaction(r: ReactionEvent, d: DEC.DecisionEvent) -> UT.MarginReaction | None:
     """A clean narrative ``ALL_WITHHELD`` abstain-verdict → a joint (u(wrong), κ_att) margin
     observation at the marginal claim's ``p_max`` (§7.1). Both valences fold (the ``bad`` rows
     are the only counter-pressure); the ``bad`` rows are coverage-gated; ``NO_CLAIMS`` (no
     ``p_max``) does not fold. The which-claim residual is left unmeasured — the §14 successor
     must elicit it cheaply (a bit per claim), never as free text."""
-    from life_agent.core import narrative as N  # lazy: keep the import graph acyclic
-    if d.posterior_summary.get("abstain_reason") != N.REASON_ALL_WITHHELD:
+    if d.posterior_summary.get("abstain_reason") != REASON_ALL_WITHHELD:
         return None
     raw = d.posterior_summary.get("marginal_credence")
     if raw is None:
@@ -197,6 +201,23 @@ def _narrative_reaction(r: ReactionEvent, d: DEC.DecisionEvent) -> UT.MarginReac
         coeffs=(("kappa_att", -1.0), ("u_wrong", p * (1.0 - p))),
         offset=-(p ** 2), reacted=(r.valence == "good"), sign=-1.0,
         tau_group="narrative")
+
+
+def ask_recovery_rate(decisions_path: Path, reactions_path: Path) -> float:
+    """The measured recovery rate of an enacted ask — P(the owner's reply settled it | an
+    ask_clarify was committed), read as the latest verdict on each ask decision, as the
+    Beta(1, 1) posterior mean ``(n_good + 1) / (n + 2)``. With no ask ever recorded (true
+    at 2026-09-19: 0 of 3 865 decisions) this is the prior mean 0.5, and the ask row is
+    priced by that prior alone (`core.decide`)."""
+    asks = {d.decision_id for d in DEC.read(decisions_path) if d.chosen_action == "ask_clarify"}
+    if not asks:
+        return 0.5
+    latest: dict[str, str] = {}
+    for r in read(reactions_path):
+        if r.decision_id in asks and r.kind == "verdict" and r.valence in ("good", "bad"):
+            latest[r.decision_id] = r.valence
+    n = len(latest)
+    return (sum(v == "good" for v in latest.values()) + 1) / (n + 2)
 
 
 def load_reactions(reactions_path: Path,

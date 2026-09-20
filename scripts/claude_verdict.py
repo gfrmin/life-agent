@@ -11,7 +11,7 @@ OUTSIDE this script, in the session; nothing here calls a model or grades mechan
 (batch-deriving verdicts from a grader would re-create the extraction channel at
 owner-verdict authority).
 
-Verdicts bind to the engine at the next boot replay (``shadow.boot_snapshot`` — restart
+Verdicts bind to the engine at the next boot replay (``membrane.boot.boot_snapshot`` — restart
 the bridge to fold a fresh batch); there is no live tick in v0, disclosed here rather
 than hidden. PII stays on the terminal + under $LIFE_AGENT_KB; nothing is committed.
 

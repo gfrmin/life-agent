@@ -170,6 +170,32 @@ class DeliberateConfig:
     max_turns: int = 40
 
 
+def config_from_env() -> DeliberateConfig:
+    """The edge's config as every caller builds it: the claude CLI from the env, scratch
+    under the KB (transient, never the ledger), and the pkm MCP config resolved the way the
+    rest of the system resolves it (``config.PKM_CONFIG``: the env, else the user's).
+
+    A config that does not resolve to a file is refused LOUDLY and up front, because the
+    quiet failure is expensive: run 6 (2026-08-17) read the raw env here, got "" with
+    PKM_CONFIG unset, handed the CLI ``pkm --config "" serve``, and nine cold deliberates
+    ran without ever touching the corpus. One home for this, so a second caller cannot
+    re-acquire that bug.
+    """
+    from life_agent.core import config
+
+    pkm_cfg = config.PKM_CONFIG
+    if not pkm_cfg.is_file():
+        raise RuntimeError(
+            f"deliberate: PKM_CONFIG does not resolve to a file ({pkm_cfg}) — the pkm "
+            f"MCP server cannot start; set PKM_CONFIG (see .env) before enabling the "
+            f"deliberate edge")
+    return DeliberateConfig(
+        claude_bin=os.environ.get("LIFE_AGENT_CLAUDE_BIN", "claude"),
+        scratch_dir=config.KB / "tmp" / "deliberate",
+        pkm_config=str(pkm_cfg),
+    )
+
+
 @dataclass(frozen=True)
 class DeliberateResult:
     """One deliberative answer, fully priced. ``credence`` is the parsed self-report

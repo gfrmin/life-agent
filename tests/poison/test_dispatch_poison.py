@@ -27,9 +27,6 @@ _SRC = _ROOT / "src" / "life_agent"
 # called.
 
 _QUESTION_CONSUMERS: dict[str, frozenset[str]] = {
-    "terminals.answer": frozenset({
-        "_expand_terms", "_narrative_scored", "_rerank_hits", "build_query",
-        "intent_verdict", "lookup_answer", "owner_question", "synthesize"}),
     "executor.decide_via_loop": frozenset({"_obj", "post", "run_pass"}),
 }
 
@@ -82,7 +79,7 @@ def test_poison_the_bridge_serves_no_second_stage_router() -> None:
         "/route", "/retrieve", "/extract", "/narrative", "/probe/recency",
         "/probe/subject", "/probe/authority", "/probe/corroborate", "/probe/confirm",
         "/probe/deliberate", "/log_decision", "/log_reaction", "/log_gather",
-        "/decide-support", "/gate-support"}
+        "/decide"}
     extra = set(server._POST) - declared
     assert not extra, (
         f"the bridge serves undeclared endpoint(s) {sorted(extra)} — a second-stage "
@@ -121,7 +118,7 @@ def test_poison_grow_actuator_prices_are_frozen_whole() -> None:
     """F1, the recall half — the grow menu is priced data too."""
     got = tuple((a["probe"], a["cost"], a["alpha0"], a["beta0"])
                 for a in PRC.GROW_ACTUATORS)
-    assert got == (("retrieve_rerank", 0.004, 3.0, 7.0),
+    assert got == (("retrieve_rerank", 0.047, 3.0, 7.0),
                    ("retrieve_expand", 0.006, 3.5, 6.5),
                    ("re_extract_strong", 0.020, 4.0, 6.0)), (
         "a grow actuator was re-priced — same argmax move, same debt"

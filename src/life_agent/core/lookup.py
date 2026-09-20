@@ -1,44 +1,32 @@
-"""The lookup family — Ask v0's first typed question family (foundations §4).
+"""The lookup family's evidence shaping — a point-fact question into observations.
 
-V is a point fact ("what is my ID?", "when is the appointment?"). The pipeline, every
-stage on the ledger (system-design §3) and every modelling choice stated:
+V is a point fact ("what is my ID?", "when is the appointment?"). Every stage is on the
+ledger (system-design §3) and every modelling choice is stated:
 
-    route      cached local-model verdict: is this a typed lookup? (§4.1; misroutes
-               fall to the narrative path — the §9 no-hard-zeros routing)
+    route      cached model verdict: is this a verbatim point fact? A question that is not
+               is declined (the MVP bar, CLAUDE.md)
     observe    per retrieval hit, a question-parameterised grounded extraction (§18.9,
                cached on (question, chunk content); an ungrounded quote is recorded and
                treated as indeterminate — the grounding gate is error-model surgery)
-    posterior  noisy-channel mixture over candidate values + an explicit
-               none-of-the-retrieved atom, composed under §2's lineage rule: the
-               likelihood product is TEMPERED for shared instrument identity (one
-               extractor produced every observation) and shared evidence ancestry
-               (chunks of one document corroborate less than two documents) — stated
-               exponents below, conditioned through the credence skin
-    respond    optimise over {report, hedge, ask_clarify, abstain} under the §4.4
-               utility posterior's mean (the collapse theorem) — ask-about-U is
-               deliberately absent (passive learning until the governor)
-    render     deterministic templates from one grammar table (no LLM — the strongest
-               conformance: the render IS the claim set), citations per observation
-    decide     the decision logged (§8 — no EU decision is ever made unlogged)
+    dedup      correlated duplicates collapse before any posterior sees them
+    render     deterministic templates from one grammar table (no LLM — the render IS the
+               claim set), citations per observation
+
+The candidate posterior is :mod:`life_agent.core.posterior`; the act is
+:func:`life_agent.core.decide.bayes_act`, reached through :mod:`life_agent.core.decider`.
 
 Stated channel parameters (each a prior choice calibration will move — §2, §14):
-``A_ALTERNATIVES`` (effective wrong-value alternatives), ``reliability.PRIORS`` (the
-grounded-extraction reliability Beta prior, moved by audit outcomes — the
-``reliability_categorical`` rho prior the engine integrates exactly), ``ORACLE_P``
-(the owner-as-oracle prior for pricing ask_clarify), the declared source-authority
-classes (§4.1's v0 lattice), and the §4.1 covariate factors (``_A_SUBJECT_*`` /
-``_TIME_HALF_LIFE_YEARS`` / ``_A_TIME_UNKNOWN`` — doc_subject and doc_date enter
-a_i: a document about someone else, or from the wrong era, supports a different
-variable; construct validity, not noise).
+``reliability.PRIORS`` (the grounded-extraction reliability Beta prior, moved by audit
+outcomes), the declared source-authority classes (§4.1's v0 lattice), and the §4.1
+covariate factors (``_A_SUBJECT_*`` / ``_TIME_HALF_LIFE_YEARS`` / ``_A_TIME_UNKNOWN`` —
+doc_subject and doc_date enter a_i: a document about someone else, or from the wrong era,
+supports a different variable; construct validity, not noise).
 """
 from __future__ import annotations
 
-import atexit
-import dataclasses
 import hashlib
 import json
-import math
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -46,21 +34,15 @@ from typing import Any
 
 from life_agent.core import answer_shape as AS
 from life_agent.core import config
-from life_agent.core import decide as DEC_ATOM
-from life_agent.core import decisions as DEC
 from life_agent.core import derivations as D
 from life_agent.core import instrument as INSTR
 from life_agent.core import matching as MATCH
 from life_agent.core import outcomes as O
 from life_agent.core import reactions as R
-from life_agent.core import recorder as REC
 from life_agent.core import reliability as REL
-from life_agent.core import seam as SEAM
 from life_agent.core import utility as UT
-from life_agent.core.brain import Brain
 from life_agent.core.dates import parse_date as _parse_date
-from life_agent.core.decide import shaped_u_bar, u_assert
-from life_agent.core.pricing import A_ALTERNATIVES, ORACLE_P, P_NONE_PRIOR
+from life_agent.core.decide import shaped_u_bar
 
 # The route + extract instrument model (local Ollama deprecated 2026-08-17 — owner
 # directive, §14-registered; both verdicts are cached, so call counts are bounded by
@@ -223,10 +205,6 @@ _P_OWNER_GIVEN_INDET = 0.5   # P(the doc is about the owner | subject indetermin
 _TIME_HALF_LIFE_YEARS = 5.0  # current-state facts: P(assertion still current | doc age)
 _A_TIME_UNKNOWN = 0.6        # undated/underived doc date under a time-indexed construct
 
-# The response actions, in the optimise action-space order. Names are the
-# decisions.ACTIONS vocabulary; ask-about-U is deliberately absent (§4.4).
-_ACTION_ORDER: tuple[str, ...] = DEC.LOOKUP_ACTION_ORDER
-
 # Closed abstention reasons (the credence grammar — interaction contract).
 # The reason must be the TRUE one. These are not interchangeable labels: DISPERSED is a
 # statement about a posterior that existed and lost the EU argmax; NO_OBSERVATIONS is the
@@ -252,7 +230,6 @@ GRAMMAR: dict[str, str] = {
     # The endpoints are the candidates' own display strings (never a reformatted float: no
     # invented precision, no currency the corpus did not carry), and the credence is the
     # posterior mass the range covers, so a wider claim visibly buys its confidence.
-    "report_interval": "Between {lo} and {hi} — credence {p:.3f} {cites}",
     "hedge": "Unresolved — candidates: {alts}",
     "ask_clarify": "Worth asking you directly — the evidence does not settle it: {alts}",
     "abstain": "No answer asserted ({reason}).",
@@ -362,40 +339,6 @@ class Observation:
     #                              competition term, matching.quote_scoped_competitors) —
     #                              a read-side covariate like doc_date, never in the key
     competition_factor: float = 1.0  # the frozen n→factor map applied (1 or 1/2)
-
-
-@dataclass(frozen=True)
-class LookupResult:
-    """The family's full output — consumed by ask.py (render) and run_eval (grading)."""
-
-    question: str
-    construct: str
-    action: str                          # one of _ACTION_ORDER
-    eu: float
-    candidates: tuple[str, ...]          # display values, posterior order
-    credences: tuple[float, ...]         # aligned with candidates
-    p_none: float
-    observations: tuple[Observation, ...]
-    n_hits: int
-    n_indeterminate: int
-    utility_fold_version: str
-    answer_cache_key: str
-    rendered: str
-    # report_scoped inputs (scoped-claims design), recorded whether or not scoped was chosen:
-    # the freshest-record value + its as-of date, and p_attested (the record's recency-off
-    # support). The render uses them only when action == "report_scoped".
-    as_of: str | None = None
-    scoped_value: str | None = None
-    scoped_p: float = 0.0
-    # r30b: the interval claim the engine chose, and its coverage credence. Both None/0.0 on
-    # every other decision, so a reader that ignores them sees the pre-r30b result exactly.
-    # ``interval_p`` is display + record only — nothing selects an action by reading it (C8).
-    interval: DEC_ATOM.IntervalOption | None = None
-    interval_p: float = 0.0
-    # the route's time-indexing of the construct (a volatile attribute decays with document age;
-    # a permanent one does not). Surfaced so a downstream edge (the joint extractor) can apply the
-    # same recency model the single-pass path applies via its per-hit covariates.
-    time_indexed: bool = False
 
 
 def _sha(text: str) -> str:
@@ -749,7 +692,7 @@ def confirm_hits(root: Path, question: str, value: str, hits: list[dict[str, Any
     return observations, indeterminate
 
 
-# --- the posterior (pure builders; conditioning through the credence skin) -------------
+# --- evidence shaping (pure builders) ----------------------------------------------------
 
 def candidates_from(observations: list[Observation]) -> list[str]:
     """Distinct candidate values in first-seen order; display form = first raw form.
@@ -842,243 +785,13 @@ def dedup_drop_rows(rows: list[tuple[str, str, str, float]]) -> set[int]:
     return drop
 
 
-def _v_marginal(brain: Brain, state_id: str) -> list[float]:
-    """The V posterior MARGINALISED over the continuous rho-latent: the `reliability_categorical`'s
-    `weights` — the engine integrates rho analytically (an exact Beta-moment sum). A readout
-    (render order / p_none / p_attested / gather ranking) — the body never folds rho itself
-    (Invariant 1). Layout: candidates 0..k-1 then NONE last."""
-    return brain.weights(state_id)
+# --- the utility fold (per-process, lazily) ----------------------------------------------
 
-
-def lookup_posterior(brain: Brain, observations: list[Observation],
-                     candidates: list[str], rho_ab: tuple[float, float]
-                     ) -> tuple[list[float], str]:
-    """The candidate+NONE posterior under the EXACT correlated-evidence model (replacing the §4.2
-    host tempering): a `reliability_categorical` — a categorical over the K candidates + NONE with a
-    CONTINUOUS Beta reliability latent rho (the carried extractor reliability, prior = the Beta
-    `rho_ab`). Observations group BY DOCUMENT (artifact); each group conditions via a
-    `group_noisy_channel` (covariate = authority·subject·time of the doc, A alternatives) on the
-    group's reported candidate-positions (1-based atom values; same-doc reports are correlated,
-    sharing r_d = rho·covariate, rho coupling the groups). The engine integrates rho ANALYTICALLY —
-    the group-channel is linear in rho, so a Beta prior stays a polynomial-in-rho x Beta and the
-    V-marginal is an exact Beta-moment sum, NO grid. Returns (the rho-marginalised V weights with
-    NONE last, the live state id — open for `optimise`; the caller destroys it)."""
-    k = len(candidates)
-    # stated V prior: P_NONE_PRIOR on none-of-the-retrieved, the rest uniform over candidates.
-    v_prior = [(1.0 - P_NONE_PRIOR) / k] * k + [P_NONE_PRIOR]
-    alpha, beta = rho_ab
-    state_id = brain.create_state({
-        "type": "reliability_categorical",
-        "v_log_weights": [math.log(w) for w in v_prior],
-        "alpha": alpha, "beta": beta,
-    })
-    keys = [_candidate_key(c) for c in candidates]
-    # NB: correlated-duplicate collapse (§5 dedup — correlation collapse) happens
-    # UPSTREAM in observe_hits,
-    # the shared shaper both deciders consume — so this builder and the daemon's
-    # reliability_categorical see identical, already-deduped evidence. Do not re-dedup here: that
-    # asymmetry (host deciding-time temper the daemon lacked) was the regression 546f1a5 half-fixed.
-    groups: dict[str, list[Observation]] = {}
-    for o in observations:
-        groups.setdefault(o.artifact_cache_key, []).append(o)
-    for group in groups.values():
-        o0 = group[0]  # one document's covariates are shared by all its chunks
-        # [§3.3 · L-10] §4.2's competition term: chunk-level, so the group covariate
-        # takes the group's
-        # most-competed observation (min factor — the conservative fold; mirrors the
-        # daemon's per-observation r product on the executor path).
-        covariate = _covariate(o0) * min(o.competition_factor for o in group)
-        reports = [keys.index(_candidate_key(o.value_raw)) + 1 for o in group]  # 1-based atom value
-        kernel = {"type": "group_noisy_channel", "covariate": covariate,
-                  "n_alternatives": A_ALTERNATIVES}
-        brain.condition(state_id, kernel=kernel, observation=reports)
-    return _v_marginal(brain, state_id), state_id
-
-
-def action_utilities(weights: list[float], u_bar: dict[str, float], *,
-                     scoped: dict[int, float] | None = None,
-                     intervals: Sequence[DEC_ATOM.IntervalOption] = (),
-                     ) -> dict[str, list[float]]:
-    """Per-action utility vectors over the hypothesis atoms (K candidates + NONE), derived from
-    :func:`life_agent.core.decide.u_assert` (the one written atom). `report_j` (one per candidate)
-    asserts candidate j — ``u_assert(1)`` at j, ``u_assert(0)`` = u_wrong elsewhere incl NONE — so
-    `optimise` picks the best report and the MAP candidate emerges from the ENGINE, never a host
-    argmax. hedge asserts the candidate set (misleading only when the truth is NONE); ask_clarify
-    is the oracle price (NOT a u_assert outcome); abstain is the gauge zero.
-
-    ``report_scoped_j`` (one per DATED candidate — M5/r15 L-3) asserts a TRUE time-scoped
-    claim ("as of <date>, X_j"). Its truth is about the *record*, not which V_now holds,
-    so each row is **flat** at its ``scoped[j]`` — the attested-record EU computed
-    SERVER-SIDE off the recency-off posterior (``expect`` in :func:`_scoped_options`),
-    never a host ``p_attested*u_hedged + …``. No dated candidate ⇒ NO scoped rows (an
-    empty option set, no EU mass — the censused endpoint).
-
-    ``intervals`` (r30b) places one row per priced interval proposal VERBATIM — the row was
-    built once by :func:`life_agent.core.decide.interval_options` and is not re-derived here
-    (C3: one declaration, two lanes). Empty off the ``quantity`` shape, so the returned table
-    is byte-identical to pre-r30b on every other question (C2)."""
-    k = len(weights) - 1
-    u_correct = u_assert(1.0, u_bar)
-    u_wrong = u_assert(0.0, u_bar)
-    out: dict[str, list[float]] = {}
-    for j in range(k):
-        out[f"report_{j}"] = [(u_correct if i == j else u_wrong) for i in range(k)] + [u_wrong]
-    out["hedge"] = [u_bar["u_hedged"]] * k + [u_wrong]
-    out["ask_clarify"] = [ORACLE_P * u_bar["u_correct"] - u_bar["lambda_int"]] * (k + 1)
-    out["abstain"] = [u_bar["u_abstain"]] * (k + 1)
-    for j, eu_j in sorted((scoped or {}).items()):
-        out[f"report_scoped_{j}"] = [eu_j] * (k + 1)
-    for opt in intervals:
-        out[opt.name] = list(opt.values)
-    return out
-
-
-# functional_per_action ignores the action space; a placeholder keeps the protocol shape.
-_LOOKUP_ACTIONS: dict[str, Any] = {"type": "finite", "values": [0.0]}
-
-
-def decide(brain: Brain, state_id: str, weights: list[float],
-           u_bar: dict[str, float], scoped: dict[int, float] | None = None,
-           intervals: Sequence[DEC_ATOM.IntervalOption] = (),
-           ) -> tuple[str, float, int | None, DEC_ATOM.IntervalOption | None]:
-    """`optimise` over the response actions on the live rho-latent state, committed through
-    the ONE act seam (:func:`life_agent.core.seam.commit` — roadmap M0). `report` expands into
-    a per-candidate `report_j` so the engine picks the asserted candidate (no host argmax); a
-    `report_j` winner maps to action ``report`` (its candidate is the weight-MAP = the weight-sorted
-    ``candidates[0]`` the caller renders — a render label, not a second decision).
-    ``scoped`` prices one ``report_scoped_j`` row per dated candidate (M5/r15 L-3 — the
-    engine picks the scoped value too); a ``report_scoped_j`` winner maps to
-    ``("report_scoped", eu, j, None)`` so the caller renders THAT candidate's claim.
-
-    ``intervals`` (r30b) prices one row per interval proposal. An ``interval_a_b`` winner maps
-    to ``("report", eu, None, option)``: an interval is the SAME speech act at a different
-    precision, not a new action, so the response vocabulary does not grow (C5) — what changes
-    is the claim the caller renders and records."""
-    utilities = action_utilities(weights, u_bar, scoped=scoped, intervals=intervals)
-    preference = {
-        "type": "functional_per_action",
-        "actions": {name: {"type": "tabular", "values": vec} for name, vec in utilities.items()},
-    }
-    dec = SEAM.commit(SEAM.SkinOptimise(brain=brain, state_id=state_id,
-                                        actions=_LOOKUP_ACTIONS, preference=preference))
-    action, eu = dec.action, dec.eu
-    assert eu is not None  # a SkinOptimise commit always carries the engine's EU
-    scoped_j: int | None = None
-    chosen = DEC_ATOM.interval_by_name(intervals, action)
-    if chosen is not None:
-        return "report", eu, None, chosen
-    if isinstance(action, str) and action.startswith("report_scoped_"):
-        scoped_j = int(action.rsplit("_", 1)[1])
-        action = "report_scoped"
-    elif isinstance(action, str) and action.startswith("report_"):
-        action = "report"  # report_j → report; the asserted value is the weight-MAP candidate
-    return action, eu, scoped_j, None
-
-
-def interval_coverage(candidates: Sequence[str], credences: Sequence[float], *,
-                      lo: float, hi: float) -> float:
-    """The interval claim's own credence: the posterior mass on the candidates the range
-    covers. The ONE derivation (C8) — a SUM over the belief, for the render and the record.
-    Nothing selects an action by reading it; the engine already chose (Invariant 1)."""
-    return sum(p for c, p in zip(candidates, credences, strict=True)
-               if (v := AS.numeric_value(c)) is not None and lo <= v <= hi)
-
-
-# --- render (deterministic — the render IS the claim set) -------------------------------
-
-def render(result: LookupResult) -> str:
-    """The credence grammar (interaction contract): claims with credences, citations
-    per observation, the posterior named in the footer — nothing silent."""
-    by_value: dict[str, list[int]] = {}
-    for o in result.observations:
-        by_value.setdefault(_candidate_key(o.value_raw), []).append(o.card_n)
-
-    def _cites(value: str) -> str:
-        ns = sorted(set(by_value.get(_candidate_key(value), [])))
-        return "".join(f"[{n}]" for n in ns)
-
-    alts = " · ".join(
-        f"{v} ({p:.3f}) {_cites(v)}".rstrip()
-        for v, p in zip(result.candidates, result.credences, strict=True))
-    if result.action == "report" and result.interval is not None:
-        # r30b: the claim is a RANGE — cite every covered candidate's cards, so the reader
-        # sees what the range is standing on, not just its endpoints.
-        iv = result.interval
-        covered = [c for c in result.candidates
-                   if (num := AS.numeric_value(c)) is not None and iv.lo <= num <= iv.hi]
-        ns = sorted({n for c in covered for n in by_value.get(_candidate_key(c), [])})
-        body = GRAMMAR["report_interval"].format(
-            lo=iv.lo_label, hi=iv.hi_label, p=result.interval_p,
-            cites="".join(f"[{n}]" for n in ns)).rstrip()
-    elif result.action == "report":
-        v = result.candidates[0]
-        body = GRAMMAR["report"].format(value=v, p=result.credences[0],
-                                        cites=_cites(v))
-    elif result.action == "report_scoped":
-        v = result.scoped_value or ""
-        body = GRAMMAR["report_scoped"].format(value=v, as_of=result.as_of,
-                                               p=result.scoped_p, cites=_cites(v))
-    elif result.action == "hedge":
-        body = GRAMMAR["hedge"].format(alts=alts)
-    elif result.action == "ask_clarify":
-        body = GRAMMAR["ask_clarify"].format(alts=alts)
-    elif (DEC.withhold_reason(effector=result.action, candidates=result.candidates)
-          == "dispersed"):
-        # D-5 (M5, r15): the reason is the ONE derivation over the decision record.
-        body = GRAMMAR["abstain_withheld"].format(reason=REASON_DISPERSED, alts=alts)
-    else:
-        # miss — no posterior ever existed, so "dispersed" would be a false reason
-        # (interaction contract: the named reason must be the true one).
-        body = GRAMMAR["abstain"].format(reason=REASON_NO_OBSERVATIONS)
-    footer = GRAMMAR["footer"].format(
-        n_hits=result.n_hits, n_obs=len(result.observations),
-        n_ind=result.n_indeterminate, p_none=f"{result.p_none:.3f}",
-        action=result.action, eu=f"{result.eu:.2f}")
-    return f"{body}\n\n{footer}"
-
-
-# --- the shared brain + utility fold (per-process, lazily) -------------------------------
-
-_BRAIN: Brain | None = None
-# r30 (`docs/unification/reports/r30-units-lever.md`): the engine fold is memoised per
-# fold_version (unchanged cost — one engine round trip per evidence movement); the cheap,
+# The fold is memoised per fold_version (recomputed only when evidence moves); the cheap,
 # pure per-shape scaling (decide.shaped_u_bar) is memoised separately per (fold_version,
-# shape), so a second question's DIFFERENT shape never re-runs the engine fold.
+# shape), so a second question's DIFFERENT shape never re-runs the fold.
 _U_BAR_RAW: tuple[str, dict[str, float]] | None = None       # (fold_version, raw u_bar)
 _U_BAR_SHAPED: dict[tuple[str, str], dict[str, float]] = {}  # (fold_version, shape) -> Ū
-
-
-def shared_brain() -> Brain:
-    """One skin process per ask session (REPL pays the spawn once; one-shot per run —
-    the §14 throughput question measures exactly this)."""
-    global _BRAIN
-    if _BRAIN is None:
-        _BRAIN = Brain.spawn()
-        _BRAIN.initialize()
-        atexit.register(_shutdown)
-    return _BRAIN
-
-
-def _shutdown() -> None:
-    global _BRAIN
-    if _BRAIN is not None:
-        _BRAIN.shutdown()
-        _BRAIN = None
-
-
-def set_shared_brain(brain: Brain | None) -> None:
-    """Install (or clear) the process's shared skin — **the instrument seam, not a lane**.
-
-    The only sanctioned caller is the module-collapse equivalence instrument
-    (:mod:`life_agent.collapse`), which records the engine wire once and replays it with no
-    engine present; :func:`life_agent.core.narrative.narrative_answer` reaches the skin
-    through :func:`shared_brain` rather than a parameter, so an off-path replay needs this
-    seam to reach it. Nothing on the decision path may call it — a second installer would be
-    a way to swap the engine underneath a live decision, which is precisely the fork the one
-    act seam exists to prevent. Drift-gated in ``tests/test_collapse_record.py``.
-    """
-    global _BRAIN
-    _BRAIN = brain
 
 
 U_BAR_POLICY = "all-to-date"  # the decider's declared evidence regime (design §3.1, Q-O5)
@@ -1088,10 +801,10 @@ def current_u_bar(*, shape: str = AS.DEFAULT_SHAPE) -> tuple[dict[str, float], s
     """Ū from the utility posterior (fold of model + elicitations + the verdict→evidence
     projection — the ``all-to-date`` regime, declared once above), SCALED for one
     question's answer ``shape`` (r30, `decide.shaped_u_bar` — the ONLY place a scale
-    applies; C5). The engine fold is cached per fold version within the process — it is
+    applies; C5). The fold is cached per fold version within the process — it is
     recomputed only when evidence moves, never when only ``shape`` changes, so every
-    caller (lookup, narrative, the bridge's grow-menu pricing) can classify its own
-    question and ask for its own shape at no extra engine cost. Returns
+    caller (the bridge's decider and its grow-menu pricing) can classify its own
+    question and ask for its own shape at no extra cost. Returns
     ``(u_bar, fold_version, policy)``: the policy the fold ACTUALLY ran under, so a record
     stamps what was used, never an independent literal (M3, r13)."""
     global _U_BAR_RAW
@@ -1115,222 +828,3 @@ def current_u_bar(*, shape: str = AS.DEFAULT_SHAPE) -> tuple[dict[str, float], s
 
 # --- the family, end to end --------------------------------------------------------------
 
-def _scoped_options(brain: Brain, observations: list[Observation],
-                    candidates: list[str], rho_ab: tuple[float, float], *,
-                    u_bar: dict[str, float], state_current: str,
-                    weights_current: list[float], time_indexed: bool,
-                    ) -> dict[int, tuple[float, float, str]]:
-    """The report_scoped inputs (scoped-claims design, per-candidate since M5/r15 L-3):
-    every candidate with a DATED observation gets its own scoped option — the ENGINE
-    picks among them (a ``report_scoped_j`` row each, priced beside the other actions);
-    the host pick of V_s (the freshest dated) DIED. Returns ``{j: (scoped_eu_j,
-    p_attested_j, as_of_j)}``; ``as_of_j`` is candidate j's freshest supporting
-    doc_date. ``scoped_eu_j`` is the attested-record EU computed SERVER-SIDE —
-    ``expect(recency-off posterior, tabular[u_hedged @ j, u_wrong_scoped elsewhere])``
-    — never a host product on a belief value. Empty when no observation carries a date
-    (scoped disabled — an EMPTY option set, no EU mass; the old flat 0.0 row died).
-    The attested posterior is the current one when recency was already off (a
-    permanent fact), else a second pass with the time decay removed."""
-    keys = [_candidate_key(c) for c in candidates]
-    dated_by_j: dict[int, str] = {}
-    for o in observations:
-        if not o.doc_date:
-            continue
-        j = keys.index(_candidate_key(o.value_raw))
-        if o.doc_date > dated_by_j.get(j, ""):
-            dated_by_j[j] = o.doc_date
-    if not dated_by_j:
-        return {}
-    k = len(candidates)
-    sid, weights_attested = state_current, weights_current
-    fresh_sid = None
-    if time_indexed:
-        attested_obs = [dataclasses.replace(o, time_factor=1.0) for o in observations]
-        weights_attested, fresh_sid = lookup_posterior(brain, attested_obs,
-                                                       candidates, rho_ab)
-        sid = fresh_sid
-    try:
-        out: dict[int, tuple[float, float, str]] = {}
-        for j, as_of in sorted(dated_by_j.items()):
-            scoped_tab = {
-                "type": "tabular",
-                "values": [(u_bar["u_hedged"] if i == j else u_bar["u_wrong_scoped"])
-                           for i in range(k)] + [u_bar["u_wrong_scoped"]]}
-            out[j] = (brain.expect(sid, function=scoped_tab), weights_attested[j], as_of)
-    finally:
-        if fresh_sid is not None:
-            brain.destroy_state(fresh_sid)
-    return out
-
-
-def decide_and_record(root: Path, question: str, construct: str,
-                      observations: list[Observation], indeterminate: int, *,
-                      n_hits: int, time_indexed: bool,
-                      brain: Brain | None = None,
-                      decisions_path: Path | None = None,
-                      run_id: str = "ask",
-                      rho_override: tuple[float, float] | None = None) -> LookupResult:
-    """The lookup family's tail: a grounded observation set → the rho-latent correlated-evidence
-    posterior → EU decision under Ū → recorded answer (§18.9) + logged decision (§8). Shared by
-    the single-pass :func:`lookup_answer` and the gather-augmented loop
-    (:mod:`life_agent.core.gather`): both produce observations, then value and record them
-    identically. ``time_indexed`` enters the answer key + content (an auditable decision
-    input — the gather loop may set it differently from the route). Assumes
-    ``observations`` is non-empty (its caller routes the empty case to narrative).
-
-    ``rho_override`` replaces the local-extractor reliability Beta for an observation set
-    produced by a DIFFERENT instrument (the ``extract@<model>`` joint edge folds its calibrated
-    confidence here, not the local ``extractor_reliability``)."""
-    b = brain if brain is not None else shared_brain()
-    # r30 (C5): the question's own answer shape prices its own decision — never a
-    # separate rescoring, always through current_u_bar's one seam.
-    shape = AS.answer_space(question)
-    u_bar, fold_ver, _policy = current_u_bar(shape=shape)
-    rho = rho_override if rho_override is not None else extractor_reliability()
-    candidates = candidates_from(observations)
-    weights, state_id = lookup_posterior(b, observations, candidates, rho)
-    # r30b: the `quantity` shape's claim space — one priced row per interval proposal,
-    # built ONCE by the shared declaration and ranked by the same optimise call. Empty on
-    # every other shape, so the action set is byte-identical there (C2/C3).
-    intervals = DEC_ATOM.interval_options(candidates, u_bar, shape=shape)
-    try:
-        scoped_opts = _scoped_options(
-            b, observations, candidates, rho,
-            u_bar=u_bar, state_current=state_id,
-            weights_current=weights, time_indexed=time_indexed)
-        action, eu, scoped_j, interval = decide(
-            b, state_id, weights, u_bar,
-            scoped={j: t[0] for j, t in scoped_opts.items()},
-            intervals=intervals)
-    finally:
-        b.destroy_state(state_id)
-    # The recorded scoped triple (the deferred upgrade governor's evidence — the true
-    # partial that was available): the CHOSEN row's when the engine picked one, else
-    # the engine-best row's (max scoped_eu_j). None/0.0 when no candidate is dated.
-    best_j = (scoped_j if scoped_j is not None
-              else (max(scoped_opts, key=lambda j: scoped_opts[j][0])
-                    if scoped_opts else None))
-    if best_j is not None:
-        _scoped_eu_j, p_attested, as_of = scoped_opts[best_j]
-        scoped_value: str | None = candidates[best_j]
-    else:
-        p_attested, as_of, scoped_value = 0.0, None, None
-
-    # posterior order for rendering: candidates by weight, NONE mass separate
-    # (D-4: the one leader label-view)
-    order = DEC.leader_order(weights[:len(candidates)])
-    cands = tuple(candidates[j] for j in order)
-    creds = tuple(weights[j] for j in order)
-    p_none = weights[-1]
-    interval_p = (interval_coverage(cands, creds, lo=interval.lo, hi=interval.hi)
-                  if interval is not None else 0.0)
-
-    # the answer artifact (§18.9): claim set + posterior + decision inputs, lineage to
-    # every observation — the lookup family's computation stays on the ledger. The
-    # per-observation covariate factors are decision inputs, so they enter both the
-    # key (via params) and the recorded content (auditability).
-    obs_covariates = [
-        {"obs": o.obs_cache_key, "subject_factor": o.subject_factor,
-         "time_factor": o.time_factor, "n_competing": o.n_competing,
-         "competition_factor": o.competition_factor}
-        for o in observations]
-    params = {"A": A_ALTERNATIVES, "oracle_p": ORACLE_P,
-              "competition_cap": _COMPETITION_CAP,
-              "p_none_prior": P_NONE_PRIOR, "rho": list(rho),
-              "a_subject_other": _A_SUBJECT_OTHER,
-              "p_owner_indet": _P_OWNER_GIVEN_INDET,
-              "time_half_life_years": _TIME_HALF_LIFE_YEARS,
-              "a_time_unknown": _A_TIME_UNKNOWN,
-              "time_indexed": time_indexed,
-              "p_attested": round(p_attested, 6),  # the report_scoped decision input
-              "covariates": _sha(json.dumps(obs_covariates, sort_keys=True))}
-    obs_hash = _sha(json.dumps(sorted(o.obs_cache_key for o in observations)))
-    akey = D.lookup_answer_key(question, obs_hash, fold_ver, params)
-    content = json.dumps({
-        "format_version": 1, "question": question, "construct": construct,
-        "time_indexed": time_indexed, "covariates": obs_covariates,
-        "candidates": list(cands), "credences": list(creds), "p_none": p_none,
-        "action": action, "eu": eu, "utility_fold_version": fold_ver,
-        # the scoped option recorded whether or not it was chosen — the deferred upgrade
-        # governor's evidence (scoped-claims design §6): the true partial that was available.
-        "scoped": {"value": scoped_value, "as_of": as_of,
-                   "p_attested": round(p_attested, 6)},
-        # r30b: the chosen interval claim, present ONLY when one was chosen — a key added
-        # unconditionally would move every recorded artefact's bytes for nothing.
-        **({"interval": {**interval.claim(), "p": round(interval_p, 6)}}
-           if interval is not None else {}),
-    }, sort_keys=True, ensure_ascii=False).encode("utf-8")
-    # unique inputs, first-occurrence order: two observations can share one extract key
-    # (identical chunk text — observe_hits keys on the chunk, not the artefact); the
-    # catalogue's lineage key is (artifact, input), so the observation is ONE input (§18.9)
-    result = LookupResult(
-        question=question, construct=construct, action=action, eu=eu,
-        candidates=cands, credences=creds, p_none=p_none,
-        observations=tuple(observations), n_hits=n_hits,
-        n_indeterminate=indeterminate, utility_fold_version=fold_ver,
-        answer_cache_key=akey.cache_key, rendered="",
-        as_of=as_of, scoped_value=scoped_value, scoped_p=p_attested,
-        time_indexed=time_indexed, interval=interval, interval_p=interval_p)
-    result = dataclasses.replace(result, rendered=render(result))
-
-    # M2 (design §5.1): the decision's two records — the §18.9 answer node and the ledger
-    # row — are the ONE recorder's; the decision_id = akey.cache_key rule rides verbatim.
-    REC.record_local(
-        root, akey, content,
-        lineage=[{"cache_key": k, "role": "observation"}
-                 for k in dict.fromkeys(o.obs_cache_key for o in observations)],
-        decisions_path=(decisions_path if decisions_path is not None
-                        else config.DECISIONS_LOG),
-        event=DEC.DecisionEvent(
-            tx_time=O.now_iso(), run_id=run_id,
-            question_id=DEC.question_id(question),
-            family="lookup",
-            action_set=_ACTION_ORDER,
-            posterior_summary={
-                "candidates": list(cands), "credences": list(creds),
-                "p_none": p_none, "n_obs": len(observations),
-                "n_indeterminate": indeterminate,
-                "n_competing": sum(1 for o in observations if o.n_competing),
-            },
-            utility_fold_version=fold_ver,
-            chosen_action=action, predicted_eu=eu,
-            # M5 (r15, §2.3): the leaf ranks over T by the skin — DECLARED, not the
-            # silently-wrong "full" default (regime is the decision-space fact).
-            regime="terminals-only", policy=U_BAR_POLICY, defaulted=(),
-            decision_id=akey.cache_key))
-    return result
-
-
-def lookup_answer(root: Path, question: str, hits: list[dict[str, Any]], *,
-                  scope: str = "unscoped",
-                  brain: Brain | None = None,
-                  route_client: Any | None = None,
-                  extract_client: Any | None = None,
-                  covariates: HitCovariates | None = None,
-                  decisions_path: Path | None = None,
-                  run_id: str = "ask",
-                  ) -> LookupResult | None:
-    """Run the single-pass lookup family over admitted hits. None ⇒ the narrative path
-    answers (not routed as a lookup, or zero grounded observations — a coverage statement,
-    not an abstention; the caller names the fallthrough). The gather-augmented variant is
-    :func:`life_agent.core.gather.gather_answer`; both share :func:`decide_and_record`.
-
-    ``scope`` is the question's temporal intent (:mod:`life_agent.core.temporal_intent`). The
-    recency decay assumes a PRESENT reading; a ``historical``/``as_of`` question must NOT penalise
-    old attested values (you want the era value, not the current one), so it suppresses the decay
-    (``time_indexed`` off). ``present``/``unscoped`` keep the construct's volatility verdict —
-    unchanged on the present-tense path. Gate-safe: it only ever REMOVES a penalty."""
-    route = route_question(root, question, client=route_client)
-    if route is None:
-        return None
-    effective_ti = route.time_indexed and scope not in ("historical", "as_of")
-    observations, indeterminate = observe_hits(root, question, hits,
-                                               client=extract_client,
-                                               covariates=covariates,
-                                               time_indexed=effective_ti)
-    if not observations:
-        return None
-    return decide_and_record(
-        root, question, route.construct, observations, indeterminate,
-        n_hits=len(hits), time_indexed=effective_ti, brain=brain,
-        decisions_path=decisions_path, run_id=run_id)

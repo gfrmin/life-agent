@@ -5,9 +5,9 @@ working method; nothing here overrides it. The vocabulary (`World`, `Prior`, cha
 is the entity-resolution core's, so that when the core is extracted from hkaddresses into its own public repo, this repo
 and hkaddresses are two conforming instances of it.
 
-One sentence: **an answer is a Bayes act under a stated loss, chosen by the proplang engine,
-over a posterior on candidate spans, where the likelihood is a noisy channel of typed
-extraction observations.**
+One sentence: **an answer is a Bayes act under a stated loss (`core/decide.bayes_act`), over a
+posterior on candidate spans, where the likelihood is a noisy channel of typed extraction
+observations.**
 
 ## 1. The world
 
@@ -56,9 +56,9 @@ counted as independent. Duplicates are removed first (§5 dedup: quote, document
 ## 3. Inference
 
 Prior: `P(NONE) = 0.5`, the rest uniform over the `K` candidates. Posterior by conditioning on
-each observation in order, in log space (`prob_eps = 1e-12`). Today this fold runs in the Julia
-answer-brain daemon; J1 ports it to `core/posterior.py`, pinned bit-for-bit to 314 recorded
-exchanges, and J5 replaces it with the published core.
+each observation in order, in log space (`prob_eps = 1e-12`). The fold runs in
+`core/posterior.py`, pinned to the Julia engine's 605 recorded decides (within 1e-15; the last
+ulp differs), and J5 replaces it with the published core.
 
 **A-CAL — the posterior is calibrated.** The commit bar is a threshold on the posterior's
 value, so the argmax is only sound if the credences mean what they say. It is measured
@@ -66,35 +66,49 @@ value, so the argmax is only sound if the credences mean what they say. It is me
 
 ## 4. Decision
 
-The engine chooses one action per question from a **host-declared menu**:
+`core/decide.bayes_act` chooses one action per question from the **declared menu**: the
+argmax of expected utility at `p1`, the MAP candidate's credence (P(asserting now is right)),
+ties to the first-listed row:
 
 | action | effect | loss / price |
 |---|---|---|
 | `respond` | commit the leader span with its citation | `u_correct = +1` if right, `u_wrong = −9` if wrong |
 | `abstain` | decline | `u_abstain = 0` |
-| `gather` | run the cheapest unapplied evidence transform, then decide again | price of the transform |
-| `ask` | ask the owner a clarifying question | price of the owner's attention |
+| `gather` | run the cheapest unapplied evidence transform, then decide again | the transform's price; the measured value of the gather sequence (below) |
+| `ask` | ask the owner a clarifying question | the owner's attention; recovers the answer at the measured rate `r_a` |
 | `escalate@r` | hand the question to rung `r` (J1–J2) | the rung's price, and its learned reliability `p_r` |
 
 **The loss is data.** `u_correct = +1` and `u_abstain = 0` are the gauge's two pins;
-`u_wrong` is an elicited latent (−9, the owner's 10:1) and `lambda_usd` converts spend. With
-`respond` vs `abstain` alone the commit bar is `p* = |u_wrong|/(1 + |u_wrong|) = 0.90` —
-Chow's reject rule exactly, and the same α/β = 9 as hkaddresses' `loss.yaml`.
+`u_wrong` is a posterior (prior mean −9, the owner's 10:1, folded from reactions) and
+`lambda_usd` converts spend. The decider reads the folded means. With `respond` vs `abstain`
+alone the commit bar is `p* = |u_wrong|/(1 + |u_wrong|)` — Chow's reject rule, 0.90 at the
+prior (the same α/β = 9 as hkaddresses' `loss.yaml`), 0.84 folded today. The bar is derived,
+never set.
+
+**Evidence rows are measured, never perfect information.** `gather` is priced by what the
+gather sequence was observed to end in: per leader state (right or wrong), the chances of a
+correct report, a wrong one, or a withhold (`core/gather_row.py`: a two-component mixture
+over every recorded decide that chose to gather, weighted by its `p1`, fit by EM under a
+Dirichlet(2, 2, 2) prior; `scripts/fit_gather_row.py` fits it from the m5-base sequences).
+The row is linear in `p1` like the others. Unfitted, both states read the prior mean and
+gathering never pays. `ask` recovers the answer at a measured rate `r_a` (Beta(1, 1) mean
+0.5 unmeasured). A preposterior over the current posterior is a door (ROADMAP).
 
 **Escalation.** A rung fires only when `p_r·u_correct + (1 − p_r)·u_wrong − λ$·price`
 beats every local action, so at `u_wrong = −9` a rung needs `p_r` above 0.90 net of price.
 Rungs: (1) a strong model over a wide retrieval window with a citation audit; (2) Claude Code
 over the corpus (`claude -p` with the pkm MCP server). Each rung's `p_r` is learned from
-verdicts by the engine.
+verdicts (a Beta per rung).
 
 **Privacy is a constraint, not a price.** A document marked SEALED makes every disclosing
 rung infeasible for that question: the host withholds those menu rows. Every chunk that
 crosses to a rung is a disclosure record.
 
-**Division of labour.** The host declares the menu, the prices and the utility; the engine
-owns inference over action reliabilities and the argmax (`proplang/appendage-spec.md`: the
-host owns preferences, the language owns inference). Observation likelihoods never enter the
-engine; the engine's output is one action.
+**Division of labour.** `core/posterior.py` computes the candidate posterior;
+`core/utility.py` folds the loss; `core/decide.bayes_act` takes the act; `core/enact.py`
+turns it into a reply (the MAP candidate on `respond`, the cheapest open transform on
+`gather`). proplang, as an engine for the act, is deferred until it beats this on the board
+(ROADMAP).
 
 ## 5. Laws
 
@@ -103,14 +117,14 @@ Each is a test or a failing check, not a guideline.
 1. **Never invent.** A `respond` names a candidate with at least one grounded observation;
    otherwise the act is not available.
 2. **String-blind.** The decider receives indices and numbers, never candidate text.
-3. **One argmax.** No module outside the engine ranks actions. Decider modules carry no
-   numeric weight other than 0 and 1.
+3. **One argmax.** No module but `core/decide.bayes_act` ranks actions; its callers are
+   drift-gated (`tests/test_decider.py`).
 4. **Provenance.** Every reply carries its origin; every commit, its citation and credence.
 5. **Write-once records.** Decision, disclosure and verdict rows are never edited; a
    retraction is a new row.
 6. **One home per constant.** Channel constants, prices and the action vocabulary are each
    declared once (`core/pricing.py`) and bound everywhere else.
-7. **Named degradation.** Engine down ⇒ the reply says so; there is no fallback decider. A
+7. **Named degradation.** Bridge down ⇒ the reply says so; there is no fallback decider. A
    failed rung ⇒ a disclosure row and no answer.
 8. **Correlated evidence is tempered.** Copies of one attestation never count as independent.
 9. **Feasibility is structural.** A SEALED document can never reach a disclosing rung.
@@ -119,6 +133,8 @@ Each is a test or a failing check, not a guideline.
 ## 6. Scoreboard
 
 `eval/score.py` → `SCOREBOARD.md`. Per set and arm: rows · right · wrong · escalated-right ·
-escalated-wrong · declined · $/q · s/q. Sets: `owner` (the owner's 104 questions), `atm`
-(ATM-Bench email-only number-typed, 198), `live` (the stream since the reset), `sample`
-(synthetic, CI). Rule 5: `wrong` may not rise more than 0.2 pp on any row without the owner.
+escalated-wrong · declined · $/q · U/q · s/q. Sets: `owner` (the owner's 104 questions),
+`atm` (ATM-Bench email-only number-typed, 198), `live` (the stream since the reset), `sample`
+(synthetic, CI). Every row is graded by exact match. Rule 5: a change merges when no row's
+expected utility falls against the committed board, both priced at the folded gauge
+(`eval.score --gate`; the expectation is the mean over the runs taken).

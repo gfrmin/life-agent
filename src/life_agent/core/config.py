@@ -82,6 +82,10 @@ OUTCOMES_LOG = KB / "calibration" / "outcomes.jsonl"
 # no EU decision is ever made unlogged.
 DECISIONS_LOG = KB / "calibration" / "decisions.jsonl"
 
+# The fitted gather row (core/gather_row; scripts/fit_gather_row.py writes it). Absent, the
+# decider prices gathering at the row's prior.
+GATHER_ROW = KB / "calibration" / "gather_row.json"
+
 # The aggregate family's generator registry (design §9, r21): the DATA lives out of
 # tree (schedules cite owner documents); the loader/schema are in
 # life_agent.core.aggregate. EVIDENCE_ROOT anchors the entries' citation paths.
@@ -119,59 +123,30 @@ JOIN_TAP_LOG = KB / "eval" / "join-tap.jsonl"
 UTILITY_MODEL = KB / "utility" / "model.yaml"
 UTILITY_ELICITATIONS = KB / "utility" / "elicitations.jsonl"
 
-# --- Membrane shadow (membrane-shadow feature, Task 5) ---
-# The shadow supervisor (life_agent.membrane.shadow.MembraneShadow) runs the frozen
-# proplang-host decider beside the production bridge, off the SAME live traffic,
-# never on the decision path itself. Its env-name constants live here (not in
-# life_agent.membrane.client, which independently defines the identical two names for
-# its own from_env() — core never imports the membrane package, so the two are
-# deliberately duplicated, the same choice JARVIS_USER_ID already makes across
-# reach/ modules). Presence of LIFE_AGENT_MEMBRANE_COMMAND is the enable/disable switch:
-# its absence is the default, so a machine with no membrane engine configured sees ZERO
-# behaviour change on the bridge.
+# --- The decider engine ---
+# The bridge runs the pinned proplang-host (config/engine.lock; `make engine` installs it at
+# ENGINE_BIN) as the one decider. LIFE_AGENT_MEMBRANE_COMMAND overrides the launch argv.
 MEMBRANE_COMMAND_ENV = "LIFE_AGENT_MEMBRANE_COMMAND"
-MEMBRANE_UTILITY_ENV = "LIFE_AGENT_MEMBRANE_UTILITY"
 MEMBRANE_READ_TIMEOUT_ENV = "LIFE_AGENT_MEMBRANE_READ_TIMEOUT"
-MEMBRANE_WARM_VECTORS_ENV = "LIFE_AGENT_MEMBRANE_WARM_VECTORS"
-MEMBRANE_CAT_ENV = "LIFE_AGENT_MEMBRANE_CAT"
+ENGINE_BIN_ENV = "ENGINE_BIN"
 DELIBERATE_ENV = "LIFE_AGENT_DELIBERATE"
 # LIFE_AGENT_FALLBACK_LANE is retired: the uncalibrated dual-lane render was removed at
 # §13 adoption (2026-08-17) per its own registered destiny in the interaction contract —
 # the owner chose honest-withhold-only, so a set flag is simply ignored.
 
-MEMBRANE_DEFAULT_UTILITY_FORMS = "said@1"
 MEMBRANE_DEFAULT_READ_TIMEOUT_S = 300.0
 
 
-def membrane_dir() -> Path:
-    """The shadow's own subtree — currently just its append-only log."""
-    return KB / "membrane"
-
-
-def membrane_shadow_log() -> Path:
-    """The shadow's append-only record (boot/respawn/decide/evidence rows) — see
-    life_agent.membrane.shadow's module docstring."""
-    return membrane_dir() / "shadow.jsonl"
-
-
 def membrane_command() -> list[str] | None:
-    """The proplang-host launch argv, shell-split — ``None`` when unset, which is
-    the shadow's enable/disable switch (the bridge constructs a MembraneShadow iff this
-    is not None)."""
+    """The decider engine's launch argv: ``LIFE_AGENT_MEMBRANE_COMMAND`` shell-split when
+    set, else the ``make engine`` install (``$ENGINE_BIN``, default
+    ``~/.local/bin/proplang-host``) when it exists, else ``None`` — no engine, so no
+    decider, and ``/decide`` says so."""
     raw = os.environ.get(MEMBRANE_COMMAND_ENV)
-    return shlex.split(raw) if raw else None
-
-
-def membrane_utility_forms() -> tuple[str, ...]:
-    """Every declared utility form to run side by side, comma-separated
-    (default: just ``said@1``, the re-derived wire's one form) —
-    life_agent.membrane.world.UTILITY_FORMS is the declared
-    vocabulary, and ``ShadowConfig.__post_init__`` validates membership against it, raising
-    on an unknown form before anything is spawned (the bridge then serves with the membrane
-    disabled). This function itself only splits the env var: it never validates, so a typo
-    surfaces at construction, named, rather than here."""
-    raw = os.environ.get(MEMBRANE_UTILITY_ENV, MEMBRANE_DEFAULT_UTILITY_FORMS)
-    return tuple(f.strip() for f in raw.split(",") if f.strip())
+    if raw:
+        return shlex.split(raw)
+    installed = Path(os.environ.get(ENGINE_BIN_ENV) or Path.home() / ".local/bin/proplang-host")
+    return [str(installed)] if installed.is_file() else None
 
 
 def membrane_read_timeout_s() -> float:
@@ -201,19 +176,3 @@ def pkm_root() -> Path | None:
         return Path(cfg["root_dir"]).expanduser()
     except Exception:
         return None
-
-
-def membrane_categorical() -> bool:
-    """E1 stage 1 — the categorical shadow mirror: ``"1"`` runs the obs_arity = K+1
-    world (life_agent.membrane.categorical, one fresh engine session per decide tick)
-    beside the binary form, SHADOW-ONLY — it writes ``kind: "cat"`` rows and never
-    touches the decision path. Anything else — including absence, the default — is
-    byte-inert. Rollback is unsetting this."""
-    return os.environ.get(MEMBRANE_CAT_ENV) == "1"
-
-
-def membrane_warm_vectors_dir() -> Path | None:
-    """A fair-fight run directory to seed outcome replay from (boot_snapshot's optional
-    third argument) — ``None`` when unset (no warm outcomes, verdict replay only)."""
-    raw = os.environ.get(MEMBRANE_WARM_VECTORS_ENV)
-    return Path(raw).expanduser() if raw else None

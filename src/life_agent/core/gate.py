@@ -63,7 +63,6 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from life_agent.core import decide as _DECIDE
 from life_agent.core.decide import u_assert
 from life_agent.core.matching import answer_matches
 
@@ -123,6 +122,12 @@ class RealisedResponse:
     # r21: the aggregate family's pre-registered Winkler grade in [0, 1] — None on
     # every other row (byte-identical valuation to before).
     x: float | None = None
+    # The menu probes the arm applied, in order, and what its calls actually metered.
+    # ``cost_usd`` is their DECLARED price (``pricing.list_price``: the price the decider
+    # ranked them at, cache or no cache); empty / None on an arm that records neither
+    # (the replay arm, whose cost_usd is its recorded usage).
+    applied: tuple[str, ...] = ()
+    metered_usd: float | None = None
 
     def __post_init__(self) -> None:
         if self.action not in _ALL_ACTIONS:
@@ -166,15 +171,29 @@ def realised_report(asserted: list[str], gold: str, variants: list[str]) -> bool
     return any(answer_matches(gold, variants, a) for a in asserted)
 
 
-# r30b (C4): the Winkler grade has ONE home — `core.decide`, beside the assert atom it feeds,
-# because it is the `quantity` shape's LOSS, not a grading convention. These are BINDINGS
-# (drift-gated in tests/test_interval_claims.py), never a second spelling: the interval the
-# argmax priced and the interval this module grades are the same rule, or the agent is graded
-# on a loss it did not decide under. `realised_aggregate` keeps its name here because r21's
-# frozen grading branch (`run_eval`, `aggregate_eval`) reads it by that name.
-_WINKLER_ALPHA = _DECIDE._WINKLER_ALPHA
-_WINKLER_SCALE = _DECIDE._WINKLER_SCALE
-realised_aggregate = _DECIDE.realised_aggregate
+# The r21 pre-registered interval grade (frozen): the rendered central level is 80%, and
+# x = max(0, 1 - W / (SCALE * |gold|)). r21's grading branch (`run_eval`) reads it here.
+_WINKLER_ALPHA = 0.2
+_WINKLER_SCALE = 2.0
+
+
+def realised_aggregate(lo: float, hi: float, gold_value: float) -> tuple[float, bool]:
+    """The r21 pre-registered interval grade: the Winkler score of an asserted central-80%
+    interval against a numeric truth, affinely mapped onto the assert atom's p-argument.
+    Returns ``(x, excludes_gold)`` — ``excludes_gold`` is the named wrong-commit class
+    (categorical, independent of x). A sharp covering interval reads near 1; an interval
+    wider than twice the truth reads 0 even when covering; a miss pays in miss distance
+    through the ``2/alpha`` term."""
+    w = hi - lo
+    if gold_value < lo:
+        w += (2.0 / _WINKLER_ALPHA) * (lo - gold_value)
+    if gold_value > hi:
+        w += (2.0 / _WINKLER_ALPHA) * (gold_value - hi)
+    if gold_value == 0.0:
+        return (1.0 if lo <= 0.0 <= hi and w == 0.0 else 0.0,
+                not (lo <= gold_value <= hi))
+    x = max(0.0, 1.0 - w / (_WINKLER_SCALE * abs(gold_value)))
+    return x, not (lo <= gold_value <= hi)
 
 
 def realised_utility(resp: RealisedResponse, u: dict[str, float], *,

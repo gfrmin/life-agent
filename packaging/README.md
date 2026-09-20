@@ -9,7 +9,7 @@ paths, ports and ids, and the wrapper does the environment resolution.
 | `jarvis.service` | `bin/jarvis` | the Telegram reach channel |
 | `gtd-web.service` | `bin/gtd-web` | the GTD board (`:8797`) |
 | `trips-web.service` | `bin/trips-web` | the trips timeline, read-only (`:8800`) |
-| `life-agent-bridge.service` | `bin/answer-bridge` | the answer-brain read path (`:8798`) |
+| `life-agent-bridge.service` | `bin/answer-bridge` | the ask read path and its decider (`:8798`) |
 | `daily-digest.{service,timer}` | `bin/daily-digest` | the scheduled briefing |
 | `production-readout.{service,timer}` | `bin/production-readout` | the weekly calibration readout |
 | `ledger-freshness.{service,timer}` | `bin/ledger-freshness` | the daily mirror reconciliation (two-route counts) |

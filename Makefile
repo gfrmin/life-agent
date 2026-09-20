@@ -1,4 +1,4 @@
-.PHONY: check test-all score score-quick data sets engine
+.PHONY: check test-all score score-quick data sets engine golden
 
 PY := uv run python
 # pytest workers; 1 runs single-process.
@@ -18,13 +18,19 @@ test-all:
 	uv run pytest -q -n $(WORKERS) -m "llm or system or not (llm or system)"
 
 # The full board -> SCOREBOARD.md + eval/scoreboard.json, committed with the change. Run once
-# per PR; rule 5 (wrong may not rise > 0.2 pp on any row without the owner) is read here.
+# per PR; rule 5 (no row's U may fall at today's folded gauge) is read here.
 score:
 	$(PY) -m eval.score --gate --write
 
 # While iterating: print the board, write nothing.
 score-quick:
 	$(PY) -m eval.score --gate
+
+# A golden set generated from your corpus: verbatim point facts with questions whose answers
+# are known by construction -> $LIFE_AGENT_KB/eval/questions_generated.yaml. Then answer it
+# through a bridge with scripts/score_typed.py and pin the result as set `generated`.
+golden:
+	$(PY) scripts/make_golden.py
 
 # Your data -> pkm: every enabled root in data-sources.yaml (maildir or filetree).
 data:

@@ -12,7 +12,15 @@ from __future__ import annotations
 
 import pytest
 
+from life_agent.core import gather_row as GR
 from life_agent.membrane import world as W
+
+
+def _recovery_shape(r: float) -> dict[str, float]:
+    """A fitted gather row that recovers a right leader with probability r and never
+    reports otherwise — the shape of a recovery rate r."""
+    return GR.as_u_bar({"right": r, "wrong": 0.0}, {"right": 0.0, "wrong": 0.0})
+
 
 # The REAL utility posterior, as GET :8798/utility served it on 2026-07-11 — kept here as a
 # named fixture (7 scalar utility means; no owner data, PRINCIPLES §12) because several of
@@ -20,10 +28,10 @@ from life_agent.membrane import world as W
 # world.utility_by_action's fallback defaults: the reaction loop has already narrowed u_wrong
 # from the -9.0 default to about -5.94, which moves every utility-derived threshold. A test
 # that only ever exercised the defaults is how a threshold that is really a FUNCTION of
-# utility got published as the constant 0.9.
+# utility got published as the constant 0.9. The gather row rides as a recovery shape of 0.5.
 LIVE_U_BAR: dict[str, float] = {
     "u_correct": 1.0, "u_abstain": 0.0, "u_wrong": -5.9395, "u_wrong_scoped": -2.0827,
-    "u_hedged": 0.3964, "lambda_int": 1.0009, "kappa_att": 0.0344,
+    "u_hedged": 0.3964, "lambda_int": 1.0009, "kappa_att": 0.0344, **_recovery_shape(0.5),
 }
 
 # --- AFFORDANCES / VALUE_TO_ACTION / UTILITY_FORMS (grid-order + drift-gate pins) ---------
@@ -292,7 +300,8 @@ def test_shadow_features_t_passthrough() -> None:
 
 
 def test_shadow_features_all_emitted_keys_are_declared_indicators() -> None:
-    declared = set(W.indicator_names())
+    declared = (set(W.indicator_names()) | set(W.FEASIBILITY.values())
+                | set(W.PRICES.values()))
     s = _summary(n_candidates=2, leader_credence=0.75, p_none=0.3, n_obs=5,
                  era_split=True, owner_scoped=True, grow_pass=True)
     feats = W.shadow_features(s, t=1.0)
@@ -308,19 +317,20 @@ def test_utility_by_action_uses_declared_fallbacks_on_empty_u_bar() -> None:
 
     assert pairs["respond"] == (-9.0, 1.0)        # (u_wrong fallback -9.0, u_correct 1.0)
     assert pairs["abstain"] == (0.0, 0.0)         # status-quo, constant in y
-    # gather/ask are priced as MYOPIC PERFECT INFORMATION: [u_abstain - cost, u_correct - cost]
-    # — having gathered, you take the correct act. NOT [-cost, -cost]: a row constant in y is a
-    # pure cost, and a pure cost can never beat abstain at any p1, unfiring the whole menu.
-    assert pairs["ask"] == (-0.1, 0.9)            # lambda_int fallback 0.1
-    assert pairs["gather"] == (-0.02, 0.98)       # kappa_att fallback 0.02
+    # ask is priced by a recovery rate r: [u_abstain - cost, r·u_correct + (1-r)·u_abstain
+    # - cost]; unmeasured, r is the Beta(1, 1) prior mean 0.5. gather, unfitted, reads its
+    # Dirichlet prior mean in both leader states: (1 - 9)/3 less its cost, never worth doing.
+    assert pairs["ask"] == (-0.1, 0.4)            # lambda_int fallback 0.1
+    assert pairs["gather"] == pytest.approx(((1 - 9) / 3 - 0.02,) * 2)  # kappa_att 0.02
 
 
 def test_utility_by_action_honours_custom_u_bar() -> None:
-    pairs = W.utility_by_action({"u_wrong": -4.0, "lambda_int": -0.3, "kappa_att": 0.5})
+    pairs = W.utility_by_action({"u_wrong": -4.0, "lambda_int": -0.3, "kappa_att": 0.5,
+                                 **_recovery_shape(0.5)})
 
     assert pairs["respond"] == (-4.0, 1.0)
-    assert pairs["ask"] == (-0.3, 0.7)            # abs(-0.3) == 0.3, charged on both outcomes
-    assert pairs["gather"] == (-0.5, 0.5)
+    assert pairs["ask"] == (-0.3, 0.2)            # abs(-0.3) == 0.3, charged on both outcomes
+    assert pairs["gather"] == (-0.5, 0.0)
 
 
 def test_utility_by_action_information_actions_are_not_constant_in_y() -> None:
@@ -328,8 +338,10 @@ def test_utility_by_action_information_actions_are_not_constant_in_y() -> None:
     are CONSTANT in y, i.e. pure costs against `abstain -> [0, 0]` — so EU(gather) = -g < 0 =
     EU(abstain) at EVERY p1 and every u_bar, abstain strictly dominates the entire information
     menu, and a menu whose whole point is effort allocation can never fire one. Pinned as a
-    property (u(y=1) > u(y=0) for both), not as two magic numbers."""
-    for u_bar in ({}, {"u_wrong": -5.9395, "lambda_int": 1.0009, "kappa_att": 0.0344}):
+    property (u(y=1) > u(y=0) for both), not as two magic numbers. (gather's row is fitted;
+    here it is a measured one.)"""
+    live = {"u_wrong": -5.9395, "lambda_int": 1.0009, "kappa_att": 0.0344}
+    for u_bar in (_recovery_shape(0.5), {**live, **_recovery_shape(0.5)}):
         pairs = W.utility_by_action(u_bar)
         for action in ("gather", "ask"):
             u0, u1 = pairs[action]
@@ -344,34 +356,41 @@ def test_utility_by_action_covers_every_affordance() -> None:
 # --- utility_said(): the drift gate (the sentence MUST equal the pairs) --------------------
 
 
-def _eval_said(expr: object, *, act: float, y: int) -> object:
+def _eval_said(expr: object, *, act: float, y: int, open_: float = 1.0,
+               cost: float = 0.0) -> object:
     """A small pure evaluator for the ``said@1`` accepted subset (``parseSaid``:
     var, c, +, -, *, get, if, >, =). The whole point is a SECOND, independent reading of the
     sentence: if this and :func:`world.utility_by_action` disagree, the wire declaration has
     silently drifted from the host-side arithmetic. ``var 1`` is the outcome residue y;
-    ``get "act"`` is the chosen affordance's grid value under evaluation."""
+    ``get "act"`` is the chosen affordance's grid value under evaluation; ``get`` on a
+    feasibility name reads ``open_``, on a price name ``cost``."""
     if not isinstance(expr, list):
         raise ValueError(f"not a sentence node: {expr!r}")
     op = expr[0]
+
+    def ev(e: object) -> object:
+        return _eval_said(e, act=act, y=y, open_=open_, cost=cost)
+
     if op == "c":
         return expr[1]
     if op == "var":
         return {1: y}[expr[1]]  # only the outcome residue is declared
     if op == "get":
-        return {"act": act}[expr[1]]
+        return {"act": act, **{n: open_ for n in W.FEASIBILITY.values()},
+                **{n: cost for n in W.PRICES.values()}}[expr[1]]
     if op == "+":
-        return _eval_said(expr[1], act=act, y=y) + _eval_said(expr[2], act=act, y=y)  # type: ignore[operator]
+        return ev(expr[1]) + ev(expr[2])  # type: ignore[operator]
     if op == "-":
-        return _eval_said(expr[1], act=act, y=y) - _eval_said(expr[2], act=act, y=y)  # type: ignore[operator]
+        return ev(expr[1]) - ev(expr[2])  # type: ignore[operator]
     if op == "*":
-        return _eval_said(expr[1], act=act, y=y) * _eval_said(expr[2], act=act, y=y)  # type: ignore[operator]
+        return ev(expr[1]) * ev(expr[2])  # type: ignore[operator]
     if op == "=":
-        return _eval_said(expr[1], act=act, y=y) == _eval_said(expr[2], act=act, y=y)
+        return ev(expr[1]) == ev(expr[2])
     if op == ">":
-        return _eval_said(expr[1], act=act, y=y) > _eval_said(expr[2], act=act, y=y)  # type: ignore[operator]
+        return ev(expr[1]) > ev(expr[2])  # type: ignore[operator]
     if op == "if":
-        cond = _eval_said(expr[1], act=act, y=y)
-        return _eval_said(expr[2], act=act, y=y) if cond else _eval_said(expr[3], act=act, y=y)
+        cond = ev(expr[1])
+        return ev(expr[2]) if cond else ev(expr[3])
     raise ValueError(f"unsupported op {op!r}")
 
 
@@ -391,6 +410,62 @@ def test_utility_said_sentence_equals_the_pairs_at_every_grid_point(
             assert got == pytest.approx(pairs[name][y]), f"{name} y={y} under {u_bar}"
 
 
+@pytest.mark.parametrize("u_bar", [{}, LIVE_U_BAR])
+def test_a_closed_affordance_reads_the_infeasible_value_below_every_row(
+    u_bar: dict[str, float],
+) -> None:
+    """Feasibility is not a price: a closed row takes a value strictly below every declared
+    value, so no belief can make the argmax pick it, and every OPEN row is unchanged."""
+    said = W.utility_said(u_bar)
+    pairs = W.utility_by_action(u_bar)
+    floor = W.infeasible_value(u_bar)
+    assert floor < min(v for pair in pairs.values() for v in pair)
+    for name, v in W.AFFORDANCES:
+        for y in (0, 1):
+            got = _eval_said(said, act=v, y=y, open_=0.0)
+            want = floor if name in W.FEASIBILITY else pairs[name][y]
+            assert got == pytest.approx(want), f"{name} y={y} closed"
+
+
+def test_gather_is_priced_at_its_fitted_outcomes() -> None:
+    """A gather row of recovery shape r is worth r·u_correct + (1-r)·u_abstain when asserting
+    now would be right, and u_abstain when it would be wrong (less its cost either way)."""
+    base = {"u_correct": 1.0, "u_abstain": 0.0, "kappa_att": 0.05}
+    assert W.utility_by_action({**base, **_recovery_shape(0.1)})["gather"] == pytest.approx(
+        (-0.05, 0.1 - 0.05))
+
+
+def test_ask_is_priced_at_its_recovery_rate_never_as_perfect_information() -> None:
+    from life_agent.core import decide as DEC
+    base = {"u_correct": 1.0, "u_abstain": 0.0, "lambda_int": 0.1}
+    assert W.utility_by_action({**base, DEC.ASK_RECOVERY_KEY: 0.2})["ask"] == pytest.approx(
+        (-0.1, 0.2 - 0.1))
+    assert W.utility_by_action(base)["ask"] == pytest.approx((-0.1, 0.5 - 0.1))
+
+
+def test_the_tick_price_of_a_gather_is_subtracted_in_the_sentence() -> None:
+    said = W.utility_said(LIVE_U_BAR)
+    pairs = W.utility_by_action(LIVE_U_BAR)
+    v = dict(W.AFFORDANCES)["gather"]
+    for y in (0, 1):
+        got = _eval_said(said, act=v, y=y, cost=0.3)
+        assert got == pytest.approx(pairs["gather"][y] - 0.3)
+    # the price touches the gather row only
+    for name, value in W.AFFORDANCES:
+        if name != "gather":
+            assert _eval_said(said, act=value, y=1, cost=0.3) == pytest.approx(pairs[name][1])
+
+
+def test_a_measured_recovery_lets_respond_win_below_the_perfect_information_bar() -> None:
+    """The live failure the measured row fixed: under perfect information (r = 1), gather
+    beat respond below p1 ≈ 0.99, so every question walked every gather before answering.
+    The measured r (0.093) and even the unmeasured prior (0.5) let respond win at 0.95."""
+    u = {"u_wrong": -9.0, "kappa_att": 0.05, "lambda_int": 1.0}  # λ_int as folded live
+    assert W.argmax_action({**u, **_recovery_shape(1.0)}, 0.95) == "gather"
+    assert W.argmax_action({**u, **_recovery_shape(0.5)}, 0.95) == "respond"
+    assert W.argmax_action({**u, **_recovery_shape(0.1)}, 0.95) == "respond"
+
+
 def test_utility_said_uses_only_the_accepted_subset() -> None:
     # the sentence must not reach for any op outside parseSaid's set — the evaluator above
     # raises on an unknown op, so a successful full evaluation IS the proof.
@@ -406,14 +481,14 @@ def test_eu_by_action_is_the_declared_table_read_at_p1() -> None:
     eus = W.eu_by_action(LIVE_U_BAR, 0.5)
     assert eus["abstain"] == pytest.approx(0.0)
     assert eus["respond"] == pytest.approx(0.5 * 1.0 + 0.5 * -5.9395)
-    assert eus["gather"] == pytest.approx(0.5 * 1.0 - 0.0344)
+    assert eus["gather"] == pytest.approx(0.5 * 0.5 - 0.0344)  # recovery shape 0.5
 
 
 def test_argmax_action_resolves_ties_first_listed() -> None:
     """At an all-zero-cost u_bar (lambda_int == kappa_att == 0) and p1 == 0, abstain, gather
     and ask all score exactly 0 — and AFFORDANCES order (abstain first, the safe wait) decides,
     the wire's own rule."""
-    u_bar = {"lambda_int": 0.0, "kappa_att": 0.0}  # g == q == 0
+    u_bar = {"lambda_int": 0.0, "kappa_att": 0.0, **_recovery_shape(0.5)}  # g == q == 0
     eus = W.eu_by_action(u_bar, 0.0)
     assert eus["abstain"] == pytest.approx(eus["gather"]) == pytest.approx(eus["ask"])
     assert W.argmax_action(u_bar, 0.0) == "abstain"
@@ -428,12 +503,12 @@ def test_respond_threshold_is_a_function_of_utility_not_a_constant() -> None:
     assert default_vs_abstain == pytest.approx(0.9)
     assert live_vs_abstain == pytest.approx(0.8559, abs=1e-4)  # the live bar is LOWER
 
-    # ...but the engine argmaxes over the WHOLE menu, so the binding bar is respond vs the
-    # best information action, not vs abstain. Under the perfect-information bake-in gather
-    # is worth more than abstain at any p1 above its own cost, so the real bar is far higher.
+    # ...but the act ranks the WHOLE menu, so the binding bar is respond vs the best
+    # information action, not vs abstain. With gather's recovery shape r = 0.5 here the
+    # crossing is (-g - u_wrong) / ((u_correct - u_wrong) - r) = 5.9051 / 6.4395.
     whole_menu = W.respond_threshold(LIVE_U_BAR)
     assert whole_menu is not None
-    assert whole_menu == pytest.approx(0.9942, abs=1e-4)
+    assert whole_menu == pytest.approx((5.9395 - 0.0344) / (6.9395 - 0.5), abs=1e-6)
     assert whole_menu > live_vs_abstain
 
 
@@ -464,8 +539,24 @@ def test_handshake_decl_namespace_is_t_then_indicators_then_act() -> None:
     namespace = decl["world"]["namespace"]
     assert namespace[0] == "t"                       # RIDER 2: t first
     assert namespace[-1] == W.ACT_NAME               # the one writable name, last
-    assert set(namespace) == {"t", W.ACT_NAME, *W.indicator_names()}
-    assert len(namespace) == len(W.indicator_names()) + 2  # every indicator + t + act, no more
+    assert set(namespace) == {"t", W.ACT_NAME, *W.indicator_names(), *W.FEASIBILITY.values(),
+                              *W.PRICES.values()}
+    # every indicator + every feasibility and price name + t + act, no more
+    assert len(namespace) == (len(W.indicator_names()) + len(W.FEASIBILITY) + len(W.PRICES)
+                              + 2)
+
+
+def test_feasibility_names_carry_no_guard() -> None:
+    """A feasibility name is read by the utility only: a guard on it would let the engine
+    learn from availability, which is a fact about the menu, not about the outcome."""
+    guarded = {g["name"] for g in W.handshake_decl({})["world"]["guards"]}
+    assert not guarded & (set(W.FEASIBILITY.values()) | set(W.PRICES.values()))
+
+
+def test_shadow_features_reads_gather_open_off_the_summary() -> None:
+    for gather_open, want in ((True, 1.0), (False, 0.0)):
+        s = W.DecideSummary(1, 0.9, 0.05, 2, False, False, False, gather_open=gather_open)
+        assert W.shadow_features(s, 0.0)[W.FEASIBILITY["gather"]] == want
 
 
 def test_handshake_decl_guards_are_singleton_half_grids_over_the_indicators() -> None:
@@ -610,7 +701,7 @@ def test_the_clock_price_strictly_dominates_the_utility_span() -> None:
     for u_bar in ({}, {"u_correct": 100.0, "u_abstain": 90.0, "u_wrong": 0.0}):
         pairs = W.utility_by_action(u_bar)
         vals = [v for pair in pairs.values() for v in pair]
-        assert W.clock_price(u_bar) > max(vals) - min(vals)
+        assert W.clock_price(u_bar) > max(vals) - W.infeasible_value(u_bar)
 
 
 def test_shadow_features_covers_the_declared_namespace_minus_the_writable_name() -> None:

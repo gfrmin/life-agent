@@ -105,23 +105,18 @@ class FakeServices:
 
 def _loop(fake: FakeServices, question: str = "what is my passport number?",
           **kw: Any) -> dict[str, Any]:
-    return EX.decide_via_loop(question, 20, bridge=B, daemon=D,
+    return EX.decide_via_loop(question, 20, bridge=B,
                               post=fake.post, get=fake.get, **kw)
 
 
-def test_route_none_takes_narrative_path() -> None:
-    # A non-typed question: the router declines, the loop runs the narrative family and never
-    # touches retrieve/extract/decide.
-    fake = FakeServices(route=None, narrative={
-        "action": "report", "asserted": ["you travelled in May"],
-        "rendered": "you travelled in May [1]\n\nnarrative footer",
-        "hits": [{"artifact_cache_key": "d0", "chunk_text": "x"}]})
+def test_route_none_is_declined_without_retrieval() -> None:
+    # Not a verbatim point fact: the question is declined, and no second lane answers it.
+    fake = FakeServices(route=None)
     view = _loop(fake, "tell me about my week")
-    assert view["effector"] == "report"
-    assert view["asserted"] == ["you travelled in May"]
-    assert view["route"] is None
-    assert view["rendered"] == "you travelled in May [1]\n\nnarrative footer"  # preserved
-    assert fake.posted("/extract") == []  # the narrative path skips the typed pipeline
+    assert (view["effector"], view["asserted"], view["route"]) == ("abstain", [], None)
+    assert view["rendered"] == EX.DECLINED_NOT_POINT_FACT
+    assert fake.posted("/retrieve") == [] and fake.posted("/decide") == []
+    assert [u for u, _ in fake.calls if u.endswith("/narrative")] == []
 
 
 def test_typed_report_is_terminal() -> None:
@@ -226,17 +221,15 @@ def test_corroborate_tier_is_enacted_then_report() -> None:
     assert corr[0]["reextract"] is True
     assert corr[0]["model"] == "claude-haiku-4-5"  # the scheduled tier's model
 
-# --- the grow lane (slice 6): the DAEMON schedules recall; the body enacts + logs --------
-# grow_lane=True replaces the hardcoded cascade: after a withholding terminal, the body
-# re-decides WITH the grow block (sensors + menu actuators + warm counts); the daemon prices
-# the grow argmax (engine grow_value over the structure-BMA g) and names the probe; the body
-# enacts it, re-decides on the new evidence, and logs one gather outcome per enactment.
+# --- the grow lane: the DECIDER schedules recall; the body enacts + logs -----------------
+# Every decide carries the grow actuators as gather options; when the decider gathers one,
+# the body enacts it, re-decides on the new evidence, and logs one gather outcome per
+# enactment with the sensors at the moment it was enacted.
 
-def test_grow_lane_daemon_schedules_retrieve_expand() -> None:
+def test_grow_lane_decider_schedules_retrieve_expand() -> None:
     fake = FakeServices(
         route={"construct": "passport number", "time_indexed": False},
         decides=[
-            {"effector": "abstain", "credences": [0.2, 0.1], "p_none": 0.7, "eu": 0.0},
             {"effector": "gather", "probe": "retrieve_expand", "credences": [0.2, 0.1],
              "p_none": 0.7, "eu": 0.0},
             {"effector": "report", "value": "P123", "credences": [0.9, 0.1],
@@ -245,16 +238,18 @@ def test_grow_lane_daemon_schedules_retrieve_expand() -> None:
     view = _loop(fake)
     assert view["effector"] == "report"
     decides = fake.posted("/decide")
-    assert len(decides) == 3
-    assert "grow" not in decides[0] and "sensors" not in decides[0]   # first pass is plain
-    assert decides[1]["grow"]["actuators"][0]["probe"] == "retrieve_rerank"  # menu forwarded
-    assert decides[1]["sensors"]["extracted"] == "some"
-    assert decides[1]["sensors"]["p_none"] == "hi"                    # NONE is MAP ⇒ hi bucket
+    assert len(decides) == 2
+    # the grow actuators are gather options on every decide; no sensors ride the wire
+    assert all(d["grow"]["actuators"][0]["probe"] == "retrieve_rerank" for d in decides)
+    assert all("sensors" not in d for d in decides)
     retrieves = fake.posted("/retrieve")
     assert (retrieves[-1]["rerank"], retrieves[-1]["expand"]) == (True, True)  # enacted
     logged = fake.posted("/log_gather")
     assert len(logged) == 1
     assert logged[0]["probe"] == "retrieve_expand" and logged[0]["recovered"] is True
+    # the outcome row carries the sensors at the moment the grow was enacted
+    assert logged[0]["sensors"]["extracted"] == "some"
+    assert logged[0]["sensors"]["p_none"] == "hi"                     # NONE is MAP ⇒ hi
 
 
 def test_grow_lane_respects_a_daemon_decline() -> None:
@@ -281,7 +276,6 @@ def test_grow_lane_re_extract_strong_enlarges_k() -> None:
                                        "subject_factor": 1.0, "time_factor": 1.0}],
                      "gather_rho": 0.95, "value": "NEW-7", "new_candidate": "NEW-7"},
         decides=[
-            {"effector": "abstain", "credences": [0.2], "p_none": 0.7, "eu": 0.0},
             {"effector": "gather", "probe": "re_extract_strong", "credences": [0.2],
              "p_none": 0.7, "eu": 0.0},
             {"effector": "report", "value": "NEW-7", "credences": [0.1, 0.9],
@@ -292,7 +286,7 @@ def test_grow_lane_re_extract_strong_enlarges_k() -> None:
     assert view["asserted"] == ["NEW-7"]
     corr = fake.posted("/probe/corroborate")
     assert len(corr) == 1 and corr[0]["allow_new"] is True
-    assert fake.posted("/decide")[2]["candidates"] == ["P123", "NEW-7"]  # K enlarged
+    assert fake.posted("/decide")[1]["candidates"] == ["P123", "NEW-7"]  # K enlarged
     logged = fake.posted("/log_gather")
     assert logged[0]["probe"] == "re_extract_strong" and logged[0]["recovered"] is True
 
@@ -351,7 +345,6 @@ def test_re_extract_strong_adopts_the_bridge_reply_verbatim() -> None:
         corroborate={"observations": [], "gather_rho": 0.95, "value": "Q999",
                      "read": "disagree"},
         decides=[
-            {"effector": "abstain", "credences": [0.2], "p_none": 0.7, "eu": 0.0},
             {"effector": "gather", "probe": "re_extract_strong", "credences": [0.2],
              "p_none": 0.7, "eu": 0.0},
             {"effector": "abstain", "credences": [0.1], "p_none": 0.9, "eu": 0.0},
@@ -360,8 +353,8 @@ def test_re_extract_strong_adopts_the_bridge_reply_verbatim() -> None:
     view = _loop(fake)
     assert view["effector"] == "abstain"
     decides = fake.posted("/decide")
-    assert decides[2]["observations"] == []      # the channel was replaced, not kept
-    assert decides[2]["rho"] == 0.95             # at the strong re-read's reliability
+    assert decides[1]["observations"] == []      # the channel was replaced, not kept
+    assert decides[1]["rho"] == 0.95             # at the strong re-read's reliability
 
 
 def test_re_extract_strong_null_reread_keeps_the_channel() -> None:
@@ -373,7 +366,6 @@ def test_re_extract_strong_null_reread_keeps_the_channel() -> None:
         corroborate={"observations": [], "gather_rho": 0.95, "value": None,
                      "read": "null"},
         decides=[
-            {"effector": "abstain", "credences": [0.2], "p_none": 0.7, "eu": 0.0},
             {"effector": "gather", "probe": "re_extract_strong", "credences": [0.2],
              "p_none": 0.7, "eu": 0.0},
             {"effector": "abstain", "credences": [0.2], "p_none": 0.7, "eu": 0.0},
@@ -381,9 +373,9 @@ def test_re_extract_strong_null_reread_keeps_the_channel() -> None:
         ])
     _loop(fake)
     decides = fake.posted("/decide")
-    assert decides[2]["observations"] == _EXTRACT["observations"]  # channel KEPT
-    assert decides[2]["rho"] == _EXTRACT["rho"]                    # at its own rho
-    assert "re_extract_strong" in decides[2]["applied_probes"]     # and retired
+    assert decides[1]["observations"] == _EXTRACT["observations"]  # channel KEPT
+    assert decides[1]["rho"] == _EXTRACT["rho"]                    # at its own rho
+    assert "re_extract_strong" in decides[1]["applied_probes"]     # and retired
 
 
 def test_corroborate_tier_null_read_keeps_the_channel_reply_adopted_otherwise() -> None:
@@ -443,13 +435,12 @@ def test_zero_candidate_walk_retires_its_probes() -> None:
         extracts=[empty, _EXTRACT],   # cheap empty; the rerank walk grounds
         decides=[
             {"effector": "abstain", "credences": [0.2], "p_none": 0.7, "eu": 0.0},
-            {"effector": "abstain", "credences": [0.2], "p_none": 0.7, "eu": 0.0},
         ])
     view = _loop(fake)
     assert view["effector"] == "abstain"
     decides = fake.posted("/decide")
-    # the grow-priced re-ask (2nd decide) already carries the walked probe as applied
-    assert "retrieve_rerank" in decides[1]["applied_probes"]
+    # the first decide already carries the walked probe as applied, so it is not re-offered
+    assert "retrieve_rerank" in decides[0]["applied_probes"]
     # and only ONE outcome row was logged for it (no double count)
     logged = [p for p in fake.posted("/log_gather") if p["probe"] == "retrieve_rerank"]
     assert len(logged) == 1
@@ -1354,11 +1345,8 @@ def _withhold_view(**overrides: Any) -> dict[str, Any]:
 def test_render_view_withhold_is_honest_only_lane_retired(monkeypatch) -> None:
     # §13 adoption (2026-08-17): honest-withhold-only. The uncalibrated dual-lane render
     # is REMOVED, not flag-gated — a stale LIFE_AGENT_FALLBACK_LANE=1 in the env changes
-    # nothing, and no synthesize call can fire from a withholding render.
-    import life_agent.core.synthesis as SYN
+    # nothing.
     monkeypatch.setenv("LIFE_AGENT_FALLBACK_LANE", "1")
-    monkeypatch.setattr(SYN, "synthesize",
-                        lambda *a, **k: (_ for _ in ()).throw(AssertionError("called")))
     out = EX.render_view(_withhold_view())
     assert "No answer asserted" in out and "uncalibrated" not in out
 
@@ -1545,14 +1533,13 @@ def test_s2_retrieval_grow_joins_the_standing_channel() -> None:
         route={"construct": "passport number", "time_indexed": False},
         extract=base, extracts=[base, grown],
         decides=[
-            {"effector": "abstain", "credences": [0.4], "p_none": 0.6, "eu": 0.0},
             {"effector": "gather", "probe": "retrieve_expand", "credences": [0.4],
              "p_none": 0.6, "eu": 0.0},
             {"effector": "report", "value": "P123", "credences": [0.9, 0.05],
              "p_none": 0.05, "eu": 0.8},
         ])
     _loop(fake)
-    post_grow = fake.posted("/decide")[2]
+    post_grow = fake.posted("/decide")[1]
     # the standing candidates keep their indices; the grow's candidate is appended
     assert post_grow["candidates"] == ["P123", "Q999"]
     assert len(post_grow["observations"]) == 3
@@ -1566,14 +1553,13 @@ def test_s2_grow_that_grounds_nothing_still_leaves_the_channel_alone() -> None:
         route={"construct": "passport number", "time_indexed": False},
         extract=base, extracts=[base, fruitless],
         decides=[
-            {"effector": "abstain", "credences": [0.4], "p_none": 0.6, "eu": 0.0},
             {"effector": "gather", "probe": "retrieve_expand", "credences": [0.4],
              "p_none": 0.6, "eu": 0.0},
             {"effector": "report", "value": "P123", "credences": [0.9],
              "p_none": 0.05, "eu": 0.8},
         ])
     _loop(fake)
-    post_grow = fake.posted("/decide")[2]
+    post_grow = fake.posted("/decide")[1]
     assert post_grow["candidates"] == ["P123"]
     assert len(post_grow["observations"]) == 1
 
@@ -1598,3 +1584,26 @@ def test_render_view_real_posterior_still_prints_numbers() -> None:
             "hits": [], "route": {}}
     out = EX.render_view(view)
     assert "none-of-retrieved 0.100" in out and "(EU 0.00)" in out
+
+
+# --- applied: the view names the probes it applied, so the board can price the act ------
+
+def test_the_view_names_the_probes_it_applied() -> None:
+    fake = FakeServices(
+        route={"construct": "tax id", "time_indexed": False},
+        extract={**_EXTRACT, "candidates": ["P123", "Q999"]},
+        corroborate={"observations": [{"reports": 0, "group": 0, "authority": 1.0,
+                                       "subject_factor": 1.0, "time_factor": 1.0}],
+                     "gather_rho": 0.80, "value": "P123", "confidence": 0.7,
+                     "cache_key": "jk-1"},
+        decides=[{"effector": "gather", "probe": "corroborate_haiku",
+                  "credences": [0.5, 0.5], "p_none": 0.1, "eu": 0.2},
+                 {"effector": "report", "value": "P123", "credences": [0.9, 0.1],
+                  "p_none": 0.05, "eu": 0.8}])
+    view = _loop(fake)
+    assert view["applied"] == ["corroborate_haiku"]
+
+
+def test_a_declined_route_applied_nothing() -> None:
+    view = _loop(FakeServices(route=None))
+    assert view["applied"] == []

@@ -152,8 +152,8 @@ def test_a_declared_root_that_is_present_but_empty_succeeds(tmp_path: Path,
     a root with no traffic yet, or it is a gate that rejects everything. A fresh
     deployment has a root and no stream, and that is a legitimate zero.
     Killed by failing on a missing stream file rather than a missing root.
-    (bar_summary is stubbed — A6's watch reaches for the live brain, and a hermetic
-    test may not; its own guard is pinned separately below.)"""
+    (bar_summary is stubbed — A6's watch folds the live KB's utility model, and a
+    hermetic test may not; its own guard is pinned separately below.)"""
     monkeypatch.setattr(PR, "bar_summary", lambda **k: {"error": "stubbed (hermetic)"})
     good = tmp_path / "kb"
     (good / "calibration").mkdir(parents=True)
@@ -180,10 +180,10 @@ def test_render_carries_the_deployed_bar_beside_the_declared_one() -> None:
 
 
 def test_render_names_an_unavailable_bar_instead_of_failing() -> None:
-    # the readout is a WATCH, never a dependency: a dead daemon renders a named
+    # the readout is a WATCH, never a dependency: a failed fold renders a named
     # unavailability — the rest of the report still lands
-    out = PR.render(_summary_with_bar({"error": "brain unreachable"}))
-    assert "p† unavailable (brain unreachable)" in out
+    out = PR.render(_summary_with_bar({"error": "fold failed"}))
+    assert "p† unavailable (fold failed)" in out
     assert "decisions by action" in out          # the report itself survived
 
 
@@ -197,11 +197,31 @@ def test_render_without_a_bar_key_is_unchanged() -> None:
 
 def test_bar_summary_never_raises(monkeypatch) -> None:
     # the computation itself is guarded: any failure becomes {"error": ...}
-    from life_agent.core import lookup as LK
+    from life_agent.core import utility as UT
 
-    def _boom() -> None:
-        raise RuntimeError("daemon down")
+    def _boom(*_a: object, **_k: object) -> None:
+        raise RuntimeError("model unreadable")
 
-    monkeypatch.setattr(LK, "shared_brain", _boom)
+    monkeypatch.setattr(UT, "load_model", _boom)
     out = PR.bar_summary()
-    assert set(out) == {"error"} and "daemon down" in out["error"]
+    assert set(out) == {"error"} and "model unreadable" in out["error"]
+
+
+def test_bar_summary_reads_the_break_even_of_both_folds(monkeypatch, tmp_path) -> None:
+    # the declared prior folds no evidence: at the shipped example model the bar is
+    # the Chow bar of the prior mean, and with no stream the live fold equals it
+    from life_agent.core import config as CFG
+    from life_agent.core import gate as GATE
+    from life_agent.core import lookup as LK
+    from life_agent.core import utility as UT
+
+    repo = Path(__file__).resolve().parents[1]
+    model = repo / "config" / "utility-model.example.yaml"
+    monkeypatch.setattr(CFG, "UTILITY_MODEL", model)
+    monkeypatch.setattr(CFG, "UTILITY_ELICITATIONS", tmp_path / "none.jsonl")
+    monkeypatch.setattr(CFG, "REACTIONS_LOG", tmp_path / "none-r.jsonl")
+    monkeypatch.setattr(CFG, "DECISIONS_LOG", tmp_path / "none-d.jsonl")
+    out = PR.bar_summary(now_iso="2026-09-19T00:00:00+00:00")
+    prior = GATE.break_even(UT.posterior(UT.load_model(model), [],
+                                         policy=LK.U_BAR_POLICY).u_bar())
+    assert out == {"p_dagger": prior, "declared": prior, "n_events": 0}

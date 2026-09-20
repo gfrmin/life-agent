@@ -86,15 +86,23 @@ def test_replay_blank_ok_row_is_an_abstention_not_a_confident_wrong() -> None:
 
 
 def test_typed_and_replay_responses_carry_realised_cost() -> None:
-    # the run-6 spend term's data feed (plan item C, per the #67 review): the typed
-    # arm's cost is the view's TOTAL metered spend (spend_usd — deliberate AND tiers,
-    # never the deliberate-only decisions-v2 slot); the replay arm's is the ff run's
-    # recorded usage.estimated_cost_usd; absent either way ⇒ 0.0.
+    # the typed arm is priced at the menu's DECLARED prices for the probes it applied —
+    # the price the decider ranked them at, cache or no cache — with what the calls
+    # metered riding beside it; the replay arm's cost is the ff run's recorded
+    # usage.estimated_cost_usd; absent either way ⇒ 0.0.
+    from life_agent.core import pricing as PRC
+
     q = {"id": "q2-001", "answer": "P123", "answer_variants": [], "fuzzy": False}
     typed = RE._typed_response_executor(
-        _exec_view(effector="report", asserted=["P123"], cost_usd=0.42,
-                   spend_usd=0.432), q)
-    assert typed.cost_usd == 0.432
+        _exec_view(effector="report", asserted=["P123"], cost_usd=0.42, spend_usd=0.432,
+                   applied=["corroborate_haiku", "deliberate"]), q)
+    assert typed.cost_usd == pytest.approx(
+        PRC.menu_price("corroborate_haiku") + PRC.menu_price("deliberate"))
+    assert typed.metered_usd == 0.432
+    assert typed.applied == ("corroborate_haiku", "deliberate")
+    # a warm replay of an escalation is not free: the board prices the act, not the cache
+    warm = RE._typed_response_executor(_exec_view(applied=["deliberate"], spend_usd=0.0), q)
+    assert warm.cost_usd == PRC.menu_price("deliberate") and warm.metered_usd == 0.0
     assert RE._typed_response_executor(_exec_view(), q).cost_usd == 0.0
     priced_row = dict(_row("q2-001", "the number is P123"),
                       usage={"estimated_cost_usd": 0.36})
@@ -110,11 +118,16 @@ def test_paired_dict_carries_the_cost_fields() -> None:
 
     p = GATE.PairedOutcome(
         question_id="q2-001", answerable=True,
-        typed=GATE.RealisedResponse(action="abstain", correct=None, cost_usd=0.31),
+        typed=GATE.RealisedResponse(action="abstain", correct=None, cost_usd=0.31,
+                                    applied=("corroborate_haiku",), metered_usd=0.0),
         mono=GATE.RealisedResponse(action="report", correct=True, cost_usd=0.36))
     d = RE._paired_to_dict(p, baseline="raw-deliberative-replay")
     assert d["typed"]["cost_usd"] == 0.31
     assert d["mono"]["cost_usd"] == 0.36
+    # the sequence and the metered figure ride too: the archive DETERMINES the price
+    assert d["typed"]["applied"] == ["corroborate_haiku"]
+    assert d["typed"]["metered_usd"] == 0.0
+    assert "applied" not in d["mono"]
 
 
 def test_paired_dict_names_its_baseline_arm() -> None:
@@ -132,22 +145,7 @@ def test_paired_dict_names_its_baseline_arm() -> None:
 # --- gate_paired_outcomes with the replay baseline ----------------------------------------
 
 class _FakeAsk:
-    """The production path stub: typed pass answers; a families=False call would be the
-    monolithic arm — with a replay baseline it must never fire."""
-
-    ABSTENTION = "ABSTAIN-SENTINEL"
-
-    def __init__(self) -> None:
-        self.LOOKUP_LAST: Any = None
-        self.NARRATIVE_LAST: Any = None
-        # M5 (r15): run_eval reads the canonical state home ask.TERM.*_LAST — the fake
-        # mirrors the module shape (its own attrs stay for the older read paths).
-        self.TERM = self
-        self.calls: list[dict[str, Any]] = []
-
-    def answer(self, conn: Any, question: str, k: int, **kw: Any) -> tuple[str, list, dict]:
-        self.calls.append(kw)
-        return self.ABSTENTION, [], {}
+    """An ask stub with no executor: a gate that reached it would fail loudly."""
 
 
 def _questions() -> list[dict[str, Any]]:
@@ -155,21 +153,9 @@ def _questions() -> list[dict[str, Any]]:
              "answer_variants": [], "fuzzy": False, "answerable": True}]
 
 
-def test_gate_pairs_typed_against_the_replay_arm(tmp_path: Path) -> None:
-    replay = {"q2-001": _row("q2-001", "P123 [doc.pdf]")}
-    paired = RE.gate_paired_outcomes(None, _questions(), 20, _FakeAsk(), replay=replay)
-    (p,) = paired
-    assert p.mono.action == "report"
-    assert p.mono.correct is True
-    assert p.typed.action == "abstain"
-
-
-def test_gate_replay_never_runs_the_monolithic_pass(tmp_path: Path) -> None:
-    fake = _FakeAsk()
-    RE.gate_paired_outcomes(None, _questions(), 20, fake, replay={
-        "q2-001": _row("q2-001", "P123")})
-    assert all(c.get("families") is not False for c in fake.calls)
-    assert not any("families" in c for c in fake.calls)
+def test_gate_without_a_replay_refuses() -> None:
+    with pytest.raises(ValueError, match="replay"):
+        RE.gate_paired_outcomes(None, _questions(), 20, _FakeAsk())
 
 
 def test_gate_replay_missing_question_is_named_never_dropped() -> None:
@@ -186,7 +172,7 @@ def _exec_view(**overrides: Any) -> dict[str, Any]:
         "hits": [], "route": {"construct": "passport number"},
         "instrument": "", "cost_usd": None, "latency_s": None,
         "instrument_value": None, "instrument_confidence": None,
-        "instrument_lineage": None, "edge_events": [], "spend_usd": 0.0}
+        "instrument_lineage": None, "edge_events": [], "spend_usd": 0.0, "applied": []}
     base.update(overrides)
     return base
 
@@ -628,14 +614,6 @@ def test_gate_loo_resets_the_hold_out_when_the_run_voids() -> None:
     assert fake.EXECUTOR_HOLD_OUT_QUESTION_ID is None
 
 
-def test_gate_loo_on_the_family_arm_refuses() -> None:
-    # the family arm folds no curves — a LOO reading over it would be a silent no-op
-    # wearing the held-out label; refuse loudly
-    with pytest.raises(ValueError, match="executor"):
-        RE.gate_paired_outcomes(None, _questions(), 20, _FakeAsk(),
-                                replay={"q2-001": _row("q2-001", "P123")}, loo=True)
-
-
 def test_gate_loo_without_executor_flag_refuses(monkeypatch, capsys) -> None:
     # CLI precondition: --gate-loo without --gate-executor is refused BEFORE any state
     # is touched — there is no curve fold on the family arm to hold anything out of
@@ -652,7 +630,8 @@ def test_gate_loo_with_deliberate_disabled_refuses(monkeypatch, capsys) -> None:
     # shape. Refused before any state is touched.
     monkeypatch.setenv("LIFE_AGENT_DELIBERATE", "0")
     monkeypatch.setattr(sys, "argv",
-                        ["run_eval.py", "--gate", "--gate-executor", "--gate-loo"])
+                        ["run_eval.py", "--gate", "--gate-executor", "--gate-replay", "x",
+                         "--gate-loo"])
     monkeypatch.setattr(RE, "load_questions",
                         lambda p: (_ for _ in ()).throw(AssertionError("state touched")))
     assert RE.main() == 2

@@ -69,34 +69,3 @@ def test_judge_once_parses_strict_json(monkeypatch) -> None:
     assert out["faithfulness"] == 3 and out["citation_fidelity"] == 2 and out["_served"] == "gpt-x"
 
 
-def test_cache_line_formats_per_stage_hit_rates() -> None:
-    cache = {"expand.hit": 9, "expand.miss": 1, "retrieve.miss": 10,
-             "synthesize.hit": 10}
-    assert re_._cache_line(cache) == (
-        "Derivation cache hits: expand 9/10 · retrieve 0/10 · synthesize 10/10")
-    assert re_._cache_line({}) == ""  # caching off → no line
-
-
-def test_cache_line_surfaces_expander_refusals() -> None:
-    # issue #56's second ask: the refusal signal is REPORTED, not write-only — and
-    # zero-noise when absent (the previous test's line carries no refusal part).
-    # Rendered as its own part (refusals/attempts, cached count named), NOT through
-    # the stage loop: a refusal count is not a cache-stage hit rate (PR #63 review).
-    cache = {"expand.hit": 9, "expand.miss": 1,
-             "expand_refusal.hit": 2, "expand_refusal.miss": 1}
-    assert re_._cache_line(cache) == (
-        "Derivation cache hits: expand 9/10 · expand refusals 3/10 (2 cached)")
-
-
-def test_synthesis_report_carries_the_cache_line() -> None:
-    rates = {"hallucination_rate": 0.0, "n_hallucinated": 0, "n": 1,
-             "grounded_rate": 1.0, "n_grounded": 1, "n_answerable": 1,
-             "abstention_honesty": None, "n_honest": 0, "n_unanswerable": 0,
-             "declined_rate": 0.0, "n_declined": 0}
-    row = {"id": "q-001", "faithfulness": 3, "citation_fidelity": 3, "structural_ok": True,
-           "hallucinated": False, "synthesis_pass": True, "question": "q?",
-           "answerable": True}
-    with_cache = re_.format_synthesis_report([row], rates, 8, 1.0, {"synthesize.hit": 1})
-    assert "Derivation cache hits: synthesize 1/1" in with_cache
-    without = re_.format_synthesis_report([row], rates, 8, 1.0)
-    assert "Derivation cache" not in without

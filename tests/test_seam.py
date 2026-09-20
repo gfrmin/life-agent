@@ -1,8 +1,7 @@
 """The M0 act-committing seam (life_agent.core.seam) — hermetic.
 
-One function commits acts (roadmap M0): the P1 skin `optimise` calls (lookup,
-per-claim narrative), the P2 daemon `/decide` POST, and the pre-empting gates
-(weak retrieval, executor down) all pass through :func:`seam.commit`. These tests
+One function commits acts (roadmap M0): the bridge `/decide` POST and the pre-empting
+gate (executor down) both pass through :func:`seam.commit`. These tests
 pin the dispatch contract and the drift gate that keeps the seam single-source.
 
 Run: uv run --project . python -m pytest tests/test_seam.py
@@ -20,34 +19,12 @@ from life_agent.core import seam as S
 SRC = Path(__file__).resolve().parents[1] / "src" / "life_agent"
 
 
-class _RefusingBrain:
-    """A brain double that fails the test if the seam consults it — the gate branch
-    must decide from the declared observation alone."""
-
-    def optimise(self, state_id: str, *, actions: dict[str, Any],
-                 preference: dict[str, Any]) -> tuple[Any, float]:
-        raise AssertionError("gate branch must not consult the engine")
-
-
-class _CannedBrain:
-    """Returns a canned (action, eu) and records the call for passthrough checks."""
-
-    def __init__(self, action: Any, eu: float) -> None:
-        self.action, self.eu = action, eu
-        self.calls: list[tuple[str, dict[str, Any], dict[str, Any]]] = []
-
-    def optimise(self, state_id: str, *, actions: dict[str, Any],
-                 preference: dict[str, Any]) -> tuple[Any, float]:
-        self.calls.append((state_id, actions, preference))
-        return self.action, self.eu
-
-
 # --- gates: declared observations decide, the engine is not consulted --------------------
 
 # r23 (F8): the exemption is an EXACT repo-relative path, never a basename. `p.name` let
 # a file called `seam.py` ANYWHERE under src/life_agent exempt itself from the guard that
 # says one function commits acts — a fork committing acts outside the seam, invisible.
-_SEAM_EXEMPT = frozenset({"core/brain.py", "core/seam.py"})
+_SEAM_EXEMPT = frozenset({"core/seam.py"})
 
 
 def test_gate_short_circuits_to_abstain() -> None:
@@ -60,9 +37,10 @@ def test_gate_short_circuits_to_abstain() -> None:
 def test_gate_preempts_an_engine_request() -> None:
     # a declared gate decides even when a full request rides along — the observation
     # pre-empts, exactly as the host forks did before M0, but now visibly at the seam.
-    req = S.SkinOptimise(brain=_RefusingBrain(), state_id="s_1",
-                         actions={"type": "finite", "values": [0.0]},
-                         preference={"type": "functional_per_action", "actions": {}})
+    def post(url: str, payload: dict[str, Any]) -> dict[str, Any] | None:
+        raise AssertionError("gate branch must not consult the decider")
+
+    req = S.Decide(post=post, bridge="http://d:1", payload={})
     d = S.commit(req, gates=(S.GATE_EXECUTOR_DOWN,))
     assert d.action == "abstain" and d.gate == S.GATE_EXECUTOR_DOWN
 
@@ -72,29 +50,9 @@ def test_no_request_and_no_gate_is_a_contract_error() -> None:
         S.commit(None)
 
 
-# --- P1: the skin optimise dispatch ------------------------------------------------------
+# --- the decider: the bridge /decide dispatch -----------------------------------------------------
 
-def test_skin_optimise_passthrough() -> None:
-    brain = _CannedBrain("hedge", 1.23)
-    actions = {"type": "finite", "values": [0.0]}
-    pref = {"type": "functional_per_action", "actions": {"hedge": {}}}
-    d = S.commit(S.SkinOptimise(brain=brain, state_id="s_7", actions=actions,
-                                preference=pref))
-    assert (d.action, d.eu, d.gate, d.view) == ("hedge", 1.23, None, None)
-    assert brain.calls == [("s_7", actions, pref)]
-
-
-def test_skin_optimise_action_is_verbatim() -> None:
-    # the seam never renames an act — report_j → report mapping is the caller's render
-    # concern, not the commit's.
-    d = S.commit(S.SkinOptimise(brain=_CannedBrain("report_2", -0.5), state_id="s",
-                                actions={}, preference={}))
-    assert d.action == "report_2" and d.eu == -0.5
-
-
-# --- P2: the daemon /decide dispatch -----------------------------------------------------
-
-def test_daemon_decide_posts_and_returns_view() -> None:
+def test_decide_posts_and_returns_view() -> None:
     seen: list[tuple[str, dict[str, Any]]] = []
     reply = {"effector": "report", "value": "42", "credences": [0.9], "p_none": 0.05,
              "eu": 0.8}
@@ -104,31 +62,30 @@ def test_daemon_decide_posts_and_returns_view() -> None:
         return reply
 
     payload = {"candidates": ["42"], "observations": [1], "rho": 0.8}
-    d = S.commit(S.DaemonDecide(post=post, daemon="http://d:1", payload=payload))
+    d = S.commit(S.Decide(post=post, bridge="http://d:1", payload=payload))
     assert seen == [("http://d:1/decide", payload)]
     assert d.view is reply
     assert d.action == "report" and d.eu == 0.8 and d.gate is None
 
 
-def test_daemon_null_reply_asserts() -> None:
-    d = S.DaemonDecide(post=lambda url, payload: None, daemon="http://d:1", payload={})
+def test_decide_null_reply_asserts() -> None:
+    d = S.Decide(post=lambda url, payload: None, bridge="http://d:1", payload={})
     with pytest.raises(AssertionError):
         S.commit(d)
 
 
-def test_daemon_missing_eu_is_none() -> None:
-    d = S.commit(S.DaemonDecide(post=lambda u, p: {"effector": "miss"},
-                                daemon="http://d:1", payload={}))
+def test_decide_missing_eu_is_none() -> None:
+    d = S.commit(S.Decide(post=lambda u, p: {"effector": "miss"},
+                                bridge="http://d:1", payload={}))
     assert d.action == "miss" and d.eu is None
 
 
 # --- the drift gate: exactly ONE module commits acts -------------------------------------
 
 def test_only_the_seam_calls_optimise() -> None:
-    """`.optimise(` may appear only in brain.py (the client method) and seam.py (the one
-    commit site). A new call anywhere else in src/life_agent is a doctrine bug — a fork
-    committing acts outside the seam (roadmap M0; a fork found later is a bug, not a
-    preference)."""
+    """No engine `.optimise(` call survives in src/life_agent: the act is
+    ``core/decide.bayes_act`` (its callers are gated in tests/test_decider.py). A new call
+    is a doctrine bug — a fork committing acts outside the seam."""
     offenders = [
         p.relative_to(SRC)
         for p in SRC.rglob("*.py")
@@ -139,24 +96,13 @@ def test_only_the_seam_calls_optimise() -> None:
 
 
 def test_only_the_seam_posts_decide() -> None:
-    """The daemon `/decide` POST may be built only in seam.py. `/decide-support` (the
-    membrane shadow's mirror feed) and the bridge's server-side route table are not act
-    commits and are excluded by pattern, not by file list."""
+    """The `/decide` POST may be built only in seam.py. The bridge's server-side route
+    table serves it and is not an act commit."""
     pat = re.compile(r"""/decide["']""")
     offenders = [
         p.relative_to(SRC)
         for p in SRC.rglob("*.py")
-        if p.relative_to(SRC).as_posix() != "core/seam.py"
+        if p.relative_to(SRC).as_posix() not in ("core/seam.py", "bridge/server.py")
         and pat.search(p.read_text())
     ]
     assert offenders == []
-
-
-# --- M3: the live consult re-point (DaemonDecide.live) -----------------------------------
-
-def test_daemon_decide_without_live_is_unchanged() -> None:
-    d = S.commit(S.DaemonDecide(post=lambda u, p: {"effector": "hedge", "eu": 0.25},
-                                daemon="http://d:1", payload={}))
-    assert d.action == "hedge"
-    assert d.eu == 0.25
-    assert d.gate is None

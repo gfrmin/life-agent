@@ -5,14 +5,13 @@ from __future__ import annotations
 
 import io
 import json
-from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
-from life_agent.ledger import golden as G
 from life_agent.ledger import migrate as M
 from life_agent.ledger import sources as SRC
+from life_agent.ledger.paths import Paths
 from life_agent.ledger.store import LedgerConflictError, LedgerStore
 from pkm.cache import meta_file
 from tests.conftest import LEDGER_MARKER
@@ -24,25 +23,9 @@ def _store(root: Path) -> LedgerStore:
     return LedgerStore(root / "ledger")
 
 
-def test_census_counts_agree_with_the_harness_counts(ledger_kb: tuple[Path, G.Paths]) -> None:
-    _root, p = ledger_kb
-    out = io.StringIO()
-    c = M.census(p, out=out)
-    harness = G.counts(p)
-    for sid, row in c["sources"].items():
-        assert row["unparseable"] == 0 and row["duplicate_key"] == 0, sid
-        if sid == "pkm.artifact":
-            assert row["parsed"] == harness["pkm.artifact"]["meta_json_files"] == 1
-        elif sid == "pkm.demand":
-            assert row["parsed"] == harness["pkm.demand"]["lines"] == 1
-            assert row["file_day_mismatch"] == 0
-        else:
-            assert row["parsed"] == harness[sid].get("parsed", 0), sid
-    assert LEDGER_MARKER not in out.getvalue()
-
 
 def test_census_flags_unparseable_and_duplicate_key_lines_as_non_events(
-        ledger_kb: tuple[Path, G.Paths]) -> None:
+        ledger_kb: tuple[Path, Paths]) -> None:
     _root, p = ledger_kb
     with p.labels.open("a", encoding="utf-8") as fh:
         fh.write("\n")                                    # blank: skipped by every reader
@@ -59,7 +42,7 @@ def test_census_flags_unparseable_and_duplicate_key_lines_as_non_events(
     assert len(sc.parsed) == 4 and sc.unparseable == 1
 
 
-def test_envelope_rules_per_source(ledger_kb: tuple[Path, G.Paths]) -> None:
+def test_envelope_rules_per_source(ledger_kb: tuple[Path, Paths]) -> None:
     _root, p = ledger_kb
     tasks = SRC.scan("act.tasks", p).parsed
     assert [t.author for t in tasks] == ["owner", "owner", "owner", "owner"]
@@ -113,7 +96,7 @@ def test_instrument_kernel_id_namespace_and_completeness() -> None:
 
 
 def test_migrate_all_then_rerun_is_a_noop_and_legacy_untouched(
-        ledger_kb: tuple[Path, G.Paths]) -> None:
+        ledger_kb: tuple[Path, Paths]) -> None:
     root, p = ledger_kb
     before = {n: f.read_bytes() for n, f in p.legacy_files().items()}
     store = _store(root)
@@ -137,7 +120,7 @@ def test_migrate_all_then_rerun_is_a_noop_and_legacy_untouched(
 
 
 def test_sync_appends_the_legacy_tail_and_is_loud_on_a_rewritten_prefix(
-        ledger_kb: tuple[Path, G.Paths]) -> None:
+        ledger_kb: tuple[Path, Paths]) -> None:
     root, p = ledger_kb
     store = _store(root)
     M.migrate(p, store, sources=("eval.labels",), out=io.StringIO(), epoch="E0")
@@ -160,7 +143,7 @@ def test_sync_appends_the_legacy_tail_and_is_loud_on_a_rewritten_prefix(
         M.sync(p, store, sources=("eval.labels",), out=io.StringIO())
 
 
-def test_pkm_artifact_sweep_dedups_by_identity(ledger_kb: tuple[Path, G.Paths]) -> None:
+def test_pkm_artifact_sweep_dedups_by_identity(ledger_kb: tuple[Path, Paths]) -> None:
     root, p = ledger_kb
     store = _store(root)
     M.migrate(p, store, sources=("pkm.artifact",), out=io.StringIO(), epoch="E0")
@@ -183,7 +166,7 @@ def test_pkm_artifact_sweep_dedups_by_identity(ledger_kb: tuple[Path, G.Paths]) 
     assert r.written == 0
 
 
-def test_cli_smoke_census_migrate_counts(ledger_kb: tuple[Path, G.Paths],
+def test_cli_smoke_census_migrate_counts(ledger_kb: tuple[Path, Paths],
                                         monkeypatch: pytest.MonkeyPatch,
                                         capsys: pytest.CaptureFixture[str]) -> None:
     root, p = ledger_kb
@@ -207,15 +190,9 @@ def test_cli_smoke_census_migrate_counts(ledger_kb: tuple[Path, G.Paths],
         M.main(["census", "--write", str(root / "elsewhere.json")])
 
 
-def test_paths_state_sha_source_defaults_to_the_ledger(ledger_kb: tuple[Path, G.Paths]) -> None:
-    _root, p = ledger_kb
-    a = G.a2_state_md(p)
-    b = G.a2_state_md(replace(p, state_sha_source=p.tasks_ledger))
-    assert a == b
-
 
 def test_counts_names_a_legacy_side_deletion_on_the_set_shaped_source(
-        ledger_kb: tuple[Path, G.Paths]) -> None:
+        ledger_kb: tuple[Path, Paths]) -> None:
     """pkm.artifact can only fall behind its segment by deletion on the legacy side: the count
     stays a MISMATCH (loud) and says exactly how many identities the segment retains."""
     import shutil
@@ -236,7 +213,7 @@ def test_counts_names_a_legacy_side_deletion_on_the_set_shaped_source(
 
 
 def test_census_counts_artefacts_whose_lineage_repeats_an_input(
-        ledger_kb: tuple[Path, G.Paths]) -> None:
+        ledger_kb: tuple[Path, Paths]) -> None:
     """A laundered dedup must be a visible number (the pkm lineage micro-tranche, A3): the
     envelope collapses repeated lineage inputs to one (`inputs` is a set of identities), so
     the census counts the artefacts whose on-disk `lineage.json` repeats a key — surfaced by

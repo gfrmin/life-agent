@@ -9,9 +9,31 @@
 sets:
   owner:
     kind: paired
-    path: eval/gate-outside-option/paired-gate-20260826T083356.jsonl
-    sha256: 1c4e5a5a0c2080414ee462054dcfd76d4a4acb53e27627696d86cf466e329768
-    note: run 18 (2026-08-26), the owner's 104 questions; a pin until J1 re-scores live
+    path: eval/gate-outside-option/paired-gate-20260920T160935-strict.jsonl
+    sha256: de0078c94030a2e7a4625071e1c0653cdc39d654c60ea85079c107d95e83d147
+    note: >-
+      J1's host Bayes act (core/decide.bayes_act) over the owner's 104 questions
+      (2026-09-20, corpus pin full-2026-06-11), both arms on ONE GRADER and ONE PRICE LIST:
+      each arm is graded on the answer it commits, by exact match, and priced at its declared
+      prices (the typed arm's applied probes at the menu's prices, cache or no cache; the
+      outside arm is the live deliberative rung's ANSWER line at the cost the call recorded).
+      Replaces run 18 (the Julia daemon, 2026-08-26: typed 61/2/41 at $20.95, U/q +0.220 on
+      the same grader and prices; its record is paired-gate-20260826T083356-strict-priced.jsonl).
+      The daemon's 13 extra right answers came with 2 wrongs and a policy that called the
+      deliberative rung on 40 questions at $0.38; at today's gauge that bundle is worth less
+      than abstaining.
+  generated:
+    kind: typed
+    path: eval/typed/gate-typed-20260920T120757.jsonl
+    sha256: 856caf2f258c73819f809ac1c51bb8770691596f1538af95cbfcaaaff4e0f7d1
+    note: >-
+      The generated golden set: 212 verbatim point-fact questions extracted from the owner's
+      corpus by the generator (claude-haiku-4-5-20251001, prompt sha ea86a53553e58005;
+      questions file sha256 2a548ef4239c4347 in $LIFE_AGENT_KB/eval/questions_generated.yaml).
+      J1's host Bayes act, run COLD (no derivation cache) on a second machine 2026-09-20 against the
+      corpus pin full-2026-06-11, priced at the menu's prices for the probes it applied
+      (metered $12.85 for the 212; the menu understates what the probes meter, see
+      CHANGELOG). First pin: this is the baseline, no incumbent.
   atm:
     kind: pending
     note: ATM-Bench email-only number-typed (198); scored from J3 (`make sets`)

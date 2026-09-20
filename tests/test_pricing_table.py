@@ -38,7 +38,7 @@ _TRANSFORMS = [
 _DELIBERATE = {"name": "deliberate", "probe": "deliberate", "kind": "voi",
                "trigger": "below_bar", "rho": 0.92, "cost": 0.38}
 _GROW = [
-    {"probe": "retrieve_rerank", "cost": 0.004, "alpha0": 3.0, "beta0": 7.0},
+    {"probe": "retrieve_rerank", "cost": 0.047, "alpha0": 3.0, "beta0": 7.0},
     {"probe": "retrieve_expand", "cost": 0.006, "alpha0": 3.5, "beta0": 6.5},
     {"probe": "re_extract_strong", "cost": 0.02, "alpha0": 4.0, "beta0": 6.0},
 ]
