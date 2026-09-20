@@ -24,12 +24,18 @@ and a clone over someone else's mail works end to end.
 - **J0 — Reset.** *Done 2026-09-19.* Unification arc archived (tag
   `archive/unification-arc-v0`); `make check`/`score`/`data`/`sets`/`engine`; the board
   reproduces run 18. No behaviour change.
-- **J1 — The decider.** The candidate posterior (`answer_brain.jl` → `core/posterior.py`,
-  pinned to the 314 m5-base exchanges) and the utility folds (credence-skin → local
-  quadrature, pinned to recorded boot Ū); the act is the host Bayes act
-  (`core/decide.bayes_act`, `core/decider.py`, `core/enact.py`) with gather priced from
-  recorded gather sequences and ask at a measured recovery rate; the Julia daemon, the credence skin and the in-process lanes
-  retire; rule 5 becomes the ΔU merge rule. The board re-scores the typed arm live.
+- **J1 — The decider.** *Done 2026-09-20 (PR #192).* The candidate posterior
+  (`answer_brain.jl` → `core/posterior.py`, pinned to the 314 m5-base exchanges) and the
+  utility folds (credence-skin → local quadrature, pinned to recorded boot Ū); the act is
+  the host Bayes act (`core/decide.bayes_act`, `core/decider.py`, `core/enact.py`) with
+  gather priced from recorded gather sequences and ask at a measured recovery rate; the
+  Julia daemon, the credence skin and the in-process lanes retire; rule 5 is the ΔU merge
+  rule. The board is on one grader and one price list (the typed arm's applied probes at
+  the menu's prices, cache or no cache): the host act 48/0/56 at $1.44, U/q +0.443, against
+  the daemon's 61/2/41 at $20.95, +0.220 — its 13 extra right answers rode with 2 wrongs and
+  40 warm calls to the deliberative rung that had been metered at $0. ΔU +23.2. The
+  generated golden set (212 questions from the corpus, `make golden`) is the second row:
+  the act cold reads 85/4/123 at $0.015 a question, U/q +0.284 — the baseline.
 - **J2 — Origin, and escalation only if a rung earns it.** Origin on every reply and
   disclosure rows in the write-once recorder stand. The escalate ROW is measured and does
   not pay: the one rung with recorded verdicts (the deliberative edge) answers the owner's
