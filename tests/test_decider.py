@@ -51,11 +51,60 @@ def test_the_bayes_act_is_the_row_argmax_at_p1() -> None:
     assert DEC.bayes_act(_U, bar + 1e-6) == "respond"
 
 
-def test_gather_is_ranked_only_while_open_and_pays_its_price() -> None:
+def test_gather_is_ranked_only_while_open_and_at_the_chosen_option_s_value() -> None:
     u = {**_U, **_gather(0.9), "kappa_att": 0.0}
     assert DEC.bayes_act(u, 0.6) == "gather"
     assert DEC.bayes_act(u, 0.6, gather_open=False) == "abstain"
-    assert DEC.bayes_act(u, 0.6, gather_cost=10.0) == "abstain"
+    assert DEC.bayes_act(u, 0.6, gather_eu=-10.0) == "abstain"
+
+
+# --- which gather ------------------------------------------------------------------------
+
+def _lifts(probe: str, rate: float, up: float, flat: float) -> dict[str, float]:
+    """One option's measured transition: how often it lifts the leader, and by how much."""
+    return {GR.option_key("lift_rate", probe): rate, GR.option_key("lift_up", probe): up,
+            GR.option_key("lift_flat", probe): flat}
+
+
+def test_the_option_worth_most_wins_the_menu_not_the_cheapest() -> None:
+    """A corroboration that usually carries the leader over the bar beats a retrieval that
+    rarely moves it and costs a twelfth as much."""
+    u = {**_U, **_lifts("corroborate", 0.8, 0.2, 0.0), **_lifts("retrieve", 0.1, 0.02, -0.1)}
+    menu = [("retrieve", 0.004), ("corroborate", 0.05)]
+    best = DEC.best_gather(u, 0.75, 0, menu)
+    assert best is not None and best[0] == "corroborate"
+    assert best[1] == pytest.approx(DEC.option_eu(u, 0.75, 0, "corroborate", 0.05))
+    assert DEC.option_eu(u, 0.75, 0, "corroborate", 0.05) > DEC.option_eu(
+        u, 0.75, 0, "retrieve", 0.004)
+
+
+def test_a_price_still_sinks_an_option_that_earns_less_than_it_costs() -> None:
+    u = {**_U, **_lifts("corroborate", 0.8, 0.2, 0.0)}
+    assert DEC.option_eu(u, 0.75, 0, "corroborate", 0.05) > 0.0
+    assert DEC.option_eu(u, 0.75, 0, "corroborate", 5.0) < 0.0
+
+
+def test_an_unmeasured_option_is_priced_by_the_step_row_so_the_menu_ranks_by_price() -> None:
+    u = {**_U, **_gather(0.9)}
+    best = DEC.best_gather(u, 0.6, 0, [("dear", 0.5), ("cheap", 0.004)])
+    assert best is not None and best[0] == "cheap"
+    assert best[1] == pytest.approx(DEC.eu_by_action(u, 0.6)["gather"] - 0.004)
+
+
+def test_an_empty_menu_has_no_best_gather_and_ties_take_menu_order() -> None:
+    assert DEC.best_gather(_U, 0.6, 0, []) is None
+    tie = DEC.best_gather(_U, 0.6, 0, [("second", 0.01), ("first", 0.01)])
+    assert tie is not None and tie[0] == "second"
+
+
+def test_the_lift_is_measured_with_a_shrunk_rate_and_mean() -> None:
+    fitted = GR.fit_lift([0.3, 0.2, 0.0, -0.1])
+    assert fitted["lift_rate"] == pytest.approx(3 / 6)          # Beta(1, 1) on 2 of 4
+    assert fitted["lift_up"] == pytest.approx(0.5 / 3)          # shrunk toward no lift
+    assert fitted["lift_flat"] == pytest.approx(-0.1 / 3)
+    assert GR.transition({}, "never_run") is None
+    assert GR.transition(_lifts("p", 0.5, 0.1, 0.0), "p") == {
+        "lift_rate": 0.5, "lift_up": 0.1, "lift_flat": 0.0}
 
 
 def test_ties_resolve_to_the_first_listed_action() -> None:
@@ -137,10 +186,11 @@ def test_the_posterior_is_local_and_the_act_is_its_argmax() -> None:
     credences, p_none = POST.candidate_posterior(2, _OBS, 0.8)
     assert view["credences"] == credences and view["p_none"] == p_none
     assert view["p1"] == max(credences)
-    assert view["act"] == DEC.bayes_act(_U, view["p1"], gather_open=True, gather_cost=0.004)
+    best = DEC.best_gather(_U, view["p1"], 0, [("corroborate_a", 0.004)])
+    assert best is not None
+    assert view["act"] == DEC.bayes_act(_U, view["p1"], gather_open=True, gather_eu=best[1])
     assert view["eu"] == pytest.approx(
-        DEC.eu_by_action(_U, view["p1"])[view["act"]]
-        - (0.004 if view["act"] == "gather" else 0.0))
+        best[1] if view["act"] == "gather" else DEC.eu_by_action(_U, view["p1"])[view["act"]])
 
 
 def test_a_certain_leader_is_reported_and_an_uncertain_one_withheld() -> None:
@@ -156,6 +206,16 @@ def test_gather_closes_when_every_option_is_applied() -> None:
     closed = DCD.decide(_payload(applied_probes=["corroborate_a"]), u)
     assert open_["effector"] == "gather" and open_["probe"] == "corroborate_a"
     assert closed["effector"] != "gather"
+
+
+def test_the_decider_enacts_the_option_it_ranked_first_not_the_cheapest() -> None:
+    menu = [{"probe": "retrieve", "kind": "voi", "cost": 0.004},
+            {"probe": "corroborate", "kind": "voi", "cost": 0.05}]
+    u = {**_U, **_lifts("corroborate", 0.8, 0.45, 0.0), **_lifts("retrieve", 0.1, 0.02, -0.1)}
+    split = [{**_OBS[0], "reports": 0}, _OBS[1]]                   # p1 0.48, under the bar
+    view = DCD.decide(_payload(transforms=menu, observations=split), u)
+    assert 0.4 < view["p1"] < 0.6
+    assert (view["effector"], view["probe"]) == ("gather", "corroborate")
 
 
 def test_the_handle_reads_u_bar_per_decision() -> None:
@@ -186,10 +246,13 @@ def _calls(tree: ast.AST, name: str) -> bool:
 def test_only_the_decider_takes_the_act() -> None:
     """Rule 2: `bayes_act` is CALLED (by AST, not spelling) from core/decider.py and nowhere
     else in the package; `argmax_action`, its unpriced alias, only from core/decide.py's own
-    thresholds."""
+    thresholds; `best_gather` — the ranking of the gather menu — only from the decider, and
+    `option_eu` only from inside `best_gather`, so no second place prices an option."""
     root = Path(__file__).resolve().parents[1] / "src" / "life_agent"
     trees = {str(p.relative_to(root)): ast.parse(p.read_text(encoding="utf-8"))
              for p in root.rglob("*.py")}
     assert {f for f, t in trees.items() if _calls(t, "bayes_act")} == {
         "core/decide.py", "core/decider.py"}
     assert {f for f, t in trees.items() if _calls(t, "argmax_action")} == {"core/decide.py"}
+    assert {f for f, t in trees.items() if _calls(t, "best_gather")} == {"core/decider.py"}
+    assert {f for f, t in trees.items() if _calls(t, "option_eu")} == {"core/decide.py"}

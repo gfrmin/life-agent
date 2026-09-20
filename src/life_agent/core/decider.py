@@ -3,6 +3,7 @@
 The bridge answers ``POST /decide`` through :func:`decide`:
 
     request → candidate posterior (core/posterior) → p1 = the MAP credence
+            → the best gather option (core/decide.best_gather, over the request's menu)
             → the Bayes act (core/decide.bayes_act) → enactment (core/enact) → the view
 
 Nothing here learns: the posterior is calibrated where the evidence is shaped (reliability
@@ -25,16 +26,20 @@ def decide(payload: Mapping[str, Any], u_bar: Mapping[str, float]) -> dict[str, 
     """Rank one ``/decide`` request under ``u_bar`` and return the executor's view:
     ``effector``, ``value``, ``probe``, ``credences``, ``p_none``, plus the chosen ``act``,
     ``p1`` (P(asserting now would be correct) = the MAP credence) and ``eu`` (the chosen
-    row's expected utility at that p1, net of the gather's price when gather was chosen)."""
+    row's expected utility at that p1 — for a gather, the chosen option's, net of its
+    price)."""
     candidates = list(payload.get("candidates") or [])
     credences, p_none = POST.candidate_posterior(
         len(candidates), list(payload.get("observations") or []), float(payload["rho"]))
     p1 = DEC.p_correct(credences)
-    u_bar = GR.at_step(u_bar, len(payload.get("applied_probes") or []))
-    gather_open, gather_cost = EN.gather_open(dict(payload)), EN.gather_cost(dict(payload))
-    act = DEC.bayes_act(u_bar, p1, gather_open=gather_open, gather_cost=gather_cost)
-    view = EN.enact(act, dict(payload), credences, p_none)
-    eu = DEC.eu_by_action(u_bar, p1)[act] - (gather_cost if act == "gather" else 0.0)
+    step = len(payload.get("applied_probes") or [])
+    choice = DEC.best_gather(u_bar, p1, step, EN.gather_options(dict(payload)))
+    stepped = GR.at_step(u_bar, step)
+    act = DEC.bayes_act(stepped, p1, gather_open=choice is not None,
+                        gather_eu=choice[1] if choice else None)
+    view = EN.enact(act, dict(payload), credences, p_none,
+                    probe=choice[0] if choice else None)
+    eu = choice[1] if act == "gather" and choice else DEC.eu_by_action(stepped, p1)[act]
     return {**view, "act": act, "p1": p1, "eu": eu}
 
 
