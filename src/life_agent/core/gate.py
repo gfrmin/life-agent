@@ -122,6 +122,12 @@ class RealisedResponse:
     # r21: the aggregate family's pre-registered Winkler grade in [0, 1] — None on
     # every other row (byte-identical valuation to before).
     x: float | None = None
+    # The menu probes the arm applied, in order, and what its calls actually metered.
+    # ``cost_usd`` is their DECLARED price (``pricing.list_price``: the price the decider
+    # ranked them at, cache or no cache); empty / None on an arm that records neither
+    # (the replay arm, whose cost_usd is its recorded usage).
+    applied: tuple[str, ...] = ()
+    metered_usd: float | None = None
 
     def __post_init__(self) -> None:
         if self.action not in _ALL_ACTIONS:

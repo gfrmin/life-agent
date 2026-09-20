@@ -88,3 +88,29 @@ def test_model_price_is_frozen() -> None:
     price = ModelPrice(1.0, 2.0, 0.1, 0.2)
     with pytest.raises(AttributeError):
         price.input = 5.0  # type: ignore[misc]
+
+
+# --- the menu's declared prices: what the decider ranks at and the board charges ---------
+
+def test_menu_price_is_the_declared_row_and_a_guard_is_free() -> None:
+    from life_agent.core import pricing as PRC
+
+    assert PRC.menu_price("retrieve_rerank") == 0.047
+    assert PRC.menu_price("deliberate") == PRC.DELIBERATE_TRANSFORM["cost"]
+    assert PRC.menu_price("recency") == 0.0  # a guard, never a gather option
+    # offered as a guard (corroborate_owner) AND a tier: it costs the tier's price
+    assert PRC.menu_price("corroborate_opus") == 0.020
+
+
+def test_menu_price_refuses_an_undeclared_probe() -> None:
+    from life_agent.core import pricing as PRC
+
+    with pytest.raises(KeyError, match="no declared price"):
+        PRC.menu_price("corroborate_sonnet_v2")
+
+
+def test_list_price_sums_an_applied_sequence() -> None:
+    from life_agent.core import pricing as PRC
+
+    assert PRC.list_price(()) == 0.0
+    assert PRC.list_price(["corroborate_haiku", "deliberate"]) == pytest.approx(0.004 + 0.38)

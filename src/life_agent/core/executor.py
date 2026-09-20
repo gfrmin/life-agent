@@ -194,7 +194,8 @@ def decide_via_loop(question: str, k: int, *, bridge: str, post: Post, get: Get,
                 "credences": [], "p_none": None, "eu": None, "n_obs": 0,
                 "hits": [], "route": None, "rendered": DECLINED_NOT_POINT_FACT,
                 "n_indeterminate": 0, "question": question,
-                **_UNPRICED_ATTRIBUTION, "edge_events": [], "spend_usd": 0.0}
+                **_UNPRICED_ATTRIBUTION, "edge_events": [], "spend_usd": 0.0,
+                "applied": []}
     return run_pass(question, k, route, bridge=bridge, post=post, get=get,
                     rerank=False, expand=False, transforms=transforms,
                     curves=curves)
@@ -334,7 +335,7 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str,
                 "n_indeterminate": int(ext.get("indeterminate", 0) or 0),
                 "n_competing": int(ext.get("n_competing", 0) or 0),
                 **_UNPRICED_ATTRIBUTION, "edge_events": edge_events,
-                "spend_usd": spend_usd}
+                "spend_usd": spend_usd, "applied": list(applied)}
     # r30 (C5): this question's own answer shape prices its own grow-menu pricing too —
     # the SAME seam current_u_bar's other callers route through. The anchor shape omits
     # the query param entirely (never a wire change for the majority-`exact` case r29
@@ -590,7 +591,7 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str,
             "instrument": edge_instrument, "cost_usd": edge_cost,
             "latency_s": edge_latency, "instrument_value": edge_value,
             "instrument_confidence": edge_conf, "instrument_lineage": edge_lineage,
-            "edge_events": edge_events, "spend_usd": spend_usd,
+            "edge_events": edge_events, "spend_usd": spend_usd, "applied": list(applied),
             "engine_act": dec.get("act"), "p1": dec.get("p1")}
 
 

@@ -55,6 +55,7 @@ from eval_grading import answer_matches, chunk_matches_any, classify
 
 from life_agent.core import answer_shape as AS
 from life_agent.core import decisions as DEC
+from life_agent.core import pricing as PRC
 
 # Effectively-unbounded k for the in-corpus set-membership check: we want "does the
 # answer appear ANYWHERE", not a ranked top-k, so we take all FTS matches and confirm
@@ -504,11 +505,20 @@ def _typed_response_executor(view: dict, q: dict, *, available: bool = True):
     import life_agent.core.gate as GATE
 
     gold, variants = q.get("answer", ""), q.get("answer_variants", [])
-    # the arm's TOTAL realised spend (spend_usd: deliberate AND metered tiers — the
-    # deliberate-only decisions-v2 slot would price typed tier spend at $0 while the
-    # replay arm is fully priced, #67 review) rides every action: an abstain that
-    # burned calls still paid for them
-    cost = float(view["spend_usd"] or 0.0)
+    # the arm is priced at the menu's DECLARED prices for the probes it applied — the
+    # price the decider ranked them at, whether or not a cache served the call (a warm
+    # replay of an escalation is not free: the board prices the act, not the cache) —
+    # on every action: an abstain that gathered still paid for it. What the calls
+    # actually metered rides beside it as metered_usd.
+    applied = tuple(str(p) for p in view["applied"])
+    cost, metered = PRC.list_price(applied), float(view["spend_usd"] or 0.0)
+
+    def resp(action: str, correct: bool | None, *, x: float | None = None,
+             withheld: str | None = None) -> GATE.RealisedResponse:
+        return GATE.RealisedResponse(action=action, correct=correct, cost_usd=cost,
+                                     withheld=withheld, x=x, applied=applied,
+                                     metered_usd=metered)
+
     eff = str(view["effector"])
     if eff == "report":
         # r21: an aggregate report with a numeric gold grades through the frozen
@@ -521,19 +531,16 @@ def _typed_response_executor(view: dict, q: dict, *, available: bool = True):
         if totals and gv is not None:
             t = totals[0]
             x, excludes = GATE.realised_aggregate(float(t["lo"]), float(t["hi"]), gv)
-            return GATE.RealisedResponse(action="report", correct=not excludes,
-                                         cost_usd=cost, x=x)
-        return GATE.RealisedResponse(action="report", correct=GATE.realised_report(
-            [str(a) for a in view["asserted"]], gold, variants), cost_usd=cost)
+            return resp("report", not excludes, x=x)
+        return resp("report", GATE.realised_report(
+            [str(a) for a in view["asserted"]], gold, variants))
     if eff == "hedge":
-        return GATE.RealisedResponse(action="hedge", correct=GATE.realised_report(
-            [str(c) for c in view["candidates"]], gold, variants), cost_usd=cost)
+        return resp("hedge", GATE.realised_report(
+            [str(c) for c in view["candidates"]], gold, variants))
     reason = withheld_reason(view, available=available)
     if eff == "ask_clarify":
-        return GATE.RealisedResponse(action="ask_clarify", correct=None, cost_usd=cost,
-                                     withheld=reason)
-    return GATE.RealisedResponse(action="abstain", correct=None, cost_usd=cost,
-                                 withheld=reason)
+        return resp("ask_clarify", None, withheld=reason)
+    return resp("abstain", None, withheld=reason)
 
 
 def executor_run_stats(typed_views: list) -> dict:
@@ -546,7 +553,11 @@ def executor_run_stats(typed_views: list) -> dict:
             # TOTAL metered spend (tiers included since #67) — not the deliberate
             # slot's sum; a question can pay without the deliberate edge ever firing
             "spend_usd": sum(float(v.get("spend_usd") or 0.0)
-                             for _, v in typed_views)}
+                             for _, v in typed_views),
+            # what the same calls cost at the menu's declared prices, cache or no cache
+            # — the figure the paired rows carry as cost_usd
+            "list_usd": sum(PRC.list_price(tuple(v.get("applied") or ()))
+                            for _, v in typed_views)}
 
 
 def load_replay_answers(path: Path) -> dict[str, dict]:
@@ -1064,7 +1075,8 @@ def _paired_to_dict(p, baseline: str = "monolithic", *, run_id: str = "",
             "corpus_snapshot": corpus_snapshot,
             "censored": p.censored(),
             "typed": {"action": p.typed.action, "correct": p.typed.correct,
-                      "cost_usd": p.typed.cost_usd, "withheld": p.typed.withheld},
+                      "cost_usd": p.typed.cost_usd, "withheld": p.typed.withheld,
+                      "applied": list(p.typed.applied), "metered_usd": p.typed.metered_usd},
             "mono": {"action": p.mono.action, "correct": p.mono.correct,
                      "cost_usd": p.mono.cost_usd, "withheld": p.mono.withheld}}
 
@@ -1510,12 +1522,14 @@ def main() -> int:
                 _append_outcomes(fresh)
             n_written = 0 if args.no_outcomes else len(fresh)
             print(f"  deliberate: fired {stats['deliberate_fired']}/{stats['n']} "
-                  f"(warm {stats['warm_hits']}) · spend ${stats['spend_usd']:.2f} · "
+                  f"(warm {stats['warm_hits']}) · spend ${stats['spend_usd']:.2f} metered, "
+                  f"${stats['list_usd']:.2f} at the menu's prices · "
                   f"edge outcomes written {n_written} (deduped {n_dup})")
             exec_note = (f"> **Typed arm:** executor surface (answer_via_executor) — "
                          f"deliberate fired {stats['deliberate_fired']}/{stats['n']} "
                          f"(warm {stats['warm_hits']}), spend "
-                         f"${stats['spend_usd']:.2f}, edge outcomes written "
+                         f"${stats['spend_usd']:.2f} metered / ${stats['list_usd']:.2f} at "
+                         f"the menu's prices, edge outcomes written "
                          f"{n_written} (deduped {n_dup})\n\n")
             if args.gate_loo:
                 # the held-out reading names its evidence base — and a vacuous LOO

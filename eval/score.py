@@ -10,8 +10,12 @@ pinned by sha256.
 Columns, per (set, arm):
   rows · right · wrong · esc-right · esc-wrong · declined · $/q · U/q · s/q
 `right`/`wrong` count every delivered answer (answered locally or escalated); the esc-
-columns are the escalated share of each. `declined` = no answer delivered. `s/q` is blank
-until the rows carry latency. The counts need no gauge; `U/q` prices them at the folded
+columns are the escalated share of each. `declined` = no answer delivered. `$/q` is what
+the arm's calls cost at their DECLARED prices — the typed arm's applied probes at the
+menu's prices (`pricing.list_price`) whether or not a cache served them, the outside arm's
+recorded call — so the board prices the act, not the cache (a warm replay of an escalation
+is not free; what the calls actually metered rides in the archive as `metered_usd`). `s/q`
+is blank until the rows carry latency. The counts need no gauge; `U/q` prices them at the folded
 utility mean (:class:`Gauge`): U = u_right·right + u_wrong·wrong + u_declined·declined -
 lambda_usd·$. Rule 5 compares U, not a wrong-rate: a row whose U fell against the committed
 board, both priced at today's gauge, does not merge.
@@ -195,7 +199,9 @@ def render(rows: Sequence[Row], skipped: Mapping[str, str], gauge: Gauge | None 
               f"{gauge.lambda_usd:g}/$")
     out = ["# Scoreboard", "",
            "`python -m eval.score --write`. Counts over each set's rows; `right`/`wrong` "
-           "include escalated answers, the esc- columns are their escalated share. "
+           "include escalated answers, the esc- columns are their escalated share. `$/q` "
+           "is the arm's calls at their declared prices, cache or no cache (the typed "
+           "arm's applied probes at the menu's prices; the outside arm's recorded call). "
            f"`U/q` is {priced}. Rule 5: a change merges when no row's U falls against the "
            "committed board at today's gauge (`--gate`).", "",
            "| set | arm | rows | right | wrong | esc-right | esc-wrong | declined | $/q | U/q "

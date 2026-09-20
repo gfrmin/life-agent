@@ -66,7 +66,9 @@ def main(argv: list[str] | None = None) -> int:
                     "question_id": qid, "answerable": bool(q.get("answerable", True)),
                     "run_id": run_id, "censored": not ok,
                     "typed": {"action": r.action, "correct": r.correct,
-                              "cost_usd": r.cost_usd, "withheld": r.withheld}}) + "\n")
+                              "cost_usd": r.cost_usd, "withheld": r.withheld,
+                              "applied": list(r.applied),
+                              "metered_usd": r.metered_usd}}) + "\n")
                 fh.flush()
                 tally["censored" if not ok else ("declined" if r.correct is None
                                                  else "right" if r.correct else "wrong")] += 1

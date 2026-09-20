@@ -9,16 +9,19 @@
 sets:
   owner:
     kind: paired
-    path: eval/gate-outside-option/paired-gate-20260826T083356-strict.jsonl
-    sha256: 4085133b06476985b135a97ca3cebb05ae4f92d92b5a824833b72b45033ae153
+    path: eval/gate-outside-option/paired-gate-20260826T083356-strict-priced.jsonl
+    sha256: 643de3cfdb21fd8269bcea949453843f1c0afcf6721704fe782b409cb74a67d0
     note: >-
-      run 18 (2026-08-26), the owner's 104 questions. BOTH arms on one grader: each is
-      graded on the answer it commits, by exact match. The typed arm always was; the
-      outside option was not — it replayed a prose run and counted as right whenever the
-      gold appeared anywhere in a paragraph, which on the same live answers is 0.897
-      against 0.805 (scripts/regrade_outside_option.py). The outside arm is now the live
-      deliberative rung's ANSWER line at the cost the call recorded. Incumbent until J1's
-      arm replaces it.
+      run 18 (2026-08-26), the owner's 104 questions, both arms on ONE GRADER and ONE PRICE
+      LIST. Grader: each arm is graded on the answer it commits, by exact match (the outside
+      option had replayed a prose run and counted a gold found anywhere in a paragraph:
+      0.897 against 0.805 on the same live answers; scripts/regrade_outside_option.py).
+      Prices: the typed arm's cost_usd is the menu's declared price of every probe it
+      applied, cache or no cache (scripts/recost_paired.py, from the run's m5-base A-loop
+      record, identical to it on 103 of 104 rows); it had been priced at what its warm
+      replays metered — $0.37 for a policy that called the deliberative rung on 40 questions
+      at $0.38 each. The outside arm is the live deliberative rung's ANSWER line at the cost
+      the call recorded. Incumbent until J1's arm replaces it.
   atm:
     kind: pending
     note: ATM-Bench email-only number-typed (198); scored from J3 (`make sets`)

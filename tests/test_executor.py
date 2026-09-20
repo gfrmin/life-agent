@@ -1584,3 +1584,26 @@ def test_render_view_real_posterior_still_prints_numbers() -> None:
             "hits": [], "route": {}}
     out = EX.render_view(view)
     assert "none-of-retrieved 0.100" in out and "(EU 0.00)" in out
+
+
+# --- applied: the view names the probes it applied, so the board can price the act ------
+
+def test_the_view_names_the_probes_it_applied() -> None:
+    fake = FakeServices(
+        route={"construct": "tax id", "time_indexed": False},
+        extract={**_EXTRACT, "candidates": ["P123", "Q999"]},
+        corroborate={"observations": [{"reports": 0, "group": 0, "authority": 1.0,
+                                       "subject_factor": 1.0, "time_factor": 1.0}],
+                     "gather_rho": 0.80, "value": "P123", "confidence": 0.7,
+                     "cache_key": "jk-1"},
+        decides=[{"effector": "gather", "probe": "corroborate_haiku",
+                  "credences": [0.5, 0.5], "p_none": 0.1, "eu": 0.2},
+                 {"effector": "report", "value": "P123", "credences": [0.9, 0.1],
+                  "p_none": 0.05, "eu": 0.8}])
+    view = _loop(fake)
+    assert view["applied"] == ["corroborate_haiku"]
+
+
+def test_a_declined_route_applied_nothing() -> None:
+    view = _loop(FakeServices(route=None))
+    assert view["applied"] == []
