@@ -244,7 +244,33 @@ GRAMMAR: dict[str, str] = {
                " · {n_ind} indeterminate · none-of-retrieved {p_none}"
                " · decision {action} (EU {eu})"),
     "fallthrough": "(lookup: {reason} — narrative path)",
+    # J2: the FIRST line of every reply names where the answer came from (rule 3):
+    # a span in your documents, a named rung, or a decline with its reason.
+    "origin_documents": "From your documents.",
+    "origin_rung": ("Answered by the {rung} rung; {n_hits} retrieved document(s) were "
+                    "shared with it."),
+    "origin_declined": "Declined: {reason}.",
 }
+
+#: The declined reasons in the reply's words, keyed by decisions.origin()'s reason.
+ORIGIN_REASONS: dict[str, str] = {
+    "unavailable": "the decider is unavailable",
+    "miss": "no admitted evidence",
+    "dispersed": "the evidence does not settle on one answer",
+    "asked": "the evidence does not settle it; worth asking you directly",
+    "not a point fact": "not a question with a single verbatim answer",
+}
+
+
+def origin_line(kind: str, *, rung: str = "", reason: str = "", n_hits: int = 0) -> str:
+    """The reply's first line for an origin (``decisions.origin``), in the grammar."""
+    if kind == "documents":
+        return GRAMMAR["origin_documents"]
+    if kind == "rung":
+        return GRAMMAR["origin_rung"].format(rung=rung, n_hits=n_hits)
+    if kind == "declined":
+        return GRAMMAR["origin_declined"].format(reason=ORIGIN_REASONS.get(reason, reason))
+    raise ValueError(f"unknown origin kind {kind!r}")
 
 
 @dataclass(frozen=True)

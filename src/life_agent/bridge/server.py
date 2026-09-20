@@ -981,7 +981,9 @@ def _log_decision(deps: BridgeDeps, p: Payload) -> Payload:
         latency_s=float(latency_s) if latency_s is not None else None,
         # v3 (module-collapse M0): the declared decision space + evidence policy this act
         # was ranked under, with the defaults NAMED when the caller stated neither
-        regime=regime, policy=policy, defaulted=defaulted)
+        regime=regime, policy=policy, defaulted=defaulted,
+        # v4 (J2): the delivered answer's origin, stated by the body; "" when it did not
+        origin=str(decision.get("origin") or ""))
     DEC.append(deps.decisions_path, event)
     return {"decision_id": decision_id}
 

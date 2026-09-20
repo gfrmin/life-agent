@@ -242,3 +242,38 @@ def test_read_still_raises_on_a_genuinely_unknown_family(tmp_path) -> None:
         encoding="utf-8")
     with pytest.raises(ValueError, match="lookkup"):
         D.read(p)
+
+
+# --- origin: ONE derivation over the record (J2, rule 3) --------------------------------
+
+def test_origin_is_documents_rung_or_declined() -> None:
+    o = D.origin(effector="report", candidates=["P1"], asserted=["P1"])
+    assert o == D.Origin("documents")
+    # the rung proposed the very value asserted — that answer came from the rung
+    o = D.origin(effector="report", candidates=["P1", "N7"], asserted=["N7"],
+                   instrument="deliberate@m", instrument_value="N7")
+    assert o == D.Origin("rung", rung="deliberate@m")
+    # the rung was consulted but a document candidate was asserted — the documents
+    o = D.origin(effector="report", candidates=["P1", "N7"], asserted=["P1"],
+                   instrument="deliberate@m", instrument_value="N7")
+    assert o.kind == "documents"
+    assert D.origin(effector="abstain", candidates=["P1"], asserted=[]) == \
+        D.Origin("declined", reason="dispersed")
+    assert D.origin(effector="miss", candidates=[], asserted=[]).reason == "miss"
+    assert D.origin(effector="ask_clarify", candidates=["P1"], asserted=[]).reason == "asked"
+    assert D.origin(effector="abstain", candidates=[], asserted=[],
+                      available=False).reason == "unavailable"
+    assert set(D.Origin("declined", reason="miss").as_dict()) == {"kind", "rung", "reason"}
+
+
+def test_origin_rides_the_record_and_older_lines_read_as_silence(tmp_path: Path) -> None:
+    ev = _event(origin="documents")
+    path = tmp_path / "d.jsonl"
+    D.append(path, ev)
+    assert D.read(path)[0].origin == "documents"
+    assert D.read(path)[0].format_version == 4
+    line = D._to_line(_event()).replace(',"origin":""', "")
+    assert '"origin"' not in line
+    assert D._from_line(line).origin == ""     # a pre-v4 line claims nothing
+    with pytest.raises(ValueError, match="unknown origin"):
+        _event(origin="oracle")

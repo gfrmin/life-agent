@@ -1607,3 +1607,41 @@ def test_the_view_names_the_probes_it_applied() -> None:
 def test_a_declined_route_applied_nothing() -> None:
     view = _loop(FakeServices(route=None))
     assert view["applied"] == []
+
+
+# --- origin: every reply leads with where the answer came from (J2, rule 3) -------------
+
+def test_the_view_carries_its_origin_and_the_render_leads_with_it() -> None:
+    fake = FakeServices(route={"construct": "tax id", "time_indexed": False},
+                        decides=[{"effector": "report", "value": "P123",
+                                  "credences": [0.95], "p_none": 0.02, "eu": 0.9}])
+    view = _loop(fake)
+    assert view["origin"] == {"kind": "documents", "rung": "", "reason": ""}
+    assert EX.render_view(view).splitlines()[0] == "From your documents."
+
+
+def test_a_withheld_view_is_declined_with_its_reason() -> None:
+    fake = FakeServices(route={"construct": "tax id", "time_indexed": False},
+                        decides=[{"effector": "abstain", "credences": [0.5],
+                                  "p_none": 0.5, "eu": 0.0}])
+    view = _loop(fake)
+    assert view["origin"]["kind"] == "declined" and view["origin"]["reason"] == "dispersed"
+    assert EX.render_view(view).startswith("Declined: the evidence does not settle")
+
+
+def test_a_declined_route_is_declined_as_not_a_point_fact() -> None:
+    view = _loop(FakeServices(route=None))
+    assert view["origin"] == {"kind": "declined", "rung": "", "reason": "not a point fact"}
+    assert EX.render_view(view).startswith("Declined:")   # the route's own text leads
+
+
+def test_a_rung_answer_names_the_rung_and_what_was_shared() -> None:
+    view = {"effector": "report", "asserted": ["N7"], "candidates": ["P123", "N7"],
+            "credences": [0.1, 0.9], "p_none": 0.0, "eu": 0.8, "n_obs": 2,
+            "hits": [{"artifact_cache_key": "d0", "chunk_text": "N7 appears here"},
+                     {"artifact_cache_key": "d1", "chunk_text": "other"}],
+            "route": {"construct": "x"}, "instrument": "deliberate@claude-opus-4-8",
+            "instrument_value": "N7"}
+    first = EX.render_view(view).splitlines()[0]
+    assert first == ("Answered by the deliberate@claude-opus-4-8 rung; 2 retrieved "
+                     "document(s) were shared with it.")

@@ -195,7 +195,9 @@ def post_decision(post: Any, bridge: str, question: str, view: dict[str, Any], *
         # regime is a FACT of availability (§2.3): the decider decided, so the space was
         # full; policy derives from the decider's one declared regime — the same constant
         # current_u_bar folds under, so record and fold cannot diverge (M3, r13)
-        regime="full", policy=LK.U_BAR_POLICY)
+        regime="full", policy=LK.U_BAR_POLICY,
+        # J2: where the delivered answer came from — the executor derived it once
+        origin=str((view.get("origin") or {}).get("kind") or ""))
     try:
         return REC.record_via_bridge(post, bridge, payload)
     except Exception as e:  # fail-open: the verdict simply has nothing to bind to

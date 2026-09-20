@@ -32,7 +32,11 @@ from life_agent.core import jsonl_log
 # facts ABOUT the record, never host choices; `defaulted` names the ones the writer filled
 # in, so an assumption can never be read as a statement. v1/v2 lines replay at the declared
 # defaults claiming nothing.
-FORMAT_VERSION = 3
+# v4 (2026-09-20, J2): + origin — where the delivered answer came from (``documents`` /
+# ``rung`` / ``declined``), the one fact CLAUDE.md rule 3 asks every reply to carry. Not
+# derivable from a v3 line (the rung's proposed value was never recorded), so it is stated;
+# older lines read as "" — silence, not a claim.
+FORMAT_VERSION = 4
 
 # Question families with an EU response layer. The aggregate family was deleted at
 # K1 (r22): a classifier choosing a pipeline is decision-shaping outside the argmax
@@ -183,6 +187,8 @@ class DecisionEvent:
     # discloses its silence rather than claiming a regime it never declared. The bridge
     # narrows it to whichever field the caller actually omitted.
     defaulted: tuple[str, ...] = DEFAULTED_UNSTATED
+    # v4: the delivered answer's origin (:func:`origin`); "" on lines predating it.
+    origin: str = ""
     format_version: int = field(default=FORMAT_VERSION)
 
     def __post_init__(self) -> None:
@@ -210,6 +216,9 @@ class DecisionEvent:
         if unknown_defaulted:
             raise ValueError(
                 f"defaulted names non-defaultable field(s) {sorted(unknown_defaulted)}")
+        if self.origin and self.origin not in ORIGINS:
+            raise ValueError(
+                f"unknown origin {self.origin!r} (declared: {sorted(ORIGINS)})")
 
 
 def _to_line(event: DecisionEvent) -> str:
@@ -282,6 +291,48 @@ def withhold_reason(*, effector: object, candidates: object,
     if str(effector) == "miss" or not candidates:
         return "miss"
     return "dispersed"
+
+
+#: Where a delivered answer came from (CLAUDE.md, "What this is"): a span in a cited
+#: document, a named escalation rung, or no answer at all.
+ORIGINS: frozenset[str] = frozenset({"documents", "rung", "declined"})
+
+#: The declined reasons beyond :func:`withhold_reason`'s three.
+REASON_ASKED = "asked"
+REASON_NOT_POINT_FACT = "not a point fact"
+
+
+@dataclass(frozen=True)
+class Origin:
+    """``kind`` in :data:`ORIGINS`; ``rung`` names the instrument on a rung answer;
+    ``reason`` names why on a decline."""
+
+    kind: str
+    rung: str = ""
+    reason: str = ""
+
+    def as_dict(self) -> dict[str, str]:
+        return {"kind": self.kind, "rung": self.rung, "reason": self.reason}
+
+
+def origin(*, effector: object, candidates: object, asserted: object,
+           instrument: str = "", instrument_value: object = None,
+           available: bool = True) -> Origin:
+    """ORIGIN is one derivation over the decision record (D-5's sibling). An asserted
+    value that the named instrument proposed came from that ``rung``; any other assertion
+    stands in the ``documents`` (the cited hits); everything else is ``declined``, with
+    :func:`withhold_reason` (or ``asked``) as its reason. The rendered reply's first line
+    and the record's ``origin`` field are both this function's callers."""
+    eff = str(effector)
+    values = [str(a) for a in (asserted if isinstance(asserted, list | tuple) else [])]
+    if eff in ("report", "report_scoped") and values:
+        if instrument and instrument_value is not None and values[0] == str(instrument_value):
+            return Origin("rung", rung=str(instrument))
+        return Origin("documents")
+    if eff == "ask_clarify":
+        return Origin("declined", reason=REASON_ASKED)
+    return Origin("declined", reason=withhold_reason(
+        effector=eff, candidates=candidates, available=available))
 
 
 def edge_id(kind: str, model: str) -> str:
