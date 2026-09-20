@@ -1807,3 +1807,16 @@ def test_deliberate_containment_gets_the_same_strict_span_guard(
     assert status == 200 and payload["status"] == "ok"
     assert payload["observations"] == []
 
+
+
+def test_log_decision_records_the_origin_the_body_states(deps: BridgeDeps) -> None:
+    # v4 (J2): where the delivered answer came from rides the record; a body that does
+    # not state it writes "" — silence, never a claim.
+    _call(deps, "POST", "/log_decision",
+          {"question": "q", "retrieval_keys": ["d0"],
+           "decision": {**_decision(effector="report"), "origin": "documents"}})
+    _call(deps, "POST", "/log_decision",
+          {"question": "q2", "retrieval_keys": ["d0"], "decision": _decision()})
+    stated, silent = DEC.read(deps.decisions_path)
+    assert stated.origin == "documents"
+    assert silent.origin == ""

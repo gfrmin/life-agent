@@ -39,7 +39,7 @@ def body(*, question: str, retrieval_keys: list[str], effector: str,
          credences: list[float], candidates: list[str], p_none: float | None,
          eu: float | None, n_obs: int, n_indeterminate: int, n_competing: int,
          instrument: str | None, cost_usd: float | None, latency_s: float | None,
-         run_id: str | None, regime: str, policy: str) -> dict[str, Any]:
+         run_id: str | None, regime: str, policy: str, origin: str) -> dict[str, Any]:
     """The ONE ``/log_decision`` body — every key present, the unpriced defaults honest
     (0.0 = ran unpriced / unmeasured, "" = no priced edge), ``regime``/``policy`` stated."""
     return {
@@ -60,6 +60,7 @@ def body(*, question: str, retrieval_keys: list[str], effector: str,
             "run_id": run_id or RUN_ID_DEFAULT,
             "regime": regime,
             "policy": policy,
+            "origin": origin,
         },
     }
 

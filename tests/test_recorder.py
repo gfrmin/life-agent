@@ -24,8 +24,9 @@ def test_the_one_body_has_no_optional_key() -> None:
         effector="report", credences=[0.9, 0.1], candidates=["A", "B"],
         p_none=None, eu=None, n_obs=2, n_indeterminate=0, n_competing=0,
         instrument=None, cost_usd=None, latency_s=None, run_id=None,
-        regime="full", policy="all-to-date")
+        regime="full", policy="all-to-date", origin="documents")
     dec = body["decision"]
+    assert dec["origin"] == "documents"
     assert body["question"] and body["retrieval_keys"] == ["k2", "k1"]
     assert dec["p_none"] == 0.0 and dec["eu"] == 0.0
     assert dec["instrument"] == "" and dec["run_id"] == "answer-brain"
@@ -34,7 +35,7 @@ def test_the_one_body_has_no_optional_key() -> None:
     # never an absent key: the union the bridge accepts, every key present
     assert sorted(dec) == ["candidates", "cost_usd", "credences", "effector", "eu",
                            "instrument", "latency_s", "n_competing", "n_indeterminate",
-                           "n_obs", "p_none", "policy", "regime", "run_id"]
+                           "n_obs", "origin", "p_none", "policy", "regime", "run_id"]
 
 
 def test_the_body_passes_realised_values_through() -> None:
@@ -43,7 +44,7 @@ def test_the_body_passes_realised_values_through() -> None:
         candidates=["A", "B"], p_none=0.1, eu=0.42, n_obs=3, n_indeterminate=1,
         n_competing=2, instrument="deliberate@synthetic-model",  # PII-OK: synthetic
         cost_usd=0.004, latency_s=1.25, run_id="gate-run",
-        regime="full", policy="all-to-date")
+        regime="full", policy="all-to-date", origin="rung")
     dec = body["decision"]
     assert dec["instrument"] == "deliberate@synthetic-model"
     assert dec["cost_usd"] == 0.004 and dec["latency_s"] == 1.25
@@ -61,7 +62,7 @@ def test_record_via_bridge_posts_exactly_once_and_returns_the_id() -> None:
                     credences=[1.0], candidates=["A"], p_none=0.0, eu=0.5,
                     n_obs=1, n_indeterminate=0, n_competing=0, instrument="",
                     cost_usd=0.0, latency_s=0.0, run_id="r",
-                    regime="full", policy="all-to-date")
+                    regime="full", policy="all-to-date", origin="documents")
     decision_id = REC.record_via_bridge(post, "http://b", body)
     assert decision_id == "abc123"
     assert len(posted) == 1 and posted[0][0] == "http://b/log_decision"

@@ -195,7 +195,8 @@ def decide_via_loop(question: str, k: int, *, bridge: str, post: Post, get: Get,
                 "hits": [], "route": None, "rendered": DECLINED_NOT_POINT_FACT,
                 "n_indeterminate": 0, "question": question,
                 **_UNPRICED_ATTRIBUTION, "edge_events": [], "spend_usd": 0.0,
-                "applied": []}
+                "applied": [],
+                "origin": DEC.Origin("declined", reason=DEC.REASON_NOT_POINT_FACT).as_dict()}
     return run_pass(question, k, route, bridge=bridge, post=post, get=get,
                     rerank=False, expand=False, transforms=transforms,
                     curves=curves)
@@ -335,7 +336,8 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str,
                 "n_indeterminate": int(ext.get("indeterminate", 0) or 0),
                 "n_competing": int(ext.get("n_competing", 0) or 0),
                 **_UNPRICED_ATTRIBUTION, "edge_events": edge_events,
-                "spend_usd": spend_usd, "applied": list(applied)}
+                "spend_usd": spend_usd, "applied": list(applied),
+                "origin": DEC.origin(effector="miss", candidates=[], asserted=[]).as_dict()}
     # r30 (C5): this question's own answer shape prices its own grow-menu pricing too —
     # the SAME seam current_u_bar's other callers route through. The anchor shape omits
     # the query param entirely (never a wire change for the majority-`exact` case r29
@@ -592,7 +594,10 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str,
             "latency_s": edge_latency, "instrument_value": edge_value,
             "instrument_confidence": edge_conf, "instrument_lineage": edge_lineage,
             "edge_events": edge_events, "spend_usd": spend_usd, "applied": list(applied),
-            "engine_act": dec.get("act"), "p1": dec.get("p1")}
+            "engine_act": dec.get("act"), "p1": dec.get("p1"),
+            "origin": DEC.origin(effector=dec["effector"], candidates=candidates,
+                                 asserted=asserted, instrument=edge_instrument,
+                                 instrument_value=edge_value).as_dict()}
 
 
 # --- render (the executor's decision in the shared credence grammar) --------------------
@@ -609,10 +614,12 @@ def _cites(value: str, hits: list[dict[str, Any]]) -> str:
 
 
 def render_view(view: View) -> str:
-    """Render an executor view in the credence grammar (``lookup.GRAMMAR``), the posterior
-    named in the footer (nothing silent). A view that carries its own ``rendered`` text (a
-    declined route) passes through verbatim; otherwise the asserted value is cited to the hit
-    cards that carry it."""
+    """Render an executor view in the credence grammar (``lookup.GRAMMAR``): the ORIGIN on
+    the first line (rule 3 — your documents, a named rung, or a decline with its reason),
+    the posterior named in the footer (nothing silent). A view that carries its own
+    ``rendered`` text (a declined route, which already leads with "Declined:") passes
+    through verbatim; otherwise the asserted value is cited to the hit cards that carry
+    it."""
     rendered = view.get("rendered")
     if rendered:
         return str(rendered)
@@ -646,6 +653,10 @@ def render_view(view: View) -> str:
                                                          alts=alts)
         else:  # miss — no posterior ever existed
             body = LK.GRAMMAR["abstain"].format(reason=LK.REASON_NO_OBSERVATIONS)
+    o = DEC.origin(effector=eff, candidates=cands, asserted=asserted,
+                   instrument=str(view.get("instrument") or ""),
+                   instrument_value=view.get("instrument_value"))
+    head = LK.origin_line(o.kind, rung=o.rung, reason=o.reason, n_hits=len(hits))
     p_none, eu = view["p_none"], view["eu"]
     footer = LK.GRAMMAR["footer"].format(
         n_hits=len(hits), n_obs=view.get("n_obs", 0),
@@ -656,4 +667,4 @@ def render_view(view: View) -> str:
         # fabricated 0.000 indistinguishable from a genuine zero-mass-on-NONE
         p_none=(f"{p_none:.3f}" if p_none is not None else "—"),
         action=eff, eu=(f"{eu:.2f}" if eu is not None else "—"))
-    return f"{body}\n\n{footer}"
+    return f"{head}\n{body}\n\n{footer}"

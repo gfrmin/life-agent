@@ -30,8 +30,11 @@ and a clone over someone else's mail works end to end.
   (`core/decide.bayes_act`, `core/decider.py`, `core/enact.py`) with gather priced from
   recorded gather sequences and ask at a measured recovery rate; the Julia daemon, the credence skin and the in-process lanes
   retire; rule 5 becomes the ΔU merge rule. The board re-scores the typed arm live.
-- **J2 — Origin, and escalation only if a rung earns it.** Origin on every reply and
-  disclosure rows in the write-once recorder stand. The escalate ROW is measured and does
+- **J2 — Origin, and escalation only if a rung earns it.** *Origin done 2026-09-20.* Every
+  reply leads with where its answer came from — your documents, a named rung, or a
+  decline with its reason (`decisions.origin`, one derivation; the record's v4 `origin`
+  field; the first line of `executor.render_view`). Disclosure rows wait with the rung
+  that would need them (`deliberate.record_answer` is the seam). The escalate ROW is measured and does
   not pay: the one rung with recorded verdicts (the deliberative edge) answers the owner's
   104 at 87 right / 13 wrong / 4 declined on the grader the act faces, which at today's
   gauge is −0.50 per escalation, and −0.04 even at zero price — a 12.5% wrong rate costs
