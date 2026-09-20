@@ -1,4 +1,4 @@
-.PHONY: check test-all score score-quick data sets engine golden live live-archive
+.PHONY: check test-all score score-quick data sets fetch-sets engine golden live live-archive
 
 PY := uv run python
 # pytest workers; 1 runs single-process.
@@ -51,14 +51,28 @@ data:
 	$(PY) -m pkm --config "$${PKM_CONFIG:-$$HOME/.config/life-agent/pkm.yaml}" migrate
 	$(PY) scripts/ingest_sources.py --extract --chunk
 
-# The ATM-Bench external KB (a second LIFE_AGENT_KB root). Needs the released files:
-#   make sets ATM_EMAILS=... ATM_QA=... ATM_OUT=... ATM_STORE=...
-# Idempotent: a second run writes nothing. The corpus is CC-BY-NC and never enters the repo.
-sets:
-	@test -n "$(ATM_EMAILS)" -a -n "$(ATM_QA)" -a -n "$(ATM_OUT)" -a -n "$(ATM_STORE)" || \
-	  { echo "usage: make sets ATM_EMAILS=… ATM_QA=… ATM_OUT=… ATM_STORE=…" >&2; exit 2; }
-	$(PY) scripts/atm_bench/build_kb.py --emails $(ATM_EMAILS) --qa $(ATM_QA) \
-	  --out $(ATM_OUT) --store $(ATM_STORE) --gauge-from $${LIFE_AGENT_KB:?set LIFE_AGENT_KB}
+# The ATM-Bench external KB (a second LIFE_AGENT_KB root): fetch the released files at a
+# PINNED revision, then build. Idempotent at both steps — a second run downloads nothing
+# and writes nothing. The corpus is CC-BY-NC: it lives in a cache on your machine, never
+# in this repo and never redistributed from it.
+#   make sets                                   # fetch to the default cache, then build
+#   make sets ATM_EMAILS=… ATM_QA=…             # build from files you already have
+#   make sets ATM_OUT=… ATM_STORE=…             # choose where the KB and store go
+ATM_DEST  ?= $(HOME)/.cache/life-agent/atm-bench # PII-OK: XDG cache under the invoking user's HOME, no real path
+ATM_OUT   ?= $(ATM_DEST)/kb-build
+ATM_STORE ?= $(ATM_DEST)/store
+
+fetch-sets:
+	$(PY) scripts/atm_bench/fetch.py --dest "$(ATM_DEST)"
+
+sets: fetch-sets
+	@emails="$(ATM_EMAILS)"; qa="$(ATM_QA)"; \
+	  if [ -z "$$emails" ] || [ -z "$$qa" ]; then \
+	    set -- $$($(PY) scripts/atm_bench/fetch.py --dest "$(ATM_DEST)" --print-paths); \
+	    emails=$${emails:-$$1}; qa=$${qa:-$$2}; \
+	  fi; \
+	  $(PY) scripts/atm_bench/build_kb.py --emails "$$emails" --qa "$$qa" \
+	    --out "$(ATM_OUT)" --store "$(ATM_STORE)" --gauge-from "$${LIFE_AGENT_KB:-}"
 
 # The pinned decider engine (config/engine.lock) -> ~/.local/bin/proplang-host.
 engine:

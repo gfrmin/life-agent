@@ -172,6 +172,29 @@ matter get promoted to `$LIFE_AGENT_KB/FAILURES.md` (template:
 [`docs/failures-template.md`](./docs/failures-template.md)); the failure log —
 not speculation — is what drives what gets built next.
 
+## 6. Optional: measure it
+
+The board (`SCOREBOARD.md`) is how this project decides anything: a change ships when no
+row's utility falls. Three of its rows you can run yourself.
+
+```bash
+make score          # score every pinned set you have the data for
+make golden         # generate questions from YOUR corpus, answers known by construction
+make sets           # fetch ATM-Bench at a pinned revision and build it as a second KB
+```
+
+`make score` works from a clone with no data at all — the `sample` row is scored from the
+synthetic corpus in the repo, so you can see what the act does before trusting it with
+anything of yours. `make golden` samples your own documents, extracts verbatim point facts
+and writes questions whose answers are known by construction; answer them with
+`scripts/score_typed.py` and pin the archive in `eval/sets.yaml`. `make sets` downloads an
+external email benchmark (**CC-BY-NC**: it lands in a cache on your machine, never in the
+repo, and is not redistributed from it).
+
+Your first runs will decline a lot, and that is the system working: it commits only above
+a bar derived from what a wrong answer costs you. Grade the answers you do get (`g`/`b`)
+and both the bar and the information rows move to your data.
+
 ## Reliability
 
 The promise is **cited, no-hallucination** answers, and it is structural, not

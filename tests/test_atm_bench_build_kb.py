@@ -247,3 +247,71 @@ def test_eml_subject_collapses_line_breaks_and_runs_of_whitespace() -> None:
     rec = {**REC, "short_summary": "Parcel\r\n collected\n\tat the depot"}
     msg = _parse(B.eml_bytes(rec))
     assert msg["Subject"] == "Parcel collected at the depot"
+
+
+# --- The fetch, and the gauge a fresh machine does not have (J3) -----------------------
+# `make sets` was a builder with four required paths and no way to GET the files: where
+# the corpus is released was written down nowhere, which made this the one step of the
+# stranger's path that could not be followed. And --gauge-from demanded a KB holding the
+# owner's elicitations, so on any other machine the target refused outright.
+
+def test_the_corpus_is_pinned_to_one_revision() -> None:
+    """A board row must name what it was scored on. Killed by tracking a branch."""
+    import atm_bench.fetch as F
+    assert len(F.REVISION) == 40 and all(c in "0123456789abcdef" for c in F.REVISION)
+    assert "CC-BY-NC" in F.LICENSE
+    # Only what the KB build reads — a wider pattern would pull the rest of the dataset.
+    assert set(F.PATTERNS) == {"data/raw_memory/email/*", "data/atm-bench/*.json"}
+
+
+def test_the_fetch_destination_is_never_inside_the_repo() -> None:
+    """CC-BY-NC: the corpus lives in a cache on the machine, not in a public tree.
+    Killed by defaulting the download into the working tree."""
+    import atm_bench.fetch as F
+    assert B.REPO not in F.DEFAULT_DEST.parents and F.DEFAULT_DEST != B.REPO
+
+
+def test_a_fetched_tree_is_recognised_and_its_paths_returned(tmp_path: Path) -> None:
+    import atm_bench.fetch as F
+    assert not F.already_there(tmp_path)
+    emails, qa = F.paths(tmp_path)
+    emails.mkdir(parents=True)
+    (emails / "a.eml").write_text("x", encoding="utf-8")
+    qa.parent.mkdir(parents=True, exist_ok=True)
+    qa.write_text("[]", encoding="utf-8")
+    assert F.already_there(tmp_path)
+
+
+def test_the_gauge_falls_back_to_the_shipped_example(tmp_path: Path) -> None:
+    """A KB with no elicitations gets the declared prior rather than a refusal, and the
+    manifest's sha says which gauge scored the row. Killed by requiring a real KB."""
+    shas = B.copy_gauge(None, tmp_path)
+    assert set(shas) == set(B.GAUGE_FILES)
+    model = yaml.safe_load((tmp_path / "utility/model.yaml").read_text(encoding="utf-8"))
+    assert model, "the fallback gauge is empty"
+    assert (tmp_path / "utility/elicitations.jsonl").read_text(encoding="utf-8") == ""
+
+
+def test_a_named_gauge_missing_half_of_itself_still_refuses(tmp_path: Path) -> None:
+    """The control on the fallback: not naming a gauge is a fresh machine, naming one that
+    is half there is a claim that turned out false. Killed by falling back whenever any
+    gauge file is missing, which would silently score a row at a different utility."""
+    src = tmp_path / "half"
+    (src / "utility").mkdir(parents=True)
+    (src / "utility/model.yaml").write_text("gauge: mine\n", encoding="utf-8")
+    with pytest.raises(FileNotFoundError):
+        B.copy_gauge(src, tmp_path / "out2")
+
+
+def test_a_real_gauge_is_copied_byte_for_byte(tmp_path: Path) -> None:
+    """The discriminating control: when there IS a gauge, the external KB is scored at
+    exactly it — same bytes — or its row is not comparable with the rest of the board."""
+    src = tmp_path / "real"
+    (src / "utility").mkdir(parents=True)
+    (src / "utility/model.yaml").write_text("gauge: mine\n", encoding="utf-8")
+    (src / "utility/elicitations.jsonl").write_text('{"e": 1}\n', encoding="utf-8")
+    out = tmp_path / "out"
+    B.copy_gauge(src, out)
+    for rel in B.GAUGE_FILES:
+        assert (out / rel).read_bytes() == (src / rel).read_bytes()
+
