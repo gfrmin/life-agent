@@ -1,18 +1,11 @@
 """The gather row, measured: what entering the gather sequence is worth from a posterior.
 
 An episode starts at a posterior whose leader is right with probability ``p1`` and, after
-gathering, ends ``right`` (a correct report), ``wrong`` (a wrong report) or ``declined``. The
-outcome depends on whether the leader was right, so each episode is a two-component mixture:
-with probability ``p1`` it is drawn from ``θ_right`` (the outcome distribution when the
-leader is right), otherwise from ``θ_wrong``. :func:`fit` estimates both by EM as the
-posterior mode under a Dirichlet(2, 2, 2) prior on each (one pseudo-observation per outcome,
-so no outcome is ever priced as impossible). :func:`as_u_bar` carries the four free numbers
-into ``u_bar`` so :func:`life_agent.core.decide.utility_by_action` prices the gather row as
-
-    u(y) = θ_y(right)·u_correct + θ_y(wrong)·u_wrong + θ_y(declined)·u_abstain - κ
-
-linear in ``p1`` like every other row. Unmeasured, both distributions are the prior mean
-(1/3 each), under which gathering is not worth its cost.
+gathering, ends ``right`` (a correct report), ``wrong`` (a wrong report) or ``declined``.
+:mod:`life_agent.core.outcome_mixture` is the estimator — the two-component mixture over the
+leader's truth, fit by EM — and this module is its gather half: the keys, the recorded fit,
+and the row for the state a decision is in. The attention cost ``kappa_att`` is the price
+:func:`life_agent.core.decide.utility_by_action` passes when it prices these numbers.
 
 The row is conditioned on the state beyond ``p1`` that decides what another gather can still
 find: the number of gathers already applied (``step``, capped at :data:`MAX_STEP`). The fit is
@@ -29,13 +22,17 @@ import json
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
-OUTCOMES: tuple[str, ...] = ("right", "wrong", "declined")
+from life_agent.core import outcome_mixture as MIX
+
+#: This row's prefix in ``u_bar``.
+PREFIX = "gather"
+
+OUTCOMES: tuple[str, ...] = MIX.OUTCOMES
 
 #: The u_bar keys of the fitted row (``declined`` is the remainder of each distribution).
-KEYS: tuple[str, ...] = ("gather_right_if_right", "gather_wrong_if_right",
-                         "gather_right_if_wrong", "gather_wrong_if_wrong")
+KEYS: tuple[str, ...] = MIX.keys(PREFIX)
 
-PRIOR: dict[str, float] = {k: 1.0 / 3.0 for k in KEYS}
+PRIOR: dict[str, float] = MIX.prior(PREFIX)
 
 #: Steps at or beyond this share one row.
 MAX_STEP = 3
@@ -43,33 +40,13 @@ MAX_STEP = 3
 
 def fit(episodes: Sequence[tuple[float, str]], *, alpha: float = 2.0,
         iters: int = 500) -> tuple[dict[str, float], dict[str, float]]:
-    """``(θ_right, θ_wrong)`` from ``(p1, outcome)`` episodes: the EM posterior mode under a
-    Dirichlet(alpha) prior on each component."""
-    t_r = {o: 1.0 / len(OUTCOMES) for o in OUTCOMES}
-    t_w = dict(t_r)
-    for _ in range(iters):
-        c_r = {o: alpha - 1.0 for o in OUTCOMES}
-        c_w = dict(c_r)
-        for p1, o in episodes:
-            a, b = p1 * t_r[o], (1.0 - p1) * t_w[o]
-            w = a / (a + b) if a + b > 0 else p1
-            c_r[o] += w
-            c_w[o] += 1.0 - w
-        t_r = _normalised(c_r)
-        t_w = _normalised(c_w)
-    return t_r, t_w
-
-
-def _normalised(c: Mapping[str, float]) -> dict[str, float]:
-    s = sum(c.values())
-    return ({o: c[o] / s for o in OUTCOMES} if s > 0
-            else {o: 1.0 / len(OUTCOMES) for o in OUTCOMES})
+    """``(θ_right, θ_wrong)`` from ``(p1, outcome)`` episodes (:func:`outcome_mixture.fit`)."""
+    return MIX.fit(episodes, alpha=alpha, iters=iters)
 
 
 def as_u_bar(t_right: Mapping[str, float], t_wrong: Mapping[str, float]) -> dict[str, float]:
     """The fitted row's u_bar keys."""
-    return {"gather_right_if_right": t_right["right"], "gather_wrong_if_right": t_right["wrong"],
-            "gather_right_if_wrong": t_wrong["right"], "gather_wrong_if_wrong": t_wrong["wrong"]}
+    return MIX.as_u_bar(PREFIX, t_right, t_wrong)
 
 
 def step_key(key: str, step: int) -> str:
