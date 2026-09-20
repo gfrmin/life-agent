@@ -19,18 +19,9 @@ find: the number of gathers already applied (``step``, capped at :data:`MAX_STEP
 one row per step; :func:`at_step` selects the row for a decision. The episodes are the
 recorded decides that chose ``gather`` (``scripts/fit_gather_row.py`` builds them from the
 m5-base A-loop fixtures, graded by exact match against the gold): the value of gathering on
-from a state under the policy that recorded it.
-
-**Per option.** Which gather to run is its own choice, and the options differ: a
-corroboration raises the leader's credence, a retrieval adds candidates and lowers it. The
-final outcome cannot separate them — every option in one question shares that question's
-outcome, and the recording policy fixed the order — so each option is measured by what it
-does to the posterior instead, which is attributable to it alone: the chance it lifts the
-leader's credence, the mean lift when it does and the mean drift when it does not
-(:func:`fit_lift`, :func:`transition`). :func:`life_agent.core.decide.option_eu` values one
-option by that transition, with this module's step row as the value of continuing from where
-it lands. A measured evidence model, not the closed-form preposterior over the current
-posterior (a door in ``ROADMAP.md``); steps of one question are not independent draws.
+from a state under the policy that recorded it. A measured evidence model, not the
+preposterior over the current posterior (a door in ``ROADMAP.md``); steps of one question are
+not independent draws.
 """
 from __future__ import annotations
 
@@ -48,12 +39,6 @@ PRIOR: dict[str, float] = {k: 1.0 / 3.0 for k in KEYS}
 
 #: Steps at or beyond this share one row.
 MAX_STEP = 3
-
-#: The u_bar keys of one option's fitted transition (see the module docstring).
-LIFT_KEYS: tuple[str, ...] = ("lift_rate", "lift_up", "lift_flat")
-
-#: A change in the leader's credence below this counts as no lift.
-LIFT_EPS = 0.01
 
 
 def fit(episodes: Sequence[tuple[float, str]], *, alpha: float = 2.0,
@@ -91,44 +76,13 @@ def step_key(key: str, step: int) -> str:
     return f"{key}@{step}"
 
 
-def option_key(key: str, probe: str) -> str:
-    return f"{key}@{probe}"
-
-
-def fit_lift(deltas: Sequence[float]) -> dict[str, float]:
-    """One option's transition from the changes in the leader's credence it recorded.
-
-    ``lift_rate`` is the Beta(1, 1) posterior mean of the chance it lifts (a change above
-    :data:`LIFT_EPS`); ``lift_up`` and ``lift_flat`` are the mean change in each case, each
-    shrunk toward no change by one pseudo-observation, so a handful of draws cannot declare
-    a large effect."""
-    up = [d for d in deltas if d > LIFT_EPS]
-    flat = [d for d in deltas if d <= LIFT_EPS]
-    return {"lift_rate": (len(up) + 1.0) / (len(deltas) + 2.0),
-            "lift_up": sum(up) / (len(up) + 1.0),
-            "lift_flat": sum(flat) / (len(flat) + 1.0)}
-
-
-def transition(u_bar: Mapping[str, float], probe: str) -> dict[str, float] | None:
-    """``probe``'s fitted transition, or ``None`` when it has none — an option nobody has
-    run yet is priced by the step row, like the menu it came from."""
-    if not all(option_key(k, probe) in u_bar for k in LIFT_KEYS):
-        return None
-    return {k: float(u_bar[option_key(k, probe)]) for k in LIFT_KEYS}
-
-
 def load(path: Path) -> dict[str, float]:
-    """The fit recorded at ``path`` as u_bar keys — the per-step rows (``<key>@<step>``) and
-    each option's transition (``<key>@<probe>``) — or none when there is no fit (the decider
-    then reads the prior)."""
+    """The per-step fitted rows recorded at ``path`` as u_bar keys (``<key>@<step>``), or none
+    when there is no fit (the decider then reads the prior)."""
     if not path.is_file():
         return {}
-    recorded = json.loads(path.read_text(encoding="utf-8"))
-    out = {step_key(k, int(st)): float(row[k])
-           for st, row in recorded["steps"].items() for k in KEYS}
-    out.update({option_key(k, probe): float(row[k])
-                for probe, row in (recorded.get("options") or {}).items() for k in LIFT_KEYS})
-    return out
+    steps = json.loads(path.read_text(encoding="utf-8"))["steps"]
+    return {step_key(k, int(st)): float(row[k]) for st, row in steps.items() for k in KEYS}
 
 
 def at_step(u_bar: Mapping[str, float], applied: int) -> dict[str, float]:

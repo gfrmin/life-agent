@@ -18,10 +18,7 @@ expected utility, ties to the first-listed action in :data:`ACTIONS`.
   wrong one, or a withhold, priced at the owner's utilities, less the attention cost
   ``kappa_att``. The decider sets the row for the number of gathers already applied.
   Unmeasured, both states read the Dirichlet prior mean (1/3 each), under which gathering
-  is not worth its cost. **Which** gather is part of the same ranking, not a side rule:
-  :func:`best_gather` values every open option by its own measured transition and its own
-  price (:func:`option_eu`) and the winner's expected utility is the gather row the act
-  ranks, so an option is reached on its value, never on being the cheapest;
+  is not worth its cost;
 - ``ask``: priced by a **measured recovery rate** ``r`` (an ask ends in a report with
   probability r, otherwise in a withhold) less ``lambda_int``; unmeasured, ``r`` is the
   Beta(1, 1) mean 0.5. Never the perfect-information row, which is an upper bound.
@@ -88,55 +85,15 @@ def argmax_action(u_bar: Mapping[str, float], p1: float) -> str:
 
 
 def bayes_act(u_bar: Mapping[str, float], p1: float, *, gather_open: bool = True,
-              gather_eu: float | None = None) -> str:
+              gather_cost: float = 0.0) -> str:
     """THE decision: the action maximising expected utility at ``p1``. ``gather`` is ranked
-    only while an option is open (``gather_open``), at ``gather_eu`` — the expected utility
-    of the option that would be enacted, net of its price (:func:`best_gather`) — or at the
-    step row's own unpriced value when that is not supplied. Ties resolve to the
-    first-listed of :data:`ACTIONS`."""
+    only while an option is open (``gather_open``) and pays the cost of the option that
+    would be enacted, in utility units. Ties resolve to the first-listed of
+    :data:`ACTIONS`."""
     eus = eu_by_action(u_bar, p1)
-    if gather_eu is not None:
-        eus["gather"] = float(gather_eu)
+    eus["gather"] -= float(gather_cost)
     ranked = [a for a in ACTIONS if a != "gather" or gather_open]
     return max(ranked, key=lambda a: (eus[a], -ACTIONS.index(a)))
-
-
-def state_value(u_bar: Mapping[str, float], p1: float, step: int) -> float:
-    """What the state a gather would leave behind is worth: the best row of the whole menu
-    at ``p1`` after ``step`` gathers — stopping (abstain or respond) or gathering on, the
-    latter at the fitted step row. That row carries ``kappa_att`` but no option price (which
-    option would come next is not known here), so this is an upper bound on continuing."""
-    return max(eu_by_action(GR.at_step(u_bar, step), p1).values())
-
-
-def option_eu(u_bar: Mapping[str, float], p1: float, step: int, probe: str,
-              price: float) -> float:
-    """The expected utility of running ``probe`` next, at ``price`` in utility units.
-
-    One step of lookahead over the option's own measured transition
-    (:func:`life_agent.core.gather_row.transition`): with probability ``lift_rate`` it
-    leaves the leader at ``p1 + lift_up``, otherwise at ``p1 + lift_flat``, and what it
-    leaves behind is worth :func:`state_value` at the next step. An option with no fitted
-    transition falls back to the step row, so an unmeasured menu ranks by price as before."""
-    t = GR.transition(u_bar, probe)
-    if t is None:
-        return eu_by_action(GR.at_step(u_bar, step), p1)["gather"] - price
-    lifted = state_value(u_bar, _clipped(p1 + t["lift_up"]), step + 1)
-    flat = state_value(u_bar, _clipped(p1 + t["lift_flat"]), step + 1)
-    return t["lift_rate"] * lifted + (1.0 - t["lift_rate"]) * flat - price
-
-
-def _clipped(p1: float) -> float:
-    return min(1.0, max(0.0, p1))
-
-
-def best_gather(u_bar: Mapping[str, float], p1: float, step: int,
-                options: Sequence[tuple[str, float]]) -> tuple[str, float] | None:
-    """The open gather option worth most (``(probe, EU)``), ties to menu order; ``None``
-    when the menu is empty. This is where "which gather" is decided — the enactment then
-    runs what this returned."""
-    ranked = [(probe, option_eu(u_bar, p1, step, probe, price)) for probe, price in options]
-    return max(ranked, key=lambda row: row[1], default=None)
 
 
 def p_correct(credences: Sequence[float]) -> float:

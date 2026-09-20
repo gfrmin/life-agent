@@ -23,27 +23,18 @@ def _payload(**kw: Any) -> dict[str, Any]:
     return base
 
 
-def test_gather_options_carry_their_price_in_menu_order() -> None:
-    """Menu order, not cheapest first: the act ranks the options on their value
-    (core/decide.best_gather), so enactment must not pre-order them by price."""
-    assert CO.gather_options(_payload()) == [("corroborate_b", 0.012),
-                                             ("corroborate_a", 0.004),
-                                             ("retrieve_rerank", 0.008)]
+def test_gather_options_are_cheapest_first_across_transforms_and_grow() -> None:
+    assert CO.gather_options(_payload()) == ["corroborate_a", "retrieve_rerank",
+                                             "corroborate_b"]
 
 
 def test_guard_transforms_are_never_gather_options() -> None:
-    assert "recency" not in dict(CO.gather_options(_payload()))
+    assert "recency" not in CO.gather_options(_payload())
 
 
 def test_applied_probes_close_their_option() -> None:
     p = _payload(applied_probes=["corroborate_a", "retrieve_rerank"])
-    assert CO.gather_options(p) == [("corroborate_b", 0.012)]
-
-
-def test_an_option_offered_twice_is_priced_at_its_cheapest_row() -> None:
-    p = _payload(transforms=[*_TRANSFORMS, {"name": "a2", "probe": "corroborate_a",
-                                            "kind": "voi", "cost": 0.002}])
-    assert dict(CO.gather_options(p))["corroborate_a"] == 0.002
+    assert CO.gather_options(p) == ["corroborate_b"]
 
 
 def test_gather_is_open_until_every_option_is_applied() -> None:
@@ -53,14 +44,15 @@ def test_gather_is_open_until_every_option_is_applied() -> None:
     assert not CO.gather_open({"candidates": ["x"]})
 
 
-def test_gather_enacts_the_option_the_act_chose() -> None:
-    view = CO.enact("gather", _payload(), [0.4, 0.3], 0.3, probe="retrieve_rerank")
-    assert (view["effector"], view["probe"]) == ("gather", "retrieve_rerank")
+def test_gather_enacts_the_cheapest_open_option() -> None:
+    view = CO.enact("gather", _payload(), [0.4, 0.3], 0.3)
+    assert (view["effector"], view["probe"]) == ("gather", "corroborate_a")
 
 
-def test_gather_with_no_option_chosen_is_a_contract_error_not_a_fallback() -> None:
+def test_gather_with_nothing_open_is_a_contract_error_not_a_fallback() -> None:
+    done = _payload(applied_probes=["corroborate_a", "corroborate_b", "retrieve_rerank"])
     with pytest.raises(ValueError, match="no gather option"):
-        CO.enact("gather", _payload(), [0.4, 0.3], 0.3)
+        CO.enact("gather", done, [0.4, 0.3], 0.3)
 
 
 def test_respond_asserts_the_map_candidate_not_index_zero() -> None:
@@ -89,3 +81,8 @@ def test_an_undeclared_act_raises() -> None:
         CO.enact("escalate", _payload(), [0.4, 0.3], 0.3)
 
 
+def test_gather_cost_is_the_price_of_the_option_that_would_be_enacted() -> None:
+    assert CO.gather_cost(_payload()) == 0.004
+    assert CO.gather_cost(_payload(applied_probes=["corroborate_a"])) == 0.008
+    done = _payload(applied_probes=["corroborate_a", "corroborate_b", "retrieve_rerank"])
+    assert CO.gather_cost(done) == 0.0

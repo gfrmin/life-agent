@@ -74,7 +74,7 @@ ties to the first-listed row:
 |---|---|---|
 | `respond` | commit the leader span with its citation | `u_correct = +1` if right, `u_wrong = −9` if wrong |
 | `abstain` | decline | `u_abstain = 0` |
-| `gather` | run the open evidence transform worth most, then decide again | that transform's own price and its own measured effect (below) |
+| `gather` | run the cheapest unapplied evidence transform, then decide again | the transform's price; the measured value of the gather sequence (below) |
 | `ask` | ask the owner a clarifying question | the owner's attention; recovers the answer at the measured rate `r_a` |
 | `escalate@r` | hand the question to rung `r` (J1–J2) | the rung's price, and its learned reliability `p_r` |
 
@@ -92,19 +92,7 @@ over every recorded decide that chose to gather, weighted by its `p1`, fit by EM
 Dirichlet(2, 2, 2) prior; `scripts/fit_gather_row.py` fits it from the m5-base sequences).
 The row is linear in `p1` like the others. Unfitted, both states read the prior mean and
 gathering never pays. `ask` recovers the answer at a measured rate `r_a` (Beta(1, 1) mean
-0.5 unmeasured).
-
-**Which gather is the same ranking.** The options differ in what they do — a corroboration
-lifts the leader's credence, a retrieval adds candidates and lowers it — so each is valued
-on its own: one step of lookahead over its measured transition (how often it lifts the
-leader, and by how much), landing in a state worth the best row of the menu at the next
-step, less its own price (`core/decide.option_eu`, `best_gather`). The best option's value
-is the gather row the act ranks, so an option is reached on its value and never on being
-the cheapest. The transition is measured, not the final outcome: every option in one
-question shares that question's outcome and the recording policy fixed the order, so only
-what an option did to the posterior is attributable to it. An option nobody has run reads
-the step row, so an unmeasured menu ranks by price. The closed-form preposterior over the
-current posterior remains a door (ROADMAP).
+0.5 unmeasured). A preposterior over the current posterior is a door (ROADMAP).
 
 **Escalation.** A rung fires only when `p_r·u_correct + (1 − p_r)·u_wrong − λ$·price`
 beats every local action, so at `u_wrong = −9` a rung needs `p_r` above 0.90 net of price.
