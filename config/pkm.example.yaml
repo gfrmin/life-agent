@@ -21,6 +21,10 @@ root_dir: ~/.local/share/pkm/store
 # Only declare the producers your corpus actually needs. The bundled sample
 # corpus is markdown, so it needs ONLY pandoc (see scripts/bootstrap-sample.sh,
 # which generates a pandoc-only config automatically).
+#
+# These numbers drift when the OS or the lock file moves under you, and pkm finds
+# out lazily — one producer per full pass over the corpus. `make data` reads them
+# all up front and names every one that has moved before it starts.
 extractors:
   # Plain text, markdown, HTML, docx, odt, rst, tex, rtf, epub — fast, no models.
   pandoc:
@@ -34,7 +38,7 @@ extractors:
 
   # Scanned images / image-only PDFs via OCR. Hebrew + English in the example.
   # tesseract:
-  #   version: "5.5.2"      # your `tesseract --version`
+  #   version: "5.5.x"      # your `tesseract --version`
   #   config: {languages: ["heb", "eng"]}
 
   # Spreadsheets, .msg/.ppt/.doc and a catch-all for formats above don't cover.

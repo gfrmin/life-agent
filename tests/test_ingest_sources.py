@@ -115,3 +115,71 @@ def test_a_missing_registry_names_the_example_to_copy(tmp_path: Path) -> None:
     assert (REPO / "config" / "data-sources.example.yaml").is_file(), \
         "the error names an example file that is not in the tree"
 
+
+
+# --- the extractor preflight: drift is named BEFORE a pass over the corpus -------------
+#
+# `pkm extract`'s own guard is correct but per-producer and lazy, so it reports one
+# drifted producer per full run. On 2026-09-20 three of five had drifted and each cost
+# its own pass to find. These tests pin the preflight that reads them all up front.
+
+
+def _cfg(tmp_path: Path, **versions: str) -> Path:
+    p = tmp_path / "pkm.yaml"
+    body = "root_dir: /nowhere\nextractors:\n" + "".join(
+        f'  {name}:\n    version: "{v}"\n    config: {{}}\n'
+        for name, v in versions.items())
+    p.write_text(body, encoding="utf-8")
+    return p
+
+
+def test_a_matching_config_reports_no_drift(tmp_path: Path) -> None:
+    """The discriminating control: the preflight must not fire when nothing moved."""
+    cfg = _cfg(tmp_path, pandoc="3.10.2", email="1")
+    probes = {"pandoc": lambda: "3.10.2", "email": lambda: "1"}
+    assert ingest_sources.preflight(cfg, probes) == []
+
+
+def test_every_drifted_producer_is_named_not_only_the_first(tmp_path: Path) -> None:
+    """The whole reason this exists. Killed by returning on the first mismatch, which is
+    what `pkm extract` effectively does and what turned one upgrade into three aborted
+    runs."""
+    cfg = _cfg(tmp_path, pandoc="3.10.2", docling="2.90.0",
+               unstructured="0.22.21", tesseract="5.5.2", email="1")
+    probes = {"pandoc": lambda: "3.10.2", "docling": lambda: "2.96.1",
+              "unstructured": lambda: "0.22.31", "tesseract": lambda: "5.5.3",
+              "email": lambda: "1"}
+    drifts = ingest_sources.preflight(cfg, probes)
+    assert [d.producer for d in drifts] == ["docling", "unstructured", "tesseract"]
+    assert drifts[0] == ("docling", "2.90.0", "2.96.1")
+
+
+def test_a_producer_the_config_does_not_declare_is_not_checked(tmp_path: Path) -> None:
+    """pkm only requires config for the producers routing reaches, so an undeclared
+    producer is not this run's business. Killed by iterating the probe table instead of
+    the declaration, which would fail a pandoc-only corpus on a missing docling."""
+    cfg = _cfg(tmp_path, pandoc="3.10.2")
+    probes = {"pandoc": lambda: "3.10.2", "docling": lambda: "2.96.1"}
+    assert ingest_sources.preflight(cfg, probes) == []
+
+
+def test_a_probe_that_cannot_answer_is_drift_and_says_why(tmp_path: Path) -> None:
+    """Declared but not installed is the same failure for this run as declared at the
+    wrong version. Killed by letting the exception escape (the preflight becomes the
+    outage it exists to prevent) or by swallowing it into a bare 'unavailable' that
+    hides which import is missing."""
+    def missing() -> str:
+        raise ModuleNotFoundError("no docling here")
+
+    cfg = _cfg(tmp_path, docling="2.96.1")
+    (drift,) = ingest_sources.preflight(cfg, {"docling": missing})
+    assert drift.producer == "docling"
+    assert drift.installed.startswith(ingest_sources.UNAVAILABLE)
+    assert "ModuleNotFoundError" in drift.installed
+
+
+def test_a_drift_line_names_both_versions(tmp_path: Path) -> None:
+    """The operator has to act on this line alone; a line that says only 'mismatch'
+    sends them back to the config to find out what to type."""
+    line = ingest_sources.Drift("docling", "2.90.0", "2.96.1").line()
+    assert "docling" in line and "2.90.0" in line and "2.96.1" in line
