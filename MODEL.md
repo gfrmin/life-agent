@@ -97,12 +97,15 @@ gathering never pays. `ask` recovers the answer at a measured rate `r_a` (Beta(1
 Measured once against the gate grades (2026-09-22; the newest 300 lookup decides, 267 graded,
 three runs over one question set): the exact one-step preposterior, run on the corroborate
 tiers' declared reliabilities (`pricing.TIER_RHO`, 0.80/0.90/0.95), agrees with the fitted row
-on 251 of 300. On the 31 where it would gather and the row responds, every `p1` is above the
+on 251 of 300 (the row re-decided at step 0 on each final posterior; the ledger keeps nothing
+earlier). On the 31 where it would gather and the row responds, every `p1` is above the
 0.837 respond bar (the upper end is unmeasured) and the graded ones were 28 right, 0 wrong: the
 channel says a gather is worth buying where the answer was already right. Either the declared
 tier ρ overstate what a corroboration buys, or the posterior is underconfident there. That is
 a calibration job, not a decision one: the tiers have no edge in `core/reliability.py` yet, and
-the gate archives are its data.
+the gate archives are its data. The other 18 disagreements (the row abstains, the preposterior
+would gather) are undetermined: 15 had the gold in the corpus, but whether a gather reaches it
+was not measured.
 
 **Escalation.** A rung fires only when `p_r·u_correct + (1 − p_r)·u_wrong − λ$·price`
 beats every local action, so at `u_wrong = −9` a rung needs `p_r` above 0.90 net of price.
