@@ -94,6 +94,16 @@ The row is linear in `p1` like the others. Unfitted, both states read the prior 
 gathering never pays. `ask` recovers the answer at a measured rate `r_a` (Beta(1, 1) mean
 0.5 unmeasured). A preposterior over the current posterior is a door (ROADMAP).
 
+Measured once against the gate grades (2026-09-22; the newest 300 lookup decides, 267 graded,
+three runs over one question set): the exact one-step preposterior, run on the corroborate
+tiers' declared reliabilities (`pricing.TIER_RHO`, 0.80/0.90/0.95), agrees with the fitted row
+on 251 of 300. On the 31 where it would gather and the row responds, every `p1` is above the
+0.837 respond bar (the upper end is unmeasured) and the graded ones were 28 right, 0 wrong: the
+channel says a gather is worth buying where the answer was already right. Either the declared
+tier ρ overstate what a corroboration buys, or the posterior is underconfident there. That is
+a calibration job, not a decision one: the tiers have no edge in `core/reliability.py` yet, and
+the gate archives are its data.
+
 **Escalation.** A rung fires only when `p_r·u_correct + (1 − p_r)·u_wrong − λ$·price`
 beats every local action, so at `u_wrong = −9` a rung needs `p_r` above 0.90 net of price.
 Rungs: (1) a strong model over a wide retrieval window with a citation audit; (2) Claude Code

@@ -88,5 +88,10 @@ same recorded decisions.
   the second domain (`renavondata/hkaddresses#27`).
 - **Gather as a preposterior** over the current posterior, replacing the fitted
   sequence row (`core/gather_row.py`).
+  Measured once (MODEL §4): it loses to the row where they disagree, and planning a second
+  gather beyond the greedy one is worth 0.0036 per question. Replaying it needs what the
+  decision ledger does not keep: `decisions.jsonl` records the final act only, not the probes
+  applied on the way, so any replay of a decision is a re-decision on the end posterior.
+  Recording the applied probes is a contract change to the log, asked for if replay is wanted.
 
 `u_wrong` re-elicitation is the owner's alone (it moves every bar, including escalation's).
