@@ -203,6 +203,19 @@ def test_the_posterior_is_local_and_the_act_is_its_argmax() -> None:
         - (0.004 if view["act"] == "gather" else 0.0))
 
 
+def test_a_state_with_no_candidate_is_decided_at_p1_zero() -> None:
+    # No candidate: the posterior is NONE with certainty, p1 = 0, and the rows are abstain,
+    # one gather per open probe, and ask — there is nothing to respond with.
+    view = DCD.decide(_payload(candidates=[], observations=[]), _U)
+    assert view["credences"] == [] and view["p_none"] == pytest.approx(1.0)
+    assert view["p1"] == 0.0 and view["value"] is None
+    assert view["effector"] == "abstain"            # the prior row: gathering is not worth it
+    assert [o.action for o in DEC.options(_U, [], [("p", 0.1)])] == ["abstain", "gather", "ask"]
+    worth = DCD.decide(_payload(candidates=[], observations=[]),
+                       {**_U, **_gather(0.9, right_if_wrong=0.6), "u_wrong": -1.0})
+    assert (worth["effector"], worth["probe"]) == ("gather", "corroborate_a")
+
+
 def test_a_certain_leader_is_reported_and_an_uncertain_one_withheld() -> None:
     sure = DCD.decide(_payload(observations=_OBS * 4, rho=0.95), _U)
     assert (sure["effector"], sure["value"]) == ("report", "y")

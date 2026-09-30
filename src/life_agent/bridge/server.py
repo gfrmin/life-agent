@@ -366,7 +366,7 @@ def _probe_corroborate(deps: BridgeDeps, p: Payload) -> Payload:
                 time_factor=_corroborate_time_factor(jr, hits, p),
                 competition_factor=_candidate_competition(p, idx))]
             read = "confirm"
-    # the read's own stated confidence rides beside the tier rho: the k=0 strong rescue
+    # the read's own stated confidence rides beside the tier rho: the strong rescue from nothing
     # conditions at min(tier, confidence), so the wire never discards the instrument's
     # uncertainty (a lone unsupported read must not enter at the tier's flat prior).
     # meter the re-read (PR #67 review): tier firings are real billed calls — the
@@ -505,7 +505,7 @@ def _cap_synthesised_covariates(obs: list[Payload], channel: list[Payload]) -> l
     """r09c A2 — a re-read cannot outrank the channel it re-read: every synthesised
     observation's minted authority/subject is capped at the per-component max over the
     channel's doc-keyed rows for the SAME value_norm, else over all doc-keyed rows. A
-    channel with no doc-keyed rows caps nothing (the k=0 rescue mints from zero by
+    channel with no doc-keyed rows caps nothing (the rescue from nothing mints from zero by
     design — the S5 exemption). time_factor is untouched: it is already the caller's
     computed projection, never a minted constant."""
     keyed = [c for c in channel if str(c.get("doc_key") or "")]
@@ -679,8 +679,7 @@ def _decide(deps: BridgeDeps, p: Payload) -> Payload:
     if deps.decider is None:
         raise BridgeError(503, "the bridge was built without a decider")
     question_id = _req_str(p, "question_id")
-    if not _req_list(p, "candidates"):
-        raise BridgeError(400, "field 'candidates' must be non-empty")
+    _req_list(p, "candidates")  # may be empty: a state with no candidate is decided too
     if "rho" not in p:
         raise BridgeError(400, "missing field 'rho'")
     try:

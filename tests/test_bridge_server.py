@@ -823,8 +823,15 @@ def test_decide_returns_the_deciders_view(deps: BridgeDeps) -> None:
     assert fake.decide_calls == [("q1", _DECIDE_BODY)]
 
 
+def test_decide_ranks_a_state_with_no_candidate(deps: BridgeDeps) -> None:
+    fake = _FakeDecider()
+    body = {**_DECIDE_BODY, "candidates": [], "observations": []}
+    status, _ = _call(_with_decider(deps, fake), "POST", "/decide", body)
+    assert status == 200 and fake.decide_calls == [("q1", body)]
+
+
 @pytest.mark.parametrize(("body", "missing"), [
-    ({**_DECIDE_BODY, "candidates": []}, "candidates"),
+    ({k: v for k, v in _DECIDE_BODY.items() if k != "candidates"}, "candidates"),
     ({k: v for k, v in _DECIDE_BODY.items() if k != "rho"}, "rho"),
     ({k: v for k, v in _DECIDE_BODY.items() if k != "question_id"}, "question_id"),
 ])

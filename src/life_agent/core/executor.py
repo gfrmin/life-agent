@@ -120,7 +120,7 @@ _UNPRICED_ATTRIBUTION: dict[str, Any] = {
 # (core/gather_outcomes.GROW_ACTUATORS, served by the bridge's /grow_menu).
 _GROW_RETRIEVE = {"retrieve_rerank": (True, False), "retrieve_expand": (True, True)}
 _RE_EXTRACT_MODEL = PRC.RE_EXTRACT_MODEL
-# The k=0 rescue channel's reliability CAP — a stated wide prior (mean of the local
+# The rescue channel's reliability CAP — a stated wide prior (mean of the local
 # extractor's own Beta(4,4), core/reliability.PRIORS), declared blind, NOT the tier's
 # 0.95 and NOT the model's self-stated confidence: a lone strong read with zero local
 # corroboration is an unmeasured instrument, and the first field run showed fiat trust
@@ -142,7 +142,7 @@ def _conditioned_rho(curves: Curves, edge: str, confidence: Any, fallback: float
     the whole corroborate ladder to the cold start the moment the first deliberate
     outcome landed, prod-wide and permanently. The extract-tier writer now earns the
     extract@ edges out: once rows accrue, the measured branch replaces the declared
-    caps for EVERY call site sharing that edge string — including the k=0 rescue's
+    caps for EVERY call site sharing that edge string — including the rescue's
     blind-declared min(0.5, conf), earned out by corroborate-context evidence (a
     stated coarsening: edges pool per MODEL, not per calling context; split the
     namespace if rescue-context reliability measurably diverges). Within a MEASURED
@@ -153,6 +153,17 @@ def _conditioned_rho(curves: Curves, edge: str, confidence: Any, fallback: float
         return float(fallback)
     c = 0.0 if confidence is None else max(0.0, float(confidence))
     return CAL.curve_for(curves, edge).calibrate(c)
+
+
+def _rescue_rho(curves: Curves, edge: str, reply: dict[str, Any]) -> float:
+    """The reliability a candidate minted from nothing enters at: a lone read with no local
+    support is an unmeasured instrument, so it conditions at ``min(_RESCUE_RHO, its own
+    stated confidence)`` (through the edge's curve once that edge is measured), never at the
+    corroboration tier's flat prior (measured: that asserted a 0.55-confident read at
+    credence 0.995)."""
+    conf = reply.get("confidence")
+    legacy = (min(_RESCUE_RHO, max(0.0, float(conf))) if conf is not None else _RESCUE_RHO)
+    return _conditioned_rho(curves, edge, conf, legacy)
 
 
 def _obj(post: Post, url: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -265,64 +276,6 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str,
                             "lineage": reply.get("cache_key")})
 
     applied: list[str] = []
-    if not ext["candidates"] and menu is not None:
-        # The k=0 degenerate case: nothing extracted ⇒ there is no candidate posterior to price
-        # against (the daemon requires k ≥ 1), so the body walks the menu cheapest-first (menu
-        # order) until candidates ground — the one place enactment order is body-held; every
-        # enactment is still logged, so the counts teach g here too. Each walked probe is
-        # APPLIED (the daemon must not re-offer it later in this pass — one outcome row per
-        # enacted grow, never a double count). The walk's last rung is the strong re-extract
-        # with allow_new: it MINTS a candidate from zero (the q-005 class — a chunk the local
-        # edge cannot read at all), handing the decision straight back to the daemon at k ≥ 1.
-        # Its decide conditions at min(tier rho, the read's own stated confidence): a lone
-        # strong observation with no local support must not enter at the corroboration tier's
-        # flat prior (measured: that asserted a 0.55-confident read at credence 0.995).
-        sensors0 = GO.sensors_from(candidates=[], credences=[], p_none=None,
-                                   indeterminate=int(ext.get("indeterminate") or 0))
-        for actuator in menu["actuators"]:
-            g_probe = str(actuator["probe"])
-            if g_probe in _GROW_RETRIEVE:
-                rr, ex = _GROW_RETRIEVE[g_probe]
-                hits, recency, ext = _evidence(rr, ex)
-                enacted.append((g_probe, sensors0, bool(ext["candidates"])))
-                applied.append(g_probe)
-                if ext["candidates"]:
-                    break
-            elif g_probe == "re_extract_strong" and hits:
-                cr = _obj(post, f"{bridge}/probe/corroborate",
-                          {"reextract": True, "allow_new": True, "question": question,
-                           "observations": ext["observations"],
-                           "hits": hits, "candidates": [], "model": _RE_EXTRACT_MODEL,
-                           "rho": _GATHER_RHO,
-                           "time_indexed": route["time_indexed"],
-                           "construct": route["construct"],
-                           "covariates": {"doc_date": recency}})
-                _edge_event(extract_edge(_RE_EXTRACT_MODEL), cr)
-                minted = bool(cr.get("new_candidate"))
-                enacted.append((g_probe, sensors0, minted))
-                applied.append(g_probe)
-                if minted:
-                    conf = cr.get("confidence")
-                    legacy = (min(_RESCUE_RHO, max(0.0, float(conf)))
-                              if conf is not None else _RESCUE_RHO)
-                    rescue_rho = _conditioned_rho(
-                        curves, extract_edge(_RE_EXTRACT_MODEL), conf, legacy)
-                    ext = {"candidates": [str(cr["new_candidate"])],
-                           "observations": cr["observations"], "rho": rescue_rho,
-                           "indeterminate": ext.get("indeterminate", 0)}
-                    break
-    if not ext["candidates"]:
-        # The wire's ENACTMENT CONSTRAINT, not a host decision (r15 A1): the daemon's
-        # /decide hard-errors on empty candidates (server.jl: k >= 1 — verified), so a
-        # k=0 state has no ranking to be inside of. Mechanics, the same logic as §6.5.
-        _log_outcomes("miss")
-        return {"effector": "miss", "asserted": [], "candidates": [], "credences": [],
-                "p_none": None, "eu": None, "n_obs": 0, "hits": hits, "route": route,
-                "n_indeterminate": int(ext.get("indeterminate", 0) or 0),
-                "n_competing": int(ext.get("n_competing", 0) or 0),
-                **_UNPRICED_ATTRIBUTION, "edge_events": edge_events,
-                "spend_usd": spend_usd, "applied": list(applied),
-                "origin": DEC.origin(effector="miss", candidates=[], asserted=[]).as_dict()}
     u_bar = get(f"{bridge}/utility")["u_bar"]
     # price the menu in the OWNER'S utility (plan item C): transform rows and grow
     # actuators are AUTHORED in USD; the elicited exchange rate (lambda_usd, gauge
@@ -337,7 +290,8 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str,
                                       if "cost" in a else a
                                       for a in menu["actuators"]]}
     candidates = ext["candidates"]
-    obs, rho = ext["observations"], ext["rho"]
+    # a state with no candidate is decided like any other: no observation names anything
+    obs, rho = (ext["observations"] if candidates else []), ext["rho"]
 
     def _cand_comp(extraction: dict[str, Any], cands: list[str]) -> list[float]:
         # §4.2: competition is a property of the corpus evidence, not the instrument — a
@@ -396,6 +350,8 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str,
             tier_rho = _TIER_RHO.get(probe, _GATHER_RHO)
             cr = _obj(post, f"{bridge}/probe/corroborate",
                       {"reextract": True, "question": question, "hits": hits,
+                       # with no candidate a re-read that cannot name a new one buys nothing
+                       "allow_new": not candidates,
                        # r09 D2: the standing channel rides the payload so the bridge
                        # computes the §5-deduped JOIN where the deployed rule lives
                        "observations": obs,
@@ -422,8 +378,14 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str,
                 # discarded on the regular tiers (rescue-path parity); without curves the
                 # tier rho echoes.
                 obs = cr["observations"]
-                rho = _conditioned_rho(curves, extract_edge(model), cr.get("confidence"),
-                                       cr["gather_rho"])
+                if not candidates and cr.get("new_candidate"):
+                    # minted from nothing: the lone read enters at the rescue reliability
+                    candidates = [str(cr["new_candidate"])]
+                    cand_comp = [1.0]
+                    rho = _rescue_rho(curves, extract_edge(model), cr)
+                else:
+                    rho = _conditioned_rho(curves, extract_edge(model),
+                                           cr.get("confidence"), cr["gather_rho"])
                 applied = list(dict.fromkeys([*applied, probe]))
                 dec = _decide(obs, rho, applied)
         elif eff == "gather" and probe in _GROW_RETRIEVE:
@@ -462,6 +424,10 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str,
                              for j, g in enumerate(grown_comp)]
                 candidates = joined
                 rho = ext["rho"]
+            elif not candidates:
+                # nothing stands to be erased: the wider evidence is the evidence the next
+                # probe reads
+                hits, recency, ext = n_hits, n_recency, n_ext
             enacted.append((probe, last_sensors, changed))
             applied = list(dict.fromkeys([*applied, probe]))
             dec = _decide(obs, rho, applied)
@@ -525,6 +491,12 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str,
             # value outside the local candidate set comes back as a NEW candidate (the bridge
             # indexes its observation at len(candidates)); the reply is the §5-deduped JOIN
             # of the standing channel with the re-read (r09), exactly as corroborate does.
+            if not hits:
+                # nothing was retrieved at any breadth, so there is nothing to re-read: the
+                # probe retires unenacted (no call, no outcome row) and the decider decides again
+                applied = list(dict.fromkeys([*applied, probe]))
+                dec = _decide(obs, rho, applied)
+                continue
             cr = _obj(post, f"{bridge}/probe/corroborate",
                       {"reextract": True, "allow_new": True, "question": question,
                        "observations": obs,
@@ -534,6 +506,7 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str,
                        "covariates": {"doc_date": recency}})
             _edge_event(extract_edge(_RE_EXTRACT_MODEL), cr)
             changed = bool(cr.get("new_candidate")) or bool(cr["observations"])
+            from_nothing = not candidates
             if cr.get("new_candidate"):
                 candidates = [*candidates, str(cr["new_candidate"])]
                 cand_comp = [*cand_comp, 1.0]
@@ -543,7 +516,10 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str,
             # the leader instead). A NULL read — the model named nothing at all — is the
             # absence-of-evidence case (§14, 2026-08-18): the probe retires fail-open and
             # the grounded channel stands, rho untouched.
-            if not _null_read(cr):
+            if cr.get("new_candidate") and from_nothing:
+                obs = cr["observations"]
+                rho = _rescue_rho(curves, extract_edge(_RE_EXTRACT_MODEL), cr)
+            elif not _null_read(cr):
                 obs = cr["observations"]
                 rho = _conditioned_rho(curves, extract_edge(_RE_EXTRACT_MODEL),
                                        cr.get("confidence"), cr["gather_rho"])
@@ -552,7 +528,17 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str,
             dec = _decide(obs, rho, applied)
         else:
             break
-    _log_outcomes(dec["effector"])
+    _log_outcomes(dec["effector"] if candidates else "miss")
+    if not candidates:
+        # No candidate stood at the end (the decider abstained or asked, or every probe it
+        # bought came back empty): a miss, no posterior to report and none to fold a verdict on.
+        return {"effector": "miss", "asserted": [], "candidates": [], "credences": [],
+                "p_none": None, "eu": dec["eu"], "n_obs": 0, "hits": hits, "route": route,
+                "n_indeterminate": int(ext.get("indeterminate", 0) or 0),
+                "n_competing": int(ext.get("n_competing", 0) or 0),
+                **_UNPRICED_ATTRIBUTION, "edge_events": edge_events,
+                "spend_usd": spend_usd, "applied": list(applied),
+                "origin": DEC.origin(effector="miss", candidates=[], asserted=[]).as_dict()}
     asserted = [dec["value"]] if dec["effector"] == "report" and dec["value"] else []
     return {"effector": dec["effector"], "asserted": asserted, "candidates": candidates,
             "credences": dec["credences"], "p_none": dec["p_none"], "eu": dec["eu"],

@@ -62,9 +62,13 @@ def test_agreeing_reports_raise_the_leader_and_lower_none() -> None:
     assert math.fsum(two) + none_two == pytest.approx(1.0)
 
 
-def test_no_candidates_is_refused() -> None:
+def test_no_candidates_is_all_none() -> None:
+    assert P.candidate_posterior(0, [], rho=0.5) == ([], pytest.approx(1.0))
+
+
+def test_a_negative_candidate_count_is_refused() -> None:
     with pytest.raises(ValueError):
-        P.candidate_posterior(0, [], rho=0.5)
+        P.candidate_posterior(-1, [], rho=0.5)
 
 
 # --- the replay pin ------------------------------------------------------------------------

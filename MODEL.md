@@ -80,6 +80,15 @@ the MAP candidate's credence (P(asserting now is right)):
 | `ask` | ask the owner a clarifying question | the owner's attention; recovers the answer at the measured rate `r_a` |
 | `escalate@r` | hand the question to rung `r` (J1–J2) | the rung's price, and its learned reliability `p_r` |
 
+**A state with no candidate is decided like any other.** When extraction finds nothing the
+executor still asks `bayes_act`, with no candidate and no observation: the posterior is
+NONE with certainty, `p1` is 0, and the rows are `abstain`, one `gather` per open probe and
+`ask` (there is nothing to respond with). The gather row is read in its leader-wrong state,
+the same measured row as everywhere else. At today's gauge that row is worth less than
+abstaining, so the state ends declined and no rescue probe runs; a gauge with a smaller
+`|u_wrong|` would buy the probes, and a candidate one of them mints is decided on like any
+other, entering at the rescue reliability (`min(0.5, its stated confidence)`).
+
 **The loss is data.** `u_correct = +1` and `u_abstain = 0` are the gauge's two pins;
 `u_wrong` is a posterior (prior mean −9, the owner's 10:1, folded from reactions) and
 `lambda_usd` converts spend. The decider reads the folded means. With `respond` vs `abstain`

@@ -109,6 +109,15 @@ def _loop(fake: FakeServices, question: str = "what is my passport number?",
                               post=fake.post, get=fake.get, **kw)
 
 
+def _gather(probe: str) -> dict[str, Any]:
+    """The decider's verdict at a state with no candidate: buy ``probe``."""
+    return {"effector": "gather", "probe": probe, "credences": [], "p_none": 1.0, "eu": 0.0}
+
+
+_ABSTAIN_EMPTY = {"effector": "abstain", "credences": [], "p_none": 1.0, "eu": 0.0}
+_RESCUE_ORDER = ["retrieve_rerank", "retrieve_expand", "re_extract_strong"]
+
+
 def test_route_none_is_declined_without_retrieval() -> None:
     # Not a verbatim point fact: the question is declined, and no second lane answers it.
     fake = FakeServices(route=None)
@@ -155,20 +164,24 @@ def test_run_pass_requests_the_plain_utility() -> None:
     assert utility_calls == [f"{B}/utility"]
 
 
-def test_extract_miss_never_consults_the_daemon() -> None:
-    # Zero grounded observations → the local edge declined. The priced lane still walks the
-    # grow menu (M1: there is no short circuit left), but nothing grounds, so no candidate is
-    # minted and the daemon is never asked — a miss carrying no candidates.
+def test_an_empty_extraction_is_decided_like_any_other_state() -> None:
+    # Zero candidates: the executor asks the decider with candidates [] and no observation,
+    # the same menu it would send otherwise. The decider abstains, so nothing is bought and
+    # the view is a miss carrying the decider's expected utility.
     fake = FakeServices(route={"construct": "passport number", "time_indexed": False},
                         extract={"candidates": [], "observations": [], "rho": 0.7,
-                                 "indeterminate": 3,
-                                 "half_life_years": 5.0},
-                        corroborate={"observations": [], "gather_rho": 0.95, "value": None,
-                     "confidence": None})
+                                 "indeterminate": 3, "half_life_years": 5.0},
+                        decides=[_ABSTAIN_EMPTY])
     view = _loop(fake)
     assert view["effector"] == "miss"
-    assert view["candidates"] == []
-    assert fake.posted("/decide") == []
+    assert view["candidates"] == [] and view["asserted"] == [] and view["credences"] == []
+    assert view["p_none"] is None and view["applied"] == []
+    assert view["origin"]["kind"] == "declined"
+    (decide,) = fake.posted("/decide")
+    assert decide["candidates"] == [] and decide["observations"] == []
+    assert decide["rho"] == 0.7 and decide["applied_probes"] == []
+    assert [a["probe"] for a in decide["grow"]["actuators"]] == _RESCUE_ORDER
+    assert fake.posted("/probe/corroborate") == [] and len(fake.posted("/retrieve")) == 1
 
 
 def test_view_threads_the_competed_observation_count() -> None:
@@ -276,20 +289,24 @@ def test_grow_lane_re_extract_strong_enlarges_k() -> None:
     assert logged[0]["probe"] == "re_extract_strong" and logged[0]["recovered"] is True
 
 
-def test_grow_lane_zero_candidates_walks_the_menu_cheapest_first() -> None:
-    # Nothing extracted ⇒ no posterior to price against (the k=0 degenerate case): the body
-    # walks the menu cheapest-first until candidates appear, then the daemon decides. An
-    # enactment that produced nothing logs recovered=False; the one that surfaced the
-    # candidates logs the final report.
+def test_grow_lane_zero_candidates_buys_the_probes_the_decider_names() -> None:
+    # Nothing extracted: the decider names the probes and the loop enacts them in that order
+    # until candidates appear, then decides on them. An enactment that produced nothing logs
+    # recovered=False; the one that surfaced the candidates logs the final report.
     empty = {"candidates": [], "observations": [], "rho": 0.7,
              "indeterminate": 0}
     fake = FakeServices(
         route={"construct": "passport number", "time_indexed": False},
-        extracts=[empty, empty, _EXTRACT],   # cheap, rerank (still empty), expand (grounds)
-        decides=[{"effector": "report", "value": "P123", "credences": [0.95],
+        extracts=[empty, empty, _EXTRACT],   # rerank (still empty), expand (grounds)
+        decides=[_gather("retrieve_rerank"), _gather("retrieve_expand"),
+                 {"effector": "report", "value": "P123", "credences": [0.95],
                   "p_none": 0.05, "eu": 0.9}])
     view = _loop(fake)
     assert view["effector"] == "report"
+    assert [(r["rerank"], r["expand"]) for r in fake.posted("/retrieve")] == [
+        (False, False), (True, False), (True, True)]
+    assert [d["applied_probes"] for d in fake.posted("/decide")] == [
+        [], ["retrieve_rerank"], ["retrieve_rerank", "retrieve_expand"]]
     logged = {p["probe"]: p["recovered"] for p in fake.posted("/log_gather")}
     assert logged == {"retrieve_rerank": False, "retrieve_expand": True}
 
@@ -302,7 +319,8 @@ def test_grow_lane_log_gather_failure_never_breaks_the_answer() -> None:
     fake = FakeServices(
         route={"construct": "passport number", "time_indexed": False},
         extracts=[empty, _EXTRACT],
-        decides=[{"effector": "report", "value": "P123", "credences": [0.95],
+        decides=[_gather("retrieve_rerank"),
+                 {"effector": "report", "value": "P123", "credences": [0.95],
                   "p_none": 0.05, "eu": 0.9}])
     real_post = fake.post
 
@@ -393,26 +411,23 @@ def test_corroborate_tier_null_read_keeps_the_channel_reply_adopted_otherwise() 
     assert erased[1]["rho"] == 0.80
 
 
-def test_zero_candidate_walk_retires_its_probes() -> None:
-    # A retrieval actuator enacted in the k=0 walk is APPLIED: the daemon must not be offered
-    # it again later in the same pass (review finding #3 — a re-offer would re-enact and
-    # double-count one event into the warm-count fold).
+def test_a_bought_probe_at_zero_candidates_is_retired() -> None:
+    # A retrieval actuator enacted from an empty state is APPLIED: the decider is not offered
+    # it again in the same pass (a re-offer would re-enact and double-count one event into the
+    # warm-count fold).
     empty = {"candidates": [], "observations": [], "rho": 0.7,
              "indeterminate": 0}
     fake = FakeServices(
         route={"construct": "passport number", "time_indexed": False},
-        extracts=[empty, _EXTRACT],   # cheap empty; the rerank walk grounds
-        decides=[
-            {"effector": "abstain", "credences": [0.2], "p_none": 0.7, "eu": 0.0},
-        ])
+        extracts=[empty, _EXTRACT],   # the rerank grounds
+        decides=[_gather("retrieve_rerank"),
+                 {"effector": "abstain", "credences": [0.2], "p_none": 0.7, "eu": 0.0}])
     view = _loop(fake)
     assert view["effector"] == "abstain"
     decides = fake.posted("/decide")
-    # the first decide already carries the walked probe as applied, so it is not re-offered
-    assert "retrieve_rerank" in decides[0]["applied_probes"]
-    # and only ONE outcome row was logged for it (no double count)
+    assert "retrieve_rerank" in decides[1]["applied_probes"]
     logged = [p for p in fake.posted("/log_gather") if p["probe"] == "retrieve_rerank"]
-    assert len(logged) == 1
+    assert len(logged) == 1   # one outcome row, no double count
 
 # --- render_view: the executor's decision in the shared credence grammar ----------------
 
@@ -458,13 +473,13 @@ def test_render_view_narrative_passes_through_verbatim() -> None:
     assert EX.render_view(view) == "you travelled in May [1]\n\nnarrative footer"
 
 
-# --- the k=0 strong rescue (extraction-loss conversion; the q-005 class) -----------------
-# Nothing grounds locally AND every retrieval rung of the k=0 walk comes back empty: the walk
-# now reaches its last, priciest rung — the strong whole-doc re-read with allow_new — instead
-# of conceding miss with the one capable reader unconsulted. The minted candidate hands the
-# decision straight back to the daemon (k >= 1 again); the rescue conditions at the READ'S OWN
-# stated confidence (capped by the tier prior), so a hesitant strong read hedges rather than
-# asserting at the tier's flat rho — the wire must not discard the instrument's uncertainty.
+# --- the strong rescue from an empty extraction (the q-005 class) ---------------------------
+# Nothing grounds locally and the decider buys the probes down to the strong whole-doc
+# re-read with allow_new. The candidate it mints is decided on like any other; it enters at
+# the READ'S OWN stated confidence (capped by the tier prior), so a hesitant strong read
+# hedges rather than asserting at the tier's flat rho — the wire must not discard the
+# instrument's uncertainty. (The decisions are scripted here; the decider's own choices at
+# an empty state are pinned below.)
 
 _EMPTY_EXTRACT = {"candidates": [], "observations": [], "rho": 0.7,
                   "indeterminate": 2}
@@ -478,7 +493,8 @@ def test_zero_candidate_walk_reaches_the_strong_re_extract() -> None:
                                        "subject_factor": 1.0, "time_factor": 1.0}],
                      "gather_rho": 0.95, "value": "NEW-7", "new_candidate": "NEW-7",
                      "confidence": 0.9},
-        decides=[{"effector": "report", "value": "NEW-7", "credences": [0.93],
+        decides=[*map(_gather, _RESCUE_ORDER),
+                 {"effector": "report", "value": "NEW-7", "credences": [0.93],
                   "p_none": 0.07, "eu": 0.8}])
     view = _loop(fake)
     assert view["effector"] == "report"
@@ -487,8 +503,8 @@ def test_zero_candidate_walk_reaches_the_strong_re_extract() -> None:
     assert len(corr) == 1
     assert corr[0]["allow_new"] is True and corr[0]["candidates"] == []
     decides = fake.posted("/decide")
-    assert decides[0]["candidates"] == ["NEW-7"]
-    assert decides[0]["rho"] == 0.5              # min(_RESCUE_RHO 0.5, confidence 0.9)
+    assert decides[3]["candidates"] == ["NEW-7"]
+    assert decides[3]["rho"] == 0.5              # min(_RESCUE_RHO 0.5, confidence 0.9)
     logged = {p["probe"]: p["recovered"] for p in fake.posted("/log_gather")}
     assert logged == {"retrieve_rerank": False, "retrieve_expand": False,
                       "re_extract_strong": True}
@@ -505,11 +521,12 @@ def test_zero_candidate_rescue_carries_low_confidence_into_rho() -> None:
                                        "subject_factor": 1.0, "time_factor": 1.0}],
                      "gather_rho": 0.95, "value": "NEW-7", "new_candidate": "NEW-7",
                      "confidence": 0.35},
-        decides=[{"effector": "hedge", "credences": [0.62], "p_none": 0.38, "eu": 0.3}])
+        decides=[*map(_gather, _RESCUE_ORDER),
+                 {"effector": "hedge", "credences": [0.62], "p_none": 0.38, "eu": 0.3}])
     view = _loop(fake)
     assert view["effector"] == "hedge"
     assert view["candidates"] == ["NEW-7"]       # named, not silently dropped
-    assert fake.posted("/decide")[0]["rho"] == 0.35
+    assert fake.posted("/decide")[3]["rho"] == 0.35
 
 
 def test_zero_candidate_rescue_without_confidence_uses_the_prior_cap() -> None:
@@ -520,10 +537,11 @@ def test_zero_candidate_rescue_without_confidence_uses_the_prior_cap() -> None:
         corroborate={"observations": [{"reports": 0, "group": 0, "authority": 1.0,
                                        "subject_factor": 1.0, "time_factor": 1.0}],
                      "gather_rho": 0.95, "value": "NEW-7", "new_candidate": "NEW-7"},
-        decides=[{"effector": "report", "value": "NEW-7", "credences": [0.93],
+        decides=[*map(_gather, _RESCUE_ORDER),
+                 {"effector": "report", "value": "NEW-7", "credences": [0.93],
                   "p_none": 0.07, "eu": 0.8}])
     _loop(fake)
-    assert fake.posted("/decide")[0]["rho"] == 0.5
+    assert fake.posted("/decide")[3]["rho"] == 0.5
 
 
 def test_zero_candidate_rescue_empty_read_stays_miss() -> None:
@@ -534,10 +552,11 @@ def test_zero_candidate_rescue_empty_read_stays_miss() -> None:
         route={"construct": "visa expiry", "time_indexed": False},
         extracts=[_EMPTY_EXTRACT, _EMPTY_EXTRACT, _EMPTY_EXTRACT],
         corroborate={"observations": [], "gather_rho": 0.95, "value": None,
-                     "confidence": None})
+                     "confidence": None},
+        decides=[*map(_gather, _RESCUE_ORDER), _ABSTAIN_EMPTY])
     view = _loop(fake)
     assert view["effector"] == "miss"
-    assert fake.posted("/decide") == []
+    assert fake.posted("/decide")[3]["candidates"] == []
     logged = {p["probe"]: p["recovered"] for p in fake.posted("/log_gather")}
     assert logged["re_extract_strong"] is False
 
@@ -547,10 +566,108 @@ def test_zero_candidate_rescue_needs_hits() -> None:
     fake = FakeServices(
         route={"construct": "mortgage", "time_indexed": False},
         hits=[],
-        extracts=[_EMPTY_EXTRACT, _EMPTY_EXTRACT, _EMPTY_EXTRACT])
+        extracts=[_EMPTY_EXTRACT, _EMPTY_EXTRACT, _EMPTY_EXTRACT],
+        decides=[*map(_gather, _RESCUE_ORDER), _ABSTAIN_EMPTY])
     view = _loop(fake)
     assert view["effector"] == "miss"
     assert fake.posted("/probe/corroborate") == []
+    # the probe retired unenacted: no outcome row for it
+    assert "re_extract_strong" not in {p["probe"] for p in fake.posted("/log_gather")}
+
+# --- the real decider at a state with no candidate (ruling 6) ---------------------------------
+# The scripted tests above pin what the loop enacts; these pin what the decider names.
+
+def _real_decider(fake: FakeServices, u_bar: dict[str, float]) -> FakeServices:
+    """Route ``fake``'s /decide through the host decider under ``u_bar``."""
+    from life_agent.core import decider as DCD
+
+    scripted = fake.post
+
+    def post(url: str, payload: dict[str, Any]) -> dict[str, Any] | None:
+        if url.endswith("/decide"):
+            fake.calls.append((url, payload))
+            return DCD.decide(payload, u_bar)
+        return scripted(url, payload)
+
+    fake.post = post  # type: ignore[method-assign]
+    return fake
+
+
+def _gauge(u_wrong: float, row: dict[str, float] | None = None,
+           kappa_att: float = 0.02) -> dict[str, float]:
+    """A gauge at ``u_wrong``; ``row`` is a flat gather row (every step alike), else the
+    shipped per-step row."""
+    from life_agent.core import gather_row as GR
+
+    return {"u_correct": 1.0, "u_wrong": u_wrong, "u_abstain": 0.0, "lambda_int": 0.1,
+            "kappa_att": kappa_att, "lambda_usd": 1.0,
+            **(GR.load(GR.EXAMPLE) if row is None else row)}
+
+
+_NULL_READ = {"observations": [], "gather_rho": 0.8, "value": None, "confidence": None,
+              "read": "null"}
+
+
+@pytest.mark.parametrize("u_wrong", [-9.0, -5.13])
+def test_at_the_shipped_gather_row_an_empty_state_abstains_and_buys_nothing(
+        u_wrong: float) -> None:
+    # p1 = 0 and the shipped row's leader-wrong state is worth less than abstaining at this
+    # gauge: the argmax declines, so no rescue runs. This is the ruling's consequence, not a
+    # special case.
+    fake = _real_decider(FakeServices(
+        route={"construct": "passport number", "time_indexed": False},
+        extract=_EMPTY_EXTRACT, corroborate=_NULL_READ), _gauge(u_wrong))
+    view = _loop(fake)
+    assert view["effector"] == "miss" and view["applied"] == []
+    assert view["candidates"] == [] and view["p_none"] is None
+    assert view["eu"] == 0.0                       # the abstain row's value
+    assert len(fake.posted("/decide")) == 1
+    assert len(fake.posted("/retrieve")) == 1
+    assert fake.posted("/probe/corroborate") == [] and fake.posted("/log_gather") == []
+
+
+def test_where_the_gather_row_pays_the_decider_names_the_probes_in_price_order() -> None:
+    # A row worth more than abstaining at p1 = 0 (small |u_wrong|, a flat row): the decider
+    # buys every probe it prices below that value, cheapest first (ties to the listed order),
+    # and the loop enacts each. The deliberate arm (0.38) costs more than the row is worth.
+    row = {"gather_right_if_wrong": 0.3, "gather_wrong_if_wrong": 0.05,
+           "gather_right_if_right": 0.9, "gather_wrong_if_right": 0.02}
+    fake = _real_decider(FakeServices(
+        route={"construct": "passport number", "time_indexed": False},
+        extract=_EMPTY_EXTRACT, corroborate=_NULL_READ),
+        _gauge(-2.0, row, kappa_att=0.0))
+    view = _loop(fake)
+    assert view["effector"] == "miss"
+    assert view["applied"] == ["corroborate_haiku", "retrieve_rerank", "retrieve_expand",
+                               "corroborate_sonnet", "corroborate_opus", "re_extract_strong"]
+    assert view["eu"] == 0.0                       # in the end it abstained
+    # a tier re-read over no candidate may name one; a read that names none buys nothing
+    assert all(c["allow_new"] is True for c in fake.posted("/probe/corroborate"))
+    assert {p["probe"] for p in fake.posted("/log_gather")} == {"retrieve_rerank",
+                                                                "retrieve_expand",
+                                                                "re_extract_strong"}
+
+
+def test_a_candidate_minted_from_nothing_is_decided_at_the_rescue_reliability() -> None:
+    # The first bought probe (the cheapest tier) mints a candidate; it is decided on like
+    # any other, entering at min(the wide-prior cap, its stated confidence), not at the tier.
+    row = {"gather_right_if_wrong": 0.3, "gather_wrong_if_wrong": 0.05,
+           "gather_right_if_right": 0.9, "gather_wrong_if_right": 0.02}
+    minting = {"observations": [{"reports": 0, "group": 0, "authority": 1.0,
+                                 "subject_factor": 1.0, "time_factor": 1.0}],
+               "gather_rho": 0.8, "value": "NEW-7", "new_candidate": "NEW-7",
+               "confidence": 0.35, "read": "confirm"}
+    fake = _real_decider(FakeServices(
+        route={"construct": "passport number", "time_indexed": False},
+        extract=_EMPTY_EXTRACT, corroborate=minting),
+        _gauge(-2.0, row, kappa_att=0.0))
+    view = _loop(fake)
+    first, second = fake.posted("/decide")[:2]
+    assert first["candidates"] == [] and second["candidates"] == ["NEW-7"]
+    assert second["rho"] == 0.35 and second["applied_probes"] == ["corroborate_haiku"]
+    assert view["candidates"] == ["NEW-7"]
+    assert view["effector"] != "miss"              # a candidate stood: not a miss
+
 
 # --- M3: the live coarse-menu consult threads through to the seam ------------------------
 
@@ -573,10 +690,11 @@ def test_rescue_folds_confidence_through_the_edge_curve() -> None:
                                        "subject_factor": 1.0, "time_factor": 1.0}],
                      "gather_rho": 0.95, "value": "NEW-7", "new_candidate": "NEW-7",
                      "confidence": 0.9},
-        decides=[{"effector": "report", "value": "NEW-7", "credences": [0.93],
+        decides=[*map(_gather, _RESCUE_ORDER),
+                 {"effector": "report", "value": "NEW-7", "credences": [0.93],
                   "p_none": 0.07, "eu": 0.8}])
     _loop(fake, curves=curves)
-    assert fake.posted("/decide")[0]["rho"] == expected
+    assert fake.posted("/decide")[3]["rho"] == expected
 
 
 def test_rescue_unmeasured_edge_keeps_the_declared_cap() -> None:
@@ -592,9 +710,10 @@ def test_rescue_unmeasured_edge_keeps_the_declared_cap() -> None:
                                        "subject_factor": 1.0, "time_factor": 1.0}],
                      "gather_rho": 0.95, "value": "NEW-7", "new_candidate": "NEW-7",
                      "confidence": 0.9},
-        decides=[{"effector": "hedge", "credences": [0.6], "p_none": 0.4, "eu": 0.1}])
+        decides=[*map(_gather, _RESCUE_ORDER),
+                 {"effector": "hedge", "credences": [0.6], "p_none": 0.4, "eu": 0.1}])
     _loop(fake, curves={})
-    assert fake.posted("/decide")[0]["rho"] == 0.5
+    assert fake.posted("/decide")[3]["rho"] == 0.5
 
 
 def test_rescue_measured_edge_folds_through_its_curve_cold_bins() -> None:
@@ -609,9 +728,10 @@ def test_rescue_measured_edge_folds_through_its_curve_cold_bins() -> None:
                                        "subject_factor": 1.0, "time_factor": 1.0}],
                      "gather_rho": 0.95, "value": "NEW-7", "new_candidate": "NEW-7",
                      "confidence": 0.9},
-        decides=[{"effector": "hedge", "credences": [0.6], "p_none": 0.4, "eu": 0.1}])
+        decides=[*map(_gather, _RESCUE_ORDER),
+                 {"effector": "hedge", "credences": [0.6], "p_none": 0.4, "eu": 0.1}])
     _loop(fake, curves=curves)
-    assert (fake.posted("/decide")[0]["rho"]
+    assert (fake.posted("/decide")[3]["rho"]
             == curves["extract@claude-opus-4-8"].calibrate(0.9))
 
 
@@ -773,7 +893,8 @@ def test_miss_and_narrative_views_default_the_raw_proposal_fields() -> None:
         extract={"candidates": [], "observations": [], "rho": 0.7,
                  "indeterminate": 3},
         corroborate={"observations": [], "gather_rho": 0.95, "value": None,
-                     "confidence": None}))
+                     "confidence": None},
+        decides=[_ABSTAIN_EMPTY]))
     assert miss["effector"] == "miss"
     assert miss["instrument_value"] is None
     assert miss["instrument_lineage"] is None
@@ -909,7 +1030,8 @@ def test_rescue_walk_appends_an_edge_event() -> None:
                                        "subject_factor": 1.0, "time_factor": 1.0}],
                      "gather_rho": 0.95, "value": "NEW-7", "new_candidate": "NEW-7",
                      "confidence": 0.9, "cache_key": "jk-r"},
-        decides=[{"effector": "report", "value": "NEW-7", "credences": [0.93],
+        decides=[*map(_gather, _RESCUE_ORDER),
+                 {"effector": "report", "value": "NEW-7", "credences": [0.93],
                   "p_none": 0.07, "eu": 0.8}])
     view = _loop(fake)
     assert view["edge_events"] == [{"edge": "extract@claude-opus-4-8", "value": "NEW-7",
@@ -924,7 +1046,8 @@ def test_non_minting_rescue_event_survives_on_the_miss_view() -> None:
         route={"construct": "visa expiry", "time_indexed": False},
         extracts=[_EMPTY_EXTRACT, _EMPTY_EXTRACT, _EMPTY_EXTRACT],
         corroborate={"observations": [], "gather_rho": 0.95, "value": None,
-                     "confidence": None, "cache_key": "jk-d"})
+                     "confidence": None, "cache_key": "jk-d"},
+        decides=[*map(_gather, _RESCUE_ORDER), _ABSTAIN_EMPTY])
     view = _loop(fake)
     assert view["effector"] == "miss"
     assert view["edge_events"] == [{"edge": "extract@claude-opus-4-8", "value": None,
@@ -1056,9 +1179,10 @@ def test_all_view_shapes_carry_edge_events() -> None:
         extract={"candidates": [], "observations": [], "rho": 0.7,
                  "indeterminate": 3},
         corroborate={"observations": [], "gather_rho": 0.95, "value": None,
-                     "confidence": None}))
-    # M1: the priced lane walks the grow menu before conceding, so the miss carries the
-    # walk's one non-minting strong re-read — an event, never a candidate.
+                     "confidence": None},
+        decides=[*map(_gather, _RESCUE_ORDER), _ABSTAIN_EMPTY]))
+    # the miss carries the one non-minting strong re-read the decider bought — an event,
+    # never a candidate.
     assert [e["edge"] for e in miss["edge_events"]] == ["extract@claude-opus-4-8"]
     assert miss["edge_events"][0]["value"] is None
     narr = _loop(FakeServices(route=None, narrative={
