@@ -15,7 +15,10 @@ the arm's calls cost at their DECLARED prices — the typed arm's applied probes
 menu's prices (`pricing.list_price`) whether or not a cache served them, the outside arm's
 recorded call — so the board prices the act, not the cache (a warm replay of an escalation
 is not free; what the calls actually metered rides in the archive as `metered_usd`). `s/q`
-is blank until the rows carry latency. The counts need no gauge; `U/q` prices them at the folded
+is blank until the rows carry latency. `log score` and `ECE` calibrate the typed arm's `p1`
+(the probability it gave its leading candidate) against whether that candidate matched the
+gold, on every row with a candidate (:mod:`eval.calibration`); "—" where an archive carries
+no such reading. The counts need no gauge; `U/q` prices them at the folded
 utility mean (:class:`Gauge`): U = u_right·right + u_wrong·wrong + u_declined·declined -
 lambda_usd·$. A pinned set is one biased draw: a row whose U fell against the committed
 board is listed for the PR to explain, never vetoed.
@@ -28,12 +31,13 @@ import json
 import os
 import sys
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any
 
 import yaml
 
+from eval import calibration as CAL
 from eval.grading import ASSERT_ACTIONS
 
 REPO = Path(__file__).resolve().parent.parent
@@ -95,6 +99,9 @@ class Row:
     declined: int
     usd_per_q: float
     s_per_q: float | None
+    log_score: float | None = None     # the typed arm's calibration; None = not recorded
+    ece: float | None = None
+    n_scored: int | None = None
 
 
 def _response(arm: Mapping[str, Any]) -> Response:
@@ -214,12 +221,49 @@ def score(kb: Path | None, sets: Mapping[str, Mapping[str, Any]]
     return rows, skipped
 
 
+def _archive_rows(text: str) -> list[dict[str, Any]]:
+    return [json.loads(ln) for ln in text.splitlines() if ln.strip()]
+
+
+def set_pairs(spec: Mapping[str, Any], root: Path, archive: str) -> CAL.Pairs:
+    """A set's (p1, leader_correct) pairs. A set whose archive predates the calibration
+    fields names ``questions`` (a path under its root) and ``decisions_run`` (a run_id), and
+    takes them from the decision log for that run; otherwise from the archive's own rows."""
+    run, questions = spec.get("decisions_run"), spec.get("questions")
+    if run and questions:
+        from eval.run import load_questions
+        decided = [d for d in CAL.DEC.read(root / "calibration" / "decisions.jsonl")
+                   if d.run_id == run]
+        return CAL.pairs_from_decisions(decided, load_questions(root / questions))
+    return CAL.pairs_from_archive(_archive_rows(archive))
+
+
+def with_calibration(kb: Path | None, sets: Mapping[str, Mapping[str, Any]],
+                     rows: Sequence[Row]) -> tuple[list[Row], dict[str, CAL.Calibration]]:
+    """Attach each scored set's calibration to its typed row, and return the calibrations
+    of the sets that have any pair. A set that could not be read was not scored either."""
+    cals: dict[str, CAL.Calibration] = {}
+    for name in dict.fromkeys(r.set for r in rows):
+        spec = sets[name]
+        root, _ = set_root(spec, kb)
+        if root is None:
+            continue
+        cal = CAL.calibrate(set_pairs(spec, root, (root / spec["path"]).read_text("utf-8")))
+        if cal.n_scored:
+            cals[name] = cal
+    out = [replace(r, log_score=cals[r.set].mean_log, ece=cals[r.set].ece,
+                   n_scored=cals[r.set].n_scored)
+           if r.arm == "typed" and r.set in cals else r for r in rows]
+    return out, cals
+
+
 def _pct(k: int, n: int) -> str:
     return f"{k} ({100.0 * k / n:.1f}%)" if n else "0"
 
 
 def render(rows: Sequence[Row], skipped: Mapping[str, str], gauge: Gauge | None = None,
-           notes: Mapping[str, str] | None = None) -> str:
+           notes: Mapping[str, str] | None = None,
+           cals: Mapping[str, CAL.Calibration] | None = None) -> str:
     """The board. A scored set's note is rendered UNDER its number, not only in
     `eval/sets.yaml`: a U/q is a claim about a population, and the clause that says which
     population is the first thing a reader drops. `atm` is why — its five wrong answers
@@ -236,16 +280,20 @@ def render(rows: Sequence[Row], skipped: Mapping[str, str], gauge: Gauge | None 
            "arm's applied probes at the menu's prices; the outside arm's recorded call). "
            f"`U/q` is {priced}. A pinned set is one biased draw: a row whose U fell "
            "against the committed board is explained in its PR, not vetoed (rule 5; "
-           "`--falls`).", "",
+           "`--falls`). `log score` and `ECE` calibrate the typed arm's `p1` (see "
+           "Calibration below); \"—\" where the archive records none.", "",
            "| set | arm | rows | right | wrong | esc-right | esc-wrong | declined | $/q | U/q "
-           "| s/q |",
-           "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|"]
+           "| s/q | log score | ECE |",
+           "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|"]
     for r in rows:
         s = "—" if r.s_per_q is None else f"{r.s_per_q:.1f}"
         u = "—" if gauge is None or not r.rows else f"{gauge.total(asdict(r)) / r.rows:+.3f}"
         out.append(f"| {r.set} | {r.arm} | {r.rows} | {_pct(r.right, r.rows)} | "
                    f"{_pct(r.wrong, r.rows)} | {r.esc_right} | {r.esc_wrong} | "
-                   f"{_pct(r.declined, r.rows)} | {r.usd_per_q:.4f} | {u} | {s} |")
+                   f"{_pct(r.declined, r.rows)} | {r.usd_per_q:.4f} | {u} | {s} | "
+                   f"{'—' if r.log_score is None else f'{r.log_score:.3f}'} | "
+                   f"{'—' if r.ece is None else f'{r.ece:.3f}'} |")
+    out += _calibration_section(cals or {})
     if skipped:
         out += ["", "Not scored:", ""]
         out += [f"- `{k}` — {v}" for k, v in skipped.items()]
@@ -259,6 +307,27 @@ def render(rows: Sequence[Row], skipped: Mapping[str, str], gauge: Gauge | None 
                 seen.add(k)
                 out.append(f"- **`{k}`** — {' '.join(str(v).split())}")
     return "\n".join(out) + "\n"
+
+
+def _calibration_section(cals: Mapping[str, CAL.Calibration]) -> list[str]:
+    """Per set with pairs: the reliability bins of the typed arm's `p1`, and what was left
+    out. An empty bin is not shown; nothing is imputed."""
+    if not cals:
+        return []
+    out = ["", "## Calibration", "",
+           "The typed arm's `p1` (the probability it gave its leading candidate) against "
+           "whether that candidate matched the gold, on every row with a candidate, whatever "
+           "the act. `log score` is the mean log probability of the realised outcome "
+           "(0 is perfect); `ECE` the bin-weighted gap between mean `p1` and the fraction "
+           "right."]
+    for name, c in cals.items():
+        out += ["", f"**`{name}`**", "", "| p1 bin | n | mean p1 | right |", "|---|---:|---:|---:|"]
+        out += [f"| {b.lo:.1f}-{b.hi:.1f} | {b.n} | {b.mean_p:.3f} | {b.frac_correct:.3f} |"
+                for b in c.bins if b.n and b.mean_p is not None and b.frac_correct is not None]
+        out += ["", f"{c.n_scored} scored · {c.n_no_candidate} with no candidate · "
+                    f"{c.n_truth_absent} truth absent from the candidates (scored, the leader "
+                    f"is wrong) · {c.n_clamped} clamped"]
+    return out
 
 
 def unscored_pins(sets: Mapping[str, Mapping[str, Any]], skipped: Mapping[str, str]
@@ -307,8 +376,9 @@ def main(argv: list[str] | None = None) -> int:
     except Exception as e:  # the counts still print; the falls need a gauge
         print(f"(no gauge: {type(e).__name__}: {e})", file=sys.stderr)
         gauge = None
+    rows, cals = with_calibration(Path(kb_env) if kb_env else None, load_sets(), rows)
     text = render(rows, skipped, gauge,
-                  {k: str(v["note"]) for k, v in load_sets().items() if v.get("note")})
+                  {k: str(v["note"]) for k, v in load_sets().items() if v.get("note")}, cals)
     print(text)
     if a.falls and BOARD_JSON.is_file():
         if gauge is None:

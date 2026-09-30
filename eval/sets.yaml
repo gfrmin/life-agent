@@ -6,11 +6,18 @@
 # on the same row, as a gate run archives them. The board scores three arms from it:
 # typed, oracle, and router (typed where typed asserted, otherwise the oracle — a
 # recombination of recorded responses, no model call).
+#
+# Calibration (the `log score` / `ECE` columns and the Calibration section) is read from the
+# archive's own `typed.p1` fields. An archive that predates them may name, instead,
+# `questions:` (a path under the set's root) and `decisions_run:` (a run_id): its calibration
+# is then taken from the decision log for that run, joined to those questions.
 sets:
   owner:
     kind: paired
     path: eval/gate-outside-option/paired-gate-20260920T160935-strict.jsonl
     sha256: de0078c94030a2e7a4625071e1c0653cdc39d654c60ea85079c107d95e83d147
+    questions: eval/questions_v2.yaml
+    decisions_run: gate-20260920T160935
     note: >-
       J1's host Bayes act (core/decide.bayes_act) over the owner's 104 questions
       (2026-09-20, corpus pin full-2026-06-11), both arms on ONE GRADER and ONE PRICE LIST:

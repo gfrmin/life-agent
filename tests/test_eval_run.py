@@ -79,3 +79,26 @@ def test_typed_response_names_why_it_withheld() -> None:
     assert ER.typed_response(_view("abstain"), q, available=False).withheld == "unavailable"
     asked = ER.typed_response(_view("ask_clarify"), q)
     assert (asked.action, asked.correct) == ("ask_clarify", None)
+
+
+def test_typed_response_records_the_leaders_calibration_reading() -> None:
+    """`p1` and whether the leader landed the gold ride on every action: an abstain still
+    has a leader. The reading is the highest credence, not the first candidate."""
+    q = {"answer": "P123", "answer_variants": []}
+    view = _view("abstain", candidates=["P999", "P123"], credences=[0.25, 0.6])
+    r = ER.typed_response(view, q)
+    assert (r.p1, r.n_candidates, r.leader_correct, r.truth_in_candidates) == (
+        0.6, 2, True, True)
+    wrong = ER.typed_response(_view("report", asserted=["P999"], candidates=["P999", "P123"],
+                                    credences=[0.7, 0.2]), q)
+    assert (wrong.p1, wrong.leader_correct, wrong.truth_in_candidates) == (0.7, False, True)
+
+
+def test_typed_response_without_a_candidate_reads_no_leader() -> None:
+    r = ER.typed_response(_view("abstain", candidates=[], credences=[]),
+                          {"answer": "P123", "answer_variants": []})
+    assert (r.p1, r.n_candidates, r.leader_correct, r.truth_in_candidates) == (
+        None, 0, None, False)
+    # a hand-built view without `credences` still grades: no leader, but the truth is seen
+    bare = ER.typed_response(_view("abstain"), {"answer": "P123", "answer_variants": []})
+    assert (bare.p1, bare.leader_correct, bare.truth_in_candidates) == (None, None, True)

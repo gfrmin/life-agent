@@ -1,15 +1,36 @@
 # Scoreboard
 
-`python -m eval.score --write`. Counts over each set's rows; `right`/`wrong` include escalated answers, the esc- columns are their escalated share. `$/q` is the arm's calls at their declared prices, cache or no cache (the typed arm's applied probes at the menu's prices; the outside arm's recorded call). `U/q` is priced at the folded gauge u_right 1, u_wrong -5.1310, u_declined 0, lambda_usd 1.33108/$. A pinned set is one biased draw: a row whose U fell against the committed board is explained in its PR, not vetoed (rule 5; `--falls`).
+`python -m eval.score --write`. Counts over each set's rows; `right`/`wrong` include escalated answers, the esc- columns are their escalated share. `$/q` is the arm's calls at their declared prices, cache or no cache (the typed arm's applied probes at the menu's prices; the outside arm's recorded call). `U/q` is priced at the folded gauge u_right 1, u_wrong -5.1310, u_declined 0, lambda_usd 1.33108/$. A pinned set is one biased draw: a row whose U fell against the committed board is explained in its PR, not vetoed (rule 5; `--falls`). `log score` and `ECE` calibrate the typed arm's `p1` (see Calibration below); "—" where the archive records none.
 
-| set | arm | rows | right | wrong | esc-right | esc-wrong | declined | $/q | U/q | s/q |
-|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| owner | typed | 104 | 48 (46.2%) | 0 (0.0%) | 0 | 0 | 56 (53.8%) | 0.0139 | +0.443 | — |
-| owner | outside | 104 | 87 (83.7%) | 13 (12.5%) | 0 | 0 | 4 (3.8%) | 0.4135 | -0.355 | — |
-| owner | router | 104 | 90 (86.5%) | 11 (10.6%) | 42 | 11 | 3 (2.9%) | 0.2357 | +0.009 | — |
-| generated | typed | 212 | 85 (40.1%) | 4 (1.9%) | 0 | 0 | 123 (58.0%) | 0.0151 | +0.284 | — |
-| atm | typed | 198 | 26 (13.1%) | 5 (2.5%) | 0 | 0 | 167 (84.3%) | 0.0102 | -0.012 | — |
-| sample | typed | 14 | 8 (57.1%) | 0 (0.0%) | 0 | 0 | 6 (42.9%) | 0.0119 | +0.556 | — |
+| set | arm | rows | right | wrong | esc-right | esc-wrong | declined | $/q | U/q | s/q | log score | ECE |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| owner | typed | 104 | 48 (46.2%) | 0 (0.0%) | 0 | 0 | 56 (53.8%) | 0.0139 | +0.443 | — | -0.449 | 0.159 |
+| owner | outside | 104 | 87 (83.7%) | 13 (12.5%) | 0 | 0 | 4 (3.8%) | 0.4135 | -0.355 | — | — | — |
+| owner | router | 104 | 90 (86.5%) | 11 (10.6%) | 42 | 11 | 3 (2.9%) | 0.2357 | +0.009 | — | — | — |
+| generated | typed | 212 | 85 (40.1%) | 4 (1.9%) | 0 | 0 | 123 (58.0%) | 0.0151 | +0.284 | — | — | — |
+| atm | typed | 198 | 26 (13.1%) | 5 (2.5%) | 0 | 0 | 167 (84.3%) | 0.0102 | -0.012 | — | — | — |
+| sample | typed | 14 | 8 (57.1%) | 0 (0.0%) | 0 | 0 | 6 (42.9%) | 0.0119 | +0.556 | — | — | — |
+
+## Calibration
+
+The typed arm's `p1` (the probability it gave its leading candidate) against whether that candidate matched the gold, on every row with a candidate, whatever the act. `log score` is the mean log probability of the realised outcome (0 is perfect); `ECE` the bin-weighted gap between mean `p1` and the fraction right.
+
+**`owner`**
+
+| p1 bin | n | mean p1 | right |
+|---|---:|---:|---:|
+| 0.0-0.1 | 3 | 0.079 | 0.667 |
+| 0.1-0.2 | 7 | 0.152 | 0.571 |
+| 0.2-0.3 | 13 | 0.256 | 0.538 |
+| 0.3-0.4 | 4 | 0.311 | 0.500 |
+| 0.4-0.5 | 2 | 0.451 | 0.500 |
+| 0.5-0.6 | 8 | 0.578 | 0.750 |
+| 0.6-0.7 | 8 | 0.654 | 0.750 |
+| 0.7-0.8 | 5 | 0.759 | 0.800 |
+| 0.8-0.9 | 20 | 0.861 | 1.000 |
+| 0.9-1.0 | 32 | 0.942 | 1.000 |
+
+102 scored · 1 with no candidate · 3 truth absent from the candidates (scored, the leader is wrong) · 0 clamped
 
 Not scored:
 
