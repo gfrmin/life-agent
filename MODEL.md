@@ -106,9 +106,8 @@ to state, the act points to it. The derived respond bar, which now also has to o
 rises accordingly; `respond_threshold` reads the cite row at `P(g) = p1`, a lower bound on the
 bar the decider applies (a document's `P(g)` is at least the credence of the candidate it
 holds). A reaction to a cite reply is recorded and not folded into the utility posterior: "bad"
-may mean the wrong document or "I wanted the value". If no hit stands behind the chosen
-document (a synthesised read names none), the reply declines rather than name a document it
-cannot show.
+may mean the wrong document or "I wanted the value". The executor flags which observations stand behind a retrieved document; the decider lists a
+cite row only for groups holding one (a synthesised read is not a document).
 
 **A state with no candidate is decided like any other.** When extraction finds nothing the
 executor still asks `bayes_act`, with no candidate and no observation: the posterior is

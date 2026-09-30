@@ -221,15 +221,26 @@ def decide_via_loop(question: str, k: int, *, bridge: str, post: Post, get: Get,
                     transforms=transforms, curves=curves, u_bar=u_bar)
 
 
+def document_flags(observations: list[dict[str, Any]],
+                   hits: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """``observations`` with ``document`` set: True iff the observation's ``doc_key`` is one
+    of the hits' artifacts, so it stands behind a card a cite can name (a synthesised read
+    does not). A flag, never the key."""
+    keys = {h["artifact_cache_key"] for h in hits}
+    return [{**o, "document": o.get("doc_key") in keys} for o in observations]
+
+
 def cited_document(group: int, observations: list[dict[str, Any]],
-                   hits: list[dict[str, Any]]) -> dict[str, Any] | None:
+                   hits: list[dict[str, Any]]) -> dict[str, Any]:
     """The document a cite's ``group`` stands for: ``{cache_key, hit_n}`` (``hit_n`` the
     1-based number of the first hit card of that artifact, as :func:`_cite_ns` numbers
-    them), or None when no observation of the group carries its ``doc_key`` or no hit is
-    that artifact."""
+    them). The decider lists only flagged documents (:func:`document_flags`), so a group it
+    names always resolves; one that does not is a contract violation."""
     keys = [o["doc_key"] for o in observations if o.get("group") == group and o.get("doc_key")]
     card = [i + 1 for i, h in enumerate(hits) if keys and h["artifact_cache_key"] == keys[0]]
-    return {"cache_key": str(keys[0]), "hit_n": card[0]} if card else None
+    if not card:
+        raise ValueError(f"cite names group {group}, which no retrieved hit stands behind")
+    return {"cache_key": str(keys[0]), "hit_n": card[0]}
 
 
 def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str,
@@ -341,7 +352,8 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str,
             # r09 D1: the correlation key (quote, doc_key) is wire-only — the decider stays
             # string-blind, so the decide post strips it while the loop's channel keeps it
             "question_id": question_id,
-            "candidates": candidates, "observations": SO.strip_wire_keys(observations),
+            "candidates": candidates,
+            "observations": SO.strip_wire_keys(document_flags(observations, hits)),
             "rho": r, "applied_probes": applied, "transforms": transforms}
         if menu is not None:
             payload["grow"] = menu  # the grow actuators are gather options too
@@ -561,10 +573,10 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str,
         else:
             break
     # a cite names a group; the document it stands for is resolved here, off the wire keys
-    # the decide payload never carried. A group no hit stands behind has no document to name.
+    # the decide payload never carried
     cited = (cited_document(dec["group"], obs, hits)
              if dec["effector"] == "cite" else None)
-    effector = "abstain" if dec["effector"] == "cite" and cited is None else dec["effector"]
+    effector = dec["effector"]
     _log_outcomes(effector if candidates else "miss")
     if not candidates:
         # No candidate stood at the end (the decider abstained or asked, or every probe it

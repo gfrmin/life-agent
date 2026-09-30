@@ -246,9 +246,9 @@ def test_the_handle_reads_u_bar_per_decision() -> None:
 
 # --- cite: the document, not the value --------------------------------------------------
 
-def _obs(reports: int, group: int) -> dict[str, Any]:
+def _obs(reports: int, group: int, document: bool = True) -> dict[str, Any]:
     return {"reports": reports, "group": group, "authority": 1.0, "subject_factor": 1.0,
-            "time_factor": 1.0, "competition_factor": 1.0}
+            "time_factor": 1.0, "competition_factor": 1.0, "document": document}
 
 
 def test_cite_is_one_row_per_document_in_first_seen_order() -> None:
@@ -300,6 +300,15 @@ def test_document_groups_are_integers_in_first_seen_order() -> None:
     assert EN.document_groups([]) == []
 
 
+def test_only_flagged_groups_are_documents() -> None:
+    obs = [_obs(0, 0, document=False), _obs(1, 1), _obs(0, 2, document=False),
+           {k: v for k, v in _obs(1, 3).items() if k != "document"}]  # no flag: not one
+    assert EN.document_groups(obs) == [(1, [1])]
+    view = DCD.decide(_payload(observations=[_obs(1, 0, document=False)] * 3, rho=0.8,
+                               transforms=[]), _U)
+    assert view["effector"] != "cite"
+
+
 def test_a_leader_one_document_holds_at_0_7_is_cited_under_the_default_u_bar() -> None:
     # one document reports the leader at a credence above cite's bar and below respond's
     u = {k: v for k, v in _U.items() if not k.startswith("u_cite")}
@@ -330,6 +339,10 @@ def test_the_decide_payload_reaches_the_decider_with_integers_only(
 
     monkeypatch.setattr(DCD.DEC, "bayes_act", spy)
     DCD.decide(_payload(), _U)
+    (groups,) = seen
+    assert groups == []  # _OBS carries no document flag
+    seen.clear()
+    DCD.decide(_payload(observations=[_obs(1, 0), _obs(1, 1)]), _U)
     (groups,) = seen
     assert groups == [(0, [1]), (1, [1])]
     assert all(isinstance(g, int) and all(isinstance(j, int) for j in js) for g, js in groups)

@@ -29,6 +29,9 @@ _EXTRACT = {"candidates": ["P123"],
             "rho": 0.7, "indeterminate": 0}
 
 
+# what the decider is posted for _EXTRACT: no doc_key, so the observation is no document
+_NOT_DOCUMENTS = [{**o, "document": False} for o in _EXTRACT["observations"]]
+
 _REJECTED = {"lookup": False, "kind": "summary", "construct": "the asked value",
              "time_indexed": False}
 
@@ -444,7 +447,7 @@ def test_re_extract_strong_null_reread_keeps_the_channel() -> None:
         ])
     _loop(fake)
     decides = fake.posted("/decide")
-    assert decides[1]["observations"] == _EXTRACT["observations"]  # channel KEPT
+    assert decides[1]["observations"] == _NOT_DOCUMENTS            # channel KEPT
     assert decides[1]["rho"] == _EXTRACT["rho"]                    # at its own rho
     assert "re_extract_strong" in decides[1]["applied_probes"]     # and retired
 
@@ -469,7 +472,7 @@ def test_corroborate_tier_null_read_keeps_the_channel_reply_adopted_otherwise() 
         return fake.posted("/decide")
 
     kept = _run({"observations": [], "gather_rho": 0.80, "value": None, "read": "null"})
-    assert kept[1]["observations"] == _EXTRACT["observations"]
+    assert kept[1]["observations"] == _NOT_DOCUMENTS
     assert kept[1]["rho"] == _EXTRACT["rho"]
     assert "corroborate_haiku" in kept[1]["applied_probes"]
 
@@ -1855,19 +1858,32 @@ def test_the_cite_decide_payload_stays_wire_key_free() -> None:
     _loop(fake)
     (decide,) = fake.posted("/decide")
     for o in decide["observations"]:
-        assert set(o) == {"reports", "group", "authority", "subject_factor", "time_factor"}
+        assert set(o) == {"reports", "group", "authority", "subject_factor", "time_factor",
+                          "document"}
+    assert [o["document"] for o in decide["observations"]] == [True, False]  # d1 is no hit
 
 
-def test_a_cite_of_a_group_no_hit_stands_behind_is_a_decline() -> None:
-    # the bridge's observations name their document; one that names none a hit carries
-    # (a synthesised read) has nothing to cite, so the reply declines instead of inventing
+def test_a_synthesised_read_is_not_a_document_and_cannot_be_cited() -> None:
+    # an observation whose doc_key is no retrieved artifact is flagged not-a-document, so the
+    # real decider lists no cite row for it and cannot end in a cite
+    synthesised = {**_CITE_EXTRACT["observations"][0], "doc_key": "joint:tier"}
+    fake = _real_decider(FakeServices(
+        route={"construct": "passport number", "time_indexed": False},
+        hits=_TWO_HITS, extract={**_CITE_EXTRACT, "candidates": ["P123"],
+                                 "observations": [synthesised], "rho": 0.5}),
+        _gauge(-9.0, row={}))
+    view = _loop(fake)
+    (decide,) = fake.posted("/decide")
+    assert decide["observations"][0]["document"] is False
+    assert view["effector"] != "cite" and view["cited"] is None
+
+
+def test_a_cite_of_a_group_no_hit_stands_behind_is_a_contract_violation() -> None:
     fake = FakeServices(route={"construct": "passport number", "time_indexed": False},
                         hits=_HIT, extract=_CITE_EXTRACT,
                         decides=[{**_CITE_DECIDE, "group": 1}])
-    view = _loop(fake)
-    assert view["effector"] == "abstain" and view["cited"] is None
-    assert view["origin"]["kind"] == "declined"
-    assert EX.render_view(view).startswith("Declined:")
+    with pytest.raises(ValueError, match="no retrieved hit"):
+        _loop(fake)
 
 
 def test_the_real_decider_cites_a_document_held_at_the_middle_credence() -> None:

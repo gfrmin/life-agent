@@ -8,8 +8,8 @@ It ranks nothing and picks nothing: no ``max``, ``min`` or ``sorted`` (drift-gat
 * **The gather options** are the request's unapplied voi transforms and grow actuators,
   each distinct probe once with the lowest price among its rows, listed in the order the
   probes' cheapest rows appear. Guard-kind transforms are never gather options.
-* **The cite options** are the request's documents: each observation's ``group`` with the
-  candidate indices its observations report — integers only.
+* **The cite options** are the request's documents: each ``group`` holding an observation
+  flagged ``document``, with the candidate indices its observations report — integers only.
 * **respond → the candidate the option names, gather → the probe it names, cite → the
   document group it names** (``effector`` ``cite``, no value).
 * **ask → ask_clarify, abstain → abstain.**
@@ -46,12 +46,18 @@ def gather_options(payload: dict[str, Any]) -> list[tuple[str, float]]:
 
 def document_groups(observations: Sequence[dict[str, Any]]) -> list[tuple[int, list[int]]]:
     """The documents among a ``/decide`` request's observations as ``(group, candidate
-    indices)`` pairs: the groups in first-seen order, each with the distinct candidate
-    indices its observations report, each once, in first-seen order."""
+    indices)`` pairs: the groups in first-seen order that hold at least one observation
+    flagged ``document`` (the executor's statement that it stands behind a retrieved hit;
+    an observation without the flag is not one), each with the distinct candidate indices
+    its observations report, each once, in first-seen order."""
     reported: dict[int, dict[int, None]] = {}
+    documents: set[int] = set()
     for o in observations:
-        reported.setdefault(int(o["group"]), {})[int(o["reports"])] = None
-    return [(g, list(js)) for g, js in reported.items()]
+        g = int(o["group"])
+        reported.setdefault(g, {})[int(o["reports"])] = None
+        if o.get("document"):
+            documents.add(g)
+    return [(g, list(js)) for g, js in reported.items() if g in documents]
 
 
 def enact(option: DEC.Option, payload: dict[str, Any], credences: Sequence[float],
