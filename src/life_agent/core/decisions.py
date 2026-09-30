@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
@@ -63,11 +64,13 @@ RETIRED_FAMILIES: frozenset[str] = frozenset({"aggregate"})
 
 # The M4 response actions (bayesian-foundations §3). ask-about-U is deliberately absent
 # — utility learning is passive until the governor (§4.4, a stated action-set
-# coarsening). report_scoped is the time-scoped assertion ("as of <date>, X" — scoped-claims
-# design): a true claim about the record, graded on attestation not currency, so it carries
-# u_wrong_scoped (a citable misread) not the catastrophic current-value u_wrong.
+# coarsening). cite is the partial answer: the document believed to hold the answer, without
+# the value (``posterior_summary["cited"]`` is the document's cache key). report_scoped is
+# the time-scoped assertion ("as of <date>, X" — scoped-claims design): a true claim about
+# the record, graded on attestation not currency, so it carries u_wrong_scoped (a citable
+# misread) not the catastrophic current-value u_wrong.
 ACTIONS: frozenset[str] = frozenset({"report", "report_scoped", "hedge",
-                                     "ask_clarify", "abstain"})
+                                     "ask_clarify", "abstain", "cite"})
 
 # Per-family action subsets of ACTIONS — the single vocabulary, named once and imported by
 # the families (never re-declared in a family module). NARRATIVE is the restricted set
@@ -76,7 +79,7 @@ ACTIONS: frozenset[str] = frozenset({"report", "report_scoped", "hedge",
 # lookup-only actions; gate's assert/withhold union == ACTIONS) are drift-gated in
 # tests/test_decide.py.
 LOOKUP_ACTION_ORDER: tuple[str, ...] = ("report", "hedge", "ask_clarify", "abstain",
-                                        "report_scoped")
+                                        "report_scoped", "cite")
 NARRATIVE_ACTION_ORDER: tuple[str, ...] = ("report", "abstain")
 
 # The DECLARED DECISION SPACE the act was ranked over (module-collapse-design.md §2.3). One
@@ -314,24 +317,31 @@ REASON_NOT_POINT_FACT = "not a point fact"
 class Origin:
     """``kind`` in :data:`ORIGINS`; ``rung`` names the instrument on a rung answer;
     ``reason`` names why on a decline; ``disclosed`` counts the distinct documents a rung
-    answer read (None = not stated, which includes every non-rung origin)."""
+    answer read (None = not stated, which includes every non-rung origin); ``cited`` is the
+    document's cache key on a cite (a ``documents`` origin naming the document, not the
+    value)."""
 
     kind: str
     rung: str = ""
     reason: str = ""
     disclosed: int | None = None
+    cited: str = ""
 
     def as_dict(self) -> dict[str, str | int | None]:
-        return {"kind": self.kind, "rung": self.rung, "reason": self.reason,
-                "disclosed": self.disclosed}
+        base: dict[str, str | int | None] = {
+            "kind": self.kind, "rung": self.rung, "reason": self.reason,
+            "disclosed": self.disclosed}
+        return {**base, "cited": self.cited} if self.cited else base
 
 
 def origin(*, effector: object, candidates: object, asserted: object,
            instrument: str = "", instrument_value: object = None,
-           available: bool = True, disclosed: int | None = None) -> Origin:
+           available: bool = True, disclosed: int | None = None,
+           cited: Mapping[str, Any] | None = None) -> Origin:
     """ORIGIN is one derivation over the decision record (D-5's sibling). An asserted
     value that the named instrument proposed came from that ``rung``; any other assertion
-    stands in the ``documents`` (the cited hits); everything else is ``declined``, with
+    stands in the ``documents`` (the cited hits); a cite (``cited`` names the document) is
+    ``documents`` too, carrying the document's key; everything else is ``declined``, with
     :func:`withhold_reason` (or ``asked``) as its reason. The rendered reply's first line
     and the record's ``origin`` field are both this function's callers."""
     eff = str(effector)
@@ -340,6 +350,8 @@ def origin(*, effector: object, candidates: object, asserted: object,
         if instrument and instrument_value is not None and values[0] == str(instrument_value):
             return Origin("rung", rung=str(instrument), disclosed=disclosed)
         return Origin("documents")
+    if eff == "cite" and cited:
+        return Origin("documents", cited=str(cited["cache_key"]))
     if eff == "ask_clarify":
         return Origin("declined", reason=REASON_ASKED)
     return Origin("declined", reason=withhold_reason(

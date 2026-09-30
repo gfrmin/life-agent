@@ -47,7 +47,7 @@ _OPEN = [("corroborate_a", 0.0)]
 
 
 def _act(u: dict[str, float], p1: float, gathers: list[tuple[str, float]] = _OPEN) -> str:
-    return DEC.bayes_act(u, [p1], gathers).action
+    return DEC.bayes_act(u, [p1], gathers, [(0, [0])]).action
 
 
 def test_the_bayes_act_is_the_row_argmax_at_p1() -> None:
@@ -244,6 +244,97 @@ def test_the_handle_reads_u_bar_per_decision() -> None:
     assert reads == [1, 1] and d.status() == {"kind": "host"}
 
 
+# --- cite: the document, not the value --------------------------------------------------
+
+def _obs(reports: int, group: int) -> dict[str, Any]:
+    return {"reports": reports, "group": group, "authority": 1.0, "subject_factor": 1.0,
+            "time_factor": 1.0, "competition_factor": 1.0}
+
+
+def test_cite_is_one_row_per_document_in_first_seen_order() -> None:
+    groups = [(3, [0, 2]), (1, [1]), (7, [2])]
+    rows = DEC.options(_U, [0.2, 0.5, 0.1], [("a", 0.01)], groups)
+    assert [(o.action, o.target) for o in rows] == [
+        ("abstain", None), ("gather", "a"), ("ask", None), ("cite", 3), ("cite", 1),
+        ("cite", 7), ("respond", 0), ("respond", 1), ("respond", 2)]
+
+
+def test_a_document_is_cited_at_the_summed_credence_of_the_candidates_it_reports() -> None:
+    rows = {o.target: o for o in DEC.options(_U, [0.2, 0.5, 0.1], (),
+                                             [(3, [0, 2]), (1, [1]), (7, [2])])
+            if o.action == "cite"}
+    right, wrong = DEC.CITE_RIGHT_DEFAULT, DEC.CITE_WRONG_DEFAULT
+    for g, p in ((3, 0.3), (1, 0.5), (7, 0.1)):
+        assert rows[g].eu == pytest.approx(p * right + (1.0 - p) * wrong)
+    assert DEC.p_document([0.2, 0.5], [0, 1, 5]) == pytest.approx(0.7)  # no such candidate: none
+
+
+def test_the_declared_cite_latents_price_the_row_and_the_defaults_are_the_prior_means() -> None:
+    assert DEC.utility_by_action(_U)["cite"] == (-1.0, 0.5)
+    declared = {**_U, "u_cite_right": 0.8, "u_cite_wrong": -2.0}
+    assert DEC.utility_by_action(declared)["cite"] == (-2.0, 0.8)
+
+
+def test_a_tie_between_a_cite_and_a_response_goes_to_the_cheaper_claim() -> None:
+    u = {**_U, "u_wrong": -1.0, "u_cite_right": 1.0, "u_cite_wrong": -1.0}
+    cite, respond = DEC.options(u, [0.6], (), [(0, [0])])[-2:]
+    assert (cite.action, respond.action) == ("cite", "respond")
+    assert cite.eu == pytest.approx(respond.eu)
+    assert DEC.bayes_act(u, [0.6], (), [(0, [0])]).action == "cite"
+    assert DEC.ACTIONS.index("cite") < DEC.ACTIONS.index("respond")
+
+
+def test_the_thresholds_still_derive_with_the_cite_row() -> None:
+    bar = DEC.respond_threshold(_U)
+    # respond must outbid cite as well as abstain: the crossing with cite is
+    # (u_cite_wrong - u_wrong) / ((u_correct - u_wrong) - (u_cite_right - u_cite_wrong))
+    assert bar == pytest.approx((-1.0 + 9.0) / (10.0 - 1.5))
+    assert bar is not None and DEC.argmax_action(_U, bar - 1e-6) != "respond"
+    assert DEC.argmax_action(_U, bar + 1e-6) == "respond"
+    assert any(abs(bar - c) < 1e-6 for c in DEC.argmax_crossings(_U))
+
+
+def test_document_groups_are_integers_in_first_seen_order() -> None:
+    obs = [_obs(1, 4), _obs(0, 2), _obs(1, 4), _obs(2, 4)]
+    assert EN.document_groups(obs) == [(4, [1, 2]), (2, [0])]
+    assert EN.document_groups([]) == []
+
+
+def test_a_leader_one_document_holds_at_0_7_is_cited_under_the_default_u_bar() -> None:
+    # one document reports the leader at a credence above cite's bar and below respond's
+    u = {k: v for k, v in _U.items() if not k.startswith("u_cite")}
+    view = DCD.decide(_payload(observations=[_obs(1, 0), _obs(1, 0), _obs(0, 1)],
+                               candidates=["x", "y"], rho=0.8, transforms=[]), u)
+    assert 0.7 < view["p1"] < 0.75 < DEC.respond_threshold(u)
+    assert view["effector"] == "cite" and view["act"] == "cite"
+    assert view["value"] is None and view["group"] == 0
+    assert view["p_group"] == pytest.approx(view["p1"])  # group 0 reports only the leader
+    assert view["eu"] == pytest.approx(view["p1"] * 0.5 + (1.0 - view["p1"]) * -1.0)
+
+
+def test_the_no_candidate_state_has_no_cite_row() -> None:
+    view = DCD.decide(_payload(candidates=[], observations=[]), _U)
+    assert view["effector"] != "cite"
+    assert [o.action for o in DEC.options(_U, [], (), EN.document_groups([]))] == [
+        "abstain", "ask"]
+
+
+def test_the_decide_payload_reaches_the_decider_with_integers_only(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: list[Any] = []
+    real = DEC.bayes_act
+
+    def spy(u: Any, c: Any, g: Any = (), groups: Any = ()) -> DEC.Option:
+        seen.append(list(groups))
+        return real(u, c, g, groups)
+
+    monkeypatch.setattr(DCD.DEC, "bayes_act", spy)
+    DCD.decide(_payload(), _U)
+    (groups,) = seen
+    assert groups == [(0, [1]), (1, [1])]
+    assert all(isinstance(g, int) and all(isinstance(j, int) for j in js) for g, js in groups)
+
+
 # --- the drift gate: nothing else ranks --------------------------------------------------
 
 def _calls(tree: ast.AST, name: str) -> bool:
@@ -277,11 +368,11 @@ def test_only_the_decider_takes_the_act() -> None:
 
 def _old_bayes_act(u_bar: dict[str, float], p1: float, gather_open: bool,
                    gather_cost: float) -> str:
-    """REFERENCE (the rule this change replaced): the act over the four actions, gather
-    priced at the cheapest open probe."""
+    """REFERENCE (the rule this change replaced): the act over the four actions before
+    ``cite``, gather priced at the cheapest open probe."""
     eus = DEC.eu_by_action(u_bar, p1)
     eus["gather"] -= float(gather_cost)
-    ranked = [a for a in DEC.ACTIONS if a != "gather" or gather_open]
+    ranked = [a for a in DEC.ACTIONS if a != "cite" and (a != "gather" or gather_open)]
     return max(ranked, key=lambda a: (eus[a], -DEC.ACTIONS.index(a)))
 
 
@@ -341,9 +432,10 @@ def _draw(rng: random.Random) -> tuple[dict[str, Any], dict[str, float], list[fl
 
 
 def test_every_choice_a_row_is_the_rule_it_replaced(monkeypatch: pytest.MonkeyPatch) -> None:
-    """5,000 seeded draws — candidates 0-5 (grid credences, so exact ties), probes 0-5 rows
-    from a pool of four (duplicated probes, equal and zero costs), varied applied probes and
-    utilities: the same act, probe, candidate and (exact ==) EU as the old rule."""
+    """With no document among the observations (so no cite row): 5,000 seeded draws —
+    candidates 0-5 (grid credences, so exact ties), probes 0-5 rows from a pool of four
+    (duplicated probes, equal and zero costs), varied applied probes and utilities:
+    the same act, probe, candidate and (exact ==) EU as the old rule."""
     rng = random.Random(20260930)
     draw: dict[str, list[float]] = {}
     monkeypatch.setattr(DCD.POST, "candidate_posterior",
@@ -360,7 +452,8 @@ def test_every_choice_a_row_is_the_rule_it_replaced(monkeypatch: pytest.MonkeyPa
                cands.index(view["value"]) if view["value"] is not None else None, view["eu"])
         assert new == old, f"draw {i}: {payload=} {u=} {credences=}: new {new} != old {old}"
         seen.add((new[0], new[2] not in (None, 0)))
-    assert {a for a, _ in seen} == set(DEC.ACTIONS) and ("respond", True) in seen
+    # no observation, so no document to cite: every other action is reached
+    assert {a for a, _ in seen} == set(DEC.ACTIONS) - {"cite"} and ("respond", True) in seen
 
 
 def test_the_equivalence_holds_on_named_ties() -> None:

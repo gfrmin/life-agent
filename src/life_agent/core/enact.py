@@ -8,7 +8,10 @@ It ranks nothing and picks nothing: no ``max``, ``min`` or ``sorted`` (drift-gat
 * **The gather options** are the request's unapplied voi transforms and grow actuators,
   each distinct probe once with the lowest price among its rows, listed in the order the
   probes' cheapest rows appear. Guard-kind transforms are never gather options.
-* **respond → the candidate the option names, gather → the probe it names.**
+* **The cite options** are the request's documents: each observation's ``group`` with the
+  candidate indices its observations report — integers only.
+* **respond → the candidate the option names, gather → the probe it names, cite → the
+  document group it names** (``effector`` ``cite``, no value).
 * **ask → ask_clarify, abstain → abstain.**
 * **At the route stage** (:func:`enact_route`): attempt → the ``attempt`` effector (the
   executor runs a pass), abstain → ``abstain`` (the executor builds the declined view).
@@ -41,10 +44,21 @@ def gather_options(payload: dict[str, Any]) -> list[tuple[str, float]]:
     return list(listed.items())
 
 
+def document_groups(observations: Sequence[dict[str, Any]]) -> list[tuple[int, list[int]]]:
+    """The documents among a ``/decide`` request's observations as ``(group, candidate
+    indices)`` pairs: the groups in first-seen order, each with the distinct candidate
+    indices its observations report, each once, in first-seen order."""
+    reported: dict[int, dict[int, None]] = {}
+    for o in observations:
+        reported.setdefault(int(o["group"]), {})[int(o["reports"])] = None
+    return [(g, list(js)) for g, js in reported.items()]
+
+
 def enact(option: DEC.Option, payload: dict[str, Any], credences: Sequence[float],
           p_none: float) -> dict[str, Any]:
     """The executor's view of the winning ``option``: ``effector`` plus ``value`` (the
-    asserted candidate on a report) and ``probe`` (the gather to run)."""
+    asserted candidate on a report), ``probe`` (the gather to run), and ``group`` with
+    ``p_group`` (the document a cite names, and the credence that it holds the answer)."""
     view: dict[str, Any] = {"credences": list(credences), "p_none": p_none,
                             "value": None, "probe": None}
     if option.action == "abstain":
@@ -56,6 +70,12 @@ def enact(option: DEC.Option, payload: dict[str, Any], credences: Sequence[float
         if not isinstance(option.target, int) or len(candidates) != len(credences):
             raise ValueError("respond needs one credence per candidate")
         return {**view, "effector": "report", "value": candidates[option.target]}
+    if option.action == "cite":
+        if not isinstance(option.target, int):
+            raise ValueError("cite needs the document group it names")
+        reported = dict(document_groups(payload.get("observations") or []))
+        return {**view, "effector": "cite", "group": option.target,
+                "p_group": DEC.p_document(credences, reported.get(option.target, ()))}
     if option.action == "gather":
         if not isinstance(option.target, str):
             raise ValueError("gather was chosen with no gather option open")

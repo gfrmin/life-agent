@@ -77,6 +77,13 @@ REQUIRED_LATENTS: tuple[str, ...] = ("u_wrong", "u_wrong_scoped", "u_hedged",
 SHAPE_LATENT_NAMES: tuple[str, ...] = tuple(
     f"{kind}_scale_{shape}" for shape in AS.SCALED_SHAPES for kind in ("voi", "regret"))
 
+# The two OPTIONAL cite latents: what naming the document is worth when it holds the answer
+# and when it does not. Not in REQUIRED_LATENTS for the same reason as the shape scales — a
+# model file without them loads, and `decide.utility_by_action` reads their prior means
+# (`CITE_RIGHT_DEFAULT`, `CITE_WRONG_DEFAULT`) when absent.
+CITE_LATENT_NAMES: tuple[str, ...] = ("u_cite_right", "u_cite_wrong")
+
+
 @dataclass(frozen=True)
 class Grid:
     """An inclusive, evenly spaced grid — a stated truncation (§4.4)."""
@@ -142,10 +149,10 @@ def load_model(path: Path) -> UtilityModel:
             "(additive and deploy-order-safe; a file without lambda_usd predates plan "
             "item C, 2026-08-08)")
     latents = {name: _latent_spec(name, latents_raw[name]) for name in REQUIRED_LATENTS}
-    # r30: each optional shape-scale latent parses through the SAME generic path iff the
+    # each optional shape-scale and cite latent parses through the SAME generic path iff the
     # owner's file declares it — absent ones simply never enter `model.latents`, and
-    # `decide.shaped_u_bar` supplies their 1.0 default at read time (never here).
-    for name in SHAPE_LATENT_NAMES:
+    # the reader (`decide.shaped_u_bar`, `decide.utility_by_action`) supplies the default.
+    for name in (*SHAPE_LATENT_NAMES, *CITE_LATENT_NAMES):
         if name in latents_raw:
             latents[name] = _latent_spec(name, latents_raw[name])
     tau = _latent_spec("tau", raw["tau"])
