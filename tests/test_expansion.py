@@ -22,16 +22,6 @@ def test_clean_terms_is_idempotent_on_clean_input() -> None:
     assert EXP.clean_terms(s) == s
 
 
-def test_expander_is_single_source_shared_with_ask() -> None:
-    # ask.py aliases the core constants, so the cache key (= the prompt template) is identical
-    # and the two read paths reuse one cache. A copy-paste divergence would break this.
-    # (conftest's autouse fixture already puts scripts/ on sys.path.)
-    import ask
-    assert ask.EXPAND_SYSTEM is EXP.EXPAND_SYSTEM
-    assert ask.EXPAND_MODEL == EXP.EXPAND_MODEL
-    assert ask._clean_terms is EXP.clean_terms
-
-
 # --- issue #56: expander refusals must not become the BM25 query --------------------- #
 # Observed live (Δ2 gate runs, 2026-08-06): on out-of-domain questions the expand model
 # REFUSES, and the refusal prose flowed through clean_terms into the BM25 query. The gate
@@ -175,35 +165,3 @@ def test_fresh_refusal_is_gated_and_still_recorded(tmp_path, monkeypatch) -> Non
     assert D.lookup(tmp_path, key.cache_key) == OBSERVED_REFUSAL.encode("utf-8")
 
 
-def test_ask_wrapper_counts_and_names_a_cached_refusal(
-        tmp_path, monkeypatch, capsys) -> None:
-    # the v0 signal (issue #56 second ask): a refusal is logged, not silently discarded —
-    # expand_refusal.hit/.miss in CACHE_STATS (run_eval's cache line) AND the fallback
-    # note on the REPL's stdout (the shared gate prints on every PROCESS surface; the
-    # owner's reply payload is a named future refinement, not a claim made here).
-    import ask  # conftest's autouse fixture already put scripts/ on sys.path
-    _no_model(monkeypatch)
-    question = _seed_cached_refusal(tmp_path)
-    ask.reset_cache_stats()
-    assert ask._expand_terms(question, root=tmp_path) == ""
-    assert ask.cache_stats()["expand_refusal.hit"] == 1
-    assert "raw-question fallback" in capsys.readouterr().out
-
-
-def test_ask_wrapper_routes_through_the_shared_seam_on_both_paths(
-        tmp_path, monkeypatch) -> None:
-    # PR #64 review (both rounds): pin the SEAM, not the printed string, and pin BOTH
-    # call sites — cached and fresh — since the PR#61→#63 drift happened on exactly one
-    # of them. The sentinel can only come back through EXP.usable_terms itself.
-    import ask
-    monkeypatch.setattr(EXP, "usable_terms",
-                        lambda raw, on_refusal=None: "SEAM-SENTINEL")
-    _no_model(monkeypatch)
-    cached_q = _seed_cached_refusal(tmp_path)
-    assert ask._expand_terms(cached_q, root=tmp_path) == "SEAM-SENTINEL"  # cached path
-    import life_agent.core as C
-    from life_agent.core.llm import LLMResult
-    monkeypatch.setattr(C, "anthropic_complete", lambda *a, **k: LLMResult(
-        text="income salary invoice", in_tokens=1, out_tokens=1, seconds=0.0))
-    fresh = ask._expand_terms("a brand new question", root=tmp_path)
-    assert fresh == "SEAM-SENTINEL"                                       # fresh path

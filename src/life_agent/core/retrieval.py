@@ -3,19 +3,31 @@
 Extracted from ``scripts/ask.py`` so the answer-brain capability bridge
 (``life_agent.bridge.server`` — move-3-design) can reuse the EXACT retrieval a live
 ask performs without importing from ``scripts/`` (the ``src↛scripts`` boundary
-:mod:`life_agent.core.matching` also keeps). ``ask`` re-exports these names, so its
-callers and tests are unchanged and there is exactly ONE retrieval implementation
-(the move-3 §6 "no second read" obligation).
+:mod:`life_agent.core.matching` also keeps): there is exactly ONE retrieval
+implementation (the move-3 §6 "no second read" obligation).
 
-Query EXPANSION stays in ``scripts/ask.py`` (it is a cloud-model reformulation, entangled
-with that script's caching). Both this seam and the bridge take the already-built query as
-input — expansion is the driver's policy, the same cut ``/extract`` makes for covariates.
+Query EXPANSION lives in :mod:`life_agent.core.expansion`. Both this seam and the bridge
+take the already-built query as input — expansion is the driver's policy, the same cut
+``/extract`` makes for covariates.
 """
 from __future__ import annotations
 
 from typing import Any
 
 import duckdb
+
+from life_agent.core import config as CFG
+
+
+def connect() -> duckdb.DuckDBPyConnection:
+    """Open the live catalogue read-only (so a running extraction never blocks us)
+    and load FTS."""
+    root = CFG.pkm_root()
+    if root is None:
+        raise FileNotFoundError(f"unresolvable pkm root (config: {CFG.PKM_CONFIG})")
+    conn = duckdb.connect(str(root / "catalogue.duckdb"), read_only=True)
+    conn.execute("INSTALL fts; LOAD fts;")
+    return conn
 
 
 def build_query(question: str, terms: str) -> str:

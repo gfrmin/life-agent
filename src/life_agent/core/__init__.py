@@ -9,7 +9,6 @@ from __future__ import annotations
 from life_agent.core.config import (
     DECISIONS_LOG,
     GTD_DB_PATH,
-    JARVIS_DB_PATH,
     KB,
     KITINERARY_EXTRACTOR,
     OUTCOMES_LOG,
@@ -40,7 +39,6 @@ __all__ = [
     "DECISIONS_LOG",
     "DEFAULT_ANSWER_MODEL",
     "GTD_DB_PATH",
-    "JARVIS_DB_PATH",
     "KB",
     "KITINERARY_EXTRACTOR",
     "OUTCOMES_LOG",

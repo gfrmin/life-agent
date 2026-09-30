@@ -77,7 +77,7 @@ def test_poison_the_bridge_serves_no_second_stage_router() -> None:
 
     declared = {
         "/route", "/retrieve", "/extract", "/narrative", "/probe/recency",
-        "/probe/subject", "/probe/authority", "/probe/corroborate", "/probe/confirm",
+        "/probe/subject", "/probe/corroborate",
         "/probe/deliberate", "/log_decision", "/log_reaction", "/log_gather",
         "/decide"}
     extra = set(server._POST) - declared

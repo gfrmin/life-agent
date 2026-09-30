@@ -10,7 +10,6 @@ Run (from the repo root, for pkm.retrieval + duckdb). One-shot argv is the SAME 
 grammar as the REPL (docs/interaction-contract.md):
     bin/ask-live                                   # interactive REPL
     bin/ask-live "what is my ID?"                  # answer once, prompt for a verdict
-    bin/ask-live "/since 2026-01-01 what invoices?"  # temporal predicate, same grammar
     bin/ask-live "/tell My name is …"              # record an authoritative owner fact
     bin/ask-live --k 12 "what is my ID?"           # wider retrieval context
 """
@@ -19,16 +18,13 @@ from __future__ import annotations
 import argparse
 import contextlib
 import hashlib
-import json
 import logging
 import readline  # noqa: F401  -- enables line editing / history at the input() prompts
 import sys
-import urllib.request
 from dataclasses import dataclass
-from datetime import date as _date
 from datetime import datetime
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 import citation_guard as guard  # sibling script: deterministic citation-faithfulness gate
 import duckdb
@@ -46,57 +42,30 @@ import life_agent.core.reactions as R
 import life_agent.owner as owner
 import life_agent.tasks.events as ev
 import life_agent.tasks.knowledge as knowledge
-from life_agent.core import terminals as TERM
+from life_agent.core import config as CFG
+from life_agent.core.retrieval import connect
 
-# The retrieval helpers and the per-question state seams (*_LAST) live in
-# life_agent.core.terminals; the bindings below keep this script's public names stable for
-# the instrument arms and their tests.
-from life_agent.core.retrieval import build_query  # noqa: F401 — probe-script surface
 
-connect = TERM.connect
-retrieve = TERM.retrieve
-_retrieve_set = TERM._retrieve_set
-_pkm_root = TERM._pkm_root
-_is_lock_error = TERM._is_lock_error
-_cards_from_set = TERM._cards_from_set
-_clean_terms = TERM._clean_terms
-_expand_terms = TERM._expand_terms
-_corpus_digest = TERM._corpus_digest
-EXPAND_SYSTEM = TERM.EXPAND_SYSTEM
-EXPAND_MODEL = TERM.EXPAND_MODEL
-TemporalReport = TERM.TemporalReport
-owner_question = TERM.owner_question
-reset_cache_stats = TERM.reset_cache_stats
-cache_stats = TERM.cache_stats
-temporal_footer = TERM.temporal_footer
-subject_footer = TERM.subject_footer
-INTENT_FOOTER = TERM.INTENT_FOOTER
+def _pkm_root() -> Path | None:
+    """The pkm knowledge root, or None when unresolvable (derivation caching and the
+    startup reconcile are skipped; answering itself fails in ``connect``)."""
+    return CFG.pkm_root()
+
+
+def _is_lock_error(msg: str) -> bool:
+    """True if a DuckDB error message means the catalogue is held by another process (a
+    running extraction). Pure, so it's unit-tested in place of an un-reproducible live lock."""
+    m = msg.lower()
+    return "lock" in m or "conflict" in m or "being used" in m
+
+
+def _cards_from_set(hits: list[dict[str, Any]]) -> list[tuple[C.SourceCard, float]]:
+    """Pure: render a retrieval set as numbered cards."""
+    return [(C.SourceCard(n=i + 1, text=h["chunk_text"].strip(), origin=h["origin"],
+                          as_of=None), h["score"]) for i, h in enumerate(hits)]
+
 
 DEFAULT_K = 8  # matches phase1_answer.py's synthesis-context default
-
-# The synthesis path's frozen decline string. HISTORICAL since M5 (r15): B-4's
-# weak-retrieval pre-emption died (S-1 split — weakness is belief, the ranking
-# withholds by EU), so nothing PRODUCES this text any more; it stays because the
-# graders (scripts/fairfight/grading.py, scripts/run_eval.py) classify RECORDED
-# answers by exact match against it, and the records are append-only.
-ABSTENTION = (
-    "I don't have a strong enough source in your corpus to answer that confidently — retrieval "
-    "surfaced nothing above the relevance floor. I'd rather say so than guess; the weak matches "
-    "below are shown only so you can see what was near."
-)
-
-# Query expansion: a cheap model rewrites the natural-language question into concrete
-# BM25 keywords. The dogfood loop showed FTS fails on vocabulary mismatch — "how do i
-# make money" / "what is my employment status" miss the answer doc that "am i a
-# contractor?" finds, because only the last shares surface words with the document.
-# Expansion bridges the question's words to the documents' words. Light reasoning, so a
-# cheap model (Haiku); synthesis stays on the pinned ANSWER_MODEL.
-# Query expansion now lives in core (`life_agent.core.expansion`) so the answer-brain bridge
-# and this
-# REPL share ONE expander + ONE cache. These aliases keep ask.py's surface (and its cache key — the
-# prompt template is byte-identical) unchanged; `_expand_terms` below stays the script-side wrapper.
-
-
 
 # The ONE line grammar (docs/interaction-contract.md): identical in the REPL and in
 # one-shot argv. Each entry is (form, meaning, example); the example is parsed by the
@@ -104,18 +73,8 @@ ABSTENTION = (
 GRAMMAR: tuple[tuple[str, str, str], ...] = (
     ("QUESTION", "cited answer over the live corpus",
      "what is my ID?"),
-    ("/recent QUESTION", "rank dated sources newest-first (ranks only; excludes nothing)",
-     "/recent any invoices?"),
-    ("/since YYYY-MM-DD QUESTION", "only sources dated on/after (excluded are named)",
-     "/since 2026-05-01 appointments"),
-    ("/until YYYY-MM-DD QUESTION", "only sources dated on/before "
-                                   "(combine with /since for a range)",
-     "/until 2026-06-01 appointments"),
     ("/tell FACT", "record an authoritative owner fact",
      "/tell My name is Ada Lovelace"),
-    ("/derive", "materialise the projections (doc_date, doc_subject) the last "
-                 "answer named as underived",
-     "/derive"),
     ("/react ID g|b", "verdict a past answer by its decision-id — a deferred "
                       "dogfood verdict (only abstain verdicts move the fold)",
      "/react 8af95b2f bad"),
@@ -134,12 +93,9 @@ def grammar_text() -> str:
 @dataclass(frozen=True)
 class Parsed:
     """One parsed input line. ``kind`` dispatches; the rest is that kind's payload."""
-    kind: str  # "ask" | "tell" | "derive" | "react" | "quit" | "empty" | "error"
+    kind: str  # "ask" | "tell" | "react" | "quit" | "empty" | "error"
     question: str = ""
     fact: str = ""
-    since: _date | None = None
-    until: _date | None = None
-    recent: bool = False
     did: str = ""       # /react: the decision-id prefix to verdict
     valence: str = ""   # /react: the canonical verdict ("good" | "bad")
     error: str = ""
@@ -156,18 +112,14 @@ def _error(message: str) -> Parsed:
 
 
 def parse_line(line: str) -> Parsed:
-    """Pure: parse one input line under the contract's composition rules.
-    /since and /until are bounds (a range, each at most once); /recent is a ranking
-    directive and stands alone (a bound already ranks newest-first — see
-    life_agent.core.temporal.apply_temporal). Anything ambiguous or unknown is a
-    loud ``error`` naming the rule — never silently reinterpreted (invariant 3)."""
+    """Pure: parse one input line under the contract's grammar. Anything ambiguous or
+    unknown is a loud ``error`` naming the rule — never silently reinterpreted
+    (invariant 3)."""
     line = line.strip()
     if not line:
         return Parsed(kind="empty")
     if line in ("/q", "/quit", "/exit"):
         return Parsed(kind="quit")
-    if line == "/derive":
-        return Parsed(kind="derive")
     if line == "/tell" or line.startswith("/tell "):
         fact = line[len("/tell"):].strip()
         return Parsed(kind="tell", fact=fact) if fact else _error("usage: /tell FACT")
@@ -180,48 +132,9 @@ def parse_line(line: str) -> Parsed:
             return _error(f"usage: /react DECISION_ID g|b "
                           f"(verdict must be g/b, got {parts[1]!r})")
         return Parsed(kind="react", did=parts[0], valence=valence)
-    if not line.startswith("/"):
-        return Parsed(kind="ask", question=line)
-
-    tokens = line.split()
-    since: _date | None = None
-    until: _date | None = None
-    recent = False
-    i = 0
-    while i < len(tokens) and tokens[i].startswith("/"):
-        t = tokens[i]
-        if t == "/recent":
-            if recent:
-                return _error("/recent may appear only once")
-            recent = True
-            i += 1
-        elif t in ("/since", "/until"):
-            if (t == "/since" and since) or (t == "/until" and until):
-                return _error(f"{t} may appear only once — bounds form one range")
-            if i + 1 >= len(tokens):
-                return _error(f"usage: {t} YYYY-MM-DD QUESTION")
-            try:
-                bound = _date.fromisoformat(tokens[i + 1])
-            except ValueError:
-                return _error(f"usage: {t} YYYY-MM-DD QUESTION (got {tokens[i + 1]!r})")
-            if t == "/since":
-                since = bound
-            else:
-                until = bound
-            i += 2
-        else:
-            return _error(f"unknown command {t!r}")
-    if recent and (since or until):
-        return _error("/recent with a bound is redundant — /since and /until already "
-                      "rank newest-first; drop /recent")
-    if since and until and since > until:
-        return _error(f"empty range: /since {since} is after /until {until}")
-    question = " ".join(tokens[i:])
-    if not question:
-        return _error("missing QUESTION after the temporal prefix")
-    return Parsed(kind="ask", question=question, since=since, until=until, recent=recent)
-
-
+    if line.startswith("/"):
+        return _error(f"unknown command {line.split()[0]!r}")
+    return Parsed(kind="ask", question=line)
 
 
 # --- the executor read-path (--executor): the daemon decides, the body enacts --------- #
@@ -263,20 +176,10 @@ def _http_post(url: str, payload: dict[str, Any]) -> dict[str, Any] | None:
     return AC.post_json(url, payload)
 
 
-def _http_get(url: str) -> dict[str, Any]:
-    with urllib.request.urlopen(url, timeout=300) as r:
-        return cast("dict[str, Any]", json.loads(r.read()))
-
-
 def _executor_ready() -> bool:
     """The bridge must answer /ready with a decider configured. The body never falls back —
     a down stack is NAMED (interaction contract), never substituted with another answer."""
-    try:
-        with urllib.request.urlopen(f"{EXECUTOR_BRIDGE}/ready", timeout=3) as r:
-            status = json.loads(r.read())
-    except Exception:
-        return False
-    return bool((status.get("decider") or {}).get("enabled"))
+    return AC._ready()
 
 
 def answer_via_executor(question: str, k: int
@@ -286,20 +189,14 @@ def answer_via_executor(question: str, k: int
     /decide, then render in the shared credence grammar. The driver posts the one
     /log_decision body (design §5.1) and, on a down stack, commits the declared gate +
     appends the §6.5 unavailability record; this surface owns ask's concerns — the
-    *_LAST globals, cards/scores, and the interaction contract's EXECUTOR_DOWN string —
+    EXECUTOR_* globals, cards/scores, and the interaction contract's EXECUTOR_DOWN string —
     and is what run_eval's typed arm calls DIRECTLY (the full dispatch's in-process
     fallback must never silently switch a gate's arm — r13 amendment 4)."""
     global EXECUTOR_LAST, EXECUTOR_VIEW_LAST
-    TERM.TEMPORAL_LAST = TERM.SUBJECT_LAST = TERM.INTENT_LAST = None
-    TERM.STAGES_LAST = {}
     EXECUTOR_LAST = None
     EXECUTOR_VIEW_LAST = None
-    # The daemon's own retrieve/grow rounds are not observable in the View it returns (and
-    # core/executor.py must not be edited to expose them) — absent (not a guessed 0), so a
-    # consumer can tell "not tracked here" apart from "zero rounds fired".
-    TERM.EFFORT_LAST = {}
     r = AC.drive(question, k, bridge=EXECUTOR_BRIDGE,
-                 post=_http_post, get=_http_get, run_id=EXECUTOR_RUN_ID,
+                 post=_http_post, run_id=EXECUTOR_RUN_ID,
                  ready=_executor_ready,
                  hold_out_question_id=EXECUTOR_HOLD_OUT_QUESTION_ID)
     if r.down:
@@ -320,14 +217,12 @@ def _sources_inline(cards: list[C.SourceCard], scores: dict[int, float]) -> str:
 
 
 def render(text: str, cards: list[C.SourceCard], scores: dict[int, float],
-           audit: guard.CitationAudit | None = None, footer: str = "") -> None:
+           audit: guard.CitationAudit | None = None) -> None:
     print(f"\n{text}\n")
     if cards:
         print("sources:")
         for c in cards:
             print(f"  [{c.n}] {Path(c.origin).name}  ({scores.get(c.n, 0.0):.2f})")
-    if footer:
-        print(footer)  # temporal partition: nothing vanishes silently (D1)
     if audit is not None and not audit.ok:
         print(audit.footer())  # ⚠ unverified: a cited fact wasn't found in its source
     print()
@@ -479,7 +374,7 @@ def react(did_prefix: str, valence: str,
     except Exception as e:
         print(f"verdict not recorded: {e}", file=sys.stderr)
         return 2
-    folds = d.chosen_action == "abstain" and valence in ("good", "bad")
+    folds = R.can_fold(d) and valence in ("good", "bad")
     fate = ("folds into the utility posterior on the next gate run" if folds
             else "recorded — not folded (only abstain verdicts move the fold)")
     print(f"→ {valence.upper()} on {d.family}/{d.chosen_action} {did[:12]} — {fate}")
@@ -487,63 +382,15 @@ def react(did_prefix: str, valence: str,
 
 
 # --- one question, end to end --------------------------------------------- #
-def ask_once(conn: duckdb.DuckDBPyConnection, question: str, k: int,
-             *, expand: bool = True, no_cache: bool = False,
-             since: _date | None = None, until: _date | None = None,
-             recent: bool = False) -> list[tuple[str, str]]:
-    """Answer + render + capture. Returns the derive targets the answer's
-    reports named as underived (doc_date and doc_subject alike — empty when
-    neither filter ran) so the REPL can offer `/derive`. The executor answers; a down
-    stack is NAMED, never substituted. Temporal scoping (/since …) is not yet wired into
-    the executor, so a scoped question is NAMED and answered unscoped."""
+def ask_once(question: str, k: int) -> None:
+    """Answer + render + capture. The executor answers; a down stack is NAMED, never
+    substituted."""
     global EXECUTOR_LAST
     EXECUTOR_LAST = None  # clean per-question state; the dispatched path sets its own id
-    if since is not None or until is not None or recent:
-        print("  (executor path: temporal scoping not yet wired — answering unscoped)")
     text, cards, scores = answer_via_executor(question, k)
     audit = guard.audit(text, cards)  # pure and cheap — recomputed, never cached
-    reports = [r for r in (TERM.TEMPORAL_LAST, TERM.SUBJECT_LAST) if r is not None]
-    footer_lines = [r.footer for r in reports if r.footer]
-    if TERM.INTENT_LAST is not None:
-        footer_lines.append(INTENT_FOOTER.format(scope=TERM.INTENT_LAST))
-    render(text, cards, scores, audit, footer="\n".join(footer_lines))
+    render(text, cards, scores, audit)
     capture(question, text, cards, scores, audit)
-    return [t for r in reports for t in r.targets]
-
-
-# --- /derive: explicit, demand-driven materialisation ---------------------- #
-def run_derive(targets: list[tuple[str, str]]) -> None:
-    """Materialise the named projection targets via pkm.derive (SPEC §18.11).
-    The CALLER must have closed any read-only catalogue connection first — a
-    reader and a writer cannot coexist on the DuckDB file. Fail-open: a held
-    lock (an extraction running) prints and returns; nothing crashes the REPL."""
-    from pkm.config import load_config as pkm_load_config
-    from pkm.derive import derive as pkm_derive
-
-    try:
-        cfg = pkm_load_config(C.PKM_CONFIG)
-    except Exception as e:
-        print(f"derive unavailable (pkm config: {e})")
-        return
-    for decl, input_key in targets:
-        try:
-            result = pkm_derive(cfg.root_dir, cfg, decl,
-                                input_cache_key=input_key,
-                                caller="ask.derive")
-        except duckdb.Error as e:
-            if TERM._is_lock_error(str(e)):
-                print("corpus locked by extraction — try /derive again in a moment")
-                return
-            print(f"derive failed  {decl}: {e}")
-            continue
-        except Exception as e:
-            print(f"derive failed  {decl}: {e}")
-            continue
-        if result.status == "success":
-            print(f"derived  {decl}  {result.target_cache_key}")
-        else:
-            print(f"{result.status}  {decl}: "
-                  f"{result.error_message or result.approval_id}")
 
 
 # --- GTD: the act ledger's knowledge projection, refreshed on demand ------- #
@@ -633,14 +480,14 @@ def _reingest_state(root: Path, state: Path) -> None:
 def ensure_gtd_fresh() -> None:
     """Project + re-ingest the GTD state when stale; quiet no-op when fresh.
     The CALLER must hold no read-only catalogue connection (a writer and a
-    reader cannot coexist — same contract as run_derive). Fail-open: never
+    reader cannot coexist — same contract as the REPL's reconnect). Fail-open: never
     raises; the outcome is printed (REFRESH_NOTES), never silent."""
     if not gtd_stale():
         return
     try:
         events = ev.load(C.TASKS_LEDGER)
         knowledge.write_state(C.TASKS_LEDGER, C.TASKS_STATE)
-        root = TERM._pkm_root()
+        root = _pkm_root()
         if root is None:
             raise FileNotFoundError(f"unresolvable pkm root (config: {C.PKM_CONFIG})")
         _reingest_state(root, C.TASKS_STATE)
@@ -651,7 +498,7 @@ def ensure_gtd_fresh() -> None:
         with contextlib.suppress(OSError):
             C.TASKS_STATE.unlink(missing_ok=True)
         print(REFRESH_NOTES["blocked"].format(n=e.n))
-    except Exception as e:  # fail-open by contract (mirror run_derive)
+    except Exception as e:  # fail-open by contract
         # The stamp is the freshness oracle and write_state runs BEFORE the
         # re-ingest, so a failure here must un-stamp the doc: a stamped doc
         # whose ingest failed would read as fresh, the retry would never
@@ -676,10 +523,20 @@ def remember(fact: str) -> None:
 
 
 # --- REPL ----------------------------------------------------------------- #
-def repl(conn: duckdb.DuckDBPyConnection, k: int, *, expand: bool = True,
-         no_cache: bool = False) -> None:
+def _reconnect_or_none() -> duckdb.DuckDBPyConnection | None:
+    """Reopen the read-only catalogue after a write; None (named) if an extraction grabbed
+    it meanwhile — invariant 3, never a traceback."""
+    try:
+        return connect()
+    except duckdb.Error as e:
+        if not _is_lock_error(str(e)):
+            raise
+        print("corpus locked by extraction — REPL closing; rerun bin/ask-live in a moment")
+        return None
+
+
+def repl(conn: duckdb.DuckDBPyConnection, k: int) -> None:
     print(f"ask anything about your life — the grammar:\n{grammar_text()}\n")
-    derive_targets: list[tuple[str, str]] = []
     while True:
         try:
             line = input("ask> ")
@@ -700,46 +557,18 @@ def repl(conn: duckdb.DuckDBPyConnection, k: int, *, expand: bool = True,
         if p.kind == "react":
             react(p.did, p.valence)
             continue
-        if p.kind == "derive":
-            if not derive_targets:
-                print("nothing to derive — ask a /recent or /since question first\n")
-                continue
-            # A reader and a writer cannot coexist (§18.9): close, write, reopen.
-            conn.close()
-            try:
-                run_derive(derive_targets)
-                derive_targets = []
-            finally:
-                try:
-                    conn = connect()
-                except duckdb.Error as e:
-                    # An extraction grabbed the catalogue mid-derive: close with
-                    # the named error (invariant 3), never a traceback.
-                    if not TERM._is_lock_error(str(e)):
-                        raise
-                    print("corpus locked by extraction — REPL closing; "
-                          "rerun bin/ask-live in a moment")
-                    return
-            print()
-            continue
         assert p.kind == "ask", p.kind  # parse_line's kind space is closed
         if gtd_stale():
-            # Same reader/writer dance as /derive: close, refresh, reopen.
+            # A reader and a writer cannot coexist: close, refresh, reopen.
             conn.close()
             try:
                 ensure_gtd_fresh()
             finally:
-                try:
-                    conn = connect()
-                except duckdb.Error as e:
-                    if not TERM._is_lock_error(str(e)):
-                        raise
-                    print("corpus locked by extraction — REPL closing; "
-                          "rerun bin/ask-live in a moment")
-                    return
-        derive_targets = ask_once(conn, p.question, k, expand=expand,
-                                  no_cache=no_cache, since=p.since,
-                                  until=p.until, recent=p.recent)
+                reopened = _reconnect_or_none()
+            if reopened is None:
+                return
+            conn = reopened
+        ask_once(p.question, k)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -751,13 +580,7 @@ def main(argv: list[str] | None = None) -> int:
                     help="one line in the grammar below; omit for the REPL")
     ap.add_argument("--k", type=int, default=DEFAULT_K,
                     help=f"top-k retrieval context (default {DEFAULT_K})")
-    ap.add_argument("--no-expand", action="store_true",
-                    help="disable cheap-model query expansion (raw-question BM25 baseline)")
-    ap.add_argument("--no-cache", action="store_true",
-                    help="recompute every stage instead of replaying cached derivations "
-                         "(recording stays write-once — existing derivations stand)")
     args = ap.parse_args(argv)
-    expand = not args.no_expand
 
     # One-shot argv is the SAME grammar as a REPL line (invariant 1). The corpus-free
     # kinds are handled BEFORE any catalogue I/O: /tell works even while an extraction
@@ -768,10 +591,6 @@ def main(argv: list[str] | None = None) -> int:
     if p is not None:
         if p.kind == "error":
             print(p.error, file=sys.stderr)
-            return 2
-        if p.kind == "derive":
-            print("/derive needs the targets a prior answer named — REPL only",
-                  file=sys.stderr)
             return 2
         if p.kind == "tell":
             remember(p.fact)
@@ -784,7 +603,7 @@ def main(argv: list[str] | None = None) -> int:
     # Opportunistic catalogue reconciliation (SPEC §18.9): insert the rows for any
     # file-first derivations recorded by earlier sessions, BEFORE our read-only connection
     # opens (a writer and a reader cannot coexist). A held lock just means next time.
-    root = TERM._pkm_root()
+    root = _pkm_root()
     if root is not None:
         # best-effort by contract; on any failure the files stay authoritative — but a failure
         # of the pass itself is never silent (reconcile counts and WARNs per key; r00 Q2)
@@ -803,17 +622,15 @@ def main(argv: list[str] | None = None) -> int:
     try:
         conn = connect()
     except duckdb.Error as e:
-        if TERM._is_lock_error(str(e)):
+        if _is_lock_error(str(e)):
             print("corpus locked by extraction, retry in a moment", file=sys.stderr)
             return 2
         raise
 
     if p is not None:
-        ask_once(conn, p.question, args.k, expand=expand,
-                 no_cache=args.no_cache, since=p.since, until=p.until,
-                 recent=p.recent)
+        ask_once(p.question, args.k)
     else:
-        repl(conn, args.k, expand=expand, no_cache=args.no_cache)
+        repl(conn, args.k)
     return 0
 
 

@@ -19,12 +19,10 @@ chose.
 """
 from __future__ import annotations
 
-import re
 from collections.abc import Callable
 from typing import Any
 
 from life_agent.bridge import observations as SO
-from life_agent.core import answer_shape as AS
 from life_agent.core import calibration as CAL
 from life_agent.core import decisions as DEC
 from life_agent.core import deliberate as DL
@@ -68,10 +66,7 @@ def _null_read(reply: dict[str, Any]) -> bool:
 
     The bridge classifies its own empty channel as ``read``: ``null`` (named nothing),
     ``disagree`` (named a value that would not join the lattice — outside the set,
-    ambiguously contained, or correction-shaped), or ``confirm``. A bridge predating
-    the field reports no ``read`` at all, and this returns False — i.e. the OLD
-    replace-everything behaviour, so a version-skewed pair degrades to the previously
-    measured contract rather than to an unmeasured one."""
+    ambiguously contained, or correction-shaped), or ``confirm``."""
     return str(reply.get("read") or "") == "null"
 
 
@@ -160,12 +155,6 @@ def _conditioned_rho(curves: Curves, edge: str, confidence: Any, fallback: float
     return CAL.curve_for(curves, edge).calibrate(c)
 
 
-def owner_scoped(question: str) -> bool:
-    """A first-person possessive question ("my X") — the class whose-document can protect, so the
-    daemon's ``owner_scoped`` slot may schedule the subject-aware corroborate guard."""
-    return bool(re.search(r"\b(?:my|mine|the owner's)\b", question, re.IGNORECASE))
-
-
 def _obj(post: Post, url: str, payload: dict[str, Any]) -> dict[str, Any]:
     """``post`` for endpoints that always answer a JSON object — every one but ``/route``,
     which can return null for a non-typed question (guarded at its one call site)."""
@@ -202,12 +191,11 @@ def decide_via_loop(question: str, k: int, *, bridge: str, post: Post, get: Get,
                 "applied": [],
                 "origin": DEC.Origin("declined", reason=DEC.REASON_NOT_POINT_FACT).as_dict()}
     return run_pass(question, k, route, bridge=bridge, post=post, get=get,
-                    rerank=False, expand=False, transforms=transforms,
-                    curves=curves)
+                    transforms=transforms, curves=curves)
 
 
 def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str,
-             post: Post, get: Get, rerank: bool, expand: bool = False,
+             post: Post, get: Get,
              transforms: list[dict[str, Any]] | None = None,
              curves: Curves = None) -> View:
     """One retrieve→probe→extract→decide pass at a given recall breadth, enacting each
@@ -243,7 +231,7 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str,
         spend_usd += float(ext.get("cost_usd") or 0.0)
         return hits, recency, ext
 
-    hits, recency, ext = _evidence(rerank, expand)
+    hits, recency, ext = _evidence(False, False)
     menu = get(f"{bridge}/grow_menu")["grow"]
     # (probe, sensors-at-scheduling, evidence-changed) per enacted grow — logged at the terminal.
     enacted: list[tuple[str, dict[str, str], bool]] = []
@@ -270,12 +258,6 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str,
 
     def _edge_event(edge: str, reply: dict[str, Any]) -> None:
         nonlocal spend_usd
-        if "cache_key" not in reply:
-            # a version-skewed bridge (predating the cache_key wire field) yields
-            # lineage-less rows that dedup KEEPS by design — warm replays would then
-            # double-count into the curves on every gate run. Loud, never silent.
-            print(f"  ({edge} reply carried no cache_key — bridge version skew? "
-                  "lineage-less rows re-grade on every warm replay)")
         spend_usd += float(reply.get("cost_usd") or 0.0)
         v = reply.get("value")
         edge_events.append({"edge": edge, "value": str(v) if v is not None else None,
@@ -327,7 +309,6 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str,
                         curves, extract_edge(_RE_EXTRACT_MODEL), conf, legacy)
                     ext = {"candidates": [str(cr["new_candidate"])],
                            "observations": cr["observations"], "rho": rescue_rho,
-                           "era_split": False,
                            "indeterminate": ext.get("indeterminate", 0)}
                     break
     if not ext["candidates"]:
@@ -342,15 +323,7 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str,
                 **_UNPRICED_ATTRIBUTION, "edge_events": edge_events,
                 "spend_usd": spend_usd, "applied": list(applied),
                 "origin": DEC.origin(effector="miss", candidates=[], asserted=[]).as_dict()}
-    # r30 (C5): this question's own answer shape prices its own grow-menu pricing too —
-    # the SAME seam current_u_bar's other callers route through. The anchor shape omits
-    # the query param entirely (never a wire change for the majority-`exact` case r29
-    # measured — C10's replay is the check: a recorded cassette's plain `/utility` still
-    # matches byte-for-byte whenever the question classifies `exact`).
-    shape = AS.answer_space(question)
-    utility_url = (f"{bridge}/utility" if shape == AS.ANCHOR_SHAPE
-                   else f"{bridge}/utility?shape={shape}")
-    u_bar = get(utility_url)["u_bar"]
+    u_bar = get(f"{bridge}/utility")["u_bar"]
     # price the menu in the OWNER'S utility (plan item C): transform rows and grow
     # actuators are AUTHORED in USD; the elicited exchange rate (lambda_usd, gauge
     # units per dollar — a learned latent, never a constant invented here) converts
@@ -364,8 +337,7 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str,
                                       if "cost" in a else a
                                       for a in menu["actuators"]]}
     candidates = ext["candidates"]
-    owner = owner_scoped(question)
-    obs, rho, era = ext["observations"], ext["rho"], ext["era_split"]
+    obs, rho = ext["observations"], ext["rho"]
 
     def _cand_comp(extraction: dict[str, Any], cands: list[str]) -> list[float]:
         # §4.2: competition is a property of the corpus evidence, not the instrument — a
@@ -381,16 +353,13 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str,
 
     question_id = DEC.question_id(question)
 
-    def _decide(observations: list[Any], r: float, era_split: bool,
-                applied: list[str]) -> View:
+    def _decide(observations: list[Any], r: float, applied: list[str]) -> View:
         payload: dict[str, Any] = {
             # r09 D1: the correlation key (quote, doc_key) is wire-only — the decider stays
             # string-blind, so the decide post strips it while the loop's channel keeps it
             "question_id": question_id,
             "candidates": candidates, "observations": SO.strip_wire_keys(observations),
-            "rho": r, "u_bar": u_bar,
-            "era_split": era_split, "owner_scoped": owner, "applied_probes": applied,
-            "transforms": transforms}
+            "rho": r, "applied_probes": applied, "transforms": transforms}
         if menu is not None:
             payload["grow"] = menu  # the grow actuators are gather options too
         # committed through the ONE act seam; the reply view is the decider's verbatim.
@@ -398,7 +367,7 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str,
         assert dec is not None  # a Decide commit always carries the reply view
         return dec
 
-    dec = _decide(obs, rho, era, applied)
+    dec = _decide(obs, rho, applied)
     grow_probes = ({str(a["probe"]) for a in menu["actuators"]} if menu is not None else set())
     # §10 accounting for the terminal decision (decisions v2): the answer-proposing edge
     # that fired this pass and its realised price — "" / None when only the local channel ran.
@@ -418,11 +387,7 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str,
         last_sensors = GO.sensors_from(
             candidates=candidates, credences=list(dec["credences"] or []),
             p_none=dec["p_none"], indeterminate=int(ext.get("indeterminate") or 0))
-        if eff == "gather" and probe == "recency":
-            # recency is PRE-APPLIED in /extract (obs already decayed) → acknowledge and re-decide.
-            applied = list(dict.fromkeys([*applied, "recency"]))
-            dec = _decide(obs, rho, era, applied)
-        elif eff == "gather" and probe.startswith("corroborate"):
+        if eff == "gather" and probe.startswith("corroborate"):
             # a subject-aware whole-doc re-read at the scheduled TIER's model, JOINED onto the
             # standing channel bridge-side (r09: the payload carries the channel; the reply is
             # the §5-deduped pool, so a disagree adds evidence instead of erasing). Each tier
@@ -450,17 +415,17 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str,
                 # Erasing here collapsed 12 of run 9's 69 withholdings to the flat prior
                 # with the gold still on the lattice. A DISAGREEING read is untouched.
                 applied = list(dict.fromkeys([*applied, probe]))
-                dec = _decide(obs, rho, era, applied)
+                dec = _decide(obs, rho, applied)
             else:
                 # with curves, the read's own stated confidence conditions through the
                 # edge's calibration curve — the instrument's uncertainty is no longer
                 # discarded on the regular tiers (rescue-path parity); without curves the
                 # tier rho echoes.
-                obs, era = cr["observations"], False
+                obs = cr["observations"]
                 rho = _conditioned_rho(curves, extract_edge(model), cr.get("confidence"),
                                        cr["gather_rho"])
                 applied = list(dict.fromkeys([*applied, probe]))
-                dec = _decide(obs, rho, era, applied)
+                dec = _decide(obs, rho, applied)
         elif eff == "gather" and probe in _GROW_RETRIEVE:
             # [§3.3 · E-10] a DAEMON-SCHEDULED retrieval grow: rebuild the evidence at
             # the named breadth and adopt it iff it grounded candidates (L-1 applied; else
@@ -496,10 +461,10 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str,
                 cand_comp = [min(g, cand_comp[j] if j < len(cand_comp) else 1.0)
                              for j, g in enumerate(grown_comp)]
                 candidates = joined
-                rho, era = ext["rho"], ext["era_split"]
+                rho = ext["rho"]
             enacted.append((probe, last_sensors, changed))
             applied = list(dict.fromkeys([*applied, probe]))
-            dec = _decide(obs, rho, era, applied)
+            dec = _decide(obs, rho, applied)
         elif eff == "gather" and probe == "deliberate":
             # The promoted A1b edge, daemon-scheduled: an agentic deliberative answer
             # over the corpus (bridge /probe/deliberate — warm-replayed when the corpus
@@ -551,10 +516,10 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str,
                 conf = dr.get("confidence")
                 legacy = (min(_DELIBERATE_FALLBACK_RHO, max(0.0, float(conf)))
                           if conf is not None else _DELIBERATE_FALLBACK_RHO)
-                obs, era = dr["observations"], False
+                obs = dr["observations"]
                 rho = _conditioned_rho(curves, edge_instrument, conf, legacy)
             applied = list(dict.fromkeys([*applied, probe]))
-            dec = _decide(obs, rho, era, applied)
+            dec = _decide(obs, rho, applied)
         elif eff == "gather" and probe == "re_extract_strong":
             # the K-ENLARGING strong re-extract: a whole-doc opus re-read with allow_new — a
             # value outside the local candidate set comes back as a NEW candidate (the bridge
@@ -579,12 +544,12 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str,
             # absence-of-evidence case (§14, 2026-08-18): the probe retires fail-open and
             # the grounded channel stands, rho untouched.
             if not _null_read(cr):
-                obs, era = cr["observations"], False
+                obs = cr["observations"]
                 rho = _conditioned_rho(curves, extract_edge(_RE_EXTRACT_MODEL),
                                        cr.get("confidence"), cr["gather_rho"])
             enacted.append((probe, last_sensors, changed))
             applied = list(dict.fromkeys([*applied, probe]))
-            dec = _decide(obs, rho, era, applied)
+            dec = _decide(obs, rho, applied)
         else:
             break
     _log_outcomes(dec["effector"])
@@ -644,8 +609,6 @@ def render_view(view: View) -> str:
         v = asserted[0]
         body = LK.GRAMMAR["report"].format(value=v, p=(creds[0] if creds else 0.0),
                                            cites=_cites(v, hits))
-    elif eff == "hedge":
-        body = LK.GRAMMAR["hedge"].format(alts=alts)
     elif eff == "ask_clarify":
         body = LK.GRAMMAR["ask_clarify"].format(alts=alts)
     else:

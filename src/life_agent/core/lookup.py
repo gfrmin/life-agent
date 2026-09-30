@@ -130,39 +130,6 @@ EXTRACT_SCHEMA: dict[str, Any] = {
     },
 }
 
-CONFIRM_PROMPT = """\
-You are checking whether a document excerpt independently confirms a proposed value.
-
-QUESTION: {question}
-PROPOSED VALUE: {value}
-
-EXCERPT:
-{chunk}
-
-Reply {"confirms": true, ...} ONLY if the excerpt itself states this value as the
-current answer to the question. Strict rules:
-- The excerpt must assert the value for the SAME person, account, and context the
-  question asks about; a matching value explicitly for someone or something else is
-  not a confirmation — reply confirms false.
-- A value shown as superseded, corrected, cancelled or replaced ("was", "previous",
-  "changed to ...") is not a confirmation — reply confirms false.
-- A bare form label or heading, or the value appearing only inside a different,
-  unrelated figure, is not a confirmation — reply confirms false.
-
-If the excerpt confirms the value, reply with JSON:
-{"confirms": true, \
-"quote": "<verbatim text copied from the excerpt containing the value>"}
-Otherwise reply: {"confirms": false}
-"""
-
-CONFIRM_SCHEMA: dict[str, Any] = {
-    "type": "object",
-    "required": ["confirms"],
-    "properties": {
-        "confirms": {"type": "boolean"},
-        "quote": {"type": "string"},
-    },
-}
 
 # --- stated channel parameters: their one home is core/pricing.py (the channel half) ------
 # Candidate identity: a numeric identifier this many digits or longer is keyed on its
@@ -221,16 +188,6 @@ REASON_NO_OBSERVATIONS = "no admitted evidence"
 # answer — a certainty the posterior never asserted (presentation error, §3).
 GRAMMAR: dict[str, str] = {
     "report": "{value} — credence {p:.3f} {cites}",
-    # the time-scoped assertion (scoped-claims design): a TRUE claim about the record when the
-    # current value is uncertain. Names the currency gap and the deferred upgrade, never silent.
-    "report_scoped": ("As of {as_of}: {value} — credence {p:.3f} {cites}\n"
-                      "  — the most recent record I found; I may be missing a newer one. "
-                      "A confirmed current figure would need a costlier check."),
-    # r30b: the `quantity` shape's claim — a RANGE, asserted at its own coverage credence.
-    # The endpoints are the candidates' own display strings (never a reformatted float: no
-    # invented precision, no currency the corpus did not carry), and the credence is the
-    # posterior mass the range covers, so a wider claim visibly buys its confidence.
-    "hedge": "Unresolved — candidates: {alts}",
     "ask_clarify": "Worth asking you directly — the evidence does not settle it: {alts}",
     "abstain": "No answer asserted ({reason}).",
     # abstain still shows the candidate(s) it withheld below the assert threshold — the
@@ -243,7 +200,6 @@ GRAMMAR: dict[str, str] = {
     "footer": ("lookup: {n_hits} hits → {n_obs} grounded observations"
                " · {n_ind} indeterminate · none-of-retrieved {p_none}"
                " · decision {action} (EU {eu})"),
-    "fallthrough": "(lookup: {reason} — narrative path)",
     # J2: the FIRST line of every reply names where the answer came from (rule 3):
     # a span in your documents, a named rung, or a decline with its reason.
     "origin_documents": "From your documents.",
@@ -396,34 +352,6 @@ def _candidate_key(value: str) -> str:
     if len(digits) >= _CANON_MIN_DIGITS:
         return digits.lstrip("0") or "0"
     return _norm_value(value)
-
-
-def era_split(  # [§3.3 · L-5/GA-3] the era structure of the observation set
-        observations: list[Observation], doc_date: dict[str, str | None],
-              *, years: float = _TIME_HALF_LIFE_YEARS) -> bool:
-    """Do the candidate values split across eras? True iff, among candidates with at least one
-    dated supporting document, the span between the newest-dated and the oldest-dated candidate
-    exceeds ``years`` — the precondition for a stale-vs-current confusion, and so the signal that
-    recency discriminates. Fewer than two dated candidates ⇒ nothing to discriminate ⇒ False (a
-    permanent fact is not decayed).
-
-    This is the evidence *shape* the string-blind answer-brain body cannot compute itself — the
-    abstract observations carry no value/date (the parity boundary). The capability bridge
-    projects it from the raw observations + the doc_date covariate and the daemon reads it as a
-    bool (move-4-design §2C). ``gather._era_split`` delegates here."""
-    newest: dict[str, date] = {}
-    for o in observations:
-        iso = doc_date.get(o.artifact_cache_key)
-        if not iso:
-            continue
-        key = _candidate_key(o.value_raw)
-        d = date.fromisoformat(iso)
-        if key not in newest or d > newest[key]:
-            newest[key] = d
-    if len(newest) < 2:
-        return False
-    span_days = (max(newest.values()) - min(newest.values())).days
-    return span_days / 365.25 > years
 
 
 def _grounded(quote: str, value: str, chunk: str) -> bool:
@@ -622,100 +550,6 @@ def observe_hits(root: Path, question: str, hits: list[dict[str, Any]], *,
     # through to_abstract_observations). Placed in the decider alone (commit 546f1a5), the §4.2
     # temper never reached the executor path; observe_hits is the single seam both consume.
     return dedup_correlated(observations), indeterminate
-
-
-def confirm_prefilter(value: str, hits: list[dict[str, Any]],
-                      exclude_artifacts: set[str]) -> list[tuple[int, dict[str, Any]]]:
-    """$0: the chunks an independent confirmation could come from — hits whose artifact
-    is NOT already supporting the value and whose text carries it in the gate's own
-    grading currency (token-boundary containment, ``matching.answer_matches``). Returns
-    (original hit index, hit) pairs so citations stay aligned. Pure."""
-    return [(i, h) for i, h in enumerate(hits)
-            if str(h["artifact_cache_key"]) not in exclude_artifacts
-            and MATCH.answer_matches(value, [], str(h["chunk_text"]))]
-
-
-def confirm_hits(root: Path, question: str, value: str, hits: list[dict[str, Any]], *,
-                 exclude_artifacts: set[str],
-                 client: Any | None = None,
-                 covariates: HitCovariates | None = None,
-                 time_indexed: bool = False,
-                 today: date | None = None,
-                 half_life_years: float = _TIME_HALF_LIFE_YEARS,
-                 m: int = 2,
-                 meter: list[float] | None = None,
-                 ) -> tuple[list[Observation], int]:
-    """Value-targeted independent confirmation (§14 confirm_indep): for up to ``m``
-    prefiltered chunks (independent artifact + carries the value), a cached CONFIRM
-    read — "does this excerpt state the value as the current answer?" — whose grounded
-    yes becomes a REAL Observation on the confirming chunk's OWN artifact, with its own
-    authority/subject/time covariates and its own quote-window competition factor (§2:
-    competition is a property of the corpus row, never inherited from the target's).
-    Returns (grounded confirmations, indeterminate count) — a decline or a failed
-    grounding gate is counted, never silently dropped, and never disagrees: the probe
-    is one-sided by construction (it can only add support for ``value``)."""
-    if client is None:
-        client = _client()
-    cov = covariates if covariates is not None else HitCovariates()
-    value = value.strip()
-    observations: list[Observation] = []
-    indeterminate = 0
-    for i, hit in confirm_prefilter(value, hits, exclude_artifacts)[:max(m, 0)]:
-        chunk = str(hit["chunk_text"])
-        key = D.lookup_confirm_key(question, _sha(chunk), _norm_value(value),
-                                   model=LOOKUP_MODEL,
-                                   prompt_template=CONFIRM_PROMPT,
-                                   engine_version=str(client.engine_version),
-                                   output_schema=CONFIRM_SCHEMA)
-        cached = D.lookup(root, key.cache_key)
-        if cached is not None:
-            parsed = json.loads(cached.decode("utf-8"))
-        else:
-            prompt = (CONFIRM_PROMPT.replace("{question}", question)
-                      .replace("{value}", value).replace("{chunk}", chunk))
-            response = client.complete(prompt, CONFIRM_SCHEMA)
-            if meter is not None:
-                meter.append(float(getattr(response, "cost_usd", 0.0) or 0.0))
-            raw = json.loads(response.raw_text)
-            parsed = {"format_version": 1, "confirms": bool(raw.get("confirms")),
-                      "quote": str(raw.get("quote") or "")}
-            D.record(root, key,
-                     json.dumps(parsed, sort_keys=True,
-                                ensure_ascii=False).encode("utf-8"),
-                     lineage=[{"cache_key": str(hit["artifact_cache_key"]),
-                               "role": "source"}])
-        # consumer-side gate over the RAW record (the observe_hits precedent): the
-        # quote (or the exact value string) must be verbatim in the chunk — a
-        # confirm-happy reply with a hallucinated quote on a tokenization-divergent
-        # chunk stays indeterminate.
-        if not (parsed.get("confirms")
-                and _grounded(str(parsed.get("quote") or ""), value, chunk)):
-            indeterminate += 1
-            continue
-        klass, authority = authority_for(str(hit.get("origin", "")))
-        artifact_key = str(hit["artifact_cache_key"])
-        t_factor = (time_factor(cov.doc_date[artifact_key],
-                                time_indexed=time_indexed, today=today,
-                                half_life_years=half_life_years)
-                    if artifact_key in cov.doc_date else 1.0)
-        n_comp = MATCH.quote_scoped_competitors(
-            value, chunk, str(parsed["quote"]))
-        observations.append(Observation(
-            card_n=i + 1,
-            artifact_cache_key=artifact_key,
-            obs_cache_key=key.cache_key,
-            value_raw=value,
-            value_norm=_norm_value(value),
-            quote=str(parsed["quote"]),
-            authority_class=klass,
-            authority=authority,
-            subject_factor=subject_factor(cov.subject_state.get(artifact_key)),
-            time_factor=t_factor,
-            doc_date=cov.doc_date.get(artifact_key),
-            n_competing=n_comp,
-            competition_factor=competition_factor(n_comp),
-        ))
-    return observations, indeterminate
 
 
 # --- evidence shaping (pure builders) ----------------------------------------------------

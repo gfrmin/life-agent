@@ -164,9 +164,9 @@ def main(argv: list[str] | None = None) -> int:
               "(pass --out for a new file)", file=sys.stderr)
         return 2
 
-    from life_agent.core import terminals as TERM
+    from life_agent.core.retrieval import connect
 
-    conn = TERM.connect()
+    conn = connect()
     try:
         chunks = sample_chunks(conn, a.n, a.seed)
     finally:

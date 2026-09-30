@@ -202,33 +202,6 @@ def test_extract_reply_carries_the_metered_base_spend(
     assert payload["cost_usd"] == pytest.approx(0.005)
 
 
-def test_extract_projects_era_split_from_doc_date(
-        deps: BridgeDeps, monkeypatch: pytest.MonkeyPatch) -> None:
-    # The string-blind body cannot compute era_split (abstract obs carry no value/date); the
-    # bridge projects it from the RAW obs + doc_date. Two values >5y apart ⇒ True.
-    observations = [_obs("Vcur", "d_new"), _obs("Vstale", "d_old")]
-    monkeypatch.setattr(LK, "observe_hits", lambda *a, **k: (observations, 0))
-    monkeypatch.setattr(LK, "extractor_reliability_mean", lambda *a, **k: 0.7)
-    status, payload = _call(deps, "POST", "/extract", {
-        "question": "q", "hits": [{"chunk_text": "x"}],
-        "covariates": {"doc_date": {"d_new": "2026-01-01", "d_old": "2015-01-01"}},
-    })
-    assert status == 200
-    assert payload["era_split"] is True
-
-
-def test_extract_era_split_false_without_doc_date(
-        deps: BridgeDeps, monkeypatch: pytest.MonkeyPatch) -> None:
-    # No doc_date covariate ⇒ recency cannot discriminate ⇒ False (a permanent fact is not decayed).
-    observations = [_obs("Vcur", "d_new"), _obs("Vstale", "d_old")]
-    monkeypatch.setattr(LK, "observe_hits", lambda *a, **k: (observations, 0))
-    monkeypatch.setattr(LK, "extractor_reliability_mean", lambda *a, **k: 0.7)
-    status, payload = _call(deps, "POST", "/extract",
-                            {"question": "q", "hits": [{"chunk_text": "x"}]})
-    assert status == 200
-    assert payload["era_split"] is False
-
-
 # --- the probes ------------------------------------------------------------------------
 
 def test_probe_recency(deps: BridgeDeps, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -254,35 +227,6 @@ def test_probe_subject_loads_profile_server_side(
     assert payload == {"subject_state": {"d0": "owner"}, "cost_usd": 0.0}
     # the profile is the bridge's server-side datum; it is NEVER carried in the request (§3).
     assert seen["profile"] == deps.profile
-
-
-def test_probe_authority_serialises_tuple_as_list(
-        deps: BridgeDeps, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(P, "probe_authority",
-                        lambda hits: {"d0": ("document", 0.95), "d1": ("email", 0.90)})
-    status, payload = _call(deps, "POST", "/probe/authority",
-                            {"hits": [{"artifact_cache_key": "d0", "origin": "x.pdf"}]})
-    assert status == 200
-    assert payload == {"authority": {"d0": ["document", 0.95], "d1": ["email", 0.90]}}
-
-
-def test_probe_corroborate_passes_leader_and_excludes(
-        deps: BridgeDeps, monkeypatch: pytest.MonkeyPatch) -> None:
-    seen: dict[str, Any] = {}
-
-    def fake_corr(conn: Any, q: str, leader: str, *, k: int,
-                  exclude_keys: Any) -> list[dict[str, Any]]:
-        seen.update(question=q, leader=leader, k=k, exclude=list(exclude_keys))
-        return [{"artifact_cache_key": "a_new", "chunk_text": "…", "score": 2.0, "origin": "o"}]
-
-    monkeypatch.setattr(P, "probe_corroborate", fake_corr)
-    status, payload = _call(deps, "POST", "/probe/corroborate", {
-        "question": "mobile?", "leader_value": "<current>", "k": 6,
-        "exclude_keys": ["a0", "a1"]})
-    assert status == 200
-    assert payload["hits"][0]["artifact_cache_key"] == "a_new"
-    assert seen == {"question": "mobile?", "leader": "<current>", "k": 6,
-                    "exclude": ["a0", "a1"]}
 
 
 # --- the grow lane (slice 6): /grow_menu + /log_gather + the K-enlarging re-extract ------
@@ -811,6 +755,21 @@ def test_log_reaction_report_is_recorded_not_folded(deps: BridgeDeps) -> None:
     assert RX.load_reactions(deps.reactions_path, deps.decisions_path) == []
 
 
+def test_log_reaction_on_a_miss_is_recorded_not_folded(deps: BridgeDeps) -> None:
+    # r33 RC-1: a miss is a coverage failure, not utility evidence — load_reactions skips it,
+    # so the reply must not say the verdict folds.
+    from life_agent.core import recorder as REC
+
+    did = REC.record_miss("my mobile?", retrieval_keys=["d0"],
+                          decisions_path=deps.decisions_path)
+    status, payload = _call(deps, "POST", "/log_reaction",
+                            {"decision_id": did, "valence": "bad"})
+    assert status == 200
+    assert payload["chosen_action"] == "abstain"
+    assert payload["folds"] is False
+    assert RX.load_reactions(deps.reactions_path, deps.decisions_path) == []
+
+
 def test_log_reaction_unknown_decision_is_404(deps: BridgeDeps) -> None:
     status, _ = _call(deps, "POST", "/log_reaction",
                       {"decision_id": "ab-does-not-exist", "valence": "good"})
@@ -1320,79 +1279,6 @@ def test_deliberate_cfg_refuses_an_unresolvable_pkm_config(
     assert bridge_server._deliberate_cfg().pkm_config == str(present)
 
 
-# --- /probe/confirm (value-targeted independent confirmation — §14 confirm_indep) --------
-
-def _confirm_obs(value: str, key: str, *, quote: str = "", authority: float = 0.9,
-                 competition_factor: float = 1.0) -> Observation:
-    o = _obs(value, key, authority=authority)
-    return dataclasses.replace(o, quote=quote, competition_factor=competition_factor)
-
-
-def test_confirm_excludes_supporters_and_reproduces_group_indices(
-        deps: BridgeDeps, monkeypatch: pytest.MonkeyPatch) -> None:
-    # base channel: A grounded from doc1, B from doc2 — wire groups 0 and 1
-    base = [_obs("A", "doc1", authority=0.9), _obs("B", "doc2", authority=0.9)]
-    monkeypatch.setattr(LK, "observe_hits", lambda *a, **k: (list(base), 0))
-    seen: dict[str, Any] = {}
-
-    def fake_confirm(root, question, value, hits, *, exclude_artifacts, meter=None, **k):
-        seen["exclude"] = set(exclude_artifacts)
-        if meter is not None:
-            meter.append(0.002)
-        # one confirm on the rival's doc (group reuse), one on a fresh doc (new group)
-        return ([_confirm_obs("A", "doc2", quote="fee A stated"),
-                 _confirm_obs("A", "doc3", quote="independent: value A")], 1)
-
-    monkeypatch.setattr(LK, "confirm_hits", fake_confirm)
-    hits = [{"artifact_cache_key": "doc1", "chunk_text": "A here", "origin": "x"},
-            {"artifact_cache_key": "doc2", "chunk_text": "A and B", "origin": "x"},
-            {"artifact_cache_key": "doc3", "chunk_text": "A again", "origin": "x"}]
-    status, payload = _call(deps, "POST", "/probe/confirm",
-                            {"question": "q?", "value": "A",
-                             "candidates": ["A", "B"], "hits": hits})
-    assert status == 200
-    assert seen["exclude"] == {"doc1"}          # only A's supporters are excluded
-    assert [(o["reports"], o["group"]) for o in payload["observations"]] == [
-        (0, 1),   # doc2 already holds wire group 1 — reused, ancestry temper correct
-        (0, 2),   # doc3 is genuinely new — fresh group index after the base groups
-    ]
-    assert payload["cost_usd"] == pytest.approx(0.002)
-    assert payload["n_grounded"] == 2 and payload["n_indeterminate"] == 1
-
-
-def test_confirm_forwarded_copy_is_dropped_not_counted(
-        deps: BridgeDeps, monkeypatch: pytest.MonkeyPatch) -> None:
-    # the confirming chunk shares the supporter's contextful quote — a forwarded/re-filed
-    # copy, not an independent witness (§5 dedup-as-inference at the shared seam)
-    base = [dataclasses.replace(_obs("A", "doc1", authority=0.9),
-                                quote="the fee is A due at signing")]
-    monkeypatch.setattr(LK, "observe_hits", lambda *a, **k: (list(base), 0))
-    monkeypatch.setattr(LK, "confirm_hits", lambda *a, **k: (
-        [_confirm_obs("A", "doc9", quote="the fee is A due at signing",
-                      authority=0.8)], 0))
-    hits = [{"artifact_cache_key": "doc1", "chunk_text": "the fee is A due", "origin": "x"}]
-    status, payload = _call(deps, "POST", "/probe/confirm",
-                            {"question": "q?", "value": "A", "candidates": ["A"],
-                             "hits": hits})
-    assert status == 200
-    assert payload["observations"] == []
-    assert payload["n_correlated_dropped"] == 1
-
-
-def test_confirm_target_outside_candidates_is_empty_never_minted(
-        deps: BridgeDeps, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(LK, "observe_hits", lambda *a, **k: ([_obs("A", "doc1")], 0))
-    called: list[bool] = []
-    monkeypatch.setattr(LK, "confirm_hits",
-                        lambda *a, **k: called.append(True) or ([], 0))
-    status, payload = _call(deps, "POST", "/probe/confirm",
-                            {"question": "q?", "value": "ZZZ", "candidates": ["A"],
-                             "hits": []})
-    assert status == 200
-    assert payload["observations"] == [] and payload["cost_usd"] == 0.0
-    assert not called  # no spend on a target the lattice does not hold
-
-
 # --- the `read` classification: absence of evidence vs evidence of absence (§14) --------
 
 def _reextract(deps: BridgeDeps, monkeypatch: pytest.MonkeyPatch, value: str | None,
@@ -1816,7 +1702,6 @@ def test_deliberate_containment_gets_the_same_strict_span_guard(
         "question": "name?", "candidates": ["Abbot Corden"]})
     assert status == 200 and payload["status"] == "ok"
     assert payload["observations"] == []
-
 
 
 def test_log_decision_records_the_origin_the_body_states(deps: BridgeDeps) -> None:

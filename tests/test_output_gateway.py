@@ -31,19 +31,17 @@ def test_kb_root_is_outside_the_repo(monkeypatch) -> None:
     assert _outside_repo(mail_bridge._kb_root())
 
 
-def test_jarvis_db_and_tasks_ledger_are_outside_the_repo(monkeypatch, tmp_path) -> None:
-    # The GTD writes the event ledger + the read-model (+ the legacy store) under
-    # $LIFE_AGENT_KB, never into the public repo tree.
+def test_gtd_db_and_tasks_ledger_are_outside_the_repo(monkeypatch, tmp_path) -> None:
+    # The GTD writes the event ledger + the read-model under $LIFE_AGENT_KB, never into the
+    # public repo tree.
     import importlib
 
     monkeypatch.setenv("LIFE_AGENT_KB", str(tmp_path))
-    monkeypatch.delenv("JARVIS_DB_PATH", raising=False)
     monkeypatch.delenv("GTD_DB_PATH", raising=False)
     import life_agent.core.config as cfg
 
     importlib.reload(cfg)
     try:
-        assert _outside_repo(cfg.JARVIS_DB_PATH)
         assert _outside_repo(cfg.GTD_DB_PATH)
         assert _outside_repo(cfg.TASKS_LEDGER)
     finally:

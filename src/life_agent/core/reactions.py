@@ -213,6 +213,15 @@ def ask_recovery_rate(decisions_path: Path, reactions_path: Path) -> float:
     return (sum(v == "good" for v in latest.values()) + 1) / (n + 2)
 
 
+def can_fold(d: DEC.DecisionEvent) -> bool:
+    """Whether a verdict on ``d`` can move the utility posterior: only an abstain, and never a
+    ``miss`` (r33 RC-1: a verdict on a COVERAGE failure is not utility evidence — folding it
+    would read "bad, you found nothing" as "wrongness costs me less" and feed the one-sided
+    bar drift r32 priced, 0.900 → 0.837). The ONE rule: the fold below and every reply that
+    names a verdict's fate read it here."""
+    return d.chosen_action == "abstain" and d.regime != "miss"
+
+
 def load_reactions(reactions_path: Path,
                    decisions_path: Path) -> list[UT.Reaction | UT.MarginReaction]:
     """Join verdicts ⋈ decisions by ``decision_id`` and emit utility evidence for the clean
@@ -231,13 +240,8 @@ def load_reactions(reactions_path: Path,
         if r.kind != "verdict" or r.valence not in _FOLDED_VALENCES:
             continue
         d = decisions.get(r.decision_id)
-        if d is None or d.chosen_action != "abstain":
-            continue  # unrouted, or a report row (recorded-not-folded)
-        if d.regime == "miss":
-            # r33 RC-1: a verdict on a COVERAGE failure is not utility evidence — folding
-            # it would read "bad, you found nothing" as "wrongness costs me less" and feed
-            # the one-sided bar drift r32 priced (0.900 → 0.837). Recorded, never folded.
-            continue
+        if d is None or not can_fold(d):
+            continue  # unrouted, a report row, or a miss (recorded-not-folded)
         ev: UT.Reaction | UT.MarginReaction | None
         if d.family == "lookup":
             ev = _lookup_reaction(r, d)

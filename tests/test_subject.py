@@ -24,8 +24,6 @@ import duckdb
 import pytest
 
 from life_agent.core.subject import (
-    SubjectedHit,
-    apply_owner_filter,
     owner_verdict,
     project_subjects,
 )
@@ -120,59 +118,6 @@ def test_project_subjects_tri_state_and_currency(migrated_root: Path) -> None:
 def test_project_subjects_empty_input(migrated_root: Path) -> None:
     with open_catalogue(migrated_root) as conn:
         assert project_subjects(conn, migrated_root, []) == []
-
-
-# --- apply_owner_filter: total partition, indeterminates stay in ------------ #
-
-
-def _hit(key: str, state: str, *, kind: str | None = None,
-         subject: str | None = None, extractor: str = "pandoc") -> SubjectedHit:
-    return SubjectedHit(artifact_cache_key=key, state=state,  # type: ignore[arg-type]
-                        subject_kind=kind, subject=subject, extractor=extractor)
-
-
-def test_owner_filter_partition_is_total_and_nothing_silent() -> None:
-    hits = [
-        _hit("a" * 64, "named", kind="person", subject="J. Example"),
-        _hit("b" * 64, "named", kind="person", subject="Other Person"),
-        _hit("c" * 64, "named", kind="organisation", subject="Example LLC"),
-        _hit("d" * 64, "generic"),
-        _hit("e" * 64, "named", kind="person", subject="Hard To Say"),
-        _hit("f" * 64, "underived", extractor="tesseract"),
-    ]
-    verdicts = {"J. Example": "owner", "Other Person": "not_owner",
-                "Example LLC": "not_owner", "Hard To Say": "unclear"}
-    view = apply_owner_filter(hits, verdicts)
-
-    assert "a" * 64 in view.admitted
-    # Determinately someone else's: excluded, named with the subject as written.
-    assert ("b" * 64, "Other Person") in view.excluded_other
-    assert ("c" * 64, "Example LLC") in view.excluded_other
-    # Determinately nobody's (template/blank): excluded, named.
-    assert view.excluded_generic == ["d" * 64]
-    # Indeterminates are ADMITTED and named — never silently excluded (the gate).
-    assert "e" * 64 in view.admitted and view.unclear == ["e" * 64]
-    assert "f" * 64 in view.admitted and view.underived == ["f" * 64]
-    assert view.remedies == ["pkm derive doc_subject_tesseract --input " + "f" * 64]
-
-    # Totality: every hit lands in exactly one named set.
-    named_sets = (
-        [k for k in view.admitted if k not in view.unclear
-         and k not in view.underived]
-        + [k for k, _ in view.excluded_other]
-        + view.excluded_generic + view.unclear + view.underived
-    )
-    assert sorted(named_sets) == sorted(h.artifact_cache_key for h in hits)
-
-
-def test_owner_filter_missing_verdict_is_indeterminate() -> None:
-    """A named subject with no verdict (match failed/skipped) is indeterminate
-    — admitted and named, never dropped."""
-    hits = [_hit("a" * 64, "named", kind="person", subject="J. Example")]
-    view = apply_owner_filter(hits, {})
-    assert view.admitted == ["a" * 64]
-    assert view.unclear == ["a" * 64]
-
 
 # --- owner_verdict: cached §18.9 derivation --------------------------------- #
 

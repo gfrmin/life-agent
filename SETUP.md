@@ -159,8 +159,7 @@ You interact in exactly **two places**; everything else runs on timers.
 
 - **To know — `bin/ask-live`.** One-shot for a quick question; run it bare for
   a REPL session. One line grammar, identical in both: a plain question,
-  `/since 2026-01-01 …`, `/until …`, `/recent …`, `/tell <fact about you>`,
-  `/derive`.
+  `/tell <fact about you>`, `/react <id> g|b`.
 - **To act — the Telegram bot.** Capture and triage tasks in plain language;
   say `help` for the vocabulary.
 

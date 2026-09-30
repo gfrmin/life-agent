@@ -16,7 +16,6 @@ it belongs as a :grow mode — raw retrieval first, expansion only when the chea
 from __future__ import annotations
 
 import re
-from collections.abc import Callable
 from pathlib import Path
 
 import life_agent.core as C
@@ -124,32 +123,29 @@ def clean_terms(raw: str) -> str:
     return " ".join(re.sub(r"[^\w]+", " ", raw, flags=re.UNICODE).split())
 
 
-def usable_terms(raw: str, on_refusal: Callable[[], None] | None = None) -> str:
+def usable_terms(raw: str) -> str:
     """Post-cache finishing — the ONE refusal gate every caller shares (PR #63 review:
-    a hand-mirrored copy in ask.py had already drifted silent; the seam is now pinned
-    by test). Gates refusal prose to '' (the callers' fail-open contract falls back to
+    a hand-mirrored copy had already drifted silent; the seam is now pinned by test).
+    Gates refusal prose to '' (the callers' fail-open contract falls back to
     the raw-question query) and NAMES the fallback on every PROCESS surface — the
-    bridge daemon's journal and the REPL's stdout. Honest scope (PR #64 review): the
+    bridge daemon's journal. Honest scope (PR #64 review): the
     note does NOT yet reach the owner's reply payload (Telegram / rendered answer);
     that user-facing disclosure is a named future refinement, and this print is
-    observability until it lands. ``on_refusal`` lets a caller attach its own
-    accounting (ask.py's CACHE_STATS counter). Applied post-cache, so already-recorded
+    observability until it lands. Applied post-cache, so already-recorded
     refusal replies are re-gated on read — no EXPAND_VERSION bump. Known, accepted: a
     detector FALSE POSITIVE on a cached reply silences that question's expansion until
-    --no-cache or a detector change (the cache hit short-circuits the model) — bounded
+    a detector change (the cache hit short-circuits the model) — bounded
     by refusal()'s three conjunctive guards and the pinned keyword-shape table (any
     vocabulary widening is a detector change: re-verify that table's boundary cases),
     and the printed note is the trace."""
     if refusal(raw):
         print("  (expansion refused → raw-question fallback)")
-        if on_refusal is not None:
-            on_refusal()
         return ""
     return clean_terms(raw)
 
 
 def expand_terms(question: str, *, model: str = EXPAND_MODEL,
-                 root: Path | None = None, no_cache: bool = False) -> str:
+                 root: Path | None = None) -> str:
     """Impure edge: ask a cheap model for extra BM25 keywords. Returns a space-joined term
     string, or '' on any failure OR refusal (the caller falls back to the raw question —
     expansion must never break retrieval; issue #56). Cached, corpus-independent (keyed on
@@ -159,7 +155,7 @@ def expand_terms(question: str, *, model: str = EXPAND_MODEL,
     are never recorded."""
     key = D.expand_key(question, model=model, prompt_template=EXPAND_SYSTEM,
                        temperature=C.TEMPERATURE, max_tokens=120)
-    if root is not None and not no_cache:
+    if root is not None:
         cached = D.lookup(root, key.cache_key)
         if cached is not None:
             return usable_terms(cached.decode("utf-8"))

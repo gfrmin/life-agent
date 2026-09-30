@@ -107,6 +107,18 @@ def test_report_verdict_is_recorded_but_not_folded(tmp_path: Path, capsys) -> No
     assert "not folded" in capsys.readouterr().out
 
 
+def test_miss_verdict_is_recorded_and_named_not_folded(tmp_path: Path, capsys) -> None:
+    from life_agent.core import recorder as REC
+
+    dec_path, react_path = _seed(tmp_path)
+    did = REC.record_miss("q?", retrieval_keys=["d0"], decisions_path=dec_path)
+
+    rc = ask.react(did[:8], "bad", decisions_path=dec_path, reactions_path=react_path)
+    assert rc == 0
+    assert R.load_reactions(react_path, dec_path) == []       # a coverage failure never folds
+    assert "not folded" in capsys.readouterr().out
+
+
 def test_unknown_prefix_errors_and_writes_nothing(tmp_path: Path) -> None:
     did = "abc" + "0" * 61
     dec_path, react_path = _seed(tmp_path, _decision(did))

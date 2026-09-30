@@ -18,8 +18,6 @@ import pytest
 
 from life_agent.core.temporal import (
     DatedHit,
-    TemporalView,
-    apply_temporal,
     project_dates,
 )
 from pkm.cache import write_artifact
@@ -123,58 +121,3 @@ def test_project_dates_logs_demand(migrated_root: Path) -> None:
     assert {e["caller"] for e in entries} == {"ask.temporal"}
 
 
-def test_apply_temporal_names_indeterminates(migrated_root: Path) -> None:
-    """The planted dropout (C) is present and named, never silently dropped."""
-    a, b, c = _seed(migrated_root)
-    with open_catalogue(migrated_root) as conn:
-        hits = project_dates(conn, migrated_root, [a, b, c])
-
-    view = apply_temporal(hits, since=date(2026, 1, 1), until=None,
-                          recent=False)
-    assert view.admitted == [a]
-    assert view.excluded == []
-    assert view.undated == [b]
-    assert view.underived == [c]
-    assert any("pkm derive doc_date_pandoc" in r and c in r
-               for r in view.remedies)
-
-
-def test_apply_temporal_excluded_is_named_with_its_date(
-    migrated_root: Path,
-) -> None:
-    a, b, c = _seed(migrated_root)
-    with open_catalogue(migrated_root) as conn:
-        hits = project_dates(conn, migrated_root, [a, b, c])
-
-    view = apply_temporal(hits, since=date(2026, 6, 2), until=None,
-                          recent=False)
-    assert view.admitted == []
-    assert view.excluded == [(a, date(2026, 6, 1))]
-    assert view.undated == [b]
-    assert view.underived == [c]
-
-
-def test_apply_temporal_recent_ranks_and_drops_nothing(
-    migrated_root: Path,
-) -> None:
-    a, b, c = _seed(migrated_root)
-    with open_catalogue(migrated_root) as conn:
-        hits = project_dates(conn, migrated_root, [a, b, c])
-
-    view = apply_temporal(hits, since=None, until=None, recent=True)
-    assert view.admitted == [a]                  # newest-first (single dated)
-    assert view.excluded == []
-    assert view.undated == [b]
-    assert view.underived == [c]
-
-
-def test_temporal_view_is_total(migrated_root: Path) -> None:
-    """Every input hit appears in exactly one partition — nothing vanishes."""
-    a, b, c = _seed(migrated_root)
-    with open_catalogue(migrated_root) as conn:
-        hits = project_dates(conn, migrated_root, [a, b, c])
-    view: TemporalView = apply_temporal(hits, since=date(2026, 1, 1),
-                                        until=None, recent=False)
-    accounted = (set(view.admitted) | {k for k, _ in view.excluded}
-                 | set(view.undated) | set(view.underived))
-    assert accounted == {a, b, c}
