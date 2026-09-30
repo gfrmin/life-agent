@@ -42,6 +42,8 @@ from typing import NamedTuple
 
 import yaml
 
+from life_agent.core import config
+
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import mail_bridge
@@ -50,7 +52,6 @@ from data_source_registry import (
     Registry,
     RegistryError,
     Root,
-    _kb_root,
     _matches,
     _pat_match,
     assert_roots_ingestable,
@@ -109,7 +110,7 @@ def enumerate_filetree(root: Root) -> list[Path]:
 
 
 def _staging_dir(root: Root) -> Path:
-    return root.staging_dir or (_kb_root() / "staging" / root.id)
+    return root.staging_dir or (config.KB / "staging" / root.id)
 
 
 def build_maildir_staging(root: Root, *, dry_run: bool) -> Path:

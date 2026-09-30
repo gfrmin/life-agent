@@ -45,6 +45,7 @@ from typing import Any
 import yaml
 
 from life_agent.core.decisions import POLICIES
+from life_agent.core.posterior import normalised
 
 FORMAT_VERSION = 1
 
@@ -374,12 +375,6 @@ def _product(axes: list[list[float]]) -> list[tuple[float, ...]]:
     return [tuple(p) for p in itertools.product(*axes)]
 
 
-def _normalised(log_w: list[float]) -> list[float]:
-    top = max(log_w)
-    log_total = top + math.log(sum(math.exp(x - top) for x in log_w))
-    return [x - log_total for x in log_w]
-
-
 def _weights(log_w: list[float]) -> list[float]:
     top = max(log_w)
     w = [math.exp(x - top) for x in log_w]
@@ -454,10 +449,10 @@ def _fold(model: UtilityModel, comp: frozenset[str],
             lw += -0.5 * ((xi - s.prior_mu) / s.prior_sigma) ** 2
         log_w.append(lw)
     if len(names) > 1:
-        log_w = _normalised(log_w)
+        log_w = normalised(log_w)
     for event in events:
         ll = _log_likelihood(event, names, model)
-        log_w = _normalised([w + ll(x) for w, x in zip(log_w, points, strict=True)])
+        log_w = normalised([w + ll(x) for w, x in zip(log_w, points, strict=True)])
     if len(names) == 1:
         marginals = [log_w]
     else:
@@ -468,7 +463,7 @@ def _fold(model: UtilityModel, comp: frozenset[str],
             mass = [0.0] * len(axis)
             for flat, wi in enumerate(w):
                 mass[(flat // stride[j]) % len(axis)] += wi
-            marginals.append(_normalised([math.log(max(m, _FLOOR)) for m in mass]))
+            marginals.append(normalised([math.log(max(m, _FLOOR)) for m in mass]))
     out: dict[str, LatentPosterior] = {}
     for name, spec, axis, marginal in zip(names, specs, axes, marginals, strict=True):
         mean, var = _moments(axis, marginal)

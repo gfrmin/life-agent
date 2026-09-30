@@ -34,12 +34,7 @@ from pathlib import Path
 
 import yaml
 
-
-def _kb_root() -> Path:
-    """Resolve $LIFE_AGENT_KB (the out-of-tree knowledge base), defaulting to
-    ~/.life-agent/kb — same convention as scripts/run_eval.py."""
-    env = os.environ.get("LIFE_AGENT_KB")
-    return Path(env).expanduser() if env else Path.home() / ".life-agent/kb"
+from life_agent.core import config
 
 
 def load_manifest(path: Path) -> dict:
@@ -142,7 +137,7 @@ def main() -> int:
     ap.add_argument(
         "--manifest",
         type=Path,
-        default=_kb_root() / "config/mail-corpus.yaml",
+        default=config.KB / "config/mail-corpus.yaml",
         help="curation manifest (default: $LIFE_AGENT_KB/config/mail-corpus.yaml)",
     )
     ap.add_argument(

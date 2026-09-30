@@ -22,18 +22,19 @@ Two properties earn their keep here (see ``reconciliation-as-transformation`` no
 from __future__ import annotations
 
 import hashlib
-import json
 import re
 import uuid
-from dataclasses import dataclass, field
-from datetime import datetime
-from pathlib import Path
-from typing import Any, Literal
+from dataclasses import dataclass
+from typing import Any
 
-EventType = Literal["asserted", "disposed", "superseded", "amended"]
+from life_agent.core.events import SEP as _SEP
+from life_agent.core.events import Event, amended, append, load, now_iso, superseded
+
+__all__ = ["Event", "OpenAssertion", "amended", "append", "asserted", "assertion_identity",
+           "disposed", "fold", "known_identities", "load", "new_identity", "now_iso",
+           "superseded"]
 
 _WS = re.compile(r"\s+")
-_SEP = "\x1f"  # unit separator — never appears in normalised text
 
 
 def _normalize(text: str) -> str:
@@ -54,11 +55,6 @@ def assertion_identity(claim_type: str, grounding_span: str, claim_content: str)
     return hashlib.sha256(_SEP.join(parts).encode("utf-8")).hexdigest()
 
 
-def now_iso() -> str:
-    """Wall-clock stamp for an event (``tx_time``)."""
-    return datetime.now().isoformat(timespec="seconds")
-
-
 def new_identity() -> str:
     """A unique identity for a *human-originated* assertion.
 
@@ -68,32 +64,6 @@ def new_identity() -> str:
     in the event and replayed deterministically.
     """
     return uuid.uuid4().hex
-
-
-@dataclass(frozen=True)
-class Event:
-    """One immutable ledger entry concerning a single assertion ``identity``."""
-
-    type: EventType
-    identity: str
-    tx_time: str
-    valid_time: str | None = None
-    reason: str | None = None
-    superseded_by: str | None = None
-    payload: dict[str, Any] = field(default_factory=dict)
-    event_id: str = ""
-
-    def __post_init__(self) -> None:
-        if not self.event_id:
-            digest = hashlib.sha256(
-                _SEP.join(
-                    [
-                        self.type, self.identity, self.tx_time,
-                        self.reason or "", self.superseded_by or "",
-                    ]
-                ).encode("utf-8")
-            ).hexdigest()[:16]
-            object.__setattr__(self, "event_id", digest)
 
 
 def asserted(
@@ -118,30 +88,6 @@ def disposed(identity: str, reason: str, *, tx_time: str | None = None) -> Event
     return Event(type="disposed", identity=identity, tx_time=tx_time or now_iso(), reason=reason)
 
 
-def superseded(old_identity: str, new_identity: str, *, tx_time: str | None = None) -> Event:
-    """Close ``old_identity`` because a newer assertion replaces it (the correlator's edge)."""
-    return Event(
-        type="superseded",
-        identity=old_identity,
-        tx_time=tx_time or now_iso(),
-        superseded_by=new_identity,
-    )
-
-
-def amended(identity: str, fields: dict[str, Any], *, tx_time: str | None = None) -> Event:
-    """Amend an open assertion's mutable attributes (e.g. ``{"list": "next"}``).
-
-    For GTD this carries a move / reschedule / today-flag change. The amendment does not
-    close the assertion; the projection applies ``fields`` over the current row.
-    """
-    return Event(
-        type="amended",
-        identity=identity,
-        tx_time=tx_time or now_iso(),
-        payload={"fields": fields},
-    )
-
-
 @dataclass(frozen=True)
 class OpenAssertion:
     """A currently-open assertion in the projection (what ``fold`` yields)."""
@@ -150,65 +96,6 @@ class OpenAssertion:
     payload: dict[str, Any]
     asserted_at: str
     valid_time: str | None
-
-
-def _to_json(e: Event) -> str:
-    return json.dumps(
-        {
-            "event_id": e.event_id,
-            "type": e.type,
-            "identity": e.identity,
-            "tx_time": e.tx_time,
-            "valid_time": e.valid_time,
-            "reason": e.reason,
-            "superseded_by": e.superseded_by,
-            "payload": e.payload,
-        },
-        ensure_ascii=False,
-        sort_keys=True,
-    )
-
-
-def _from_json(line: str) -> Event | None:
-    try:
-        d = json.loads(line)
-        return Event(
-            type=d["type"],
-            identity=d["identity"],
-            tx_time=d["tx_time"],
-            valid_time=d.get("valid_time"),
-            reason=d.get("reason"),
-            superseded_by=d.get("superseded_by"),
-            payload=d.get("payload", {}),
-            event_id=d.get("event_id", ""),
-        )
-    except (json.JSONDecodeError, KeyError, TypeError):
-        return None
-
-
-def append(ledger: Path, events: list[Event]) -> None:
-    """Append events to the ledger (creates the directory on first use)."""
-    if not events:
-        return
-    ledger.parent.mkdir(parents=True, exist_ok=True)
-    with ledger.open("a", encoding="utf-8") as fh:
-        for e in events:
-            fh.write(_to_json(e) + "\n")
-
-
-def load(ledger: Path) -> list[Event]:
-    """Read the whole ledger in order (empty if it doesn't exist); skips garbage lines."""
-    if not ledger.exists():
-        return []
-    out: list[Event] = []
-    for line in ledger.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        e = _from_json(line)
-        if e is not None:
-            out.append(e)
-    return out
 
 
 def fold(events: list[Event]) -> dict[str, OpenAssertion]:

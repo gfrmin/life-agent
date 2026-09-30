@@ -10,7 +10,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-KB = Path(os.environ.get("LIFE_AGENT_KB", str(Path.home() / ".life-agent/kb")))
+KB = Path(os.environ.get("LIFE_AGENT_KB", str(Path.home() / ".life-agent/kb"))).expanduser()
 PKM_CONFIG = Path(os.environ.get("PKM_CONFIG", "~/.config/life-agent/pkm.yaml")).expanduser()
 
 # --- GTD (the agent's act layer) ---

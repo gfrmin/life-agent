@@ -25,6 +25,7 @@ import atm_bench.build_kb as B
 from data_source_registry import RegistryError, assert_roots_ingestable, load_registry
 
 from eval import run as ER
+from life_agent.core import config
 from pkm.producers.email_producer import EmailProducer, installed_email_version
 
 # PII-OK: every record below is synthetic ATM-Bench-shaped data (invented ids, dates, text)
@@ -122,7 +123,7 @@ def test_registry_doc_passes_the_ingest_guard_only_as_a_sibling(
     kb, emails = out / "kb", out / "emails"
     for d in (kb, emails, store, kb / "emails"):
         d.mkdir(parents=True)
-    monkeypatch.setenv("LIFE_AGENT_KB", str(kb))
+    monkeypatch.setattr(config, "KB", kb)
     pkm_yaml = out / "pkm.yaml"
     pkm_yaml.write_text(yaml.safe_dump(B.pkm_config_doc(store)), encoding="utf-8")
     reg = tmp_path / "reg.yaml"

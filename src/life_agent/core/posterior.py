@@ -76,7 +76,8 @@ def log_match_miss(r: float, scale: float,
             scale * math.log(max((1.0 - r) / a, PROB_EPS)))
 
 
-def _normalised(log_w: Sequence[float]) -> list[float]:
+def normalised(log_w: Sequence[float]) -> list[float]:
+    """The log weights shifted so they sum to one in probability (log-sum-exp)."""
     top = max(log_w)
     log_total = top + math.log(sum(math.exp(x - top) for x in log_w))
     return [x - log_total for x in log_w]
@@ -90,13 +91,13 @@ def log_posterior(k: int, observations: Sequence[Mapping[str, Any]],
     ch = channel or default_channel()
     # with no candidate the truth is NONE: the prior mass on the candidates has nowhere to go
     prior = [math.log((1.0 - ch.p_none_prior) / k)] * k if k else []
-    log_w = _normalised([*prior, math.log(ch.p_none_prior)])
+    log_w = normalised([*prior, math.log(ch.p_none_prior)])
     for obs, scale in zip(observations,
                           temper_scales([o["group"] for o in observations], ch),
                           strict=True):
         match, miss = log_match_miss(reliability(rho, obs), scale * ch.eta, ch)
         hit = obs["reports"]
-        log_w = _normalised([w + (match if h == hit else miss) for h, w in enumerate(log_w)])
+        log_w = normalised([w + (match if h == hit else miss) for h, w in enumerate(log_w)])
     return log_w
 
 

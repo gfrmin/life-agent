@@ -35,6 +35,8 @@ from pathlib import Path
 
 import yaml
 
+from life_agent.core import config
+
 REGISTRY_VERSION = 1
 VALID_KINDS = frozenset({"filetree", "maildir"})
 
@@ -87,15 +89,8 @@ class Registry:
     roots: tuple[Root, ...]
 
 
-def _kb_root() -> Path:
-    """Resolve $LIFE_AGENT_KB, defaulting to ~/.life-agent/kb (same convention
-    as mail_bridge.py and scripts/run_eval.py)."""
-    env = os.environ.get("LIFE_AGENT_KB")
-    return Path(env).expanduser() if env else Path.home() / ".life-agent/kb"
-
-
 def default_registry_path() -> Path:
-    return _kb_root() / "config/data-sources.yaml"
+    return config.KB / "config/data-sources.yaml"
 
 
 def _coerce_root(i: int, entry: object) -> Root:
@@ -185,7 +180,7 @@ def forbidden_ingest_zones(pkm_config: Path | str | None = None) -> tuple[str, .
     Derived from the environment (or the given ``pkm_config``), so no machine path
     is baked into this public repo. The mail *staging* dir is a sibling of
     ``root_dir`` (not inside it), so legitimately-staged email is unaffected."""
-    zones = [os.path.realpath(_kb_root())]
+    zones = [os.path.realpath(config.KB)]
     store = _pkm_store_real(pkm_config)
     if store:
         zones.append(store)

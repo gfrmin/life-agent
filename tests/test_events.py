@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from life_agent.core import events as core_events
 from life_agent.tasks import events as ev
 
 # --- assertion identity -------------------------------------------------------
@@ -66,7 +67,7 @@ def test_load_missing_is_empty(tmp_path: Path) -> None:
 
 def test_load_tolerates_garbage_lines(tmp_path: Path) -> None:
     ledger = tmp_path / "events.jsonl"
-    good = ev._to_json(ev.asserted("ok", {}, tx_time="2026-06-06T00:00:00"))
+    good = core_events._to_json(ev.asserted("ok", {}, tx_time="2026-06-06T00:00:00"))
     ledger.write_text(good + "\nnot json\n{}\n", encoding="utf-8")
     loaded = ev.load(ledger)
     assert len(loaded) == 1

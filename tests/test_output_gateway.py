@@ -17,7 +17,6 @@ from pathlib import Path
 _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO / "scripts"))
 
-import mail_bridge  # noqa: E402
 
 
 def _outside_repo(p: Path) -> bool:
@@ -27,8 +26,9 @@ def _outside_repo(p: Path) -> bool:
 
 
 def test_kb_root_is_outside_the_repo(monkeypatch) -> None:
-    monkeypatch.delenv("LIFE_AGENT_KB", raising=False)
-    assert _outside_repo(mail_bridge._kb_root())
+    from life_agent.core import config
+
+    assert _outside_repo(config.KB)
 
 
 def test_gtd_db_and_tasks_ledger_are_outside_the_repo(monkeypatch, tmp_path) -> None:
