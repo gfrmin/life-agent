@@ -27,11 +27,11 @@ def _expand_key(question: str = Q, *, model: str = "claude-haiku-4-5-20251001",
                         temperature=0.0, max_tokens=120)
 
 
-def _synth_key(question: str = Q, rs_hash: str = "c" * 64, profile_hash: str = "d" * 64,
-               *, template: str = "ANSWER PROMPT") -> D.StageKey:
-    return D.synthesize_key(question, rs_hash, profile_hash,
-                            model="claude-sonnet-4-6", prompt_template=template,
-                            temperature=0.0, max_tokens=600)
+def _synth_key(question: str = Q, chunk: str = "c" * 64,
+               *, template: str = "EXTRACT PROMPT") -> D.StageKey:
+    return D.lookup_extract_key(question, chunk, model="claude-haiku-4-5-20251001",
+                                prompt_template=template, engine_version="e/1",
+                                output_schema={"type": "object"})
 
 
 # --- key contract: determinism + exact invalidation ------------------------- #
@@ -39,8 +39,6 @@ def _synth_key(question: str = Q, rs_hash: str = "c" * 64, profile_hash: str = "
 def test_keys_are_deterministic() -> None:
     assert _expand_key().cache_key == _expand_key().cache_key
     assert _synth_key().cache_key == _synth_key().cache_key
-    assert (D.retrieve_key("q terms", "e" * 64, k=8).cache_key
-            == D.retrieve_key("q terms", "e" * 64, k=8).cache_key)
 
 
 def test_expand_key_sensitivity() -> None:
@@ -50,18 +48,10 @@ def test_expand_key_sensitivity() -> None:
     assert _expand_key(template="DIFFERENT PROMPT").cache_key != base
 
 
-def test_retrieve_key_sensitivity() -> None:
-    base = D.retrieve_key("q terms", "e" * 64, k=8).cache_key
-    assert D.retrieve_key("q OTHER", "e" * 64, k=8).cache_key != base   # query changed
-    assert D.retrieve_key("q terms", "f" * 64, k=8).cache_key != base   # corpus changed
-    assert D.retrieve_key("q terms", "e" * 64, k=12).cache_key != base  # k changed
-
-
-def test_synthesize_key_sensitivity_is_exact() -> None:
+def test_extract_key_sensitivity_is_exact() -> None:
     base = _synth_key().cache_key
     assert _synth_key(question="other?").cache_key != base
-    assert _synth_key(rs_hash="9" * 64).cache_key != base       # different evidence
-    assert _synth_key(profile_hash="8" * 64).cache_key != base  # owner taught a fact
+    assert _synth_key(chunk="9" * 64).cache_key != base         # different evidence
     assert _synth_key(template="NEW PROMPT").cache_key != base
     # and nothing else: same inputs replay the same key (early cutoff depends on this)
     assert _synth_key().cache_key == base
@@ -70,7 +60,8 @@ def test_synthesize_key_sensitivity_is_exact() -> None:
 def test_stage_content_types_are_distinct_and_never_chunkable() -> None:
     from pkm.chunking import CHUNKABLE_CONTENT_TYPES
 
-    stage_types = {D.CONTENT_TYPE_EXPAND, D.CONTENT_TYPE_RETRIEVAL_SET, D.CONTENT_TYPE_ANSWER}
+    stage_types = {D.CONTENT_TYPE_EXPAND, D.CONTENT_TYPE_LOOKUP_OBSERVATION,
+                   D.CONTENT_TYPE_JOINT_EXTRACT}
     assert len(stage_types) == 3
     # the SPEC §18.9 retrieval gate: ask artifacts must be invisible to chunking/FTS
     assert not stage_types & CHUNKABLE_CONTENT_TYPES
@@ -102,15 +93,15 @@ def test_record_writes_pkm_shaped_meta_and_lineage(tmp_path: Path) -> None:
              metadata={"served_model": ""})
 
     meta = json.loads(meta_file(tmp_path, key.cache_key).read_text())
-    assert meta["producer_name"] == "life_agent.ask.synthesize"
+    assert meta["producer_name"] == "life_agent.ask.lookup_extract"
     assert meta["status"] == "success"
     assert meta["input_hash"] == key.input_hash
-    assert meta["content_type"] == D.CONTENT_TYPE_ANSWER
+    assert meta["content_type"] == D.CONTENT_TYPE_LOOKUP_OBSERVATION
     assert meta["cache_key_schema_version"] == 3
     assert meta["size_bytes"] == len(b"the answer [1]")
     # provenance stays jq-inspectable: the pre-hash inputs are in the meta
     assert meta["producer_metadata"]["inputs"] == {
-        "profile": "d" * 64, "question": Q, "retrieval_set": "c" * 64}
+        "chunk": "c" * 64, "question": Q}
 
     lin = json.loads(lineage_file(tmp_path, key.cache_key).read_text())
     assert lin == {"format_version": 1, "inputs": lineage}
@@ -169,9 +160,9 @@ def test_reconcile_inserts_rows_and_drains_queue(migrated: Path) -> None:
             "SELECT producer_name, status, content_type, produced_at "
             "FROM artifacts WHERE cache_key = ?", [key.cache_key]).fetchone()
         assert row is not None
-        assert row[0] == "life_agent.ask.synthesize"
+        assert row[0] == "life_agent.ask.lookup_extract"
         assert row[1] == "success"
-        assert row[2] == D.CONTENT_TYPE_ANSWER
+        assert row[2] == D.CONTENT_TYPE_LOOKUP_OBSERVATION
         assert row[3].isoformat() == recorded_meta["produced_at"]  # produced_at preserved
         edges = conn.execute(
             "SELECT input_cache_key, role FROM artifact_lineage "
@@ -326,11 +317,11 @@ def test_reconcile_counts_malformed_files_and_keeps_them_queued(
 def test_reconcile_walk_reaches_sources_via_lineage(migrated: Path) -> None:
     """The provenance the north star demands: answer → retrieval set → cited cards,
     walkable in SQL once reconciled."""
-    rs_key = D.retrieve_key("q terms", "e" * 64, k=8)
+    rs_key = _expand_key("q terms")
     card = "9" * 64
     D.record(migrated, rs_key, b'{"hits": []}',
              lineage=[{"cache_key": card, "role": "retrieved"}])
-    ans_key = _synth_key(rs_hash=D.content_hash(b'{"hits": []}'))
+    ans_key = _synth_key(chunk=D.content_hash(b'{"hits": []}'))
     D.record(migrated, ans_key, b"answer",
              lineage=[{"cache_key": rs_key.cache_key, "role": "retrieval_set"},
                       {"cache_key": card, "role": "source"}])
@@ -345,31 +336,6 @@ def test_reconcile_walk_reaches_sources_via_lineage(migrated: Path) -> None:
             "SELECT input_cache_key FROM artifact_lineage WHERE artifact_cache_key = ?",
             [rs_key.cache_key]).fetchall()}
         assert hop2 == {card}
-
-
-# --- confirm key (value-targeted independent confirmation — §14 confirm_indep) ---------- #
-
-def _confirm_key(question: str = "what is the fee?", chunk: str = "c" * 64,
-                 value: str = "1,234,567") -> D.StageKey:
-    return D.lookup_confirm_key(
-        question, chunk, value, model="claude-haiku-4-5-20251001",
-        prompt_template="P", engine_version="e/1",
-        output_schema={"type": "object"})
-
-
-def test_lookup_confirm_key_sensitivity() -> None:
-    base = _confirm_key().cache_key
-    assert _confirm_key().cache_key == base                      # deterministic
-    assert _confirm_key(question="other?").cache_key != base
-    assert _confirm_key(chunk="d" * 64).cache_key != base
-    # two target values over ONE chunk must never share a cache cell
-    assert _confirm_key(value="7,654,321").cache_key != base
-    # and the confirm namespace is disjoint from the extract namespace over the
-    # same (question, chunk) — different producer + prompt identity
-    ek = D.lookup_extract_key("what is the fee?", "c" * 64,
-                              model="claude-haiku-4-5-20251001", prompt_template="P",
-                              engine_version="e/1", output_schema={"type": "object"})
-    assert ek.cache_key != base
 
 
 def test_pending_registerable_counts_queued_keys_whose_meta_exists(tmp_path: Path) -> None:

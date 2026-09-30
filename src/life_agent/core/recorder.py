@@ -1,7 +1,6 @@
 """The one recorder (module-collapse design §5.1, landed at M2 — r12).
 
-One ``/log_decision`` body, one place where a decision becomes two records (the §18.9
-answer node and the calibration ledger row), and the §6.5 unavailability event. *No
+One ``/log_decision`` body and the §6.5 unavailability event. *No
 accounting field is optional on the poster's side*: a firing that ran unpriced records
 ``cost_usd: 0.0`` with its instrument, never an absent key.
 
@@ -9,10 +8,8 @@ Three writers, one shape:
 
 - :func:`record_via_bridge` — the executor path (trace A): the bridge owns the write and
   derives the content-addressed ``decision_id`` the owner reacts against.
-- :func:`record_local` — the family leaves' tail (trace B): the §18.9 node then the ledger
-  row, with the ``decision_id = akey.cache_key`` rule preserved verbatim. The leaf events
-  keep their v2 defaults (``cost_usd: None`` = unmetered path) until the checkpoint that
-  declares their regime (M5) — the §5.1 never-absent normalisation binds the *posted* body.
+- :func:`record_miss` — the lookup grounded nothing, the loop returned before ``/decide``:
+  a local ``regime: miss`` row, so a verdict on it stays out of the utility fold.
 - :func:`record_unavailable` — §6.5: when no optimiser is reachable there is no ranking to
   be inside of; the record is an *unavailability event* (``regime: unavailable``, stated)
   with ``decision_id: ""`` so no verdict can ever bind — never a foldable abstain verdict.
@@ -27,7 +24,6 @@ from typing import Any
 
 from life_agent.core import config
 from life_agent.core import decisions as DEC
-from life_agent.core import derivations as D
 from life_agent.core import outcomes as O
 
 #: The live default the bridge's poster already applies to an untagged decision — one
@@ -73,15 +69,6 @@ def record_via_bridge(post: Callable[[str, dict[str, Any]], dict[str, Any] | Non
     resp = post(f"{bridge}/log_decision", payload)
     decision_id = (resp or {}).get("decision_id")
     return str(decision_id) if decision_id is not None else None
-
-
-def record_local(root: Path, akey: Any, content: bytes, *,
-                 lineage: list[dict[str, str]], decisions_path: Path,
-                 event: DEC.DecisionEvent) -> None:
-    """The family leaves' tail: the §18.9 answer node, then the ledger row. One call,
-    two writes — the one place a leaf decision becomes its two records (§5.1)."""
-    D.record(root, akey, content, lineage=lineage)
-    DEC.append(decisions_path, event)
 
 
 def record_miss(question: str, *, retrieval_keys: list[str],

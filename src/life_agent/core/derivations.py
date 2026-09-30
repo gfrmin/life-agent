@@ -49,15 +49,9 @@ ENGINE_VERSION = "life_agent.core.llm/1"
 # Stage producer versions — bump ONE deliberately to orphan that stage's cache when its
 # semantics change (e.g. the dedupe rule in retrieve, the rendering in synthesize).
 EXPAND_VERSION = "2"  # bumped: expander must emit native-script spellings of transliterated
-#                       Hebrew/loan terms (arnona->ארנונה) — English-only sandbagged Hebrew docs
-RETRIEVE_VERSION = "1"
-SYNTHESIZE_VERSION = "1"
 OWNER_MATCH_VERSION = "1"
 LOOKUP_ROUTE_VERSION = "1"
 LOOKUP_EXTRACT_VERSION = "1"
-LOOKUP_CONFIRM_VERSION = "1"
-LOOKUP_ANSWER_VERSION = "1"
-NARRATIVE_ANSWER_VERSION = "1"
 JOINT_EXTRACT_VERSION = "1"
 RERANK_VERSION = "1"
 TEMPORAL_INTENT_VERSION = "1"
@@ -79,14 +73,9 @@ JOINT_EXTRACT_OUTPUT_SCHEMA: dict[str, Any] = {
 # Distinct content types per stage. None of these may EVER enter pkm's
 # CHUNKABLE_CONTENT_TYPES — that is the retrieval gate of SPEC §18.9.
 CONTENT_TYPE_EXPAND = "application/x-ask-expand"
-CONTENT_TYPE_RETRIEVAL_SET = "application/x-ask-retrieval-set+json"
-CONTENT_TYPE_ANSWER = "application/x-ask-answer"
 CONTENT_TYPE_OWNER_MATCH = "application/x-ask-owner-match+json"
 CONTENT_TYPE_LOOKUP_ROUTE = "application/x-ask-lookup-route+json"
 CONTENT_TYPE_LOOKUP_OBSERVATION = "application/x-ask-lookup-observation+json"
-CONTENT_TYPE_LOOKUP_CONFIRM = "application/x-ask-lookup-confirm+json"
-CONTENT_TYPE_LOOKUP_ANSWER = "application/x-ask-lookup-answer+json"
-CONTENT_TYPE_NARRATIVE_ANSWER = "application/x-ask-narrative-answer+json"
 CONTENT_TYPE_JOINT_EXTRACT = "application/x-ask-joint-extract+json"
 CONTENT_TYPE_RERANK = "application/x-ask-rerank+json"
 CONTENT_TYPE_TEMPORAL_INTENT = "application/x-ask-temporal-intent+json"
@@ -149,45 +138,6 @@ def expand_key(question: str, *, model: str, prompt_template: str,
                     producer_name="life_agent.ask.expand",
                     producer_version=EXPAND_VERSION, producer_config={},
                     schema_version=3, inputs=inputs, content_type=CONTENT_TYPE_EXPAND)
-
-
-def retrieve_key(query: str, corpus_digest: str, *, k: int) -> StageKey:
-    """Key for the retrieval stage: deterministic given (query, corpus state, k), so a
-    schema-1 (extractor-style) key — no model identity."""
-    inputs = {"corpus": corpus_digest, "query": query}
-    input_hash = _sha256(canonical_json(inputs))
-    config = {"k": k}
-    cache_key = compute_cache_key(
-        input_hash, "life_agent.ask.retrieve", RETRIEVE_VERSION, config,
-        schema_version=1,
-    )
-    return StageKey(cache_key=cache_key, input_hash=input_hash,
-                    producer_name="life_agent.ask.retrieve",
-                    producer_version=RETRIEVE_VERSION, producer_config=config,
-                    schema_version=1, inputs=inputs,
-                    content_type=CONTENT_TYPE_RETRIEVAL_SET)
-
-
-def synthesize_key(question: str, retrieval_set_hash: str, profile_hash: str, *,
-                   model: str, prompt_template: str,
-                   temperature: float, max_tokens: int) -> StageKey:
-    """Key for the synthesis stage. Keyed on the retrieval set's CONTENT hash (early
-    cutoff) and the owner-profile hash (a ``/i`` teach invalidates exactly this stage)."""
-    inputs = {"profile": profile_hash, "question": question,
-              "retrieval_set": retrieval_set_hash}
-    input_hash = _sha256(canonical_json(inputs))
-    cache_key = compute_cache_key(
-        input_hash, "life_agent.ask.synthesize", SYNTHESIZE_VERSION, {},
-        schema_version=3,
-        model_identity=_llm_identity(model, temperature, max_tokens),
-        engine_version=ENGINE_VERSION,
-        prompt_template_hash=_sha256(prompt_template),
-        output_schema=TEXT_OUTPUT_SCHEMA,
-    )
-    return StageKey(cache_key=cache_key, input_hash=input_hash,
-                    producer_name="life_agent.ask.synthesize",
-                    producer_version=SYNTHESIZE_VERSION, producer_config={},
-                    schema_version=3, inputs=inputs, content_type=CONTENT_TYPE_ANSWER)
 
 
 def instrument_identity(model: str) -> dict[str, Any]:
@@ -294,32 +244,6 @@ def lookup_extract_key(question: str, chunk_sha: str, *, model: str,
                     content_type=CONTENT_TYPE_LOOKUP_OBSERVATION)
 
 
-def lookup_confirm_key(question: str, chunk_sha: str, value: str, *, model: str,
-                       prompt_template: str, engine_version: str,
-                       output_schema: dict[str, Any]) -> StageKey:
-    """Key for one value-targeted independent confirmation (§14 confirm_indep): "does
-    this excerpt state VALUE as the current answer to QUESTION?" — keyed on (question,
-    chunk content, the target value) so two targets over one chunk never share a cell.
-    Callers pass the value's NORMAL form (``lookup._norm_value``) so format variants of
-    one leader replay the same record. Disjoint from the extract namespace by producer
-    name and prompt identity."""
-    inputs = {"chunk": chunk_sha, "question": question, "value": value}
-    input_hash = _sha256(canonical_json(inputs))
-    cache_key = compute_cache_key(
-        input_hash, "life_agent.ask.lookup_confirm", LOOKUP_CONFIRM_VERSION, {},
-        schema_version=3,
-        model_identity=instrument_identity(model),
-        engine_version=engine_version,
-        prompt_template_hash=_sha256(prompt_template),
-        output_schema=output_schema,
-    )
-    return StageKey(cache_key=cache_key, input_hash=input_hash,
-                    producer_name="life_agent.ask.lookup_confirm",
-                    producer_version=LOOKUP_CONFIRM_VERSION, producer_config={},
-                    schema_version=3, inputs=inputs,
-                    content_type=CONTENT_TYPE_LOOKUP_CONFIRM)
-
-
 def joint_extract_key(question: str, chunk_set_sha: str, *, model: str,
                       prompt_template: str, engine_version: str,
                       output_schema: dict[str, Any]) -> StageKey:
@@ -399,50 +323,6 @@ def deliberate_key(question: str, corpus_digest: str, *, model: str,
                     producer_config={"max_turns": max_turns},
                     schema_version=3, inputs=inputs,
                     content_type=CONTENT_TYPE_DELIBERATE_ANSWER)
-
-
-def lookup_answer_key(question: str, observations_hash: str,
-                      utility_fold_version: str,
-                      params: dict[str, Any]) -> StageKey:
-    """Key for the lookup family's answer artifact (the claim set + posterior +
-    decision): deterministic given the observations, the utility fold, and the stated
-    channel parameters (schema-1 — no model identity; the models live upstream in the
-    observation keys this artifact's lineage names)."""
-    inputs = {"observations": observations_hash, "question": question,
-              "utility_fold": utility_fold_version}
-    input_hash = _sha256(canonical_json(inputs))
-    cache_key = compute_cache_key(
-        input_hash, "life_agent.ask.lookup_answer", LOOKUP_ANSWER_VERSION, params,
-        schema_version=1,
-    )
-    return StageKey(cache_key=cache_key, input_hash=input_hash,
-                    producer_name="life_agent.ask.lookup_answer",
-                    producer_version=LOOKUP_ANSWER_VERSION, producer_config=params,
-                    schema_version=1, inputs=inputs,
-                    content_type=CONTENT_TYPE_LOOKUP_ANSWER)
-
-
-def narrative_answer_key(question: str, claims_hash: str,
-                         utility_fold_version: str,
-                         params: dict[str, Any]) -> StageKey:
-    """Key for the narrative family's answer artifact (foundations §7: the scored
-    claim set + per-claim inclusion decisions + the coverage tail): deterministic
-    given the parsed claims, the utility fold, and the stated scorer parameters
-    (cell posteriors, coverage posterior — schema-1, no model identity; the
-    generator lives upstream in the synthesize artifact this lineage names)."""
-    inputs = {"claims": claims_hash, "question": question,
-              "utility_fold": utility_fold_version}
-    input_hash = _sha256(canonical_json(inputs))
-    cache_key = compute_cache_key(
-        input_hash, "life_agent.ask.narrative_answer", NARRATIVE_ANSWER_VERSION,
-        params, schema_version=1,
-    )
-    return StageKey(cache_key=cache_key, input_hash=input_hash,
-                    producer_name="life_agent.ask.narrative_answer",
-                    producer_version=NARRATIVE_ANSWER_VERSION,
-                    producer_config=params,
-                    schema_version=1, inputs=inputs,
-                    content_type=CONTENT_TYPE_NARRATIVE_ANSWER)
 
 
 # --- file-first cache I/O --------------------------------------------------- #

@@ -12,7 +12,6 @@ import json
 from pathlib import Path
 
 from life_agent.core import decisions as DEC
-from life_agent.core import derivations as D
 from life_agent.core import recorder as REC
 
 # --- the one body (no accounting field is optional on the poster's side) ------------------
@@ -70,29 +69,6 @@ def test_record_via_bridge_posts_exactly_once_and_returns_the_id() -> None:
 
 
 # --- the leaves' tail: two writes, one place -----------------------------------------------
-
-def _leaf_event(decision_id: str) -> DEC.DecisionEvent:
-    return DEC.DecisionEvent(
-        tx_time="2026-08-25T00:00:00Z", run_id="ask", question_id="a" * 16,
-        family="lookup", action_set=DEC.LOOKUP_ACTION_ORDER,
-        posterior_summary={"candidates": ["A"], "credences": [1.0], "p_none": 0.0,
-                           "n_obs": 1, "n_indeterminate": 0, "n_competing": 0},
-        utility_fold_version="ufv", chosen_action="report", predicted_eu=0.5,
-        decision_id=decision_id)
-
-
-def test_record_local_is_one_call_two_writes(tmp_path: Path) -> None:
-    """D.record (the §18.9 node) then DEC.append (the ledger row) — the decision_id =
-    akey.cache_key rule preserved verbatim (the event carries the key the node landed at)."""
-    root, decisions = tmp_path / "root", tmp_path / "decisions.jsonl"
-    akey = D.lookup_answer_key("q", "obshash", "ufv", {"p": 1})
-    content = json.dumps({"format_version": 1}).encode()
-    REC.record_local(root, akey, content,
-                     lineage=[{"cache_key": "obs1", "role": "observation"}],
-                     decisions_path=decisions, event=_leaf_event(akey.cache_key))
-    events = DEC.read(decisions)
-    assert [e.decision_id for e in events] == [akey.cache_key]
-    assert D.meta_file(root, akey.cache_key).exists()
 
 
 # --- the §6.5 unavailability record --------------------------------------------------------
