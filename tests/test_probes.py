@@ -22,10 +22,8 @@ import pytest
 from life_agent.core.lookup import subject_factor, time_factor
 from life_agent.core.probes import (
     _date_from_email_text,
-    _fresh_hits,
     _recency_covariate,
     _subject_covariate,
-    probe_authority,
     probe_recency,
     probe_subject,
 )
@@ -147,26 +145,6 @@ def test_probe_recency_projects_current_date(migrated_root: Path) -> None:
         cov = probe_recency(conn, migrated_root, [a, b, c])
     assert cov == {a: "2026-06-01", b: None, c: None}  # currency picked the newer
 
-
-# --- authority probe: declared source-authority class per origin (pure) ---------------
-
-
-def test_authority_is_the_declared_class_per_origin() -> None:
-    hits = [
-        {"artifact_cache_key": "k_pdf", "origin": "/tmp/docs/bill.pdf"},
-        {"artifact_cache_key": "k_eml", "origin": "/tmp/x/signature.eml"},
-        {"artifact_cache_key": "k_mail", "origin": "/tmp/mail/cur/9.txt"},
-        {"artifact_cache_key": "k_md", "origin": "/tmp/notes/jot.md"},
-        {"artifact_cache_key": "k_other", "origin": "/tmp/scans/photo.png"},
-    ]
-    auth = probe_authority(hits)
-    assert auth["k_pdf"] == ("document", 0.95)
-    assert auth["k_eml"] == ("email", 0.90)
-    assert auth["k_mail"] == ("email", 0.90)   # a maildir path is email even as .txt
-    assert auth["k_md"] == ("note", 0.80)
-    assert auth["k_other"] == ("other", 0.85)  # the stated default
-
-
 # --- subject probe: whose-document covariate (pure core + wiring) ---------------------
 
 
@@ -245,68 +223,3 @@ def test_probe_subject_projects_classifies_and_caches(migrated_root: Path) -> No
         cov = probe_subject(conn, migrated_root, [a, b, c],
                             profile="Name: J. Example", client=client)
     assert cov == {a: "owner", b: "generic", c: "underived"}
-
-
-# --- corroborate probe: independent-document filter (pure core) -----------------------
-
-
-def test_fresh_hits_drops_documents_already_held() -> None:
-    """Corroboration counts only INDEPENDENT new documents — a chunk of a doc we already
-    have adds no independent evidence, so it is dropped."""
-    hits = [
-        {"artifact_cache_key": "held", "chunk_text": "x", "score": 9.0, "origin": "a"},
-        {"artifact_cache_key": "new", "chunk_text": "y", "score": 8.0, "origin": "b"},
-    ]
-    fresh = _fresh_hits(hits, exclude_keys={"held"})
-    assert [h["artifact_cache_key"] for h in fresh] == ["new"]
-
-
-# --- §6.9: probe_corroborate's two unordered layers (registered at M0.5, fixed at M1) ------
-# The register's premise was that a fix here would land with no oracle, because no fixture
-# exercises the path. That premise does not hold and cannot: the function runs INSIDE the
-# bridge, and the fixture set tapes the bridge at the `http` seam — replay serves the recorded
-# answer and never executes it (collapse/taps.py's docstring: replay "needs no daemon, no
-# engine, no API key and no corpus"). A trace would have recorded its ANSWERS.
-#
-# This is the oracle instead, and it is stronger: the function's output must not depend on the
-# order `pkm.retrieval.search` happened to return tied hits in. That order is genuinely partial
-# upstream — `src/pkm/retrieval.py` ends `ORDER BY scored.score DESC` with no tie-breaker, and
-# R2's declared key landed in `life_agent/core/retrieval.py`, a different module.
-
-def _sr(chunk: str, score: float, key: str):
-    from pkm.retrieval import SearchResult
-    return SearchResult(chunk_text=chunk, score=score, source_path=f"/corpus/{key}.md",
-                        source_origin=None, artifact_cache_key=key)
-
-
-def _corroborate_under(order, monkeypatch) -> list[dict[str, Any]]:
-    import pkm.retrieval as PR
-    from life_agent.core.probes import probe_corroborate
-    monkeypatch.setattr(PR, "search", lambda conn, q, k=20: list(order))
-    return probe_corroborate(duckdb.connect(), "who signs the lease?", "ACME", k=3)
-
-
-def test_corroborate_is_invariant_to_a_tied_dedup_order(monkeypatch) -> None:
-    # Two hits carry the SAME chunk text at the SAME score from different documents. The dedup
-    # keeps one; with a strict `>` on first-arrived, WHICH one is whatever order search emitted.
-    a, b = _sr("the lessor is ACME", 0.5, "k1"), _sr("the lessor is ACME", 0.5, "k2")
-    forward = _corroborate_under([a, b], monkeypatch)
-    reversed_ = _corroborate_under([b, a], monkeypatch)
-    assert forward == reversed_
-
-
-def test_corroborate_is_invariant_to_a_tied_sort_order(monkeypatch) -> None:
-    # Distinct chunks at IDENTICAL scores: the sort has no tie-breaker, so a stable sort simply
-    # preserves whatever order arrived. Permuting the input must not permute the output.
-    a, b, c = (_sr("alpha", 0.5, "k1"), _sr("bravo", 0.5, "k2"), _sr("charlie", 0.5, "k3"))
-    forward = _corroborate_under([a, b, c], monkeypatch)
-    shuffled = _corroborate_under([c, a, b], monkeypatch)
-    assert forward == shuffled
-
-
-def test_corroborate_still_ranks_by_score_first(monkeypatch) -> None:
-    # The kill that stops the tie-breaker becoming the ranking: score still dominates, and the
-    # quantum only decides hits the raw float cannot separate (R2's shape).
-    lo, hi = _sr("weak", 0.10, "k9"), _sr("strong", 0.90, "k1")
-    out = _corroborate_under([lo, hi], monkeypatch)
-    assert [h["chunk_text"] for h in out] == ["strong", "weak"]

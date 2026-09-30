@@ -34,7 +34,6 @@ import re
 import signal
 import sys
 from collections.abc import Callable
-from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import date, datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -254,11 +253,6 @@ def _probe_subject(deps: BridgeDeps, p: Payload) -> Payload:
     return {"subject_state": state, "cost_usd": sum(meter)}
 
 
-def _probe_authority(_deps: BridgeDeps, p: Payload) -> Payload:
-    auth = P.probe_authority(_req_list(p, "hits"))
-    return {"authority": {k: [klass, value] for k, (klass, value) in auth.items()}}
-
-
 def _competing_value_shape(value: str, candidate: str) -> bool:
     """True when the re-read text carries a numeric span OUTSIDE the contained candidate
     whose shape matches one of the candidate's own — the signature of a correction-shaped
@@ -329,170 +323,82 @@ def _corroborate_time_factor(jr: JE.JointResult, hits: list[Payload], p: Payload
 
 def _probe_corroborate(deps: BridgeDeps, p: Payload) -> Payload:
     question = _req_str(p, "question")
-    if p.get("reextract"):
-        # The owner_scoped attribution guard's enactment (Slice 2b): a whole-document, SUBJECT-AWARE
-        # re-read that REPLACES the local channel (nested dependence — the same documents). It
-        # returns ONE abstract observation mapping the re-read value to an existing candidate index
-        # — or NO observation when the re-read withholds / names a value outside the set (the
-        # partner's-id case: the re-read says the leader is the OWNER's value, not the partner's).
-        # The body re-decides on
-        # this alone; an empty observation reverts the posterior to NONE-dominant ⇒ the report is
-        # withheld (disagree ⇒ abstain, with no NONE-report atom needed). The string→abstract map
-        # stays bridge-side (the brain stays string-blind).
-        hits = _req_list(p, "hits")
-        candidates = [str(c) for c in (p.get("candidates") or [])]
-        model = str(p.get("model") or _JOINT_MODEL)
-        # the scheduled tier's reliability (Slice 2): the re-decide conditions the re-read
-        # obs at the tier's rho, so a weaker model's read is trusted less. Defaults to the
-        # opus-tier _JOINT_RHO.
-        tier_rho = float(p.get("rho") or _JOINT_RHO)
-        jr = JE.extract_joint(deps.root, question, hits, model=model, k=len(hits))
-        obs: list[Payload] = []
-        new_candidate: str | None = None
-        # Why the empty channel came back, so the body can tell absence of evidence from
-        # evidence of absence (§14, 2026-08-18). `null` = the joint named NO value — a
-        # lossy whole-document read over 400-char snippets declining to answer, which
-        # says nothing about the per-chunk observations already grounded. `disagree` =
-        # it named a value that would not join the lattice (outside the set, ambiguous
-        # containment, or correction-shaped) — that IS evidence against the leader and
-        # keeps run 7's disagree⇒abstain contract. `confirm` = it joined.
-        read = "null"
-        if jr.value is not None:
-            read = "disagree"
-            # THE value-join (D-11, one declaration — see _lattice_join for the full
-            # confirm/correct/mint contract; the re-extract GROW actuator rides its
-            # allow_new arm: an outside-set value ENLARGES K, indexed at
-            # len(candidates), and the body appends it and re-decides).
-            idx, new_candidate = _lattice_join(jr.value, candidates,
-                                               bool(p.get("allow_new")))
-            if idx is not None:
-                # The keystone: the re-read obs flows through the SAME volatility projector
-                # /extract uses — no transform may hand-set time_factor=1.0 and report a stale
-                # value as current (the q-006 confident-stale bug that gated §2-A off). Recency is
-                # attribution-independent (a document property), so the re-read value is as current
-                # as its freshest SOURCE attestation. Ditto competition (§4.2/§2 lineage): a
-                # re-read of the same competed row inherits the candidate's base factor —
-                # the body posts it; a minted candidate (idx == len) reads 1.0.
-                obs = [_joined_observation(
-                    idx, candidates, new_candidate,
-                    time_factor=_corroborate_time_factor(jr, hits, p),
-                    competition_factor=_candidate_competition(p, idx))]
-                read = "confirm"
-        # the read's own stated confidence rides beside the tier rho: the k=0 strong rescue
-        # conditions at min(tier, confidence), so the wire never discards the instrument's
-        # uncertainty (a lone unsupported read must not enter at the tier's flat prior).
-        # meter the re-read (PR #67 review): tier firings are real billed calls — the
-        # gate's spend term must price them, or the typed arm's tier spend rides at $0
-        # while the replay arm is fully priced. A §18.9 warm replay has zero tokens ⇒
-        # $0 exactly; served_model falls back to the requested pin for pricing.
-        priced = PRICING.cost_usd(LLMResult(
-            text="", in_tokens=jr.in_tokens, out_tokens=jr.out_tokens, seconds=0.0,
-            served_model=jr.served_model or model))
-        # r09 D2 — the §5-deduped JOIN: a caller that hands its standing channel gets the
-        # POOLED set back (a disagree or null read pools nothing and the channel survives —
-        # run 7's disagree⇒abstain contract is retired by the ruling's fix); a caller with
-        # no channel keeps the pre-r09 contract verbatim.
-        channel = list(p.get("observations") or [])
-        obs = _cap_synthesised_covariates(obs, channel)   # r09c A2, before the join
-        if channel:
-            joined_cands = (candidates if new_candidate is None
-                            else [*candidates, new_candidate])
-            obs = join_wire_observations(channel, obs, joined_cands)
-        out: Payload = {"observations": obs, "gather_rho": tier_rho, "value": jr.value,
-                        "confidence": jr.confidence, "cache_key": jr.cache_key,
-                        "read": read,
-                        "cost_usd": 0.0 if priced is None else priced,
-                        "served_model": jr.served_model, "tokens": jr.in_tokens + jr.out_tokens}
-        if new_candidate is not None:
-            out["new_candidate"] = new_candidate
-        return out
-    hits = P.probe_corroborate(
-        deps.conn, question, _req_str(p, "leader_value"),
-        k=int(p.get("k", _DEFAULT_K)), exclude_keys=list(p.get("exclude_keys") or ()))
-    return {"hits": hits}
-
-
-# The confirm probe's per-question chunk budget (spend bound, first-in-hit-order).
-# Provisional pending the off-gate corroborate audit's frozen m (§14 confirm_indep).
-_CONFIRM_M = 2
-
-
-def _independent_confirms(base: list[LK.Observation],
-                          confirms: list[LK.Observation]) -> list[LK.Observation]:
-    """Keep only confirms that are independent witnesses of the base channel (§5
-    dedup-as-inference at the ONE seam): a confirm whose contextful quote duplicates a
-    base observation's quote is a forwarded/re-filed copy — correlated, dropped — and
-    the check is direction-blind (kept iff ``dedup_correlated`` over base+confirm
-    leaves EVERY observation standing; a confirm that would displace a base witness is
-    equally a copy). The base channel itself is never modified here (one-sided probe).
-    Mutual duplicates among the confirms then collapse the ordinary way."""
-    kept = []
-    for c in confirms:
-        surviving = {id(o) for o in LK.dedup_correlated([*base, c])}
-        if id(c) in surviving and all(id(b) in surviving for b in base):
-            kept.append(c)
-    return LK.dedup_correlated(kept)
-
-
-def _probe_confirm(deps: BridgeDeps, p: Payload) -> Payload:
-    """Value-targeted INDEPENDENT-document confirmation (§14 confirm_indep): unlike the
-    reextract corroborate (a same-hits whole-doc re-read that REPLACES the channel),
-    this asks whether a chunk from an artifact NOT already supporting the target states
-    the target as the current answer — each grounded yes is one more observation the
-    body APPENDS (a genuinely new ancestry group, or the rival artifact's existing
-    one). Independence is computed here, where hits and the raw observations coexist:
-    the base channel is a warm content-addressed ``observe_hits`` replay ($0 when the
-    executor's /extract just ran), which also reproduces the exact wire group order
-    ``to_abstract_observations`` gave the executor. The confirm observation's
-    competition factor is its OWN quote window's (§2: competition is a property of the
-    corpus row) — deliberately NOT ``_candidate_competition`` inheritance, which is for
-    same-ancestry re-reads."""
-    question = _req_str(p, "question")
-    value = _req_str(p, "value").strip()
+    # The owner_scoped attribution guard's enactment (Slice 2b): a whole-document, SUBJECT-AWARE
+    # re-read that REPLACES the local channel (nested dependence — the same documents). It
+    # returns ONE abstract observation mapping the re-read value to an existing candidate index
+    # — or NO observation when the re-read withholds / names a value outside the set (the
+    # partner's-id case: the re-read says the leader is the OWNER's value, not the partner's).
+    # The body re-decides on
+    # this alone; an empty observation reverts the posterior to NONE-dominant ⇒ the report is
+    # withheld (disagree ⇒ abstain, with no NONE-report atom needed). The string→abstract map
+    # stays bridge-side (the brain stays string-blind).
     hits = _req_list(p, "hits")
     candidates = [str(c) for c in (p.get("candidates") or [])]
-    vkey = LK._candidate_key(value)
-    reports = next((j for j, c in enumerate(candidates)
-                    if LK._candidate_key(c) == vkey), None)
-    empty: Payload = {"observations": [], "value": value, "cost_usd": 0.0,
-                      "n_prefilter": 0, "n_grounded": 0, "n_indeterminate": 0,
-                      "n_correlated_dropped": 0, "n_base_groups": 0}
-    if reports is None:
-        # the target must already be on the lattice (the daemon steered at it) — the
-        # confirm probe never mints candidates and never spends on an unknown target
-        return empty
-    cov = _covariates(p.get("covariates") or {})
-    hl = VOL.half_life(p.get("construct"))
-    time_indexed = bool(p.get("time_indexed", False))
-    today = _opt_date(p.get("today"))
-    meter: list[float] = []
-    base_obs, _ = LK.observe_hits(
-        deps.root, question, hits, client=deps.client, covariates=cov,
-        time_indexed=time_indexed, today=today, half_life_years=hl, meter=meter)
-    supporters = {o.artifact_cache_key for o in base_obs
-                  if LK._candidate_key(o.value_raw) == vkey}
-    n_prefilter = len(LK.confirm_prefilter(value, hits, supporters))
-    confirms, indeterminate = LK.confirm_hits(
-        deps.root, question, value, hits, exclude_artifacts=supporters,
-        client=deps.client, covariates=cov, time_indexed=time_indexed, today=today,
-        half_life_years=hl, m=int(p.get("m", _CONFIRM_M)), meter=meter)
-    kept = _independent_confirms(base_obs, confirms)
-    group_order: dict[str, int] = {}
-    for o in base_obs:
-        group_order.setdefault(o.artifact_cache_key, len(group_order))
-    n_base_groups = len(group_order)
+    model = str(p.get("model") or _JOINT_MODEL)
+    # the scheduled tier's reliability (Slice 2): the re-decide conditions the re-read
+    # obs at the tier's rho, so a weaker model's read is trusted less. Defaults to the
+    # opus-tier _JOINT_RHO.
+    tier_rho = float(p.get("rho") or _JOINT_RHO)
+    jr = JE.extract_joint(deps.root, question, hits, model=model, k=len(hits))
     obs: list[Payload] = []
-    for o in kept:
-        g = group_order.setdefault(o.artifact_cache_key, len(group_order))
-        obs.append({"reports": reports, "group": g, "authority": o.authority,
-                    "subject_factor": o.subject_factor, "time_factor": o.time_factor,
-                    "competition_factor": o.competition_factor})
-    return {"observations": obs, "value": value, "cost_usd": sum(meter),
-            "cache_keys": [o.obs_cache_key for o in kept],
-            "n_prefilter": n_prefilter, "n_grounded": len(confirms),
-            "n_indeterminate": indeterminate,
-            "n_correlated_dropped": len(confirms) - len(kept),
-            "n_base_groups": n_base_groups}
+    new_candidate: str | None = None
+    # Why the empty channel came back, so the body can tell absence of evidence from
+    # evidence of absence (§14, 2026-08-18). `null` = the joint named NO value — a
+    # lossy whole-document read over 400-char snippets declining to answer, which
+    # says nothing about the per-chunk observations already grounded. `disagree` =
+    # it named a value that would not join the lattice (outside the set, ambiguous
+    # containment, or correction-shaped) — that IS evidence against the leader and
+    # keeps run 7's disagree⇒abstain contract. `confirm` = it joined.
+    read = "null"
+    if jr.value is not None:
+        read = "disagree"
+        # THE value-join (D-11, one declaration — see _lattice_join for the full
+        # confirm/correct/mint contract; the re-extract GROW actuator rides its
+        # allow_new arm: an outside-set value ENLARGES K, indexed at
+        # len(candidates), and the body appends it and re-decides).
+        idx, new_candidate = _lattice_join(jr.value, candidates,
+                                           bool(p.get("allow_new")))
+        if idx is not None:
+            # The keystone: the re-read obs flows through the SAME volatility projector
+            # /extract uses — no transform may hand-set time_factor=1.0 and report a stale
+            # value as current (the q-006 confident-stale bug that gated §2-A off). Recency is
+            # attribution-independent (a document property), so the re-read value is as current
+            # as its freshest SOURCE attestation. Ditto competition (§4.2/§2 lineage): a
+            # re-read of the same competed row inherits the candidate's base factor —
+            # the body posts it; a minted candidate (idx == len) reads 1.0.
+            obs = [_joined_observation(
+                idx, candidates, new_candidate,
+                time_factor=_corroborate_time_factor(jr, hits, p),
+                competition_factor=_candidate_competition(p, idx))]
+            read = "confirm"
+    # the read's own stated confidence rides beside the tier rho: the k=0 strong rescue
+    # conditions at min(tier, confidence), so the wire never discards the instrument's
+    # uncertainty (a lone unsupported read must not enter at the tier's flat prior).
+    # meter the re-read (PR #67 review): tier firings are real billed calls — the
+    # gate's spend term must price them, or the typed arm's tier spend rides at $0
+    # while the replay arm is fully priced. A §18.9 warm replay has zero tokens ⇒
+    # $0 exactly; served_model falls back to the requested pin for pricing.
+    priced = PRICING.cost_usd(LLMResult(
+        text="", in_tokens=jr.in_tokens, out_tokens=jr.out_tokens, seconds=0.0,
+        served_model=jr.served_model or model))
+    # r09 D2 — the §5-deduped JOIN: a caller that hands its standing channel gets the
+    # POOLED set back (a disagree or null read pools nothing and the channel survives —
+    # run 7's disagree⇒abstain contract is retired by the ruling's fix); a caller with
+    # no channel keeps the pre-r09 contract verbatim.
+    channel = list(p.get("observations") or [])
+    obs = _cap_synthesised_covariates(obs, channel)   # r09c A2, before the join
+    if channel:
+        joined_cands = (candidates if new_candidate is None
+                        else [*candidates, new_candidate])
+        obs = join_wire_observations(channel, obs, joined_cands)
+    out: Payload = {"observations": obs, "gather_rho": tier_rho, "value": jr.value,
+                    "confidence": jr.confidence, "cache_key": jr.cache_key,
+                    "read": read,
+                    "cost_usd": 0.0 if priced is None else priced,
+                    "served_model": jr.served_model, "tokens": jr.in_tokens + jr.out_tokens}
+    if new_candidate is not None:
+        out["new_candidate"] = new_candidate
+    return out
 
 
 def _deliberate_cfg() -> DL.DeliberateConfig:
@@ -501,97 +407,14 @@ def _deliberate_cfg() -> DL.DeliberateConfig:
     return DL.config_from_env()
 
 
-# --- r37: the value-join tap ------------------------------------------------------------
-#
-# r36 killed r34's lever on K3 because the census that enumerated its firing surface read
-# RECORDED wire, so the surface was a lower bound rather than an enumeration. The tap makes
-# the LIVE surface readable. It is OFF unless `LIFE_AGENT_JOIN_TAP` is set, and — the whole
-# safety argument, pinned by tests/test_join_tap.py — **the decision is always the deployed
-# predicate's, flag on or flag off**. The tap only computes what the DECLARED identity would
-# have returned and writes the pair aside.
-
-#: The one flag. Absence is the off state; there is no config file and no default-on path.
-_JOIN_TAP_ENV = "LIFE_AGENT_JOIN_TAP"
-
-#: (url, question) for the request in flight, set once by :func:`dispatch`. The join itself
-#: is several frames below the handler and has no question; a per-handler wiring would be a
-#: second declaration of the same context, so the dispatcher is its one home. The row keys on
-#: ``DEC.question_id`` — the ONE derivation of a question's identity — so the live surface and
-#: the recorded one align without a second hash. (The tap first grew its own sha256; the
-#: drift gate in tests/test_decisions.py caught it, which is what that gate is for.)
-_TAP_CONTEXT: ContextVar[tuple[str, str]] = ContextVar("_TAP_CONTEXT", default=("", ""))
-
-
-def _tap_context(path: str, payload: Payload) -> None:
-    """Publish the in-flight request to the tap. Cheap and unconditional: the flag is read
-    at the write, so arming the tap never depends on when this ran."""
-    _TAP_CONTEXT.set((path, str(payload.get("question") or "")))
-
-
-def _join_tap(value: str, candidates: list[str], allow_new: bool,
-              deployed: tuple[int | None, str | None]) -> None:
-    """Record one value-join call: the deployed verdict beside the counterfactual the
-    RETIRED `_norm_value` identity would have given (r38 flipped which side is deployed;
-    the disagreement measured is the same one). Never raises — a diagnostic that can take the
-    decide path down is not a diagnostic — and never decides.
-
-    The counterfactual re-runs :func:`_lattice_join` under the other key rather than
-    re-implementing its rule: `M-7` is the standing lesson at five instances, and its
-    signature is exactly an instrument that prices a constant it re-spelled itself.
-
-    The stream is unfoldable by construction (`M-14`): no ``decision_id``, no credence, no
-    writer into the calibration path. Non-firings are recorded too — a log of firings alone
-    has no denominator, and `G-3` requires an instrument to name the universe it checked."""
-    if not os.environ.get(_JOIN_TAP_ENV):
-        return
-    try:
-        c_idx, c_minted = _lattice_join(value, candidates, allow_new,
-                                        key=LK._norm_value)
-        url, question = _TAP_CONTEXT.get()
-        row = {"question_id": DEC.question_id(question), "url": url,
-               "fires": (c_idx, c_minted) != deployed,
-               "allow_new": allow_new, "n_candidates": len(candidates),
-               "value": value, "candidates": candidates,
-               "deployed": {"idx": deployed[0], "minted": deployed[1]},
-               "counterfactual": {"idx": c_idx, "minted": c_minted}}
-        log = config.JOIN_TAP_LOG
-        log.parent.mkdir(parents=True, exist_ok=True)
-        with log.open("a", encoding="utf-8") as fh:
-            fh.write(dumps(row) + "\n")
-    except Exception:
-        return
-
-
-def _lattice_join(value: str, candidates: list[str], allow_new: bool,
-                  *, key: Callable[[str], str] = LK._candidate_key
-                  ) -> tuple[int | None, str | None]:
+def _lattice_join(value: str, candidates: list[str],
+                  allow_new: bool) -> tuple[int | None, str | None]:
     """[§3.3 · D-11/BR-2] (with L-4): THE value-join — the observation-equivalence rule
     mapping an instrument's bare value onto the candidate lattice, one declaration for
     both edges (corroborate and deliberate bind it). Returns ``(idx, new_candidate)``.
 
-    Exact match on the identity ``key`` first. **The deployed identity is the DEFAULT
-    argument** — since r38, ``LK._candidate_key``, the §4.2 declared key — and every call on
-    the decision path takes it; ``key`` is parameterised only so the tap can ask what the
-    RETIRED ``_norm_value`` identity would have returned, by re-running THIS rule instead of
-    writing a second copy of it (`M-7`). A non-default ``key`` never reaches the argmax — it
-    is the counterfactual arm, and the tap call below is gated on the default so the two
-    cannot recurse.
-
-    **The arc, because the shape of it constrains anyone who touches this line.** This site
-    is M6's ONE declaration of the value-join, and until r38 it tested identity with
-    ``_norm_value`` while `candidates_from`, `render`, `era_split`, the S2 grow join and the
-    confirm probe all used ``_candidate_key`` — two declarations of one relation, numbered
-    under different clauses, which is how it survived M6. r34 bound the declared key and r36
-    REVERTED it, not because the merge was wrong (run 21 converted q2-027 from a split
-    0.346+0.146 lattice to a correct report at 0.863) but on a K3 attribution kill; r37 then
-    showed K3's baseline, not its surface, was the defect (`M-18`), and measured the lever's
-    whole effect as ONE correct row — **below the wobble floor, so this ships as a defect
-    repair and never on its row count** (`GD-8`). ``_candidate_key`` falls back to
-    ``_norm_value``, so the binding is a monotone COARSENING: it merges more, never splits
-    more, and it inherits rather than widens the confident-wrong boundary (values with
-    different significant digits never merge). `_joined_observation` keeps ``_norm_value``
-    deliberately — that is the §5 dedup key, a different relation, and a derivation-cache
-    key component. Else unique token-boundary containment — the join
+    Exact match on the declared candidate key (``LK._candidate_key``) first.
+    Else unique token-boundary containment — the join
     must not read a CONFIRMING sentence as a disagreement (the q-011 pooling loss),
     but nor may it read a CORRECTING sentence as a confirmation: containment alone
     cannot tell confirm from correct-while-mentioning, so a competing same-shaped
@@ -602,25 +425,19 @@ def _lattice_join(value: str, candidates: list[str], allow_new: bool,
     contained``: a read that MENTIONS a known candidate (ambiguous or
     correction-shaped) must not be minted wholesale, the sentence is not a value.
     Else no join."""
-    vk = key(value)
-    idx = next((i for i, c in enumerate(candidates) if key(c) == vk), None)
-    out: tuple[int | None, str | None]
+    vk = LK._candidate_key(value)
+    idx = next((i for i, c in enumerate(candidates) if LK._candidate_key(c) == vk), None)
     if idx is not None:
-        out = idx, None
-    else:
-        contained = [i for i, c in enumerate(candidates)
-                     if MATCH.answer_matches(str(c), [], value)]
-        if (len(contained) == 1
-                and not _competing_value_shape(value, candidates[contained[0]])
-                and not _superset_extension(value, candidates[contained[0]])):
-            out = contained[0], None
-        elif not contained and allow_new:
-            out = len(candidates), value
-        else:
-            out = None, None
-    if key is LK._candidate_key:   # the deployed call; the tap's own re-run must not recurse
-        _join_tap(value, candidates, allow_new, out)
-    return out
+        return idx, None
+    contained = [i for i, c in enumerate(candidates)
+                 if MATCH.answer_matches(str(c), [], value)]
+    if (len(contained) == 1
+            and not _competing_value_shape(value, candidates[contained[0]])
+            and not _superset_extension(value, candidates[contained[0]])):
+        return contained[0], None
+    if not contained and allow_new:
+        return len(candidates), value
+    return None, None
 
 
 def _joined_observation(idx: int, candidates: list[str], new_candidate: str | None,
@@ -1021,9 +838,7 @@ _POST: dict[str, Handler] = {
     "/extract": _extract,
     "/probe/recency": _probe_recency,
     "/probe/subject": _probe_subject,
-    "/probe/authority": _probe_authority,
     "/probe/corroborate": _probe_corroborate,
-    "/probe/confirm": _probe_confirm,
     "/probe/deliberate": _probe_deliberate,
     "/log_decision": _log_decision,
     "/log_reaction": _log_reaction,
@@ -1064,7 +879,6 @@ def dispatch(deps: BridgeDeps, method: str, path: str,
             if handler is None:
                 raise BridgeError(404, f"no POST endpoint {path!r}")
             payload = _parse_body(body)
-            _tap_context(path, payload)     # r37: the tap's one context home
             return 200, handler(deps, payload)
         raise BridgeError(405, f"method {method!r} not allowed")
     except BridgeError as e:
@@ -1180,7 +994,7 @@ def main() -> None:
     server = BridgeServer(build_deps())
     _install_shutdown_handlers(server)
     print(f"life-agent capability bridge → http://{HOST}:{PORT}")
-    print("  POST /route /retrieve /extract /probe/{recency,subject,authority,corroborate}")
+    print("  POST /route /retrieve /extract /probe/{recency,subject,corroborate}")
     print("  POST /log_decision /log_reaction   (answer-brain verdict-emission seam)")
     print("  POST /decide           (the decider: posterior + the Bayes act)")
     print("  GET  /utility /ready")

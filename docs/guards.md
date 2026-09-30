@@ -158,7 +158,7 @@ Folding these into a count would make the count look better and the tree no safe
 7. **F10 was a class, and eight further instances were found after r23 shipped.** The
    adversary named two siblings; a census found nine `assert "<name>(" in
    inspect.getsource(...)` assertions in total. All are converted to AST call resolution
-   (`tests/_guard_ast.py`) and rows 18/19 stop new ones appearing. The general lesson —
+   and rows 18/19 stop new ones appearing. The general lesson —
    **a finding is a class until proven a singleton** — is why r23's own disclosures were
    re-read for consequences rather than left as prose.
 8. **One fixture per guard is not a fraction of anything.** Each resolved row proves the

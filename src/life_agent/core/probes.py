@@ -13,7 +13,7 @@ document). Two kinds:
     gather      fetch NEW evidence (targeted retrieval) → new observations → re-run
 
 The probes REUSE the projection machinery (:mod:`life_agent.core.temporal`,
-:mod:`life_agent.core.subject`, :func:`life_agent.core.lookup.authority_for`, the
+:mod:`life_agent.core.subject`, :mod:`life_agent.core.lookup`, the
 ``pkm.retrieval`` seam) — they never rebuild it, and they are read-only over the
 catalogue (they project current artifacts; they never derive). They are the
 permanent life-agent capabilities the pi-mono answer agent exposes as tools; the
@@ -21,8 +21,7 @@ Stage-0 loop driver and the eventual Julia brain both call exactly these.
 
 Each probe pairs an impure projection edge with a pure mapping core (the
 ``project_dates``/``apply_temporal`` split already in the codebase): the pure cores
-(``_recency_covariate`` / ``_subject_covariate`` / :func:`probe_authority` /
-``_fresh_hits``) carry the testable logic; the edges only do I/O.
+(``_recency_covariate`` / ``_subject_covariate``) carry the testable logic; the edges only do I/O.
 
 Finding (2026-06-16, real-probe validation): for "my current X" point facts the brain
 selects **{recency, authority, corroborate}** and DESELECTS **{subject}** —
@@ -35,7 +34,7 @@ the classes where whose-document IS the discriminator (the partner-ID class).
 """
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Mapping
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Any
@@ -44,7 +43,6 @@ import duckdb
 
 from life_agent.core import subject as S
 from life_agent.core import temporal as T
-from life_agent.core.lookup import authority_for
 from pkm.cache import content_file
 
 # --- recency probe (re-weight): doc_date → time_factor decays stale evidence ----------
@@ -116,17 +114,6 @@ def probe_recency(conn: duckdb.DuckDBPyConnection, root: Path, hit_keys: list[st
 # --- authority probe (baseline signal; here surfaced as an inspectable feature) -------
 
 
-def probe_authority(hits: list[Mapping[str, Any]]) -> dict[str, tuple[str, float]]:
-    """The declared v0 source-authority class per hit (document 0.95 / email 0.90 /
-    note 0.80), keyed on origin path. Already applied unconditionally inside
-    ``observe_hits``; surfaced here as a first-class, inspectable signal — the brain's
-    feature extractor reads it ("do the candidates differ in authority?") and it is the
-    seam to enrich source-type later. Pure; reuses
-    :func:`life_agent.core.lookup.authority_for`."""
-    return {str(h["artifact_cache_key"]): authority_for(str(h.get("origin", "")))
-            for h in hits}
-
-
 # --- subject probe (re-weight): whose-document → subject_factor ------------------------
 
 # project_subjects state + owner verdict → the subject_factor partition vocabulary
@@ -177,40 +164,3 @@ def probe_subject(conn: duckdb.DuckDBPyConnection, root: Path, hit_keys: list[st
 # --- corroborate probe (gather): targeted re-retrieval on the leading candidate -------
 
 
-def _fresh_hits(hits: list[dict[str, Any]],
-                exclude_keys: Iterable[str]) -> list[dict[str, Any]]:
-    """Pure: drop hits whose document we already hold, so corroboration counts only
-    INDEPENDENT new ancestry groups (the §4.2 temper rewards independent documents, not
-    more chunks of one we have)."""
-    seen = set(exclude_keys)
-    return [h for h in hits if h["artifact_cache_key"] not in seen]
-
-
-def probe_corroborate(conn: duckdb.DuckDBPyConnection, question: str, leader_value: str,
-                      *, k: int = 20,
-                      exclude_keys: Iterable[str] = ()) -> list[dict[str, Any]]:
-    """Re-retrieve for the current leading candidate (its value appended as a query term)
-    to surface MORE corroborating documents than the question alone found — the lever from
-    abstain-with-clear-leader toward a confident report (more independent recent /
-    high-authority observations concentrate the posterior). Returns new hit dicts
-    (``artifact_cache_key`` / ``chunk_text`` / ``score`` / ``origin``), excluding documents
-    already in hand. Mirrors ``ask._retrieve_set`` over the ``pkm.retrieval`` seam."""
-    from pkm.retrieval import SearchResult, search
-
-    # ONE declared total order, used by both layers — the same shape `core/retrieval.py`
-    # declares (§6.9, fixed at M1). Since r08 (SPEC 0.18.2) `pkm.retrieval`'s SQL itself cuts
-    # this order, so the window is the declared prefix rather than an engine sample (§6.13);
-    # the sort here remains as defence in depth — idempotent over an already-ordered window —
-    # and still quantises because the returned score column is raw.
-    def rank(h: SearchResult) -> tuple[float, str, str]:
-        return (-round(h.score, 9), h.artifact_cache_key, h.chunk_text)
-
-    best: dict[str, SearchResult] = {}
-    for h in search(conn, f"{question} {leader_value}", k=k * 4):
-        prev = best.get(h.chunk_text)
-        if prev is None or rank(h) < rank(prev):
-            best[h.chunk_text] = h
-    top = sorted(best.values(), key=rank)[:k]
-    hits = [{"artifact_cache_key": h.artifact_cache_key, "chunk_text": h.chunk_text,
-             "score": h.score, "origin": h.source_path} for h in top]
-    return _fresh_hits(hits, exclude_keys)
