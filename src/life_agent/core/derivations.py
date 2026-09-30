@@ -50,7 +50,8 @@ ENGINE_VERSION = "life_agent.core.llm/1"
 # semantics change (e.g. the dedupe rule in retrieve, the rendering in synthesize).
 EXPAND_VERSION = "2"  # bumped: expander must emit native-script spellings of transliterated
 OWNER_MATCH_VERSION = "1"
-LOOKUP_ROUTE_VERSION = "2"  # bumped: a rejection names its kind (the route is an observation)
+LOOKUP_ROUTE_VERSION = "1"
+LOOKUP_ROUTE_KIND_VERSION = "1"
 LOOKUP_EXTRACT_VERSION = "1"
 JOINT_EXTRACT_VERSION = "1"
 RERANK_VERSION = "1"
@@ -191,6 +192,28 @@ def lookup_route_key(question: str, *, model: str, prompt_template: str,
     return StageKey(cache_key=cache_key, input_hash=input_hash,
                     producer_name="life_agent.ask.lookup_route",
                     producer_version=LOOKUP_ROUTE_VERSION, producer_config={},
+                    schema_version=3, inputs=inputs,
+                    content_type=CONTENT_TYPE_LOOKUP_ROUTE)
+
+
+def lookup_route_kind_key(question: str, *, model: str, prompt_template: str,
+                          engine_version: str, output_schema: dict[str, Any]) -> StageKey:
+    """Key for one route-kind reading: which of the four asks a rejected question is. A
+    second call, separate from the verdict's (:func:`lookup_route_key`), so that naming
+    the kind cannot move the verdict."""
+    inputs = {"question": question}
+    input_hash = _sha256(canonical_json(inputs))
+    cache_key = compute_cache_key(
+        input_hash, "life_agent.ask.lookup_route_kind", LOOKUP_ROUTE_KIND_VERSION, {},
+        schema_version=3,
+        model_identity=instrument_identity(model),
+        engine_version=engine_version,
+        prompt_template_hash=_sha256(prompt_template),
+        output_schema=output_schema,
+    )
+    return StageKey(cache_key=cache_key, input_hash=input_hash,
+                    producer_name="life_agent.ask.lookup_route_kind",
+                    producer_version=LOOKUP_ROUTE_KIND_VERSION, producer_config={},
                     schema_version=3, inputs=inputs,
                     content_type=CONTENT_TYPE_LOOKUP_ROUTE)
 

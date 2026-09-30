@@ -95,7 +95,9 @@ answer types (`kind`): a `list` or set, an `aggregate` the reader must compute, 
 (or comparison, or explanation), several values at once (`multiple`). Each of the four is an
 answer that is not a single span, so it lies outside the world of §1 (candidate spans, or
 `NONE`) and attempting it cannot end right. The verdict is an observation of the answer type,
-and the only uncertainty is whether the router is right. `route_options` lists `abstain` and
+and the only uncertainty is whether the router is right. The verdict and the kind are two
+separate readings (the kind is asked only of a rejection), so that naming the kind cannot move
+the verdict. `route_options` lists `abstain` and
 `attempt`, and the same argmax ranks them:
 
 ```

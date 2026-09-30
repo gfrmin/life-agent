@@ -75,50 +75,89 @@ def test_route_time_indexed_classification(migrated_root: Path) -> None:
 
 
 def test_route_non_lookup_is_a_route_naming_its_kind(migrated_root: Path) -> None:
-    # the route is an observation for EVERY question: a rejection carries its kind, the
-    # fallback construct and the model's time_indexed (default False)
-    client = FakeClient({"lookup": False, "kind": "summary"})
+    # the route is an observation for EVERY question: a rejection carries its kind (a second
+    # call), the fallback construct and the model's time_indexed (default False)
+    client = FakeClient([{"lookup": False}, {"kind": "summary"}])
     r = route_question(migrated_root, "summarise my year", client=client)
     assert r == LK.Route(construct="the asked value", time_indexed=False, lookup=False,
                          kind="summary")
+    assert client.calls == 2
     assert route_question(migrated_root, "summarise my year", client=client) == r
-    assert client.calls == 1  # the rejection is cached like any verdict
+    assert client.calls == 2  # verdict and kind are both cached
+
+
+def test_an_accepted_question_makes_no_kind_call(migrated_root: Path) -> None:
+    client = FakeClient({"lookup": True, "construct": "tax id"})
+    r = route_question(migrated_root, "q", client=client)
+    assert (r.lookup, r.kind, r.construct) == (True, "lookup", "tax id")
+    assert client.calls == 1
 
 
 @pytest.mark.parametrize("kind", ["list", "aggregate", "summary", "multiple"])
 def test_route_rejection_kinds_are_parsed(migrated_root: Path, kind: str) -> None:
-    client = FakeClient({"lookup": False, "kind": kind})
+    client = FakeClient([{"lookup": False}, {"kind": kind}])
     assert route_question(migrated_root, f"q {kind}", client=client).kind == kind
 
 
-@pytest.mark.parametrize("reply", [{"lookup": False}, {"lookup": False, "kind": "haiku"},
-                                   {"lookup": False, "kind": ""}])
+@pytest.mark.parametrize("kind_reply", [{}, {"kind": "haiku"}, {"kind": ""},
+                                        {"kind": "other"}, {"kind": None}])
 def test_route_rejection_without_a_known_kind_is_other(migrated_root: Path,
-                                                       reply: dict) -> None:
-    r = route_question(migrated_root, "q", client=FakeClient(reply))
+                                                       kind_reply: dict) -> None:
+    r = route_question(migrated_root, "q", client=FakeClient([{"lookup": False}, kind_reply]))
     assert (r.lookup, r.kind) == (False, "other") and "other" in LK.REJECTED_KINDS
 
 
-def test_route_lookup_has_kind_lookup(migrated_root: Path) -> None:
-    r = route_question(migrated_root, "q", client=FakeClient(
-        {"lookup": True, "construct": "tax id", "kind": "list"}))
-    assert (r.lookup, r.kind, r.construct) == (True, "lookup", "tax id")
+def test_a_failed_kind_call_never_changes_the_verdict(migrated_root: Path) -> None:
+    class Failing(FakeClient):
+        def complete(self, prompt: str, schema: dict[str, Any]) -> ModelResponse:
+            if "NOT to be a lookup" in prompt:
+                self.calls += 1
+                raise RuntimeError("boom")
+            return super().complete(prompt, schema)
+
+    client = Failing({"lookup": False})
+    r = route_question(migrated_root, "q", client=client)
+    assert (r.lookup, r.kind) == (False, "other")
+    # the failure was not recorded: the verdict is cached, the kind is retried
+    assert route_question(migrated_root, "q", client=client).kind == "other"
+    assert client.calls == 3
 
 
-def test_route_prompt_asks_for_the_kind_and_keeps_its_four_criteria() -> None:
-    for kind in LK.REJECTED_KINDS[:4]:
-        assert f'"{kind}"' in LK.ROUTE_PROMPT
+def test_the_verdict_call_does_not_ask_for_the_kind() -> None:
+    assert "kind" not in LK.ROUTE_PROMPT and "kind" not in LK.ROUTE_SCHEMA["properties"]
     for criterion in ("a list or set", "an aggregate the READER must compute",
                       "a summary, overview, comparison, or explanation",
                       "MULTIPLE separate values at once"):
         assert criterion in LK.ROUTE_PROMPT
-    assert "kind" in LK.ROUTE_SCHEMA["properties"]
+    for kind in LK.REJECTED_KINDS[:4]:
+        assert f'"{kind}"' in LK.ROUTE_KIND_PROMPT
 
 
-def test_the_route_cache_is_rekeyed_by_the_version() -> None:
+# Computed once with the code at commit d60e83c (the verdict prompt before the kind was
+# asked in it): lookup_route_key(Q, model=LOOKUP_MODEL, prompt_template=ROUTE_PROMPT,
+# engine_version="test-engine/1", output_schema=ROUTE_SCHEMA).cache_key.
+_KEY_AT_D60E83C = "be330a02157d2d720937e4b8e8ffaa4bea951e3b4e0906342036eff2b618d7c2"
+
+
+def test_the_verdict_cache_key_is_the_one_before_the_kind_was_asked() -> None:
     from life_agent.core import derivations as D
 
-    assert D.LOOKUP_ROUTE_VERSION != "1"   # verdicts cached before `kind` are re-derived
+    key = D.lookup_route_key("What is the synthetic widget code?", model=LK.LOOKUP_MODEL,
+                             prompt_template=LK.ROUTE_PROMPT, engine_version="test-engine/1",
+                             output_schema=LK.ROUTE_SCHEMA)
+    assert D.LOOKUP_ROUTE_VERSION == "1"
+    assert key.cache_key == _KEY_AT_D60E83C
+
+
+def test_the_kind_call_has_its_own_key() -> None:
+    from life_agent.core import derivations as D
+
+    args = dict(model=LK.LOOKUP_MODEL, engine_version="test-engine/1")
+    verdict = D.lookup_route_key("q", prompt_template=LK.ROUTE_PROMPT,
+                                 output_schema=LK.ROUTE_SCHEMA, **args)
+    kind = D.lookup_route_kind_key("q", prompt_template=LK.ROUTE_KIND_PROMPT,
+                                   output_schema=LK.ROUTE_KIND_SCHEMA, **args)
+    assert kind.cache_key != verdict.cache_key
 
 
 def test_prompt_templates_are_single_braced() -> None:
@@ -126,7 +165,7 @@ def test_prompt_templates_are_single_braced() -> None:
     # brace reaches the model verbatim as a malformed JSON example. The 7b extract
     # model answered found:false on trivially present values until this was fixed
     # — drift-gated so the defect class cannot silently return.
-    for template in (LK.ROUTE_PROMPT, LK.EXTRACT_PROMPT):
+    for template in (LK.ROUTE_PROMPT, LK.ROUTE_KIND_PROMPT, LK.EXTRACT_PROMPT):
         assert "{{" not in template and "}}" not in template
 
 
