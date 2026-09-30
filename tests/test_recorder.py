@@ -32,8 +32,8 @@ def test_the_one_body_has_no_optional_key() -> None:
     assert dec["cost_usd"] == 0.0 and dec["latency_s"] == 0.0
     assert dec["regime"] == "full" and dec["policy"] == "all-to-date"
     # never an absent key: the union the bridge accepts, every key present
-    assert sorted(dec) == ["candidates", "cost_usd", "credences", "effector", "eu",
-                           "instrument", "latency_s", "n_competing", "n_indeterminate",
+    assert sorted(dec) == ["candidates", "cost_usd", "credences", "disclosed", "effector",
+                           "eu", "instrument", "latency_s", "n_competing", "n_indeterminate",
                            "n_obs", "origin", "p_none", "policy", "regime", "run_id"]
 
 

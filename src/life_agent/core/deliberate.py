@@ -34,6 +34,7 @@ from typing import Any
 
 from life_agent.core import decisions as DEC
 from life_agent.core import derivations as D
+from life_agent.core import disclosure as DISC
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 
@@ -218,6 +219,7 @@ class DeliberateResult:
     session_id: str | None
     tool_calls: int
     gather_rounds: int
+    disclosed: int | None = None  # distinct artifacts the tools returned, over every attempt
 
 
 def instrument(model: str) -> str:
@@ -277,6 +279,35 @@ def _read_tool_log(path: Path, notes_parts: list[str]) -> list[dict[str, Any]]:
     return rows
 
 
+@dataclass(frozen=True)
+class Reach:
+    """What one attempt's pkm tool calls put in front of the model: the artifacts they
+    returned, and how many distinct chunks and characters of them. The tool log names
+    chunks and artifact cache keys for both tools, so each is known; a chunk is counted
+    once, at the most of it any call showed (a search shows a snippet, an extract the
+    whole chunk and its neighbours)."""
+
+    artifact_cache_keys: tuple[str, ...]
+    n_chunks: int
+    n_chars: int
+
+
+def tool_log_reach(rows: list[dict[str, Any]]) -> Reach:
+    """Reduce a pkm ``--tool-log`` (SPEC §17.8) to its :class:`Reach`. A row with no
+    results (an error, or a log line that names none) reaches nothing."""
+    keys: dict[str, None] = {}
+    shown: dict[Any, int] = {}
+    for row in rows:
+        for res in row.get("results") or []:
+            keys.setdefault(str(res["artifact_cache_key"]), None)
+            text = res.get("snippet_shown")
+            if text is None:
+                text = res.get("chunk_text_full") or ""
+            chunk = res.get("chunk_id")
+            shown[chunk] = max(shown.get(chunk, 0), len(str(text)))
+    return Reach(tuple(keys), len(shown), sum(shown.values()))
+
+
 def _run_claude_once(cmd: list[str], env: dict[str, str], cwd: Path,
                      timeout_s: float) -> tuple[str, str, int | None, bool]:
     """One attempt; process-group kill on timeout (the MCP ``pkm serve`` grandchild must
@@ -304,10 +335,17 @@ def _parse_result_json(stdout: str) -> dict[str, Any] | None:
 
 
 def answer(question: str, cfg: DeliberateConfig, *,
-           run_once: Runner = _run_claude_once) -> DeliberateResult:
-    """Answer one question by driving ``claude -p`` over the pkm MCP surface. Never
-    raises — any failure maps to ``status="error"``/``"timeout"`` (transient failures
-    are never frozen: only ``status == "ok"`` results may be recorded)."""
+           run_once: Runner = _run_claude_once,
+           disclose: DISC.Sink | None = None) -> DeliberateResult:
+    """Answer one question by driving ``claude -p`` over the pkm MCP surface. A model or
+    CLI failure never raises — it maps to ``status="error"``/``"timeout"`` (transient
+    failures are never frozen: only ``status == "ok"`` results may be recorded).
+
+    ``disclose`` receives one row per attempt (the retry is a second call), written
+    after the attempts end so a failed write is never mistaken for a failed answer: each
+    row names the artifacts that attempt's tool calls returned, ``ok`` only for the
+    attempt that answered. An attempt that timed out, errored, was refused as a blind
+    decline or raised still writes its row — empty if the model reached no document."""
     qid = DEC.question_id(question)
     t0 = time.monotonic()
 
@@ -316,6 +354,15 @@ def answer(question: str, cfg: DeliberateConfig, *,
     notes_parts: list[str] = []
     usage: dict[str, Any] = {}
     tool_log_rows: list[dict[str, Any]] = []
+    attempts: list[tuple[Reach, str]] = []   # (what the attempt reached, its outcome)
+    open_log: Path | None = None             # the tool log of a call that has not reported
+
+    def close_attempt(outcome: str, rows: list[dict[str, Any]] | None = None) -> None:
+        nonlocal open_log
+        if open_log is not None:
+            attempts.append((tool_log_reach(
+                rows if rows is not None else _read_tool_log(open_log, [])), outcome))
+            open_log = None
 
     try:
         mcp_config_path, tool_log_path = write_mcp_config(cfg, qid)
@@ -334,9 +381,11 @@ def answer(question: str, cfg: DeliberateConfig, *,
         ]
         for attempt in range(1, 3):  # retry ONCE on failure
             tool_log_path.unlink(missing_ok=True)  # clean log per attempt
+            open_log = tool_log_path
             stdout, stderr, rc, timed_out = run_once(
                 cmd, _minimal_env(), _workdir(cfg), cfg.timeout_s)
             if timed_out:
+                close_attempt("failed")
                 status = "timeout"
                 notes_parts.append(
                     f"attempt {attempt}: timed out after {cfg.timeout_s}s")
@@ -360,22 +409,32 @@ def answer(question: str, cfg: DeliberateConfig, *,
                     notes_parts.append(
                         f"attempt {attempt}: blind decline (0 tool calls) — the pkm "
                         f"tools were not used; MCP server unavailable? not evidence")
+                    close_attempt("failed", tool_log_rows)
                     status = "error"
                     continue
+                close_attempt("ok", tool_log_rows)
                 status = "ok"
                 break
+            close_attempt("failed", tool_log_rows)
             if stderr.strip():
                 notes_parts.append(f"attempt {attempt} stderr: {stderr.strip()[:500]}")
             if obj is not None:  # an is_error result still carries spend — keep it
                 usage = obj
             status = "error"  # overwritten above if the retry succeeds
     except (Exception, SystemExit) as e:
+        close_attempt("failed")
         status = "error"
         notes_parts.append(f"{type(e).__name__}: {e}")
         raw_text = ""
         usage = {}
         tool_log_rows = []
 
+    if disclose is not None:
+        for reach, outcome in attempts:
+            disclose(DISC.make(
+                "deliberate", question=question, model=cfg.model,
+                artifact_cache_keys=reach.artifact_cache_keys, n_chunks=reach.n_chunks,
+                n_chars=reach.n_chars, outcome=outcome))
     if status == "ok":
         text, value, credence = parse_protocol(raw_text)
     else:
@@ -394,6 +453,7 @@ def answer(question: str, cfg: DeliberateConfig, *,
         session_id=usage.get("session_id"),
         tool_calls=len(tool_log_rows),
         gather_rounds=sum(1 for r in tool_log_rows if r.get("tool") == "search"),
+        disclosed=len({k for reach, _ in attempts for k in reach.artifact_cache_keys}),
     )
 
 
@@ -415,6 +475,7 @@ def record_answer(root: Path, key: D.StageKey, result: DeliberateResult) -> bool
         "declined": result.declined,
         "cost_usd": result.cost_usd, "session_id": result.session_id,
         "tool_calls": result.tool_calls, "gather_rounds": result.gather_rounds,
+        "disclosed": result.disclosed,
     }, sort_keys=True, ensure_ascii=False).encode("utf-8")
     return D.record(root, key, content, lineage=[], metadata={
         "session_id": result.session_id, "tool_calls": result.tool_calls,

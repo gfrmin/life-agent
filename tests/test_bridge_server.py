@@ -601,6 +601,17 @@ def test_log_decision_carries_instrument_and_price(deps: BridgeDeps) -> None:
     assert unpriced.cost_usd is None
 
 
+def test_log_decision_carries_the_documents_a_rung_disclosed(deps: BridgeDeps) -> None:
+    _call(deps, "POST", "/log_decision",
+          {"question": "q", "retrieval_keys": ["d0"],
+           "decision": {**_decision(effector="report"), "origin": "rung", "disclosed": 4}})
+    _call(deps, "POST", "/log_decision",
+          {"question": "q2", "retrieval_keys": ["d0"], "decision": _decision()})
+    rung, other = DEC.read(deps.decisions_path)
+    assert (rung.origin, rung.disclosed) == ("rung", 4)
+    assert other.disclosed is None                  # not stated is not a claimed zero
+
+
 def test_log_decision_run_id_passthrough(deps: BridgeDeps) -> None:
     # in-gate executor decisions must not masquerade as live traffic: the body may tag
     # the run; absent → the live default stands
@@ -1109,6 +1120,37 @@ def test_deliberate_confirms_an_existing_candidate(
     assert payload["declined"] is False
     assert "new_candidate" not in payload
     assert deliberate_seams["records"]          # the §18.9 artifact was recorded
+
+
+def test_deliberate_reports_its_disclosure_and_the_rows_keep_the_request_run_id(
+        deps: BridgeDeps, deliberate_seams: dict[str, Any],
+        monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    import dataclasses
+
+    from life_agent.core import disclosure as DISC
+
+    def answer(q: str, cfg: Any, *, disclose: DISC.Sink | None = None) -> Any:
+        assert disclose is not None
+        disclose(DISC.make("deliberate", question=q, model="claude-opus-4-8",
+                           artifact_cache_keys=["a", "b", "c"], n_chunks=3, n_chars=90,
+                           outcome="ok"))
+        return _deliberate_result(disclosed=3)
+
+    monkeypatch.setattr(bridge_server.DL, "answer", answer)
+    log = tmp_path / "disclosures.jsonl"
+    live = dataclasses.replace(deps, disclosures_path=log)
+    status, payload = _call(live, "POST", "/probe/deliberate",
+                            {"question": "what is my rent?", "candidates": ["NIS 4,200"],
+                             "run_id": "run-9"})
+    assert status == 200 and payload["disclosed"] == 3
+    (row,) = DISC.read(log)
+    assert (row.run_id, row.artifact_cache_keys) == ("run-9", ("a", "b", "c"))
+    # without a disclosure log the handler calls the rung exactly as before
+    monkeypatch.setattr(bridge_server.DL, "answer",
+                        lambda q, cfg: _deliberate_result())
+    status, payload = _call(deps, "POST", "/probe/deliberate",
+                            {"question": "what is my rent?", "candidates": ["NIS 4,200"]})
+    assert status == 200 and payload["disclosed"] is None
 
 
 def test_deliberate_confirm_inherits_the_candidates_competition(

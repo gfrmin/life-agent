@@ -154,8 +154,14 @@ verdicts (a Beta per rung).
 
 **What leaves the machine.** No document is withheld from a model on privacy grounds.
 Extraction sends the retrieved chunks to a cloud model on every question, and the
-deliberative rung can search the whole corpus. Every chunk that crosses to a rung is owed a
-disclosure record (law 7; not yet written).
+deliberative rung can search the whole corpus. Every model call that carries corpus text is
+recorded in `$LIFE_AGENT_KB/calibration/disclosures.jsonl` (`core/disclosure.py`): one row per
+call on the `extract`, `joint`, `rerank` or `deliberate` path, holding the time, run and
+question ids, the model, the artifact cache keys, the chunk and character counts, and
+`outcome` (`ok` or `failed`); never a document's text, never the question. A failed or
+refused call writes its row; a cache hit calls no model and writes none. The deliberate
+rung's row is read off the pkm tool log it leaves behind, and a rung's reply names how many
+documents were disclosed to it (the decision record's `disclosed`).
 
 **Division of labour.** `core/posterior.py` computes the candidate posterior;
 `core/utility.py` folds the loss; `core/decide.bayes_act` takes the act, each open transform
@@ -182,13 +188,15 @@ law is marked **unenforced**.
    `tests/test_decisions.py::test_origin_is_documents_rung_or_declined`.
 5. **Write-once records.** Decision, disclosure and verdict rows are never edited; a
    retraction is a new row. Tests: `tests/test_outcomes.py::test_append_appends_never_truncates_and_order_is_preserved`,
-   `tests/test_derivations.py::test_record_is_write_once`; **unenforced** for the decision and reaction logs.
+   `tests/test_derivations.py::test_record_is_write_once`, `tests/test_disclosure.py::test_the_log_is_opened_in_append_mode_only`;
+   **unenforced** for the decision and reaction logs.
 6. **One home per constant.** Channel constants, prices and the action vocabulary are each
    declared once (`core/pricing.py`) and bound everywhere else. Test:
    `tests/test_pricing_table.py::test_no_priced_constant_is_declared_outside_the_table` (prices only).
 7. **Named degradation.** Bridge down ⇒ the reply says so; there is no fallback decider. A
    failed rung ⇒ a disclosure row and no answer. Tests: `tests/test_ask_client.py::test_answer_names_a_down_stack`,
-   `tests/test_executor.py::test_the_body_side_cascade_is_gone`; **unenforced** for the failed-rung clause.
+   `tests/test_executor.py::test_the_body_side_cascade_is_gone`; the failed-rung clause:
+   `tests/test_disclosure.py::test_a_failed_rung_leaves_a_row_and_no_answer`.
 8. **Correlated evidence is tempered.** Copies of one attestation never count as independent.
    Tests: `tests/test_posterior.py::test_the_temper_counts_chunks_and_documents_below_their_number`,
    `tests/test_bridge.py::test_same_document_shares_one_ancestry_group`.
