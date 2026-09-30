@@ -1,7 +1,8 @@
 """The candidate posterior: K retrieved candidates + NONE, conditioned on the extractions.
 
 The belief every answer is decided on. The truth is one of the K candidates the extractor
-reported, or NONE ("not among the retrieved"). The prior puts ``P_NONE_PRIOR`` on NONE and
+reported, or NONE ("not among the retrieved"); with K = 0 it is NONE with certainty. The
+prior puts ``P_NONE_PRIOR`` on NONE and
 spreads the rest uniformly. Each observation is a noisy report of one candidate: with
 reliability ``r = rho · authority · subject · time · competition`` it names the truth, and
 otherwise it names one of ``A_ALTERNATIVES`` wrong values at random. Correlated reports are
@@ -60,9 +61,11 @@ def _normalised(log_w: Sequence[float]) -> list[float]:
 def log_posterior(k: int, observations: Sequence[Mapping[str, Any]],
                   rho: float) -> list[float]:
     """Normalised log weights over candidates ``0..k-1`` then NONE, in observation order."""
-    if k < 1:
-        raise ValueError("the posterior needs at least one candidate")
-    log_w = _normalised([math.log((1.0 - P_NONE_PRIOR) / k)] * k + [math.log(P_NONE_PRIOR)])
+    if k < 0:
+        raise ValueError("the posterior cannot have a negative number of candidates")
+    # with no candidate the truth is NONE: the prior mass on the candidates has nowhere to go
+    prior = [math.log((1.0 - P_NONE_PRIOR) / k)] * k if k else []
+    log_w = _normalised([*prior, math.log(P_NONE_PRIOR)])
     for obs, scale in zip(observations, temper_scales([o["group"] for o in observations]),
                           strict=True):
         match, miss = log_match_miss(reliability(rho, obs), scale)
