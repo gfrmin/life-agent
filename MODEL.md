@@ -113,9 +113,10 @@ Rungs: (1) a strong model over a wide retrieval window with a citation audit; (2
 over the corpus (`claude -p` with the pkm MCP server). Each rung's `p_r` is learned from
 verdicts (a Beta per rung).
 
-**Privacy is a constraint, not a price.** A document marked SEALED makes every disclosing
-rung infeasible for that question: the host withholds those menu rows. Every chunk that
-crosses to a rung is a disclosure record.
+**What leaves the machine.** No document is withheld from a model on privacy grounds.
+Extraction sends the retrieved chunks to a cloud model on every question, and the
+deliberative rung can search the whole corpus. Every chunk that crosses to a rung is owed a
+disclosure record (law 7; not yet written).
 
 **Division of labour.** `core/posterior.py` computes the candidate posterior;
 `core/utility.py` folds the loss; `core/decide.bayes_act` takes the act; `core/enact.py`
@@ -149,8 +150,7 @@ law is marked **unenforced**.
 8. **Correlated evidence is tempered.** Copies of one attestation never count as independent.
    Tests: `tests/test_posterior.py::test_the_temper_counts_chunks_and_documents_below_their_number`,
    `tests/test_bridge.py::test_same_document_shares_one_ancestry_group`.
-9. **Feasibility is structural.** A SEALED document can never reach a disclosing rung.
-   **Unenforced:** nothing in `src/` marks or checks SEALED.
+9. *(Retired 2026-09-30, ruling 5: SEALED documents were never built. The number is not reused.)*
 10. **Calibration is measured.** A-CAL is read off the verdict stream, never assumed.
     **Unenforced:** `outcomes.ece` and the edge curves are unit-tested
     (`tests/test_outcomes.py`, `tests/test_calibration.py`), but nothing fails when calibration goes unread.
