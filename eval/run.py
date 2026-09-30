@@ -155,6 +155,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--questions", required=True)
     ap.add_argument("--k", type=int, default=20)
     ap.add_argument("--limit", type=int, default=None, help="only the first N questions")
+    ap.add_argument("--only-ids", default=None, metavar="FILE",
+                    help="a JSON list of question ids; only those questions are run")
     ap.add_argument("--withhold-source", action="store_true",
                     help="re-ask each question with every document attesting its answer "
                          "withheld from retrieval (eval/withheld.py)")
@@ -165,7 +167,11 @@ def main(argv: list[str] | None = None) -> int:
     if not AC._ready():
         print(f"REFUSED: the bridge at {AC.BRIDGE} is not ready", file=sys.stderr)
         return 2
-    questions = load_questions(a.questions)[:a.limit]
+    questions = load_questions(a.questions)
+    if a.only_ids:
+        wanted = set(json.loads(Path(a.only_ids).read_text(encoding="utf-8")))
+        questions = [q for q in questions if str(q["id"]) in wanted]
+    questions = questions[:a.limit]
     kind = "withheld" if a.withhold_source else "typed"
     run_id = f"gate-{kind}-{datetime.now().strftime('%Y%m%dT%H%M%S')}"
     out = Path(a.out) if a.out else CFG.KB / "eval" / "typed" / f"{run_id}.jsonl"

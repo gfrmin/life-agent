@@ -54,6 +54,16 @@ def test_every_artifact_attesting_the_gold_is_found_once() -> None:
     assert WH.attesting_artifacts(conn, GOLD, []) == {"a1", "a2", "a4"}
 
 
+def test_a_gold_with_a_stopword_token_is_found_and_no_index_is_needed() -> None:
+    # the live FTS index drops stopwords, which hid every attestation of a gold holding one
+    conn = duckdb.connect(":memory:")
+    conn.execute("CREATE TABLE artifact_chunks (artifact_cache_key VARCHAR, chunk_text VARCHAR)")
+    conn.executemany("INSERT INTO artifact_chunks VALUES (?, ?)", [
+        ("x", "Result: No. 7 of 12 (final)"), ("y", "NO_7_OF_12 in a file name"),
+        ("z", "no 7 of 120"), ("w", "unrelated")])
+    assert WH.attesting_artifacts(conn, "no 7 of 12", []) == {"x", "y"}
+
+
 def test_token_boundary_is_respected() -> None:
     conn = _catalogue([("x", "total 1150000 paid"), ("y", "total 50000 paid")])
     assert WH.attesting_artifacts(conn, "50000", []) == {"y"}  # PII-OK: synthetic amount
@@ -278,5 +288,5 @@ def test_a_set_of_unanswerable_rows_scores_and_renders(tmp_path: Path) -> None:
     rows, cals = S.with_calibration(tmp_path, sets, rows)
     ((r),) = rows
     assert (r.rows, r.right, r.wrong, r.declined) == (3, 0, 1, 2)
-    board = S.render(rows, skipped, S.folded_gauge(), {"w": "withheld"}, cals)
+    board = S.render(rows, skipped, S.Gauge(1.0, -9.0, 0.0, 2.0), {"w": "withheld"}, cals)
     assert "| w | typed | 3 |" in board and "Traceback" not in board

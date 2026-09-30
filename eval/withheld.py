@@ -37,28 +37,33 @@ class Withholding:
     skipped: str | None = None          # "empty_gold" | "too_many" | None = run it
 
 
-def _chunks_with_tokens(conn: Any, tokens: Sequence[str]) -> list[tuple[str, str]]:
-    """``(artifact_cache_key, chunk_text)`` of every chunk whose FTS tokens include all of
-    ``tokens`` (conjunctive BM25 over the catalogue's own index)."""
+def _chunks_containing(conn: Any, tokens: Sequence[str]) -> list[tuple[str, str]]:
+    """``(artifact_cache_key, chunk_text)`` of every chunk whose tokens contain ``tokens`` as
+    a contiguous run. The scan is over the chunk text itself, not the FTS index: the live
+    index drops stopword tokens, so a gold holding one (a "no" or an "of") was never
+    proposed and its attestations leaked. Each chunk is normalised once per connection to
+    lowercase tokens joined by single spaces, the matcher's tokenisation; containing the
+    needle with a space either side is then token-boundary containment."""
+    conn.execute(
+        "CREATE TEMP TABLE IF NOT EXISTS _withheld_norm AS "
+        "SELECT artifact_cache_key AS k, chunk_text AS t, "
+        "' ' || regexp_replace(lower(chunk_text), '[^\\p{L}\\p{N}]+', ' ', 'g') || ' ' AS n "
+        "FROM artifact_chunks")
     return [(str(k), str(t)) for k, t in conn.execute(
-        """
-        SELECT artifact_cache_key, chunk_text FROM (
-            SELECT artifact_cache_key, chunk_text,
-                   fts_main_artifact_chunks.match_bm25(
-                       chunk_id, ?, fields := 'chunk_text', conjunctive := 1) AS score
-            FROM artifact_chunks)
-        WHERE score IS NOT NULL
-        """, [" ".join(tokens)]).fetchall()]
+        "SELECT k, t FROM _withheld_norm WHERE contains(n, ?)",
+        [" " + " ".join(tokens) + " "]).fetchall()]
 
 
 def attesting_artifacts(conn: Any, gold: str, variants: Sequence[str]) -> frozenset[str]:
     """Every artifact with any chunk the grader's matcher finds the gold (or a variant) in.
-    The index proposes the chunks that carry every token of a form; the matcher confirms
-    the tokens sit contiguously, so a number inside a longer number is not an attestation.
-    A chunk that is itself a date in another format than every form is not proposed."""
+    The scan proposes the chunks holding a form's tokens as a contiguous run and the matcher
+    confirms, so a number inside a longer number is not an attestation. Two shapes the
+    scan does not propose: a chunk that is itself a date in another format than every form
+    (the matcher's date branch), and text whose ``casefold`` differs from its ``lower``
+    (``ß``); neither is a token-run containment."""
     forms = [f for f in [gold, *variants] if tokenize(f)]
     return frozenset(
-        key for form in forms for key, text in _chunks_with_tokens(conn, tokenize(form))
+        key for form in forms for key, text in _chunks_containing(conn, tokenize(form))
         if answer_matches(gold, list(variants), text))
 
 
