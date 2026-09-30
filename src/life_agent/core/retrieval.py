@@ -38,7 +38,13 @@ def build_query(question: str, terms: str) -> str:
     return f"{question} {terms}".strip() if terms else question
 
 
-def retrieve_set(conn: duckdb.DuckDBPyConnection, question: str, k: int) -> list[dict[str, Any]]:
+#: The widest FTS window an exclusion may grow the over-fetch to before it settles for fewer
+#: than ``k`` hits.
+_EXCLUDE_WINDOW_MAX = 16384
+
+
+def retrieve_set(conn: duckdb.DuckDBPyConnection, question: str, k: int, *,
+                 exclude: frozenset[str] = frozenset()) -> list[dict[str, Any]]:
     """FTS the given query over the whole corpus; dedupe by chunk text keeping the best
     score; return the top-k as plain dicts — the cacheable retrieval-set content, carrying
     each hit's artifact cache key for lineage. No snapshot filter.
@@ -48,7 +54,13 @@ def retrieve_set(conn: duckdb.DuckDBPyConnection, question: str, k: int) -> list
     a varying order, and the scores themselves differ by 1-2 ulp between identical calls (DuckDB
     sums term contributions in a parallelism-dependent order). Where either straddled the top-k
     cut, the retrieved *set* changed between two runs of the same code on the same corpus, and
-    with it every §18.9 derivation keyed on it."""
+    with it every §18.9 derivation keyed on it.
+
+    ``exclude`` names artifacts whose hits are never returned (the withheld-source eval: the
+    documents attesting an answer are taken out of retrieval). They are dropped from the
+    ordered window before the dedupe, and the window widens until ``k`` hits survive or the
+    index has nothing more; with none excluded there is one search, exactly as without the
+    parameter."""
     from pkm.retrieval import SearchResult, search
 
     # Since r08 (SPEC 0.18.2) pkm's SQL cuts this same declared order, so the over-fetch
@@ -65,11 +77,18 @@ def retrieve_set(conn: duckdb.DuckDBPyConnection, question: str, k: int) -> list
     # below any score difference the corpus produces — so a near-tie becomes a declared tie,
     # resolved by the document key like every other. It resolves ties; it does not make them:
     # the tie census over the battery is unchanged at 88 questions and 742 tied hits.
-    ordered = sorted(search(conn, question, k=k * 4),
-                     key=lambda h: (-round(h.score, 9), h.artifact_cache_key, h.chunk_text))
-    best: dict[str, SearchResult] = {}
-    for h in ordered:
-        best.setdefault(h.chunk_text, h)
-    top = list(best.values())[:k]
+    window = k * 4
+    while True:
+        ordered = sorted(search(conn, question, k=window),
+                         key=lambda h: (-round(h.score, 9), h.artifact_cache_key, h.chunk_text))
+        best: dict[str, SearchResult] = {}
+        for h in ordered:
+            if h.artifact_cache_key not in exclude:
+                best.setdefault(h.chunk_text, h)
+        top = list(best.values())[:k]
+        if (not exclude or len(top) >= k or len(ordered) < window
+                or window >= _EXCLUDE_WINDOW_MAX):
+            break
+        window *= 2
     return [{"artifact_cache_key": h.artifact_cache_key, "chunk_text": h.chunk_text,
              "score": h.score, "origin": h.source_path} for h in top]

@@ -38,6 +38,7 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from eval import withheld as WH
 from eval.calibration import Calibration, Pairs, calibrate, fmt_bins
 from eval.grading import realised_report
 from life_agent.core import config as CFG
@@ -400,12 +401,20 @@ def capture_one(question: str, k: int, *, run_id: str, inner_post: Callable[...,
 
 
 def capture_row(q: Mapping[str, Any], request: Mapping[str, Any], reply: Mapping[str, Any],
-                *, set_name: str, run_id: str, censored: bool) -> dict[str, Any]:
+                *, set_name: str, run_id: str, censored: bool,
+                withheld: int | None = None) -> dict[str, Any]:
+    """One captured state. With ``withheld`` (the number of artifacts taken out of retrieval)
+    the answer is absent by construction, so the truth is ``NONE`` whatever the candidates;
+    a candidate that does match the gold is a leak and is flagged, not believed."""
     truth, matches = label(request["candidates"], q.get("answer", ""),
                            q.get("answer_variants", []))
-    return {"question_id": str(q["id"]), "set": set_name, "run_id": run_id,
-            "censored": censored, "truth": truth, "matches": list(matches),
-            "request": dict(request), "reply": dict(reply)}
+    row = {"question_id": str(q["id"]), "set": set_name, "run_id": run_id,
+           "censored": censored, "truth": truth, "matches": list(matches),
+           "request": dict(request), "reply": dict(reply)}
+    if withheld is None:
+        return row
+    return {**row, "truth": NONE, "matches": [], "withheld": {"n_artifacts": withheld},
+            **({"leak": True} if matches else {})}
 
 
 def cmd_capture(a: argparse.Namespace) -> int:
@@ -415,18 +424,23 @@ def cmd_capture(a: argparse.Namespace) -> int:
     from eval.run import gold_available, load_questions
     from life_agent.core import ask_client as AC
 
+    if a.withhold_source:
+        WH.force_deliberate_off()
     if not AC._ready():
         print(f"REFUSED: the bridge at {AC.BRIDGE} is not ready", file=sys.stderr)
         return 2
-    questions = load_questions(a.questions)
+    questions = load_questions(a.questions)[:a.limit]
     stamp = datetime.now().strftime("%Y%m%dT%H%M%S")
-    run_id = f"gate-posterior-capture-{stamp}"
+    marker = "-withheld" if a.withhold_source else ""
+    run_id = f"gate-posterior-capture{marker}-{stamp}"
     out = Path(a.out) if a.out else (CFG.KB / "eval" / "decide-states"
-                                     / f"{a.set}-{stamp}.jsonl")
+                                     / f"{a.set}{marker}-{stamp}.jsonl")
     out.parent.mkdir(parents=True, exist_ok=True)
     conn = ask.connect()
     try:
         available = gold_available(conn, questions)
+        plans = ({str(q["id"]): WH.plan(conn, q) for q in questions}
+                 if a.withhold_source else {})
     finally:
         conn.close()
 
@@ -437,7 +451,14 @@ def cmd_capture(a: argparse.Namespace) -> int:
     tally: Counter[str] = Counter()
     with out.open("w", encoding="utf-8") as fh:
         for q in questions:
-            got = capture_one(q["question"], a.k, run_id=run_id, inner_post=AC.post_json,
+            qid = str(q["id"])
+            post: Callable[..., Any] = AC.post_json
+            if a.withhold_source:
+                if plans[qid].skipped:
+                    tally[f"skipped {plans[qid].skipped}"] += 1
+                    continue
+                post = WH.with_exclusion(post, plans[qid].keys)
+            got = capture_one(q["question"], a.k, run_id=run_id, inner_post=post,
                               drive=drive)
             if got is None:
                 tally["no evidence-stage decide"] += 1
@@ -445,12 +466,15 @@ def cmd_capture(a: argparse.Namespace) -> int:
             request, reply = got
             ok = available.get(str(q["id"]), True)
             row = capture_row(q, request, reply, set_name=a.set, run_id=run_id,
-                              censored=not ok)
+                              censored=not ok,
+                              withheld=(len(plans[qid].keys) if a.withhold_source else None))
             fh.write(json.dumps(row) + "\n")
             fh.flush()
             tally["captured"] += 1
             tally["truth NONE" if row["truth"] == NONE else "truth a candidate"] += 1
             tally["censored"] += not ok
+            if row.get("leak"):
+                tally["LEAK"] += 1
     print(f"{a.set}: " + " · ".join(f"{k} {v}" for k, v in sorted(tally.items()))
           + f" of {len(questions)} → $LIFE_AGENT_KB/{out.relative_to(CFG.KB)}")
     return 0
@@ -582,6 +606,10 @@ def main(argv: list[str] | None = None) -> int:
     cap.add_argument("--questions", required=True)
     cap.add_argument("--set", required=True)
     cap.add_argument("--k", type=int, default=20)
+    cap.add_argument("--limit", type=int, default=None, help="only the first N questions")
+    cap.add_argument("--withhold-source", action="store_true",
+                     help="withhold every document attesting each answer (truth NONE for "
+                          "every state; a matching candidate is flagged a leak)")
     cap.add_argument("--out", default=None)
     cap.set_defaults(func=cmd_capture)
     chk = sub.add_parser("check")

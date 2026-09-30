@@ -214,6 +214,15 @@ candidate are counted and not scored; rows where no candidate matches the gold a
 (the leader is wrong) and counted as truth-absent. An archive that predates the recorded
 fields takes its calibration from the decision log, joined to the set's questions.
 
+A **withheld-source** set (`python -m eval.run --withhold-source`, `eval/withheld.py`) re-asks
+each generated question with every document that contains its answer (any chunk the grader's
+matcher finds the gold in, plus the question's own source) taken out of retrieval, and the
+deliberative rung off. The answer is then absent: a decline is right, an assertion is wrong, and
+an assertion of the gold is a leak (a missed attestation), counted and flagged; it scores as a
+`typed` set. It exists because the answerable-only sets cannot fit the channel: there "a leading
+candidate exists" and "the leader is right" are nearly one event, and a fit on them absorbs that
+base rate.
+
 ## 7. The read path
 
 ```
