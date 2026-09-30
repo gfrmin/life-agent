@@ -24,7 +24,9 @@ class RealisedResponse:
     """One arm's realised answer on one question. ``correct`` is ``None`` for a withholding.
     ``cost_usd`` is the declared price of the probes ``applied`` (``pricing.list_price``:
     the price the decider ranked them at, cache or no cache); ``metered_usd`` is what the
-    calls actually metered."""
+    calls actually metered. The last four are the leader's calibration reading
+    (``eval.calibration.read_leader``): its probability, and whether it matched the gold,
+    on any action; ``None`` / 0 when there was no candidate."""
 
     action: str
     correct: bool | None = None
@@ -32,6 +34,10 @@ class RealisedResponse:
     withheld: str | None = None
     applied: tuple[str, ...] = ()
     metered_usd: float | None = None
+    p1: float | None = None
+    n_candidates: int = 0
+    leader_correct: bool | None = None
+    truth_in_candidates: bool = False
 
     def __post_init__(self) -> None:
         if self.action not in ASSERT_ACTIONS | WITHHOLD_ACTIONS:

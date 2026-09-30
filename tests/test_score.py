@@ -4,6 +4,7 @@ without it."""
 from __future__ import annotations
 
 import json
+import math
 import os
 import sys
 from pathlib import Path
@@ -113,12 +114,13 @@ def test_rule_5_names_an_unpaired_row() -> None:
 
 def test_the_board_shows_u_per_question_only_with_a_gauge() -> None:
     rows = S.score_paired("t", LINES)
-    # the typed row: U/q then s/q (blank until latency) close the line
-    assert S.render(rows, {}).splitlines()[6].endswith("| — | — |")
+    # the typed row: U/q, s/q (blank until latency), then log score and ECE (— on an old archive)
+    assert S.render(rows, {}).splitlines()[6].endswith("| — | — | — | — |")
     priced = S.render(rows, {}, G)
     typed = rows[0]
     assert "u_wrong -9.0000" in priced
-    assert priced.splitlines()[6].endswith(f"| {G.total(_board(typed)) / typed.rows:+.3f} | — |")
+    assert priced.splitlines()[6].endswith(
+        f"| {G.total(_board(typed)) / typed.rows:+.3f} | — | — | — |")
 
 
 def test_a_scored_row_carries_its_note_onto_the_board() -> None:
@@ -232,3 +234,80 @@ def test_a_set_with_no_root_declared_still_reads_the_kb(tmp_path: Path) -> None:
     """The discriminating control: the default must not move."""
     assert S.set_root({"path": "x.jsonl"}, tmp_path) == (tmp_path, "")
 
+
+
+# --- Calibration columns and section ---------------------------------------------------
+
+def _cal_row(action: str, correct: bool | None, p1: float | None, n: int, leader: bool | None,
+             truth: bool) -> dict:
+    return {"question_id": "s", "censored": False,
+            "typed": {"action": action, "correct": correct, "cost_usd": 0.0, "p1": p1,
+                      "n_candidates": n, "leader_correct": leader, "truth_in_candidates": truth}}
+
+
+def _typed_set(tmp_path: Path, rows: list[dict]) -> tuple[dict, str]:
+    import hashlib
+    f = tmp_path / "t.jsonl"
+    f.write_text("\n".join(json.dumps(r) for r in rows), encoding="utf-8")
+    return ({"g": {"kind": "typed", "path": "t.jsonl",
+                   "sha256": hashlib.sha256(f.read_bytes()).hexdigest()}}, f.read_text())
+
+
+def test_an_old_archive_renders_dashes_and_no_calibration_section(tmp_path: Path) -> None:
+    sets, _ = _typed_set(tmp_path, [{"question_id": "a", "typed": {
+        "action": "report", "correct": True, "cost_usd": 0.0}}])
+    rows, _ = S.score(tmp_path, sets)
+    rows, cals = S.with_calibration(tmp_path, sets, rows)
+    assert cals == {} and (rows[0].log_score, rows[0].ece, rows[0].n_scored) == (None,) * 3
+    board = S.render(rows, {}, None, None, cals)
+    assert "## Calibration" not in board and "| — | — | — | — |" in board
+
+
+def test_a_new_archive_renders_numbers_and_a_reliability_table(tmp_path: Path) -> None:
+    sets, _ = _typed_set(tmp_path, [
+        _cal_row("report", True, 0.9, 1, True, True),
+        _cal_row("abstain", None, 0.5, 2, False, False),      # scored: an abstain has a leader
+        _cal_row("abstain", None, None, 0, None, False)])     # no candidate
+    rows, _ = S.score(tmp_path, sets)
+    rows, cals = S.with_calibration(tmp_path, sets, rows)
+    (r,) = rows
+    assert r.n_scored == 2
+    assert r.log_score == pytest.approx((math.log(0.9) + math.log(0.5)) / 2)
+    board = S.render(rows, {}, None, None, cals)
+    assert f"| {r.log_score:.3f} | {r.ece:.3f} |" in board
+    assert "## Calibration" in board and "| 0.9-1.0 | 1 | 0.900 | 1.000 |" in board
+    assert "2 scored · 1 with no candidate · 1 truth absent" in board
+
+
+def test_the_calibration_fields_are_optional_on_a_board_row() -> None:
+    """A committed board written before the columns has none of the three keys."""
+    row = S.summarise("t", "typed", [S.Response(True, True, 0.0)])
+    assert (row.log_score, row.ece, row.n_scored) == (None, None, None)
+
+
+def test_a_set_names_a_decision_run_for_an_archive_that_predates_the_fields(
+        tmp_path: Path) -> None:
+    import hashlib
+    from datetime import UTC, datetime
+
+    import yaml
+
+    from life_agent.core import decisions as DEC
+    q = "what is the synthetic code?"   # PII-OK: synthetic question
+    (tmp_path / "q.yaml").write_text(yaml.safe_dump({"questions": [
+        {"id": "q1", "question": q, "answer": "K7"}]}), encoding="utf-8")
+    (tmp_path / "calibration").mkdir()
+    ev = DEC.DecisionEvent(
+        tx_time=datetime.now(UTC).isoformat(), run_id="run-x", question_id=DEC.question_id(q),
+        family="lookup", action_set=("abstain",),
+        posterior_summary={"candidates": ["K7"], "credences": [0.8]},
+        utility_fold_version="v", chosen_action="abstain", predicted_eu=0.0)
+    DEC.append(tmp_path / "calibration" / "decisions.jsonl", ev)
+    f = tmp_path / "t.jsonl"
+    f.write_text(json.dumps({"question_id": "q1", "typed": {
+        "action": "abstain", "correct": None, "cost_usd": 0.0}}), encoding="utf-8")
+    sets = {"g": {"kind": "typed", "path": "t.jsonl", "questions": "q.yaml",
+                  "decisions_run": "run-x", "sha256": hashlib.sha256(f.read_bytes()).hexdigest()}}
+    rows, _ = S.score(tmp_path, sets)
+    rows, cals = S.with_calibration(tmp_path, sets, rows)
+    assert cals["g"].n_scored == 1 and rows[0].log_score == pytest.approx(math.log(0.8))
