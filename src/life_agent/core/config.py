@@ -26,12 +26,6 @@ GTD_DB_PATH = Path(os.environ.get("GTD_DB_PATH", str(KB / "tasks" / "gtd.db"))).
 # markdown document at a stable declared path, ingested into pkm so the ask path retrieves GTD
 # state like any source. Derived, stamped with the ledger head; safe to delete and re-render.
 TASKS_STATE = KB / "tasks" / "state.md"
-# The legacy pre-event-sourcing store. The migration reads it **read-only** (the new system
-# never writes it), so it stays untouched as a natural pre-cutover snapshot. See
-# scripts/migrate_jarvis_to_events.py.
-JARVIS_DB_PATH = Path(
-    os.environ.get("JARVIS_DB_PATH", str(KB / "jarvis" / "jarvis.db"))
-).expanduser()
 
 # --- Trips (the itinerary faculty) ---
 # Append-only event ledger (Observed/Superseded/Cancelled/Amended) — THE source of truth
@@ -85,13 +79,6 @@ DECISIONS_LOG = KB / "calibration" / "decisions.jsonl"
 # decider prices gathering at the row's prior.
 GATHER_ROW = KB / "calibration" / "gather_row.json"
 
-# The aggregate family's generator registry (design §9, r21): the DATA lives out of
-# tree (schedules cite owner documents); the loader/schema are in
-# life_agent.core.aggregate. EVIDENCE_ROOT anchors the entries' citation paths.
-GENERATORS_PATH = Path(
-    os.environ.get("LIFE_AGENT_GENERATORS", str(KB / "generators.yaml"))).expanduser()
-EVIDENCE_ROOT = Path(
-    os.environ.get("LIFE_AGENT_EVIDENCE_ROOT", str(KB))).expanduser()
 # The reaction log (foundations §4.4 reaction loop): owner verdicts on the agent's
 # decisions, joined to DECISIONS_LOG by decision_id. The calibration leg's third
 # append-only log; the utility posterior folds the clean abstain-verdicts from it.
