@@ -49,7 +49,8 @@ def decide(payload: Mapping[str, Any], u_bar: Mapping[str, float]) -> dict[str, 
         len(candidates), list(payload.get("observations") or []), float(payload["rho"]))
     p1 = DEC.p_correct(credences)
     u_bar = GR.at_step(u_bar, len(payload.get("applied_probes") or []))
-    option = DEC.bayes_act(u_bar, credences, EN.gather_options(dict(payload)))
+    option = DEC.bayes_act(u_bar, credences, EN.gather_options(dict(payload)),
+                           EN.document_groups(list(payload.get("observations") or [])))
     view = EN.enact(option, dict(payload), credences, p_none)
     return {**view, "act": option.action, "p1": p1, "eu": option.eu}
 

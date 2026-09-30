@@ -68,17 +68,46 @@ value, so the argmax is only sound if the credences mean what they say. It is me
 
 `core/decide.bayes_act` chooses one action per question from the **declared menu**: the
 argmax of expected utility over one flat list of rows, ties to the first-listed. Every
-choice is a row: one `abstain`, one `gather` per open transform, one `ask`, and one `respond`
-per candidate (at that candidate's own credence). `gather` and `ask` are evaluated at `p1`,
+choice is a row: one `abstain`, one `gather` per open transform, one `ask`, one `cite` per
+document, and one `respond` per candidate (at that candidate's own credence). `gather` and
+`ask` are evaluated at `p1`,
 the MAP candidate's credence (P(asserting now is right)):
 
 | action | effect | loss / price |
 |---|---|---|
 | `respond` | commit a candidate span (one row each) with its citation | `u_correct = +1` if right, `u_wrong = −9` if wrong |
+| `cite` | name the document believed to hold the answer, without asserting the value (one row per document) | `u_cite_right = +0.5` if the document attests the answer, `u_cite_wrong = −1` if not |
 | `abstain` | decline | `u_abstain = 0` |
 | `gather` | run an unapplied evidence transform (one row each), then decide again | the transform's price; the measured value of the gather sequence (below) |
 | `ask` | ask the owner a clarifying question | the owner's attention; recovers the answer at the measured rate `r_a` |
 | `escalate@r` | hand the question to rung `r` (J1–J2) | the rung's price, and its learned reliability `p_r` |
+
+**A partial answer: the document, not the value.** `cite` names one document and says what is
+held back; it never asserts a value. A document is one observation group (`group` on the
+wire, one per artifact, which is how the posterior already tempers correlated chunks). The
+chance that document `g` holds the answer is the credence of the candidates its observations
+report, `P(g) = Σ p_i` over those candidates `i`, and
+
+```
+EU(cite g) = P(g)·u_cite_right + (1 − P(g))·u_cite_wrong
+```
+
+The two utilities are latents with declared priors, N(0.5, 0.3) on [−1, 1.5] and N(−1, 0.7)
+on [−6, 0.5] ("a right pointer is half a right answer; a wrong one costs one read"). They are
+optional in a model file and read their prior means, 0.5 and −1, when absent. `cite` is graded
+by attestation: right iff the cited document attests the gold (`eval/withheld.attesting_artifacts`,
+the grader's own matcher over the catalogue). It is deliberately not a hedge over a set of
+values (the retired `hedge` row was priced independently of how many values it named, so
+widening the set could only raise it): a cite names exactly one document, and `P(g)` is a
+probability of that document, so a wider set of candidates cannot buy a better row. Cite
+undercuts `respond` between its bar against abstaining and `respond`'s: where one document
+holds the answer at `P(g)` above 2/3 (at the declared gauge) and no candidate is certain enough
+to state, the act points to it. The derived respond bar, which now also has to outbid `cite`,
+rises accordingly; `respond_threshold` reads the cite row at `P(g) = p1`, a lower bound on the
+bar the decider applies (a document's `P(g)` is at least the credence of the candidate it
+holds). A reaction to a cite reply is recorded and not folded into the utility posterior: "bad"
+may mean the wrong document or "I wanted the value". The executor flags which observations stand behind a retrieved document; the decider lists a
+cite row only for groups holding one (a synthesised read is not a document).
 
 **A state with no candidate is decided like any other.** When extraction finds nothing the
 executor still asks `bayes_act`, with no candidate and no observation: the posterior is
@@ -208,7 +237,10 @@ law is marked **unenforced**.
 ## 6. Scoreboard
 
 `eval/score.py` → `SCOREBOARD.md`. Per set and arm: rows · right · wrong · escalated-right ·
-escalated-wrong · declined · $/q · U/q · s/q. Sets: `owner` (the owner's 104 questions, typed arm; `owner-0920` keeps the frozen 2026-09-20 outside and router rows),
+escalated-wrong · cite-right · cite-wrong · declined · $/q · U/q · s/q. `right` and `wrong`
+count value answers only; `cite-right` and `cite-wrong` count partial answers (neither right,
+wrong nor declined), priced at `u_cite_right` and `u_cite_wrong` in U/q. The router recombination
+treats a cite as any other non-assertion (it escalates), so the router row carries none. Sets: `owner` (the owner's 104 questions, typed arm; `owner-0920` keeps the frozen 2026-09-20 outside and router rows),
 `generated` (212 questions extracted from the corpus by `make golden`), `atm` (ATM-Bench
 email-only number-typed, 198), `live` (the stream since the reset), `sample` (synthetic, CI). Every row is graded by exact match. Rule 5: the loss
 decides and the board is evidence. A pinned set is one biased draw, so a row whose utility

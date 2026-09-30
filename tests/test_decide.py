@@ -40,10 +40,11 @@ def test_family_action_orders_are_subsets_of_the_vocabulary() -> None:
     assert frozenset(DEC.NARRATIVE_ACTION_ORDER) <= DEC.ACTIONS
 
 def test_lookup_minus_narrative_is_exactly_the_deferred_actions() -> None:
-    # narrative's restriction is principled — it lacks exactly hedge, ask_clarify, and
-    # report_scoped (the deferred recency/u_hedged + clarify + scoped-claim moves), nothing else.
+    # narrative's restriction is principled — it lacks exactly hedge, ask_clarify, report_scoped
+    # and cite (the deferred recency/u_hedged + clarify + scoped-claim + partial-answer
+    # moves), nothing else.
     assert (frozenset(DEC.LOOKUP_ACTION_ORDER) - frozenset(DEC.NARRATIVE_ACTION_ORDER)
-            == frozenset({"hedge", "ask_clarify", "report_scoped"}))
+            == frozenset({"hedge", "ask_clarify", "report_scoped", "cite"}))
 
 
 # --- r30 step 2: question-dependent utility units (shaped_u_bar) ----------------------------

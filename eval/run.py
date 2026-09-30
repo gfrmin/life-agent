@@ -98,10 +98,11 @@ def gold_available(conn: Any, questions: list[dict[str, Any]]) -> dict[str, bool
 
 
 def typed_response(view: dict[str, Any], q: dict[str, Any], *,
-                   available: bool = True) -> RealisedResponse:
+                   available: bool = True, conn: Any = None) -> RealisedResponse:
     """The arm's realised answer from the executor's view. It is priced at the menu's
     declared prices for the probes it applied, on every action: an abstain that gathered
-    still paid for it."""
+    still paid for it. A cite is right iff the cited document attests the gold
+    (``withheld.attesting_artifacts`` over ``conn``, the catalogue connection)."""
     gold, variants = q.get("answer", ""), q.get("answer_variants", [])
     applied = tuple(str(p) for p in view["applied"])
     cost, metered = PRC.list_price(applied), float(view["spend_usd"] or 0.0)
@@ -114,6 +115,13 @@ def typed_response(view: dict[str, Any], q: dict[str, Any], *,
         return RealisedResponse("report", realised_report(
             [str(a) for a in view["asserted"]], gold, variants),
             cost_usd=cost, applied=applied, metered_usd=metered, **seen)
+    if eff == "cite":
+        if conn is None:
+            raise ValueError("grading a cite needs the catalogue connection")
+        key = str(view["cited"]["cache_key"])
+        return RealisedResponse("cite", key in WH.attesting_artifacts(conn, gold, variants),
+                                cost_usd=cost, applied=applied, metered_usd=metered,
+                                cited=key, **seen)
     reason = DEC.withhold_reason(effector=view.get("effector"),
                                  candidates=view.get("candidates"), available=available)
     return RealisedResponse("ask_clarify" if eff == "ask_clarify" else "abstain", None,
@@ -121,9 +129,13 @@ def typed_response(view: dict[str, Any], q: dict[str, Any], *,
                             metered_usd=metered, **seen)
 
 
-def is_leak(view: dict[str, Any], q: dict[str, Any]) -> bool:
+def is_leak(view: dict[str, Any], q: dict[str, Any],
+            withheld: frozenset[str] = frozenset()) -> bool:
     """A withheld question whose gold reached the act anyway: an asserted value or any
-    candidate matches it, so some document attesting it was not withheld."""
+    candidate matches it, so some document attesting it was not withheld; or the act cited
+    one of the ``withheld`` documents."""
+    if str((view.get("cited") or {}).get("cache_key") or "") in withheld:
+        return True
     gold, variants = q.get("answer", ""), q.get("answer_variants", [])
     seen = [str(c) for c in (view.get("candidates") or [])] + [
         str(a) for a in (view.get("asserted") or [])]
@@ -141,7 +153,7 @@ def archive_row(qid: str, run_id: str, r: RealisedResponse, *, censored: bool,
                   "withheld": r.withheld, "applied": list(r.applied),
                   "metered_usd": r.metered_usd, "p1": r.p1, "n_candidates": r.n_candidates,
                   "leader_correct": r.leader_correct,
-                  "truth_in_candidates": r.truth_in_candidates}}
+                  "truth_in_candidates": r.truth_in_candidates, "cited": r.cited}}
     if withheld is not None:
         row["withheld"] = {"n_artifacts": withheld}
         if leak:
@@ -181,8 +193,26 @@ def main(argv: list[str] | None = None) -> int:
         available = gold_available(conn, questions)
         plans = ({str(q["id"]): WH.plan(conn, q) for q in questions}
                  if a.withhold_source else {})
+        tally = run_questions(questions, a, conn=conn, out=out, run_id=run_id,
+                              available=available, plans=plans)
     finally:
         conn.close()
+    digest = hashlib.sha256(out.read_bytes()).hexdigest()
+    try:
+        shown = f"$LIFE_AGENT_KB/{out.relative_to(CFG.KB)}"
+    except ValueError:
+        shown = str(out)
+    print(" · ".join(f"{k} {v}" for k, v in sorted(tally.items()))
+          + f" → {shown} (sha256 {digest})")
+    return 0
+
+
+def run_questions(questions: list[dict[str, Any]], a: argparse.Namespace, *, conn: Any,
+                  out: Path, run_id: str, available: dict[str, bool],
+                  plans: dict[str, WH.Withholding]) -> Counter[str]:
+    """Drive every question through the executor, grade it and write its archive row to
+    ``out``; the tally counts right, wrong, cite-right, cite-wrong, declined, censored and
+    leaks."""
     tally: Counter[str] = Counter()
     with out.open("w", encoding="utf-8") as fh:
         for q in questions:
@@ -199,26 +229,27 @@ def main(argv: list[str] | None = None) -> int:
                 raise SystemExit(f"executor view missing for {qid} — the bridge went "
                                  "down mid-run; the reading is void")
             ok = available.get(qid, True)
-            r = typed_response(view, q, available=ok)
-            leak = a.withhold_source and is_leak(view, q)
+            r = typed_response(view, q, available=ok, conn=conn)
+            leak = a.withhold_source and is_leak(view, q, plans[qid].keys)
             fh.write(json.dumps(archive_row(
                 qid, run_id, r, censored=not ok,
                 answerable=not a.withhold_source and bool(q.get("answerable", True)),
                 withheld=len(plans[qid].keys) if a.withhold_source else None,
                 leak=leak)) + "\n")
             fh.flush()
-            tally["censored" if not ok else ("declined" if r.correct is None
-                                             else "right" if r.correct else "wrong")] += 1
+            tally[_tally_key(r, censored=not ok)] += 1
             if leak:
                 tally["LEAK"] += 1
-    digest = hashlib.sha256(out.read_bytes()).hexdigest()
-    try:
-        shown = f"$LIFE_AGENT_KB/{out.relative_to(CFG.KB)}"
-    except ValueError:
-        shown = str(out)
-    print(" · ".join(f"{k} {v}" for k, v in sorted(tally.items()))
-          + f" → {shown} (sha256 {digest})")
-    return 0
+    return tally
+
+
+def _tally_key(r: RealisedResponse, *, censored: bool) -> str:
+    if censored:
+        return "censored"
+    prefix = "cite-" if r.action == "cite" else ""
+    if r.correct is None:
+        return "declined"
+    return prefix + ("right" if r.correct else "wrong")
 
 
 if __name__ == "__main__":

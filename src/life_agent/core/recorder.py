@@ -39,9 +39,10 @@ def body(*, question: str, retrieval_keys: list[str], effector: str,
          eu: float | None, n_obs: int, n_indeterminate: int, n_competing: int,
          instrument: str | None, cost_usd: float | None, latency_s: float | None,
          run_id: str | None, regime: str, policy: str, origin: str,
-         disclosed: int | None = None) -> dict[str, Any]:
+         disclosed: int | None = None, cited: str = "") -> dict[str, Any]:
     """The ONE ``/log_decision`` body — every key present, the unpriced defaults honest
-    (0.0 = ran unpriced / unmeasured, "" = no priced edge), ``regime``/``policy`` stated."""
+    (0.0 = ran unpriced / unmeasured, "" = no priced edge), ``regime``/``policy`` stated;
+    ``cited`` is the cited document's cache key on a cite, "" otherwise."""
     return {
         "question": question,
         "retrieval_keys": retrieval_keys,
@@ -62,6 +63,7 @@ def body(*, question: str, retrieval_keys: list[str], effector: str,
             "policy": policy,
             "origin": origin,
             "disclosed": disclosed,
+            "cited": cited,
         },
     }
 

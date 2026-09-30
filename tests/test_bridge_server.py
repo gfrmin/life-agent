@@ -583,6 +583,23 @@ def test_extract_discloses_the_competed_observation_count(
     assert [o["competition_factor"] for o in payload["observations"]] == [0.5, 1.0]
 
 
+def test_log_decision_records_a_cite_with_the_cited_document(deps: BridgeDeps) -> None:
+    status, _ = _call(deps, "POST", "/log_decision",
+                      {"question": "q", "retrieval_keys": ["d0", "d1"],
+                       "decision": {**_decision(effector="cite"), "cited": "d1",
+                                    "origin": "documents"}})
+    assert status == 200
+    (d,) = DEC.read(deps.decisions_path)
+    assert d.chosen_action == "cite" and d.origin == "documents"
+    assert d.posterior_summary["cited"] == "d1"
+    assert d.posterior_summary["candidates"][0] == "B"          # leader-first, as any row
+    # a cite that names no document is refused, never recorded as a blank one
+    status, _ = _call(deps, "POST", "/log_decision",
+                      {"question": "q", "retrieval_keys": ["d0"],
+                       "decision": _decision(effector="cite")})
+    assert status == 400 and len(DEC.read(deps.decisions_path)) == 1
+
+
 def test_log_decision_carries_instrument_and_price(deps: BridgeDeps) -> None:
     # §10 accounting on the ledger (decisions v2): the edge that answered, at what price,
     # passes through when the body posts it — and defaults stay honest when it doesn't.

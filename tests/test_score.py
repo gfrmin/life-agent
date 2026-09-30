@@ -341,3 +341,45 @@ def test_a_set_names_a_decision_run_for_an_archive_that_predates_the_fields(
     rows, _ = S.score(tmp_path, sets)
     rows, cals = S.with_calibration(tmp_path, sets, rows)
     assert cals["g"].n_scored == 1 and rows[0].log_score == pytest.approx(math.log(0.8))
+
+
+# --- cite: partial answers are their own columns, priced at their own gauge rows ----------
+
+def _cite_lines() -> list[str]:
+    def row(qid: str, action: str, correct: bool | None) -> str:
+        arm = {"action": action, "correct": correct, "cost_usd": 0.0, "withheld": None}
+        return json.dumps({"question_id": qid, "answerable": True, "censored": False,
+                           "typed": arm, "mono": {**arm, "action": "abstain",
+                                                  "correct": None}})
+    return [row("a", "report", True), row("b", "report", False), row("c", "cite", True),
+            row("d", "cite", True), row("e", "cite", False), row("f", "abstain", None)]
+
+
+def test_cites_count_apart_from_value_answers_and_declines() -> None:
+    typed = {r.arm: r for r in S.score_paired("t", _cite_lines())}["typed"]
+    assert (typed.right, typed.wrong) == (1, 1)
+    assert (typed.cite_right, typed.cite_wrong, typed.declined) == (2, 1, 1)
+    # the router escalates a cite as it does any non-assertion, and does not count it
+    router = {r.arm: r for r in S.score_paired("t", _cite_lines())}["router"]
+    assert (router.cite_right, router.cite_wrong) == (0, 0)
+
+
+def test_the_gauge_prices_cites_at_the_cite_rows_and_defaults_them() -> None:
+    row = S.summarise("t", "typed", [S.Response(False, True, 0.0, cite=True)] * 2
+                      + [S.Response(False, False, 0.0, cite=True)])
+    g = S.Gauge(1.0, -9.0, 0.0, 2.0, u_cite_right=0.6, u_cite_wrong=-2.0)
+    assert g.total(_board(row)) == pytest.approx(2 * 0.6 - 2.0)
+    assert (G.u_cite_right, G.u_cite_wrong) == (0.5, -1.0)
+    assert G.total(_board(row)) == pytest.approx(2 * 0.5 - 1.0)
+    # a committed board row from before the columns has no cite counts: they read as zero
+    old = {k: v for k, v in _board(row).items() if not k.startswith("cite")}
+    assert G.total(old) == pytest.approx(0.0)
+
+
+def test_the_board_renders_the_cite_columns_and_the_gauge_rows() -> None:
+    rows = S.score_paired("t", _cite_lines(), ("typed",))
+    text = S.render(rows, {}, G)
+    assert "| cite-right | cite-wrong |" in text
+    assert "u_cite_right 0.5, u_cite_wrong -1" in text
+    # 1 right - 9 wrong + 2 cite-right - 1 cite-wrong, over 6 rows
+    assert f"{(1 - 9 + 2 * 0.5 - 1.0) / 6:+.3f}" in text

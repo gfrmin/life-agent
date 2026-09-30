@@ -8,9 +8,14 @@ Sets are declared in `eval/sets.yaml`; their files live under `$LIFE_AGENT_KB` a
 pinned by sha256.
 
 Columns, per (set, arm):
-  rows · right · wrong · esc-right · esc-wrong · declined · $/q · U/q · s/q
-`right`/`wrong` count every delivered answer (answered locally or escalated); the esc-
-columns are the escalated share of each. `declined` = no answer delivered. `$/q` is what
+  rows · right · wrong · esc-right · esc-wrong · cite-right · cite-wrong · declined · $/q ·
+  U/q · s/q
+`right`/`wrong` count every delivered VALUE answer (answered locally or escalated); the esc-
+columns are the escalated share of each. `cite-right`/`cite-wrong` count partial answers,
+where the act named the document believed to hold the answer and not the value (right iff
+that document attests the gold); they are neither `right` nor `wrong` and not `declined`,
+and an escalation replaces a cite as it does any non-assertion. `declined` = no answer and
+no citation delivered. `$/q` is what
 the arm's calls cost at their DECLARED prices — the typed arm's applied probes at the
 menu's prices (`pricing.list_price`) whether or not a cache served them, the outside arm's
 recorded call — so the board prices the act, not the cache (a warm replay of an escalation
@@ -19,8 +24,9 @@ is blank until the rows carry latency. `log score` and `ECE` calibrate the typed
 (the probability it gave its leading candidate) against whether that candidate matched the
 gold, on every row with a candidate (:mod:`eval.calibration`); "—" where an archive carries
 no such reading. The counts need no gauge; `U/q` prices them at the folded
-utility mean (:class:`Gauge`): U = u_right·right + u_wrong·wrong + u_declined·declined -
-lambda_usd·$. A pinned set is one biased draw: a row whose U fell against the committed
+utility mean (:class:`Gauge`): U = u_right·right + u_wrong·wrong +
+u_cite_right·cite_right + u_cite_wrong·cite_wrong + u_declined·declined - lambda_usd·$.
+A pinned set is one biased draw: a row whose U fell against the committed
 board is listed for the PR to explain, never vetoed.
 """
 from __future__ import annotations
@@ -38,7 +44,8 @@ from typing import Any
 import yaml
 
 from eval import calibration as CAL
-from eval.grading import ASSERT_ACTIONS
+from eval.grading import ASSERT_ACTIONS, CITE_ACTIONS
+from life_agent.core.decide import CITE_RIGHT_DEFAULT, CITE_WRONG_DEFAULT
 
 REPO = Path(__file__).resolve().parent.parent
 SETS = REPO / "eval" / "sets.yaml"
@@ -55,11 +62,15 @@ class Gauge:
     u_wrong: float
     u_declined: float
     lambda_usd: float
+    u_cite_right: float = CITE_RIGHT_DEFAULT
+    u_cite_wrong: float = CITE_WRONG_DEFAULT
 
     def total(self, counts: Mapping[str, Any]) -> float:
         """U summed over a row's questions, from its counts (a :class:`Row` as a dict, or a
-        committed board row)."""
+        committed board row; one without cite counts has none)."""
         return (self.u_right * counts["right"] + self.u_wrong * counts["wrong"]
+                + self.u_cite_right * counts.get("cite_right", 0)
+                + self.u_cite_wrong * counts.get("cite_wrong", 0)
                 + self.u_declined * counts["declined"]
                 - self.lambda_usd * counts["usd_per_q"] * counts["rows"])
 
@@ -71,7 +82,9 @@ def folded_gauge() -> Gauge:
 
     u, _version, _policy = LK.current_u_bar()
     return Gauge(u_right=u["u_correct"], u_wrong=u["u_wrong"], u_declined=u["u_abstain"],
-                 lambda_usd=u["lambda_usd"])
+                 lambda_usd=u["lambda_usd"],
+                 u_cite_right=u.get("u_cite_right", CITE_RIGHT_DEFAULT),
+                 u_cite_wrong=u.get("u_cite_wrong", CITE_WRONG_DEFAULT))
 
 
 @dataclass(frozen=True)
@@ -83,6 +96,7 @@ class Response:
     cost_usd: float
     escalated: bool = False
     latency_s: float | None = None
+    cite: bool = False      # named the document, not the value; ``correct`` grades the document
 
 
 @dataclass(frozen=True)
@@ -102,12 +116,14 @@ class Row:
     log_score: float | None = None     # the typed arm's calibration; None = not recorded
     ece: float | None = None
     n_scored: int | None = None
+    cite_right: int = 0
+    cite_wrong: int = 0
 
 
 def _response(arm: Mapping[str, Any]) -> Response:
     return Response(asserted=arm["action"] in ASSERT_ACTIONS, correct=arm.get("correct"),
                     cost_usd=float(arm.get("cost_usd") or 0.0),
-                    latency_s=arm.get("latency_s"))
+                    latency_s=arm.get("latency_s"), cite=arm["action"] in CITE_ACTIONS)
 
 
 def route(typed: Response, outside: Response) -> Response:
@@ -126,11 +142,14 @@ def summarise(set_name: str, arm: str, responses: Sequence[Response]) -> Row:
     n = len(responses)
     right = [r for r in responses if r.asserted and r.correct]
     wrong = [r for r in responses if r.asserted and not r.correct]
+    cites = [r for r in responses if r.cite]
     lat = [r.latency_s for r in responses]
     return Row(set=set_name, arm=arm, rows=n, right=len(right), wrong=len(wrong),
                esc_right=sum(r.escalated for r in right),
                esc_wrong=sum(r.escalated for r in wrong),
-               declined=sum(not r.asserted for r in responses),
+               declined=sum(not r.asserted and not r.cite for r in responses),
+               cite_right=sum(bool(r.correct) for r in cites),
+               cite_wrong=sum(not r.correct for r in cites),
                usd_per_q=sum(r.cost_usd for r in responses) / n if n else 0.0,
                s_per_q=(sum(x for x in lat if x is not None) / n
                         if n and all(x is not None for x in lat) else None))
@@ -281,26 +300,30 @@ def render(rows: Sequence[Row], skipped: Mapping[str, str], gauge: Gauge | None 
     string sensitivity as much as the act, and a bare -0.012 says the opposite."""
     priced = ("unpriced (no gauge)" if gauge is None else
               f"priced at the folded gauge u_right {gauge.u_right:g}, u_wrong "
-              f"{gauge.u_wrong:.4f}, u_declined {gauge.u_declined:g}, lambda_usd "
+              f"{gauge.u_wrong:.4f}, u_cite_right {gauge.u_cite_right:g}, u_cite_wrong "
+              f"{gauge.u_cite_wrong:g}, u_declined {gauge.u_declined:g}, lambda_usd "
               f"{gauge.lambda_usd:g}/$")
     out = ["# Scoreboard", "",
            "`python -m eval.score --write`. Counts over each set's rows; `right`/`wrong` "
-           "include escalated answers, the esc- columns are their escalated share. `$/q` "
+           "are value answers, escalated ones included, the esc- columns their escalated "
+           "share; `cite-right`/`cite-wrong` are partial answers (the document named, not "
+           "the value; right iff it attests the gold), neither right, wrong nor declined. `$/q` "
            "is the arm's calls at their declared prices, cache or no cache (the typed "
            "arm's applied probes at the menu's prices; the outside arm's recorded call). "
            f"`U/q` is {priced}. A pinned set is one biased draw: a row whose U fell "
            "against the committed board is explained in its PR, not vetoed (rule 5; "
            "`--falls`). `log score` and `ECE` calibrate the typed arm's `p1` (see "
            "Calibration below); \"—\" where the archive records none.", "",
-           "| set | arm | rows | right | wrong | esc-right | esc-wrong | declined | $/q | U/q "
-           "| s/q | log score | ECE |",
-           "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|"]
+           "| set | arm | rows | right | wrong | esc-right | esc-wrong | cite-right "
+           "| cite-wrong | declined | $/q | U/q | s/q | log score | ECE |",
+           "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|"]
     for r in rows:
         s = "—" if r.s_per_q is None else f"{r.s_per_q:.1f}"
         u = "—" if gauge is None or not r.rows else f"{gauge.total(asdict(r)) / r.rows:+.3f}"
         out.append(f"| {r.set} | {r.arm} | {r.rows} | {_pct(r.right, r.rows)} | "
                    f"{_pct(r.wrong, r.rows)} | {r.esc_right} | {r.esc_wrong} | "
-                   f"{_pct(r.declined, r.rows)} | {r.usd_per_q:.4f} | {u} | {s} | "
+                   f"{r.cite_right} | {r.cite_wrong} | {_pct(r.declined, r.rows)} | "
+                   f"{r.usd_per_q:.4f} | {u} | {s} | "
                    f"{'—' if r.log_score is None else f'{r.log_score:.3f}'} | "
                    f"{'—' if r.ece is None else f'{r.ece:.3f}'} |")
     out += _calibration_section(cals or {})

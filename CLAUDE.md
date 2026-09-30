@@ -7,9 +7,11 @@ the standing principles.
 ## What this is
 
 A personal assistant over your own documents (mail, files). Ask it a question over Telegram or
-the CLI and it returns either:
+the CLI and it returns one of:
 
 - an answer **from your documents**, with the citation and the credence it was committed at;
+- the document that holds it, when the value is not certain enough to state — with the
+  citation and the credence;
 - an answer **from an escalated model**, saying which rung and what was disclosed to it; or
 - **declined**, with the reason.
 

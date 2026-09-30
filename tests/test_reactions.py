@@ -250,3 +250,12 @@ def test_a_reacted_miss_row_folds_nothing(tmp_path: Path) -> None:
     out = R.load_reactions(rpath, dpath)
     assert len(out) == 1                                 # ONLY the ranked abstain folds
     assert out[0].threshold == pytest.approx(0.6 / 0.4)  # ...and it is d-full's, at ITS p
+
+
+def test_a_verdict_on_a_cite_is_recorded_and_never_folded() -> None:
+    cite = DEC.DecisionEvent(
+        tx_time="2026-06-12T12:00:00+00:00", run_id="r", question_id="q-1", family="lookup",
+        action_set=DEC.LOOKUP_ACTION_ORDER, posterior_summary={"cited": "d0"},
+        utility_fold_version="a" * 64, chosen_action="cite", predicted_eu=0.1,
+        decision_id="ab-1", origin="documents")
+    assert not R.can_fold(cite)

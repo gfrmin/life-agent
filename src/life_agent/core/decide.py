@@ -2,8 +2,8 @@
 
 One function ranks every choice the system can make, :func:`bayes_act`, and nothing else
 does. Every choice is a row: one ``abstain``, one ``gather`` per open probe, one ``ask``,
-one ``respond`` per candidate (:func:`options`). It reads the posterior through the
-candidate credences and the owner's utility through the declared rows
+one ``cite`` per document, one ``respond`` per candidate (:func:`options`). It reads the
+posterior through the candidate credences and the owner's utility through the declared rows
 (:func:`utility_by_action`), and returns the :class:`Option` with the highest expected
 utility, ties to the first-listed option (the order is :func:`options`'s contract).
 
@@ -24,7 +24,16 @@ utility, ties to the first-listed option (the order is :func:`options`'s contrac
   option differs from the others only by its price;
 - ``ask``: priced by a **measured recovery rate** ``r`` (an ask ends in a report with
   probability r, otherwise in a withhold) less ``lambda_int``; unmeasured, ``r`` is the
-  Beta(1, 1) mean 0.5. Never the perfect-information row, which is an upper bound.
+  Beta(1, 1) mean 0.5. Never the perfect-information row, which is an upper bound;
+- ``cite``: name the DOCUMENT believed to hold the answer without asserting the value.
+  ``u_cite_wrong`` / ``u_cite_right`` (declared latents, defaulting to
+  :data:`CITE_WRONG_DEFAULT` / :data:`CITE_RIGHT_DEFAULT`) price it, and each document's
+  row is evaluated at its OWN chance of holding the answer, P(g) = the summed credence of
+  the candidates that document's observations report (:func:`options`). The consumers
+  that read the rows at a single ``p1`` (:func:`respond_threshold`,
+  :func:`argmax_crossings`) evaluate cite at P(g) = ``p1`` — the leader's credence, a
+  lower bound on the best document's P(g) — so a bar they derive is a LOWER bound on the
+  bar the decider applies.
 
 The information rows are **measured evidence models**, not the preposterior over the current
 posterior; that is a door in ``ROADMAP.md``.
@@ -51,8 +60,9 @@ from life_agent.core import gather_row as GR
 from life_agent.core import route_row as RR
 
 #: The actions, in tie-break order: the first-listed wins an exact tie, so ``abstain`` is
-#: the safe default when nothing is better.
-ACTIONS: tuple[str, ...] = ("abstain", "gather", "ask", "respond")
+#: the safe default when nothing is better, and ``cite`` precedes ``respond`` (a tie goes to
+#: the cheaper claim).
+ACTIONS: tuple[str, ...] = ("abstain", "gather", "ask", "cite", "respond")
 
 #: The route state's actions, in tie-break order: declining wins an exact tie.
 ROUTE_ACTIONS: tuple[str, ...] = ("abstain", "attempt")
@@ -62,6 +72,11 @@ ASK_RECOVERY_KEY = "ask_recovery"
 
 #: The Beta(1, 1) prior mean an unmeasured recovery rate reads as.
 PRIOR_RECOVERY = 0.5
+
+#: The prior means an undeclared ``u_cite_right`` / ``u_cite_wrong`` read as: a right pointer
+#: is half a right answer, a wrong one costs one read.
+CITE_RIGHT_DEFAULT = 0.5
+CITE_WRONG_DEFAULT = -1.0
 
 
 def utility_by_action(u_bar: Mapping[str, float]) -> dict[str, tuple[float, float]]:
@@ -75,6 +90,8 @@ def utility_by_action(u_bar: Mapping[str, float]) -> dict[str, tuple[float, floa
     g = abs(float(u_bar.get("kappa_att", 0.02)))
     r_ask = float(u_bar.get(ASK_RECOVERY_KEY, PRIOR_RECOVERY))
     gr = {k: float(u_bar.get(k, GR.PRIOR[k])) for k in GR.KEYS}
+    cite_right = float(u_bar.get("u_cite_right", CITE_RIGHT_DEFAULT))
+    cite_wrong = float(u_bar.get("u_cite_wrong", CITE_WRONG_DEFAULT))
 
     def gathered(p_right: float, p_wrong: float) -> float:
         return (p_right * u_correct + p_wrong * u_wrong
@@ -85,6 +102,7 @@ def utility_by_action(u_bar: Mapping[str, float]) -> dict[str, tuple[float, floa
         "gather": (gathered(gr["gather_right_if_wrong"], gr["gather_wrong_if_wrong"]),
                    gathered(gr["gather_right_if_right"], gr["gather_wrong_if_right"])),
         "ask": (u_abstain - q, r_ask * u_correct + (1.0 - r_ask) * u_abstain - q),
+        "cite": (cite_wrong, cite_right),
         "respond": (u_wrong, u_correct),
     }
 
@@ -97,25 +115,37 @@ def eu_by_action(u_bar: Mapping[str, float], p1: float) -> dict[str, float]:
 @dataclass(frozen=True)
 class Option:
     """One row of the argmax: the ``action``, what it is aimed at (``target``: the candidate
-    index for ``respond``, the probe name for ``gather``, ``None`` otherwise) and its
-    expected utility."""
+    index for ``respond``, the document group for ``cite``, the probe name for ``gather``,
+    ``None`` otherwise) and its expected utility."""
     action: str
     target: int | str | None
     eu: float
 
 
+def p_document(credences: Sequence[float], candidates: Sequence[int]) -> float:
+    """P(a document holds the answer) = the summed credence of the candidate indices its
+    observations report (the candidates are distinct, so the credences add)."""
+    return sum(float(credences[j]) for j in candidates if 0 <= j < len(credences))
+
+
 def options(u_bar: Mapping[str, float], credences: Sequence[float],
-            gathers: Sequence[tuple[str, float]] = ()) -> list[Option]:
+            gathers: Sequence[tuple[str, float]] = (),
+            groups: Sequence[tuple[int, Sequence[int]]] = ()) -> list[Option]:
     """Every choice as a row, in tie-break order: ``abstain``, the gather options in the
     order given (``gathers`` = ``(probe, cost)`` pairs; each is the gather row at ``p1``
-    less its cost), ``ask``, then one ``respond`` per candidate by index at that
-    candidate's own credence. ``gather`` and ``ask`` are evaluated at ``p1`` =
-    :func:`p_correct`."""
+    less its cost), ``ask``, one ``cite`` per document in the order given (``groups`` =
+    ``(group, candidate indices)`` pairs, each at its own :func:`p_document`), then one
+    ``respond`` per candidate by index at that candidate's own credence. ``gather`` and
+    ``ask`` are evaluated at ``p1`` = :func:`p_correct`."""
     eus = eu_by_action(u_bar, p_correct(credences))
-    u0, u1 = utility_by_action(u_bar)["respond"]
+    pairs = utility_by_action(u_bar)
+    c0, c1 = pairs["cite"]
+    u0, u1 = pairs["respond"]
     return [Option("abstain", None, eus["abstain"]),
             *(Option("gather", probe, eus["gather"] - float(cost)) for probe, cost in gathers),
             Option("ask", None, eus["ask"]),
+            *(Option("cite", g, (1.0 - p) * c0 + p * c1)
+              for g, reported in groups for p in [p_document(credences, reported)]),
             *(Option("respond", j, (1.0 - float(c)) * u0 + float(c) * u1)
               for j, c in enumerate(credences))]
 
@@ -127,9 +157,10 @@ def choose(rows: Sequence[Option]) -> Option:
 
 
 def bayes_act(u_bar: Mapping[str, float], credences: Sequence[float],
-              gathers: Sequence[tuple[str, float]] = ()) -> Option:
+              gathers: Sequence[tuple[str, float]] = (),
+              groups: Sequence[tuple[int, Sequence[int]]] = ()) -> Option:
     """THE decision over the candidate posterior: :func:`choose` over :func:`options`."""
-    return choose(options(u_bar, credences, gathers))
+    return choose(options(u_bar, credences, gathers, groups))
 
 
 def route_options(u_bar: Mapping[str, float], lookup: bool) -> list[Option]:
@@ -158,8 +189,9 @@ def route_options(u_bar: Mapping[str, float], lookup: bool) -> list[Option]:
 
 
 def argmax_action(u_bar: Mapping[str, float], p1: float) -> str:
-    """The action the rows fire at ``p1``, every row open and unpriced; ties first-listed."""
-    return bayes_act(u_bar, [p1], [("", 0.0)]).action
+    """The action the rows fire at ``p1``, every row open and unpriced, one document holding
+    the lone candidate; ties first-listed."""
+    return bayes_act(u_bar, [p1], [("", 0.0)], [(0, [0])]).action
 
 
 def p_correct(credences: Sequence[float]) -> float:
@@ -173,7 +205,10 @@ def respond_threshold(u_bar: Mapping[str, float]) -> float | None:
     Not merely respond-vs-abstain: respond must also outbid the information acts. Each
     row's EU is linear in p1 and respond's slope (``u_correct - u_wrong``) is the steepest
     (``u_wrong < u_abstain``), so respond overtakes each competitor at one crossing and the
-    binding bar is the last of them. ``None`` when some row rises at least as fast (a
+    binding bar is the last of them. The ``cite`` row is read at P(g) = ``p1`` (its slope,
+    ``u_cite_right - u_cite_wrong``, is below respond's), and a document's real P(g) is at
+    least ``p1`` when it holds the leader, so this bar is a LOWER bound on the bar the
+    decider applies. ``None`` when some row rises at least as fast (a
     degenerate u_bar): a reachability statement, not an error."""
     pairs = utility_by_action(u_bar)
     r0, r1 = pairs["respond"]
@@ -192,7 +227,8 @@ def argmax_crossings(u_bar: Mapping[str, float]) -> list[float]:
     """The p1 values in (0, 1) at which :func:`argmax_action` changes its mind — the
     consumer thresholds, derived from the rows rather than assumed. Every row is linear in
     p1, so a pair crosses at most once; a crossing counts only where the WHOLE argmax
-    changes there."""
+    changes there. The ``cite`` row is read at P(g) = ``p1``, so the crossings are the
+    single-``p1`` ones (a lower bound where a document pools several candidates)."""
     rows = list(utility_by_action(u_bar).values())
     out: list[float] = []
     for i, (a0, a1) in enumerate(rows):

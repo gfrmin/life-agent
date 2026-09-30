@@ -154,6 +154,33 @@ def test_undeclared_shape_latents_are_absent_from_u_bar(model: U.UtilityModel) -
     assert not (set(U.SHAPE_LATENT_NAMES) & set(post.u_bar()))
 
 
+# --- the two OPTIONAL cite latents (u_cite_right, u_cite_wrong) -----------------------------
+
+def test_a_model_file_omitting_the_cite_latents_still_loads(model: U.UtilityModel) -> None:
+    assert not (set(U.CITE_LATENT_NAMES) & set(model.latents))
+    u_bar = U.posterior(model, [], policy="all-to-date").u_bar()
+    assert not (set(U.CITE_LATENT_NAMES) & set(u_bar))
+    # the reader supplies the prior means the example declares
+    from life_agent.core import decide as DEC
+    assert DEC.utility_by_action(u_bar)["cite"] == (DEC.CITE_WRONG_DEFAULT,
+                                                    DEC.CITE_RIGHT_DEFAULT)
+
+
+def test_the_example_model_declares_the_cite_latents_at_their_defaults() -> None:
+    from life_agent.core import decide as DEC
+    example = Path(__file__).resolve().parent.parent / "config/utility-model.example.yaml"
+    model = U.load_model(example)
+    assert set(U.CITE_LATENT_NAMES) <= set(model.latents)
+    right, wrong = model.latents["u_cite_right"], model.latents["u_cite_wrong"]
+    assert (right.prior_mu, right.prior_sigma) == (DEC.CITE_RIGHT_DEFAULT, 0.3)
+    assert (wrong.prior_mu, wrong.prior_sigma) == (DEC.CITE_WRONG_DEFAULT, 0.7)
+    assert (right.grid.lo, right.grid.hi) == (-1.0, 1.5)
+    assert (wrong.grid.lo, wrong.grid.hi) == (-6.0, 0.5)
+    # the grids hold their prior means exactly, so the posterior mean starts at the default
+    assert DEC.CITE_RIGHT_DEFAULT in [round(v, 9) for v in right.grid.values()]
+    assert DEC.CITE_WRONG_DEFAULT in [round(v, 9) for v in wrong.grid.values()]
+
+
 # --- C6: the six latents' frozen priors (config/utility-model-shape-scales.example.yaml) --
 # NOT merged into config/utility-model.example.yaml (disclosed deviation,
 # docs/unification/reports/r30-units-lever.md RESULTS) — that file is copied wholesale by

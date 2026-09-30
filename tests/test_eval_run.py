@@ -102,3 +102,50 @@ def test_typed_response_without_a_candidate_reads_no_leader() -> None:
     # a hand-built view without `credences` still grades: no leader, but the truth is seen
     bare = ER.typed_response(_view("abstain"), {"answer": "P123", "answer_variants": []})
     assert (bare.p1, bare.leader_correct, bare.truth_in_candidates) == (None, None, True)
+
+
+# --- cite: graded by attestation of the cited document ------------------------------------
+
+def _catalogue() -> duckdb.DuckDBPyConnection:
+    conn = duckdb.connect(":memory:")
+    conn.execute("CREATE TABLE artifact_chunks (artifact_cache_key VARCHAR, chunk_text VARCHAR)")
+    conn.executemany("INSERT INTO artifact_chunks VALUES (?, ?)", [
+        ("d-attests", "Passport No: P123"), ("d-also", "copy of P123 on file"),
+        ("d-other", "Passport No: P999")])
+    return conn
+
+
+def _cite_view(key: str, **kw: object) -> dict:
+    return _view("cite", cited={"cache_key": key, "hit_n": 1}, **kw)
+
+
+def test_a_cite_is_right_iff_the_cited_document_attests_the_gold() -> None:
+    q = {"answer": "P123", "answer_variants": []}
+    conn = _catalogue()
+    right = ER.typed_response(_cite_view("d-also"), q, conn=conn)
+    wrong = ER.typed_response(_cite_view("d-other"), q, conn=conn)
+    assert (right.action, right.correct, right.cited, right.withheld) == (
+        "cite", True, "d-also", None)
+    assert (wrong.action, wrong.correct, wrong.cited) == ("cite", False, "d-other")
+    assert right.applied == ("corroborate_haiku",) and right.cost_usd > 0
+    with pytest.raises(ValueError, match="catalogue"):
+        ER.typed_response(_cite_view("d-also"), q)
+
+
+def test_the_archive_row_carries_the_cited_key_and_the_tally_counts_cites() -> None:
+    q = {"answer": "P123", "answer_variants": []}
+    r = ER.typed_response(_cite_view("d-also"), q, conn=_catalogue())
+    assert ER.archive_row("q-1", "run", r, censored=False)["typed"]["cited"] == "d-also"
+    plain = ER.typed_response(_view("abstain"), q)
+    assert ER.archive_row("q-2", "run", plain, censored=False)["typed"]["cited"] is None
+    wrong = ER.typed_response(_cite_view("d-other"), q, conn=_catalogue())
+    assert [ER._tally_key(x, censored=False) for x in (r, wrong, plain)] == [
+        "cite-right", "cite-wrong", "declined"]
+    assert ER._tally_key(r, censored=True) == "censored"
+
+
+def test_a_cite_of_a_withheld_document_is_a_leak() -> None:
+    q = {"answer": "P123", "answer_variants": []}
+    assert ER.is_leak(_cite_view("d-attests", candidates=[]), q, frozenset({"d-attests"}))
+    assert not ER.is_leak(_cite_view("d-other", candidates=[]), q, frozenset({"d-attests"}))
+    assert not ER.is_leak(_view("abstain", candidates=[]), q, frozenset({"d-attests"}))

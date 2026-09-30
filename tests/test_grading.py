@@ -78,5 +78,20 @@ def test_withheld_reason_is_a_closed_set_and_assertions_cannot_carry_one() -> No
 
 
 def test_the_partition_covers_the_recorded_action_vocabulary() -> None:
-    assert G.ASSERT_ACTIONS | G.WITHHOLD_ACTIONS == DEC.ACTIONS
+    assert G.ASSERT_ACTIONS | G.WITHHOLD_ACTIONS | G.CITE_ACTIONS == DEC.ACTIONS
     assert G.ASSERT_ACTIONS.isdisjoint(G.WITHHOLD_ACTIONS)
+    assert G.CITE_ACTIONS.isdisjoint(G.ASSERT_ACTIONS | G.WITHHOLD_ACTIONS)
+
+
+def test_a_cite_is_graded_right_or_wrong_and_names_its_document() -> None:
+    right = G.RealisedResponse(action="cite", correct=True, cited="k1")
+    assert (right.correct, right.cited, right.withheld) == (True, "k1", None)
+    assert G.RealisedResponse(action="cite", correct=False, cited="k2").correct is False
+    with pytest.raises(ValueError):
+        G.RealisedResponse(action="cite", correct=None, cited="k1")   # not graded
+    with pytest.raises(ValueError):
+        G.RealisedResponse(action="cite", correct=True)               # names nothing
+    with pytest.raises(ValueError):
+        G.RealisedResponse(action="cite", correct=True, cited="k1", withheld="miss")
+    with pytest.raises(ValueError):
+        G.RealisedResponse(action="report", correct=True, cited="k1")

@@ -13,6 +13,9 @@ from life_agent.core.matching import answer_matches
 #: action the arm has ever recorded, so the retired spellings stay in the partition.
 ASSERT_ACTIONS: frozenset[str] = frozenset({"report", "report_scoped", "hedge"})
 WITHHOLD_ACTIONS: frozenset[str] = frozenset({"abstain", "ask_clarify"})
+#: A cite names the document believed to hold the answer, not the value: right when that
+#: document attests the gold. It is neither a value answer nor a withholding.
+CITE_ACTIONS: frozenset[str] = frozenset({"cite"})
 
 #: Why a withholding withheld (``decisions.withhold_reason``). ``unavailable`` rows measure
 #: the catalogue on the running machine, not the policy, and are censored.
@@ -38,10 +41,18 @@ class RealisedResponse:
     n_candidates: int = 0
     leader_correct: bool | None = None
     truth_in_candidates: bool = False
+    cited: str | None = None
 
     def __post_init__(self) -> None:
-        if self.action not in ASSERT_ACTIONS | WITHHOLD_ACTIONS:
+        if self.action not in ASSERT_ACTIONS | WITHHOLD_ACTIONS | CITE_ACTIONS:
             raise ValueError(f"unknown action {self.action!r}")
+        if self.action in CITE_ACTIONS:
+            if not isinstance(self.correct, bool) or not self.cited:
+                raise ValueError("a cite names its document and is graded right or wrong")
+            if self.withheld is not None:
+                raise ValueError(f"a cite cannot carry a withheld reason ({self.withheld!r})")
+        elif self.cited is not None:
+            raise ValueError(f"action {self.action!r} names no document")
         if self.withheld is not None and self.withheld not in WITHHELD_REASONS:
             raise ValueError(f"unknown withheld reason {self.withheld!r}")
         if self.withheld is not None and self.action in ASSERT_ACTIONS:
