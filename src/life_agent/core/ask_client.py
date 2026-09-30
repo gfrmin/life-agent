@@ -22,7 +22,7 @@ import time
 import urllib.error
 import urllib.request
 from collections.abc import Callable
-from typing import Any
+from typing import Any, NamedTuple
 
 from life_agent.core import calibration as CAL
 from life_agent.core import config as CFG
@@ -247,6 +247,28 @@ def drive(question: str, k: int = 20, *, bridge: str | None = None,
         print(f"  (stack unreachable mid-question: {e})")
         return _down(question, run_id)
     return DriveResult(view, post_decision(post, bridge, question, view, run_id=run_id))
+
+
+class Reply(NamedTuple):
+    """One answered question as a surface shows it: the rendered ``text`` (the down-stack
+    string when the bridge is down), the loop's ``view`` (``None`` when down), the
+    ``decision_id`` a verdict binds to (``None`` when nothing foldable was posted) and
+    the ``down`` fact."""
+
+    text: str
+    view: dict[str, Any] | None
+    decision_id: str | None
+    down: bool
+
+
+def answer(question: str, k: int = 20, **kw: Any) -> Reply:
+    """Answer ``question`` end to end: :func:`drive`, then render the view in the shared
+    credence grammar. A down stack is the named :data:`DOWN` reply, never another answer.
+    ``kw`` is :func:`drive`'s (bridge, transport, run id, hold-out)."""
+    r = drive(question, k=k, **kw)
+    if r.view is None:
+        return Reply(DOWN, None, None, True)
+    return Reply(EX.render_view(r.view), r.view, r.decision_id, False)
 
 
 def _down(question: str, run_id: str | None) -> DriveResult:

@@ -17,6 +17,7 @@ from pathlib import Path
 import duckdb
 
 from life_agent.core import ask_client as AC_client
+from life_agent.core import executor as EX
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
@@ -234,7 +235,7 @@ def test_answer_via_executor_renders_logs_and_binds(monkeypatch) -> None:
             "hits": [{"artifact_cache_key": "d0", "chunk_text": "Passport P123",
                       "origin": "/data/id.pdf", "score": 9.0}],
             "route": {"construct": "passport number"}}
-    monkeypatch.setattr(ask.EX, "decide_via_loop", lambda *a, **k: view)
+    monkeypatch.setattr(EX, "decide_via_loop", lambda *a, **k: view)
     posted: dict[str, object] = {}
 
     def fake_post(url: str, payload: dict) -> dict | None:
@@ -265,7 +266,7 @@ def test_answer_via_executor_logs_a_miss_locally_never_by_wire(monkeypatch) -> N
             "p_none": None, "eu": None, "n_obs": 0,
             "hits": [{"artifact_cache_key": "d0", "chunk_text": "x", "origin": "/d.pdf",
                       "score": 1.0}], "route": {"construct": "passport number"}}
-    monkeypatch.setattr(ask.EX, "decide_via_loop", lambda *a, **k: view)
+    monkeypatch.setattr(EX, "decide_via_loop", lambda *a, **k: view)
     calls: list[str] = []
     monkeypatch.setattr(ask, "_http_post", lambda url, payload: calls.append(url) or None)
     ask.answer_via_executor("my passport?", 20)
@@ -285,7 +286,7 @@ def test_answer_via_executor_tags_run_id_when_set(monkeypatch) -> None:
             "hits": [{"artifact_cache_key": "d0", "chunk_text": "Passport P123",
                       "origin": "/data/id.pdf", "score": 9.0}],
             "route": {"construct": "passport number"}}
-    monkeypatch.setattr(ask.EX, "decide_via_loop", lambda *a, **k: view)
+    monkeypatch.setattr(EX, "decide_via_loop", lambda *a, **k: view)
     posted: list[tuple[str, dict]] = []
 
     def fake_post(url: str, payload: dict) -> dict | None:

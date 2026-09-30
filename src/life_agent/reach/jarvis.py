@@ -20,7 +20,7 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
 
-from life_agent.core import ask_client, executor, secret
+from life_agent.core import ask_client, secret
 from life_agent.reach import telegram
 from life_agent.tasks import commands, store
 
@@ -228,11 +228,8 @@ def handle_action(parsed: dict[str, Any], user_id: int) -> str:
         q = str(parsed.get("question") or "").strip()
         if not q:
             return "What would you like to know?"
-        r = ask_client.drive(q)
-        # Two outcomes only: the stack answered, or it is down. The terminals-only
-        # regime this once branched on retired with the in-process lanes (J1), and the
-        # branch outlived it unreachable — `DriveResult.view` is None iff `down`.
-        reply = ask_client.DOWN if r.view is None else executor.render_view(r.view)
+        r = ask_client.answer(q)
+        reply = r.text
         decision_id = r.decision_id
         LAST_DECISION_ID = decision_id
         if decision_id:

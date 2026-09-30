@@ -2,7 +2,7 @@
 """ask — the dogfood "ask anything" REPL over the LIVE pkm catalogue, with citations.
 
 One command -> an `ask> ` loop that, per question, answers through the one executor
-(:func:`life_agent.core.ask_client.drive`: the bridge's decider over the live corpus),
+(:func:`life_agent.core.ask_client.answer`: the bridge's decider over the live corpus),
 renders the reply with its citations, then captures a one-key good/bad verdict into a dated
 session log under $LIFE_AGENT_KB. The captured misses are the spec for what to build next.
 
@@ -36,7 +36,6 @@ import life_agent.core as C
 import life_agent.core.ask_client as AC
 import life_agent.core.decisions as DEC
 import life_agent.core.derivations as D
-import life_agent.core.executor as EX
 import life_agent.core.outcomes as O
 import life_agent.core.reactions as R
 import life_agent.owner as owner
@@ -184,7 +183,7 @@ def _executor_ready() -> bool:
 def answer_via_executor(question: str, k: int
                         ) -> tuple[str, list[C.SourceCard], dict[int, float]]:
     """Ask's EXECUTOR-LANE SURFACE over the one driver
-    (:func:`life_agent.core.ask_client.drive`): route → retrieve → probe → extract →
+    (:func:`life_agent.core.ask_client.answer`): route → retrieve → probe → extract →
     /decide, then render in the shared credence grammar. The driver posts the one
     /log_decision body and, on a down stack, commits the declared gate +
     appends the unavailability record; this surface owns ask's concerns — the
@@ -194,20 +193,18 @@ def answer_via_executor(question: str, k: int
     global EXECUTOR_LAST, EXECUTOR_VIEW_LAST
     EXECUTOR_LAST = None
     EXECUTOR_VIEW_LAST = None
-    r = AC.drive(question, k, bridge=EXECUTOR_BRIDGE,
-                 post=_http_post, run_id=EXECUTOR_RUN_ID,
-                 ready=_executor_ready,
-                 hold_out_question_id=EXECUTOR_HOLD_OUT_QUESTION_ID)
-    if r.down:
+    r = AC.answer(question, k, bridge=EXECUTOR_BRIDGE,
+                  post=_http_post, run_id=EXECUTOR_RUN_ID,
+                  ready=_executor_ready,
+                  hold_out_question_id=EXECUTOR_HOLD_OUT_QUESTION_ID)
+    if r.view is None:
         return (EXECUTOR_DOWN, [], {})
-    assert r.view is not None  # drive returns a view whenever the stack is up
-    view = r.view
-    EXECUTOR_VIEW_LAST = view
+    EXECUTOR_VIEW_LAST = r.view
     EXECUTOR_LAST = r.decision_id
-    pairs = _cards_from_set(view["hits"])
+    pairs = _cards_from_set(r.view["hits"])
     cards = [c for c, _ in pairs]
     scores = {c.n: s for c, s in pairs}
-    return (EX.render_view(view), cards, scores)
+    return (r.text, cards, scores)
 
 
 # --- presentation --------------------------------------------------------- #

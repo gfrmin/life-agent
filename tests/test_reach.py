@@ -95,7 +95,7 @@ def test_handle_list_with_tag_routes_to_tag_view() -> None:
 
 
 def test_handle_question_routes_to_the_know_mode(monkeypatch: pytest.MonkeyPatch) -> None:
-    # since M3 jarvis takes the driver directly: drive → render
+    # jarvis answers through ask_client.answer: drive, then render
     from life_agent.core import ask_client, executor
 
     monkeypatch.setattr(ask_client, "drive",

@@ -16,13 +16,9 @@ from life_agent.core import executor as EX
 
 
 def _answer(question: str, k: int = 20, **kw):
-    """What every surface does since M3: drive, then render — the inline that replaced
-    the AC.answer shim (jarvis and the A-loop driver spell exactly this)."""
-    r = AC.drive(question, k, **kw)
-    if r.down:
-        return AC.DOWN, None
-    assert r.view is not None
-    return EX.render_view(r.view), r.decision_id
+    """What every surface shows: the rendered reply and the id a verdict binds to."""
+    r = AC.answer(question, k, **kw)
+    return r.text, r.decision_id
 
 def _fake_view(effector: str = "report") -> dict[str, Any]:
     return {"effector": effector, "asserted": ["P123"] if effector == "report" else [],
@@ -191,6 +187,16 @@ def test_answer_down_stack_commits_the_gate_and_records(monkeypatch: Any) -> Non
     assert len(recorded) == 1 and recorded[0]["question"] == "q?"
 
 
+def test_answer_is_the_rendered_view_or_the_named_down_stack(monkeypatch: Any) -> None:
+    view = _fake_view()
+    monkeypatch.setattr(AC, "drive", lambda q, k=20, **kw: AC.DriveResult(view, "ab-1"))
+    monkeypatch.setattr(EX, "render_view", lambda v: f"rendered {v['effector']}")
+    up = AC.answer("q?")
+    assert up == AC.Reply("rendered report", view, "ab-1", False)
+    monkeypatch.setattr(AC, "drive", lambda q, k=20, **kw: AC.DriveResult(None, None, down=True))
+    assert AC.answer("q?") == AC.Reply(AC.DOWN, None, None, True)
+
+
 def test_a_decider_that_answers_503_is_a_down_stack(monkeypatch: Any) -> None:
     import urllib.error
 
@@ -226,12 +232,6 @@ def test_the_ready_gate_needs_a_decider(monkeypatch: Any) -> None:
     assert AC._ready() is False
     monkeypatch.setattr(_ur, "urlopen", serve({"status": "ok", "decider": {"enabled": True}}))
     assert AC._ready() is True
-
-def test_the_m2_shims_are_dead() -> None:
-    # AC.answer and ask._edge_curves are deleted — callers
-    # take the one driver directly; no old-poster spelling survives in core
-    assert not hasattr(AC, "answer")
-
 
 # --- the transport retries transient failures --------------------------------------
 # One live 5xx would otherwise kill a whole ask. The
