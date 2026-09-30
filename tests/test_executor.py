@@ -1843,7 +1843,7 @@ def test_a_cite_view_names_the_document_and_asserts_nothing() -> None:
     assert view["effector"] == "cite" and view["asserted"] == []
     assert view["cited"] == {"cache_key": "d0", "hit_n": 2}     # the second card
     assert view["origin"] == {"kind": "documents", "rung": "", "reason": "",
-                              "cited": "d0"}
+                              "disclosed": None, "cited": "d0"}
     out = EX.render_view(view)
     lines = out.splitlines()
     assert lines[0] == "From your documents (the document, not the value)."

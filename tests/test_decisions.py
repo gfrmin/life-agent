@@ -296,7 +296,8 @@ def test_a_cite_is_a_declared_action_and_its_origin_is_the_documents() -> None:
     assert "cite" not in D.NARRATIVE_ACTION_ORDER
     o = D.origin(effector="cite", candidates=["P1"], asserted=[], cited={"cache_key": "d0"})
     assert o == D.Origin("documents", cited="d0")
-    assert o.as_dict() == {"kind": "documents", "rung": "", "reason": "", "cited": "d0"}
+    assert o.as_dict() == {"kind": "documents", "rung": "", "reason": "", "disclosed": None,
+                           "cited": "d0"}
     # a cite naming no document is not one: it falls to the decline derivation
     assert D.origin(effector="cite", candidates=["P1"], asserted=[]).kind == "declined"
     ev = _event(chosen_action="cite", action_set=D.LOOKUP_ACTION_ORDER, origin="documents",
