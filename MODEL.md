@@ -150,3 +150,20 @@ escalated-wrong · declined · $/q · U/q · s/q. Sets: `owner` (the owner's 104
 (synthetic, CI). Every row is graded by exact match. Rule 5: a change merges when no row's
 expected utility falls against the committed board, both priced at the folded gauge
 (`eval.score --gate`; the expectation is the mean over the runs taken).
+
+## 7. The read path
+
+```
+scripts/ask.py / reach/jarvis.py
+  └─ core/ask_client.drive
+       └─ core/executor.run_pass     the loop; holds NO posterior and picks NO action
+            └─ bridge/server.py      :8798 gathers and SHAPES evidence, and hosts the decider
+                 ├─ /route           lane classifier (core/answer_shape.py); not a point fact ⇒ declined
+                 ├─ /retrieve        BM25 over DuckDB FTS
+                 ├─ probes           subject, recency, corroborate, deliberate
+                 ├─ /extract         LLM per chunk → candidates + integer observations
+                 └─ /decide          core/decider.py: core/posterior.py → decide.bayes_act → enact
+```
+
+The bridge gathers evidence and hosts the one decider. With the bridge down the reply says the
+decider is unavailable; nothing answers in its place (law 7).

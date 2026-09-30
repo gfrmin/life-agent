@@ -1,7 +1,7 @@
 # SPEC-PRINCIPLES — PKM foundational principles
 
-This is a stable, cross-version document. Numbered SPECs (`SPEC-v0.2.0.md`, `SPEC-v0.3.0.md`, …)
-reference it but do not redefine it. It is not phase-scoped; it applies to PKM as a whole.
+This is a stable, cross-version document. The numbered SPEC (`SPEC.md`)
+references it but do not redefine it. It is not phase-scoped; it applies to PKM as a whole.
 
 **§1. Sources.** A source is bytes that exist independently of PKM. Its identity is `sha256` of those
 bytes. The `source_id` of any source must be reproducible by running `sha256sum` on the raw bytes

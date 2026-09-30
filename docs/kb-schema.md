@@ -21,9 +21,9 @@ in your `PKM_CONFIG` yaml.)
   - `mail-corpus.yaml`, `comparison-corpus.yaml` — corpus declarations for mail ingestion and
     the frozen comparison.
 - **`pii-patterns.txt`** — the private denylist for the fail-closed PII guard
-  (copy from `config/pii-patterns.txt.example`; see `CONTRIBUTING.md`).
+  (copy from `config/pii-patterns.txt.example`; see README "Contributing").
 - **`FAILURES.md`** — the dogfood failure log: one entry per question the system couldn't
-  answer well ([`failures-template.md`](./failures-template.md)). **This list is the spec**
+  answer well. **This list is the spec**
   (PRINCIPLES §9): Phase 1.5 builds only what it demands.
 - **`eval/`** — the answer-grounded eval sets and logs (`questions.yaml`,
   `scripts/run_eval.py` output, dogfood session notes) and `eval/comparison/` — the frozen

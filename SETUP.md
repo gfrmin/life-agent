@@ -21,7 +21,7 @@ shows how to point it at your own data. (The why behind the design:
 
 **Required only to *ask* (not to build the corpus)**
 
-- An `ANTHROPIC_API_KEY` — used by `bin/ask-live` to synthesise the answer from
+- An `ANTHROPIC_API_KEY` — used by `bin/ask-live` to extract candidate facts from
   the retrieved, cited sources. Put it in your shell (`export ANTHROPIC_API_KEY=…`),
   in a gitignored `.env`, or in gnome-keyring if you have one. Building and
   searching the corpus needs **no** key.
@@ -150,8 +150,8 @@ due-today / up-next / inbox summary through the same bot. Install the timer:
 `ln -s "$PWD"/packaging/daily-digest.{service,timer} ~/.config/systemd/user/ && systemctl --user daemon-reload && systemctl --user enable --now daily-digest.timer` <!-- PII-OK: standard XDG + repo-relative paths -->
 (07:00 daily, `Persistent=true` catches up a missed morning).
 
-Internals (the event ledger, why the SQLite is safe to delete):
-[`docs/act-layer-events.md`](./docs/act-layer-events.md).
+The task ledger is an append-only event log (`tasks/events.jsonl`); the SQLite next to it is a
+rebuildable projection, safe to delete (see [`docs/kb-schema.md`](./docs/kb-schema.md)).
 
 ## 5. Day to day
 
@@ -160,16 +160,14 @@ You interact in exactly **two places**; everything else runs on timers.
 - **To know — `bin/ask-live`.** One-shot for a quick question; run it bare for
   a REPL session. One line grammar, identical in both: a plain question,
   `/since 2026-01-01 …`, `/until …`, `/recent …`, `/tell <fact about you>`,
-  `/derive`. The full grammar and its rules:
-  [`docs/interaction-contract.md`](./docs/interaction-contract.md).
+  `/derive`.
 - **To act — the Telegram bot.** Capture and triage tasks in plain language;
   say `help` for the vocabulary.
 
 **The verdict prompt is how it gets better.** After each REPL answer, ask-live
 asks `[g]ood / [b]ad / Enter` — one bit, logged to a dated journal at
 `$LIFE_AGENT_KB/eval/dogfood-YYYY-MM-DD.md` (never the repo). Misses that
-matter get promoted to `$LIFE_AGENT_KB/FAILURES.md` (template:
-[`docs/failures-template.md`](./docs/failures-template.md)); the failure log —
+matter get promoted to `$LIFE_AGENT_KB/FAILURES.md`; the failure log —
 not speculation — is what drives what gets built next.
 
 ## 6. Optional: measure it
@@ -205,8 +203,7 @@ aspirational:
   numbers, proper nouns) actually appears in the source it cites. A fact that
   doesn't is flagged `⚠ unverified` rather than presented as trusted.
 - **Weak retrieval abstains.** If nothing in your corpus is a strong enough
-  match, the assistant says so instead of guessing (tune with
-  `LIFE_AGENT_SCORE_FLOOR` / `LIFE_AGENT_MIN_HITS`).
+  match, the assistant says so instead of guessing.
 - **Identity is pinned.** An owner profile (`/tell`) is the lens for who "I" is,
   so a relative's or co-signer's document is never attributed to you.
 
@@ -223,9 +220,8 @@ garble).
   you for the sample.
 - **`corpus locked by extraction`** — a build is holding the catalogue; retry the
   query in a moment (reads are read-only and never block a build).
-- **An answer abstains and you expected a hit** — retrieval was below the
-  relevance floor. Lower `LIFE_AGENT_SCORE_FLOOR`, widen context with
-  `bin/ask-live --k 12`, or check the doc was ingested (`pkm --config "$PKM_CONFIG"
+- **An answer abstains and you expected a hit** — retrieval found no strong match.
+  Widen context with `bin/ask-live --k 12`, or check the doc was ingested (`pkm --config "$PKM_CONFIG"
   search "<term>"`).
 - **`ANTHROPIC_API_KEY not found`** — only needed to ask; export it or add it to
   `.env`. Building/searching the corpus does not need it.

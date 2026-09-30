@@ -23,7 +23,7 @@ questions. Re-running is safe — the content-addressed cache makes it idempoten
 The sample is **markdown-only and pandoc-only** on purpose: it needs `pandoc`
 and nothing else — no Ollama, no embeddings, no OCR/tesseract, no API key for
 the build itself. (Asking questions with `bin/ask-live` does need an
-`ANTHROPIC_API_KEY` for the answer-synthesis step — see [`SETUP.md`](../SETUP.md).)
+`ANTHROPIC_API_KEY` for the extraction step — see [`SETUP.md`](../SETUP.md).)
 
 ## Questions to try
 

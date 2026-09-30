@@ -2,7 +2,7 @@
 
 Read this, then [`MODEL.md`](./MODEL.md), then [`ROADMAP.md`](./ROADMAP.md). Nothing under
 `archive/` is required reading; do not import from it. [`PRINCIPLES.md`](./PRINCIPLES.md) holds
-the standing principles; [`docs/ORIENTATION.md`](./docs/ORIENTATION.md) is the five-minute tour.
+the standing principles.
 
 ## What this is
 
