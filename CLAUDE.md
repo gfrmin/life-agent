@@ -34,13 +34,14 @@ wrong ones.
    docs, tests or commit messages; a shape-alike synthetic value is marked
    `# PII-OK: synthetic <what>`. The PII hook (`.githooks/pii_check.py`) is armed; every
    commit needs `LIFE_AGENT_KB` set.
-5. **The scoreboard decides by expected utility.** Iterate on `make score-quick`; run
-   `make score` once per PR and commit the regenerated `SCOREBOARD.md`. A change merges when,
-   on every row, its expected paired utility is not below the incumbent's: E[ΔU] ≥ 0, where
-   ΔU = Σ_rows [u(new) − u(old)] − λ_usd·Δ$ with u_right = 1, u_wrong the folded mean,
-   u_declined = 0 (`python -m eval.score --gate`). E is the mean over the runs taken (one run
-   is one draw; no tolerance, no significance bar); spend is compared at the same cache
-   state. Every row whose outcome changed is listed in the PR.
+5. **The loss decides; the board is evidence.** There is one rule underneath all five:
+   Bayes' theorem, and maximising expected utility. A change merges when `make check` is
+   green and it is either an equivalence (shown by test) or a row of the argmax with a
+   declared, measured outcome model. `make score` runs once per PR and `SCOREBOARD.md` is
+   committed; it is read for expected utility and for calibration, master against branch.
+   A fall is explained in the PR, not vetoed: a pinned set is one biased draw
+   (`python -m eval.score --falls` lists them). A "never wrong" preference is `u_wrong`'s,
+   never a gate.
 
 ## Layout
 

@@ -18,13 +18,13 @@ test-all:
 	uv run pytest -q -n $(WORKERS) -m "llm or system or not (llm or system)"
 
 # The full board -> SCOREBOARD.md + eval/scoreboard.json, committed with the change. Run once
-# per PR; rule 5 (no row's U may fall at today's folded gauge) is read here.
+# per PR; rows whose U fell at today's folded gauge are listed, to be explained (rule 5).
 score:
-	$(PY) -m eval.score --gate --write
+	$(PY) -m eval.score --falls --write
 
 # While iterating: print the board, write nothing.
 score-quick:
-	$(PY) -m eval.score --gate
+	$(PY) -m eval.score --falls
 
 # A golden set generated from your corpus: verbatim point facts with questions whose answers
 # are known by construction -> $LIFE_AGENT_KB/eval/questions_generated.yaml. Then answer it
