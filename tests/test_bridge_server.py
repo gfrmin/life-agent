@@ -47,12 +47,8 @@ def deps(tmp_path: Path) -> BridgeDeps:
         conn=object(),               # sentinel; retrieval/probes patched
         client=object(),             # sentinel; route/observe/subject patched
         profile="I am the owner; my name is Synthetic Owner.",
-        # r30: u_bar takes the requested answer shape (docs/unification/reports/
-        # r30-units-lever.md); this fixture ignores it — every other test's shape-blind
-        # assertion stays byte-identical.
-        u_bar=lambda shape: {"u_correct": 1.0, "u_wrong": -5.0, "u_hedged": 0.2,
-                             "u_abstain": 0.0, "oracle_p": 0.9, "lambda_int": 0.1,
-                             "kappa_att": 0.0},
+        u_bar=lambda: {"u_correct": 1.0, "u_wrong": -5.0, "u_abstain": 0.0,
+                       "oracle_p": 0.9, "lambda_int": 0.1, "kappa_att": 0.0},
         decisions_path=tmp_path / "decisions.jsonl",
         reactions_path=tmp_path / "reactions.jsonl",
         fold_version=lambda: "fold-test-v1",
@@ -392,7 +388,7 @@ def test_reextract_ambiguous_containment_stays_no_observation(
 def test_reextract_returns_the_reads_own_confidence(
         deps: BridgeDeps, monkeypatch: pytest.MonkeyPatch) -> None:
     # The wire must not discard the instrument's stated uncertainty: the k=0 strong rescue
-    # conditions at min(tier rho, this confidence), so a hesitant read hedges instead of
+    # conditions at min(tier rho, this confidence), so a hesitant read abstains instead of
     # asserting at the tier's flat prior (the q-005 near-miss at credence 0.995).
     import life_agent.core.joint_extract as JE
 
@@ -497,27 +493,8 @@ def test_utility_returns_u_bar(deps: BridgeDeps) -> None:
     status, payload = _call(deps, "GET", "/utility")
     assert status == 200
     assert payload["u_bar"]["u_wrong"] == -5.0
-    assert set(payload["u_bar"]) == {"u_correct", "u_wrong", "u_hedged", "u_abstain",
+    assert set(payload["u_bar"]) == {"u_correct", "u_wrong", "u_abstain",
                                      "oracle_p", "lambda_int", "kappa_att"}
-
-
-def test_utility_defaults_to_the_anchor_shape_with_no_query_string(
-        deps: BridgeDeps) -> None:
-    from life_agent.core import answer_shape as AS
-    seen: list[str] = []
-    deps2 = dataclasses.replace(deps, u_bar=lambda shape: (seen.append(shape), {})[1])
-    _call(deps2, "GET", "/utility")
-    assert seen == [AS.DEFAULT_SHAPE]
-
-
-def test_utility_shape_query_param_reaches_deps_u_bar(deps: BridgeDeps) -> None:
-    # r30 (C5): executor.run_pass classifies the question and asks /utility for that
-    # shape — the SAME seam current_u_bar's other callers route through.
-    seen: list[str] = []
-    deps2 = dataclasses.replace(deps, u_bar=lambda shape: (seen.append(shape), {})[1])
-    status, _payload = _call(deps2, "GET", "/utility?shape=quantity")
-    assert status == 200
-    assert seen == ["quantity"]
 
 
 # --- /log_decision: emit answer-brain decisions into the calibration log ----------------

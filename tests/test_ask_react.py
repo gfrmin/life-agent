@@ -56,7 +56,7 @@ def test_react_is_in_the_single_grammar_source() -> None:
 
 def _decision(did: str, *, family: str = "lookup", action: str = "abstain",
               summary: dict | None = None) -> DEC.DecisionEvent:
-    aset = (("report", "hedge", "ask_clarify", "abstain") if family == "lookup"
+    aset = (("report", "ask_clarify", "abstain") if family == "lookup"
             else ("report", "abstain"))
     return DEC.DecisionEvent(
         tx_time="2026-06-14T00:00:00+00:00", run_id="r", question_id=f"q-{did[:6]}",

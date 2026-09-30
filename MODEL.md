@@ -25,9 +25,9 @@ that holds it). The MVP commits only spans.
 **Proposal.** Retrieval (BM25 over pkm's FTS, reranked) → extraction per chunk → candidates.
 The proposal is not the posterior: a gold value not proposed is `NONE`'s mass.
 
-**Lane.** `core/answer_shape.py` classifies the question (`exact`, `quantity`, `threshold`,
-`set`). Anything that is not a verbatim point fact skips this world and goes straight to the
-escalation menu (§4).
+**Lane.** The router's verdict says whether the question is a verbatim point fact. One it
+calls otherwise is a row of the argmax (`decide.route_options`): attempted or declined, never
+silently skipped (§4).
 
 ## 2. The channel: P(observation | ω)
 

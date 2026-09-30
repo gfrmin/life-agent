@@ -17,9 +17,7 @@ import math
 from pathlib import Path
 
 import pytest
-import yaml
 
-from life_agent.core import answer_shape as AS
 from life_agent.core import utility as U
 
 MODEL_YAML = """\
@@ -29,8 +27,6 @@ gauge:
   u_abstain: 0.0
 latents:
   u_wrong:    {grid: {lo: -10.0, hi: 0.0, n: 11}, prior: {type: gaussian, mu: -4.0, sigma: 3.0}}
-  u_wrong_scoped: {grid: {lo: -6.0, hi: 0.0, n: 9}, prior: {type: gaussian, mu: -2.0, sigma: 1.0}}
-  u_hedged:   {grid: {lo: -1.0, hi: 1.0, n: 5},  prior: {type: gaussian, mu: 0.4, sigma: 0.4}}
   lambda_int: {grid: {lo: -0.5, hi: 4.0, n: 10}, prior: {type: gaussian, mu: 1.0, sigma: 1.0}}
   kappa_att:  {grid: {lo: -0.2, hi: 1.0, n: 7},  prior: {type: gaussian, mu: 0.05, sigma: 0.1}}
   lambda_usd: {grid: {lo: 0.0, hi: 8.0, n: 9},   prior: {type: gaussian, mu: 1.0, sigma: 1.0}}
@@ -97,8 +93,8 @@ def test_missing_latent_error_names_the_remedy(tmp_path: Path) -> None:
 
 def test_load_model_missing_latent_is_loud(tmp_path: Path) -> None:
     p = tmp_path / "model.yaml"
-    p.write_text(MODEL_YAML.replace("u_hedged", "u_hedge_typo"), encoding="utf-8")
-    with pytest.raises(ValueError, match="u_hedged"):
+    p.write_text(MODEL_YAML.replace("kappa_att", "kappa_typo"), encoding="utf-8")
+    with pytest.raises(ValueError, match="kappa_att"):
         U.load_model(p)
 
 
@@ -114,44 +110,20 @@ def test_grid_values_are_inclusive_and_evenly_spaced() -> None:
     assert g.values() == (-1.0, -0.5, 0.0, 0.5, 1.0)
 
 
-# --- r30 step 2: the six OPTIONAL per-shape utility-scale latents -------------------------
-# docs/unification/reports/r30-units-lever.md — an optional latent block (the tau_narrative
-# precedent), not REQUIRED_LATENTS: an owner model file that omits them still loads, and
-# shaped_u_bar defaults the missing scale to 1.0 (core/decide.py).
+# --- retired latents -----------------------------------------------------------------------
 
-def test_shape_latent_names_names_exactly_the_six_optional_latents() -> None:
-    expected = tuple(f"{kind}_scale_{shape}" for shape in AS.SCALED_SHAPES
-                     for kind in ("voi", "regret"))
-    assert expected == U.SHAPE_LATENT_NAMES
-    assert len(U.SHAPE_LATENT_NAMES) == 2 * len(AS.SCALED_SHAPES)
-
-
-def test_a_model_file_omitting_the_six_latents_still_loads(model: U.UtilityModel) -> None:
-    # the MODEL_YAML fixture above declares none of them — every existing fixture in this
-    # repo is in this state today, and load_model must not require them (C4/C10's no-op).
-    assert set(model.latents) == set(U.REQUIRED_LATENTS)
-    assert not (set(U.SHAPE_LATENT_NAMES) & set(model.latents))
-
-
-def test_a_declared_shape_latent_is_parsed_like_any_other(tmp_path: Path) -> None:
+def test_a_model_file_still_declaring_retired_latents_loads_and_ignores_them(
+        tmp_path: Path) -> None:
+    retired = ("  u_hedged: {grid: {lo: -1.0, hi: 1.0, n: 5}, "
+               "prior: {type: gaussian, mu: 0.4, sigma: 0.4}}\n"
+               "  voi_scale_quantity: {grid: {lo: 0.0, hi: 4.0, n: 9}, "
+               "prior: {type: gaussian, mu: 1.0, sigma: 0.3}}\n")
     p = tmp_path / "model.yaml"
-    extra_latent = ("  voi_scale_quantity: {grid: {lo: 0.0, hi: 4.0, n: 9}, "
-                    "prior: {type: gaussian, mu: 1.0, sigma: 0.3}}\n")
-    yaml_text = MODEL_YAML.replace(
-        "  lambda_usd: {grid: {lo: 0.0, hi: 8.0, n: 9},   "
-        "prior: {type: gaussian, mu: 1.0, sigma: 1.0}}\n",
-        "  lambda_usd: {grid: {lo: 0.0, hi: 8.0, n: 9},   "
-        "prior: {type: gaussian, mu: 1.0, sigma: 1.0}}\n" + extra_latent)
-    p.write_text(yaml_text, encoding="utf-8")
+    p.write_text(MODEL_YAML.replace("latents:\n", "latents:\n" + retired), encoding="utf-8")
     model = U.load_model(p)
-    assert set(model.latents) == set(U.REQUIRED_LATENTS) | {"voi_scale_quantity"}
-    spec = model.latents["voi_scale_quantity"]
-    assert spec.grid.lo == 0.0 and spec.grid.hi == 4.0 and spec.prior_mu == 1.0
-
-
-def test_undeclared_shape_latents_are_absent_from_u_bar(model: U.UtilityModel) -> None:
-    post = U.posterior(model, [], policy="all-to-date")
-    assert not (set(U.SHAPE_LATENT_NAMES) & set(post.u_bar()))
+    assert set(model.latents) == set(U.REQUIRED_LATENTS)
+    assert not {"u_hedged", "voi_scale_quantity"} & set(
+        U.posterior(model, [], policy="all-to-date").u_bar())
 
 
 # --- the two OPTIONAL cite latents (u_cite_right, u_cite_wrong) -----------------------------
@@ -179,50 +151,6 @@ def test_the_example_model_declares_the_cite_latents_at_their_defaults() -> None
     # the grids hold their prior means exactly, so the posterior mean starts at the default
     assert DEC.CITE_RIGHT_DEFAULT in [round(v, 9) for v in right.grid.values()]
     assert DEC.CITE_WRONG_DEFAULT in [round(v, 9) for v in wrong.grid.values()]
-
-
-# --- C6: the six latents' frozen priors (config/utility-model-shape-scales.example.yaml) --
-# NOT merged into config/utility-model.example.yaml (disclosed deviation,
-# docs/unification/reports/r30-units-lever.md RESULTS) — that file is copied wholesale by
-# tests/conftest.py's ledger_kb fixture and used as the template for the owner's real
-# deployed file, so declaring all six there would move pinned ledger golden hashes and the
-# owner's live fold_version for no reason. This file freezes the numbers without activating
-# them anywhere.
-
-def test_shape_scale_priors_file_names_exactly_the_six_optional_latents() -> None:
-    example = (Path(__file__).resolve().parent.parent
-              / "config/utility-model-shape-scales.example.yaml")
-    spec = yaml.safe_load(example.read_text(encoding="utf-8"))["latents"]
-    assert set(spec) == set(U.SHAPE_LATENT_NAMES)
-
-
-def test_shape_scale_priors_are_computed_at_the_anchors_own_value() -> None:
-    # each TRUNCATED mean sits within 1% of 1.0 (computed, not assumed — the #67-review
-    # lesson that first caught a silent 29% re-pricing in lambda_usd's own prior).
-    example = (Path(__file__).resolve().parent.parent
-              / "config/utility-model-shape-scales.example.yaml")
-    spec = yaml.safe_load(example.read_text(encoding="utf-8"))["latents"]
-    phi = lambda z: math.exp(-z * z / 2) / math.sqrt(2 * math.pi)  # noqa: E731
-    cdf = lambda z: 0.5 * (1 + math.erf(z / math.sqrt(2)))  # noqa: E731
-    for name, raw in spec.items():
-        mu, sigma = float(raw["prior"]["mu"]), float(raw["prior"]["sigma"])
-        lo, hi = float(raw["grid"]["lo"]), float(raw["grid"]["hi"])
-        a, b = (lo - mu) / sigma, (hi - mu) / sigma
-        trunc_mean = mu + sigma * (phi(a) - phi(b)) / (cdf(b) - cdf(a))
-        assert abs(trunc_mean - 1.0) < 0.01, (name, trunc_mean)
-
-
-def test_shape_scale_priors_parse_through_load_model_like_any_other_latent(
-        tmp_path: Path) -> None:
-    example = (Path(__file__).resolve().parent.parent
-              / "config/utility-model-shape-scales.example.yaml")
-    extra = "\n".join(f"  {name}: {yaml.safe_dump(raw, default_flow_style=True).strip()}"
-                      for name, raw in yaml.safe_load(
-                          example.read_text(encoding="utf-8"))["latents"].items())
-    p = tmp_path / "model.yaml"
-    p.write_text(MODEL_YAML.replace("tau:\n", extra + "\ntau:\n"), encoding="utf-8")
-    model = U.load_model(p)
-    assert set(model.latents) == set(U.REQUIRED_LATENTS) | set(U.SHAPE_LATENT_NAMES)
 
 
 # (The host helpers gaussian_weights/elicitation_log_density/reaction_probability were the
@@ -254,6 +182,11 @@ def test_load_elicitations_round_trip_and_bad_latent_loud(
     with pytest.raises(ValueError, match="u_wramg"):
         U.load_elicitations(p, model)
 
+    # an elicitation of a retired latent is history: skipped, not loud
+    p.write_text("".join(json.dumps({**rows[0], "latent": name}) + "\n"
+                         for name in (*sorted(U.RETIRED_LATENTS), "u_wrong")), encoding="utf-8")
+    assert [e.latent for e in U.load_elicitations(p, model)] == ["u_wrong"]
+
 
 # --- the fold ------------------------------------------------------------------------------
 
@@ -271,7 +204,7 @@ def test_the_fold_partitions_by_latent_and_keeps_untouched_priors(
     assert post.n_events == 3 and len(post.fold_version) == 64
     assert post.latents["u_wrong"].mean < prior.latents["u_wrong"].mean
     assert post.latents["lambda_int"].mean < prior.latents["lambda_int"].mean
-    for name in ("u_hedged", "kappa_att", "lambda_usd", "u_wrong_scoped"):
+    for name in ("kappa_att", "lambda_usd"):
         assert post.latents[name] == prior.latents[name]
 
 
@@ -295,9 +228,9 @@ def test_endpoint_warnings(model: U.UtilityModel) -> None:
     assert warned and "u_wrong" in warned[0] and "widen" in warned[0]
     assert near.near_bound                      # mean -0.3 is within 1sigma (=1.0) of hi=0
     # a latent well within its support (tight variance, centred) does NOT warn
-    inner = U.LatentPosterior(name="u_hedged", mean=0.0, variance=0.01, lo=-1.0, hi=1.0)
+    inner = U.LatentPosterior(name="lambda_usd", mean=0.0, variance=0.01, lo=-1.0, hi=1.0)
     assert not inner.near_bound
-    inner_post = U.UtilityPosterior(gauge=model.gauge, latents={"u_hedged": inner},
+    inner_post = U.UtilityPosterior(gauge=model.gauge, latents={"lambda_usd": inner},
                                     n_events=0, fold_version="0" * 64,
                                     policy="all-to-date")
     assert inner_post.endpoint_warnings(threshold=0.01) == []
@@ -361,7 +294,7 @@ def test_the_reaction_loop_good_on_abstain_lowers_u_wrong(
     dpath, rpath = tmp_path / "decisions.jsonl", tmp_path / "reactions.jsonl"
     DEC.append(dpath, DEC.DecisionEvent(
         tx_time="t", run_id="ask", question_id="q", family="lookup",
-        action_set=("report", "hedge", "ask_clarify", "abstain"),
+        action_set=("report", "ask_clarify", "abstain"),
         posterior_summary={"credences": [0.3, 0.7]}, utility_fold_version="fv",
         chosen_action="abstain", predicted_eu=0.0, decision_id="d1"))
     R.append(rpath, R.ReactionEvent(tx_time="t", question_id="q", decision_id="d1",
@@ -403,8 +336,8 @@ def test_narrative_good_on_abstain_moves_both_latents(model: U.UtilityModel) -> 
     post = U.posterior(model, [_margin_good(0.6)], policy="all-to-date")
     assert post.latents["u_wrong"].mean < prior.latents["u_wrong"].mean
     assert post.latents["kappa_att"].mean > prior.latents["kappa_att"].mean
-    # u_hedged is UNCOUPLED → its own 1-D fold; it stays at its prior
-    assert post.latents["u_hedged"].mean == pytest.approx(prior.latents["u_hedged"].mean)
+    # lambda_usd is UNCOUPLED → its own 1-D fold; it stays at its prior
+    assert post.latents["lambda_usd"].mean == pytest.approx(prior.latents["lambda_usd"].mean)
 
 
 def test_lookup_u_wrong_marginal_is_invariant_when_pulled_into_a_joint(

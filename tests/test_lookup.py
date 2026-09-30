@@ -625,8 +625,6 @@ format_version: 1
 gauge: {u_correct: 1.0, u_abstain: 0.0}
 latents:
   u_wrong:    {grid: {lo: -10.0, hi: 0.0, n: 11}, prior: {type: gaussian, mu: -4.0, sigma: 3.0}}
-  u_wrong_scoped: {grid: {lo: -6.0, hi: 0.0, n: 7}, prior: {type: gaussian, mu: -2.0, sigma: 1.0}}
-  u_hedged:   {grid: {lo: -1.0, hi: 1.0, n: 5},  prior: {type: gaussian, mu: 0.4, sigma: 0.4}}
   lambda_int: {grid: {lo: -0.5, hi: 4.0, n: 10}, prior: {type: gaussian, mu: 1.0, sigma: 1.0}}
   kappa_att:  {grid: {lo: -0.2, hi: 1.0, n: 7},  prior: {type: gaussian, mu: 0.05, sigma: 0.1}}
   lambda_usd: {grid: {lo: 0.0, hi: 8.0, n: 9},   prior: {type: gaussian, mu: 1.0, sigma: 1.0}}
@@ -635,29 +633,15 @@ endpoint_mass_warn: 0.01
 """
 
 
-# --- r30 step 2: current_u_bar shapes per question and folds the posterior ONCE -----------
+# --- current_u_bar folds the posterior once per fold version ------------------------------
 
-def test_current_u_bar_defaults_to_the_anchor_shape(
+def test_current_u_bar_folds_the_posterior_once(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     model_path = tmp_path / "model.yaml"
     model_path.write_text(MODEL_YAML, encoding="utf-8")
     monkeypatch.setattr(config, "UTILITY_MODEL", model_path)
     monkeypatch.setattr(config, "UTILITY_ELICITATIONS", tmp_path / "elicit.jsonl")
     monkeypatch.setattr(LK, "_U_BAR_RAW", None)
-    monkeypatch.setattr(LK, "_U_BAR_SHAPED", {})
-    u_bar, _version, policy = LK.current_u_bar()
-    assert policy == LK.U_BAR_POLICY
-    assert u_bar == LK.current_u_bar(shape="exact")[0]
-
-
-def test_current_u_bar_folds_the_posterior_once_across_shapes(
-        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    model_path = tmp_path / "model.yaml"
-    model_path.write_text(MODEL_YAML, encoding="utf-8")
-    monkeypatch.setattr(config, "UTILITY_MODEL", model_path)
-    monkeypatch.setattr(config, "UTILITY_ELICITATIONS", tmp_path / "elicit.jsonl")
-    monkeypatch.setattr(LK, "_U_BAR_RAW", None)
-    monkeypatch.setattr(LK, "_U_BAR_SHAPED", {})
     folds: list[int] = []
     real_posterior = LK.UT.posterior
 
@@ -666,27 +650,8 @@ def test_current_u_bar_folds_the_posterior_once_across_shapes(
         return real_posterior(*args, **kwargs)
 
     monkeypatch.setattr(LK.UT, "posterior", _counting)
-    LK.current_u_bar(shape="exact")
+    u_bar, _version, policy = LK.current_u_bar()
+    assert policy == LK.U_BAR_POLICY
+    again = LK.current_u_bar()[0]
+    assert again == u_bar and again is not u_bar  # a copy: a caller cannot move the fold
     assert len(folds) == 1
-    LK.current_u_bar(shape="quantity")  # a DIFFERENT shape, same fold_version
-    # the raw posterior is memoised per fold_version — a second SHAPE must not re-fold it;
-    # only decide.shaped_u_bar's cheap host arithmetic runs again.
-    assert len(folds) == 1
-
-
-def test_current_u_bar_undeclared_scales_give_the_same_u_bar_for_every_shape(
-        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    # MODEL_YAML declares none of the six optional latents — every shape must read
-    # byte-identically until the owner's file opts one in (C4/C10's no-op claim).
-    model_path = tmp_path / "model.yaml"
-    model_path.write_text(MODEL_YAML, encoding="utf-8")
-    monkeypatch.setattr(config, "UTILITY_MODEL", model_path)
-    monkeypatch.setattr(config, "UTILITY_ELICITATIONS", tmp_path / "elicit.jsonl")
-    monkeypatch.setattr(LK, "_U_BAR_RAW", None)
-    monkeypatch.setattr(LK, "_U_BAR_SHAPED", {})
-    from life_agent.core import answer_shape as AS
-    exact, version_e, _ = LK.current_u_bar(shape="exact")
-    for shape in AS.SCALED_SHAPES:
-        shaped, version_s, _ = LK.current_u_bar(shape=shape)
-        assert shaped == exact
-        assert version_s == version_e

@@ -65,12 +65,14 @@ RETIRED_FAMILIES: frozenset[str] = frozenset({"aggregate"})
 # The M4 response actions (bayesian-foundations §3). ask-about-U is deliberately absent
 # — utility learning is passive until the governor (§4.4, a stated action-set
 # coarsening). cite is the partial answer: the document believed to hold the answer, without
-# the value (``posterior_summary["cited"]`` is the document's cache key). report_scoped is
-# the time-scoped assertion ("as of <date>, X" — scoped-claims design): a true claim about
-# the record, graded on attestation not currency, so it carries u_wrong_scoped (a citable
-# misread) not the catastrophic current-value u_wrong.
-ACTIONS: frozenset[str] = frozenset({"report", "report_scoped", "hedge",
-                                     "ask_clarify", "abstain", "cite"})
+# the value (``posterior_summary["cited"]`` is the document's cache key).
+ACTIONS: frozenset[str] = frozenset({"report", "ask_clarify", "abstain", "cite"})
+
+# Actions the log's history carries and no writer emits: ``hedge`` (a named shortlist) and
+# ``report_scoped`` (a time-scoped assertion). Read-side only, like ``RETIRED_FAMILIES``: a
+# row naming one still loads (the reaction fold joins those rows), :func:`append` refuses to
+# write one, and ``ACTIONS`` and ``LOOKUP_ACTION_ORDER`` no longer offer them.
+RETIRED_ACTIONS: frozenset[str] = frozenset({"hedge", "report_scoped"})
 
 # Per-family action subsets of ACTIONS — the single vocabulary, named once and imported by
 # the families (never re-declared in a family module). NARRATIVE is the restricted set
@@ -78,8 +80,7 @@ ACTIONS: frozenset[str] = frozenset({"report", "report_scoped", "hedge",
 # fold). The subset and partition invariants (these <= ACTIONS; LOOKUP - NARRATIVE == the
 # lookup-only actions; gate's assert/withhold union == ACTIONS) are drift-gated in
 # tests/test_decide.py.
-LOOKUP_ACTION_ORDER: tuple[str, ...] = ("report", "hedge", "ask_clarify", "abstain",
-                                        "report_scoped", "cite")
+LOOKUP_ACTION_ORDER: tuple[str, ...] = ("report", "ask_clarify", "abstain", "cite")
 NARRATIVE_ACTION_ORDER: tuple[str, ...] = ("report", "abstain")
 
 # The DECLARED DECISION SPACE the act was ranked over (module-collapse-design.md §2.3). One
@@ -209,7 +210,7 @@ class DecisionEvent:
             raise ValueError(f"unknown family {self.family!r} (declared: {sorted(FAMILIES)})")
         if not self.action_set:
             raise ValueError("action_set is empty — a decision needs alternatives")
-        unknown = set(self.action_set) - ACTIONS
+        unknown = set(self.action_set) - ACTIONS - RETIRED_ACTIONS
         if unknown:
             raise ValueError(
                 f"action(s) {sorted(unknown)} not in the declared vocabulary {sorted(ACTIONS)}"
@@ -261,8 +262,11 @@ def _from_line(line: str) -> DecisionEvent:
 
 
 def append(path: Path, event: DecisionEvent) -> None:
-    """Append one decision line, durably (the shared append-only mechanics), then mirror it onto
-    the unified stream (design §8 C5; legacy-append-first, never raises)."""
+    """Append one decision line, durably (the shared append-only mechanics). A retired
+    action (:data:`RETIRED_ACTIONS`) is read, never written."""
+    retired = RETIRED_ACTIONS & {*event.action_set, event.chosen_action}
+    if retired:
+        raise ValueError(f"retired action(s) {sorted(retired)} are never written")
     jsonl_log.append_line(path, _to_line(event))
 
 
@@ -346,7 +350,7 @@ def origin(*, effector: object, candidates: object, asserted: object,
     and the record's ``origin`` field are both this function's callers."""
     eff = str(effector)
     values = [str(a) for a in (asserted if isinstance(asserted, list | tuple) else [])]
-    if eff in ("report", "report_scoped") and values:
+    if eff == "report" and values:
         if instrument and instrument_value is not None and values[0] == str(instrument_value):
             return Origin("rung", rung=str(instrument), disclosed=disclosed)
         return Origin("documents")

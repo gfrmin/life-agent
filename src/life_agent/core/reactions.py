@@ -68,7 +68,7 @@ VALENCES: dict[str, frozenset[str]] = {"verdict": frozenset({"good", "bad"})}
 # domain, in full (a verdict route not named here does not fold — absence from the
 # domain is the declared exclusion, never an accident):
 #   (1) the (action, valence) → y table ``VERDICT_Y`` below (M-7's domain rule:
-#       hedge/ask_clarify/gather and any unrecognised pair are a named exclusion —
+#       ask_clarify/gather and any unrecognised pair are a named exclusion —
 #       ambiguous is not evidence).
 #   (2) the utility-evidence branches in this module (R-3: which verdicts become
 #       utility evidence): ``_lookup_reaction`` (the implied abstain-threshold datum,
@@ -76,7 +76,6 @@ VALENCES: dict[str, frozenset[str]] = {"verdict": frozenset({"good", "bad"})}
 #       coverage enters the datum, never a bar on the fold).
 VERDICT_Y: dict[tuple[str, str], int] = {
     ("report", "good"): 1, ("report", "bad"): 0,
-    ("report_scoped", "good"): 1, ("report_scoped", "bad"): 0,
     ("abstain", "good"): 0, ("abstain", "bad"): 1,
 }
 

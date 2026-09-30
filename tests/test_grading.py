@@ -78,7 +78,8 @@ def test_withheld_reason_is_a_closed_set_and_assertions_cannot_carry_one() -> No
 
 
 def test_the_partition_covers_the_recorded_action_vocabulary() -> None:
-    assert G.ASSERT_ACTIONS | G.WITHHOLD_ACTIONS | G.CITE_ACTIONS == DEC.ACTIONS
+    assert G.ASSERT_ACTIONS | G.WITHHOLD_ACTIONS | G.CITE_ACTIONS == (
+        DEC.ACTIONS | DEC.RETIRED_ACTIONS)
     assert G.ASSERT_ACTIONS.isdisjoint(G.WITHHOLD_ACTIONS)
     assert G.CITE_ACTIONS.isdisjoint(G.ASSERT_ACTIONS | G.WITHHOLD_ACTIONS)
 

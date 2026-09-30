@@ -85,8 +85,7 @@ def _request(candidates: list[str], observations: list[dict[str, Any]],
              rho: float) -> dict[str, Any]:
     """One /decide body: the posterior's inputs, string-blind to the decider."""
     return {"question_id": "q" * 16, "candidates": candidates, "rho": rho,
-            "observations": observations, "applied_probes": [], "hits": [],
-            "shape": "unqualified_current_value"}
+            "observations": observations, "applied_probes": [], "hits": []}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -109,7 +108,7 @@ def main(argv: list[str] | None = None) -> int:
     conn = duckdb.connect(str(catalogue), read_only=True)
     conn.execute("INSTALL fts; LOAD fts;")
     deps = BridgeDeps(root=store, conn=conn, client=NoModel(),
-                      profile="I am the owner.", u_bar=lambda shape: gauge,
+                      profile="I am the owner.", u_bar=lambda: gauge,
                       decisions_path=args.sandbox / "decisions.jsonl",
                       reactions_path=args.sandbox / "reactions.jsonl",
                       fold_version=lambda: "smoke-example-gauge",

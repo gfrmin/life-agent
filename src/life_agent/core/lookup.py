@@ -32,7 +32,6 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
-from life_agent.core import answer_shape as AS
 from life_agent.core import config
 from life_agent.core import derivations as D
 from life_agent.core import disclosure as DISC
@@ -44,7 +43,6 @@ from life_agent.core import reactions as R
 from life_agent.core import reliability as REL
 from life_agent.core import utility as UT
 from life_agent.core.dates import parse_date as _parse_date
-from life_agent.core.decide import shaped_u_bar
 
 # The route + extract instrument model (local Ollama deprecated 2026-08-17 — owner
 # directive, §14-registered; both verdicts are cached, so call counts are bounded by
@@ -744,26 +742,19 @@ def dedup_drop_rows(rows: list[tuple[str, str, str, float]]) -> set[int]:
 
 # --- the utility fold (per-process, lazily) ----------------------------------------------
 
-# The fold is memoised per fold_version (recomputed only when evidence moves); the cheap,
-# pure per-shape scaling (decide.shaped_u_bar) is memoised separately per (fold_version,
-# shape), so a second question's DIFFERENT shape never re-runs the fold.
-_U_BAR_RAW: tuple[str, dict[str, float]] | None = None       # (fold_version, raw u_bar)
-_U_BAR_SHAPED: dict[tuple[str, str], dict[str, float]] = {}  # (fold_version, shape) -> Ū
+# The fold is memoised per fold_version (recomputed only when evidence moves).
+_U_BAR_RAW: tuple[str, dict[str, float]] | None = None       # (fold_version, u_bar)
 
 
 U_BAR_POLICY = "all-to-date"  # the decider's declared evidence regime (design §3.1, Q-O5)
 
 
-def current_u_bar(*, shape: str = AS.DEFAULT_SHAPE) -> tuple[dict[str, float], str, str]:
+def current_u_bar() -> tuple[dict[str, float], str, str]:
     """Ū from the utility posterior (fold of model + elicitations + the verdict→evidence
-    projection — the ``all-to-date`` regime, declared once above), SCALED for one
-    question's answer ``shape`` (r30, `decide.shaped_u_bar` — the ONLY place a scale
-    applies; C5). The fold is cached per fold version within the process — it is
-    recomputed only when evidence moves, never when only ``shape`` changes, so every
-    caller (the bridge's decider and its grow-menu pricing) can classify its own
-    question and ask for its own shape at no extra cost. Returns
+    projection — the ``all-to-date`` regime, declared once above). The fold is cached per
+    fold version within the process — it is recomputed only when evidence moves. Returns
     ``(u_bar, fold_version, policy)``: the policy the fold ACTUALLY ran under, so a record
-    stamps what was used, never an independent literal (M3, r13)."""
+    stamps what was used, never an independent literal."""
     global _U_BAR_RAW
     model = UT.load_model(config.UTILITY_MODEL)
     events: list[UT.Evidence] = list(
@@ -777,10 +768,7 @@ def current_u_bar(*, shape: str = AS.DEFAULT_SHAPE) -> tuple[dict[str, float], s
         for warning in post.endpoint_warnings(model.endpoint_mass_warn):
             print(f"  ⚠ {warning}")
         _U_BAR_RAW = (version, post.u_bar())
-    cache_key = (version, shape)
-    if cache_key not in _U_BAR_SHAPED:
-        _U_BAR_SHAPED[cache_key] = shaped_u_bar(_U_BAR_RAW[1], shape)
-    return _U_BAR_SHAPED[cache_key], version, U_BAR_POLICY
+    return dict(_U_BAR_RAW[1]), version, U_BAR_POLICY
 
 
 # --- the family, end to end --------------------------------------------------------------

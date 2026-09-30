@@ -21,7 +21,7 @@ def _event(**overrides: object) -> D.DecisionEvent:
         run_id="ask-test",
         question_id="q-001",
         family="lookup",
-        action_set=("report", "hedge", "ask_clarify", "abstain"),
+        action_set=("report", "ask_clarify", "abstain"),
         posterior_summary={"top_claim_credence": 0.92, "n_claims": 1},
         utility_fold_version="a" * 64,
         chosen_action="report",
@@ -45,7 +45,7 @@ def test_action_outside_vocabulary_rejected() -> None:
 
 def test_chosen_action_must_be_in_action_set() -> None:
     with pytest.raises(ValueError, match="chosen"):
-        _event(chosen_action="abstain", action_set=("report", "hedge"))
+        _event(chosen_action="abstain", action_set=("report", "cite"))
 
 
 def test_empty_action_set_rejected() -> None:
@@ -186,6 +186,17 @@ def test_regime_and_policy_default_to_the_declared_defaults() -> None:
     # a legacy line stated NEITHER field, and says so — the value is interpretable and the
     # claim is not overstated
     assert ev.defaulted == ("policy", "regime")
+
+
+def test_a_retired_action_is_read_and_never_written(tmp_path: Path) -> None:
+    """``hedge`` and ``report_scoped`` are history: a row naming them loads (the reaction
+    fold joins those rows) but no writer may emit one, and the vocabulary no longer offers them."""
+    assert not D.RETIRED_ACTIONS & (D.ACTIONS | set(D.LOOKUP_ACTION_ORDER))
+    old = _event(action_set=("report", "hedge", "abstain", "report_scoped"),
+                 chosen_action="hedge")
+    with pytest.raises(ValueError, match="never written"):
+        D.append(tmp_path / "d.jsonl", old)
+    assert D._from_line(D._to_line(old)).chosen_action == "hedge"
 
 
 def test_unavailability_is_a_regime_not_an_action() -> None:

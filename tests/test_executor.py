@@ -20,7 +20,7 @@ from life_agent.core import route_row as RR
 
 B = "http://bridge"
 D = "http://daemon"
-_U = {"u_correct": 1.0, "u_wrong": -5.0, "u_hedged": 0.2, "u_abstain": 0.0,
+_U = {"u_correct": 1.0, "u_wrong": -5.0, "u_abstain": 0.0,
       "oracle_p": 0.9, "lambda_int": 0.1, "kappa_att": 0.0, "lambda_usd": 1.0}
 _HIT = [{"artifact_cache_key": "d0", "chunk_text": "Passport No: P123"}]
 _EXTRACT = {"candidates": ["P123"],
@@ -548,7 +548,7 @@ def test_render_view_narrative_passes_through_verbatim() -> None:
 # Nothing grounds locally and the decider buys the probes down to the strong whole-doc
 # re-read with allow_new. The candidate it mints is decided on like any other; it enters at
 # the READ'S OWN stated confidence (capped by the tier prior), so a hesitant strong read
-# hedges rather than asserting at the tier's flat rho — the wire must not discard the
+# abstains rather than asserting at the tier's flat rho — the wire must not discard the
 # instrument's uncertainty. (The decisions are scripted here; the decider's own choices at
 # an empty state are pinned below.)
 
@@ -593,9 +593,9 @@ def test_zero_candidate_rescue_carries_low_confidence_into_rho() -> None:
                      "gather_rho": 0.95, "value": "NEW-7", "new_candidate": "NEW-7",
                      "confidence": 0.35},
         decides=[*map(_gather, _RESCUE_ORDER),
-                 {"effector": "hedge", "credences": [0.62], "p_none": 0.38, "eu": 0.3}])
+                 {"effector": "abstain", "credences": [0.62], "p_none": 0.38, "eu": 0.3}])
     view = _loop(fake)
-    assert view["effector"] == "hedge"
+    assert view["effector"] == "abstain"
     assert view["candidates"] == ["NEW-7"]       # named, not silently dropped
     assert fake.posted("/decide")[3]["rho"] == 0.35
 
@@ -782,7 +782,7 @@ def test_rescue_unmeasured_edge_keeps_the_declared_cap() -> None:
                      "gather_rho": 0.95, "value": "NEW-7", "new_candidate": "NEW-7",
                      "confidence": 0.9},
         decides=[*map(_gather, _RESCUE_ORDER),
-                 {"effector": "hedge", "credences": [0.6], "p_none": 0.4, "eu": 0.1}])
+                 {"effector": "abstain", "credences": [0.6], "p_none": 0.4, "eu": 0.1}])
     _loop(fake, curves={})
     assert fake.posted("/decide")[3]["rho"] == 0.5
 
@@ -800,7 +800,7 @@ def test_rescue_measured_edge_folds_through_its_curve_cold_bins() -> None:
                      "gather_rho": 0.95, "value": "NEW-7", "new_candidate": "NEW-7",
                      "confidence": 0.9},
         decides=[*map(_gather, _RESCUE_ORDER),
-                 {"effector": "hedge", "credences": [0.6], "p_none": 0.4, "eu": 0.1}])
+                 {"effector": "abstain", "credences": [0.6], "p_none": 0.4, "eu": 0.1}])
     _loop(fake, curves=curves)
     assert (fake.posted("/decide")[3]["rho"]
             == curves["extract@claude-opus-4-8"].calibrate(0.9))

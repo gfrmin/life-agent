@@ -16,19 +16,14 @@
 #   which is a constraint, not a preference (§10).
 # - Units: u(correct) = +1, u(abstain) = 0. "u_wrong: -9" means a wrong report is nine
 #   correct-answers-worth of bad — the owner's declared 10:1 exchange rate (2026-06-18, dialled
-#   back from 20:1), so an UNqualified current-value claim asserts only above p* = w/(1+w) = 0.90.
-#   u_wrong_scoped is the
-#   far cheaper cost of MISQUOTING a document in a time-scoped claim ("as of <date>, X") — a
-#   citable, self-correcting error, not the catastrophic act-on-a-stale-value one (scoped-claims
-#   design §3.1). Both are declared standing preferences, narrowed only from real verdicts.
+#   back from 20:1), so a claim asserts only above p* = w/(1+w) = 0.90 at the prior. It is a
+#   declared standing preference, narrowed only from real verdicts.
 format_version: 1
 gauge:
   u_correct: 1.0
   u_abstain: 0.0
 latents:
   u_wrong:         {grid: {lo: -40.0, hi: 8.0, n: 97}, prior: {type: gaussian, mu: -9.0, sigma: 3.0}}
-  u_wrong_scoped:  {grid: {lo: -12.0, hi: 1.0, n: 53}, prior: {type: gaussian, mu: -2.0, sigma: 1.5}}
-  u_hedged:        {grid: {lo: -2.0, hi: 1.5, n: 36},  prior: {type: gaussian, mu: 0.4, sigma: 0.4}}
   lambda_int:      {grid: {lo: -2.5, hi: 6.0, n: 35},  prior: {type: gaussian, mu: 1.0, sigma: 1.0}}
   kappa_att:       {grid: {lo: -0.2, hi: 1.0, n: 25},  prior: {type: gaussian, mu: 0.05, sigma: 0.1}}
   # lambda_usd: the $↔utility exchange rate — gauge units (correct-answers-worth) per US
@@ -45,10 +40,6 @@ latents:
   # prior means (0.5, -1.0).
   u_cite_right:    {grid: {lo: -1.0, hi: 1.5, n: 26},  prior: {type: gaussian, mu: 0.5, sigma: 0.3}}
   u_cite_wrong:    {grid: {lo: -6.0, hi: 0.5, n: 66},  prior: {type: gaussian, mu: -1.0, sigma: 0.7}}
-  # Six OPTIONAL per-shape utility-scale latents (r30, question-dependent units) live in
-  # config/utility-model-shape-scales.example.yaml, NOT here — copy the two lines for a
-  # shape into this block to opt it in; omitting all six (the state every file is in
-  # today) is a working default, never an error.
 tau:
   grid: {lo: 0.2, hi: 5.0, n: 8}
   prior: {type: gaussian, mu: 1.0, sigma: 1.0}

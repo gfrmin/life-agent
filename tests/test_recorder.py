@@ -40,7 +40,7 @@ def test_the_one_body_has_no_optional_key() -> None:
 
 def test_the_body_passes_realised_values_through() -> None:
     body = REC.body(
-        question="q", retrieval_keys=[], effector="hedge", credences=[0.6, 0.4],
+        question="q", retrieval_keys=[], effector="abstain", credences=[0.6, 0.4],
         candidates=["A", "B"], p_none=0.1, eu=0.42, n_obs=3, n_indeterminate=1,
         n_competing=2, instrument="deliberate@synthetic-model",  # PII-OK: synthetic
         cost_usd=0.004, latency_s=1.25, run_id="gate-run",

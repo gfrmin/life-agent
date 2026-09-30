@@ -51,7 +51,6 @@ import duckdb
 
 from life_agent import owner
 from life_agent.bridge.observations import join_wire_observations, to_abstract_observations
-from life_agent.core import answer_shape as AS
 from life_agent.core import config, jsonl_log
 from life_agent.core import corpus as CORPUS
 from life_agent.core import decide as DEC_RULE
@@ -102,10 +101,8 @@ class BridgeDeps:
     conn: duckdb.DuckDBPyConnection      # read-only catalogue (FTS loaded) — retrieval + probes
     client: Any                          # instrument client — route / observe / subject
     profile: str                         # owner profile, loaded server-side (never over the wire)
-    # the utility posterior's u_bar, SHAPED for one requested answer shape (r30, lazy
-    # brain) — /utility reads the shape off the request; every other caller (e.g.
-    # _build_decider) fixes its own.
-    u_bar: Callable[[str], dict[str, float]]
+    # the utility posterior's u_bar, folded lazily on first use
+    u_bar: Callable[[], dict[str, float]]
     decisions_path: Path                 # calibration decision log — /log_decision appends here
     reactions_path: Path                 # calibration reaction log — /log_reaction appends here
     fold_version: Callable[[], str]      # current utility fold version (pins the logged decision)
@@ -661,12 +658,8 @@ def _probe_deliberate(deps: BridgeDeps, p: Payload) -> Payload:
     return out
 
 
-def _utility(deps: BridgeDeps, p: Payload) -> Payload:
-    # r30: the requesting question's own answer shape prices its own u_bar (C5) — the
-    # SAME seam current_u_bar's other callers route through, reached here via an
-    # optional query param so executor.run_pass's grow-menu pricing is shaped too.
-    shape = str(p.get("shape") or AS.DEFAULT_SHAPE)
-    return {"u_bar": deps.u_bar(shape)}
+def _utility(deps: BridgeDeps, _p: Payload) -> Payload:
+    return {"u_bar": deps.u_bar()}
 
 
 def _grow_menu(deps: BridgeDeps, _p: Payload) -> Payload:
@@ -922,7 +915,6 @@ def dispatch(deps: BridgeDeps, method: str, path: str,
             if handler is None:
                 raise BridgeError(404, f"no GET endpoint {route!r}")
             # a GET query string is the same Payload-dict shape a POST body already gets
-            # (r30: /utility?shape=<shape> — no new parsing machinery).
             params = {k: v[0] for k, v in parse_qs(query).items()}
             return 200, handler(deps, params)
         if method == "POST":
@@ -1012,8 +1004,8 @@ def build_deps() -> BridgeDeps:
     conn = duckdb.connect(str(root / "catalogue.duckdb"), read_only=True)
     conn.execute("INSTALL fts; LOAD fts;")
 
-    def _u_bar(shape: str) -> dict[str, float]:
-        u_bar, _version, _policy = LK.current_u_bar(shape=shape)
+    def _u_bar() -> dict[str, float]:
+        u_bar, _version, _policy = LK.current_u_bar()
         return u_bar
 
     def _fold_version() -> str:
@@ -1027,8 +1019,7 @@ def build_deps() -> BridgeDeps:
                       reactions_path=config.REACTIONS_LOG, fold_version=_fold_version,
                       gather_outcomes_path=config.GATHER_OUTCOMES_LOG,
                       disclosures_path=config.DISCLOSURES_LOG,
-                      # the handshake declares the anchor shape's utility once
-                      decider=_build_decider(lambda: _u_bar(AS.DEFAULT_SHAPE)))
+                      decider=_build_decider(_u_bar))
 
 
 def _shutdown(server: BridgeServer) -> None:

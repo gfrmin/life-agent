@@ -55,7 +55,6 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
-from life_agent.core import answer_shape as AS
 from life_agent.core import gather_row as GR
 from life_agent.core import pricing as PRC
 from life_agent.core import route_row as RR
@@ -265,35 +264,3 @@ def break_even(u_bar: Mapping[str, float]) -> float:
     return -at_zero / span
 
 
-def shaped_u_bar(u_bar: Mapping[str, float], shape: str) -> dict[str, float]:
-    """Ū scaled for one question's answer shape (r30,
-    `docs/unification/reports/r30-units-lever.md` — the direct answer to "how to define
-    utilities of answers for given questions": the question determines the loss shape, the
-    loss shape determines what an answer is worth).
-
-    ``answer_shape.ANCHOR_SHAPE`` (``exact``) is the ANCHOR: ``u_correct``/``u_wrong`` pass
-    through unscaled — today's §4.4 gauge convention, unchanged. Each other declared shape
-    (``answer_shape.SCALED_SHAPES``) carries a ``voi_scale_<shape>`` (multiplies
-    ``u_correct``) and a ``regret_scale_<shape>`` (multiplies ``u_wrong``), read from Ū when
-    the owner's model.yaml has opted the shape in and **defaulting to 1.0 — the anchor's own
-    value — when it has not** (so a u_bar carrying none of the six optional latents is
-    unchanged for every shape; C4). This is the ONLY place a scale applies — every
-    `current_u_bar` caller routes Ū through this function before pricing an answer (C5); a
-    second construction path is a drift-gate failure, not a refinement.
-
-    Chow's rule falls out of this at the `exact` special case: report iff
-    ``p > R(q)/(VOI(q)+R(q))``; the owner's DECLARED PRIOR (10:1) puts that bar at
-    exactly 0.90 — but the LIVE bar moves with the reaction fold and is not 0.90
-    (r32 priced it at 0.852 on 2026-08-30, drifting monotonically as abstain-verdicts
-    fold; the weekly readout watches it). Never quote 0.90 as today's value.
-    """
-    if shape not in AS.SHAPES:
-        raise ValueError(f"unknown answer shape {shape!r} (declared: {sorted(AS.SHAPES)})")
-    out = dict(u_bar)
-    if shape == AS.ANCHOR_SHAPE:
-        return out
-    voi = float(u_bar.get(f"voi_scale_{shape}", 1.0))
-    regret = float(u_bar.get(f"regret_scale_{shape}", 1.0))
-    out["u_correct"] = u_bar["u_correct"] * voi
-    out["u_wrong"] = u_bar["u_wrong"] * regret
-    return out
