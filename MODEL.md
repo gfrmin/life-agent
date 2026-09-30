@@ -200,7 +200,7 @@ law is marked **unenforced**.
 ## 6. Scoreboard
 
 `eval/score.py` → `SCOREBOARD.md`. Per set and arm: rows · right · wrong · escalated-right ·
-escalated-wrong · declined · $/q · U/q · s/q. Sets: `owner` (the owner's 104 questions),
+escalated-wrong · declined · $/q · U/q · s/q. Sets: `owner` (the owner's 104 questions, typed arm; `owner-0920` keeps the frozen 2026-09-20 outside and router rows),
 `generated` (212 questions extracted from the corpus by `make golden`), `atm` (ATM-Bench
 email-only number-typed, 198), `live` (the stream since the reset), `sample` (synthetic, CI). Every row is graded by exact match. Rule 5: the loss
 decides and the board is evidence. A pinned set is one biased draw, so a row whose utility

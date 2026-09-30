@@ -4,10 +4,10 @@
 
 | set | arm | rows | right | wrong | esc-right | esc-wrong | declined | $/q | U/q | s/q | log score | ECE |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| owner | typed | 104 | 48 (46.2%) | 0 (0.0%) | 0 | 0 | 56 (53.8%) | 0.0139 | +0.443 | — | -0.449 | 0.159 |
-| owner | outside | 104 | 87 (83.7%) | 13 (12.5%) | 0 | 0 | 4 (3.8%) | 0.4135 | -0.355 | — | — | — |
-| owner | router | 104 | 90 (86.5%) | 11 (10.6%) | 42 | 11 | 3 (2.9%) | 0.2357 | +0.009 | — | — | — |
-| generated | typed | 212 | 85 (40.1%) | 4 (1.9%) | 0 | 0 | 123 (58.0%) | 0.0151 | +0.284 | — | — | — |
+| owner | typed | 104 | 43 (41.3%) | 0 (0.0%) | 0 | 0 | 61 (58.7%) | 0.0136 | +0.395 | — | -0.464 | 0.146 |
+| owner-0920 | outside | 104 | 87 (83.7%) | 13 (12.5%) | 0 | 0 | 4 (3.8%) | 0.4135 | -0.355 | — | — | — |
+| owner-0920 | router | 104 | 90 (86.5%) | 11 (10.6%) | 42 | 11 | 3 (2.9%) | 0.2357 | +0.009 | — | — | — |
+| generated | typed | 212 | 81 (38.2%) | 4 (1.9%) | 0 | 0 | 127 (59.9%) | 0.0124 | +0.269 | — | -0.425 | 0.136 |
 | atm | typed | 198 | 26 (13.1%) | 5 (2.5%) | 0 | 0 | 167 (84.3%) | 0.0102 | -0.012 | — | — | — |
 | sample | typed | 14 | 8 (57.1%) | 0 (0.0%) | 0 | 0 | 6 (42.9%) | 0.0119 | +0.556 | — | — | — |
 
@@ -19,18 +19,35 @@ The typed arm's `p1` (the probability it gave its leading candidate) against whe
 
 | p1 bin | n | mean p1 | right |
 |---|---:|---:|---:|
-| 0.0-0.1 | 3 | 0.079 | 0.667 |
-| 0.1-0.2 | 7 | 0.152 | 0.571 |
-| 0.2-0.3 | 13 | 0.256 | 0.538 |
-| 0.3-0.4 | 4 | 0.311 | 0.500 |
-| 0.4-0.5 | 2 | 0.451 | 0.500 |
-| 0.5-0.6 | 8 | 0.578 | 0.750 |
-| 0.6-0.7 | 8 | 0.654 | 0.750 |
-| 0.7-0.8 | 5 | 0.759 | 0.800 |
-| 0.8-0.9 | 20 | 0.861 | 1.000 |
-| 0.9-1.0 | 32 | 0.942 | 1.000 |
+| 0.0-0.1 | 4 | 0.076 | 0.500 |
+| 0.1-0.2 | 7 | 0.145 | 0.571 |
+| 0.2-0.3 | 8 | 0.256 | 0.500 |
+| 0.3-0.4 | 7 | 0.316 | 0.571 |
+| 0.4-0.5 | 2 | 0.483 | 0.500 |
+| 0.5-0.6 | 7 | 0.577 | 0.857 |
+| 0.6-0.7 | 6 | 0.647 | 0.833 |
+| 0.7-0.8 | 11 | 0.746 | 0.818 |
+| 0.8-0.9 | 20 | 0.851 | 0.900 |
+| 0.9-1.0 | 31 | 0.944 | 1.000 |
 
-102 scored · 1 with no candidate · 3 truth absent from the candidates (scored, the leader is wrong) · 0 clamped
+103 scored · 1 with no candidate · 4 truth absent from the candidates (scored, the leader is wrong) · 0 clamped
+
+**`generated`**
+
+| p1 bin | n | mean p1 | right |
+|---|---:|---:|---:|
+| 0.0-0.1 | 5 | 0.051 | 0.200 |
+| 0.1-0.2 | 9 | 0.119 | 0.444 |
+| 0.2-0.3 | 18 | 0.253 | 0.444 |
+| 0.3-0.4 | 20 | 0.336 | 0.450 |
+| 0.4-0.5 | 1 | 0.418 | 0.000 |
+| 0.5-0.6 | 7 | 0.552 | 0.857 |
+| 0.6-0.7 | 29 | 0.649 | 0.931 |
+| 0.7-0.8 | 19 | 0.748 | 1.000 |
+| 0.8-0.9 | 13 | 0.849 | 1.000 |
+| 0.9-1.0 | 77 | 0.947 | 0.948 |
+
+198 scored · 14 with no candidate · 15 truth absent from the candidates (scored, the leader is wrong) · 0 clamped
 
 Not scored:
 
@@ -38,7 +55,8 @@ Not scored:
 
 What each row is:
 
-- **`owner`** — J1's host Bayes act (core/decide.bayes_act) over the owner's 104 questions (2026-09-20, corpus pin full-2026-06-11), both arms on ONE GRADER and ONE PRICE LIST: each arm is graded on the answer it commits, by exact match, and priced at its declared prices (the typed arm's applied probes at the menu's prices, cache or no cache; the outside arm is the live deliberative rung's ANSWER line at the cost the call recorded). Replaces run 18 (the Julia daemon, 2026-08-26: typed 61/2/41 at $20.95, U/q +0.220 on the same grader and prices; its record is paired-gate-20260826T083356-strict-priced.jsonl). The daemon's 13 extra right answers came with 2 wrongs and a policy that called the deliberative rung on 40 questions at $0.38; at today's gauge that bundle is worth less than abstaining.
-- **`generated`** — The generated golden set: 212 verbatim point-fact questions extracted from the owner's corpus by the generator (claude-haiku-4-5-20251001, prompt sha ea86a53553e58005; questions file sha256 2a548ef4239c4347 in $LIFE_AGENT_KB/eval/questions_generated.yaml). J1's host Bayes act, run COLD (no derivation cache) on a second machine 2026-09-20 against the corpus pin full-2026-06-11, priced at the menu's prices for the probes it applied (metered $12.85 for the 212; the menu understates what the probes meter, see CHANGELOG). First pin: this is the baseline, no incumbent.
+- **`owner`** — The owner's 104 questions, typed arm only, re-run 2026-09-30 on master 4912b08 against the corpus pin full-2026-06-11 (catalogue digest 03d1b09c…): 43 right / 0 wrong / 61 declined, list price $1.41 (the menu's prices for the probes applied), metered $0.19 on this run because most calls replayed from the cache of an earlier cold run the same day (which metered $5.49). Calibration is the archive's own (`typed.p1`): 103 scored, mean log score -0.464, ECE 0.146. Replaces the 2026-09-20 typed row (48/0/56 at $1.44): 43 of its 48 rights are right again; the other 5 went right -> declined, the same probes applied and the leading candidate correct, `p1` ending between 0.47 and 0.78, below the bar. They come from one fresh cold draw of the model calls (the earlier run today, now cached); the pinned run was a different draw, and no code change explains them. 41 of the 61 declines had the correct leader. The outside and router rows for this set are the frozen recordings under `owner-0920`.
+- **`owner-0920`** — FROZEN RECORDINGS from 2026-09-20, the owner's 104 questions (corpus pin full-2026-06-11): the outside arm is the live deliberative rung's ANSWER line at the cost the call recorded, graded by exact match (87 right / 13 wrong / 4 declined). The router row recombines that OUTSIDE arm with the 2026-09-20 typed arm (48/0/56), NOT with today's `owner/typed` row: typed where that asserted, otherwise the outside answer, at the sum of both costs. Neither row has been re-run; the typed arm of this archive is not a board row (see `owner`). Both were priced at their declared prices on one grader with J1's host Bayes act; they replace run 18 (the Julia daemon, 2026-08-26, paired-gate-20260826T083356-strict-priced.jsonl).
+- **`generated`** — The generated golden set: 212 verbatim point-fact questions extracted from the owner's corpus by the generator (claude-haiku-4-5-20251001, prompt sha ea86a53553e58005; questions file sha256 2a548ef4239c4347 in $LIFE_AGENT_KB/eval/questions_generated.yaml). Re-run 2026-09-30 on master 4912b08 against the corpus pin full-2026-06-11 (catalogue digest 03d1b09c…): 81 right / 4 wrong / 127 declined, list price $2.63, metered $0 because every call replayed from the cache of the 2026-09-20 cold run. Calibration is the archive's own (`typed.p1`): 198 scored, mean log score -0.425, ECE 0.136; leaders given 0.6-0.9 were right about 96% of the time (61 rows), leaders given under 0.4 about 44% (52 rows), the top bin 0.947 stated against 0.948 realised; 79 of the 127 declines had the correct leader. Every question's answer is in the corpus by construction, so this reads calibration on answerable questions only. Replaces the 2026-09-20 row (85/4/123): 81 of its 85 rights are right again and all 4 wrongs are wrong again. 4 went right -> declined with nothing applied: they began with nothing extracted and were answered by the fixed rescue sequence; since PR #206 (ruling 6) a state with no candidate is decided by the argmax, which at today's gauge abstains. 5 former declines that had reached candidates through that rescue are now declines with nothing applied, for the same reason.
 - **`atm`** — Somebody else's corpus and somebody else's questions — the only row here whose difficulty this project did not choose. ATM-Bench at pinned revision 78e826dc07e97466b2f54443831ef9a83ab8b27c, built into its own KB root by `make sets` (6742 emails; CC-BY-NC, so it stays on the machine that built it and this row names its root by environment variable rather than a path). 198 of the 381 questions: the build marks the other 183 `fuzzy`, graded by resemblance, and a judge-graded row is not on this board. J1's host Bayes act, COLD on a second machine 2026-09-20 at the owner's folded gauge and the menu's declared prices ($2.02 for the 198; metered $3.80). 26 right / 5 wrong / 167 declined, nothing censored — every gold chunk was present, so the declines are the act's and not the catalogue's. **Read the U/q as a floor, not an error rate.** All five wrongs were re-asked through the same bridge and NONE is an invention: each named the gold fact in another surface form (gold `June 30, 2024.` against `June 30th, 2024`; gold `from 9:30am to 10:30am.` against `9:30am to 10:30am`; one, `July 4th` for `July 4th, 2025.`, dropped the year). Exact match is the declared grader and this row is scored by it unaltered, but ATM's gold is the dataset author's prose, not a span lifted from the document: only 77 of the 198 golds appear verbatim in their own cited email, so 121 of these questions do not meet this project's own MVP precondition. Re-cutting the set on that precondition is an eval-question change and is the owner's to take. First pin either way: the baseline, no incumbent.
 - **`sample`** — The one row a stranger can reproduce from a clone. The bundled synthetic corpus (examples/sample-corpus, 8 documents, the fictional Ada Lovelace) built by scripts/bootstrap-sample.sh; 14 questions generated from it by the same `make golden` recipe the owner's set uses (eval/sample/questions.yaml, sha256 9a24703502...), answered cold through a bridge over that sandbox. Synthetic by construction, so both the questions and the archive live IN the repo and `root: repo` scores them with no $LIFE_AGENT_KB at all. The gauge is the shipped example folded with no evidence (the declared prior, u_wrong -9, bar 0.90) and the gather row is config/gather-row.example.json, because a fresh KB has fitted neither — which is exactly the configuration a stranger runs. 8 right / 0 wrong / 6 declined. Re-running it needs an API key; scoring the pinned bytes needs nothing.
