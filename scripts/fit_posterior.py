@@ -71,6 +71,8 @@ class State:
     grow: Mapping[str, Any] | None
     truth: int
     matches: tuple[int, ...]
+    weight: float = 1.0
+    negative: bool = False   # from a withheld-source run: the answer is absent by construction
 
     def payload(self) -> dict[str, Any]:
         """The fields ``enact.gather_options`` reads."""
@@ -100,6 +102,21 @@ def state_from_row(row: Mapping[str, Any]) -> State:
 def read_states(path: Path) -> list[State]:
     return [state_from_row(json.loads(line))
             for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
+def read_negatives(path: Path) -> tuple[list[State], int]:
+    """The withheld-source states, leaks excluded: ``(states, leaks dropped)``. A leak is a
+    row whose candidates matched the gold, so an attesting document got through and the truth
+    is not absent."""
+    rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()
+            if line.strip()]
+    kept = [replace(state_from_row(r), negative=True) for r in rows if not r.get("leak")]
+    return kept, len(rows) - len(kept)
+
+
+def reweighted(states: Sequence[State], *, negative_weight: float) -> list[State]:
+    """The same states with the negatives' likelihood weighted ``negative_weight``."""
+    return [replace(s, weight=negative_weight) if s.negative else s for s in states]
 
 
 # --- the score ----------------------------------------------------------------------------
@@ -145,8 +162,11 @@ def score(states: Sequence[State], channel: POST.Channel) -> Score:
 
 
 def truth_objective(states: Sequence[State]) -> Callable[[POST.Channel], float]:
+    """The weighted mean log probability of the truth (every weight 1.0: the plain mean)."""
+    total = sum(s.weight for s in states)
+
     def objective(channel: POST.Channel) -> float:
-        return sum(truth_log(truth_prob(s, channel)) for s in states) / len(states)
+        return sum(s.weight * truth_log(truth_prob(s, channel)) for s in states) / total
     return objective
 
 
@@ -310,6 +330,16 @@ def cross_validate(states: Sequence[State], fold_of: Sequence[int], base: POST.C
     return [by_fold[f] for f in fold_of]
 
 
+def folds_by_question(ids: Sequence[str], groups: Sequence[str], n_folds: int, seed: int
+                      ) -> list[int]:
+    """A fold per state such that every state of one question shares it (a question's
+    positive and withheld states never straddle train and test), stratified by ``groups``."""
+    uniq = sorted(set(zip(ids, groups, strict=True)))
+    fold = dict(zip((q for q, _ in uniq), folds([g for _, g in uniq], n_folds, seed),
+                    strict=True))
+    return [fold[q] for q in ids]
+
+
 def score_each(states: Sequence[State], channels: Sequence[POST.Channel]) -> Score:
     posts = [posterior_of(s, ch) for s, ch in zip(states, channels, strict=True)]
     logs = [truth_log(p_none if s.truth == NONE else cred[s.truth])
@@ -378,6 +408,94 @@ def cmd_cv(a: argparse.Namespace) -> int:
                       f"{_mean([c.p1[i] for i in gr]):.3f} new wrong "
                       f"{_mean([c.p1[i] for i in gw]):.3f} · stopped "
                       f"{len(b.responds - c.responds)}")
+    return 0
+
+
+# --- the withheld-source negatives -------------------------------------------------------
+
+GRID_A_NEG = [2.0, 5.0, 10.0, 20.0, 35.0, 50.0, 75.0, 100.0, 150.0, 200.0, 300.0, 500.0, 1000.0]
+GRIDS_NEG: dict[str, list[float]] = {**GRIDS, "a_alternatives": GRID_A_NEG}
+NEG_FITS: dict[str, tuple[str, ...]] = {
+    "g": FIT_G, "d": FITS["d all but P_NONE"], "f": FITS["f all free"]}
+
+
+def _flat_text(flat: Mapping[str, tuple[float, float]]) -> str:
+    return "; ".join(f"{k} [{lo:g}, {hi:g}]" for k, (lo, hi) in flat.items())
+
+
+def _decisions(states: Sequence[State], channels: Sequence[POST.Channel],
+               base: Sequence[POST.Channel], u_bar: Mapping[str, float]) -> str:
+    c = consequences_each(states, channels, u_bar)
+    b = consequences_each(states, base, u_bar)
+    gained = c.responds - b.responds
+    return (f"respond {len(c.responds)} right {len(c.right)} wrong {len(c.wrong)} "
+            f"U/q {c.utility:+.4f} · new {len(gained)} (right {len(gained & c.right)})")
+
+
+def cmd_neg(a: argparse.Namespace) -> int:
+    from life_agent.core import lookup as LK
+
+    pos = {"generated": read_states(Path(a.generated)), "owner": read_states(Path(a.owner))}
+    neg, leaks = read_negatives(Path(a.negatives))
+    base = POST.default_channel()
+    folded = LK.current_u_bar()[0]
+    gauges = {f"folded u_wrong {folded['u_wrong']:.2f}": folded,
+              "prior u_wrong -9": {**folded, "u_wrong": -9.0}}
+    print(f"positives {sum(map(len, pos.values()))} · negatives {len(neg)} "
+          f"(leaks excluded {leaks}) · negatives with no candidate {sum(s.k == 0 for s in neg)}")
+    # 1. the baseline on the negatives alone
+    sc = score(neg, base)
+    print(f"[baseline on negatives] log P(NONE) {sc.truth_log:+.4f}")
+    pairs = Pairs(tuple((p, False) for s in neg if s.k
+                        for p in [max(posterior_of(s, base)[0])]))
+    print("\n".join(fmt_bins(calibrate(pairs))) + f"\n  mean p1 "
+          f"{sum(p for p, _ in pairs.pairs) / max(len(pairs.pairs), 1):.3f}")
+    for gname, u_bar in gauges.items():
+        c = consequences(neg, base, u_bar)
+        print(f"  {gname}: the act responds on {len(c.responds)} of {len(neg)}")
+    # 2. cross-validation over positives + negatives
+    states = [s for v in pos.values() for s in v] + neg
+    where = [n for n, v in pos.items() for _ in v] + ["generated"] * len(neg)
+    ids = [s.question_id for s in states]
+    fold_of = folds_by_question(ids, where, a.folds, a.seed)
+    subsets = {"pooled": [True] * len(states), "positives": [not s.negative for s in states],
+               "negatives": [s.negative for s in states]}
+    print("\nfull-data fits (plain weights)")
+    full: dict[str, POST.Channel] = {}
+    for m, free in NEG_FITS.items():
+        full[m] = fit(states, base, free, GRIDS_NEG)
+        print(f"  {m}: {_fmt_channel(full[m], free)} flat "
+              + _flat_text(flatness(states, full[m], free, GRIDS_NEG)))
+    chans = {"baseline": [base] * len(states)} | {
+        m: cross_validate(states, fold_of, base, free, GRIDS_NEG)
+        for m, free in NEG_FITS.items()}
+    print(f"\n{a.folds}-fold CV by question, seed {a.seed}; out-of-fold only")
+    for m, cs in chans.items():
+        sc = score_each(states, cs)
+        print(f"[{m}] truth_log {sc.truth_log:+.4f} leader_log {sc.leader.mean_log:+.4f} "
+              f"ECE {sc.leader.ece:.4f}")
+        print("\n".join(fmt_bins(sc.leader)))
+        for sname, mask in list(subsets.items())[1:]:
+            ix = [i for i, k in enumerate(mask) if k]
+            s2 = score_each([states[i] for i in ix], [cs[i] for i in ix])
+            ece = "—" if s2.leader.ece is None else f"{s2.leader.ece:.4f}"
+            print(f"  {sname}: truth_log {s2.truth_log:+.4f} ECE {ece}")
+    for gname, u_bar in gauges.items():
+        print(f"\n== decisions, out-of-fold, {gname}")
+        for sname, mask in subsets.items():
+            ix = [i for i, k in enumerate(mask) if k]
+            st = [states[i] for i in ix]
+            print(f"[{sname}] n={len(st)}")
+            for m, cs in chans.items():
+                print(f"  {m:<9} " + _decisions(st, [cs[i] for i in ix],
+                                               [chans["baseline"][i] for i in ix], u_bar))
+    # 3. sensitivity of f to the negatives' weight
+    print("\nfit f with the negatives weighted")
+    for w in (0.5, 1.0, 2.0):
+        ws = reweighted(states, negative_weight=w)
+        ch = fit(ws, base, NEG_FITS["f"], GRIDS_NEG)
+        print(f"  x{w:g}: {_fmt_channel(ch, NEG_FITS['f'])} flat "
+              + _flat_text(flatness(ws, ch, NEG_FITS["f"], GRIDS_NEG)))
     return 0
 
 
@@ -626,6 +744,13 @@ def main(argv: list[str] | None = None) -> int:
     cv_.add_argument("--folds", type=int, default=5)
     cv_.add_argument("--seed", type=int, default=20260930)
     cv_.set_defaults(func=cmd_cv)
+    ng = sub.add_parser("neg")
+    ng.add_argument("--generated", required=True)
+    ng.add_argument("--owner", required=True)
+    ng.add_argument("--negatives", required=True)
+    ng.add_argument("--folds", type=int, default=5)
+    ng.add_argument("--seed", type=int, default=20260930)
+    ng.set_defaults(func=cmd_neg)
     a = ap.parse_args(argv)
     return int(a.func(a))
 
