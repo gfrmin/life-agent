@@ -54,7 +54,6 @@ LOOKUP_ROUTE_VERSION = "1"
 LOOKUP_EXTRACT_VERSION = "1"
 JOINT_EXTRACT_VERSION = "1"
 RERANK_VERSION = "1"
-TEMPORAL_INTENT_VERSION = "1"
 DELIBERATE_VERSION = "1"
 
 # The deliberative edge's call path is the claude CLI (headless print mode), not the
@@ -78,7 +77,6 @@ CONTENT_TYPE_LOOKUP_ROUTE = "application/x-ask-lookup-route+json"
 CONTENT_TYPE_LOOKUP_OBSERVATION = "application/x-ask-lookup-observation+json"
 CONTENT_TYPE_JOINT_EXTRACT = "application/x-ask-joint-extract+json"
 CONTENT_TYPE_RERANK = "application/x-ask-rerank+json"
-CONTENT_TYPE_TEMPORAL_INTENT = "application/x-ask-temporal-intent+json"
 CONTENT_TYPE_DELIBERATE_ANSWER = "application/x-ask-deliberate-answer+json"
 
 _PENDING_QUEUE = Path("external") / "pending.txt"
@@ -142,7 +140,7 @@ def expand_key(question: str, *, model: str, prompt_template: str,
 
 def instrument_identity(model: str) -> dict[str, Any]:
     """The one model-identity dict for the cached ask instruments (owner_match,
-    lookup_route, temporal_intent, lookup_extract). Local Ollama was deprecated
+    lookup_route, lookup_extract). Local Ollama was deprecated
     2026-08-17 (owner directive, §14-registered): the instruments run on the same
     Anthropic seam the entity_extraction transform uses. One builder so the four
     keys cannot drift — and so the identity change is one deliberate edit, not four."""
@@ -195,29 +193,6 @@ def lookup_route_key(question: str, *, model: str, prompt_template: str,
                     producer_version=LOOKUP_ROUTE_VERSION, producer_config={},
                     schema_version=3, inputs=inputs,
                     content_type=CONTENT_TYPE_LOOKUP_ROUTE)
-
-
-def temporal_intent_key(question: str, *, model: str, prompt_template: str,
-                        engine_version: str, output_schema: dict[str, Any]) -> StageKey:
-    """Key for one temporal-intent verdict (temporal-scope stage): does the question ask about
-    the owner's PRESENT state, a HISTORICAL/ever reading, or AS-OF a named time? Local model,
-    cached per question — surfaced and recorded; a misclassification degrades to ``unscoped``
-    (the indeterminate, never a silent scope choice). Mirrors :func:`lookup_route_key`."""
-    inputs = {"question": question}
-    input_hash = _sha256(canonical_json(inputs))
-    cache_key = compute_cache_key(
-        input_hash, "life_agent.ask.temporal_intent", TEMPORAL_INTENT_VERSION, {},
-        schema_version=3,
-        model_identity=instrument_identity(model),
-        engine_version=engine_version,
-        prompt_template_hash=_sha256(prompt_template),
-        output_schema=output_schema,
-    )
-    return StageKey(cache_key=cache_key, input_hash=input_hash,
-                    producer_name="life_agent.ask.temporal_intent",
-                    producer_version=TEMPORAL_INTENT_VERSION, producer_config={},
-                    schema_version=3, inputs=inputs,
-                    content_type=CONTENT_TYPE_TEMPORAL_INTENT)
 
 
 def lookup_extract_key(question: str, chunk_sha: str, *, model: str,

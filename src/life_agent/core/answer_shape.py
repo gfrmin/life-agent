@@ -10,7 +10,7 @@ copy, so the decision-path classifier that `core.decide.shaped_u_bar` prices aga
 the audited r29 instrument can never drift apart (C2).
 
 Pure and cheap — a regex predicate over the question text, no model call, no cache, in the
-same family as `terminals.owner_question` — not a pkm §2-contract instrument (there is no
+same family as an owner-possessive trigger — not a pkm §2-contract instrument (there is no
 model call here to make caching worth its complexity; disclosed deviation from the
 original plan's "cached instrument" language, `docs/unification/reports/r30-units-lever.md`).
 
