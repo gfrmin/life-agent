@@ -61,6 +61,21 @@
       "n_scored": 198
     },
     {
+      "set": "generated-withheld",
+      "arm": "typed",
+      "rows": 188,
+      "right": 0,
+      "wrong": 5,
+      "esc_right": 0,
+      "esc_wrong": 0,
+      "declined": 183,
+      "usd_per_q": 0.004191489361702127,
+      "s_per_q": null,
+      "log_score": -0.7864077414437064,
+      "ece": 0.44520417194905854,
+      "n_scored": 61
+    },
+    {
       "set": "atm",
       "arm": "typed",
       "rows": 198,

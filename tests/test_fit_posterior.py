@@ -194,3 +194,39 @@ def test_consequences_carry_the_p1_of_each_response() -> None:
     c = FP.consequences([sure], BASE, U_BAR)
     cred, _ = POST.candidate_posterior(1, list(sure.observations), 0.95, BASE)
     assert c.p1 == {0: cred[0]}
+
+
+def test_negatives_are_read_without_their_leaks(tmp_path: Path) -> None:
+    import json
+
+    def row(qid: str, **extra: Any) -> str:
+        req = {"candidates": ["x"], "observations": [_obs(0, 0)], "rho": 0.6,
+               "applied_probes": [], "transforms": []}
+        return json.dumps({"question_id": qid, "truth": FP.NONE, "matches": [],
+                           "request": req, **extra})
+
+    path = tmp_path / "neg.jsonl"
+    path.write_text("\n".join([row("a"), row("b", leak=True), row("c")]) + "\n")
+    states, leaks = FP.read_negatives(path)
+    assert [s.question_id for s in states] == ["a", "c"] and leaks == 1
+    assert all(s.negative and s.truth == FP.NONE for s in states)
+
+
+def test_the_weighted_objective_follows_the_weights() -> None:
+    pos = _state([(0, 0), (0, 1)], truth=0, qid="p")
+    neg = replace(_state([(0, 0), (0, 1)], truth=FP.NONE, qid="n"), negative=True)
+    eta_hi = replace(BASE, eta=3.0)
+    heavy_neg = FP.truth_objective(FP.reweighted([pos, neg], negative_weight=10.0))
+    light_neg = FP.truth_objective(FP.reweighted([pos, neg], negative_weight=0.001))
+    assert heavy_neg(eta_hi) < heavy_neg(BASE)     # confident evidence costs the negatives
+    assert light_neg(eta_hi) > light_neg(BASE)     # and helps the positives
+    plain = FP.truth_objective([pos, neg])
+    assert plain(BASE) == pytest.approx((FP.truth_log(FP.truth_prob(pos, BASE))
+                                         + FP.truth_log(FP.truth_prob(neg, BASE))) / 2)
+
+
+def test_folds_by_question_keep_a_questions_states_together() -> None:
+    ids = ["q1", "q2", "q3", "q4", "q1", "q3"]
+    groups = ["g", "g", "g", "o", "g", "g"]
+    f = FP.folds_by_question(ids, groups, 2, seed=3)
+    assert f[0] == f[4] and f[2] == f[5] and set(f) <= {0, 1}

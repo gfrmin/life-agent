@@ -203,14 +203,18 @@ def _retrieve(deps: BridgeDeps, p: Payload) -> Payload:
         terms = (terms + " " + EXP.expand_terms(question, root=deps.root)).strip()
     query = RET.build_query(question, terms)
     k = int(p.get("k", _DEFAULT_K))
+    # the withheld-source eval: artifacts whose hits are never returned, filtered before any
+    # rerank reads the pool. Absent, retrieval is called exactly as it always was.
+    exclude = frozenset(str(x) for x in p.get("exclude_artifacts") or [])
+    kept = {"exclude": exclude} if exclude else {}
     # the body's recall action (Slice 4): over-fetch a wide lexical pool and listwise-rerank to
     # top-k, surfacing a buried gold into extraction. A reorder, not a VOI gather — it grows the
     # evidence the next /decide sees; discovery over a closed candidate set is outside net_voi.
     if p.get("rerank"):
-        pool = RET.retrieve_set(deps.conn, query, RR.RERANK_POOL)
+        pool = RET.retrieve_set(deps.conn, query, RR.RERANK_POOL, **kept)
         hits, cost = RR.rerank(question, pool, k, root=deps.root)
         return {"hits": hits, "cost_usd": cost}
-    return {"hits": RET.retrieve_set(deps.conn, query, k), "cost_usd": 0.0}
+    return {"hits": RET.retrieve_set(deps.conn, query, k, **kept), "cost_usd": 0.0}
 
 
 def _extract(deps: BridgeDeps, p: Payload) -> Payload:

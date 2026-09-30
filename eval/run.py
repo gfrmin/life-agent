@@ -1,12 +1,17 @@
 """Run the act over a question set and write the archive `eval/score.py` scores.
 
-Drives every question through the executor surface (``ask.answer_via_executor``: the bridge's
+Drives every question through the executor surface (``ask_client.drive``: the bridge's
 host decider), grades the reply by exact match on the gold, and writes one JSONL row per
 question under ``$LIFE_AGENT_KB/eval/typed/``. A question whose gold chunk is absent from
 this machine's catalogue is censored.
 
 Point the run at a bridge with ``LIFE_AGENT_BRIDGE_URL``. Decisions carry a ``gate-`` run id,
 so the production readout excludes them. Prints counts only.
+
+``--withhold-source`` re-asks each question with every document that attests its answer
+withheld from retrieval (``eval/withheld.py``): the answer is then absent, so declining is
+right, an assertion is wrong, and an assertion of the gold is a leak, counted loudly. Such a
+run is ``gate-withheld-…`` and its rows say ``"answerable": false``.
 
     uv run python -m eval.run --questions $LIFE_AGENT_KB/eval/questions_generated.yaml
 """
@@ -17,17 +22,21 @@ import hashlib
 import json
 import sys
 from collections import Counter
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 from typing import Any, TypedDict
 
 import yaml
 
+from eval import withheld as WH
 from eval.calibration import read_leader
 from eval.grading import RealisedResponse, realised_report
+from life_agent.core import ask_client as AC
 from life_agent.core import config as CFG
 from life_agent.core import decisions as DEC
 from life_agent.core import pricing as PRC
+from life_agent.core import retrieval as RET
 
 _DEFAULTS: dict[str, Any] = {"subject": "n/a", "answer": "", "answer_variants": [],
                              "distractors": [], "fuzzy": False, "search_queries": [],
@@ -112,56 +121,96 @@ def typed_response(view: dict[str, Any], q: dict[str, Any], *,
                             metered_usd=metered, **seen)
 
 
-def main(argv: list[str] | None = None) -> int:
-    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
-    import ask
+def is_leak(view: dict[str, Any], q: dict[str, Any]) -> bool:
+    """A withheld question whose gold reached the act anyway: an asserted value or any
+    candidate matches it, so some document attesting it was not withheld."""
+    gold, variants = q.get("answer", ""), q.get("answer_variants", [])
+    seen = [str(c) for c in (view.get("candidates") or [])] + [
+        str(a) for a in (view.get("asserted") or [])]
+    return realised_report(seen, gold, variants)
 
+
+def archive_row(qid: str, run_id: str, r: RealisedResponse, *, censored: bool,
+                answerable: bool = True, withheld: int | None = None,
+                leak: bool = False) -> dict[str, Any]:
+    """One archive line. The default mode's line is unchanged; a withheld-source line
+    carries the count of artifacts withheld and whether the gold leaked."""
+    row: dict[str, Any] = {
+        "question_id": qid, "answerable": answerable, "run_id": run_id, "censored": censored,
+        "typed": {"action": r.action, "correct": r.correct, "cost_usd": r.cost_usd,
+                  "withheld": r.withheld, "applied": list(r.applied),
+                  "metered_usd": r.metered_usd, "p1": r.p1, "n_candidates": r.n_candidates,
+                  "leader_correct": r.leader_correct,
+                  "truth_in_candidates": r.truth_in_candidates}}
+    if withheld is not None:
+        row["withheld"] = {"n_artifacts": withheld}
+        if leak:
+            row["leak"] = True
+    return row
+
+
+def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--questions", required=True)
     ap.add_argument("--k", type=int, default=20)
+    ap.add_argument("--limit", type=int, default=None, help="only the first N questions")
+    ap.add_argument("--only-ids", default=None, metavar="FILE",
+                    help="a JSON list of question ids; only those questions are run")
+    ap.add_argument("--withhold-source", action="store_true",
+                    help="re-ask each question with every document attesting its answer "
+                         "withheld from retrieval (eval/withheld.py)")
     ap.add_argument("--out", default=None, help="default: $LIFE_AGENT_KB/eval/typed/<run>.jsonl")
     a = ap.parse_args(argv)
-    if not ask._executor_ready():
-        print(f"REFUSED: the bridge at {ask.EXECUTOR_BRIDGE} is not ready", file=sys.stderr)
+    if a.withhold_source:
+        WH.force_deliberate_off()
+    if not AC._ready():
+        print(f"REFUSED: the bridge at {AC.BRIDGE} is not ready", file=sys.stderr)
         return 2
     questions = load_questions(a.questions)
-    run_id = f"gate-typed-{datetime.now().strftime('%Y%m%dT%H%M%S')}"
+    if a.only_ids:
+        wanted = set(json.loads(Path(a.only_ids).read_text(encoding="utf-8")))
+        questions = [q for q in questions if str(q["id"]) in wanted]
+    questions = questions[:a.limit]
+    kind = "withheld" if a.withhold_source else "typed"
+    run_id = f"gate-{kind}-{datetime.now().strftime('%Y%m%dT%H%M%S')}"
     out = Path(a.out) if a.out else CFG.KB / "eval" / "typed" / f"{run_id}.jsonl"
     out.parent.mkdir(parents=True, exist_ok=True)
-    conn = ask.connect()
+    conn = RET.connect()
     try:
         available = gold_available(conn, questions)
+        plans = ({str(q["id"]): WH.plan(conn, q) for q in questions}
+                 if a.withhold_source else {})
     finally:
         conn.close()
     tally: Counter[str] = Counter()
-    ask.EXECUTOR_RUN_ID = run_id
-    try:
-        with out.open("w", encoding="utf-8") as fh:
-            for q in questions:
-                qid = str(q["id"])
-                ask.answer_via_executor(q["question"], a.k)
-                view = ask.EXECUTOR_VIEW_LAST
-                if view is None:
-                    raise SystemExit(f"executor view missing for {qid} — the bridge went "
-                                     "down mid-run; the reading is void")
-                ok = available.get(qid, True)
-                r = typed_response(view, q, available=ok)
-                fh.write(json.dumps({
-                    "question_id": qid, "answerable": bool(q.get("answerable", True)),
-                    "run_id": run_id, "censored": not ok,
-                    "typed": {"action": r.action, "correct": r.correct,
-                              "cost_usd": r.cost_usd, "withheld": r.withheld,
-                              "applied": list(r.applied),
-                              "metered_usd": r.metered_usd, "p1": r.p1,
-                              "n_candidates": r.n_candidates,
-                              "leader_correct": r.leader_correct,
-                              "truth_in_candidates": r.truth_in_candidates}}) + "\n")
-                fh.flush()
-                tally["censored" if not ok else ("declined" if r.correct is None
-                                                 else "right" if r.correct else "wrong")] += 1
-    finally:
-        ask.EXECUTOR_RUN_ID = None
+    with out.open("w", encoding="utf-8") as fh:
+        for q in questions:
+            qid = str(q["id"])
+            post: Callable[..., Any] = AC.post_json
+            if a.withhold_source:
+                if plans[qid].skipped:
+                    tally[f"skipped {plans[qid].skipped}"] += 1
+                    continue
+                post = WH.with_exclusion(post, plans[qid].keys)
+            view = AC.drive(q["question"], a.k, bridge=AC.BRIDGE, post=post, run_id=run_id,
+                            ready=AC._ready).view
+            if view is None:
+                raise SystemExit(f"executor view missing for {qid} — the bridge went "
+                                 "down mid-run; the reading is void")
+            ok = available.get(qid, True)
+            r = typed_response(view, q, available=ok)
+            leak = a.withhold_source and is_leak(view, q)
+            fh.write(json.dumps(archive_row(
+                qid, run_id, r, censored=not ok,
+                answerable=not a.withhold_source and bool(q.get("answerable", True)),
+                withheld=len(plans[qid].keys) if a.withhold_source else None,
+                leak=leak)) + "\n")
+            fh.flush()
+            tally["censored" if not ok else ("declined" if r.correct is None
+                                             else "right" if r.correct else "wrong")] += 1
+            if leak:
+                tally["LEAK"] += 1
     digest = hashlib.sha256(out.read_bytes()).hexdigest()
     try:
         shown = f"$LIFE_AGENT_KB/{out.relative_to(CFG.KB)}"

@@ -38,6 +38,7 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from eval import withheld as WH
 from eval.calibration import Calibration, Pairs, calibrate, fmt_bins
 from eval.grading import realised_report
 from life_agent.core import config as CFG
@@ -70,6 +71,8 @@ class State:
     grow: Mapping[str, Any] | None
     truth: int
     matches: tuple[int, ...]
+    weight: float = 1.0
+    negative: bool = False   # from a withheld-source run: the answer is absent by construction
 
     def payload(self) -> dict[str, Any]:
         """The fields ``enact.gather_options`` reads."""
@@ -99,6 +102,21 @@ def state_from_row(row: Mapping[str, Any]) -> State:
 def read_states(path: Path) -> list[State]:
     return [state_from_row(json.loads(line))
             for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
+def read_negatives(path: Path) -> tuple[list[State], int]:
+    """The withheld-source states, leaks excluded: ``(states, leaks dropped)``. A leak is a
+    row whose candidates matched the gold, so an attesting document got through and the truth
+    is not absent."""
+    rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()
+            if line.strip()]
+    kept = [replace(state_from_row(r), negative=True) for r in rows if not r.get("leak")]
+    return kept, len(rows) - len(kept)
+
+
+def reweighted(states: Sequence[State], *, negative_weight: float) -> list[State]:
+    """The same states with the negatives' likelihood weighted ``negative_weight``."""
+    return [replace(s, weight=negative_weight) if s.negative else s for s in states]
 
 
 # --- the score ----------------------------------------------------------------------------
@@ -144,8 +162,11 @@ def score(states: Sequence[State], channel: POST.Channel) -> Score:
 
 
 def truth_objective(states: Sequence[State]) -> Callable[[POST.Channel], float]:
+    """The weighted mean log probability of the truth (every weight 1.0: the plain mean)."""
+    total = sum(s.weight for s in states)
+
     def objective(channel: POST.Channel) -> float:
-        return sum(truth_log(truth_prob(s, channel)) for s in states) / len(states)
+        return sum(s.weight * truth_log(truth_prob(s, channel)) for s in states) / total
     return objective
 
 
@@ -309,6 +330,16 @@ def cross_validate(states: Sequence[State], fold_of: Sequence[int], base: POST.C
     return [by_fold[f] for f in fold_of]
 
 
+def folds_by_question(ids: Sequence[str], groups: Sequence[str], n_folds: int, seed: int
+                      ) -> list[int]:
+    """A fold per state such that every state of one question shares it (a question's
+    positive and withheld states never straddle train and test), stratified by ``groups``."""
+    uniq = sorted(set(zip(ids, groups, strict=True)))
+    fold = dict(zip((q for q, _ in uniq), folds([g for _, g in uniq], n_folds, seed),
+                    strict=True))
+    return [fold[q] for q in ids]
+
+
 def score_each(states: Sequence[State], channels: Sequence[POST.Channel]) -> Score:
     posts = [posterior_of(s, ch) for s, ch in zip(states, channels, strict=True)]
     logs = [truth_log(p_none if s.truth == NONE else cred[s.truth])
@@ -380,6 +411,94 @@ def cmd_cv(a: argparse.Namespace) -> int:
     return 0
 
 
+# --- the withheld-source negatives -------------------------------------------------------
+
+GRID_A_NEG = [2.0, 5.0, 10.0, 20.0, 35.0, 50.0, 75.0, 100.0, 150.0, 200.0, 300.0, 500.0, 1000.0]
+GRIDS_NEG: dict[str, list[float]] = {**GRIDS, "a_alternatives": GRID_A_NEG}
+NEG_FITS: dict[str, tuple[str, ...]] = {
+    "g": FIT_G, "d": FITS["d all but P_NONE"], "f": FITS["f all free"]}
+
+
+def _flat_text(flat: Mapping[str, tuple[float, float]]) -> str:
+    return "; ".join(f"{k} [{lo:g}, {hi:g}]" for k, (lo, hi) in flat.items())
+
+
+def _decisions(states: Sequence[State], channels: Sequence[POST.Channel],
+               base: Sequence[POST.Channel], u_bar: Mapping[str, float]) -> str:
+    c = consequences_each(states, channels, u_bar)
+    b = consequences_each(states, base, u_bar)
+    gained = c.responds - b.responds
+    return (f"respond {len(c.responds)} right {len(c.right)} wrong {len(c.wrong)} "
+            f"U/q {c.utility:+.4f} · new {len(gained)} (right {len(gained & c.right)})")
+
+
+def cmd_neg(a: argparse.Namespace) -> int:
+    from life_agent.core import lookup as LK
+
+    pos = {"generated": read_states(Path(a.generated)), "owner": read_states(Path(a.owner))}
+    neg, leaks = read_negatives(Path(a.negatives))
+    base = POST.default_channel()
+    folded = LK.current_u_bar()[0]
+    gauges = {f"folded u_wrong {folded['u_wrong']:.2f}": folded,
+              "prior u_wrong -9": {**folded, "u_wrong": -9.0}}
+    print(f"positives {sum(map(len, pos.values()))} · negatives {len(neg)} "
+          f"(leaks excluded {leaks}) · negatives with no candidate {sum(s.k == 0 for s in neg)}")
+    # 1. the baseline on the negatives alone
+    sc = score(neg, base)
+    print(f"[baseline on negatives] log P(NONE) {sc.truth_log:+.4f}")
+    pairs = Pairs(tuple((p, False) for s in neg if s.k
+                        for p in [max(posterior_of(s, base)[0])]))
+    print("\n".join(fmt_bins(calibrate(pairs))) + f"\n  mean p1 "
+          f"{sum(p for p, _ in pairs.pairs) / max(len(pairs.pairs), 1):.3f}")
+    for gname, u_bar in gauges.items():
+        c = consequences(neg, base, u_bar)
+        print(f"  {gname}: the act responds on {len(c.responds)} of {len(neg)}")
+    # 2. cross-validation over positives + negatives
+    states = [s for v in pos.values() for s in v] + neg
+    where = [n for n, v in pos.items() for _ in v] + ["generated"] * len(neg)
+    ids = [s.question_id for s in states]
+    fold_of = folds_by_question(ids, where, a.folds, a.seed)
+    subsets = {"pooled": [True] * len(states), "positives": [not s.negative for s in states],
+               "negatives": [s.negative for s in states]}
+    print("\nfull-data fits (plain weights)")
+    full: dict[str, POST.Channel] = {}
+    for m, free in NEG_FITS.items():
+        full[m] = fit(states, base, free, GRIDS_NEG)
+        print(f"  {m}: {_fmt_channel(full[m], free)} flat "
+              + _flat_text(flatness(states, full[m], free, GRIDS_NEG)))
+    chans = {"baseline": [base] * len(states)} | {
+        m: cross_validate(states, fold_of, base, free, GRIDS_NEG)
+        for m, free in NEG_FITS.items()}
+    print(f"\n{a.folds}-fold CV by question, seed {a.seed}; out-of-fold only")
+    for m, cs in chans.items():
+        sc = score_each(states, cs)
+        print(f"[{m}] truth_log {sc.truth_log:+.4f} leader_log {sc.leader.mean_log:+.4f} "
+              f"ECE {sc.leader.ece:.4f}")
+        print("\n".join(fmt_bins(sc.leader)))
+        for sname, mask in list(subsets.items())[1:]:
+            ix = [i for i, k in enumerate(mask) if k]
+            s2 = score_each([states[i] for i in ix], [cs[i] for i in ix])
+            ece = "—" if s2.leader.ece is None else f"{s2.leader.ece:.4f}"
+            print(f"  {sname}: truth_log {s2.truth_log:+.4f} ECE {ece}")
+    for gname, u_bar in gauges.items():
+        print(f"\n== decisions, out-of-fold, {gname}")
+        for sname, mask in subsets.items():
+            ix = [i for i, k in enumerate(mask) if k]
+            st = [states[i] for i in ix]
+            print(f"[{sname}] n={len(st)}")
+            for m, cs in chans.items():
+                print(f"  {m:<9} " + _decisions(st, [cs[i] for i in ix],
+                                               [chans["baseline"][i] for i in ix], u_bar))
+    # 3. sensitivity of f to the negatives' weight
+    print("\nfit f with the negatives weighted")
+    for w in (0.5, 1.0, 2.0):
+        ws = reweighted(states, negative_weight=w)
+        ch = fit(ws, base, NEG_FITS["f"], GRIDS_NEG)
+        print(f"  x{w:g}: {_fmt_channel(ch, NEG_FITS['f'])} flat "
+              + _flat_text(flatness(ws, ch, NEG_FITS["f"], GRIDS_NEG)))
+    return 0
+
+
 # --- the capture --------------------------------------------------------------------------
 
 
@@ -400,12 +519,20 @@ def capture_one(question: str, k: int, *, run_id: str, inner_post: Callable[...,
 
 
 def capture_row(q: Mapping[str, Any], request: Mapping[str, Any], reply: Mapping[str, Any],
-                *, set_name: str, run_id: str, censored: bool) -> dict[str, Any]:
+                *, set_name: str, run_id: str, censored: bool,
+                withheld: int | None = None) -> dict[str, Any]:
+    """One captured state. With ``withheld`` (the number of artifacts taken out of retrieval)
+    the answer is absent by construction, so the truth is ``NONE`` whatever the candidates;
+    a candidate that does match the gold is a leak and is flagged, not believed."""
     truth, matches = label(request["candidates"], q.get("answer", ""),
                            q.get("answer_variants", []))
-    return {"question_id": str(q["id"]), "set": set_name, "run_id": run_id,
-            "censored": censored, "truth": truth, "matches": list(matches),
-            "request": dict(request), "reply": dict(reply)}
+    row = {"question_id": str(q["id"]), "set": set_name, "run_id": run_id,
+           "censored": censored, "truth": truth, "matches": list(matches),
+           "request": dict(request), "reply": dict(reply)}
+    if withheld is None:
+        return row
+    return {**row, "truth": NONE, "matches": [], "withheld": {"n_artifacts": withheld},
+            **({"leak": True} if matches else {})}
 
 
 def cmd_capture(a: argparse.Namespace) -> int:
@@ -415,18 +542,23 @@ def cmd_capture(a: argparse.Namespace) -> int:
     from eval.run import gold_available, load_questions
     from life_agent.core import ask_client as AC
 
+    if a.withhold_source:
+        WH.force_deliberate_off()
     if not AC._ready():
         print(f"REFUSED: the bridge at {AC.BRIDGE} is not ready", file=sys.stderr)
         return 2
-    questions = load_questions(a.questions)
+    questions = load_questions(a.questions)[:a.limit]
     stamp = datetime.now().strftime("%Y%m%dT%H%M%S")
-    run_id = f"gate-posterior-capture-{stamp}"
+    marker = "-withheld" if a.withhold_source else ""
+    run_id = f"gate-posterior-capture{marker}-{stamp}"
     out = Path(a.out) if a.out else (CFG.KB / "eval" / "decide-states"
-                                     / f"{a.set}-{stamp}.jsonl")
+                                     / f"{a.set}{marker}-{stamp}.jsonl")
     out.parent.mkdir(parents=True, exist_ok=True)
     conn = ask.connect()
     try:
         available = gold_available(conn, questions)
+        plans = ({str(q["id"]): WH.plan(conn, q) for q in questions}
+                 if a.withhold_source else {})
     finally:
         conn.close()
 
@@ -437,7 +569,14 @@ def cmd_capture(a: argparse.Namespace) -> int:
     tally: Counter[str] = Counter()
     with out.open("w", encoding="utf-8") as fh:
         for q in questions:
-            got = capture_one(q["question"], a.k, run_id=run_id, inner_post=AC.post_json,
+            qid = str(q["id"])
+            post: Callable[..., Any] = AC.post_json
+            if a.withhold_source:
+                if plans[qid].skipped:
+                    tally[f"skipped {plans[qid].skipped}"] += 1
+                    continue
+                post = WH.with_exclusion(post, plans[qid].keys)
+            got = capture_one(q["question"], a.k, run_id=run_id, inner_post=post,
                               drive=drive)
             if got is None:
                 tally["no evidence-stage decide"] += 1
@@ -445,12 +584,15 @@ def cmd_capture(a: argparse.Namespace) -> int:
             request, reply = got
             ok = available.get(str(q["id"]), True)
             row = capture_row(q, request, reply, set_name=a.set, run_id=run_id,
-                              censored=not ok)
+                              censored=not ok,
+                              withheld=(len(plans[qid].keys) if a.withhold_source else None))
             fh.write(json.dumps(row) + "\n")
             fh.flush()
             tally["captured"] += 1
             tally["truth NONE" if row["truth"] == NONE else "truth a candidate"] += 1
             tally["censored"] += not ok
+            if row.get("leak"):
+                tally["LEAK"] += 1
     print(f"{a.set}: " + " · ".join(f"{k} {v}" for k, v in sorted(tally.items()))
           + f" of {len(questions)} → $LIFE_AGENT_KB/{out.relative_to(CFG.KB)}")
     return 0
@@ -582,6 +724,10 @@ def main(argv: list[str] | None = None) -> int:
     cap.add_argument("--questions", required=True)
     cap.add_argument("--set", required=True)
     cap.add_argument("--k", type=int, default=20)
+    cap.add_argument("--limit", type=int, default=None, help="only the first N questions")
+    cap.add_argument("--withhold-source", action="store_true",
+                     help="withhold every document attesting each answer (truth NONE for "
+                          "every state; a matching candidate is flagged a leak)")
     cap.add_argument("--out", default=None)
     cap.set_defaults(func=cmd_capture)
     chk = sub.add_parser("check")
@@ -598,6 +744,13 @@ def main(argv: list[str] | None = None) -> int:
     cv_.add_argument("--folds", type=int, default=5)
     cv_.add_argument("--seed", type=int, default=20260930)
     cv_.set_defaults(func=cmd_cv)
+    ng = sub.add_parser("neg")
+    ng.add_argument("--generated", required=True)
+    ng.add_argument("--owner", required=True)
+    ng.add_argument("--negatives", required=True)
+    ng.add_argument("--folds", type=int, default=5)
+    ng.add_argument("--seed", type=int, default=20260930)
+    ng.set_defaults(func=cmd_neg)
     a = ap.parse_args(argv)
     return int(a.func(a))
 
