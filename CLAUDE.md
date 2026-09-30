@@ -52,7 +52,7 @@ src/life_agent/   core/ (retrieval shaping, posterior, utility, pricing, the dec
                   /decide), reach/ (Telegram), tasks/ (GTD, event-sourced), trips/,
                   membrane/ (the proplang client — deferred, kept green off the path)
 eval/             score.py → SCOREBOARD.md; sets.yaml pins each set by sha256
-scripts/          entry points (ask, verdict, ingest_sources, production_readout, fairfight/,
+scripts/          entry points (ask, ingest_sources, production_readout,
                   atm_bench/, engine.sh)
 config/           example configs; engine.lock pins the decider engine
 packaging/        systemd --user units

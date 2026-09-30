@@ -150,6 +150,18 @@ def u_assert(p_correct: float, u_bar: Mapping[str, float]) -> float:
     return p_correct * u_bar["u_correct"] + (1.0 - p_correct) * u_bar["u_wrong"]
 
 
+def break_even(u_bar: Mapping[str, float]) -> float:
+    """The respond-vs-abstain break-even credence under ``u_bar`` (Chow's rule, with
+    ``u_abstain = 0``): the ``p`` at which :func:`u_assert` crosses zero."""
+    at_zero, at_one = u_assert(0.0, u_bar), u_assert(1.0, u_bar)
+    span = at_one - at_zero
+    if span <= 0.0:
+        raise ValueError(
+            "degenerate Ū: u_assert does not increase in p "
+            f"(u_assert(0)={at_zero!r}, u_assert(1)={at_one!r}), so no break-even exists")
+    return -at_zero / span
+
+
 def shaped_u_bar(u_bar: Mapping[str, float], shape: str) -> dict[str, float]:
     """Ū scaled for one question's answer shape (r30,
     `docs/unification/reports/r30-units-lever.md` — the direct answer to "how to define

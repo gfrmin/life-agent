@@ -28,7 +28,7 @@ score-quick:
 
 # A golden set generated from your corpus: verbatim point facts with questions whose answers
 # are known by construction -> $LIFE_AGENT_KB/eval/questions_generated.yaml. Then answer it
-# through a bridge with scripts/score_typed.py and pin the result as set `generated`.
+# through a bridge with `python -m eval.run` and pin the result as set `generated`.
 golden:
 	$(PY) scripts/make_golden.py
 

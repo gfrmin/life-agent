@@ -34,7 +34,7 @@ from typing import Any
 
 import yaml
 
-from life_agent.core.gate import ASSERT_ACTIONS
+from eval.grading import ASSERT_ACTIONS
 
 REPO = Path(__file__).resolve().parent.parent
 SETS = REPO / "eval" / "sets.yaml"
@@ -148,7 +148,7 @@ def score_paired(set_name: str, lines: Iterable[str]) -> list[Row]:
 
 
 def score_typed(set_name: str, lines: Iterable[str]) -> list[Row]:
-    """The typed row alone, from a typed-only archive (``scripts/score_typed.py``): a set
+    """The typed row alone, from a typed-only archive (``python -m eval.run``): a set
     with no recorded outside. Censored rows are excluded."""
     typed = [_response(r["typed"]) for ln in lines if ln.strip()
              for r in [json.loads(ln)] if not r.get("censored")]

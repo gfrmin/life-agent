@@ -187,7 +187,7 @@ make sets           # fetch ATM-Bench at a pinned revision and build it as a sec
 synthetic corpus in the repo, so you can see what the act does before trusting it with
 anything of yours. `make golden` samples your own documents, extracts verbatim point facts
 and writes questions whose answers are known by construction; answer them with
-`scripts/score_typed.py` and pin the archive in `eval/sets.yaml`. `make sets` downloads an
+`python -m eval.run` and pin the archive in `eval/sets.yaml`. `make sets` downloads an
 external email benchmark (**CC-BY-NC**: it lands in a cache on your machine, never in the
 repo, and is not redistributed from it).
 
@@ -211,9 +211,7 @@ aspirational:
   so a relative's or co-signer's document is never attributed to you.
 
 What is **not** guaranteed: facts pkm extracted wrong upstream (e.g. OCR
-garble), and the *prose* faithfulness of paraphrase — that is **measured**
-(`scripts/run_eval.py --synthesis` reports hallucination / grounded / abstention
-rates), not hard-gated.
+garble).
 
 ## Troubleshooting
 

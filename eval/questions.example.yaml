@@ -2,8 +2,7 @@
 # $LIFE_AGENT_KB/eval/questions.yaml (out of tree, PII). See README.md.
 #
 # Ground truth is the ANSWER (the fact), not a source_id — robust to corpus growth and
-# source-agnostic. scripts/run_eval.py grades whether the answer surfaces in a top-k
-# retrieved chunk (token-boundary match), and classifies failures by MODE.
+# source-agnostic. `python -m eval.run` grades the committed answer by token-boundary match.
 questions:
   - id: q-001
     question: "What is Pat Doe's national ID number?"

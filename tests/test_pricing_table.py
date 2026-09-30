@@ -12,8 +12,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 from life_agent.core import executor as EX
 from life_agent.core import gather_outcomes as GO
 from life_agent.core import pricing as P
@@ -92,30 +90,3 @@ def test_no_priced_constant_is_declared_outside_the_table() -> None:
         assert needle not in ex, needle
     assert '"alpha0": 3.0' not in go
     assert '("extract", "value"): (4.0, 4.0)' not in rel
-
-
-def test_realised_utility_report_branch_is_spelled_through_the_atom() -> None:
-    # D-1: the report branch derives from u_assert — behaviourally identical, and the
-    # source names the derivation (the census's point is the spelling, not the number)
-    from life_agent.core import gate as GATE
-    src = Path(__file__).resolve().parent.parent / "src/life_agent/core/gate.py"
-    assert "u_assert(" in src.read_text(encoding="utf-8")
-    u = {"u_correct": 1.0, "u_wrong": -6.0, "u_abstain": 0.0, "u_hedged": 0.4,
-         "u_wrong_scoped": -2.0, "lambda_int": 1.0, "lambda_usd": 1.0}
-    right = GATE.RealisedResponse(action="report", correct=True, cost_usd=0.1)
-    wrong = GATE.RealisedResponse(action="report", correct=False, cost_usd=0.1)
-    assert GATE.realised_utility(right, u, oracle_p=0.9) == pytest.approx(1.0 - 0.1)
-    assert GATE.realised_utility(wrong, u, oracle_p=0.9) == pytest.approx(-6.0 - 0.1)
-
-
-def test_lambda_usd_has_one_source_and_fails_loud() -> None:
-    # E-5: the two module-local defaults (1.0 in the executor, 0.0 in the gate) die;
-    # a u vector lacking the latent is a modelling error, not a zero-priced ride
-    from life_agent.core import gate as GATE
-    u = {"u_correct": 1.0, "u_wrong": -6.0, "u_abstain": 0.0}
-    with pytest.raises(KeyError):
-        GATE.realised_utility(GATE.RealisedResponse(action="abstain", correct=False,
-                                                    cost_usd=0.0), u, oracle_p=0.9)
-    src = Path(__file__).resolve().parent.parent / "src/life_agent/core"
-    for f in ("gate.py", "executor.py"):
-        assert 'get("lambda_usd"' not in (src / f).read_text(encoding="utf-8"), f

@@ -13,7 +13,6 @@ import pytest
 
 from life_agent.core import answer_shape as AS
 from life_agent.core import decisions as DEC
-from life_agent.core import gate as G
 from life_agent.core.decide import shaped_u_bar, u_assert
 
 # A representative Ū (gauge + the action-pricing latents); values mirror the family tests.
@@ -45,13 +44,6 @@ def test_lookup_minus_narrative_is_exactly_the_deferred_actions() -> None:
     # report_scoped (the deferred recency/u_hedged + clarify + scoped-claim moves), nothing else.
     assert (frozenset(DEC.LOOKUP_ACTION_ORDER) - frozenset(DEC.NARRATIVE_ACTION_ORDER)
             == frozenset({"hedge", "ask_clarify", "report_scoped"}))
-
-
-def test_gate_partition_is_the_same_single_vocabulary() -> None:
-    # gate.py's assert/withhold partition (the utility-sign cut) must cover ACTIONS exactly —
-    # the unenforced coincidence at gate.py:76-78, now drift-gated.
-    assert G.ASSERT_ACTIONS | G.WITHHOLD_ACTIONS == DEC.ACTIONS
-    assert G.ASSERT_ACTIONS.isdisjoint(G.WITHHOLD_ACTIONS)
 
 
 # --- r30 step 2: question-dependent utility units (shaped_u_bar) ----------------------------

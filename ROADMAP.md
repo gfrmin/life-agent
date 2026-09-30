@@ -47,8 +47,7 @@ and a clone over someone else's mail works end to end.
   more than an 84% right rate earns when `u_wrong` is −5.13. Its own confidence cannot
   rescue it (best self-report bar 0.95: 67/3/24, +0.01 per question, because the call is
   paid before the confidence is visible). So a rung ships when it beats abstaining on the
-  board, not before; `scripts/regrade_outside_option.py` is the measurement, and
-  `core/outcome_mixture.py` already holds the row's shape.
+  board, not before; `core/outcome_mixture.py` already holds the row's shape.
 - **J3 — The stranger.** *Landed 2026-09-20.* `make data` completes the ingest (it had
   registered sources and stopped, leaving nothing searchable); `make sets` fetches
   ATM-Bench at a pinned revision and builds its KB on your machine (CC-BY-NC: the corpus

@@ -6,7 +6,6 @@ other path (every other test in this suite) never touches a stream, not even its
 from __future__ import annotations
 
 import io
-import sys
 from pathlib import Path
 
 import pytest
@@ -23,9 +22,6 @@ from life_agent.ledger.store import LedgerStore
 from life_agent.tasks import events as TEV
 from life_agent.trips import events as REV
 from tests.conftest import _decision, _edge_outcome, _reaction
-
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
-import answer_labels
 
 
 def _writers(p: Paths) -> list[tuple[str, int, object]]:
@@ -55,8 +51,6 @@ def _writers(p: Paths) -> list[tuple[str, int, object]]:
             "res-9", {"@type": "FlightReservation", "reservationNumber": "ZZ997"},
             fidelity="manual", source_id="s9", received_at="2026-01-02T00:00:00",
             tx_time="2026-01-02T00:00:00")])),
-        ("eval.labels", 1, lambda: answer_labels.append_label(
-            p.labels, "q-009", "v", "correct", "")),
     ]
 
 

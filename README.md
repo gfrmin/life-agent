@@ -66,8 +66,7 @@ The promise is **cited, no-hallucination** answers, and it is structural rather 
 Answers are grounded in [`pkm`](./src/pkm/)'s content-addressed, source-cited extractions — *not* a
 compiled summary. (The "compile a wiki from everything" approach is deliberately rejected: it does
 not scale and it hallucinates.) What is **not** guaranteed: facts pkm extracted wrong upstream (e.g.
-OCR garble) and the prose faithfulness of paraphrase — that is *measured* (`scripts/run_eval.py
---synthesis`), not hard-gated.
+OCR garble).
 
 ## Use it on your own data
 
