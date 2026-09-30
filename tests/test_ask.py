@@ -13,7 +13,6 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
-from types import SimpleNamespace
 
 import duckdb
 
@@ -25,6 +24,7 @@ import ask
 
 from life_agent import owner
 from life_agent.core import SourceCard
+from life_agent.core.retrieval import build_query
 
 # --- log_entry formatting -------------------------------------------------- #
 
@@ -48,64 +48,20 @@ def test_log_entry_no_sources_omits_sources_line() -> None:
     assert "sources:" not in entry
 
 
-# --- retrieve() dedupe + rank (no DuckDB; pkm.retrieval.search monkeypatched) #
 
-def _hit(text: str, score: float, path: str = "/data/p/doc"):
-    return SimpleNamespace(chunk_text=text, score=score, source_path=path,
-                           artifact_cache_key="a" * 64)
-
-
-def test_retrieve_dedupes_keeping_best_score_and_ranks(monkeypatch) -> None:
-    import pkm.retrieval as R
-
-    hits = [_hit("A", 0.3), _hit("B", 0.9), _hit("A", 0.7), _hit("C", 0.5)]
-    monkeypatch.setattr(R, "search", lambda conn, q, k: hits)
-
-    out = ask.retrieve(conn=None, question="q", k=10)
-
-    # one card per distinct chunk, ranked by best score desc, numbered 1..n
-    assert [c.text for c, _ in out] == ["B", "A", "C"]
-    assert [s for _, s in out] == [0.9, 0.7, 0.5]   # "A" kept its better 0.7, not 0.3
-    assert [c.n for c, _ in out] == [1, 2, 3]
-
-
-def test_retrieve_truncates_to_k(monkeypatch) -> None:
-    import pkm.retrieval as R
-
-    hits = [_hit(t, sc) for t, sc in [("A", 0.9), ("B", 0.8), ("C", 0.7), ("D", 0.6)]]
-    monkeypatch.setattr(R, "search", lambda conn, q, k: hits)
-
-    out = ask.retrieve(conn=None, question="q", k=2)
-    assert [c.text for c, _ in out] == ["A", "B"]
-
-
-# --- query expansion: _clean_terms + build_query (pure) -------------------- #
-
-def test_clean_terms_flattens_llm_reply() -> None:
-    # newlines, bullets, commas, quotes -> single space-separated term run
-    raw = '- income\n- "salary"\n- contractor, freelance\n'
-    assert ask._clean_terms(raw) == "income salary contractor freelance"
-
-
-def test_clean_terms_preserves_hebrew() -> None:
-    # Hebrew letters are word chars and must survive (the corpus is bilingual)
-    assert ask._clean_terms("salary, משכורת; עוסק מורשה") == "salary משכורת עוסק מורשה"
-
-
-def test_clean_terms_empty_on_blank() -> None:
-    assert ask._clean_terms("   \n  ") == ""
+# --- build_query (pure) ---------------------------------------------------- #
 
 
 def test_build_query_appends_terms_to_question() -> None:
     # the original words are ALWAYS retained, so expansion can only add recall
-    assert ask.build_query("how do i make money", "income salary contractor") == (
+    assert build_query("how do i make money", "income salary contractor") == (
         "how do i make money income salary contractor"
     )
 
 
 def test_build_query_falls_back_to_question_when_no_terms() -> None:
     # expansion failure (empty terms) must leave the raw-question search unchanged
-    assert ask.build_query("am i a contractor?", "") == "am i a contractor?"
+    assert build_query("am i a contractor?", "") == "am i a contractor?"
 
 
 # --- owner profile: load_profile + append_fact (tmp KB, no live I/O) ------- #
@@ -155,7 +111,7 @@ def test_main_returns_2_on_locked_corpus(monkeypatch, capsys) -> None:
     def _locked() -> None:
         raise duckdb.Error("Could not set lock on file catalogue.duckdb: Conflicting lock")
 
-    monkeypatch.setattr(ask.TERM, "_pkm_root", lambda: None)   # hermetic: no reconcile I/O
+    monkeypatch.setattr(ask, "_pkm_root", lambda: None)   # hermetic: no reconcile I/O
     monkeypatch.setattr(ask, "connect", _locked)
     assert ask.main(["what is my id?"]) == 2
     assert "corpus locked" in capsys.readouterr().err
@@ -230,34 +186,20 @@ def test_tell_records_fact_without_touching_corpus(monkeypatch, tmp_path) -> Non
 
 # --- one-shot argv routes through the SAME line grammar as the REPL --------- #
 
-def test_one_shot_temporal_routing(monkeypatch) -> None:
-    # The argv words are joined and parsed by parse_line; the predicate reaches ask_once.
-    monkeypatch.setattr(ask.TERM, "_pkm_root", lambda: None)   # hermetic: no reconcile I/O
+def test_one_shot_question_routing(monkeypatch) -> None:
+    # The argv words are joined and parsed by parse_line; the question reaches ask_once.
+    monkeypatch.setattr(ask, "_pkm_root", lambda: None)   # hermetic: no reconcile I/O
     monkeypatch.setattr(ask, "connect", lambda: None)
     seen: dict = {}
-
-    def fake_ask_once(conn, question, k, **kw):  # type: ignore[no-untyped-def]
-        seen.update(question=question, **kw)
-        return []
-
-    monkeypatch.setattr(ask, "ask_once", fake_ask_once)
-    assert ask.main(["/since", "2026-01-01", "what", "invoices?"]) == 0
-    assert seen["question"] == "what invoices?"
-    assert str(seen["since"]) == "2026-01-01"
-    assert seen["until"] is None and seen["recent"] is False
+    monkeypatch.setattr(ask, "ask_once", lambda question, k: seen.update(question=question, k=k))
+    assert ask.main(["what", "invoices?"]) == 0
+    assert seen == {"question": "what invoices?", "k": ask.DEFAULT_K}
 
 
 def test_one_shot_grammar_error_exits_2(monkeypatch, capsys) -> None:
     monkeypatch.setattr(ask, "connect", lambda: (_ for _ in ()).throw(AssertionError("connected")))
-    assert ask.main(["/since", "soon", "dentist"]) == 2
-    assert "YYYY-MM-DD" in capsys.readouterr().err
-
-
-def test_one_shot_derive_is_an_error(monkeypatch, capsys) -> None:
-    # /derive is stateful (needs the prior answer's targets) — REPL only.
-    monkeypatch.setattr(ask, "connect", lambda: (_ for _ in ()).throw(AssertionError("connected")))
-    assert ask.main(["/derive"]) == 2
-    assert "/derive" in capsys.readouterr().err
+    assert ask.main(["/since", "2026-01-01", "dentist"]) == 2
+    assert "unknown command '/since'" in capsys.readouterr().err
 
 
 def test_removed_flags_stay_removed() -> None:
@@ -265,7 +207,8 @@ def test_removed_flags_stay_removed() -> None:
     import pytest
 
     for argv in (["--tell", "x"], ["--since", "2026-01-01", "q"],
-                 ["--until", "2026-01-01", "q"], ["--recent", "q"]):
+                 ["--until", "2026-01-01", "q"], ["--recent", "q"],
+                 ["--no-expand", "q"], ["--no-cache", "q"]):
         with pytest.raises(SystemExit):
             ask.main(argv)
 
@@ -442,7 +385,7 @@ def test_ask_once_always_drives_the_one_path(monkeypatch) -> None:
     monkeypatch.setattr(ask, "capture", lambda *a, **k: None)
     seen: dict[str, str] = {}
     monkeypatch.setattr(ask, "render", lambda text, *a, **k: seen.update(text=text))
-    ask.ask_once(None, "my passport?", 20)
+    ask.ask_once("my passport?", 20)
     assert seen["text"] == "EXEC"
 
 
@@ -454,7 +397,7 @@ def test_ask_once_clears_stale_executor_decision_when_the_stack_is_down(monkeypa
     monkeypatch.setattr(ask, "_executor_ready", lambda: False)
     monkeypatch.setattr(ask, "capture", lambda *a, **k: None)
     monkeypatch.setattr(ask, "render", lambda *a, **k: None)
-    ask.ask_once(None, "q?", 20)
+    ask.ask_once("q?", 20)
     assert ask.EXECUTOR_LAST is None
 
 

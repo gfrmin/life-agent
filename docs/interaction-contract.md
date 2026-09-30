@@ -23,7 +23,7 @@ A capability lives in exactly one mode. Mutating a task is *act*; asking about y
 
 ## Invariants
 
-1. **One grammar per concept.** The temporal predicate, teaching a fact, quitting — each has
+1. **One grammar per concept.** Teaching a fact, verdicting an answer, quitting — each has
    exactly one spelling, and it is the same spelling in the REPL and in one-shot argv.
    *Named exception:* quitting accepts `/q`, `/quit`, `/exit`, and EOF. It is the
    highest-frequency, zero-ambiguity command; erroring on `/quit` to preserve a principle
@@ -40,7 +40,7 @@ A capability lives in exactly one mode. Mutating a task is *act*; asking about y
    epilog from another (`ask.GRAMMAR`). A vocabulary table nothing enforces will quietly
    diverge, so drift-gate tests assert every entry dispatches and appears in both renderings.
 5. **Flags configure the run; the line is the language.** argv flags are run-configuration
-   and debug knobs only (`--k`, `--no-expand`, `--no-cache`). A concept the line
+   and debug knobs only (`--k`). A concept the line
    can express is never also a flag — one grammar, two contexts (REPL prompt and one-shot argv).
 
 ## know — ask-live
@@ -48,15 +48,11 @@ A capability lives in exactly one mode. Mutating a task is *act*; asking about y
 | form | meaning |
 |------|---------|
 | `QUESTION` | cited answer over the live corpus (abstains below the relevance floor rather than guess) |
-| `/recent QUESTION` | rank dated sources newest-first — **ranks only, no implied bound, excludes nothing** |
-| `/since YYYY-MM-DD QUESTION` | admit sources dated on/after; the excluded are named, not dropped |
-| `/until YYYY-MM-DD QUESTION` | admit sources dated on/before |
 | `/tell FACT` | record an authoritative owner fact (corpus-free: works even while extraction holds the catalogue lock) |
-| `/derive` | materialise the projections (doc_date, doc_subject) the last answer named as underived, then re-ask |
 | `/react ID g\|b` | verdict a past answer by its `decision_id` — a **deferred** dogfood verdict, one bit, corpus-free |
 | `/q` (or `/quit`, `/exit`, EOF) | quit |
 
-One-shot is the same grammar: `bin/ask-live "/since 2026-01-01 what invoices arrived?"`.
+One-shot is the same grammar: `bin/ask-live "/tell My name is …"`.
 
 **Deferred verdicts.** The inline `g`/`b` key grades the answer you just saw; `/react`
 grades one you saw *earlier*, addressed by its content-addressed `decision_id` (or a unique
@@ -73,14 +69,6 @@ treats the owner's free text as its only expensive resource, so it never asks fo
 richer signal must be measured cheaply (auto-derived, or a bit per claim), never typed. Cheap
 auto-measurement (the decision, its held-back candidates, the posterior) is unconstrained and
 already logged; only the elicitation is rationed.
-
-**Temporal composition.** `/since` and `/until` are bounds: together they form a range, each
-may appear at most once. `/recent` is a ranking directive and stands alone — applying any
-bound already ranks admitted sources newest-first (`life_agent.core.temporal.apply_temporal`
-sorts whenever a predicate is present and excludes nothing absent bounds), so `/recent`
-combined with a bound is pure redundancy and is rejected with the rule spelled out. Likewise
-rejected, never guessed at: a duplicated prefix, `/since` later than `/until` (an empty
-range is almost certainly a typo), an unparseable date, an unknown slash-command.
 
 **Flags** (run-config only): `--k N` retrieval width, `--no-expand` raw-question BM25
 baseline, `--no-cache` recompute every stage. (`--legacy` died at M5, r15 — the path is
@@ -104,7 +92,7 @@ question is answered, whenever the ledger has moved past it; retrieval then find
 task state like any source (pkm SPEC §15.4 keeps only the newest version of an evolving
 document retrievable). The refresh is announced, never silent: `gtd state refreshed @
 event N` on success, or the named fail-open degradation `gtd state refresh failed (…) —
-answering over the corpus as-is` (same contract as `/derive`). A failed refresh leaves the
+answering over the corpus as-is` (fail-open, named). A failed refresh leaves the
 state stale: the next question retries and the failure is re-named each time — degraded,
 never silent. The re-ingest reconciles the pkm catalogue first and, if recorded derivations
 are still awaiting their catalogue rows, **refuses** to extract (pkm's extract sweeps
@@ -113,29 +101,8 @@ still awaiting catalogue reconciliation — not extracting (…)` — un-stamped
 a failure, never a silent extract. When fresh: nothing printed, nothing written. The
 strings are one table (`ask.REFRESH_NOTES`), drift-gated.
 
-**The owner filter (subject mode).** A plain `QUESTION` with an *unchained* first-person
-possessive — "what is **my** Israeli ID?", "the **owner's** mortgage" — filters hits by
-each document's projected subject (pkm SPEC §18.13 `doc_subject`) matched against the
-owner profile. The match is consumer-side (the profile never enters pkm): a cached
-model verdict per distinct subject string, so the per-question filter is deterministic. A
-*relational* possessive — "my **partner's** ID" — does NOT trigger it (filtering for the
-owner there would exclude exactly the right answer). Only documents *determinately* about
-someone else, or determinately about nobody (`generic`: templates, blank forms), are
-excluded — each named in the footer; an absent or unclear classification is indeterminate:
-**kept** in the evidence and named, never silently excluded. No pkm root, no profile, or a
-failed verdict degrades fail-open with a printed notice. Underived subjects carry `pkm
-derive` remedies; `/derive` materialises them alongside doc_dates.
-
-**After each answer:** sources are listed with scores; a temporal answer carries the
-nothing-vanishes footer (admitted / excluded-by-date / undated / not-yet-derived, each set
-named with its remedy); an owner-filtered answer carries the same contract's subject footer
-(admitted / someone-else's / generic-template / unclear-kept / underived-kept); every answer
-also carries a one-line **temporal-scope** footer (`temporal scope: present / historical /
-as_of / unscoped` — `life_agent.core.temporal_intent`, the question's tense classified once and
-cached) — surfaced and recorded only, it steers no decision yet (the scope-aware inclusion that
-would use it is gate-adjacent, frozen-blind); a classifier failure prints a notice and omits the
-line, never a wrong scope; the footers compose — all print when their modes ran; unverified citations are flagged by the
-citation guard; then one verdict key — `g`ood / `b`ad / `n`ote / Enter to skip — logs to
+**After each answer:** sources are listed with scores; unverified citations are flagged by
+the citation guard; then one verdict key — `g`ood / `b`ad / Enter to skip — logs to
 the dogfood journal that feeds `FAILURES.md`.
 
 ## Credence rendering — one grammar for uncertainty
