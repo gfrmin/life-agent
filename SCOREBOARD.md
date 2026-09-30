@@ -1,6 +1,6 @@
 # Scoreboard
 
-`python -m eval.score --write`. Counts over each set's rows; `right`/`wrong` include escalated answers, the esc- columns are their escalated share. `$/q` is the arm's calls at their declared prices, cache or no cache (the typed arm's applied probes at the menu's prices; the outside arm's recorded call). `U/q` is priced at the folded gauge u_right 1, u_wrong -5.1310, u_declined 0, lambda_usd 1.33108/$. Rule 5: a change merges when no row's U falls against the committed board at today's gauge (`--gate`).
+`python -m eval.score --write`. Counts over each set's rows; `right`/`wrong` include escalated answers, the esc- columns are their escalated share. `$/q` is the arm's calls at their declared prices, cache or no cache (the typed arm's applied probes at the menu's prices; the outside arm's recorded call). `U/q` is priced at the folded gauge u_right 1, u_wrong -5.1310, u_declined 0, lambda_usd 1.33108/$. A pinned set is one biased draw: a row whose U fell against the committed board is explained in its PR, not vetoed (rule 5; `--falls`).
 
 | set | arm | rows | right | wrong | esc-right | esc-wrong | declined | $/q | U/q | s/q |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
