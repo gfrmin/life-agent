@@ -214,6 +214,8 @@ law is marked **unenforced**.
    `::test_the_decider_modules_never_read_a_candidate_string` (an AST check).
 3. **One argmax.** No module but `core/decide.bayes_act` ranks actions; its callers are
    drift-gated. Test: `tests/test_decider.py::test_only_the_decider_takes_the_act`.
+   wald, declared the same rows as a World of exact rationals, must choose the same row:
+   `tests/test_wald_oracle.py` (test-only; it skips where the `oracle` group is not synced).
 4. **Provenance.** Every reply carries its origin; every commit, its citation and credence.
    Tests: `tests/test_executor.py::test_the_view_carries_its_origin_and_the_render_leads_with_it`,
    `tests/test_decisions.py::test_origin_is_documents_rung_or_declined`.

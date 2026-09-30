@@ -79,6 +79,7 @@ archive/          the unification arc (tag archive/unification-arc-v0); historic
   oracle for the act) and tannen (write-once, content-addressed records) are separate
   repos. Each enters when it beats the host on the board or catches a defect a test here
   cannot; an issue filed on either cites a board row or a failing law, never an opinion.
+  wald already audits the act in tests (`tests/test_wald_oracle.py`, group `oracle`).
 - **Debugging.** When a number moves unexpectedly, print ten example rows before building an
   instrument to explain it. Anchor the clock (`date`) before any timing claim.
 

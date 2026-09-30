@@ -52,10 +52,16 @@ dev = [
     "types-jsonschema>=4.26.0.20260408",
     "pytest-xdist>=3.8.0",
 ]
+# wald (gfrmin/wald), the argmax's auditor in tests/test_wald_oracle.py: Bayesian decision theory
+# as law. Test-only — nothing under src/ imports it; `make check` and CI sync this group.
+oracle = ["wald"]
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.uv.sources]
+wald = { git = "https://github.com/gfrmin/wald.git", tag = "v0.2.1" }
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/pkm", "src/life_agent"]

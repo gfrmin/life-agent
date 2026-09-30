@@ -974,6 +974,9 @@ dev = [
     { name = "types-jsonschema" },
     { name = "types-pyyaml" },
 ]
+oracle = [
+    { name = "wald" },
+]
 
 [package.metadata]
 requires-dist = [
@@ -1002,6 +1005,7 @@ dev = [
     { name = "types-jsonschema", specifier = ">=4.26.0.20260408" },
     { name = "types-pyyaml", specifier = ">=6.0" },
 ]
+oracle = [{ name = "wald", git = "https://github.com/gfrmin/wald.git?tag=v0.2.1" }]
 
 [[package]]
 name = "llvmlite"
@@ -2847,6 +2851,11 @@ sdist = { url = "https://files.pythonhosted.org/packages/e6/bf/f6544ba992ddb9a60
 wheels = [
     { url = "https://files.pythonhosted.org/packages/01/be/72532be3da7acc5fdfbccdb95215cd04f995a0886532a5b423f929cda4cc/uvicorn-0.48.0-py3-none-any.whl", hash = "sha256:48097851328b87ec36117d3d575234519eb58c2b22d79666e9bbc6c49a761dad", size = 71410, upload-time = "2026-05-24T12:08:40.258Z" },
 ]
+
+[[package]]
+name = "wald"
+version = "0.1.0"
+source = { git = "https://github.com/gfrmin/wald.git?tag=v0.2.1#c855845aff5a0a445b1bcd1b8a179768bac372ff" }
 
 [[package]]
 name = "wasabi"

@@ -10,12 +10,12 @@ WORKERS ?= 6
 check:
 	uv run ruff check .
 	uv run mypy
-	uv run pytest -q -n $(WORKERS)
+	uv run --group oracle pytest -q -n $(WORKERS)
 
 # Everything, including live-LLM and heavy-producer tests (non-deterministic; costs money).
 test-all:
 	uv run ruff check .
-	uv run pytest -q -n $(WORKERS) -m "llm or system or not (llm or system)"
+	uv run --group oracle pytest -q -n $(WORKERS) -m "llm or system or not (llm or system)"
 
 # The full board -> SCOREBOARD.md + eval/scoreboard.json, committed with the change. Run once
 # per PR; rows whose U fell at today's folded gauge are listed, to be explained (rule 5).

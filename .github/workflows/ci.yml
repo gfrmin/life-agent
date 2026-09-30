@@ -34,7 +34,7 @@ jobs:
       # a lighter install via optional extras is a worthwhile follow-up but would
       # change the default dependency contract, so it is deferred deliberately.
       - name: Sync dependencies
-        run: uv sync
+        run: uv sync --group oracle
 
       - name: Typecheck (mypy — strict on src, lenient on scripts; see pyproject)
         run: uv run mypy
