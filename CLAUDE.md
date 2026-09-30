@@ -63,6 +63,7 @@ archive/          the unification arc (tag archive/unification-arc-v0); historic
 - **Sessions and commits.** One goal per session, small commits, `make check` (ruff + mypy +
   pytest, under two minutes) green before each. Worktrees under a sibling `worktrees/life-agent/<name>`; merge
   by PR. Commit and push when the owner asks or has delegated it.
+- **Rulings.** Owner rulings are recorded in `.claude/rules/rulings.md`, one dated paragraph each.
 - **History.** Docstrings describe current behaviour only; history lives in git. End a session
   with a summary of at most 15 lines (what changed, the board delta, at most three questions
   for the owner) and at most 5 lines appended to `CHANGELOG.md`.
