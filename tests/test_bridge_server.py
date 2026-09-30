@@ -78,23 +78,28 @@ def _obs(value: str, key: str, *, authority: float = 0.9,
 
 # --- /route ----------------------------------------------------------------------------
 
-def test_route_returns_construct_and_time_indexed(deps: BridgeDeps,
-                                                  monkeypatch: pytest.MonkeyPatch) -> None:
+def test_route_returns_the_verdict_construct_and_time_indexed(
+        deps: BridgeDeps, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(LK, "route_question",
                         lambda root, q, **k: LK.Route(construct="phone number",
                                                       time_indexed=True))
     status, payload = _call(deps, "POST", "/route", {"question": "my mobile?"})
     assert status == 200
-    assert payload == {"construct": "phone number", "time_indexed": True}
+    assert payload == {"lookup": True, "kind": "lookup", "construct": "phone number",
+                       "time_indexed": True}
 
 
-def test_route_none_is_json_null_the_narrative_path(deps: BridgeDeps,
-                                                    monkeypatch: pytest.MonkeyPatch) -> None:
-    # route_question returns None for a non-typed-lookup question → the brain's narrative case.
-    monkeypatch.setattr(LK, "route_question", lambda root, q, **k: None)
-    status, payload = _call(deps, "POST", "/route", {"question": "tell me about my week"})
+def test_a_rejected_question_is_a_route_never_json_null(
+        deps: BridgeDeps, monkeypatch: pytest.MonkeyPatch) -> None:
+    # the route is an observation of the answer type for every question; whether to attempt
+    # a rejected one is the decider's, at /decide
+    monkeypatch.setattr(LK, "route_question", lambda root, q, **k: LK.Route(
+        construct="the asked value", time_indexed=False, lookup=False, kind="list"))
+    status, payload = _call(deps, "POST", "/route", {"question": "which banks do I use?"})
     assert status == 200
-    assert payload is None
+    # time_indexed follows the volatility rule for the fallback construct, as for any route
+    assert payload == {"lookup": False, "kind": "list", "construct": "the asked value",
+                       "time_indexed": True}
 
 
 # --- /retrieve -------------------------------------------------------------------------
@@ -810,6 +815,22 @@ _DECIDE_BODY: dict[str, Any] = {"question_id": "q1", "candidates": ["x"], "obser
                                 "rho": 0.8}
 
 
+def test_decide_serves_the_route_stage_without_evidence(deps: BridgeDeps) -> None:
+    from life_agent.core import decider as DCD
+    from life_agent.core import route_row as ROUTE_ROW
+
+    shipped = ROUTE_ROW.load(Path("/absent"))
+    real = dataclasses.replace(deps, decider=DCD.Decider(  # type: ignore[arg-type]
+        lambda: {"u_correct": 1.0, "u_abstain": 0.0, "u_wrong": -9.0, **shipped}))
+    body = {"stage": "route", "question_id": "q1", "price": 0.02}
+    status, accepted = _call(real, "POST", "/decide", {**body, "lookup": True})
+    _, rejected = _call(real, "POST", "/decide", {**body, "lookup": False})
+    assert status == 200
+    assert (accepted["effector"], rejected["effector"]) == ("attempt", "abstain")
+    status, err = _call(real, "POST", "/decide", {"stage": "route", "question_id": "q1"})
+    assert status == 400 and "lookup" in err["error"]
+
+
 def test_decide_without_a_decider_is_503(deps: BridgeDeps) -> None:
     assert deps.decider is None
     status, payload = _call(deps, "POST", "/decide", _DECIDE_BODY)
@@ -904,6 +925,28 @@ def test_the_built_decider_reads_the_current_u_bar_and_the_information_rows(
     (tmp_path / "gather_row.json").write_text(json.dumps({"steps": {"0": GR.as_u_bar(
         {"right": 0.9, "wrong": 0.02}, {"right": 0.2, "wrong": 0.05})}}), encoding="utf-8")
     assert decider.decide("q2", middling)["effector"] == "gather"    # the fitted row
+
+
+def test_the_built_decider_prices_the_route_stage_from_the_route_row(
+        monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Like the gather row: the shipped row when the KB has no fit (a fresh clone must attempt
+    what the router accepts), the KB's own fit when it has one — read per decision."""
+    import json
+
+    from life_agent.core import config
+    from life_agent.core import route_row as ROUTE_ROW
+    monkeypatch.setattr(config, "ROUTE_ROW", tmp_path / "route_row.json")
+    monkeypatch.setattr(config, "DECISIONS_LOG", tmp_path / "none-d.jsonl")
+    monkeypatch.setattr(config, "REACTIONS_LOG", tmp_path / "none-r.jsonl")
+    decider = bridge_server._build_decider(lambda: {
+        "u_correct": 1.0, "u_abstain": 0.0, "u_wrong": -9.0, "lambda_int": 1.0,
+        "kappa_att": 0.02})
+    ask = {"stage": "route", "question_id": "q1", "price": 0.02}
+    assert decider.decide("q1", {**ask, "lookup": True})["effector"] == "attempt"   # shipped
+    assert decider.decide("q1", {**ask, "lookup": False})["effector"] == "abstain"
+    distrusting = {**ROUTE_ROW.load(Path("/absent")), ROUTE_ROW.q_key(False): 0.9}
+    (tmp_path / "route_row.json").write_text(json.dumps({"row": distrusting}), encoding="utf-8")
+    assert decider.decide("q1", {**ask, "lookup": False})["effector"] == "attempt"  # the fit
 
 
 # --- malformed / unknown / method ------------------------------------------------------

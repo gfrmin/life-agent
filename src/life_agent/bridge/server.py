@@ -66,6 +66,8 @@ from life_agent.core import probes as P
 from life_agent.core import reactions as RX
 from life_agent.core import rerank as RR
 from life_agent.core import retrieval as RET
+from life_agent.core import route_row as ROUTE_ROW
+from life_agent.core import seam as SEAM
 from life_agent.core import volatility as VOL
 from life_agent.core.llm import LLMResult
 
@@ -168,10 +170,11 @@ def _covariates(c: Payload) -> LK.HitCovariates:
 
 # --- the endpoints (each a thin wrapper of one named, tested read) ---------------------
 
-def _route(deps: BridgeDeps, p: Payload) -> Payload | None:
+def _route(deps: BridgeDeps, p: Payload) -> Payload:
+    """The router's verdict on the question, for every question: an observation of its answer
+    type (``lookup``, ``kind``) plus what a pass needs. Whether to attempt it is decided
+    at ``/decide``."""
     r = LK.route_question(deps.root, _req_str(p, "question"), client=deps.client)
-    if r is None:
-        return None                          # not a verbatim point fact → declined
     # Currency has ONE source of truth: the volatility table (the curated world-knowledge prior),
     # not
     # the route model's `time_indexed` guess. The model called "mobile phone number" permanent
@@ -184,7 +187,8 @@ def _route(deps: BridgeDeps, p: Payload) -> Payload | None:
     # [§3.3 · BR-1] volatility overrides the route model's verdict (Q5's transcript
     # reads this choice; override-vs-combine is its open question).
     time_indexed = VOL.half_life(r.construct) < VOL.PERMANENT
-    return {"construct": r.construct, "time_indexed": time_indexed}
+    return {"lookup": r.lookup, "kind": r.kind, "construct": r.construct,
+            "time_indexed": time_indexed}
 
 
 def _retrieve(deps: BridgeDeps, p: Payload) -> Payload:
@@ -679,9 +683,14 @@ def _decide(deps: BridgeDeps, p: Payload) -> Payload:
     if deps.decider is None:
         raise BridgeError(503, "the bridge was built without a decider")
     question_id = _req_str(p, "question_id")
-    _req_list(p, "candidates")  # may be empty: a state with no candidate is decided too
-    if "rho" not in p:
-        raise BridgeError(400, "missing field 'rho'")
+    if p.get("stage") == SEAM.STAGE_ROUTE:  # the pre-retrieval stage carries no evidence
+        for key in ("lookup", "price"):
+            if key not in p:
+                raise BridgeError(400, f"missing field {key!r}")
+    else:
+        _req_list(p, "candidates")  # may be empty: a state with no candidate is decided too
+        if "rho" not in p:
+            raise BridgeError(400, "missing field 'rho'")
     try:
         return deps.decider.decide(question_id, p)
     except (KeyError, TypeError, ValueError) as e:
@@ -935,11 +944,11 @@ class BridgeServer(HTTPServer):
 
 
 def _build_decider(u_bar: Callable[[], dict[str, float]]) -> DCD.Decider:
-    """The decider under the current Ū plus the measured information rows: the fitted gather
-    row (`core.gather_row`) and the ask's recovery rate (`core.decide`'s rows read both from
-    u_bar)."""
+    """The decider under the current Ū plus the measured rows: the fitted gather row
+    (`core.gather_row`), the route row (`core.route_row`) and the ask's recovery rate
+    (`core.decide`'s rows read all three from u_bar)."""
     def priced_u_bar() -> dict[str, float]:
-        return {**u_bar(), **GR.load(config.GATHER_ROW),
+        return {**u_bar(), **GR.load(config.GATHER_ROW), **ROUTE_ROW.load(config.ROUTE_ROW),
                 DEC_RULE.ASK_RECOVERY_KEY: RX.ask_recovery_rate(config.DECISIONS_LOG,
                                                                 config.REACTIONS_LOG)}
     return DCD.Decider(priced_u_bar)

@@ -95,7 +95,12 @@ NARRATIVE_ACTION_ORDER: tuple[str, ...] = ("report", "abstain")
 # can react; the Stage-4 measurement was blind to the class in both directions), and like
 # §6.5 the regime is what keeps the reaction OUT of the utility fold — a verdict on a
 # coverage failure is not evidence about u(wrong) (`reactions.load_reactions` skips it).
-REGIMES: frozenset[str] = frozenset({"full", "terminals-only", "unavailable", "miss"})
+#
+# `route` is the fifth: the decider declined the question before any retrieval, on the
+# router's verdict (an observation of the answer type). It carries a real decision_id like
+# `miss`, and like `miss` a verdict on it is not utility evidence: the owner is reacting to
+# a question that was never attempted, not to a committed answer.
+REGIMES: frozenset[str] = frozenset({"full", "terminals-only", "unavailable", "miss", "route"})
 REGIME_DEFAULT = "full"
 
 #: What ``defaulted`` says when a writer stated NEITHER field — the honest default, so a

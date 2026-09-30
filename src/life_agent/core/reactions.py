@@ -217,9 +217,10 @@ def can_fold(d: DEC.DecisionEvent) -> bool:
     """Whether a verdict on ``d`` can move the utility posterior: only an abstain, and never a
     ``miss`` (r33 RC-1: a verdict on a COVERAGE failure is not utility evidence — folding it
     would read "bad, you found nothing" as "wrongness costs me less" and feed the one-sided
-    bar drift r32 priced, 0.900 → 0.837). The ONE rule: the fold below and every reply that
-    names a verdict's fate read it here."""
-    return d.chosen_action == "abstain" and d.regime != "miss"
+    bar drift r32 priced, 0.900 → 0.837) nor a ``route`` decline (the question was never
+    attempted). The ONE rule: the fold below and every reply that names a verdict's fate
+    read it here."""
+    return d.chosen_action == "abstain" and d.regime not in ("miss", "route")
 
 
 def load_reactions(reactions_path: Path,

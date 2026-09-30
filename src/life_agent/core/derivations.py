@@ -50,7 +50,7 @@ ENGINE_VERSION = "life_agent.core.llm/1"
 # semantics change (e.g. the dedupe rule in retrieve, the rendering in synthesize).
 EXPAND_VERSION = "2"  # bumped: expander must emit native-script spellings of transliterated
 OWNER_MATCH_VERSION = "1"
-LOOKUP_ROUTE_VERSION = "1"
+LOOKUP_ROUTE_VERSION = "2"  # bumped: a rejection names its kind (the route is an observation)
 LOOKUP_EXTRACT_VERSION = "1"
 JOINT_EXTRACT_VERSION = "1"
 RERANK_VERSION = "1"

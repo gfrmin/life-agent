@@ -20,6 +20,10 @@ from typing import Any
 # other module).
 DECIDE_PATH = "/decide"
 
+# The ``stage`` a /decide payload names when it asks the pre-retrieval question (attempt this
+# question or not); a payload without a stage is the evidence stage.
+STAGE_ROUTE = "route"
+
 # The declared unavailability observation (register §6.5): when no decider is reachable
 # there is no ranking to be inside of — the record is an unavailability event, never an
 # abstain decision.

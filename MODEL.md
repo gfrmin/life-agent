@@ -89,6 +89,32 @@ abstaining, so the state ends declined and no rescue probe runs; a gauge with a 
 `|u_wrong|` would buy the probes, and a candidate one of them mints is decided on like any
 other, entering at the rescue reliability (`min(0.5, its stated confidence)`).
 
+**The route is a state too.** Before any retrieval the router (`core/lookup.route_question`)
+says what the question asks for: one value to read off a document (`lookup`), or one of four
+answer types (`kind`): a `list` or set, an `aggregate` the reader must compute, a `summary`
+(or comparison, or explanation), several values at once (`multiple`). Each of the four is an
+answer that is not a single span, so it lies outside the world of §1 (candidate spans, or
+`NONE`) and attempting it cannot end right. The verdict is an observation of the answer type,
+and the only uncertainty is whether the router is right. `route_options` lists `abstain` and
+`attempt`, and the same argmax ranks them:
+
+```
+EU(attempt) = q·V_lookup + (1 − q)·V_other − price
+V_lookup    = r·u_correct + w·u_wrong + (1 − r − w)·u_abstain
+V_other     = w_other·u_wrong + (1 − w_other)·u_abstain      (never right)
+```
+
+Measured (`core/route_row.py`, `scripts/fit_route_row.py`): `q`, one per verdict, is P(a
+single-span answer | verdict), a Beta(1, 1) mean over the labelled route audit; `r` and `w` are
+the right and wrong rates of attempted lookups in the pinned archives; `price` is the first
+pass's metered dollars (`pricing.FIRST_PASS_USD`) at `lambda_usd`. `w_other` is an assumption,
+not a measurement: it is set to `w`. Unfitted, a KB starts from the shipped row
+(`config/route-row.example.json`); with no row at all the prior declines every question. At the
+shipped row an accepted question is attempted and a rejected one declined, at `u_wrong` of −9
+and of −5.13; a rejection is attempted only where `q@reject` exceeds about 0.44 and 0.27. A
+declined question writes a `route` decision row (the router's verdict and kind), kept out of
+the utility fold like a `miss`.
+
 **The loss is data.** `u_correct = +1` and `u_abstain = 0` are the gauge's two pins;
 `u_wrong` is a posterior (prior mean −9, the owner's 10:1, folded from reactions) and
 `lambda_usd` converts spend. The decider reads the folded means. With `respond` vs `abstain`
@@ -185,7 +211,8 @@ scripts/ask.py / reach/jarvis.py
   └─ core/ask_client.drive
        └─ core/executor.run_pass     the loop; holds NO posterior and picks NO action
             └─ bridge/server.py      :8798 gathers and SHAPES evidence, and hosts the decider
-                 ├─ /route           lane classifier (core/answer_shape.py); not a point fact ⇒ declined
+                 ├─ /route           the router's verdict for every question (core/lookup.route_question);
+                 │                   /decide then attempts it or declines it (the route state, §4)
                  ├─ /retrieve        BM25 over DuckDB FTS
                  ├─ probes           subject, recency, corroborate, deliberate
                  ├─ /extract         LLM per chunk → candidates + integer observations

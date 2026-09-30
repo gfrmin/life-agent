@@ -56,16 +56,24 @@ def test_answer_renders_and_binds_the_decision(monkeypatch: Any) -> None:
     assert dec["regime"] == "full" and dec["policy"] == "all-to-date"
 
 
-def test_answer_route_null_binds_nothing(monkeypatch: Any) -> None:
-    # the route-null question is declined as not a point fact — the poster stays silent.
-    # (A routed miss binds a reactable regime="miss" row — pinned below.)
-    view = _fake_view("miss")
-    view["candidates"], view["credences"], view["route"] = [], [], None
+def test_answer_declined_at_the_route_stage_binds_a_route_row(monkeypatch: Any) -> None:
+    # the decider declined the question before any retrieval: the poster appends the local
+    # `route` row (no bridge post) and the reply names the decision id a verdict binds to
+    from life_agent.core import config as CFG
+    view = _fake_view("abstain")
+    view.update(candidates=[], credences=[], hits=[], stage="route", eu=0.0,
+                route={"lookup": False, "kind": "aggregate", "construct": "the asked value",
+                       "time_indexed": True})
     monkeypatch.setattr(EX, "decide_via_loop", lambda *a, **k: view)
-    reply, decision_id = _answer("q?", post=lambda u, p: {"decision_id": "x"},
-                                   get=lambda u: {}, check_ready=False)
-    assert decision_id is None                   # nothing foldable to bind
-    assert reply                                 # still a named reply, never empty
+    posted: list[Any] = []
+    reply, decision_id = _answer("q?", post=lambda u, p: posted.append((u, p)),
+                                 get=lambda u: {}, check_ready=False)
+    assert reply and decision_id and decision_id.startswith("ab-") and not posted
+    import json as _json
+    (row,) = [_json.loads(line) for line in CFG.DECISIONS_LOG.read_text().splitlines()]
+    assert (row["regime"], row["chosen_action"], row["decision_id"]) == (
+        "route", "abstain", decision_id)
+    assert row["posterior_summary"]["route"] == {"lookup": False, "kind": "aggregate"}
 
 
 def test_answer_names_a_down_stack(monkeypatch: Any) -> None:

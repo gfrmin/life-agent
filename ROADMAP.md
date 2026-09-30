@@ -94,4 +94,11 @@ same recorded decisions.
   applied on the way, so any replay of a decision is a re-decision on the end posterior.
   Recording the applied probes is a contract change to the log, asked for if replay is wanted.
 
+- **The rejected answer types.** The router names why it rejects a question: a `list`, an
+  `aggregate`, a `summary`, or `multiple` values at once. Each is an answer type outside the
+  decider's hypothesis space (a single span), so each is declined today. The route decision rows
+  now record the kind, so the live counts of each say which to add first; each returns through
+  the board as its own answer type with its own measured outcome model. `multiple` is the likely
+  first, since each of its parts is itself a lookup.
+
 `u_wrong` re-elicitation is the owner's alone (it moves every bar, including escalation's).

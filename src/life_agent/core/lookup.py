@@ -81,10 +81,13 @@ happened, a published figure, a definition.
 
 QUESTION: {question}
 
+If it is NOT a lookup, also name which of the four asks of STEP 1 it is, in that order:
+"list", "aggregate", "summary" or "multiple".
+
 Reply with JSON only:
 {"lookup": true, "construct": "<3-8 words naming the value asked for>", \
 "time_indexed": true|false}
-or {"lookup": false}
+or {"lookup": false, "kind": "list"|"aggregate"|"summary"|"multiple"}
 """
 
 ROUTE_SCHEMA: dict[str, Any] = {
@@ -92,10 +95,17 @@ ROUTE_SCHEMA: dict[str, Any] = {
     "required": ["lookup"],
     "properties": {
         "lookup": {"type": "boolean"},
+        "kind": {"type": "string"},
         "construct": {"type": "string"},
         "time_indexed": {"type": "boolean"},
     },
 }
+
+#: What the router says a question is: ``lookup`` when it has one value to read off a
+#: document, else which answer type outside the hypothesis space it asks for (STEP 1 of
+#: :data:`ROUTE_PROMPT`); ``other`` is a rejection whose kind the router did not name.
+KIND_LOOKUP = "lookup"
+REJECTED_KINDS: tuple[str, ...] = ("list", "aggregate", "summary", "multiple", "other")
 
 EXTRACT_PROMPT = """\
 You are extracting ONE value from a document excerpt, if it is present.
@@ -231,10 +241,15 @@ def origin_line(kind: str, *, rung: str = "", reason: str = "", n_hits: int = 0)
 
 @dataclass(frozen=True)
 class Route:
-    """The cached route verdict for a typed lookup (§4.1)."""
+    """The cached route verdict (§4.1), an observation of the answer type: ``lookup`` says
+    whether the question has one value to read off a document, ``kind`` which type it asks
+    for (:data:`KIND_LOOKUP` or one of :data:`REJECTED_KINDS`). A rejected question carries
+    the fallback ``construct`` and the model's ``time_indexed`` like any other."""
 
     construct: str
     time_indexed: bool
+    lookup: bool = True
+    kind: str = KIND_LOOKUP
 
 
 @dataclass(frozen=True)
@@ -429,11 +444,12 @@ def _client() -> Any:
 
 def route_question(root: Path, question: str, *,
                    client: Any | None = None,
-                   meter: list[float] | None = None) -> Route | None:
-    """The cached route verdict: the Route (construct + time-indexedness) if this is
-    a typed lookup, else None. A verdict outside the schema raises and is never
-    recorded. ``meter``, when given, accumulates the realised USD cost of cache-miss
-    model calls (warm replays append nothing — $0 by construction, §18.9)."""
+                   meter: list[float] | None = None) -> Route:
+    """The cached route verdict for EVERY question: the :class:`Route` (lookup or not, its
+    kind, construct, time-indexedness). A rejection whose kind is missing or unrecognised is
+    kind ``other``. A verdict outside the schema raises and is never recorded. ``meter``,
+    when given, accumulates the realised USD cost of cache-miss model calls (warm replays
+    append nothing — $0 by construction, §18.9)."""
     if client is None:
         client = _client()
     key = D.lookup_route_key(question, model=LOOKUP_MODEL,
@@ -455,10 +471,11 @@ def route_question(root: Path, question: str, *,
                  json.dumps({"format_version": 1, **parsed}, sort_keys=True,
                             ensure_ascii=False).encode("utf-8"),
                  lineage=[])
-    if not parsed.get("lookup"):
-        return None
+    lookup = bool(parsed.get("lookup"))
+    kind = str(parsed.get("kind") or "")
     return Route(construct=str(parsed.get("construct") or "the asked value"),
-                 time_indexed=bool(parsed.get("time_indexed", False)))
+                 time_indexed=bool(parsed.get("time_indexed", False)), lookup=lookup,
+                 kind=KIND_LOOKUP if lookup else kind if kind in REJECTED_KINDS else "other")
 
 
 def observe_hits(root: Path, question: str, hits: list[dict[str, Any]], *,

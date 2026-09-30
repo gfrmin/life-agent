@@ -44,6 +44,8 @@ from life_agent.core import decide as D
 from life_agent.core import decisions as DEC
 from life_agent.core import executor as EX
 from life_agent.core import lookup as LK
+from life_agent.core import pricing as PRC
+from life_agent.core import route_row as RR
 from life_agent.core import utility as UT
 from life_agent.core.decider import Decider
 
@@ -112,7 +114,8 @@ def main(argv: list[str] | None = None) -> int:
                       reactions_path=args.sandbox / "reactions.jsonl",
                       fold_version=lambda: "smoke-example-gauge",
                       gather_outcomes_path=args.sandbox / "gather_outcomes.jsonl",
-                      decider=Decider(lambda: gauge))
+                      # a fresh clone has fitted no route row: it starts from the shipped one
+                      decider=Decider(lambda: {**gauge, **RR.load(args.sandbox / "none.json")}))
     server = BridgeServer(deps, host="127.0.0.1", port=0)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     # server_address is typed loosely (a unix socket path may be bytes); this server is
@@ -141,6 +144,18 @@ def main(argv: list[str] | None = None) -> int:
                  f"{settled['act']!r} at p1 {settled['p1']:.3f} (bar {bar:.2f}) — "
                  "the act never commits, which is a system that cannot answer")
         print(f"  act {settled['act']} at p1 {settled['p1']:.3f} (bar {bar:.2f})")
+
+        print("== 2b. the route stage attempts what the router accepts and declines the rest ==")
+        route = {"stage": "route", "question_id": "q" * 16, "price": PRC.FIRST_PASS_USD}
+        accepted = http(base, "/decide", {**route, "lookup": True})
+        rejected = http(base, "/decide", {**route, "lookup": False})
+        if accepted["effector"] != "attempt":
+            fail(f"an accepted question was {accepted['effector']!r} at the route stage "
+                 f"(eu {accepted['eu']:.3f}) — a fresh clone would decline every question")
+        if rejected["effector"] != "abstain":
+            fail(f"a rejected question was {rejected['effector']!r} at the route stage")
+        print(f"  accepted: {accepted['effector']} (eu {accepted['eu']:.3f})   "
+              f"rejected: {rejected['effector']} (eu {rejected['eu']:.3f})")
 
         print("== 3. /decide withholds when the evidence disperses ==")
         split = http(base, "/decide", _request(
