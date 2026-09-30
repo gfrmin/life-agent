@@ -24,10 +24,10 @@ in your `PKM_CONFIG` yaml.)
   (copy from `config/pii-patterns.txt.example`; see README "Contributing").
 - **`FAILURES.md`** — the dogfood failure log: one entry per question the system couldn't
   answer well. **This list is the spec**
-  (PRINCIPLES §9): Phase 1.5 builds only what it demands.
+  (dogfood misses, not speculation, drive what gets built).
 - **`eval/`** — the answer-grounded eval sets and logs (`questions.yaml`,
-  `scripts/run_eval.py` output, dogfood session notes) and `eval/comparison/` — the frozen
-  Phase-0-vs-Phase-1 comparison record (snapshot, grades, report; see `SPEC-comparison.md`).
+  `scripts/run_eval.py` output, dogfood session notes) and `eval/comparison/` — a frozen
+  historical comparison record (snapshot, grades, report).
 - **`tasks/`** — the GTD act layer: `events.jsonl` (the append-only event ledger — **the**
   source of truth) and `gtd.db` (the SQLite read-model, a rebuildable fold — safe to delete).
 - **`jarvis/jarvis.db`** — the legacy pre-event-sourcing GTD store, kept **read-only** as a
@@ -38,12 +38,12 @@ in your `PKM_CONFIG` yaml.)
 - **`docs/data-seams.md`** — the verified, machine-specific data map (which data lives where on
   this machine). Out-of-tree because it names personal paths.
 - **`raw/`, `wiki/`, `notes/`** — **legacy Phase-0 artifacts.** The compiled-wiki approach was
-  measured and retired (PRINCIPLES §14; `SPEC-comparison.md` is the frozen record). These stay
+  measured and retired (see git history). These stay
   only as archives; no tooling writes them.
 
 ## Conventions
 
-- Citations are mandatory on every answer path; provenance is structural (PRINCIPLES §8).
+- Citations are mandatory on every answer path; provenance is structural (CLAUDE.md rule 3).
 - Dates absolute (YYYY-MM-DD). Names as the owner uses them.
 - Everything here is sensitive personal data — it stays under `$LIFE_AGENT_KB`, never in the
   repo, never pushed anywhere.
