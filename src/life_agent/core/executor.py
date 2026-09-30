@@ -111,7 +111,7 @@ def menu_transforms(curves: Curves) -> list[dict[str, Any]]:
 _UNPRICED_ATTRIBUTION: dict[str, Any] = {
     "instrument": "", "cost_usd": None, "latency_s": None,
     "instrument_value": None, "instrument_confidence": None,
-    "instrument_lineage": None}
+    "instrument_lineage": None, "disclosed": None}
 
 # The grow lane's retrieval actuators: probe name → the /retrieve recall flags its enactment
 # re-runs the evidence build at. `re_extract_strong` is the third menu row (a whole-doc opus
@@ -350,6 +350,7 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str,
     edge_value: str | None = None
     edge_conf: float | None = None
     edge_lineage: str | None = None
+    edge_disclosed: int | None = None    # documents the deliberative rung read (its record)
     # bounded: each transform and each grow actuator fires at most once (dedup on the probe
     # name), and the decider offers no gather once they are all applied.
     for _ in range(2 + sum(t["kind"] == "voi" for t in transforms) + len(grow_probes)):
@@ -486,6 +487,8 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str,
                 edge_value = str(v) if v is not None else None
                 edge_conf = dr.get("confidence")
                 edge_lineage = dr.get("cache_key")
+                edge_disclosed = (int(dr["disclosed"])
+                                  if dr.get("disclosed") is not None else None)
                 # ONE derivation: the event mirrors the legacy slot from the same
                 # bound values — two coercion paths over one reply could drift and
                 # split the decisions-v2 accounting from the gate writer's stream.
@@ -565,11 +568,13 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str,
             "instrument": edge_instrument, "cost_usd": edge_cost,
             "latency_s": edge_latency, "instrument_value": edge_value,
             "instrument_confidence": edge_conf, "instrument_lineage": edge_lineage,
+            "disclosed": edge_disclosed,
             "edge_events": edge_events, "spend_usd": spend_usd, "applied": list(applied),
             "engine_act": dec.get("act"), "p1": dec.get("p1"),
             "origin": DEC.origin(effector=dec["effector"], candidates=candidates,
                                  asserted=asserted, instrument=edge_instrument,
-                                 instrument_value=edge_value).as_dict()}
+                                 instrument_value=edge_value,
+                                 disclosed=edge_disclosed).as_dict()}
 
 
 # --- render (the executor's decision in the shared credence grammar) --------------------
@@ -625,8 +630,9 @@ def render_view(view: View) -> str:
             body = LK.GRAMMAR["abstain"].format(reason=LK.REASON_NO_OBSERVATIONS)
     o = DEC.origin(effector=eff, candidates=cands, asserted=asserted,
                    instrument=str(view.get("instrument") or ""),
-                   instrument_value=view.get("instrument_value"))
-    head = LK.origin_line(o.kind, rung=o.rung, reason=o.reason, n_hits=len(hits))
+                   instrument_value=view.get("instrument_value"),
+                   disclosed=view.get("disclosed"))
+    head = LK.origin_line(o.kind, rung=o.rung, reason=o.reason, disclosed=o.disclosed)
     p_none, eu = view["p_none"], view["eu"]
     footer = LK.GRAMMAR["footer"].format(
         n_hits=len(hits), n_obs=view.get("n_obs", 0),

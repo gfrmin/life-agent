@@ -8,6 +8,11 @@ and hosts the one decider: ``POST /decide`` hands the request to
 the Bayes act under the current Ū (rule 2). No other code ranks acts. `/extract` takes
 `time_indexed` + `covariates` as INPUTS, it never computes them.
 
+Every model call that carries corpus text (`/retrieve` with rerank, `/extract`,
+`/probe/corroborate`, `/probe/deliberate`) appends a row to the disclosure log
+(`core.disclosure`, `config.DISCLOSURES_LOG`): which artifacts went to which model, and
+whether the call succeeded. A request may carry an optional `run_id`, which the row keeps.
+
 The two writes are the verdict-emission seam: `/log_decision` (the body posts the terminal
 decision the governor enacted, appended to the calibration decision log `core.decisions` shaped
 exactly as the lookup family's own decisions) and `/log_reaction` (the owner's one-bit good/bad
@@ -54,6 +59,7 @@ from life_agent.core import decider as DCD
 from life_agent.core import decisions as DEC
 from life_agent.core import deliberate as DL
 from life_agent.core import derivations as D
+from life_agent.core import disclosure as DISC
 from life_agent.core import expansion as EXP
 from life_agent.core import gather_outcomes as GO
 from life_agent.core import gather_row as GR
@@ -105,7 +111,20 @@ class BridgeDeps:
     reactions_path: Path                 # calibration reaction log — /log_reaction appends here
     fold_version: Callable[[], str]      # current utility fold version (pins the logged decision)
     gather_outcomes_path: Path           # gather-outcome log — /log_gather writes, /grow_menu reads
+    # disclosure log — every model call that carried corpus text appends here; ``None``
+    # (a test harness) records nothing
+    disclosures_path: Path | None = None
     decider: DCD.Decider | None = None   # the one decider
+
+
+def _disclosing(deps: BridgeDeps, p: Payload) -> dict[str, Any]:
+    """The ``disclose=`` keyword for one request's model-calling function: the log, and
+    the request's ``run_id`` when it carries one (a row's ``run_id`` is otherwise null —
+    never invented). Empty when the bridge has no disclosure log, so the call is made
+    exactly as it would be without one."""
+    run_id = p.get("run_id")
+    sink = DISC.to_log(deps.disclosures_path, str(run_id) if run_id else None)
+    return {} if sink is None else {"disclose": sink}
 
 
 class BridgeError(Exception):
@@ -212,7 +231,8 @@ def _retrieve(deps: BridgeDeps, p: Payload) -> Payload:
     # evidence the next /decide sees; discovery over a closed candidate set is outside net_voi.
     if p.get("rerank"):
         pool = RET.retrieve_set(deps.conn, query, RR.RERANK_POOL, **kept)
-        hits, cost = RR.rerank(question, pool, k, root=deps.root)
+        hits, cost = RR.rerank(question, pool, k, root=deps.root,
+                               **_disclosing(deps, p))
         return {"hits": hits, "cost_usd": cost}
     return {"hits": RET.retrieve_set(deps.conn, query, k, **kept), "cost_usd": 0.0}
 
@@ -228,7 +248,7 @@ def _extract(deps: BridgeDeps, p: Payload) -> Payload:
         deps.root, _req_str(p, "question"), _req_list(p, "hits"),
         client=deps.client, covariates=cov,
         time_indexed=bool(p.get("time_indexed", False)), today=_opt_date(p.get("today")),
-        half_life_years=hl, meter=meter)
+        half_life_years=hl, meter=meter, **_disclosing(deps, p))
     candidates, abstract = to_abstract_observations(obs)
     return {"candidates": candidates, "observations": abstract,
             # the scalar rho the answer-brain consumes — the wire-read posterior mean (no host
@@ -342,7 +362,8 @@ def _probe_corroborate(deps: BridgeDeps, p: Payload) -> Payload:
     # obs at the tier's rho, so a weaker model's read is trusted less. Defaults to the
     # opus-tier _JOINT_RHO.
     tier_rho = float(p.get("rho") or _JOINT_RHO)
-    jr = JE.extract_joint(deps.root, question, hits, model=model, k=len(hits))
+    jr = JE.extract_joint(deps.root, question, hits, model=model, k=len(hits),
+                          **_disclosing(deps, p))
     obs: list[Payload] = []
     new_candidate: str | None = None
     # Why the empty channel came back, so the body can tell absence of evidence from
@@ -609,13 +630,13 @@ def _probe_deliberate(deps: BridgeDeps, p: Payload) -> Payload:
         out: Payload = {"observations": obs, "value": c.get("value"),
                         "confidence": c.get("credence"), "declined": c.get("declined"),
                         "status": "ok", "text": c.get("text"), "model": c.get("model"),
-                        "cost_usd": 0.0, "latency_s": 0.0,
+                        "cost_usd": 0.0, "latency_s": 0.0, "disclosed": c.get("disclosed"),
                         "cache": "hit", "cache_key": key.cache_key}
         if new_candidate is not None:
             out["new_candidate"] = new_candidate
         return out
 
-    r = DL.answer(question, cfg)
+    r = DL.answer(question, cfg, **_disclosing(deps, p))
     if r.status == "ok" and key is not None:
         try:
             DL.record_answer(deps.root, key, r)
@@ -633,7 +654,7 @@ def _probe_deliberate(deps: BridgeDeps, p: Payload) -> Payload:
     out = {"observations": obs, "value": r.value, "confidence": r.credence,
            "declined": r.declined, "status": r.status, "text": r.text,
            "model": r.model, "cost_usd": r.cost_usd, "latency_s": r.latency_s,
-           "cache": "miss" if key is not None else "off"}
+           "disclosed": r.disclosed, "cache": "miss" if key is not None else "off"}
     if key is not None:  # the cell's §18.9 identity — the caller's warm-replay dedup key
         out["cache_key"] = key.cache_key
     if new_candidate is not None:
@@ -807,7 +828,10 @@ def _log_decision(deps: BridgeDeps, p: Payload) -> Payload:
         # was ranked under, with the defaults NAMED when the caller stated neither
         regime=regime, policy=policy, defaulted=defaulted,
         # v4 (J2): the delivered answer's origin, stated by the body; "" when it did not
-        origin=str(decision.get("origin") or ""))
+        origin=str(decision.get("origin") or ""),
+        # v5: the documents a rung's answer disclosed to it; absent ⇒ not stated
+        disclosed=(int(decision["disclosed"])
+                   if decision.get("disclosed") is not None else None))
     DEC.append(deps.decisions_path, event)
     return {"decision_id": decision_id}
 
@@ -983,6 +1007,7 @@ def build_deps() -> BridgeDeps:
                       decisions_path=config.DECISIONS_LOG,
                       reactions_path=config.REACTIONS_LOG, fold_version=_fold_version,
                       gather_outcomes_path=config.GATHER_OUTCOMES_LOG,
+                      disclosures_path=config.DISCLOSURES_LOG,
                       # the handshake declares the anchor shape's utility once
                       decider=_build_decider(lambda: _u_bar(AS.DEFAULT_SHAPE)))
 

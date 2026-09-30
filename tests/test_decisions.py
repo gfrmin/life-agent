@@ -263,7 +263,14 @@ def test_origin_is_documents_rung_or_declined() -> None:
     assert D.origin(effector="ask_clarify", candidates=["P1"], asserted=[]).reason == "asked"
     assert D.origin(effector="abstain", candidates=[], asserted=[],
                       available=False).reason == "unavailable"
-    assert set(D.Origin("declined", reason="miss").as_dict()) == {"kind", "rung", "reason"}
+    assert set(D.Origin("declined", reason="miss").as_dict()) == {
+        "kind", "rung", "reason", "disclosed"}
+    # the count rides a rung's origin only; every other origin states none
+    o = D.origin(effector="report", candidates=["N7"], asserted=["N7"],
+                 instrument="deliberate@m", instrument_value="N7", disclosed=4)
+    assert o == D.Origin("rung", rung="deliberate@m", disclosed=4)
+    assert D.origin(effector="report", candidates=["P1"], asserted=["P1"],
+                    disclosed=4).disclosed is None
 
 
 def test_origin_rides_the_record_and_older_lines_read_as_silence(tmp_path: Path) -> None:
@@ -271,9 +278,14 @@ def test_origin_rides_the_record_and_older_lines_read_as_silence(tmp_path: Path)
     path = tmp_path / "d.jsonl"
     D.append(path, ev)
     assert D.read(path)[0].origin == "documents"
-    assert D.read(path)[0].format_version == 4
+    assert D.read(path)[0].format_version == 5
     line = D._to_line(_event()).replace(',"origin":""', "")
     assert '"origin"' not in line
     assert D._from_line(line).origin == ""     # a pre-v4 line claims nothing
+    line = D._to_line(_event()).replace(',"disclosed":null', "")
+    assert '"disclosed"' not in line
+    assert D._from_line(line).disclosed is None   # a pre-v5 line states no count
+    D.append(path, _event(origin="rung", disclosed=3))
+    assert D.read(path)[-1].disclosed == 3
     with pytest.raises(ValueError, match="unknown origin"):
         _event(origin="oracle")

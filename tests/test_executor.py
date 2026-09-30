@@ -940,6 +940,28 @@ def test_deliberate_tick_carries_the_raw_proposal_on_the_view() -> None:
     assert view["instrument_lineage"] == "dk-42"
 
 
+def test_a_rung_answer_carries_what_was_disclosed_on_view_and_origin() -> None:
+    fake = FakeServices(
+        route={"construct": "rent", "time_indexed": False},
+        extract={**_EXTRACT, "candidates": ["NIS 4,200"]},
+        deliberate={"observations": [{"reports": 0, "group": 0, "authority": 1.0,
+                                      "subject_factor": 1.0, "time_factor": 1.0}],
+                    "confidence": 0.85, "model": "claude-opus-4-8",
+                    "value": "NIS 4,200", "status": "ok", "declined": False,
+                    "cost_usd": 0.42, "latency_s": 23.0, "cache": "miss",
+                    "cache_key": "dk-42", "disclosed": 6},
+        decides=[{"effector": "gather", "probe": "deliberate",
+                  "credences": [0.5], "p_none": 0.3, "eu": 0.1},
+                 {"effector": "report", "value": "NIS 4,200", "credences": [0.9],
+                  "p_none": 0.05, "eu": 0.8}])
+    view = _loop(fake, curves={})
+    assert view["disclosed"] == 6
+    assert view["origin"] == {"kind": "rung", "rung": "deliberate@claude-opus-4-8",
+                              "reason": "", "disclosed": 6}
+    assert EX.render_view(view).splitlines()[0] == (
+        "Answered by the deliberate@claude-opus-4-8 rung (6 documents disclosed).")
+
+
 def test_view_without_a_deliberate_tick_has_no_raw_proposal() -> None:
     # All consumers INDEX these keys (never .get) — the defaults must exist on the
     # plain typed path.
@@ -1758,7 +1780,8 @@ def test_the_view_carries_its_origin_and_the_render_leads_with_it() -> None:
                         decides=[{"effector": "report", "value": "P123",
                                   "credences": [0.95], "p_none": 0.02, "eu": 0.9}])
     view = _loop(fake)
-    assert view["origin"] == {"kind": "documents", "rung": "", "reason": ""}
+    assert view["origin"] == {"kind": "documents", "rung": "", "reason": "",
+                              "disclosed": None}
     assert EX.render_view(view).splitlines()[0] == "From your documents."
 
 
@@ -1773,7 +1796,8 @@ def test_a_withheld_view_is_declined_with_its_reason() -> None:
 
 def test_a_declined_route_is_declined_as_not_a_point_fact() -> None:
     view = _loop(FakeServices(route=_REJECTED))
-    assert view["origin"] == {"kind": "declined", "rung": "", "reason": "not a point fact"}
+    assert view["origin"] == {"kind": "declined", "rung": "", "reason": "not a point fact",
+                              "disclosed": None}
     assert EX.render_view(view).startswith("Declined:")   # the route's own text leads
 
 
@@ -1783,7 +1807,11 @@ def test_a_rung_answer_names_the_rung_and_what_was_shared() -> None:
             "hits": [{"artifact_cache_key": "d0", "chunk_text": "N7 appears here"},
                      {"artifact_cache_key": "d1", "chunk_text": "other"}],
             "route": {"construct": "x"}, "instrument": "deliberate@claude-opus-4-8",
-            "instrument_value": "N7"}
+            "instrument_value": "N7", "disclosed": 5}
     first = EX.render_view(view).splitlines()[0]
-    assert first == ("Answered by the deliberate@claude-opus-4-8 rung; 2 retrieved "
-                     "document(s) were shared with it.")
+    assert first == "Answered by the deliberate@claude-opus-4-8 rung (5 documents disclosed)."
+    assert EX.render_view({**view, "disclosed": 1}).splitlines()[0].endswith(
+        "(1 document disclosed).")
+    # a replayed answer recorded before the count existed says so, never a number
+    assert EX.render_view({**view, "disclosed": None}).splitlines()[0].endswith(
+        "(disclosure not recorded).")

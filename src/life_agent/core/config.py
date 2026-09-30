@@ -74,6 +74,9 @@ OUTCOMES_LOG = KB / "calibration" / "outcomes.jsonl"
 # reactions are not readable as choices. Append-only, order-defined, unbackfillable;
 # no EU decision is ever made unlogged.
 DECISIONS_LOG = KB / "calibration" / "decisions.jsonl"
+# The disclosure log (CLAUDE.md rule 3): one row per model call that carried corpus text —
+# which artifacts, which model, whether the call succeeded (core/disclosure.py).
+DISCLOSURES_LOG = KB / "calibration" / "disclosures.jsonl"
 
 # The fitted gather row (core/gather_row; scripts/fit_gather_row.py writes it). Absent, the
 # decider prices gathering at the row's prior.

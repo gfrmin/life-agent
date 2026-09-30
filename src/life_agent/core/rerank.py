@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from life_agent.core import derivations as D
+from life_agent.core import disclosure as DISC
 from life_agent.core import pricing as PRC
 from life_agent.core.llm import TEMPERATURE, anthropic_complete
 
@@ -57,14 +58,15 @@ def _order(pool: list[dict[str, Any]], picks: list[int], k: int) -> list[dict[st
 
 
 def rerank(question: str, pool: list[dict[str, Any]], k: int, *, root: Path | None = None,
-           model: str = RERANK_MODEL) -> tuple[list[dict[str, Any]], float]:
+           model: str = RERANK_MODEL, disclose: DISC.Sink | None = None,
+           ) -> tuple[list[dict[str, Any]], float]:
     """``(the pool's top-k reordered, the spend in USD)``. A recorded rerank replays at $0;
-    a failure is the lexical top-k at $0 and is not recorded."""
+    a failure is the lexical top-k at $0 and is not recorded. ``disclose`` receives one row
+    for the model call, a failed one included; a replay calls no model and writes none."""
     if len(pool) <= k:
         return pool[:k], 0.0
-    snippets = "\n".join(
-        f"[{i + 1}] {h['chunk_text'][:280].strip().replace(chr(10), ' ')}"
-        for i, h in enumerate(pool))
+    texts = [h["chunk_text"][:280].strip().replace(chr(10), " ") for h in pool]
+    snippets = "\n".join(f"[{i + 1}] {t}" for i, t in enumerate(texts))
     system = RERANK_SYSTEM.format(k=k)
     key = D.rerank_key(question, D.content_hash(snippets.encode("utf-8")), k=k, model=model,
                        prompt_template=RERANK_SYSTEM, temperature=TEMPERATURE,
@@ -74,11 +76,21 @@ def rerank(question: str, pool: list[dict[str, Any]], k: int, *, root: Path | No
         if cached is not None:
             return _order(pool, json.loads(cached)["picks"], k), 0.0
     user = f"QUESTION: {question}\n\nSNIPPETS:\n{snippets}"
+
+    def disclosed(outcome: str) -> None:
+        if disclose is not None:
+            disclose(DISC.make("rerank", question=question, model=model,
+                               artifact_cache_keys=(str(h["artifact_cache_key"]) for h in pool),
+                               n_chunks=len(pool), n_chars=sum(map(len, texts)),
+                               outcome=outcome))
+
     try:
         r = anthropic_complete(system, user, model=model, max_tokens=MAX_TOKENS,
                                temperature=TEMPERATURE)
     except (SystemExit, Exception):  # fail-open to lexical: recall never breaks the path
+        disclosed("failed")
         return pool[:k], 0.0
+    disclosed("ok")
     m = re.search(r"\[[\s\d,]*\]", r.text)
     picks = [int(n) for n in re.findall(r"\d+", m.group(0))] if m else []
     cost = PRC.cost_usd(r) or 0.0

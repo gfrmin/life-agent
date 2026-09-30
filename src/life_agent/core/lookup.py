@@ -35,6 +35,7 @@ from typing import Any
 from life_agent.core import answer_shape as AS
 from life_agent.core import config
 from life_agent.core import derivations as D
+from life_agent.core import disclosure as DISC
 from life_agent.core import instrument as INSTR
 from life_agent.core import matching as MATCH
 from life_agent.core import outcomes as O
@@ -235,8 +236,7 @@ GRAMMAR: dict[str, str] = {
     # J2: the FIRST line of every reply names where the answer came from (rule 3):
     # a span in your documents, a named rung, or a decline with its reason.
     "origin_documents": "From your documents.",
-    "origin_rung": ("Answered by the {rung} rung; {n_hits} retrieved document(s) were "
-                    "shared with it."),
+    "origin_rung": "Answered by the {rung} rung ({disclosed}).",
     "origin_declined": "Declined: {reason}.",
 }
 
@@ -250,12 +250,16 @@ ORIGIN_REASONS: dict[str, str] = {
 }
 
 
-def origin_line(kind: str, *, rung: str = "", reason: str = "", n_hits: int = 0) -> str:
-    """The reply's first line for an origin (``decisions.origin``), in the grammar."""
+def origin_line(kind: str, *, rung: str = "", reason: str = "",
+                disclosed: int | None = None) -> str:
+    """The reply's first line for an origin (``decisions.origin``), in the grammar. A rung
+    names how many documents were disclosed to it, or that the count was not recorded."""
     if kind == "documents":
         return GRAMMAR["origin_documents"]
     if kind == "rung":
-        return GRAMMAR["origin_rung"].format(rung=rung, n_hits=n_hits)
+        count = ("disclosure not recorded" if disclosed is None
+                 else f"{disclosed} document{'' if disclosed == 1 else 's'} disclosed")
+        return GRAMMAR["origin_rung"].format(rung=rung, disclosed=count)
     if kind == "declined":
         return GRAMMAR["origin_declined"].format(reason=ORIGIN_REASONS.get(reason, reason))
     raise ValueError(f"unknown origin kind {kind!r}")
@@ -532,6 +536,16 @@ def route_kind(root: Path, question: str, *,
     return kind if kind in REJECTED_KINDS[:4] else "other"
 
 
+def _disclose_chunk(disclose: DISC.Sink | None, question: str, hit: dict[str, Any],
+                    outcome: str) -> None:
+    """The per-chunk extraction's row: one chunk of one artifact went to the extractor."""
+    if disclose is not None:
+        disclose(DISC.make("extract", question=question, model=LOOKUP_MODEL,
+                           artifact_cache_keys=[str(hit["artifact_cache_key"])],
+                           n_chunks=1, n_chars=len(str(hit["chunk_text"])),
+                           outcome=outcome))
+
+
 def observe_hits(root: Path, question: str, hits: list[dict[str, Any]], *,
                  client: Any | None = None,
                  reliability: float | None = None,
@@ -540,13 +554,16 @@ def observe_hits(root: Path, question: str, hits: list[dict[str, Any]], *,
                  today: date | None = None,
                  half_life_years: float = _TIME_HALF_LIFE_YEARS,
                  meter: list[float] | None = None,
+                 disclose: DISC.Sink | None = None,
                  ) -> tuple[list[Observation], int]:
     """One grounded extraction per hit (cached). Returns (grounded observations,
     indeterminate count). Indeterminate = the instrument returned ⊥ (not found) or its
     quote failed the grounding gate — recorded either way, counted, never silently
     dropped (§4.2's indeterminacy term). ``covariates`` carries the §4.1 doc_subject /
     doc_date factors into each observation's a_i. ``meter``, when given, accumulates
-    the realised USD cost of cache-miss model calls (warm replays append nothing)."""
+    the realised USD cost of cache-miss model calls (warm replays append nothing).
+    ``disclose`` receives one row per cache-miss model call, the failed ones included
+    (:mod:`life_agent.core.disclosure`); a replay sends nothing, so it writes none."""
     if client is None:
         client = _client()
     cov = covariates if covariates is not None else HitCovariates()
@@ -564,7 +581,12 @@ def observe_hits(root: Path, question: str, hits: list[dict[str, Any]], *,
         else:
             prompt = EXTRACT_PROMPT.replace("{question}", question).replace(
                 "{chunk}", chunk)
-            response = client.complete(prompt, EXTRACT_SCHEMA)
+            try:
+                response = client.complete(prompt, EXTRACT_SCHEMA)
+            except BaseException:
+                _disclose_chunk(disclose, question, hit, "failed")
+                raise
+            _disclose_chunk(disclose, question, hit, "ok")
             if meter is not None:
                 meter.append(float(getattr(response, "cost_usd", 0.0) or 0.0))
             raw = json.loads(response.raw_text)

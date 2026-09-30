@@ -208,7 +208,8 @@ def post_decision(post: Any, bridge: str, question: str, view: dict[str, Any], *
         # current_u_bar folds under, so record and fold cannot diverge (M3, r13)
         regime="full", policy=LK.U_BAR_POLICY,
         # J2: where the delivered answer came from — the executor derived it once
-        origin=str((view.get("origin") or {}).get("kind") or ""))
+        origin=str((view.get("origin") or {}).get("kind") or ""),
+        disclosed=(view.get("origin") or {}).get("disclosed"))
     try:
         return REC.record_via_bridge(post, bridge, payload)
     except Exception as e:  # fail-open: the verdict simply has nothing to bind to

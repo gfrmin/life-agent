@@ -36,7 +36,10 @@ from life_agent.core import jsonl_log
 # ``rung`` / ``declined``), the one fact CLAUDE.md rule 3 asks every reply to carry. Not
 # derivable from a v3 line (the rung's proposed value was never recorded), so it is stated;
 # older lines read as "" — silence, not a claim.
-FORMAT_VERSION = 4
+# v5 (2026-09-30): + disclosed — on a rung's answer, how many distinct documents the rung
+# read (the disclosure log, core/disclosure.py, names them); None elsewhere and on older
+# lines — not stated, never a claimed zero.
+FORMAT_VERSION = 5
 
 # Question families with an EU response layer. The aggregate family was deleted at
 # K1 (r22): a classifier choosing a pipeline is decision-shaping outside the argmax
@@ -194,6 +197,8 @@ class DecisionEvent:
     defaulted: tuple[str, ...] = DEFAULTED_UNSTATED
     # v4: the delivered answer's origin (:func:`origin`); "" on lines predating it.
     origin: str = ""
+    # v5: the documents a rung's answer disclosed to it (:func:`origin`); None = not stated.
+    disclosed: int | None = None
     format_version: int = field(default=FORMAT_VERSION)
 
     def __post_init__(self) -> None:
@@ -308,19 +313,22 @@ REASON_NOT_POINT_FACT = "not a point fact"
 @dataclass(frozen=True)
 class Origin:
     """``kind`` in :data:`ORIGINS`; ``rung`` names the instrument on a rung answer;
-    ``reason`` names why on a decline."""
+    ``reason`` names why on a decline; ``disclosed`` counts the distinct documents a rung
+    answer read (None = not stated, which includes every non-rung origin)."""
 
     kind: str
     rung: str = ""
     reason: str = ""
+    disclosed: int | None = None
 
-    def as_dict(self) -> dict[str, str]:
-        return {"kind": self.kind, "rung": self.rung, "reason": self.reason}
+    def as_dict(self) -> dict[str, str | int | None]:
+        return {"kind": self.kind, "rung": self.rung, "reason": self.reason,
+                "disclosed": self.disclosed}
 
 
 def origin(*, effector: object, candidates: object, asserted: object,
            instrument: str = "", instrument_value: object = None,
-           available: bool = True) -> Origin:
+           available: bool = True, disclosed: int | None = None) -> Origin:
     """ORIGIN is one derivation over the decision record (D-5's sibling). An asserted
     value that the named instrument proposed came from that ``rung``; any other assertion
     stands in the ``documents`` (the cited hits); everything else is ``declined``, with
@@ -330,7 +338,7 @@ def origin(*, effector: object, candidates: object, asserted: object,
     values = [str(a) for a in (asserted if isinstance(asserted, list | tuple) else [])]
     if eff in ("report", "report_scoped") and values:
         if instrument and instrument_value is not None and values[0] == str(instrument_value):
-            return Origin("rung", rung=str(instrument))
+            return Origin("rung", rung=str(instrument), disclosed=disclosed)
         return Origin("documents")
     if eff == "ask_clarify":
         return Origin("declined", reason=REASON_ASKED)

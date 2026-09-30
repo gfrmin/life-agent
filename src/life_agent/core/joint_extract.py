@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import Any
 
 from life_agent.core import derivations as D
+from life_agent.core import disclosure as DISC
 from life_agent.core.llm import LLMResult, anthropic_complete
 
 JOINT_SYSTEM = (
@@ -94,10 +95,13 @@ def _parse(text: str) -> dict[str, Any]:
 
 def extract_joint(root: Path | None, question: str, hits: list[dict[str, Any]], *,
                   model: str, k: int = 20, max_tokens: int = 400,
-                  complete: CompleteFn | None = None) -> JointResult:
+                  complete: CompleteFn | None = None,
+                  disclose: DISC.Sink | None = None) -> JointResult:
     """Read the top-k hits as one document and return one calibrated candidate (cache-first).
     ``model`` MUST be a dated snapshot. The chunk-set hash keys on exactly the ordered snippets
-    the model reads (the early-cutoff hinge), so a reranked-but-identical pool replays."""
+    the model reads (the early-cutoff hinge), so a reranked-but-identical pool replays.
+    ``disclose`` receives one row for the model call, a failed one included; a cache hit
+    calls no model and writes none."""
     do_complete = complete or _default_complete
     pool = hits[:k]
     snippets = _snippets(pool, k)
@@ -114,7 +118,19 @@ def extract_joint(root: Path | None, question: str, hits: list[dict[str, Any]], 
                                cache_key=key.cache_key)
     user = "QUESTION: {q}\n\nDOCUMENTS:\n{docs}".format(
         q=question, docs="\n".join(f"[{i + 1}] {s}" for i, s in enumerate(snippets)))
-    res = do_complete(JOINT_SYSTEM, user, model, max_tokens)
+    def disclosed(outcome: str) -> None:
+        if disclose is not None:
+            disclose(DISC.make("joint", question=question, model=model,
+                               artifact_cache_keys=(str(h["artifact_cache_key"]) for h in pool),
+                               n_chunks=len(snippets), n_chars=sum(map(len, snippets)),
+                               outcome=outcome))
+
+    try:
+        res = do_complete(JOINT_SYSTEM, user, model, max_tokens)
+    except BaseException:
+        disclosed("failed")
+        raise
+    disclosed("ok")
     parsed = _parse(res.text)
     if root is not None:
         D.record(root, key,
