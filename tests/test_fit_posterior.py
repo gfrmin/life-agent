@@ -147,3 +147,50 @@ def test_reproduction_compares_the_archived_leader() -> None:
     off = FP.reproduction([row], bad)
     assert off["p1 differ"] == 1 and off["leader label differs"] == 1
     assert FP.reproduction([row], {})["no archive row"] == 1
+
+
+def test_folds_partition_and_stratify_by_group() -> None:
+    groups = ["g"] * 23 + ["o"] * 12
+    f = FP.folds(groups, 5, seed=1)
+    assert f == FP.folds(groups, 5, seed=1) and f != FP.folds(groups, 5, seed=2)
+    assert set(f) == set(range(5))
+    for g, n in (("g", 23), ("o", 12)):
+        sizes = [sum(1 for x, y in zip(groups, f, strict=True) if x == g and y == k)
+                 for k in range(5)]
+        assert sum(sizes) == n and max(sizes) - min(sizes) <= 1
+
+
+def test_cross_validated_channels_never_see_their_own_fold() -> None:
+    # the misleading states sit in fold 0 only; its channel is fitted on the agreeing rest
+    agreeing = [_state([(0, 0), (0, 1)], truth=0, qid=f"a{i}") for i in range(8)]
+    misleading = [_state([(1, 0), (1, 1)], truth=0, qid="m")]
+    fold_of = [1, 2, 3, 1, 2, 3, 1, 2, 0]
+    chans = FP.cross_validate(agreeing + misleading, fold_of, BASE, ("eta",))
+    assert chans[-1].eta > 3.0      # fitted without the misleading state
+    assert chans[0].eta < chans[-1].eta  # fold 1's fit includes it, and is pulled down
+
+
+def test_score_each_equals_score_for_one_channel() -> None:
+    states = [_state([(0, 0), (0, 1)], truth=0, qid="a"),
+              _state([(2, 0)], truth=FP.NONE, qid="b")]
+    ch = replace(BASE, eta=1.5)
+    one, each = FP.score(states, ch), FP.score_each(states, [ch, ch])
+    assert one.truth_log == each.truth_log and one.leader == each.leader
+
+
+def test_fit_g_has_an_interior_optimum_on_the_wide_grid() -> None:
+    # a report that is right 3 times in 4 is well described by a finite A
+    right = [_state([(0, 0)], truth=0, qid=f"r{i}", rho=0.6) for i in range(6)]
+    wrong = [_state([(1, 0)], truth=0, qid=f"w{i}", rho=0.6) for i in range(2)]
+    best = FP.fit(right + wrong, BASE, FP.FIT_G, FP.GRIDS_WIDE)
+    assert best.a_alternatives in FP.WIDE_A and best.eta == 1.0
+    assert best.beta_ancestry == BASE.beta_ancestry and best.p_none_prior == BASE.p_none_prior
+    lo, hi = FP.flatness(right + wrong, best, FP.FIT_G, FP.GRIDS_WIDE)["a_alternatives"]
+    assert lo <= best.a_alternatives <= hi
+
+
+def test_consequences_carry_the_p1_of_each_response() -> None:
+    sure = _state([(0, 0), (0, 1), (0, 2)], truth=0, k=1, rho=0.95, qid="r")
+    c = FP.consequences([sure], BASE, U_BAR)
+    cred, _ = POST.candidate_posterior(1, list(sure.observations), 0.95, BASE)
+    assert c.p1 == {0: cred[0]}

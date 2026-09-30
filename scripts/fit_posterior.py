@@ -26,6 +26,7 @@ import argparse
 import copy
 import json
 import math
+import random
 import statistics
 import sys
 from collections import Counter
@@ -164,6 +165,11 @@ GRIDS: dict[str, list[float]] = {
     "p_none_prior": arange(0.02, 0.8, 0.02),
 }
 
+#: fit g's grid for ``A``: wide enough to show whether it has an interior optimum.
+WIDE_A = [10.0, 20.0, 35.0, 50.0, 75.0, 100.0, 150.0, 200.0, 300.0, 500.0, 1000.0]
+GRIDS_WIDE: dict[str, list[float]] = {**GRIDS, "a_alternatives": WIDE_A}
+FIT_G = ("beta_model", "a_alternatives")
+
 FITS: dict[str, tuple[str, ...]] = {
     "a tempering": ("beta_ancestry", "beta_model"),
     "b eta": ("eta",),
@@ -239,33 +245,139 @@ def act_at(state: State, channel: POST.Channel, u_bar: Mapping[str, float]) -> D
 
 @dataclass(frozen=True)
 class Consequence:
-    """The respond decisions of one channel over a set's states, evidence held fixed."""
+    """The respond decisions over a set's states, evidence held fixed. ``p1`` is, per
+    responding state, the credence of the candidate named."""
 
     n: int
     responds: frozenset[int]        # indices of states whose act is respond
     right: frozenset[int]           # ... and the named candidate is the truth
     utility: float                  # mean utility per state at the gauge
+    p1: Mapping[int, float]
 
     @property
     def wrong(self) -> frozenset[int]:
         return self.responds - self.right
 
 
-def consequences(states: Sequence[State], channel: POST.Channel,
-                 u_bar: Mapping[str, float]) -> Consequence:
-    acts = [act_at(s, channel, u_bar) for s in states]
+def consequences_each(states: Sequence[State], channels: Sequence[POST.Channel],
+                      u_bar: Mapping[str, float]) -> Consequence:
+    """Each state decided under its own channel (a cross-validation's held-out fold)."""
+    acts = [act_at(s, ch, u_bar) for s, ch in zip(states, channels, strict=True)]
     responds = frozenset(i for i, o in enumerate(acts) if o.action == "respond")
     right = frozenset(i for i in responds
                       if acts[i].target == states[i].truth and states[i].truth != NONE)
     u_right, u_wrong = float(u_bar.get("u_correct", 1.0)), float(u_bar.get("u_wrong", -9.0))
     util = (len(right) * u_right + (len(responds) - len(right)) * u_wrong) / len(states)
-    return Consequence(len(states), responds, right, util)
+    p1 = {i: posterior_of(states[i], channels[i])[0][int(acts[i].target or 0)]
+          for i in responds}
+    return Consequence(len(states), responds, right, util, p1)
+
+
+def consequences(states: Sequence[State], channel: POST.Channel,
+                 u_bar: Mapping[str, float]) -> Consequence:
+    return consequences_each(states, [channel] * len(states), u_bar)
 
 
 def flips(base: Consequence, new: Consequence) -> tuple[int, int, int]:
     """``(newly respond, of which right, no longer respond)`` relative to ``base``."""
     gained = new.responds - base.responds
     return len(gained), len(gained & new.right), len(base.responds - new.responds)
+
+
+# --- cross-validation ---------------------------------------------------------------------
+
+
+def folds(groups: Sequence[str], n_folds: int, seed: int) -> list[int]:
+    """A fold index per item, seeded and stratified by group: each group's items are shuffled
+    and dealt round-robin, so every fold holds a near-equal share of every group."""
+    rng = random.Random(seed)
+    out = [0] * len(groups)
+    for g in sorted(set(groups)):
+        idx = [i for i, x in enumerate(groups) if x == g]
+        rng.shuffle(idx)
+        for j, i in enumerate(idx):
+            out[i] = j % n_folds
+    return out
+
+
+def cross_validate(states: Sequence[State], fold_of: Sequence[int], base: POST.Channel,
+                   free: Sequence[str], grids: Mapping[str, Sequence[float]] = GRIDS
+                   ) -> list[POST.Channel]:
+    """Per state, the channel fitted on every fold but its own: out-of-fold by construction."""
+    by_fold = {f: fit([s for s, g in zip(states, fold_of, strict=True) if g != f],
+                      base, free, grids) for f in sorted(set(fold_of))}
+    return [by_fold[f] for f in fold_of]
+
+
+def score_each(states: Sequence[State], channels: Sequence[POST.Channel]) -> Score:
+    posts = [posterior_of(s, ch) for s, ch in zip(states, channels, strict=True)]
+    logs = [truth_log(p_none if s.truth == NONE else cred[s.truth])
+            for s, (cred, p_none) in zip(states, posts, strict=True)]
+    pairs = [p for s, (cred, _) in zip(states, posts, strict=True)
+             if (p := leader_pair(s, cred)) is not None]
+    return Score(len(states), sum(logs) / len(logs), calibrate(Pairs(tuple(pairs))))
+
+
+def _mean(xs: Sequence[float]) -> float:
+    return sum(xs) / len(xs) if xs else float("nan")
+
+
+def cmd_cv(a: argparse.Namespace) -> int:
+    from life_agent.core import lookup as LK
+
+    sets = {"generated": read_states(Path(a.generated)), "owner": read_states(Path(a.owner))}
+    base = POST.default_channel()
+    pooled = [s for v in sets.values() for s in v]
+    where = [n for n, v in sets.items() for _ in v]
+    fold_of = folds(where, a.folds, a.seed)
+    folded = LK.current_u_bar()[0]
+    gauges = {f"folded u_wrong {folded['u_wrong']:.2f}": folded,
+              "prior u_wrong -9": {**folded, "u_wrong": -9.0}}
+    # fit g on its own (wide) grid; d on the standard one
+    for n in sets:
+        ss = sets[n]
+        g = fit(ss, base, FIT_G, GRIDS_WIDE)
+        fl = flatness(ss, g, FIT_G, GRIDS_WIDE)
+        print(f"fit g on {n}: {_fmt_channel(g, FIT_G)}  score {truth_objective(ss)(g):+.4f}  "
+              "flat " + "; ".join(f"{k} [{lo:g}, {hi:g}]" for k, (lo, hi) in fl.items()))
+    g_all = fit(pooled, base, FIT_G, GRIDS_WIDE)
+    print(f"fit g pooled: {_fmt_channel(g_all, FIT_G)} flat " + "; ".join(
+        f"{k} [{lo:g}, {hi:g}]" for k, (lo, hi) in flatness(
+            pooled, g_all, FIT_G, GRIDS_WIDE).items()))
+    chans: dict[str, list[POST.Channel]] = {
+        "baseline": [base] * len(pooled),
+        "g": cross_validate(pooled, fold_of, base, FIT_G, GRIDS_WIDE),
+        "d": cross_validate(pooled, fold_of, base, FITS["d all but P_NONE"])}
+    print(f"\n{a.folds}-fold CV by question, seed {a.seed}, stratified by set; out-of-fold only")
+    for m, cs in chans.items():
+        sc = score_each(pooled, cs)
+        print(f"[{m}] truth_log {sc.truth_log:+.4f} leader_log {sc.leader.mean_log:+.4f} "
+              f"ECE {sc.leader.ece:.4f}")
+        print("\n".join(fmt_bins(sc.leader)))
+        for n in sets:
+            ix = [i for i, w in enumerate(where) if w == n]
+            s2 = score_each([pooled[i] for i in ix], [cs[i] for i in ix])
+            print(f"  {n}: truth_log {s2.truth_log:+.4f} leader_log {s2.leader.mean_log:+.4f} "
+                  f"ECE {s2.leader.ece:.4f}")
+    for gname, u_bar in gauges.items():
+        print(f"\n== decisions, out-of-fold, {gname}")
+        views = {None: list(range(len(pooled)))} | {
+            n: [i for i, w in enumerate(where) if w == n] for n in sets}
+        for vname, ix in views.items():
+            st = [pooled[i] for i in ix]
+            b = consequences_each(st, [chans["baseline"][i] for i in ix], u_bar)
+            print(f"[{vname or 'pooled'}] n={len(st)}")
+            for m, cs in chans.items():
+                c = consequences_each(st, [cs[i] for i in ix], u_bar)
+                gained = c.responds - b.responds
+                gr, gw = gained & c.right, gained - c.right
+                print(f"  {m:<9} respond {len(c.responds)} right {len(c.right)} wrong "
+                      f"{len(c.wrong)} U/q {c.utility:+.4f} · new {len(gained)} (right "
+                      f"{len(gr)}, wrong {len(gw)}) mean p1 new right "
+                      f"{_mean([c.p1[i] for i in gr]):.3f} new wrong "
+                      f"{_mean([c.p1[i] for i in gw]):.3f} · stopped "
+                      f"{len(b.responds - c.responds)}")
+    return 0
 
 
 # --- the capture --------------------------------------------------------------------------
@@ -480,6 +592,12 @@ def main(argv: list[str] | None = None) -> int:
     ft.add_argument("--generated", required=True)
     ft.add_argument("--owner", required=True)
     ft.set_defaults(func=cmd_fit)
+    cv_ = sub.add_parser("cv")
+    cv_.add_argument("--generated", required=True)
+    cv_.add_argument("--owner", required=True)
+    cv_.add_argument("--folds", type=int, default=5)
+    cv_.add_argument("--seed", type=int, default=20260930)
+    cv_.set_defaults(func=cmd_cv)
     a = ap.parse_args(argv)
     return int(a.func(a))
 
