@@ -258,12 +258,15 @@ def _calls(tree: ast.AST, name: str) -> bool:
 
 def test_only_the_decider_takes_the_act() -> None:
     """Rule 2: `bayes_act` is CALLED (by AST, not spelling) from core/decider.py and nowhere
-    else in the package; `argmax_action`, its unpriced alias, only from core/decide.py's own
-    thresholds."""
+    else in the package, and so is `choose`, the one function holding the `max` (the route
+    stage ranks through it too); `argmax_action`, the unpriced alias, only from
+    core/decide.py's own thresholds."""
     root = Path(__file__).resolve().parents[1] / "src" / "life_agent"
     trees = {str(p.relative_to(root)): ast.parse(p.read_text(encoding="utf-8"))
              for p in root.rglob("*.py")}
     assert {f for f, t in trees.items() if _calls(t, "bayes_act")} == {
+        "core/decide.py", "core/decider.py"}
+    assert {f for f, t in trees.items() if _calls(t, "choose")} == {
         "core/decide.py", "core/decider.py"}
     assert {f for f, t in trees.items() if _calls(t, "argmax_action")} == {"core/decide.py"}
     # nor does the enactment choose anything: it lists options and maps the winner

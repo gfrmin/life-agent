@@ -9,11 +9,14 @@ WITHOUT a live daemon or bridge.
 """
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import pytest
 
+from life_agent.core import decider as DCD
 from life_agent.core import executor as EX
+from life_agent.core import route_row as RR
 
 B = "http://bridge"
 D = "http://daemon"
@@ -25,6 +28,9 @@ _EXTRACT = {"candidates": ["P123"],
                               "subject_factor": 1.0, "time_factor": 1.0}],
             "rho": 0.7, "indeterminate": 0}
 
+
+_REJECTED = {"lookup": False, "kind": "summary", "construct": "the asked value",
+             "time_indexed": False}
 
 _GROW_MENU = {
     "features": {"names": ["extracted", "p_none", "indeterminate"],
@@ -45,7 +51,7 @@ class FakeServices:
     stream); ``extracts``, when given, is consumed per /extract call (a grow pass re-extracts);
     every other endpoint returns its fixed fixture. Records calls for assertions."""
 
-    def __init__(self, *, route: dict[str, Any] | None,
+    def __init__(self, *, route: dict[str, Any],
                  hits: list[dict[str, Any]] | None = None,
                  extract: dict[str, Any] | None = None,
                  extracts: list[dict[str, Any]] | None = None,
@@ -53,8 +59,13 @@ class FakeServices:
                  narrative: dict[str, Any] | None = None,
                  corroborate: dict[str, Any] | None = None,
                  deliberate: dict[str, Any] | None = None,
-                 utility: dict[str, float] | None = None) -> None:
-        self.route = route
+                 utility: dict[str, float] | None = None,
+                 route_row: dict[str, float] | None = None) -> None:
+        # a route names its verdict; a test that names none is naming an accepted lookup
+        self.route = {"lookup": True, "kind": "lookup", **route}
+        # the route stage is decided by the REAL decider under the shipped route row (the
+        # starting row of a KB with no fit) unless a test supplies another
+        self.route_row = route_row if route_row is not None else RR.load(Path("/absent"))
         self.hits = hits if hits is not None else _HIT
         self.extract = extract if extract is not None else _EXTRACT
         self._extracts = list(extracts) if extracts is not None else None
@@ -64,8 +75,12 @@ class FakeServices:
         self.deliberate = deliberate
         self.utility = utility if utility is not None else _U
         self.calls: list[tuple[str, dict[str, Any] | None]] = []
+        self.route_posts: list[dict[str, Any]] = []  # the route stage's /decide requests
 
     def post(self, url: str, payload: dict[str, Any]) -> dict[str, Any] | None:
+        if url.endswith("/decide") and payload.get("stage") == "route":
+            self.route_posts.append(payload)
+            return DCD.decide(payload, {**self.utility, **self.route_row})
         self.calls.append((url, payload))
         if url.endswith("/route"):
             return self.route
@@ -118,14 +133,67 @@ _ABSTAIN_EMPTY = {"effector": "abstain", "credences": [], "p_none": 1.0, "eu": 0
 _RESCUE_ORDER = ["retrieve_rerank", "retrieve_expand", "re_extract_strong"]
 
 
-def test_route_none_is_declined_without_retrieval() -> None:
-    # Not a verbatim point fact: the question is declined, and no second lane answers it.
-    fake = FakeServices(route=None)
+def test_a_rejected_question_is_declined_without_retrieval() -> None:
+    # The router rejects it and, under the shipped route row, the decider declines it at the
+    # route stage: no retrieval, no evidence-stage decide, and no second lane answers it.
+    fake = FakeServices(route=_REJECTED)
     view = _loop(fake, "tell me about my week")
-    assert (view["effector"], view["asserted"], view["route"]) == ("abstain", [], None)
+    assert (view["effector"], view["asserted"], view["route"]) == (
+        "abstain", [], {**_REJECTED})
+    assert view["stage"] == "route" and view["eu"] == 0.0
     assert view["rendered"] == EX.DECLINED_NOT_POINT_FACT
-    assert fake.posted("/retrieve") == [] and fake.posted("/decide") == []
+    assert fake.posted("/retrieve") == []
+    assert len(fake.route_posts) == 1
     assert [u for u, _ in fake.calls if u.endswith("/narrative")] == []
+
+
+def test_the_route_stage_prices_the_first_pass_at_lambda_usd() -> None:
+    fake = FakeServices(route=_REJECTED, utility={**_U, "lambda_usd": 2.0})
+    _loop(fake)
+    (posted,) = fake.route_posts
+    assert posted["stage"] == "route" and posted["lookup"] is False
+    assert posted["price"] == pytest.approx(EX.PRC.FIRST_PASS_USD * 2.0)
+
+
+def test_a_rejected_question_the_row_believes_is_a_lookup_runs_the_pass() -> None:
+    # the router's rejection is an observation, not a rule: under a row where a rejection
+    # is usually wrong, attempting is worth more than declining and the pass runs
+    believing = {**RR.load(Path("/absent")), RR.q_key(False): 0.9}
+    fake = FakeServices(
+        route=_REJECTED, route_row=believing,
+        decides=[{"effector": "report", "value": "P123", "credences": [0.95],
+                  "p_none": 0.02, "eu": 0.9}])
+    view = _loop(fake)
+    assert view["effector"] == "report" and view["asserted"] == ["P123"]
+    assert len(fake.posted("/retrieve")) == 1
+    assert len(fake.route_posts) == 1 and len(fake.posted("/decide")) == 1
+    assert view["route"]["kind"] == "summary"       # the pass carries the router's verdict
+
+
+def test_a_rejected_question_leaves_one_route_row_and_no_retrieval(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    # end to end through the one driver, the real decider under the shipped route row
+    import json
+
+    from life_agent.core import ask_client as AC
+    from life_agent.core import config as CFG
+    fake = FakeServices(route=_REJECTED)
+    r = AC.drive("q?", bridge=B, post=fake.post, get=fake.get, check_ready=False)
+    assert r.view is not None and r.view["effector"] == "abstain"
+    assert EX.render_view(r.view) == EX.DECLINED_NOT_POINT_FACT
+    assert fake.posted("/retrieve") == [] and fake.posted("/decide") == []
+    rows = [json.loads(ln) for ln in CFG.DECISIONS_LOG.read_text().splitlines()]
+    assert [(x["regime"], x["decision_id"]) for x in rows] == [("route", r.decision_id)]
+    assert rows[0]["posterior_summary"]["route"] == {"lookup": False, "kind": "summary"}
+
+
+def test_an_accepted_question_is_attempted_as_before() -> None:
+    fake = FakeServices(route={"construct": "passport number", "time_indexed": False},
+                        decides=[{"effector": "report", "value": "P123",
+                                  "credences": [0.95], "p_none": 0.05, "eu": 0.9}])
+    view = _loop(fake)
+    assert view["effector"] == "report" and "stage" not in view
+    assert len(fake.route_posts) == 1 and len(fake.posted("/decide")) == 1
 
 
 def test_the_declined_reply_is_the_origin_line_itself() -> None:
@@ -137,7 +205,7 @@ def test_the_declined_reply_is_the_origin_line_itself() -> None:
     from life_agent.core import lookup as LK
     assert LK.origin_line(
         "declined", reason=DEC.REASON_NOT_POINT_FACT) == EX.DECLINED_NOT_POINT_FACT
-    view = _loop(FakeServices(route=None), "tell me about my week")
+    view = _loop(FakeServices(route=_REJECTED), "tell me about my week")
     assert EX.render_view(view) == LK.origin_line(
         "declined", reason=view["origin"]["reason"])
 
@@ -584,10 +652,10 @@ def _real_decider(fake: FakeServices, u_bar: dict[str, float]) -> FakeServices:
     scripted = fake.post
 
     def post(url: str, payload: dict[str, Any]) -> dict[str, Any] | None:
-        if url.endswith("/decide"):
+        if url.endswith("/decide") and payload.get("stage") != "route":
             fake.calls.append((url, payload))
             return DCD.decide(payload, u_bar)
-        return scripted(url, payload)
+        return scripted(url, payload)  # the route stage keeps the fake's own route row
 
     fake.post = post  # type: ignore[method-assign]
     return fake
@@ -898,7 +966,7 @@ def test_miss_and_narrative_views_default_the_raw_proposal_fields() -> None:
     assert miss["effector"] == "miss"
     assert miss["instrument_value"] is None
     assert miss["instrument_lineage"] is None
-    narr = _loop(FakeServices(route=None, narrative={
+    narr = _loop(FakeServices(route=_REJECTED, narrative={
         "action": "report", "asserted": ["you travelled in May"],
         "rendered": "you travelled in May [1]\n\nnarrative footer",
         "hits": [{"artifact_cache_key": "d0", "chunk_text": "x"}]}),
@@ -1138,7 +1206,7 @@ def test_all_view_shapes_carry_spend() -> None:
         decides=[{"effector": "report", "value": "P123", "credences": [0.95],
                   "p_none": 0.02, "eu": 0.9}]))
     assert plain["spend_usd"] == 0.0
-    narr = _loop(FakeServices(route=None, narrative={
+    narr = _loop(FakeServices(route=_REJECTED, narrative={
         "action": "report", "asserted": ["you travelled in May"],
         "rendered": "you travelled in May [1]\n\nnarrative footer",
         "hits": [{"artifact_cache_key": "d0", "chunk_text": "x"}]}),
@@ -1185,7 +1253,7 @@ def test_all_view_shapes_carry_edge_events() -> None:
     # never a candidate.
     assert [e["edge"] for e in miss["edge_events"]] == ["extract@claude-opus-4-8"]
     assert miss["edge_events"][0]["value"] is None
-    narr = _loop(FakeServices(route=None, narrative={
+    narr = _loop(FakeServices(route=_REJECTED, narrative={
         "action": "report", "asserted": ["you travelled in May"],
         "rendered": "you travelled in May [1]\n\nnarrative footer",
         "hits": [{"artifact_cache_key": "d0", "chunk_text": "x"}]}),
@@ -1435,7 +1503,7 @@ def test_loop_views_carry_the_question(monkeypatch) -> None:
                   "p_none": 0.05, "eu": 0.8}])
     view = _loop(fake)
     assert view["question"] == "what is my passport number?"
-    nfake = FakeServices(route=None, narrative={
+    nfake = FakeServices(route=_REJECTED, narrative={
         "action": "report", "asserted": ["x"], "rendered": "prose", "hits": []})
     nview = _loop(nfake)
     assert nview["question"] == "what is my passport number?"
@@ -1679,7 +1747,7 @@ def test_the_view_names_the_probes_it_applied() -> None:
 
 
 def test_a_declined_route_applied_nothing() -> None:
-    view = _loop(FakeServices(route=None))
+    view = _loop(FakeServices(route=_REJECTED))
     assert view["applied"] == []
 
 
@@ -1704,7 +1772,7 @@ def test_a_withheld_view_is_declined_with_its_reason() -> None:
 
 
 def test_a_declined_route_is_declined_as_not_a_point_fact() -> None:
-    view = _loop(FakeServices(route=None))
+    view = _loop(FakeServices(route=_REJECTED))
     assert view["origin"] == {"kind": "declined", "rung": "", "reason": "not a point fact"}
     assert EX.render_view(view).startswith("Declined:")   # the route's own text leads
 

@@ -4,7 +4,7 @@ CLAUDE.md rule 2: there is one decider. The *decision* lives in the bridge's ``/
 (:mod:`life_agent.core.decider`: the candidate posterior, then the Bayes act). This module
 is the **body** that enacts it over the life-agent capability bridge:
 
-    route → retrieve → probe/{subject,recency} → extract → /decide
+    route → /decide (attempt or decline) → retrieve → probe/{subject,recency} → extract → /decide
 
 then, while the decider returns ``gather`` (with the probe to run), enact the named probe
 (a corroborate re-read, a deliberate read, or a recall grow) and re-decide — until a
@@ -39,9 +39,8 @@ from life_agent.core import seam as SEAM
 Curves = dict[str, CAL.ReliabilityCurve] | None
 
 # The transport seams, injected by the caller (PRINCIPLES §5): ``post(url, payload)`` returns the
-# decoded JSON object, or ``None`` for ``/route`` on a non-typed question; ``get(url)`` returns the
-# decoded JSON object. The loop builds the URLs from the ``bridge`` base string, so a fake can
-# route on the suffix.
+# decoded JSON object; ``get(url)`` returns the decoded JSON object. The loop builds the URLs
+# from the ``bridge`` base string, so a fake can route on the suffix.
 Post = Callable[[str, dict[str, Any]], "dict[str, Any] | None"]
 Get = Callable[[str], dict[str, Any]]
 
@@ -167,52 +166,69 @@ def _rescue_rho(curves: Curves, edge: str, reply: dict[str, Any]) -> float:
 
 
 def _obj(post: Post, url: str, payload: dict[str, Any]) -> dict[str, Any]:
-    """``post`` for endpoints that always answer a JSON object — every one but ``/route``,
-    which can return null for a non-typed question (guarded at its one call site)."""
+    """``post`` for endpoints that always answer a JSON object."""
     out = post(url, payload)
     assert out is not None, f"{url} returned null"
     return out
 
 
-# The reply to a question the router does not classify as a verbatim point fact. Such a
-# question is declined, not answered by a second lane (the MVP bar, CLAUDE.md). The line
-# is the ORIGIN's line, from the one renderer every other reply uses (rule 3: provenance
-# on every answer, by one derivation). It used to be a second, hand-written sentence that
-# happened to start with "Declined:" — a reply whose origin agreed with the grammar by
-# coincidence rather than by construction, and the only path where re-wording the grammar
-# would have left a stale first line behind.
+# The reply to a question the decider declines at the route stage. Such a question is declined,
+# not answered by a second lane (the MVP bar, CLAUDE.md). The line is the ORIGIN's line, from
+# the one renderer every other reply uses (rule 3: provenance on every answer, by one
+# derivation). It used to be a second, hand-written sentence that happened to start with
+# "Declined:" — a reply whose origin agreed with the grammar by coincidence rather than by
+# construction, and the only path where re-wording the grammar would have left a stale first
+# line behind.
 DECLINED_NOT_POINT_FACT = LK.origin_line("declined", reason=DEC.REASON_NOT_POINT_FACT)
+
+
+def _declined_at_route(question: str, route: dict[str, Any], eu: float | None) -> View:
+    """The view of a question the decider declined before any retrieval: nothing was
+    gathered or spent, ``stage`` says where the decision was taken, ``route`` carries the
+    router's verdict and kind."""
+    return {"effector": "abstain", "asserted": [], "candidates": [],
+            "credences": [], "p_none": None, "eu": eu, "n_obs": 0,
+            "hits": [], "route": route, "stage": SEAM.STAGE_ROUTE,
+            "rendered": DECLINED_NOT_POINT_FACT,
+            "n_indeterminate": 0, "question": question,
+            **_UNPRICED_ATTRIBUTION, "edge_events": [], "spend_usd": 0.0,
+            "applied": [],
+            "origin": DEC.Origin("declined", reason=DEC.REASON_NOT_POINT_FACT).as_dict()}
 
 
 def decide_via_loop(question: str, k: int, *, bridge: str, post: Post, get: Get,
                     transforms: list[dict[str, Any]] | None = None,
                     curves: Curves = None) -> View:
-    """Drive one question through the live loop: route, then the decided pass.
+    """Drive one question through the live loop: route, decide whether to attempt it, then
+    the decided pass.
 
-    A declined route (``/route`` → null) is not a verbatim point fact: the question is
-    declined with no retrieval. A typed route runs :func:`run_pass`."""
+    The router's verdict (``/route``, an observation for every question) goes to the decider
+    through the seam, priced with the first pass in utility (``lambda_usd`` per dollar); the
+    decider's ``attempt`` runs :func:`run_pass`, its ``abstain`` declines the question with
+    no retrieval."""
     transforms = DEFAULT_TRANSFORMS if transforms is None else transforms
-    route = post(f"{bridge}/route", {"question": question})
-    if route is None:
-        return {"effector": "abstain", "asserted": [], "candidates": [],
-                "credences": [], "p_none": None, "eu": None, "n_obs": 0,
-                "hits": [], "route": None, "rendered": DECLINED_NOT_POINT_FACT,
-                "n_indeterminate": 0, "question": question,
-                **_UNPRICED_ATTRIBUTION, "edge_events": [], "spend_usd": 0.0,
-                "applied": [],
-                "origin": DEC.Origin("declined", reason=DEC.REASON_NOT_POINT_FACT).as_dict()}
+    route = _obj(post, f"{bridge}/route", {"question": question})
+    u_bar = get(f"{bridge}/utility")["u_bar"]
+    rate = float(u_bar["lambda_usd"])  # REQUIRED latent — a missing one fails loud (E-5)
+    dec = SEAM.commit(SEAM.Decide(post=post, bridge=bridge, payload={
+        "stage": SEAM.STAGE_ROUTE, "question_id": DEC.question_id(question),
+        "lookup": bool(route["lookup"]), "price": PRC.FIRST_PASS_USD * rate})).view
+    assert dec is not None  # a Decide commit always carries the reply view
+    if dec["effector"] != "attempt":
+        return _declined_at_route(question, route, dec["eu"])
     return run_pass(question, k, route, bridge=bridge, post=post, get=get,
-                    transforms=transforms, curves=curves)
+                    transforms=transforms, curves=curves, u_bar=u_bar)
 
 
 def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str,
              post: Post, get: Get,
              transforms: list[dict[str, Any]] | None = None,
-             curves: Curves = None) -> View:
+             curves: Curves = None, u_bar: dict[str, float] | None = None) -> View:
     """One retrieve→probe→extract→decide pass at a given recall breadth, enacting each
     gather the decider chooses (the transform menu and the grow actuators), each grow
-    logged to ``/log_gather``. Returns the normalized view ``{effector, asserted,
-    candidates, credences, p_none, eu, hits, route}``."""
+    logged to ``/log_gather``. ``u_bar`` is the utility the caller already read (read here
+    when not given). Returns the normalized view ``{effector, asserted, candidates,
+    credences, p_none, eu, hits, route}``."""
     transforms = DEFAULT_TRANSFORMS if transforms is None else transforms
 
     # the question's TOTAL metered spend — base instruments (subject/extract cache
@@ -276,7 +292,8 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str,
                             "lineage": reply.get("cache_key")})
 
     applied: list[str] = []
-    u_bar = get(f"{bridge}/utility")["u_bar"]
+    if u_bar is None:
+        u_bar = get(f"{bridge}/utility")["u_bar"]
     # price the menu in the OWNER'S utility (plan item C): transform rows and grow
     # actuators are AUTHORED in USD; the elicited exchange rate (lambda_usd, gauge
     # units per dollar — a learned latent, never a constant invented here) converts

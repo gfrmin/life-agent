@@ -27,7 +27,11 @@ _SRC = _ROOT / "src" / "life_agent"
 # called.
 
 _QUESTION_CONSUMERS: dict[str, frozenset[str]] = {
-    "executor.decide_via_loop": frozenset({"_obj", "post", "run_pass"}),
+    # `question_id` hashes it for the route-stage request; `_declined_at_route` only carries it
+    # into the declined view: neither reads it to decide anything (the decider ranks the router's
+    # verdict, an observation, and never the text)
+    "executor.decide_via_loop": frozenset({"_obj", "post", "run_pass", "question_id",
+                                           "_declined_at_route"}),
 }
 
 

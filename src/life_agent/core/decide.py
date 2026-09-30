@@ -29,6 +29,15 @@ utility, ties to the first-listed option (the order is :func:`options`'s contrac
 The information rows are **measured evidence models**, not the preposterior over the current
 posterior; that is a door in ``ROADMAP.md``.
 
+**The route state** (:func:`route_options`) is the choice made before any retrieval: whether
+to attempt the question at all. Its rows are ``abstain`` and ``attempt``. The router's
+verdict is an OBSERVATION of the answer type: a question it rejects (a list, an aggregate, a
+summary, several values at once) has, if the router is right, no single-span answer, so it
+lies outside the hypothesis space (candidate spans, or NONE) and attempting it cannot end
+right. The only uncertainty is whether the router is right: ``q`` = P(single-span answer |
+verdict), one measured number per verdict. ``attempt`` is worth ``q·V_lookup + (1 - q)·V_other
+- price`` (:mod:`life_agent.core.route_row`).
+
 ``u_wrong``/``lambda_int``/``kappa_att`` are :class:`life_agent.core.utility.UtilityPosterior`
 latents; ``u_correct``/``u_abstain`` its gauge constants.
 """
@@ -39,10 +48,14 @@ from dataclasses import dataclass
 
 from life_agent.core import answer_shape as AS
 from life_agent.core import gather_row as GR
+from life_agent.core import route_row as RR
 
 #: The actions, in tie-break order: the first-listed wins an exact tie, so ``abstain`` is
 #: the safe default when nothing is better.
 ACTIONS: tuple[str, ...] = ("abstain", "gather", "ask", "respond")
+
+#: The route state's actions, in tie-break order: declining wins an exact tie.
+ROUTE_ACTIONS: tuple[str, ...] = ("abstain", "attempt")
 
 #: The u_bar key carrying the ask's measured recovery rate.
 ASK_RECOVERY_KEY = "ask_recovery"
@@ -107,11 +120,41 @@ def options(u_bar: Mapping[str, float], credences: Sequence[float],
               for j, c in enumerate(credences))]
 
 
+def choose(rows: Sequence[Option]) -> Option:
+    """THE argmax: the :class:`Option` of highest expected utility among ``rows``, an exact
+    tie going to the first-listed. Every stage's rows are ranked here and nowhere else."""
+    return max(rows, key=lambda o: o.eu)
+
+
 def bayes_act(u_bar: Mapping[str, float], credences: Sequence[float],
               gathers: Sequence[tuple[str, float]] = ()) -> Option:
-    """THE decision: the :class:`Option` maximising expected utility over :func:`options`;
-    an exact tie goes to the first-listed option."""
-    return max(options(u_bar, credences, gathers), key=lambda o: o.eu)
+    """THE decision over the candidate posterior: :func:`choose` over :func:`options`."""
+    return choose(options(u_bar, credences, gathers))
+
+
+def route_options(u_bar: Mapping[str, float], lookup: bool) -> list[Option]:
+    """The pre-retrieval state as rows, in tie-break order: ``abstain`` (``u_abstain``), then
+    ``attempt`` at ``q·V_lookup + (1 - q)·V_other - price``, where, all read from ``u_bar``
+    (:mod:`life_agent.core.route_row`):
+
+    - ``q`` is P(the question has a single-span answer | the router's verdict ``lookup``);
+    - ``V_lookup = r·u_correct + w·u_wrong + (1 - r - w)·u_abstain``, the value of attempting
+      a real lookup at the measured right / wrong rates ``r``, ``w``;
+    - ``V_other = w_o·u_wrong + (1 - w_o)·u_abstain``: a question whose answer is not a span
+      is never answered right;
+    - ``price`` is the first pass's price in utility (unpriced, 0).
+    """
+    u_correct = float(u_bar.get("u_correct", 1.0))
+    u_abstain = float(u_bar.get("u_abstain", 0.0))
+    u_wrong = float(u_bar.get("u_wrong", -9.0))
+    row = {k: float(u_bar.get(k, RR.PRIOR[k])) for k in RR.PRIOR}
+    right, wrong = row[RR.RIGHT_KEY], row[RR.WRONG_KEY]
+    q = row[RR.q_key(lookup)]
+    v_lookup = right * u_correct + wrong * u_wrong + (1.0 - right - wrong) * u_abstain
+    v_other = row[RR.WRONG_OTHER_KEY] * u_wrong + (1.0 - row[RR.WRONG_OTHER_KEY]) * u_abstain
+    price = float(u_bar.get(RR.PRICE_KEY, 0.0))
+    return [Option("abstain", None, u_abstain),
+            Option("attempt", None, q * v_lookup + (1.0 - q) * v_other - price)]
 
 
 def argmax_action(u_bar: Mapping[str, float], p1: float) -> str:

@@ -33,6 +33,15 @@ PRICING_VERSION = 3
 EXTRACT_AMOUNTS_USD = 0.01
 
 
+# The first pass's price in USD: what one question's retrieve, subject and extract calls meter
+# when no probe is applied. The route stage (core/decide.route_options) prices attempting a
+# question at this, converted to utility at lambda_usd. FITTED (scripts/fit_route_row.py):
+# the mean of `metered_usd - cost_usd` over the pinned typed archives' rows that applied no
+# probe and were billed (metered above $0; a cache-served pass is not free, the board prices
+# the act, not the cache): 13 rows of the owner and generated sets, mean $0.0161.
+FIRST_PASS_USD = 0.0161
+
+
 @dataclass(frozen=True)
 class ModelPrice:
     """USD per Mtok (million tokens) for one token kind each."""

@@ -1,0 +1,12 @@
+{
+  "format_version": 1,
+  "source": "Fitted by scripts/fit_route_row.py on the author's own corpus: q per verdict from a 40-item labelled route audit (19 lookups, 21 not; the router accepted 19 of 19 lookups and rejected 21 of 21 non-lookups), r and w from 311 recorded attempts (133 right, 4 wrong, 174 declined; the router declined 5 more rows, not counted), Dirichlet(2,2,2) means. route_wrong_other is ASSUMED equal to route_wrong: nothing measures how often a question whose answer is not a span is committed wrong. These are aggregate rates: no question, document or value of that corpus is recoverable from them.",
+  "why": "A KB with no fit has no route row, and the built-in prior (every rate 1/3, q 1/2) prices attempting a question at about -2.8 at u_wrong = -9, so the decider would decline EVERY question at the route stage. That is a decider that cannot start. This row is the starting point (the router is right about what it accepts, so accepted questions are attempted and rejected ones declined); yours replaces it as soon as you have recorded outcomes (`scripts/fit_route_row.py`).",
+  "row": {
+    "route_q@accept": 0.9523809523809523,
+    "route_q@reject": 0.043478260869565216,
+    "route_right": 0.42586750788643535,
+    "route_wrong": 0.01892744479495268,
+    "route_wrong_other": 0.01892744479495268
+  }
+}

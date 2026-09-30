@@ -169,9 +169,18 @@ def post_decision(post: Any, bridge: str, question: str, view: dict[str, Any], *
     grounded, the loop returned before ``/decide``) appends the r33 RC-1 row LOCALLY —
     ``regime: "miss"``, a real id the verdict can bind to, excluded from the fold — never
     a bridge post (the bridge derives ids for ranked decisions and stamps the current
-    fold version, both wrong here). A route-null question's decision is the narrative
-    question (declined as not a point fact) posts nothing. Fail-open by contract and NAMED: a
-    calibration-log write never breaks the answer."""
+    fold version, both wrong here). A question the decider declined at the route stage
+    (before any retrieval) appends the same kind of local row, ``regime: "route"``, with the
+    router's verdict and kind. Fail-open by contract and NAMED: a calibration-log write
+    never breaks the answer."""
+    if view.get("stage") == SEAM.STAGE_ROUTE:
+        try:
+            return REC.record_route(
+                question, lookup=bool(view["route"]["lookup"]),
+                kind=str(view["route"]["kind"]), eu=view["eu"], run_id=run_id)
+        except Exception as e:  # fail-open: the verdict simply has nothing to bind to
+            print(f"  (decision not logged: {e})")
+            return None
     if view["route"] is not None and view["effector"] == "miss":
         try:
             return REC.record_miss(

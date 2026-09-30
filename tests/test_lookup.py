@@ -74,9 +74,51 @@ def test_route_time_indexed_classification(migrated_root: Path) -> None:
     assert r == LK.Route(construct="home address", time_indexed=True)
 
 
-def test_route_non_lookup_is_none(migrated_root: Path) -> None:
-    client = FakeClient({"lookup": False})
-    assert route_question(migrated_root, "summarise my year", client=client) is None
+def test_route_non_lookup_is_a_route_naming_its_kind(migrated_root: Path) -> None:
+    # the route is an observation for EVERY question: a rejection carries its kind, the
+    # fallback construct and the model's time_indexed (default False)
+    client = FakeClient({"lookup": False, "kind": "summary"})
+    r = route_question(migrated_root, "summarise my year", client=client)
+    assert r == LK.Route(construct="the asked value", time_indexed=False, lookup=False,
+                         kind="summary")
+    assert route_question(migrated_root, "summarise my year", client=client) == r
+    assert client.calls == 1  # the rejection is cached like any verdict
+
+
+@pytest.mark.parametrize("kind", ["list", "aggregate", "summary", "multiple"])
+def test_route_rejection_kinds_are_parsed(migrated_root: Path, kind: str) -> None:
+    client = FakeClient({"lookup": False, "kind": kind})
+    assert route_question(migrated_root, f"q {kind}", client=client).kind == kind
+
+
+@pytest.mark.parametrize("reply", [{"lookup": False}, {"lookup": False, "kind": "haiku"},
+                                   {"lookup": False, "kind": ""}])
+def test_route_rejection_without_a_known_kind_is_other(migrated_root: Path,
+                                                       reply: dict) -> None:
+    r = route_question(migrated_root, "q", client=FakeClient(reply))
+    assert (r.lookup, r.kind) == (False, "other") and "other" in LK.REJECTED_KINDS
+
+
+def test_route_lookup_has_kind_lookup(migrated_root: Path) -> None:
+    r = route_question(migrated_root, "q", client=FakeClient(
+        {"lookup": True, "construct": "tax id", "kind": "list"}))
+    assert (r.lookup, r.kind, r.construct) == (True, "lookup", "tax id")
+
+
+def test_route_prompt_asks_for_the_kind_and_keeps_its_four_criteria() -> None:
+    for kind in LK.REJECTED_KINDS[:4]:
+        assert f'"{kind}"' in LK.ROUTE_PROMPT
+    for criterion in ("a list or set", "an aggregate the READER must compute",
+                      "a summary, overview, comparison, or explanation",
+                      "MULTIPLE separate values at once"):
+        assert criterion in LK.ROUTE_PROMPT
+    assert "kind" in LK.ROUTE_SCHEMA["properties"]
+
+
+def test_the_route_cache_is_rekeyed_by_the_version() -> None:
+    from life_agent.core import derivations as D
+
+    assert D.LOOKUP_ROUTE_VERSION != "1"   # verdicts cached before `kind` are re-derived
 
 
 def test_prompt_templates_are_single_braced() -> None:

@@ -10,6 +10,9 @@ Three writers, one shape:
   derives the content-addressed ``decision_id`` the owner reacts against.
 - :func:`record_miss` — the lookup grounded nothing, the loop returned before ``/decide``:
   a local ``regime: miss`` row, so a verdict on it stays out of the utility fold.
+- :func:`record_route` — the decider declined the question at the route stage, before any
+  retrieval: a local ``regime: route`` row carrying the router's verdict and kind, likewise
+  kept out of the utility fold.
 - :func:`record_unavailable` — §6.5: when no optimiser is reachable there is no ranking to
   be inside of; the record is an *unavailability event* (``regime: unavailable``, stated)
   with ``decision_id: ""`` so no verdict can ever bind — never a foldable abstain verdict.
@@ -98,6 +101,35 @@ def record_miss(question: str, *, retrieval_keys: list[str],
             chosen_action="abstain", predicted_eu=0.0, decision_id=decision_id,
             instrument="", cost_usd=0.0, latency_s=0.0,
             regime="miss", policy=DEC.POLICY_DEFAULT,
+            # the writer STATES the regime; it cannot state a policy no fold used
+            defaulted=("policy",)))
+    return decision_id
+
+
+def record_route(question: str, *, lookup: bool, kind: str, eu: float | None,
+                 run_id: str | None = None, decisions_path: Path | None = None) -> str:
+    """The route row: the decider declined the question before any retrieval. Written like
+    :func:`record_miss` (a local append; the bridge derives ids for ranked decisions and
+    stamps the current fold version, both wrong here): ``regime: "route"``,
+    ``chosen_action: "abstain"``, the router's ``lookup`` and ``kind`` in the posterior
+    summary (what the live counts of each rejected kind are read from), the abstain row's
+    expected utility, and a REAL content-addressed ``decision_id`` a verdict can bind to. The
+    id is the one rule over the pseudo retrieval key ``route:<kind>``, so a question's route
+    row and a later miss row for it never share an id."""
+    decision_id = DEC.decision_id_for(question, [f"route:{kind}"], [], 0.0)
+    DEC.append(
+        decisions_path if decisions_path is not None else config.DECISIONS_LOG,
+        DEC.DecisionEvent(
+            tx_time=O.now_iso(), run_id=run_id or RUN_ID_DEFAULT,
+            question_id=DEC.question_id(question),
+            family="lookup", action_set=DEC.LOOKUP_ACTION_ORDER,
+            posterior_summary={"candidates": [], "credences": [], "p_none": 0.0,
+                               "n_obs": 0, "n_indeterminate": 0, "n_competing": 0,
+                               "route": {"lookup": lookup, "kind": kind}},
+            utility_fold_version="",  # no fold ran — the decision was taken before /decide
+            chosen_action="abstain", predicted_eu=eu if eu is not None else 0.0,
+            decision_id=decision_id, instrument="", cost_usd=0.0, latency_s=0.0,
+            regime="route", policy=DEC.POLICY_DEFAULT, origin="declined",
             # the writer STATES the regime; it cannot state a policy no fold used
             defaulted=("policy",)))
     return decision_id

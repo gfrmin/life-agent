@@ -10,6 +10,8 @@ It ranks nothing and picks nothing: no ``max``, ``min`` or ``sorted`` (drift-gat
   probes' cheapest rows appear. Guard-kind transforms are never gather options.
 * **respond → the candidate the option names, gather → the probe it names.**
 * **ask → ask_clarify, abstain → abstain.**
+* **At the route stage** (:func:`enact_route`): attempt → the ``attempt`` effector (the
+  executor runs a pass), abstain → ``abstain`` (the executor builds the declined view).
 """
 from __future__ import annotations
 
@@ -59,3 +61,13 @@ def enact(option: DEC.Option, payload: dict[str, Any], credences: Sequence[float
             raise ValueError("gather was chosen with no gather option open")
         return {**view, "effector": "gather", "probe": option.target}
     raise ValueError(f"undeclared action {option.action!r} (declared: {list(DEC.ACTIONS)})")
+
+
+def enact_route(option: DEC.Option) -> dict[str, Any]:
+    """The executor's view of the route stage's winning ``option``: ``effector`` is
+    ``attempt`` (run the pass) or ``abstain`` (decline the question)."""
+    if option.action not in DEC.ROUTE_ACTIONS:
+        raise ValueError(f"undeclared route action {option.action!r} "
+                         f"(declared: {list(DEC.ROUTE_ACTIONS)})")
+    return {"effector": option.action, "credences": [], "p_none": None,
+            "value": None, "probe": None}

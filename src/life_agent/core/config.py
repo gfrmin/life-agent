@@ -78,6 +78,7 @@ DECISIONS_LOG = KB / "calibration" / "decisions.jsonl"
 # The fitted gather row (core/gather_row; scripts/fit_gather_row.py writes it). Absent, the
 # decider prices gathering at the row's prior.
 GATHER_ROW = KB / "calibration" / "gather_row.json"
+ROUTE_ROW = KB / "calibration" / "route_row.json"
 
 # The reaction log (foundations §4.4 reaction loop): owner verdicts on the agent's
 # decisions, joined to DECISIONS_LOG by decision_id. The calibration leg's third
