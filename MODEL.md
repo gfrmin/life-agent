@@ -124,29 +124,59 @@ turns it into a reply (the MAP candidate on `respond`, the cheapest open transfo
 
 ## 5. Laws
 
-Each is a test or a failing check, not a guideline.
+Each is a test or a failing check, not a guideline; the test that enforces it is named, or the
+law is marked **unenforced**.
 
 1. **Never invent.** A `respond` names a candidate with at least one grounded observation;
-   otherwise the act is not available.
+   otherwise the act is not available. Tests: `tests/test_lookup.py::test_ungrounded_quote_is_indeterminate_and_recorded`
+   (an ungrounded quote is no observation), `tests/test_decider.py::test_a_certain_leader_is_reported_and_an_uncertain_one_withheld`.
 2. **String-blind.** The decider receives indices and numbers, never candidate text.
+   **Unenforced:** `core/decider.py` reads only `len(candidates)`, but no test perturbs candidate text.
 3. **One argmax.** No module but `core/decide.bayes_act` ranks actions; its callers are
-   drift-gated (`tests/test_decider.py`).
+   drift-gated. Test: `tests/test_decider.py::test_only_the_decider_takes_the_act`.
 4. **Provenance.** Every reply carries its origin; every commit, its citation and credence.
+   Tests: `tests/test_executor.py::test_the_view_carries_its_origin_and_the_render_leads_with_it`,
+   `tests/test_decisions.py::test_origin_is_documents_rung_or_declined`.
 5. **Write-once records.** Decision, disclosure and verdict rows are never edited; a
-   retraction is a new row.
+   retraction is a new row. Tests: `tests/test_outcomes.py::test_append_appends_never_truncates_and_order_is_preserved`,
+   `tests/test_derivations.py::test_record_is_write_once`; **unenforced** for the decision and reaction logs.
 6. **One home per constant.** Channel constants, prices and the action vocabulary are each
-   declared once (`core/pricing.py`) and bound everywhere else.
+   declared once (`core/pricing.py`) and bound everywhere else. Test:
+   `tests/test_pricing_table.py::test_no_priced_constant_is_declared_outside_the_table` (prices only).
 7. **Named degradation.** Bridge down ⇒ the reply says so; there is no fallback decider. A
-   failed rung ⇒ a disclosure row and no answer.
+   failed rung ⇒ a disclosure row and no answer. Tests: `tests/test_ask_client.py::test_answer_names_a_down_stack`,
+   `tests/test_executor.py::test_the_body_side_cascade_is_gone`; **unenforced** for the failed-rung clause.
 8. **Correlated evidence is tempered.** Copies of one attestation never count as independent.
+   Tests: `tests/test_posterior.py::test_the_temper_counts_chunks_and_documents_below_their_number`,
+   `tests/test_bridge.py::test_same_document_shares_one_ancestry_group`.
 9. **Feasibility is structural.** A SEALED document can never reach a disclosing rung.
+   **Unenforced:** nothing in `src/` marks or checks SEALED.
 10. **Calibration is measured.** A-CAL is read off the verdict stream, never assumed.
+    **Unenforced:** `outcomes.ece` and the edge curves are unit-tested
+    (`tests/test_outcomes.py`, `tests/test_calibration.py`), but nothing fails when calibration goes unread.
 
 ## 6. Scoreboard
 
 `eval/score.py` → `SCOREBOARD.md`. Per set and arm: rows · right · wrong · escalated-right ·
 escalated-wrong · declined · $/q · U/q · s/q. Sets: `owner` (the owner's 104 questions),
-`atm` (ATM-Bench email-only number-typed, 198), `live` (the stream since the reset), `sample`
-(synthetic, CI). Every row is graded by exact match. Rule 5: a change merges when no row's
+`generated` (212 questions extracted from the corpus by `make golden`), `atm` (ATM-Bench
+email-only number-typed, 198), `live` (the stream since the reset), `sample` (synthetic, CI). Every row is graded by exact match. Rule 5: a change merges when no row's
 expected utility falls against the committed board, both priced at the folded gauge
 (`eval.score --gate`; the expectation is the mean over the runs taken).
+
+## 7. The read path
+
+```
+scripts/ask.py / reach/jarvis.py
+  └─ core/ask_client.drive
+       └─ core/executor.run_pass     the loop; holds NO posterior and picks NO action
+            └─ bridge/server.py      :8798 gathers and SHAPES evidence, and hosts the decider
+                 ├─ /route           lane classifier (core/answer_shape.py); not a point fact ⇒ declined
+                 ├─ /retrieve        BM25 over DuckDB FTS
+                 ├─ probes           subject, recency, corroborate, deliberate
+                 ├─ /extract         LLM per chunk → candidates + integer observations
+                 └─ /decide          core/decider.py: core/posterior.py → decide.bayes_act → enact
+```
+
+The bridge gathers evidence and hosts the one decider. With the bridge down the reply says the
+decider is unavailable; nothing answers in its place (law 7).

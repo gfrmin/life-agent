@@ -21,6 +21,11 @@ New entries are **merged** into pkm's existing ``sources.yaml`` (deduped by path
 tags unioned) — never clobbering the curated corpus. ``--dry-run`` prints the merged
 manifest and skips both the write and ``pkm ingest``.
 
+With ``--extract``, the run is **preflighted**: every producer the config declares is
+checked against what is installed, and all of the drifted ones are named before any work
+begins. pkm's own guard is per-producer and lazy, so it reports one drifted producer per
+full pass over the corpus; this reports them together. ``--no-preflight`` opts out.
+
 Run from the repo root:
     uv run --project . python scripts/ingest_sources.py --dry-run
 """
@@ -31,7 +36,9 @@ import argparse
 import os
 import subprocess
 import sys
+from collections.abc import Callable, Mapping
 from pathlib import Path
+from typing import NamedTuple
 
 import yaml
 
@@ -220,6 +227,85 @@ def _write_sources(sources_yaml: Path, entries: list[dict]) -> None:
 
 
 # --------------------------------------------------------------------------- #
+# Preflight: the extractor versions this run is about to depend on
+# --------------------------------------------------------------------------- #
+
+#: What a probe reports when the producer is declared but cannot be interrogated at all.
+UNAVAILABLE = "unavailable"
+
+
+class Drift(NamedTuple):
+    """One producer whose installed version is not the one the pkm config declares."""
+
+    producer: str
+    declared: str
+    installed: str
+
+    def line(self) -> str:
+        return (f"  {self.producer}: config declares {self.declared!r}, "
+                f"installed is {self.installed!r}")
+
+
+def declared_versions(pkm_config: Path) -> dict[str, str]:
+    """The version each producer is declared at under ``extractors:``."""
+    cfg = yaml.safe_load(pkm_config.read_text(encoding="utf-8")) or {}
+    return {name: str((spec or {}).get("version", ""))
+            for name, spec in (cfg.get("extractors") or {}).items()}
+
+
+def _default_probes() -> dict[str, Callable[[], str]]:
+    """pkm owns version discovery; this is a lookup table over it, never a second
+    implementation. Imported lazily so a test can inject its own probes without
+    importing the producer modules at all."""
+    from pkm.producers.docling import installed_docling_version
+    from pkm.producers.email_producer import installed_email_version
+    from pkm.producers.pandoc import installed_pandoc_version
+    from pkm.producers.tesseract import installed_tesseract_version
+    from pkm.producers.unstructured import installed_unstructured_version
+
+    return {"pandoc": installed_pandoc_version,
+            "docling": installed_docling_version,
+            "unstructured": installed_unstructured_version,
+            "tesseract": installed_tesseract_version,
+            "email": installed_email_version}
+
+
+def version_drift(declared: Mapping[str, str],
+                  probes: Mapping[str, Callable[[], str]] | None = None) -> list[Drift]:
+    """EVERY producer whose installed version disagrees with the declared one.
+
+    All of them, never only the first. pkm's own guard is correct but *lazy*: it
+    constructs a producer when a source first routes to it, so a run that aborts on
+    docling has said nothing about unstructured or tesseract, and the next run aborts
+    on the next one. Three of five had drifted on 2026-09-20 and each cost a full pass
+    over the corpus to discover.
+
+    A producer the config does not declare is not checked — pkm only requires config for
+    the producers routing actually reaches. A probe that raises is itself drift (declared,
+    but not answering), reported with its reason rather than swallowed.
+    """
+    table = _default_probes() if probes is None else probes
+    out: list[Drift] = []
+    for name, want in declared.items():
+        probe = table.get(name)
+        if probe is None:
+            continue
+        try:
+            got = probe()
+        except Exception as e:  # any discovery failure is drift, and hiding it only
+            got = f"{UNAVAILABLE} ({type(e).__name__})"  # defers the same abort
+        if got != want:
+            out.append(Drift(name, want, got))
+    return out
+
+
+def preflight(pkm_config: Path,
+              probes: Mapping[str, Callable[[], str]] | None = None) -> list[Drift]:
+    """The drift this run would hit, read before any work is done."""
+    return version_drift(declared_versions(pkm_config), probes)
+
+
+# --------------------------------------------------------------------------- #
 # CLI
 # --------------------------------------------------------------------------- #
 
@@ -260,6 +346,12 @@ def main() -> int:
         help="after extract, run `pkm chunk --backfill` then `pkm rebuild-index` "
              "(make the new chunks searchable)",
     )
+    ap.add_argument(
+        "--no-preflight", action="store_true",
+        help="skip the extractor version check and let `pkm extract` abort where it "
+             "would (for deliberately extracting only what the matching producers "
+             "handle)",
+    )
     args = ap.parse_args()
 
     try:
@@ -269,6 +361,23 @@ def main() -> int:
         assert_roots_ingestable(registry.roots, pkm_config=args.pkm_config)
         pkm_root = _pkm_root(args.pkm_config)
         sources_yaml = pkm_root / "sources" / "sources.yaml"
+
+        # Before any staging: if the producers this run will need have drifted from what
+        # the config declares, say so now and name them all. `pkm extract` would find out
+        # too — one producer at a time, each time after a full pass over the corpus.
+        if args.extract and not args.dry_run and not args.no_preflight:
+            drifts = preflight(args.pkm_config)
+            if drifts:
+                print("error: extractor versions have drifted from "
+                      f"{args.pkm_config}:", file=sys.stderr)
+                for d in drifts:
+                    print(d.line(), file=sys.stderr)
+                print("edit the config to declare what is installed (this does not "
+                      "re-extract or invalidate anything: routing reads successes "
+                      "version-blind, so existing artifacts keep their old keys), or "
+                      "install the declared versions. --no-preflight runs anyway.",
+                      file=sys.stderr)
+                return 2
 
         enabled = [r for r in registry.roots if r.enabled]
         # An `optional` root that isn't on this machine is a fact about the machine, not an

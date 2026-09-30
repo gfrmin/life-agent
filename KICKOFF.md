@@ -19,26 +19,14 @@ responsibility; delete the duplicates.
 The MVP is **reusable by a stranger**, answering **verbatim point facts only** (graded by
 exact match) and escalating or declining everything else.
 
-## Where the board stands (2026-09-20, after J3)
+## Where the board stands
 
-Five pinned rows in `eval/sets.yaml`, all on one grader and one price list; `SCOREBOARD.md`
-now prints each row's note under the table, because a U/q without the population it is over
-is the clause a reader drops first. The typed row is the MVP target; escalation does not pay
-at this gauge (−0.50 a call), so a rung ships only when it beats abstaining.
-
-| set | rows | right/wrong/declined | $/q | U/q |
-|---|---:|---|---:|---:|
-| owner (typed) | 104 | 48 / 0 / 56 | 0.0139 | +0.443 |
-| generated (typed) | 212 | 85 / 4 / 123 | 0.0151 | +0.284 |
-| atm (typed) | 198 | 26 / 5 / 167 | 0.0102 | −0.012 |
-| sample (typed) | 14 | 8 / 0 / 6 | 0.0119 | +0.556 |
-
-`atm` is the only row the act did not choose the difficulty of, and the only negative one —
-but read its note before quoting the number. All five of its wrongs were re-asked and none
-is an invention: each names the gold fact in another surface form, and only 77 of its 198
-golds are verbatim spans in their own cited document. **Open for the owner:** whether to
-re-cut that set on the precondition this project's own bar states (an answer that stands as
-a span in the document), which is an eval-question change and so not the agent's to take.
+`SCOREBOARD.md` is the answer: every pinned row, the grader, the price list, and each row's
+note (a U/q without the population it is over is the clause a reader drops first). The typed
+row is the MVP target; escalation does not pay at this gauge, so a rung ships only when it
+beats abstaining. **Open for the owner:** whether to re-cut the `atm` set on the precondition
+this project's own bar states (an answer that stands as a span in the document) — an
+eval-question change, so not the agent's to take.
 
 ## Next session (in order, one commit each)
 
@@ -58,10 +46,7 @@ a span in the document), which is an eval-question change and so not the agent's
    decider: a KB with no fitted gather row never buys a gather, so a fresh install could
    only decline — `config/gather-row.example.json` is now the documented default.
 
-Production is already on the host act (2026-09-20 19:10): the answer-brain daemon is
-disabled, bridge and jarvis serve, `/ready` on :8798 reports `"decider": {"kind": "host"}`.
-Roll back by re-enabling the daemon BY PATH from the credence repo — disabling removed its
-unit symlink.
+Production runs the host act: `/ready` on :8798 reports `"decider": {"kind": "host"}`.
 
 Open for the owner (ask-first): the menu's probe prices understate what the probes meter
 cold — +$0.046 a row on the golden run, extraction unpriced — and `u_wrong` re-elicitation.
