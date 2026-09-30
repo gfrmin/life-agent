@@ -13,7 +13,9 @@
       "s_per_q": null,
       "log_score": -0.46355816096806707,
       "ece": 0.14589482870027712,
-      "n_scored": 103
+      "n_scored": 103,
+      "cite_right": 0,
+      "cite_wrong": 0
     },
     {
       "set": "owner-0920",
@@ -28,7 +30,9 @@
       "s_per_q": null,
       "log_score": null,
       "ece": null,
-      "n_scored": null
+      "n_scored": null,
+      "cite_right": 0,
+      "cite_wrong": 0
     },
     {
       "set": "owner-0920",
@@ -43,7 +47,9 @@
       "s_per_q": null,
       "log_score": null,
       "ece": null,
-      "n_scored": null
+      "n_scored": null,
+      "cite_right": 0,
+      "cite_wrong": 0
     },
     {
       "set": "generated",
@@ -58,7 +64,9 @@
       "s_per_q": null,
       "log_score": -0.42545628723704604,
       "ece": 0.13605472356906964,
-      "n_scored": 198
+      "n_scored": 198,
+      "cite_right": 0,
+      "cite_wrong": 0
     },
     {
       "set": "generated-withheld",
@@ -73,7 +81,9 @@
       "s_per_q": null,
       "log_score": -0.7864077414437064,
       "ece": 0.44520417194905854,
-      "n_scored": 61
+      "n_scored": 61,
+      "cite_right": 0,
+      "cite_wrong": 0
     },
     {
       "set": "atm",
@@ -88,7 +98,9 @@
       "s_per_q": null,
       "log_score": null,
       "ece": null,
-      "n_scored": null
+      "n_scored": null,
+      "cite_right": 0,
+      "cite_wrong": 0
     },
     {
       "set": "sample",
@@ -103,7 +115,9 @@
       "s_per_q": null,
       "log_score": null,
       "ece": null,
-      "n_scored": null
+      "n_scored": null,
+      "cite_right": 0,
+      "cite_wrong": 0
     }
   ]
 }

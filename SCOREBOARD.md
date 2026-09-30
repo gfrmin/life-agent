@@ -1,16 +1,16 @@
 # Scoreboard
 
-`python -m eval.score --write`. Counts over each set's rows; `right`/`wrong` include escalated answers, the esc- columns are their escalated share. `$/q` is the arm's calls at their declared prices, cache or no cache (the typed arm's applied probes at the menu's prices; the outside arm's recorded call). `U/q` is priced at the folded gauge u_right 1, u_wrong -5.1310, u_declined 0, lambda_usd 1.33108/$. A pinned set is one biased draw: a row whose U fell against the committed board is explained in its PR, not vetoed (rule 5; `--falls`). `log score` and `ECE` calibrate the typed arm's `p1` (see Calibration below); "—" where the archive records none.
+`python -m eval.score --write`. Counts over each set's rows; `right`/`wrong` are value answers, escalated ones included, the esc- columns their escalated share; `cite-right`/`cite-wrong` are partial answers (the document named, not the value; right iff it attests the gold), neither right, wrong nor declined. `$/q` is the arm's calls at their declared prices, cache or no cache (the typed arm's applied probes at the menu's prices; the outside arm's recorded call). `U/q` is priced at the folded gauge u_right 1, u_wrong -5.1310, u_cite_right 0.5, u_cite_wrong -1, u_declined 0, lambda_usd 1.33108/$. A pinned set is one biased draw: a row whose U fell against the committed board is explained in its PR, not vetoed (rule 5; `--falls`). `log score` and `ECE` calibrate the typed arm's `p1` (see Calibration below); "—" where the archive records none.
 
-| set | arm | rows | right | wrong | esc-right | esc-wrong | declined | $/q | U/q | s/q | log score | ECE |
-|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| owner | typed | 104 | 43 (41.3%) | 0 (0.0%) | 0 | 0 | 61 (58.7%) | 0.0136 | +0.395 | — | -0.464 | 0.146 |
-| owner-0920 | outside | 104 | 87 (83.7%) | 13 (12.5%) | 0 | 0 | 4 (3.8%) | 0.4135 | -0.355 | — | — | — |
-| owner-0920 | router | 104 | 90 (86.5%) | 11 (10.6%) | 42 | 11 | 3 (2.9%) | 0.2357 | +0.009 | — | — | — |
-| generated | typed | 212 | 81 (38.2%) | 4 (1.9%) | 0 | 0 | 127 (59.9%) | 0.0124 | +0.269 | — | -0.425 | 0.136 |
-| generated-withheld | typed | 188 | 0 (0.0%) | 5 (2.7%) | 0 | 0 | 183 (97.3%) | 0.0042 | -0.142 | — | -0.786 | 0.445 |
-| atm | typed | 198 | 26 (13.1%) | 5 (2.5%) | 0 | 0 | 167 (84.3%) | 0.0102 | -0.012 | — | — | — |
-| sample | typed | 14 | 8 (57.1%) | 0 (0.0%) | 0 | 0 | 6 (42.9%) | 0.0119 | +0.556 | — | — | — |
+| set | arm | rows | right | wrong | esc-right | esc-wrong | cite-right | cite-wrong | declined | $/q | U/q | s/q | log score | ECE |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| owner | typed | 104 | 43 (41.3%) | 0 (0.0%) | 0 | 0 | 0 | 0 | 61 (58.7%) | 0.0136 | +0.395 | — | -0.464 | 0.146 |
+| owner-0920 | outside | 104 | 87 (83.7%) | 13 (12.5%) | 0 | 0 | 0 | 0 | 4 (3.8%) | 0.4135 | -0.355 | — | — | — |
+| owner-0920 | router | 104 | 90 (86.5%) | 11 (10.6%) | 42 | 11 | 0 | 0 | 3 (2.9%) | 0.2357 | +0.009 | — | — | — |
+| generated | typed | 212 | 81 (38.2%) | 4 (1.9%) | 0 | 0 | 0 | 0 | 127 (59.9%) | 0.0124 | +0.269 | — | -0.425 | 0.136 |
+| generated-withheld | typed | 188 | 0 (0.0%) | 5 (2.7%) | 0 | 0 | 0 | 0 | 183 (97.3%) | 0.0042 | -0.142 | — | -0.786 | 0.445 |
+| atm | typed | 198 | 26 (13.1%) | 5 (2.5%) | 0 | 0 | 0 | 0 | 167 (84.3%) | 0.0102 | -0.012 | — | — | — |
+| sample | typed | 14 | 8 (57.1%) | 0 (0.0%) | 0 | 0 | 0 | 0 | 6 (42.9%) | 0.0119 | +0.556 | — | — | — |
 
 ## Calibration
 
