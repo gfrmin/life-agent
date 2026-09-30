@@ -106,8 +106,10 @@ def test_the_gather_row_fit_recovers_its_generating_outcomes() -> None:
         assert f_w[o] == pytest.approx(t_w[o], abs=0.04)
 
 
-def test_with_no_fit_and_no_shipped_row_the_prior_stands(tmp_path: Path) -> None:
-    assert GR.load(tmp_path / "none.json", fallback=tmp_path / "also-none.json") == {}
+def test_with_no_fit_and_no_shipped_row_the_prior_stands(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(GR, "EXAMPLE", tmp_path / "also-none.json")
+    assert GR.load(tmp_path / "none.json") == {}
     assert GR.at_step(_U, 2) == _U
 
 

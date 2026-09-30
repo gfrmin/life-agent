@@ -64,7 +64,7 @@ def _steps(path: Path) -> dict[str, float]:
     return {step_key(k, int(st)): float(row[k]) for st, row in steps.items() for k in KEYS}
 
 
-def load(path: Path, *, fallback: Path | None = None) -> dict[str, float]:
+def load(path: Path) -> dict[str, float]:
     """The per-step fitted rows recorded at ``path`` as u_bar keys (``<key>@<step>``).
 
     A KB with no fit falls back to the shipped row (:data:`EXAMPLE`), because the built-in
@@ -79,8 +79,7 @@ def load(path: Path, *, fallback: Path | None = None) -> dict[str, float]:
     """
     if path.is_file():
         return _steps(path)
-    shipped = EXAMPLE if fallback is None else fallback
-    return _steps(shipped) if shipped.is_file() else {}
+    return _steps(EXAMPLE) if EXAMPLE.is_file() else {}
 
 
 def at_step(u_bar: Mapping[str, float], applied: int) -> dict[str, float]:

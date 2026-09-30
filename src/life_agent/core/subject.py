@@ -1,4 +1,4 @@
-"""Subject projection + owner filter over retrieval hits (design doc §5/§11 D2).
+"""Subject projection over retrieval hits (design doc §5/§11 D2).
 
 Read-only over the catalogue by construction: this module PROJECTS current
 doc_subject artifacts (pkm SPEC §18.13) over hits via ``artifact_lineage``
@@ -9,11 +9,7 @@ cached file-first through the §18.9 derivations seam so each distinct
 subject string is judged once per profile version; the per-question filter
 is then a deterministic fold over cached verdicts (the §18.8 decomposition).
 
-The partition honours the coverage contract: only hits *determinately* about
-someone else (``not_owner``) or determinately about nobody (``generic`` —
-templates, blank forms) are excluded, each named; an absent projection or an
-``unclear`` verdict is indeterminate — ADMITTED and named, never silently
-dropped. Demand is logged per hit (pkm SPEC §18.11): ``hit=False`` lines are
+Demand is logged per hit (pkm SPEC §18.11): ``hit=False`` lines are
 the unmet-demand signal the VOI layer will calibrate on.
 """
 
@@ -22,7 +18,6 @@ from __future__ import annotations
 import hashlib
 import json
 import time
-from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -70,15 +65,6 @@ VERDICT_SCHEMA: dict[str, Any] = {
 
 Verdict = Literal["owner", "not_owner", "unclear"]
 
-# Extractor producer → the doc_subject declaration that consumes it (the
-# remedy command's target). Mirrors docs/pkm/examples/transforms/doc_subject/v1/.
-_DERIVE_DECL_BY_EXTRACTOR = {
-    "email": "doc_subject_email",
-    "docling": "doc_subject_docling",
-    "pandoc": "doc_subject_pandoc",
-    "tesseract": "doc_subject_tesseract",
-}
-
 
 @dataclass(frozen=True)
 class SubjectedHit:
@@ -89,26 +75,6 @@ class SubjectedHit:
     subject_kind: str | None     # "person" | "organisation", set iff named
     subject: str | None          # the name as written, set iff named
     extractor: str               # the hit artifact's producer_name
-
-
-@dataclass(frozen=True)
-class SubjectView:
-    """Total partition of the hits under the owner filter.
-
-    ``admitted`` goes to synthesis: owner-matched hits PLUS the
-    indeterminates (``unclear`` verdicts and ``underived`` projections —
-    both named, never silently excluded). ``excluded_other`` is determinately
-    someone else's, named with the subject as written; ``excluded_generic``
-    is determinately nobody's (templates, blank forms). ``remedies`` are
-    copy-pasteable ``pkm derive`` commands for the underived set.
-    """
-
-    admitted: list[str]
-    excluded_other: list[tuple[str, str]]
-    excluded_generic: list[str]
-    unclear: list[str]
-    underived: list[str]
-    remedies: list[str]
 
 
 def project_subjects(
@@ -220,49 +186,6 @@ def _as_verdict(value: object) -> Verdict:
             f"owner_match emitted a verdict outside the enum: {value!r}"
         )
     return value
-
-
-def apply_owner_filter(
-    hits: list[SubjectedHit],
-    verdict_of: Mapping[str, str],
-) -> SubjectView:
-    """Pure: partition hits under the owner predicate. Total — every hit
-    lands in exactly one named set; indeterminates (no projection, no
-    verdict, or an ``unclear`` one) stay ADMITTED and named (the D2 gate:
-    failed classifications surface as indeterminate, not excluded)."""
-    admitted: list[str] = []
-    excluded_other: list[tuple[str, str]] = []
-    excluded_generic: list[str] = []
-    unclear: list[str] = []
-    underived: list[str] = []
-    remedies: list[str] = []
-
-    for h in hits:
-        if h.state == "underived":
-            admitted.append(h.artifact_cache_key)
-            underived.append(h.artifact_cache_key)
-            decl = _DERIVE_DECL_BY_EXTRACTOR.get(h.extractor)
-            if decl is not None:
-                remedies.append(
-                    f"pkm derive {decl} --input {h.artifact_cache_key}"
-                )
-            # Unknown extractor: still named in ``underived``; no remedy line.
-            continue
-        if h.state == "generic":
-            excluded_generic.append(h.artifact_cache_key)
-            continue
-        verdict = verdict_of.get(h.subject or "")
-        if verdict == "owner":
-            admitted.append(h.artifact_cache_key)
-        elif verdict == "not_owner":
-            excluded_other.append((h.artifact_cache_key, h.subject or ""))
-        else:  # "unclear" or no verdict at all: indeterminate, never dropped
-            admitted.append(h.artifact_cache_key)
-            unclear.append(h.artifact_cache_key)
-
-    return SubjectView(admitted=admitted, excluded_other=excluded_other,
-                       excluded_generic=excluded_generic, unclear=unclear,
-                       underived=underived, remedies=remedies)
 
 
 def _demand(root: Path, caller: str, input_key: str, projection_key: str,

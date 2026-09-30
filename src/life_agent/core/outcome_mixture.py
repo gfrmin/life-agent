@@ -10,9 +10,8 @@ default, so no outcome is ever priced as impossible and a handful of episodes ca
 certainty.
 
 :func:`as_u_bar` names the four free numbers (``declined`` is each distribution's remainder)
-under a caller's prefix, and :func:`row` prices them into the ``(u(y=0), u(y=1))`` pair
-:func:`life_agent.core.decide.utility_by_action` ranks, linear in ``p1`` like every other
-row. Unmeasured, both distributions are the prior mean (1/3 each), under which the action is
+under a caller's prefix; :func:`life_agent.core.decide.utility_by_action` prices them.
+Unmeasured, both distributions are the prior mean (1/3 each), under which the action is
 not worth its cost.
 
 **What the mixture can and cannot see.** The weight is ``p1``, so the fit needs episodes
@@ -71,16 +70,3 @@ def as_u_bar(prefix: str, t_right: Mapping[str, float],
             c: t_wrong["right"], d: t_wrong["wrong"]}
 
 
-def row(u_bar: Mapping[str, float], prefix: str, *, u_correct: float, u_wrong: float,
-        u_abstain: float, cost: float) -> tuple[float, float]:
-    """``(u(y=0), u(y=1))`` for ``prefix``'s action at ``cost`` (in utility units): the
-    fitted chances of ending right, wrong or withheld per leader state, priced at the
-    owner's utilities. Every measured row is priced HERE, so two of them cannot drift."""
-    a, b, c, d = keys(prefix)
-    p = {k: float(u_bar.get(k, 1.0 / len(OUTCOMES))) for k in (a, b, c, d)}
-
-    def priced(p_right: float, p_wrong: float) -> float:
-        return (p_right * u_correct + p_wrong * u_wrong
-                + (1.0 - p_right - p_wrong) * u_abstain - cost)
-
-    return priced(p[c], p[d]), priced(p[a], p[b])
