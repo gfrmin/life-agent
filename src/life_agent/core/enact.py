@@ -1,18 +1,14 @@
-"""enact.py — the enactment of the decider's act.
+"""enact.py — the enactment of the decider's choice.
 
-:func:`life_agent.core.decide.bayes_act` picks one of the four actions (abstain / gather
-/ ask / respond); this module turns that act into what the executor does, given the
-``/decide`` request it was ranked over. It ranks nothing: every rule below is determined by
-the act and the request alone.
+:func:`life_agent.core.decide.bayes_act` picks one :class:`~life_agent.core.decide.Option`
+(abstain / a gather probe / ask / a candidate to respond with); this module lists the
+options the ``/decide`` request opens and turns the winner into what the executor does.
+It ranks nothing and picks nothing: no ``max``, ``min`` or ``sorted`` (drift-gated).
 
-* **respond → the MAP candidate.** ``respond`` asserts the candidate with the most
-  credence (candidate order breaks ties): with ``u_correct`` equal across candidates this IS
-  the Bayes act's value, not a second ranking.
-* **gather → the cheapest unapplied gather option.** The options are the request's voi
-  transforms and grow actuators, cheapest first (a stable sort, so menu order breaks
-  ties). Guard-kind transforms are never gather options. The act ranks gather only while an
-  option is open (:func:`gather_open`), so an empty list here is a contract error, not a
-  fallback.
+* **The gather options** are the request's unapplied voi transforms and grow actuators,
+  each distinct probe once with the lowest price among its rows, listed in the order the
+  probes' cheapest rows appear. Guard-kind transforms are never gather options.
+* **respond → the candidate the option names, gather → the probe it names.**
 * **ask → ask_clarify, abstain → abstain.**
 """
 from __future__ import annotations
@@ -23,55 +19,43 @@ from typing import Any
 from life_agent.core import decide as DEC
 
 
-def gather_options(payload: dict[str, Any]) -> list[str]:
-    """The unapplied gather options of a ``/decide`` request, cheapest first."""
+def gather_options(payload: dict[str, Any]) -> list[tuple[str, float]]:
+    """The unapplied gather options of a ``/decide`` request as ``(probe, cost)`` pairs, in
+    the request's own price units (the executor has already converted them to utility). A
+    probe's entry moves to the position of its cheapest row, so among equal prices the
+    earlier row lists first."""
     applied = {str(a) for a in (payload.get("applied_probes") or [])}
     rows = [t for t in payload.get("transforms") or [] if t.get("kind") == "voi"]
     rows += list((payload.get("grow") or {}).get("actuators") or [])
-    ranked = sorted(rows, key=lambda r: float(r.get("cost") or 0.0))
-    out: list[str] = []
-    for r in ranked:
-        probe = str(r.get("probe") or "")
-        if probe and probe not in applied and probe not in out:
-            out.append(probe)
-    return out
+    listed: dict[str, float] = {}
+    for r in rows:
+        probe, cost = str(r.get("probe") or ""), float(r.get("cost") or 0.0)
+        if not probe or probe in applied:
+            continue
+        if probe in listed and cost >= listed[probe]:
+            continue
+        listed.pop(probe, None)
+        listed[probe] = cost
+    return list(listed.items())
 
 
-def gather_cost(payload: dict[str, Any]) -> float:
-    """The price of the gather that would be enacted (the cheapest open option), in the
-    request's own units (the executor has already converted it to utility); 0 when none."""
-    options = gather_options(payload)
-    if not options:
-        return 0.0
-    rows = [t for t in payload.get("transforms") or [] if t.get("kind") == "voi"]
-    rows += list((payload.get("grow") or {}).get("actuators") or [])
-    return min(float(r.get("cost") or 0.0) for r in rows if str(r.get("probe")) == options[0])
-
-
-def gather_open(payload: dict[str, Any]) -> bool:
-    """Whether the world's gather row is open for this request."""
-    return bool(gather_options(payload))
-
-
-def enact(action: str, payload: dict[str, Any], credences: Sequence[float],
+def enact(option: DEC.Option, payload: dict[str, Any], credences: Sequence[float],
           p_none: float) -> dict[str, Any]:
-    """The executor's view of the decider's ``action``: ``effector`` plus ``value`` (the
+    """The executor's view of the winning ``option``: ``effector`` plus ``value`` (the
     asserted candidate on a report) and ``probe`` (the gather to run)."""
     view: dict[str, Any] = {"credences": list(credences), "p_none": p_none,
                             "value": None, "probe": None}
-    if action == "abstain":
+    if option.action == "abstain":
         return {**view, "effector": "abstain"}
-    if action == "ask":
+    if option.action == "ask":
         return {**view, "effector": "ask_clarify"}
-    if action == "respond":
+    if option.action == "respond":
         candidates = [str(c) for c in payload.get("candidates") or []]
-        if not candidates or len(candidates) != len(credences):
+        if not isinstance(option.target, int) or len(candidates) != len(credences):
             raise ValueError("respond needs one credence per candidate")
-        leader = max(range(len(candidates)), key=lambda j: credences[j])
-        return {**view, "effector": "report", "value": candidates[leader]}
-    if action == "gather":
-        options = gather_options(payload)
-        if not options:
+        return {**view, "effector": "report", "value": candidates[option.target]}
+    if option.action == "gather":
+        if not isinstance(option.target, str):
             raise ValueError("gather was chosen with no gather option open")
-        return {**view, "effector": "gather", "probe": options[0]}
-    raise ValueError(f"undeclared action {action!r} (declared: {list(DEC.ACTIONS)})")
+        return {**view, "effector": "gather", "probe": option.target}
+    raise ValueError(f"undeclared action {option.action!r} (declared: {list(DEC.ACTIONS)})")

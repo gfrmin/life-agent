@@ -1,10 +1,11 @@
 """The decision: the Bayes act over the candidate posterior (CLAUDE.md rule 2).
 
-One function ranks every action the system can take, :func:`bayes_act`, and nothing else
-does. It reads the posterior through one number, ``p1`` = P(asserting now would be correct)
-= the credence of the MAP candidate (:func:`p_correct`), and the owner's utility through
-the declared rows (:func:`utility_by_action`), and returns the action with the highest
-expected utility, ties to the first-listed action in :data:`ACTIONS`.
+One function ranks every choice the system can make, :func:`bayes_act`, and nothing else
+does. Every choice is a row: one ``abstain``, one ``gather`` per open probe, one ``ask``,
+one ``respond`` per candidate (:func:`options`). It reads the posterior through the
+candidate credences and the owner's utility through the declared rows
+(:func:`utility_by_action`), and returns the :class:`Option` with the highest expected
+utility, ties to the first-listed option (the order is :func:`options`'s contract).
 
 **The rows** (``u(y=0), u(y=1)`` per action; ``y`` = asserting now would be correct):
 
@@ -18,7 +19,9 @@ expected utility, ties to the first-listed action in :data:`ACTIONS`.
   wrong one, or a withhold, priced at the owner's utilities, less the attention cost
   ``kappa_att``. The decider sets the row for the number of gathers already applied.
   Unmeasured, both states read the Dirichlet prior mean (1/3 each), under which gathering
-  is not worth its cost;
+  is not worth its cost. The measured row is shared by every probe, evaluated at ``p1`` =
+  P(asserting now would be correct) = the MAP credence (:func:`p_correct`); each probe's
+  option differs from the others only by its price;
 - ``ask``: priced by a **measured recovery rate** ``r`` (an ask ends in a report with
   probability r, otherwise in a withhold) less ``lambda_int``; unmeasured, ``r`` is the
   Beta(1, 1) mean 0.5. Never the perfect-information row, which is an upper bound.
@@ -32,6 +35,7 @@ latents; ``u_correct``/``u_abstain`` its gauge constants.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 
 from life_agent.core import answer_shape as AS
 from life_agent.core import gather_row as GR
@@ -77,21 +81,42 @@ def eu_by_action(u_bar: Mapping[str, float], p1: float) -> dict[str, float]:
     return {a: (1.0 - p1) * u0 + p1 * u1 for a, (u0, u1) in utility_by_action(u_bar).items()}
 
 
+@dataclass(frozen=True)
+class Option:
+    """One row of the argmax: the ``action``, what it is aimed at (``target``: the candidate
+    index for ``respond``, the probe name for ``gather``, ``None`` otherwise) and its
+    expected utility."""
+    action: str
+    target: int | str | None
+    eu: float
+
+
+def options(u_bar: Mapping[str, float], credences: Sequence[float],
+            gathers: Sequence[tuple[str, float]] = ()) -> list[Option]:
+    """Every choice as a row, in tie-break order: ``abstain``, the gather options in the
+    order given (``gathers`` = ``(probe, cost)`` pairs; each is the gather row at ``p1``
+    less its cost), ``ask``, then one ``respond`` per candidate by index at that
+    candidate's own credence. ``gather`` and ``ask`` are evaluated at ``p1`` =
+    :func:`p_correct`."""
+    eus = eu_by_action(u_bar, p_correct(credences))
+    u0, u1 = utility_by_action(u_bar)["respond"]
+    return [Option("abstain", None, eus["abstain"]),
+            *(Option("gather", probe, eus["gather"] - float(cost)) for probe, cost in gathers),
+            Option("ask", None, eus["ask"]),
+            *(Option("respond", j, (1.0 - float(c)) * u0 + float(c) * u1)
+              for j, c in enumerate(credences))]
+
+
+def bayes_act(u_bar: Mapping[str, float], credences: Sequence[float],
+              gathers: Sequence[tuple[str, float]] = ()) -> Option:
+    """THE decision: the :class:`Option` maximising expected utility over :func:`options`;
+    an exact tie goes to the first-listed option."""
+    return max(options(u_bar, credences, gathers), key=lambda o: o.eu)
+
+
 def argmax_action(u_bar: Mapping[str, float], p1: float) -> str:
     """The action the rows fire at ``p1``, every row open and unpriced; ties first-listed."""
-    return bayes_act(u_bar, p1)
-
-
-def bayes_act(u_bar: Mapping[str, float], p1: float, *, gather_open: bool = True,
-              gather_cost: float = 0.0) -> str:
-    """THE decision: the action maximising expected utility at ``p1``. ``gather`` is ranked
-    only while an option is open (``gather_open``) and pays the cost of the option that
-    would be enacted, in utility units. Ties resolve to the first-listed of
-    :data:`ACTIONS`."""
-    eus = eu_by_action(u_bar, p1)
-    eus["gather"] -= float(gather_cost)
-    ranked = [a for a in ACTIONS if a != "gather" or gather_open]
-    return max(ranked, key=lambda a: (eus[a], -ACTIONS.index(a)))
+    return bayes_act(u_bar, [p1], [("", 0.0)]).action
 
 
 def p_correct(credences: Sequence[float]) -> float:

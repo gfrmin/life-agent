@@ -67,14 +67,16 @@ value, so the argmax is only sound if the credences mean what they say. It is me
 ## 4. Decision
 
 `core/decide.bayes_act` chooses one action per question from the **declared menu**: the
-argmax of expected utility at `p1`, the MAP candidate's credence (P(asserting now is right)),
-ties to the first-listed row:
+argmax of expected utility over one flat list of rows, ties to the first-listed. Every
+choice is a row: one `abstain`, one `gather` per open transform, one `ask`, and one `respond`
+per candidate (at that candidate's own credence). `gather` and `ask` are evaluated at `p1`,
+the MAP candidate's credence (P(asserting now is right)):
 
 | action | effect | loss / price |
 |---|---|---|
-| `respond` | commit the leader span with its citation | `u_correct = +1` if right, `u_wrong = −9` if wrong |
+| `respond` | commit a candidate span (one row each) with its citation | `u_correct = +1` if right, `u_wrong = −9` if wrong |
 | `abstain` | decline | `u_abstain = 0` |
-| `gather` | run the cheapest unapplied evidence transform, then decide again | the transform's price; the measured value of the gather sequence (below) |
+| `gather` | run an unapplied evidence transform (one row each), then decide again | the transform's price; the measured value of the gather sequence (below) |
 | `ask` | ask the owner a clarifying question | the owner's attention; recovers the answer at the measured rate `r_a` |
 | `escalate@r` | hand the question to rung `r` (J1–J2) | the rung's price, and its learned reliability `p_r` |
 
@@ -119,9 +121,12 @@ deliberative rung can search the whole corpus. Every chunk that crosses to a run
 disclosure record (law 7; not yet written).
 
 **Division of labour.** `core/posterior.py` computes the candidate posterior;
-`core/utility.py` folds the loss; `core/decide.bayes_act` takes the act; `core/enact.py`
-turns it into a reply (the MAP candidate on `respond`, the cheapest open transform on
-`gather`).
+`core/utility.py` folds the loss; `core/decide.bayes_act` takes the act, each open transform
+and each candidate being its own row of the one argmax; `core/enact.py` lists the open
+transforms and turns the winning row into a reply. With one measured gather row shared by
+every transform the rows differ only by price, so the cheapest transform wins, and with
+`u_correct > u_wrong` the respond rows rise with credence, so the MAP candidate wins: both
+follow from the argmax, neither is a rule.
 
 ## 5. Laws
 
