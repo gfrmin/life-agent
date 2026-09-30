@@ -1,4 +1,4 @@
-"""The scoreboard (`eval/score.py`): the router recombination, the columns, rule 5, and the
+"""The scoreboard (`eval/score.py`): the router recombination, the columns, the falls, and the
 pinned owner board. Hermetic except the last test, which needs the owner's KB and skips
 without it."""
 from __future__ import annotations
@@ -81,7 +81,7 @@ def test_the_gauge_prices_a_row_from_its_counts() -> None:
 def test_rule_5_passes_a_change_that_trades_declines_for_right_answers() -> None:
     old = S.summarise("t", "typed", [S.Response(False, None, 0.0)] * 10)
     new = S.summarise("t", "typed", [S.Response(True, True, 0.0)] * 10)
-    assert S.gate([new], [_board(old)], G) == []
+    assert S.falls([new], [_board(old)], G) == []
 
 
 def test_rule_5_blocks_one_wrong_that_nine_rights_do_not_pay_for() -> None:
@@ -93,22 +93,22 @@ def test_rule_5_blocks_one_wrong_that_nine_rights_do_not_pay_for() -> None:
         return S.summarise("t", "typed", [S.Response(True, True, 0.0)] * k_right
                            + [S.Response(True, False, 0.0)]
                            + [S.Response(False, None, 0.0)] * (19 - k_right))
-    assert S.gate([new(8)], [_board(old)], G) != []
-    assert S.gate([new(9)], [_board(old)], G) == []
-    assert S.gate([new(10)], [_board(old)], G) == []
+    assert S.falls([new(8)], [_board(old)], G) != []
+    assert S.falls([new(9)], [_board(old)], G) == []
+    assert S.falls([new(10)], [_board(old)], G) == []
 
 
 def test_rule_5_charges_spend_at_lambda_usd() -> None:
     old = S.summarise("t", "typed", [S.Response(True, True, 0.0)] * 4)
     dearer = S.summarise("t", "typed", [S.Response(True, True, 0.25)] * 4)
-    assert S.gate([dearer], [_board(old)], G) != []       # same answers, $1 more
-    assert S.gate([old], [_board(dearer)], G) == []
+    assert S.falls([dearer], [_board(old)], G) != []       # same answers, $1 more
+    assert S.falls([old], [_board(dearer)], G) == []
 
 
 def test_rule_5_names_an_unpaired_row() -> None:
     old = S.summarise("t", "typed", [S.Response(True, True, 0.0)] * 4)
     new = S.summarise("t", "typed", [S.Response(True, True, 0.0)] * 5)
-    assert S.gate([new], [_board(old)], G) == ["t/typed: 4 -> 5 rows, not paired"]
+    assert S.falls([new], [_board(old)], G) == ["t/typed: 4 -> 5 rows, not paired"]
 
 
 def test_the_board_shows_u_per_question_only_with_a_gauge() -> None:

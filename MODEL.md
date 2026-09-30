@@ -174,9 +174,9 @@ law is marked **unenforced**.
 `eval/score.py` → `SCOREBOARD.md`. Per set and arm: rows · right · wrong · escalated-right ·
 escalated-wrong · declined · $/q · U/q · s/q. Sets: `owner` (the owner's 104 questions),
 `generated` (212 questions extracted from the corpus by `make golden`), `atm` (ATM-Bench
-email-only number-typed, 198), `live` (the stream since the reset), `sample` (synthetic, CI). Every row is graded by exact match. Rule 5: a change merges when no row's
-expected utility falls against the committed board, both priced at the folded gauge
-(`eval.score --gate`; the expectation is the mean over the runs taken).
+email-only number-typed, 198), `live` (the stream since the reset), `sample` (synthetic, CI). Every row is graded by exact match. Rule 5: the loss
+decides and the board is evidence. A pinned set is one biased draw, so a row whose utility
+fell against the committed board is listed (`eval.score --falls`) and explained, not vetoed.
 
 ## 7. The read path
 

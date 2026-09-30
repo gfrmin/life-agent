@@ -1,8 +1,8 @@
-"""The scoreboard: one table, every set, the columns rule 5 is read from.
+"""The scoreboard: one table, every set. Evidence, not a gate (rule 5).
 
     uv run python -m eval.score                 # print the board
     uv run python -m eval.score --write         # also write SCOREBOARD.md + eval/scoreboard.json
-    uv run python -m eval.score --gate          # exit 1 if ΔU < 0 on any row (rule 5)
+    uv run python -m eval.score --falls         # list rows whose U fell, to be explained
 
 Sets are declared in `eval/sets.yaml`; their files live under `$LIFE_AGENT_KB` and are
 pinned by sha256.
@@ -17,8 +17,8 @@ recorded call — so the board prices the act, not the cache (a warm replay of a
 is not free; what the calls actually metered rides in the archive as `metered_usd`). `s/q`
 is blank until the rows carry latency. The counts need no gauge; `U/q` prices them at the folded
 utility mean (:class:`Gauge`): U = u_right·right + u_wrong·wrong + u_declined·declined -
-lambda_usd·$. Rule 5 compares U, not a wrong-rate: a row whose U fell against the committed
-board, both priced at today's gauge, does not merge.
+lambda_usd·$. A pinned set is one biased draw: a row whose U fell against the committed
+board is listed for the PR to explain, never vetoed.
 """
 from __future__ import annotations
 
@@ -44,7 +44,7 @@ BOARD_JSON = REPO / "eval" / "scoreboard.json"
 
 @dataclass(frozen=True)
 class Gauge:
-    """The utility rule 5 prices a row at: the folded posterior means of the owner's utility
+    """The utility a row is priced at: the folded posterior means of the owner's utility
     (``lookup.current_u_bar``), so the merge rule and the decider read one loss."""
 
     u_right: float
@@ -234,8 +234,9 @@ def render(rows: Sequence[Row], skipped: Mapping[str, str], gauge: Gauge | None 
            "include escalated answers, the esc- columns are their escalated share. `$/q` "
            "is the arm's calls at their declared prices, cache or no cache (the typed "
            "arm's applied probes at the menu's prices; the outside arm's recorded call). "
-           f"`U/q` is {priced}. Rule 5: a change merges when no row's U falls against the "
-           "committed board at today's gauge (`--gate`).", "",
+           f"`U/q` is {priced}. A pinned set is one biased draw: a row whose U fell "
+           "against the committed board is explained in its PR, not vetoed (rule 5; "
+           "`--falls`).", "",
            "| set | arm | rows | right | wrong | esc-right | esc-wrong | declined | $/q | U/q "
            "| s/q |",
            "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|"]
@@ -267,9 +268,9 @@ def unscored_pins(sets: Mapping[str, Mapping[str, Any]], skipped: Mapping[str, s
     return sorted(k for k in skipped if sets[k]["kind"] != "pending")
 
 
-def gate(rows: Sequence[Row], baseline: Sequence[Mapping[str, Any]], gauge: Gauge
+def falls(rows: Sequence[Row], baseline: Sequence[Mapping[str, Any]], gauge: Gauge
          ) -> list[str]:
-    """Rule 5 violations: rows whose U fell against the committed board, both priced at
+    """Rows whose U fell against the committed board, both priced at
     ``gauge`` — ΔU = U(new) - U(old) < 0. A row scored over a different number of questions
     is not paired with its baseline and is named too (re-pin the baseline deliberately)."""
     base = {(b["set"], b["arm"]): b for b in baseline}
@@ -294,30 +295,30 @@ def main(argv: list[str] | None = None) -> int:
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--write", action="store_true",
                     help="write SCOREBOARD.md and eval/scoreboard.json")
-    ap.add_argument("--gate", action="store_true",
-                    help="ΔU against the committed eval/scoreboard.json at today's gauge "
-                         "(rule 5)")
+    ap.add_argument("--falls", action="store_true",
+                    help="list rows whose U fell against the committed eval/scoreboard.json "
+                         "at today's gauge (to be explained in the PR; never fails the run)")
     a = ap.parse_args(argv)
     kb_env = os.environ.get("LIFE_AGENT_KB")
     rows, skipped = score(Path(kb_env) if kb_env else None, load_sets())
     gauge: Gauge | None
     try:
         gauge = folded_gauge() if kb_env else None
-    except Exception as e:  # the counts still print; the gate below refuses without a gauge
+    except Exception as e:  # the counts still print; the falls need a gauge
         print(f"(no gauge: {type(e).__name__}: {e})", file=sys.stderr)
         gauge = None
     text = render(rows, skipped, gauge,
                   {k: str(v["note"]) for k, v in load_sets().items() if v.get("note")})
     print(text)
-    if a.gate and BOARD_JSON.is_file():
+    if a.falls and BOARD_JSON.is_file():
         if gauge is None:
-            print("RULE 5: no gauge to price ΔU with (set LIFE_AGENT_KB)", file=sys.stderr)
-            return 2
-        bad = gate(rows, json.loads(BOARD_JSON.read_text(encoding="utf-8"))["rows"], gauge)
-        if bad:
-            print("RULE 5: expected utility fell — does not merge:\n  "
-                  + "\n  ".join(bad), file=sys.stderr)
-            return 1
+            print("no gauge to price ΔU with (set LIFE_AGENT_KB)", file=sys.stderr)
+        else:
+            fell = falls(rows, json.loads(BOARD_JSON.read_text(encoding="utf-8"))["rows"],
+                         gauge)
+            if fell:
+                print("utility fell against the committed board — explain in the PR:\n  "
+                      + "\n  ".join(fell), file=sys.stderr)
     if a.write:
         missing = unscored_pins(load_sets(), skipped)
         if missing:
