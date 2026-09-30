@@ -19,10 +19,11 @@ import sys
 from collections import Counter
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 
 import yaml
 
+from eval.calibration import read_leader
 from eval.grading import RealisedResponse, realised_report
 from life_agent.core import config as CFG
 from life_agent.core import decisions as DEC
@@ -31,6 +32,15 @@ from life_agent.core import pricing as PRC
 _DEFAULTS: dict[str, Any] = {"subject": "n/a", "answer": "", "answer_variants": [],
                              "distractors": [], "fuzzy": False, "search_queries": [],
                              "mode_hint": None, "notes": ""}
+
+
+class _Seen(TypedDict):
+    """The leader's calibration reading, as `RealisedResponse` keywords."""
+
+    p1: float | None
+    n_candidates: int
+    leader_correct: bool | None
+    truth_in_candidates: bool
 
 
 def load_questions(path: Path | str) -> list[dict[str, Any]]:
@@ -87,15 +97,19 @@ def typed_response(view: dict[str, Any], q: dict[str, Any], *,
     applied = tuple(str(p) for p in view["applied"])
     cost, metered = PRC.list_price(applied), float(view["spend_usd"] or 0.0)
     eff = str(view["effector"])
+    lead = read_leader(view.get("candidates") or [], view.get("credences") or [], gold, variants)
+    seen = _Seen(p1=lead.p1, n_candidates=lead.n_candidates,
+                 leader_correct=lead.leader_correct,
+                 truth_in_candidates=lead.truth_in_candidates)
     if eff == "report":
         return RealisedResponse("report", realised_report(
             [str(a) for a in view["asserted"]], gold, variants),
-            cost_usd=cost, applied=applied, metered_usd=metered)
+            cost_usd=cost, applied=applied, metered_usd=metered, **seen)
     reason = DEC.withhold_reason(effector=view.get("effector"),
                                  candidates=view.get("candidates"), available=available)
     return RealisedResponse("ask_clarify" if eff == "ask_clarify" else "abstain", None,
                             cost_usd=cost, withheld=reason, applied=applied,
-                            metered_usd=metered)
+                            metered_usd=metered, **seen)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -139,7 +153,10 @@ def main(argv: list[str] | None = None) -> int:
                     "typed": {"action": r.action, "correct": r.correct,
                               "cost_usd": r.cost_usd, "withheld": r.withheld,
                               "applied": list(r.applied),
-                              "metered_usd": r.metered_usd}}) + "\n")
+                              "metered_usd": r.metered_usd, "p1": r.p1,
+                              "n_candidates": r.n_candidates,
+                              "leader_correct": r.leader_correct,
+                              "truth_in_candidates": r.truth_in_candidates}}) + "\n")
                 fh.flush()
                 tally["censored" if not ok else ("declined" if r.correct is None
                                                  else "right" if r.correct else "wrong")] += 1

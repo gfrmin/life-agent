@@ -178,6 +178,14 @@ email-only number-typed, 198), `live` (the stream since the reset), `sample` (sy
 decides and the board is evidence. A pinned set is one biased draw, so a row whose utility
 fell against the committed board is listed (`eval.score --falls`) and explained, not vetoed.
 
+The board also prints calibration (`eval/calibration.py`): for the typed arm, `p1` — the
+probability the decider gave its leading candidate — against whether that candidate matched
+the gold, as a mean log score, an ECE and a reliability table. It is scored on every row with
+at least one candidate, whatever the act (an abstain still has a leader). Rows with no
+candidate are counted and not scored; rows where no candidate matches the gold are scored
+(the leader is wrong) and counted as truth-absent. An archive that predates the recorded
+fields takes its calibration from the decision log, joined to the set's questions.
+
 ## 7. The read path
 
 ```
