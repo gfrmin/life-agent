@@ -222,17 +222,12 @@ def _extract(deps: BridgeDeps, p: Payload) -> Payload:
         time_indexed=bool(p.get("time_indexed", False)), today=_opt_date(p.get("today")),
         half_life_years=hl, meter=meter)
     candidates, abstract = to_abstract_observations(obs)
-    # era_split is the evidence shape the string-blind body cannot compute (the abstract obs
-    # carry no value/date); the bridge projects it from the RAW obs + the doc_date covariate at
-    # the construct's volatility, and the daemon reads it as a bool (move-4-design §2C). No
-    # doc_date ⇒ False.
-    es = LK.era_split(obs, dict(cov.doc_date), years=hl) if cov.doc_date else False
     return {"candidates": candidates, "observations": abstract,
             # the scalar rho the answer-brain consumes — the wire-read posterior mean (no host
             # alpha/(alpha+β); the full Beta drives the in-process lookup rho-latent, see
             # extractor_reliability).
             "rho": LK.extractor_reliability_mean(),
-            "indeterminate": indeterminate, "era_split": es, "half_life_years": hl,
+            "indeterminate": indeterminate,
             # §4.2's competition term, disclosed for the View + decision record: how many
             # grounded observations carry a same-shape competitor in their quote window
             "n_competing": sum(1 for o in obs if o.n_competing),

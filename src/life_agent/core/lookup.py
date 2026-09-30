@@ -188,16 +188,6 @@ REASON_NO_OBSERVATIONS = "no admitted evidence"
 # answer — a certainty the posterior never asserted (presentation error, §3).
 GRAMMAR: dict[str, str] = {
     "report": "{value} — credence {p:.3f} {cites}",
-    # the time-scoped assertion (scoped-claims design): a TRUE claim about the record when the
-    # current value is uncertain. Names the currency gap and the deferred upgrade, never silent.
-    "report_scoped": ("As of {as_of}: {value} — credence {p:.3f} {cites}\n"
-                      "  — the most recent record I found; I may be missing a newer one. "
-                      "A confirmed current figure would need a costlier check."),
-    # r30b: the `quantity` shape's claim — a RANGE, asserted at its own coverage credence.
-    # The endpoints are the candidates' own display strings (never a reformatted float: no
-    # invented precision, no currency the corpus did not carry), and the credence is the
-    # posterior mass the range covers, so a wider claim visibly buys its confidence.
-    "hedge": "Unresolved — candidates: {alts}",
     "ask_clarify": "Worth asking you directly — the evidence does not settle it: {alts}",
     "abstain": "No answer asserted ({reason}).",
     # abstain still shows the candidate(s) it withheld below the assert threshold — the
@@ -210,7 +200,6 @@ GRAMMAR: dict[str, str] = {
     "footer": ("lookup: {n_hits} hits → {n_obs} grounded observations"
                " · {n_ind} indeterminate · none-of-retrieved {p_none}"
                " · decision {action} (EU {eu})"),
-    "fallthrough": "(lookup: {reason} — narrative path)",
     # J2: the FIRST line of every reply names where the answer came from (rule 3):
     # a span in your documents, a named rung, or a decline with its reason.
     "origin_documents": "From your documents.",
@@ -363,34 +352,6 @@ def _candidate_key(value: str) -> str:
     if len(digits) >= _CANON_MIN_DIGITS:
         return digits.lstrip("0") or "0"
     return _norm_value(value)
-
-
-def era_split(  # [§3.3 · L-5/GA-3] the era structure of the observation set
-        observations: list[Observation], doc_date: dict[str, str | None],
-              *, years: float = _TIME_HALF_LIFE_YEARS) -> bool:
-    """Do the candidate values split across eras? True iff, among candidates with at least one
-    dated supporting document, the span between the newest-dated and the oldest-dated candidate
-    exceeds ``years`` — the precondition for a stale-vs-current confusion, and so the signal that
-    recency discriminates. Fewer than two dated candidates ⇒ nothing to discriminate ⇒ False (a
-    permanent fact is not decayed).
-
-    This is the evidence *shape* the string-blind answer-brain body cannot compute itself — the
-    abstract observations carry no value/date (the parity boundary). The capability bridge
-    projects it from the raw observations + the doc_date covariate and the daemon reads it as a
-    bool (move-4-design §2C). ``gather._era_split`` delegates here."""
-    newest: dict[str, date] = {}
-    for o in observations:
-        iso = doc_date.get(o.artifact_cache_key)
-        if not iso:
-            continue
-        key = _candidate_key(o.value_raw)
-        d = date.fromisoformat(iso)
-        if key not in newest or d > newest[key]:
-            newest[key] = d
-    if len(newest) < 2:
-        return False
-    span_days = (max(newest.values()) - min(newest.values())).days
-    return span_days / 365.25 > years
 
 
 def _grounded(quote: str, value: str, chunk: str) -> bool:

@@ -33,7 +33,7 @@ _OBS = [{"reports": 1, "group": 0, "authority": 1.0, "subject_factor": 1.0,
 def _payload(**kw: Any) -> dict[str, Any]:
     base: dict[str, Any] = {
         "question_id": "q1", "candidates": ["x", "y"], "observations": _OBS, "rho": 0.8,
-        "applied_probes": [], "era_split": False, "owner_scoped": False,
+        "applied_probes": [],
         "transforms": [{"probe": "corroborate_a", "kind": "voi", "cost": 0.004}]}
     base.update(kw)
     return base

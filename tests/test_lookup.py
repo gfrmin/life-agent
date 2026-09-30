@@ -527,14 +527,11 @@ def test_parse_date_unambiguous_and_ambiguous() -> None:
 def test_grammar_templates_all_render() -> None:
     # drift gate: every template formats with its declared slots
     LK.GRAMMAR["report"].format(value="v", p=0.5, cites="[1]")
-    LK.GRAMMAR["report_scoped"].format(value="v", as_of="2019-01-01", p=0.5, cites="[1]")
-    LK.GRAMMAR["hedge"].format(alts="a")
     LK.GRAMMAR["ask_clarify"].format(alts="a")
     LK.GRAMMAR["abstain"].format(reason="r")
     LK.GRAMMAR["abstain_withheld"].format(reason="r", alts="a")
     LK.GRAMMAR["footer"].format(n_hits=1, n_obs=1, n_ind=0, p_none=0.1,
                                 action="report", eu=0.5)
-    LK.GRAMMAR["fallthrough"].format(reason="r")
     LK.GRAMMAR["origin_documents"].format()
     LK.GRAMMAR["origin_rung"].format(rung="deliberate@m", n_hits=3)
     LK.GRAMMAR["origin_declined"].format(reason="r")

@@ -23,7 +23,7 @@ _HIT = [{"artifact_cache_key": "d0", "chunk_text": "Passport No: P123"}]
 _EXTRACT = {"candidates": ["P123"],
             "observations": [{"reports": 0, "group": 0, "authority": 0.9,
                               "subject_factor": 1.0, "time_factor": 1.0}],
-            "rho": 0.7, "era_split": False, "indeterminate": 0, "half_life_years": 5.0}
+            "rho": 0.7, "indeterminate": 0}
 
 
 _GROW_MENU = {
@@ -144,25 +144,13 @@ def test_typed_report_is_terminal() -> None:
     assert view["n_obs"] == 1  # the footer's grounded-observation count is faithful
 
 
-def test_run_pass_requests_utility_shaped_for_the_question() -> None:
-    # r30 (C5): the grow-menu pricing the daemon argmaxes over is shaped too — the same
-    # seam current_u_bar's other callers route through, reached via /utility?shape=<shape>.
-    fake = FakeServices(route={"construct": "the total", "time_indexed": False},
-                        decides=[{"effector": "report", "value": "12",
-                                  "credences": [0.95, 0.05], "p_none": 0.05, "eu": 0.9}])
-    _loop(fake, question="how many passports do I have in total?")
-    utility_calls = [u for u, _ in fake.calls if u.split("?")[0].endswith("/utility")]
-    assert utility_calls == [f"{B}/utility?shape=quantity"]
-
-
-def test_run_pass_omits_the_query_string_at_the_anchor_shape() -> None:
-    # the wire request is BYTE-IDENTICAL to pre-r30 for the majority-`exact` case (r29's
-    # census) — no shape= param at all, so a cassette recorded before this checkpoint
-    # still matches (collapse_replay.py's m5-base check).
+def test_run_pass_requests_the_plain_utility() -> None:
+    # the executor reads only the exchange rate from /utility, which no answer shape
+    # scales — so it never sends a shape= param
     fake = FakeServices(route={"construct": "passport number", "time_indexed": False},
                         decides=[{"effector": "report", "value": "P123",
                                   "credences": [0.95, 0.05], "p_none": 0.05, "eu": 0.9}])
-    _loop(fake)  # default question classifies "exact"
+    _loop(fake, question="how many passports do I have in total?")
     utility_calls = [u for u, _ in fake.calls if u.split("?")[0].endswith("/utility")]
     assert utility_calls == [f"{B}/utility"]
 
@@ -173,7 +161,7 @@ def test_extract_miss_never_consults_the_daemon() -> None:
     # minted and the daemon is never asked — a miss carrying no candidates.
     fake = FakeServices(route={"construct": "passport number", "time_indexed": False},
                         extract={"candidates": [], "observations": [], "rho": 0.7,
-                                 "era_split": False, "indeterminate": 3,
+                                 "indeterminate": 3,
                                  "half_life_years": 5.0},
                         corroborate={"observations": [], "gather_rho": 0.95, "value": None,
                      "confidence": None})
@@ -196,23 +184,6 @@ def test_view_threads_the_competed_observation_count() -> None:
     fake0 = FakeServices(route={"construct": "prize money", "time_indexed": False},
                          decides=[dict(dec)])
     assert _loop(fake0)["n_competing"] == 0
-
-
-def test_recency_gather_is_acknowledged_then_report() -> None:
-    # The daemon schedules a recency gather; recency is PRE-APPLIED in /extract, so the body
-    # acknowledges it (marks applied, re-decides on the same posterior) and the next decide reports.
-    fake = FakeServices(
-        route={"construct": "home address", "time_indexed": True},
-        extract={**_EXTRACT, "era_split": True},
-        decides=[{"effector": "gather", "probe": "recency", "credences": [0.6, 0.4],
-                  "p_none": 0.1, "eu": 0.3},
-                 {"effector": "report", "value": "P123", "credences": [0.9, 0.1],
-                  "p_none": 0.05, "eu": 0.8}])
-    view = _loop(fake)
-    assert view["effector"] == "report"
-    decides = fake.posted("/decide")
-    assert len(decides) == 2
-    assert "recency" in decides[1]["applied_probes"]  # acknowledged on the re-decide
 
 
 def test_corroborate_tier_is_enacted_then_report() -> None:
@@ -310,8 +281,8 @@ def test_grow_lane_zero_candidates_walks_the_menu_cheapest_first() -> None:
     # walks the menu cheapest-first until candidates appear, then the daemon decides. An
     # enactment that produced nothing logs recovered=False; the one that surfaced the
     # candidates logs the final report.
-    empty = {"candidates": [], "observations": [], "rho": 0.7, "era_split": False,
-             "indeterminate": 0, "half_life_years": 5.0}
+    empty = {"candidates": [], "observations": [], "rho": 0.7,
+             "indeterminate": 0}
     fake = FakeServices(
         route={"construct": "passport number", "time_indexed": False},
         extracts=[empty, empty, _EXTRACT],   # cheap, rerank (still empty), expand (grounds)
@@ -326,8 +297,8 @@ def test_grow_lane_zero_candidates_walks_the_menu_cheapest_first() -> None:
 def test_grow_lane_log_gather_failure_never_breaks_the_answer() -> None:
     # The gather-outcome write is fail-open by contract (as /log_decision is): a bridge blip
     # on /log_gather must never destroy an already-decided answer (review finding #1 on PR 20).
-    empty = {"candidates": [], "observations": [], "rho": 0.7, "era_split": False,
-             "indeterminate": 0, "half_life_years": 5.0}
+    empty = {"candidates": [], "observations": [], "rho": 0.7,
+             "indeterminate": 0}
     fake = FakeServices(
         route={"construct": "passport number", "time_indexed": False},
         extracts=[empty, _EXTRACT],
@@ -422,28 +393,12 @@ def test_corroborate_tier_null_read_keeps_the_channel_reply_adopted_otherwise() 
     assert erased[1]["rho"] == 0.80
 
 
-def test_a_bridge_without_the_read_field_keeps_the_measured_contract() -> None:
-    # Version skew must degrade to the PREVIOUSLY MEASURED behaviour (replace), never to
-    # an unmeasured one: a bridge predating `read` sends no field, and the body erases.
-    fake = FakeServices(
-        route={"construct": "tax id", "time_indexed": False},
-        corroborate={"observations": [], "gather_rho": 0.80, "value": None},
-        decides=[
-            {"effector": "gather", "probe": "corroborate_haiku",
-             "credences": [0.5], "p_none": 0.5, "eu": 0.0},
-            {"effector": "abstain", "credences": [0.5], "p_none": 0.5, "eu": 0.0},
-            {"effector": "abstain", "credences": [0.5], "p_none": 0.5, "eu": 0.0},
-        ])
-    _loop(fake)
-    assert fake.posted("/decide")[1]["observations"] == []
-
-
 def test_zero_candidate_walk_retires_its_probes() -> None:
     # A retrieval actuator enacted in the k=0 walk is APPLIED: the daemon must not be offered
     # it again later in the same pass (review finding #3 — a re-offer would re-enact and
     # double-count one event into the warm-count fold).
-    empty = {"candidates": [], "observations": [], "rho": 0.7, "era_split": False,
-             "indeterminate": 0, "half_life_years": 5.0}
+    empty = {"candidates": [], "observations": [], "rho": 0.7,
+             "indeterminate": 0}
     fake = FakeServices(
         route={"construct": "passport number", "time_indexed": False},
         extracts=[empty, _EXTRACT],   # cheap empty; the rerank walk grounds
@@ -511,8 +466,8 @@ def test_render_view_narrative_passes_through_verbatim() -> None:
 # stated confidence (capped by the tier prior), so a hesitant strong read hedges rather than
 # asserting at the tier's flat rho — the wire must not discard the instrument's uncertainty.
 
-_EMPTY_EXTRACT = {"candidates": [], "observations": [], "rho": 0.7, "era_split": False,
-                  "indeterminate": 2, "half_life_years": 5.0}
+_EMPTY_EXTRACT = {"candidates": [], "observations": [], "rho": 0.7,
+                  "indeterminate": 2}
 
 
 def test_zero_candidate_walk_reaches_the_strong_re_extract() -> None:
@@ -816,7 +771,7 @@ def test_miss_and_narrative_views_default_the_raw_proposal_fields() -> None:
     miss = _loop(FakeServices(
         route={"construct": "passport number", "time_indexed": False},
         extract={"candidates": [], "observations": [], "rho": 0.7,
-                 "era_split": False, "indeterminate": 3, "half_life_years": 5.0},
+                 "indeterminate": 3},
         corroborate={"observations": [], "gather_rho": 0.95, "value": None,
                      "confidence": None}))
     assert miss["effector"] == "miss"
@@ -1087,24 +1042,6 @@ def test_grow_menu_actuator_without_cost_rides_through() -> None:
     view = _loop(fake)
     assert view["effector"] == "abstain"  # survived; no KeyError on the guard row
 
-def test_tier_reply_without_cache_key_warns_of_bridge_skew(capsys) -> None:
-    # PR #63 review: a version-skewed bridge (predating the cache_key wire field)
-    # yields lineage-less rows that dedup keeps by design — warm replays would then
-    # double-count into the curves on every gate run, silently. The skew must be LOUD.
-    fake = FakeServices(
-        route={"construct": "tax id", "time_indexed": False},
-        extract={**_EXTRACT, "candidates": ["P123", "Q999"]},
-        corroborate={"observations": [{"reports": 0, "group": 0, "authority": 1.0,
-                                       "subject_factor": 1.0, "time_factor": 1.0}],
-                     "gather_rho": 0.80, "value": "P123", "confidence": 0.7},
-        decides=[{"effector": "gather", "probe": "corroborate_haiku",
-                  "credences": [0.5, 0.5], "p_none": 0.1, "eu": 0.2},
-                 {"effector": "report", "value": "P123", "credences": [0.9, 0.1],
-                  "p_none": 0.05, "eu": 0.8}])
-    view = _loop(fake)
-    assert view["edge_events"][0]["lineage"] is None
-    assert "cache_key" in capsys.readouterr().out  # the skew is named, never silent
-
 
 def test_all_view_shapes_carry_edge_events() -> None:
     # consumers INDEX the key (never .get) — the default must exist on every return
@@ -1117,7 +1054,7 @@ def test_all_view_shapes_carry_edge_events() -> None:
     miss = _loop(FakeServices(
         route={"construct": "passport number", "time_indexed": False},
         extract={"candidates": [], "observations": [], "rho": 0.7,
-                 "era_split": False, "indeterminate": 3, "half_life_years": 5.0},
+                 "indeterminate": 3},
         corroborate={"observations": [], "gather_rho": 0.95, "value": None,
                      "confidence": None}))
     # M1: the priced lane walks the grow menu before conceding, so the miss carries the
@@ -1455,7 +1392,7 @@ _EXTRACT_KEYED = {
     "observations": [{"reports": 0, "group": 0, "authority": 0.9,
                       "subject_factor": 1.0, "time_factor": 1.0,
                       "quote": "Passport No: P123", "doc_key": "d0"}],
-    "rho": 0.7, "era_split": False, "indeterminate": 0, "half_life_years": 5.0,
+    "rho": 0.7, "indeterminate": 0,
 }  # PII-OK: synthetic passport shape (the suite's standing fixture value)
 
 
@@ -1522,7 +1459,6 @@ def test_deliberate_payload_carries_the_standing_channel() -> None:
     assert delib and delib[0]["observations"] == _EXTRACT_KEYED["observations"]
 
 
-
 # --- r09d D3: S2 joins instead of replacing ----------------------------------------------
 # r09's JOIN reached S1/S3/S4/S5 and left S2 — the retrieval grow — replacing. r09c measured
 # the cost on the deployed tree: seven rows shrink at S2, and on two of them a
@@ -1537,7 +1473,7 @@ def _wobs(reports: int, doc: str, value: str) -> dict[str, Any]:
 
 def _ext(candidates: list[str], observations: list[dict[str, Any]]) -> dict[str, Any]:
     return {"candidates": candidates, "observations": observations, "rho": 0.7,
-            "era_split": False, "indeterminate": 0, "half_life_years": 5.0}
+            "indeterminate": 0}
 
 
 def test_s2_retrieval_grow_joins_the_standing_channel() -> None:
