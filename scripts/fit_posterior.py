@@ -1,0 +1,488 @@
+#!/usr/bin/env python3
+"""fit_posterior — fit the posterior's channel constants by log score, and read what the fit
+would decide. A measurement: nothing here changes a constant in ``core/pricing.py``.
+
+``capture`` drives each question of a set through the live loop exactly as ``eval/run.py``
+does, recording the last evidence-stage ``/decide`` request (the state the final act was taken
+in) and its reply, with the truth labelled against the gold: the index of the first candidate
+the gold matches, or NONE (-1). One JSONL row per question under
+``$LIFE_AGENT_KB/eval/decide-states/``; the rows hold candidate text and never leave the KB.
+
+``check`` recomputes each captured state's posterior at the stated constants and compares its
+leader probability with the pinned archive row's ``typed.p1``.
+
+``fit`` scores the stated constants and six fits (tempering, eta, tempering + A, all but
+``P_NONE_PRIOR``, ``P_NONE_PRIOR`` alone, all five) by the mean log probability the posterior
+gives the truth, in-sample and on the other set, then re-decides every state under each fit
+with the evidence held fixed. Prints aggregates only.
+
+    uv run python scripts/fit_posterior.py capture --questions Q.yaml --set generated
+    uv run python scripts/fit_posterior.py check --states S.jsonl --archive A.jsonl
+    uv run python scripts/fit_posterior.py fit --generated S1.jsonl --owner S2.jsonl
+"""
+from __future__ import annotations
+
+import argparse
+import copy
+import json
+import math
+import statistics
+import sys
+from collections import Counter
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass, replace
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from eval.calibration import Calibration, Pairs, calibrate, fmt_bins
+from eval.grading import realised_report
+from life_agent.core import config as CFG
+from life_agent.core import decide as DEC
+from life_agent.core import decisions as DCS
+from life_agent.core import enact as EN
+from life_agent.core import gather_row as GR
+from life_agent.core import outcomes as OUT
+from life_agent.core import posterior as POST
+from life_agent.core import seam as SEAM
+
+NONE = -1  # the truth label of a state whose gold is not among the candidates
+TOL_FLAT = 0.01  # a parameter value is "as good as the best" within this mean log score
+
+# --- the states ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class State:
+    """One question's final evidence state: what the posterior is a function of, what the
+    decider was offered, and the truth. ``truth`` is the first candidate the gold matches
+    (``NONE`` when none does); ``matches`` is every candidate it matches."""
+
+    question_id: str
+    k: int
+    observations: tuple[Mapping[str, Any], ...]
+    rho: float
+    applied: tuple[str, ...]
+    transforms: tuple[Mapping[str, Any], ...]
+    grow: Mapping[str, Any] | None
+    truth: int
+    matches: tuple[int, ...]
+
+    def payload(self) -> dict[str, Any]:
+        """The fields ``enact.gather_options`` reads."""
+        return {"applied_probes": list(self.applied), "transforms": list(self.transforms),
+                "grow": self.grow}
+
+
+def label(candidates: Sequence[Any], gold: str, variants: Sequence[str]
+          ) -> tuple[int, tuple[int, ...]]:
+    """``(truth, matches)``: the first candidate the gold matches (``NONE`` if none) and all
+    the candidates it matches, by the board's own grader."""
+    hits = tuple(i for i, c in enumerate(candidates)
+                 if realised_report([str(c)], gold, list(variants)))
+    return (hits[0] if hits else NONE), hits
+
+
+def state_from_row(row: Mapping[str, Any]) -> State:
+    """A captured JSONL row, read back."""
+    req = row["request"]
+    return State(question_id=str(row["question_id"]), k=len(req["candidates"]),
+                 observations=tuple(req["observations"]), rho=float(req["rho"]),
+                 applied=tuple(str(a) for a in req.get("applied_probes") or []),
+                 transforms=tuple(req.get("transforms") or []), grow=req.get("grow"),
+                 truth=int(row["truth"]), matches=tuple(int(i) for i in row["matches"]))
+
+
+def read_states(path: Path) -> list[State]:
+    return [state_from_row(json.loads(line))
+            for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
+# --- the score ----------------------------------------------------------------------------
+
+
+def posterior_of(state: State, channel: POST.Channel) -> tuple[list[float], float]:
+    return POST.candidate_posterior(state.k, list(state.observations), state.rho, channel)
+
+
+def truth_prob(state: State, channel: POST.Channel) -> float:
+    """The probability the posterior gives the truth: a candidate's credence, or NONE's."""
+    credences, p_none = posterior_of(state, channel)
+    return p_none if state.truth == NONE else credences[state.truth]
+
+
+def truth_log(p: float) -> float:
+    """Log probability of the truth, clamped as the board's log score is."""
+    return math.log(min(max(p, OUT.SCORE_EPS), 1.0 - OUT.SCORE_EPS))
+
+
+def leader_pair(state: State, credences: Sequence[float]) -> tuple[float, bool] | None:
+    """``(p1, leader is right)``, the board's binary reading; ``None`` with no candidate."""
+    if not credences:
+        return None
+    lead = DCS.leader_order(list(credences))[0]
+    return float(credences[lead]), lead in state.matches
+
+
+@dataclass(frozen=True)
+class Score:
+    n: int
+    truth_log: float
+    leader: Calibration
+
+
+def score(states: Sequence[State], channel: POST.Channel) -> Score:
+    posts = [posterior_of(s, channel) for s in states]
+    logs = [truth_log(p_none if s.truth == NONE else cred[s.truth])
+            for s, (cred, p_none) in zip(states, posts, strict=True)]
+    pairs = [p for s, (cred, _) in zip(states, posts, strict=True)
+             if (p := leader_pair(s, cred)) is not None]
+    return Score(len(states), sum(logs) / len(logs), calibrate(Pairs(tuple(pairs))))
+
+
+def truth_objective(states: Sequence[State]) -> Callable[[POST.Channel], float]:
+    def objective(channel: POST.Channel) -> float:
+        return sum(truth_log(truth_prob(s, channel)) for s in states) / len(states)
+    return objective
+
+
+# --- the search ---------------------------------------------------------------------------
+
+
+def arange(lo: float, hi: float, step: float) -> list[float]:
+    n = round((hi - lo) / step)
+    return [round(lo + i * step, 6) for i in range(n + 1)]
+
+
+GRIDS: dict[str, list[float]] = {
+    "beta_ancestry": arange(0.0, 1.0, 0.05),
+    "beta_model": arange(0.0, 1.0, 0.05),
+    "a_alternatives": [float(a) for a in range(2, 51)],
+    "eta": arange(0.5, 4.0, 0.1),
+    "p_none_prior": arange(0.02, 0.8, 0.02),
+}
+
+FITS: dict[str, tuple[str, ...]] = {
+    "a tempering": ("beta_ancestry", "beta_model"),
+    "b eta": ("eta",),
+    "c tempering+A": ("beta_ancestry", "beta_model", "a_alternatives"),
+    "d all but P_NONE": ("beta_ancestry", "beta_model", "a_alternatives", "eta"),
+    "e P_NONE": ("p_none_prior",),
+    "f all free": ("beta_ancestry", "beta_model", "a_alternatives", "eta", "p_none_prior"),
+}
+
+
+def ascend(objective: Callable[[POST.Channel], float], start: POST.Channel,
+           free: Sequence[str], grids: Mapping[str, Sequence[float]] = GRIDS,
+           max_sweeps: int = 30) -> POST.Channel:
+    """Coordinate ascent over the grids of the ``free`` parameters: each sweep moves every
+    parameter to its best grid value given the others, until a sweep moves nothing. A move
+    needs a strict gain, so a tie keeps the current value."""
+    best, best_v = start, objective(start)
+    for _ in range(max_sweeps):
+        moved = False
+        for name in free:
+            for v in grids[name]:
+                cand = replace(best, **{name: v})
+                cv = objective(cand)
+                if cv > best_v + 1e-12:
+                    best, best_v, moved = cand, cv, True
+        if not moved:
+            break
+    return best
+
+
+def starts(base: POST.Channel, free: Sequence[str],
+           grids: Mapping[str, Sequence[float]] = GRIDS) -> list[POST.Channel]:
+    """The baseline plus, for each of the grids' quartiles, every free parameter set there:
+    a handful of deterministic starts, so a fit is not the baseline's nearest hill."""
+    out = [base]
+    for q in (0.25, 0.5, 0.75):
+        out.append(replace(base, **{n: grids[n][round(q * (len(grids[n]) - 1))] for n in free}))
+    return out
+
+
+def fit(states: Sequence[State], base: POST.Channel, free: Sequence[str],
+        grids: Mapping[str, Sequence[float]] = GRIDS) -> POST.Channel:
+    """The best of the ascents from each start, by mean log probability of the truth."""
+    objective = truth_objective(states)
+    return max((ascend(objective, s, free, grids) for s in starts(base, free, grids)),
+               key=objective)
+
+
+def flatness(states: Sequence[State], best: POST.Channel, free: Sequence[str],
+             grids: Mapping[str, Sequence[float]] = GRIDS, tol: float = TOL_FLAT
+             ) -> dict[str, tuple[float, float]]:
+    """Per free parameter, the lowest and highest grid value whose mean log probability of
+    the truth is within ``tol`` of the best's, the others held at the best. A wide range is
+    an ill-determined parameter (conditional on the rest, not a profile)."""
+    objective = truth_objective(states)
+    top = objective(best)
+    out: dict[str, tuple[float, float]] = {}
+    for name in free:
+        ok = [v for v in grids[name] if objective(replace(best, **{name: v})) >= top - tol]
+        out[name] = (min(ok), max(ok))
+    return out
+
+
+# --- what the fit would decide -------------------------------------------------------------
+
+
+def act_at(state: State, channel: POST.Channel, u_bar: Mapping[str, float]) -> DEC.Option:
+    """The Bayes act at this state under ``channel``, as ``decider.decide`` takes it."""
+    credences, _ = posterior_of(state, channel)
+    u = GR.at_step(u_bar, len(state.applied))
+    return DEC.bayes_act(u, credences, EN.gather_options(state.payload()))
+
+
+@dataclass(frozen=True)
+class Consequence:
+    """The respond decisions of one channel over a set's states, evidence held fixed."""
+
+    n: int
+    responds: frozenset[int]        # indices of states whose act is respond
+    right: frozenset[int]           # ... and the named candidate is the truth
+    utility: float                  # mean utility per state at the gauge
+
+    @property
+    def wrong(self) -> frozenset[int]:
+        return self.responds - self.right
+
+
+def consequences(states: Sequence[State], channel: POST.Channel,
+                 u_bar: Mapping[str, float]) -> Consequence:
+    acts = [act_at(s, channel, u_bar) for s in states]
+    responds = frozenset(i for i, o in enumerate(acts) if o.action == "respond")
+    right = frozenset(i for i in responds
+                      if acts[i].target == states[i].truth and states[i].truth != NONE)
+    u_right, u_wrong = float(u_bar.get("u_correct", 1.0)), float(u_bar.get("u_wrong", -9.0))
+    util = (len(right) * u_right + (len(responds) - len(right)) * u_wrong) / len(states)
+    return Consequence(len(states), responds, right, util)
+
+
+def flips(base: Consequence, new: Consequence) -> tuple[int, int, int]:
+    """``(newly respond, of which right, no longer respond)`` relative to ``base``."""
+    gained = new.responds - base.responds
+    return len(gained), len(gained & new.right), len(base.responds - new.responds)
+
+
+# --- the capture --------------------------------------------------------------------------
+
+
+def capture_one(question: str, k: int, *, run_id: str, inner_post: Callable[..., Any],
+                drive: Callable[..., Any]) -> tuple[dict[str, Any], dict[str, Any]] | None:
+    """Drive one question through the live loop; the last evidence-stage ``/decide`` request
+    and its reply, or ``None`` when the question never reached one (declined at the route)."""
+    seen: list[tuple[dict[str, Any], dict[str, Any]]] = []
+
+    def post(url: str, payload: dict[str, Any]) -> Any:
+        resp = inner_post(url, payload)
+        if url.endswith("/decide") and payload.get("stage") != SEAM.STAGE_ROUTE:
+            seen.append((copy.deepcopy(payload), copy.deepcopy(resp)))
+        return resp
+
+    drive(question, k, post=post, run_id=run_id)
+    return seen[-1] if seen else None
+
+
+def capture_row(q: Mapping[str, Any], request: Mapping[str, Any], reply: Mapping[str, Any],
+                *, set_name: str, run_id: str, censored: bool) -> dict[str, Any]:
+    truth, matches = label(request["candidates"], q.get("answer", ""),
+                           q.get("answer_variants", []))
+    return {"question_id": str(q["id"]), "set": set_name, "run_id": run_id,
+            "censored": censored, "truth": truth, "matches": list(matches),
+            "request": dict(request), "reply": dict(reply)}
+
+
+def cmd_capture(a: argparse.Namespace) -> int:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import ask
+
+    from eval.run import gold_available, load_questions
+    from life_agent.core import ask_client as AC
+
+    if not AC._ready():
+        print(f"REFUSED: the bridge at {AC.BRIDGE} is not ready", file=sys.stderr)
+        return 2
+    questions = load_questions(a.questions)
+    stamp = datetime.now().strftime("%Y%m%dT%H%M%S")
+    run_id = f"gate-posterior-capture-{stamp}"
+    out = Path(a.out) if a.out else (CFG.KB / "eval" / "decide-states"
+                                     / f"{a.set}-{stamp}.jsonl")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    conn = ask.connect()
+    try:
+        available = gold_available(conn, questions)
+    finally:
+        conn.close()
+
+    def drive(question: str, k: int, *, post: Callable[..., Any], run_id: str) -> Any:
+        return AC.drive(question, k, bridge=AC.BRIDGE, post=post, run_id=run_id,
+                        ready=AC._ready)
+
+    tally: Counter[str] = Counter()
+    with out.open("w", encoding="utf-8") as fh:
+        for q in questions:
+            got = capture_one(q["question"], a.k, run_id=run_id, inner_post=AC.post_json,
+                              drive=drive)
+            if got is None:
+                tally["no evidence-stage decide"] += 1
+                continue
+            request, reply = got
+            ok = available.get(str(q["id"]), True)
+            row = capture_row(q, request, reply, set_name=a.set, run_id=run_id,
+                              censored=not ok)
+            fh.write(json.dumps(row) + "\n")
+            fh.flush()
+            tally["captured"] += 1
+            tally["truth NONE" if row["truth"] == NONE else "truth a candidate"] += 1
+            tally["censored"] += not ok
+    print(f"{a.set}: " + " · ".join(f"{k} {v}" for k, v in sorted(tally.items()))
+          + f" of {len(questions)} → $LIFE_AGENT_KB/{out.relative_to(CFG.KB)}")
+    return 0
+
+
+# --- the reproduction check ---------------------------------------------------------------
+
+
+def reproduction(rows: Sequence[Mapping[str, Any]], archive: Mapping[str, Mapping[str, Any]],
+                 tol: float = 1e-9) -> dict[str, int]:
+    """How the default-channel posterior of each captured state compares with its archive
+    row: ``typed.p1`` within ``tol``, and the truth label against ``typed.leader_correct``."""
+    tally: Counter[str] = Counter()
+    base = POST.default_channel()
+    for row in rows:
+        arch = (archive.get(str(row["question_id"])) or {}).get("typed")
+        if arch is None:
+            tally["no archive row"] += 1
+            continue
+        s = state_from_row(row)
+        credences, _ = posterior_of(s, base)
+        pair = leader_pair(s, credences)
+        if pair is None or arch.get("p1") is None:
+            tally["no candidate"] += 1
+            tally["no-candidate both"] += pair is None and arch.get("p1") is None
+            continue
+        tally["p1 match"] += abs(pair[0] - float(arch["p1"])) <= tol
+        tally["p1 differ"] += abs(pair[0] - float(arch["p1"])) > tol
+        tally["leader label agrees"] += pair[1] == bool(arch.get("leader_correct"))
+        tally["leader label differs"] += pair[1] != bool(arch.get("leader_correct"))
+        tally["truth label == first match (leader right)"] += (
+            pair[1] and s.truth in s.matches)
+    return dict(tally)
+
+
+def cmd_check(a: argparse.Namespace) -> int:
+    rows = [json.loads(line) for line in Path(a.states).read_text().splitlines() if line.strip()]
+    archive = {str(r["question_id"]): r for r in
+               (json.loads(line) for line in Path(a.archive).read_text().splitlines()
+                if line.strip())}
+    print(json.dumps(reproduction(rows, archive), sort_keys=True))
+    return 0
+
+
+# --- the report ---------------------------------------------------------------------------
+
+
+def _fmt_channel(ch: POST.Channel, free: Sequence[str]) -> str:
+    return " ".join(f"{n}={getattr(ch, n):g}" for n in free) or "(stated)"
+
+
+def _line(name: str, sc: Score) -> str:
+    return (f"    {name:<14} truth_log {sc.truth_log:+.4f}  leader_log "
+            f"{sc.leader.mean_log:+.4f}  ECE {sc.leader.ece:.4f}")
+
+
+def describe(states: Sequence[State]) -> list[str]:
+    def five(xs: Sequence[float]) -> str:
+        return f"{min(xs):.3g} / {statistics.median(xs):.3g} / {max(xs):.3g}"
+    n_obs = [len(s.observations) for s in states]
+    n_groups = [len({o["group"] for o in s.observations}) for s in states]
+    return [f"  states {len(states)} · truth NONE {sum(s.truth == NONE for s in states)} · "
+            f"k=0 {sum(s.k == 0 for s in states)} · >1 matching candidate "
+            f"{sum(len(s.matches) > 1 for s in states)} · gathered before final "
+            f"{sum(bool(s.applied) for s in states)}",
+            f"  rho min/med/max {five([s.rho for s in states])}",
+            f"  observations min/med/max {five(n_obs)} · groups min/med/max {five(n_groups)}"]
+
+
+def cmd_fit(a: argparse.Namespace) -> int:
+    from life_agent.core import lookup as LK
+
+    sets = {"generated": read_states(Path(a.generated)), "owner": read_states(Path(a.owner))}
+    base = POST.default_channel()
+    u_bar = LK.current_u_bar()[0]
+    print(f"u_correct {u_bar['u_correct']:g}  u_wrong {u_bar['u_wrong']:.3f}  "
+          f"bar {DEC.respond_threshold(at_step0(u_bar)) or float('nan'):.4f}")
+    overlap = ({s.question_id for s in sets["generated"]}
+               & {s.question_id for s in sets["owner"]})
+    print(f"question-id overlap between the sets: {len(overlap)}")
+    for name, states in sets.items():
+        print(f"[{name}]")
+        print("\n".join(describe(states)))
+        sc = score(states, base)
+        print(_line("baseline", sc))
+        print("\n".join(fmt_bins(sc.leader)))
+    fits: dict[str, dict[str, POST.Channel]] = {n: {} for n in sets}
+    for name, states in sets.items():
+        other = sets["owner" if name == "generated" else "generated"]
+        print(f"\n=== fit on {name}, test on {'owner' if name == 'generated' else 'generated'}")
+        for fname, free in FITS.items():
+            best = fit(states, base, free)
+            fits[name][fname] = best
+            flat = flatness(states, best, free)
+            print(f"  {fname}: {_fmt_channel(best, free)}")
+            print(_line("in-sample", score(states, best)))
+            print(_line("cross-set", score(other, best)))
+            print("    flat within 0.01: " + "; ".join(
+                f"{n} [{lo:g}, {hi:g}]" for n, (lo, hi) in flat.items()))
+    print("\n=== decisions, evidence held fixed (gauge u_wrong as above)")
+    picks = ("a tempering", "d all but P_NONE", "f all free")
+    for name, states in sets.items():
+        other_name = "owner" if name == "generated" else "generated"
+        b = consequences(states, base, u_bar)
+        print(f"[{name}] n={b.n}")
+        print(f"  baseline            respond {len(b.responds)} right {len(b.right)} "
+              f"wrong {len(b.wrong)}  U/q {b.utility:+.4f}")
+        for source, label_ in ((name, "in-sample"), (other_name, "from-other-set")):
+            for fname in picks:
+                ch = fits[source][fname]
+                c = consequences(states, ch, u_bar)
+                gained, gained_right, lost = flips(b, c)
+                print(f"  {fname:<18} {label_:<14} respond {len(c.responds)} right "
+                      f"{len(c.right)} wrong {len(c.wrong)}  U/q {c.utility:+.4f}  "
+                      f"new respond {gained} (right {gained_right}, wrong "
+                      f"{gained - gained_right}) · stopped {lost}")
+    return 0
+
+
+def at_step0(u_bar: Mapping[str, float]) -> dict[str, float]:
+    return GR.at_step(u_bar, 0)
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    cap = sub.add_parser("capture")
+    cap.add_argument("--questions", required=True)
+    cap.add_argument("--set", required=True)
+    cap.add_argument("--k", type=int, default=20)
+    cap.add_argument("--out", default=None)
+    cap.set_defaults(func=cmd_capture)
+    chk = sub.add_parser("check")
+    chk.add_argument("--states", required=True)
+    chk.add_argument("--archive", required=True)
+    chk.set_defaults(func=cmd_check)
+    ft = sub.add_parser("fit")
+    ft.add_argument("--generated", required=True)
+    ft.add_argument("--owner", required=True)
+    ft.set_defaults(func=cmd_fit)
+    a = ap.parse_args(argv)
+    return int(a.func(a))
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

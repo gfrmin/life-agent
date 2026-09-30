@@ -5,13 +5,15 @@ from __future__ import annotations
 import hashlib
 import math
 import os
+import random
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 from life_agent.core import posterior as P
-from life_agent.core.pricing import A_ALTERNATIVES, P_NONE_PRIOR
+from life_agent.core.pricing import A_ALTERNATIVES, BETA_ANCESTRY, BETA_MODEL, P_NONE_PRIOR
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
@@ -102,3 +104,45 @@ def test_the_port_replays_the_julia_daemon_on_m5_base() -> None:
         assert got.index(max(got)) == want.index(max(want)), fid
         n += 1
     assert n == _M5_DECIDES
+
+
+# --- the channel parameter -----------------------------------------------------------------
+
+def _random_state(rng: random.Random) -> tuple[int, list[dict[str, float]], float]:
+    k = rng.randint(0, 6)
+    obs = [_obs(rng.randrange(max(k, 1)), rng.randrange(3), authority=rng.uniform(0.3, 1.0),
+                subject=rng.uniform(0.5, 1.0), time=rng.uniform(0.5, 1.0),
+                competition=rng.uniform(0.5, 1.0)) for _ in range(rng.randint(0, 6))] if k else []
+    return k, obs, rng.uniform(0.2, 0.99)
+
+
+def test_the_default_channel_is_the_stated_constants() -> None:
+    ch = P.default_channel()
+    assert (ch.p_none_prior, ch.beta_ancestry, ch.beta_model, ch.a_alternatives, ch.eta) == (
+        P_NONE_PRIOR, BETA_ANCESTRY, BETA_MODEL, A_ALTERNATIVES, 1.0)
+
+
+def test_an_explicit_default_channel_changes_nothing() -> None:
+    rng = random.Random(20260930)
+    explicit = P.Channel(P_NONE_PRIOR, BETA_ANCESTRY, BETA_MODEL, A_ALTERNATIVES, eta=1.0)
+    for _ in range(200):
+        k, obs, rho = _random_state(rng)
+        assert (P.candidate_posterior(k, obs, rho, channel=explicit)
+                == P.candidate_posterior(k, obs, rho))
+        assert P.log_posterior(k, obs, rho, explicit) == P.log_posterior(k, obs, rho)
+
+
+def test_another_channel_moves_the_posterior_the_way_its_constants_say() -> None:
+    obs = [_obs(0, 0), _obs(0, 1)]
+    base, none0 = P.candidate_posterior(3, obs, 0.7)
+    # eta > 1 counts the evidence for more; eta < 1 for less
+    loud, none_loud = P.candidate_posterior(3, obs, 0.7,
+                                            channel=replace(P.default_channel(), eta=2.0))
+    quiet, _ = P.candidate_posterior(3, obs, 0.7, channel=replace(P.default_channel(), eta=0.5))
+    assert loud[0] > base[0] > quiet[0] and none_loud < none0
+    # a prior on NONE of 0.2 leaves NONE less mass than 0.5 does
+    _, none_low = P.candidate_posterior(3, obs, 0.7,
+                                        channel=replace(P.default_channel(), p_none_prior=0.2))
+    assert none_low < none0
+    # no tempering: two documents count as two observations
+    assert P.temper_scales([0, 1], replace(P.default_channel(), beta_model=1.0)) == [1.0, 1.0]
