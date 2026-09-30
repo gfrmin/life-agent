@@ -44,8 +44,9 @@ Curves = dict[str, CAL.ReliabilityCurve] | None
 Post = Callable[[str, dict[str, Any]], "dict[str, Any] | None"]
 Get = Callable[[str], dict[str, Any]]
 
-View = dict[str, Any]  # {effector, asserted, candidates, credences, p_none, eu, n_obs, hits,
-#                        route}; a narrative view also carries "rendered" (rendered bridge-side).
+View = dict[str, Any]  # {effector, asserted, cited, candidates, credences, p_none, eu, n_obs,
+#                        hits, route}; a narrative view also carries "rendered" (rendered
+#                        bridge-side); a cite view carries "cited" = {cache_key, hit_n}.
 
 # Every priced row below is a BINDING of the one price table (core/pricing — M4, r14):
 # the ladder, the menu, the deliberate seed and the re-read model are declared there as
@@ -186,7 +187,7 @@ def _declined_at_route(question: str, route: dict[str, Any], eu: float | None) -
     """The view of a question the decider declined before any retrieval: nothing was
     gathered or spent, ``stage`` says where the decision was taken, ``route`` carries the
     router's verdict and kind."""
-    return {"effector": "abstain", "asserted": [], "candidates": [],
+    return {"effector": "abstain", "asserted": [], "cited": None, "candidates": [],
             "credences": [], "p_none": None, "eu": eu, "n_obs": 0,
             "hits": [], "route": route, "stage": SEAM.STAGE_ROUTE,
             "rendered": DECLINED_NOT_POINT_FACT,
@@ -218,6 +219,17 @@ def decide_via_loop(question: str, k: int, *, bridge: str, post: Post, get: Get,
         return _declined_at_route(question, route, dec["eu"])
     return run_pass(question, k, route, bridge=bridge, post=post, get=get,
                     transforms=transforms, curves=curves, u_bar=u_bar)
+
+
+def cited_document(group: int, observations: list[dict[str, Any]],
+                   hits: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """The document a cite's ``group`` stands for: ``{cache_key, hit_n}`` (``hit_n`` the
+    1-based number of the first hit card of that artifact, as :func:`_cite_ns` numbers
+    them), or None when no observation of the group carries its ``doc_key`` or no hit is
+    that artifact."""
+    keys = [o["doc_key"] for o in observations if o.get("group") == group and o.get("doc_key")]
+    card = [i + 1 for i, h in enumerate(hits) if keys and h["artifact_cache_key"] == keys[0]]
+    return {"cache_key": str(keys[0]), "hit_n": card[0]} if card else None
 
 
 def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str,
@@ -548,19 +560,27 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str,
             dec = _decide(obs, rho, applied)
         else:
             break
-    _log_outcomes(dec["effector"] if candidates else "miss")
+    # a cite names a group; the document it stands for is resolved here, off the wire keys
+    # the decide payload never carried. A group no hit stands behind has no document to name.
+    cited = (cited_document(dec["group"], obs, hits)
+             if dec["effector"] == "cite" else None)
+    effector = "abstain" if dec["effector"] == "cite" and cited is None else dec["effector"]
+    _log_outcomes(effector if candidates else "miss")
     if not candidates:
         # No candidate stood at the end (the decider abstained or asked, or every probe it
         # bought came back empty): a miss, no posterior to report and none to fold a verdict on.
-        return {"effector": "miss", "asserted": [], "candidates": [], "credences": [],
+        return {"effector": "miss", "asserted": [], "cited": None, "candidates": [],
+                "credences": [],
                 "p_none": None, "eu": dec["eu"], "n_obs": 0, "hits": hits, "route": route,
                 "n_indeterminate": int(ext.get("indeterminate", 0) or 0),
                 "n_competing": int(ext.get("n_competing", 0) or 0),
                 **_UNPRICED_ATTRIBUTION, "edge_events": edge_events,
                 "spend_usd": spend_usd, "applied": list(applied),
                 "origin": DEC.origin(effector="miss", candidates=[], asserted=[]).as_dict()}
-    asserted = [dec["value"]] if dec["effector"] == "report" and dec["value"] else []
-    return {"effector": dec["effector"], "asserted": asserted, "candidates": candidates,
+    asserted = [dec["value"]] if effector == "report" and dec["value"] else []
+    return {"effector": effector, "asserted": asserted, "cited": cited,
+            "p_cited": dec.get("p_group") if cited else None,
+            "candidates": candidates,
             "credences": dec["credences"], "p_none": dec["p_none"], "eu": dec["eu"],
             "n_obs": len(obs), "hits": hits, "route": route, "question": question,
             "n_indeterminate": int(ext.get("indeterminate", 0) or 0),
@@ -571,10 +591,10 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str,
             "disclosed": edge_disclosed,
             "edge_events": edge_events, "spend_usd": spend_usd, "applied": list(applied),
             "engine_act": dec.get("act"), "p1": dec.get("p1"),
-            "origin": DEC.origin(effector=dec["effector"], candidates=candidates,
+            "origin": DEC.origin(effector=effector, candidates=candidates,
                                  asserted=asserted, instrument=edge_instrument,
                                  instrument_value=edge_value,
-                                 disclosed=edge_disclosed).as_dict()}
+                                 disclosed=edge_disclosed, cited=cited).as_dict()}
 
 
 # --- render (the executor's decision in the shared credence grammar) --------------------
@@ -617,6 +637,9 @@ def render_view(view: View) -> str:
         v = asserted[0]
         body = LK.GRAMMAR["report"].format(value=v, p=(creds[0] if creds else 0.0),
                                            cites=_cites(v, hits))
+    elif eff == "cite" and view.get("cited"):
+        body = LK.GRAMMAR["cite"].format(
+            n=view["cited"]["hit_n"], p=view.get("p_cited") or 0.0, alts=alts)
     elif eff == "ask_clarify":
         body = LK.GRAMMAR["ask_clarify"].format(alts=alts)
     else:
@@ -631,8 +654,9 @@ def render_view(view: View) -> str:
     o = DEC.origin(effector=eff, candidates=cands, asserted=asserted,
                    instrument=str(view.get("instrument") or ""),
                    instrument_value=view.get("instrument_value"),
-                   disclosed=view.get("disclosed"))
-    head = LK.origin_line(o.kind, rung=o.rung, reason=o.reason, disclosed=o.disclosed)
+                   disclosed=view.get("disclosed"), cited=view.get("cited"))
+    head = LK.origin_line(o.kind, rung=o.rung, reason=o.reason, disclosed=o.disclosed,
+                          cite=bool(o.cited))
     p_none, eu = view["p_none"], view["eu"]
     footer = LK.GRAMMAR["footer"].format(
         n_hits=len(hits), n_obs=view.get("n_obs", 0),

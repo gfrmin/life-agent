@@ -221,6 +221,10 @@ REASON_NO_OBSERVATIONS = "no admitted evidence"
 # answer — a certainty the posterior never asserted (presentation error, §3).
 GRAMMAR: dict[str, str] = {
     "report": "{value} — credence {p:.3f} {cites}",
+    # a partial answer: the document, not the value. {p} is the credence that the cited
+    # document holds the answer; {alts} the candidates held back.
+    "cite": ("The answer is in [{n}] (credence {p:.3f} that this document holds it); "
+             "the value is not certain enough to state. Held back: {alts}"),
     "ask_clarify": "Worth asking you directly — the evidence does not settle it: {alts}",
     "abstain": "No answer asserted ({reason}).",
     # abstain still shows the candidate(s) it withheld below the assert threshold — the
@@ -236,6 +240,7 @@ GRAMMAR: dict[str, str] = {
     # J2: the FIRST line of every reply names where the answer came from (rule 3):
     # a span in your documents, a named rung, or a decline with its reason.
     "origin_documents": "From your documents.",
+    "origin_cite": "From your documents (the document, not the value).",
     "origin_rung": "Answered by the {rung} rung ({disclosed}).",
     "origin_declined": "Declined: {reason}.",
 }
@@ -251,11 +256,12 @@ ORIGIN_REASONS: dict[str, str] = {
 
 
 def origin_line(kind: str, *, rung: str = "", reason: str = "",
-                disclosed: int | None = None) -> str:
+                disclosed: int | None = None, cite: bool = False) -> str:
     """The reply's first line for an origin (``decisions.origin``), in the grammar. A rung
-    names how many documents were disclosed to it, or that the count was not recorded."""
+    names how many documents were disclosed to it, or that the count was not recorded;
+    ``cite`` marks a documents origin that names the document and not the value."""
     if kind == "documents":
-        return GRAMMAR["origin_documents"]
+        return GRAMMAR["origin_cite" if cite else "origin_documents"]
     if kind == "rung":
         count = ("disclosure not recorded" if disclosed is None
                  else f"{disclosed} document{'' if disclosed == 1 else 's'} disclosed")

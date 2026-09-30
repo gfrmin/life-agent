@@ -803,6 +803,9 @@ def _log_decision(deps: BridgeDeps, p: Payload) -> Payload:
     cost_usd = decision.get("cost_usd")
     latency_s = decision.get("latency_s")
     regime, policy, defaulted = _regime_and_policy(decision)
+    cited = str(decision.get("cited") or "")
+    if action == "cite" and not cited:
+        raise BridgeError(400, "a cite decision must name the cited document (decision.cited)")
     event = DEC.DecisionEvent(
         # the body may tag the run (the gate's executor arm — in-gate decisions must
         # not masquerade as live traffic); absent ⇒ the live default
@@ -816,7 +819,8 @@ def _log_decision(deps: BridgeDeps, p: Payload) -> Payload:
         posterior_summary={"candidates": cands_sorted, "credences": creds_sorted,
                            "p_none": p_none, "n_obs": n_obs,
                            "n_indeterminate": int(decision.get("n_indeterminate", 0)),
-                           "n_competing": int(decision.get("n_competing", 0))},
+                           "n_competing": int(decision.get("n_competing", 0)),
+                           **({"cited": cited} if action == "cite" else {})},
         utility_fold_version=deps.fold_version(),
         chosen_action=action, predicted_eu=eu, decision_id=decision_id,
         # decisions v2 (§10 accounting): the answer-proposing edge + its realised price,

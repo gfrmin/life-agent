@@ -17,7 +17,9 @@ observation on u(wrong): ``good`` ("glad you didn't guess") favours u(wrong) bel
 ``bad`` ("I wanted an answer") above it. Verdicts on *reports* are cross-latent
 contaminated (wrong-subject / didn't-want-report) and signed gate-favourable, so they are
 recorded but NOT folded until the §8 grader-3 attribution lands — that is the named
-successor. Report-verdicts and unrouted verdicts are recorded but not folded.
+successor. Report-verdicts and unrouted verdicts are recorded but not folded; nor are
+verdicts on a ``cite`` reply (contaminated: "bad" may mean the wrong document or "I wanted
+the value").
 
 **The verdict is one bit.** The owner answers only ``good`` or ``bad`` — the loop elicits no
 free text, because the one expensive resource here is the owner's prose (cheap auto-measurement

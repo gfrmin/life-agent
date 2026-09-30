@@ -1815,3 +1815,67 @@ def test_a_rung_answer_names_the_rung_and_what_was_shared() -> None:
     # a replayed answer recorded before the count existed says so, never a number
     assert EX.render_view({**view, "disclosed": None}).splitlines()[0].endswith(
         "(disclosure not recorded).")
+
+
+# --- cite: the document, resolved off the wire ----------------------------------------------
+
+_CITE_DECIDE = {"effector": "cite", "value": None, "group": 0, "p_group": 0.74,
+                "credences": [0.7, 0.2], "p_none": 0.1, "eu": 0.04}
+_TWO_HITS = [{"artifact_cache_key": "d9", "chunk_text": "unrelated"},
+             {"artifact_cache_key": "d0", "chunk_text": "Passport No: P123"}]
+_CITE_EXTRACT = {
+    "candidates": ["P123", "Q9"],
+    "observations": [{"reports": 0, "group": 0, "authority": 0.9, "subject_factor": 1.0,
+                      "time_factor": 1.0, "quote": "Passport No: P123", "doc_key": "d0"},
+                     {"reports": 1, "group": 1, "authority": 0.9, "subject_factor": 1.0,
+                      "time_factor": 1.0, "quote": "Passport No: Q9", "doc_key": "d1"}],
+    "rho": 0.7, "indeterminate": 0,
+}  # PII-OK: synthetic passport shapes (the suite's standing fixture values)
+
+
+def test_a_cite_view_names_the_document_and_asserts_nothing() -> None:
+    fake = FakeServices(route={"construct": "passport number", "time_indexed": False},
+                        hits=_TWO_HITS, extract=_CITE_EXTRACT, decides=[_CITE_DECIDE])
+    view = _loop(fake)
+    assert view["effector"] == "cite" and view["asserted"] == []
+    assert view["cited"] == {"cache_key": "d0", "hit_n": 2}     # the second card
+    assert view["origin"] == {"kind": "documents", "rung": "", "reason": "",
+                              "cited": "d0"}
+    out = EX.render_view(view)
+    lines = out.splitlines()
+    assert lines[0] == "From your documents (the document, not the value)."
+    assert "The answer is in [2] (credence 0.740 that this document holds it)" in lines[1]
+    assert "Held back: P123 (0.700) [2] · Q9 (0.200)" in lines[1]
+    assert "decision cite" in out
+
+
+def test_the_cite_decide_payload_stays_wire_key_free() -> None:
+    fake = FakeServices(route={"construct": "passport number", "time_indexed": False},
+                        hits=_TWO_HITS, extract=_CITE_EXTRACT, decides=[_CITE_DECIDE])
+    _loop(fake)
+    (decide,) = fake.posted("/decide")
+    for o in decide["observations"]:
+        assert set(o) == {"reports", "group", "authority", "subject_factor", "time_factor"}
+
+
+def test_a_cite_of_a_group_no_hit_stands_behind_is_a_decline() -> None:
+    # the bridge's observations name their document; one that names none a hit carries
+    # (a synthesised read) has nothing to cite, so the reply declines instead of inventing
+    fake = FakeServices(route={"construct": "passport number", "time_indexed": False},
+                        hits=_HIT, extract=_CITE_EXTRACT,
+                        decides=[{**_CITE_DECIDE, "group": 1}])
+    view = _loop(fake)
+    assert view["effector"] == "abstain" and view["cited"] is None
+    assert view["origin"]["kind"] == "declined"
+    assert EX.render_view(view).startswith("Declined:")
+
+
+def test_the_real_decider_cites_a_document_held_at_the_middle_credence() -> None:
+    fake = _real_decider(FakeServices(
+        route={"construct": "passport number", "time_indexed": False},
+        hits=_TWO_HITS, extract={**_CITE_EXTRACT, "observations": [
+            _CITE_EXTRACT["observations"][0]], "candidates": ["P123"], "rho": 0.5}),
+        _gauge(-9.0, row={}))
+    view = _loop(fake)
+    assert view["effector"] == "cite" and view["cited"]["cache_key"] == "d0"
+    assert view["p_cited"] == pytest.approx(view["credences"][0])
