@@ -220,7 +220,9 @@ law is marked **unenforced**.
 5. **Write-once records.** Decision, disclosure and verdict rows are never edited; a
    retraction is a new row. Tests: `tests/test_outcomes.py::test_append_appends_never_truncates_and_order_is_preserved`,
    `tests/test_derivations.py::test_record_is_write_once`, `tests/test_disclosure.py::test_the_log_is_opened_in_append_mode_only`;
-   **unenforced** for the decision and reaction logs.
+   `tests/test_write_once.py` (the five logs' modules open nothing for writing and write through
+   `jsonl_log.append_line`); a re-posted decision leaves one row
+   (`tests/test_bridge_server.py::test_log_decision_reposted_leaves_one_row`).
 6. **One home per constant.** Channel constants, prices and the action vocabulary are each
    declared once (`core/pricing.py`) and bound everywhere else. Test:
    `tests/test_pricing_table.py::test_no_priced_constant_is_declared_outside_the_table` (prices only).

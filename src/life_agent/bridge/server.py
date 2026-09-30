@@ -23,8 +23,8 @@ EXISTING reaction loop with no new fold code; the next decision reads the moved 
 **Stateless reads**: every read endpoint is a pure function of (corpus, request); the body
 holds the growing hit set + accumulated covariates and resends them each refinement (uniform
 with `/decide`), so two questions interleaved in one process cannot perturb each other.
-`/log_decision`'s append is content-addressed (a stable `decision_id`), so a re-post coalesces
-rather than double-counting.
+`/log_decision`'s append is content-addressed (a stable `decision_id`) and skipped when that
+id is already in the log, so a re-post leaves one row rather than double-counting.
 
 **PII stays server-side**: the owner profile and the utility posterior are read INSIDE the
 bridge (`BridgeDeps`), so `/probe/subject` and `/utility` carry neither over the wire; the
@@ -52,7 +52,7 @@ import duckdb
 from life_agent import owner
 from life_agent.bridge.observations import join_wire_observations, to_abstract_observations
 from life_agent.core import answer_shape as AS
-from life_agent.core import config
+from life_agent.core import config, jsonl_log
 from life_agent.core import corpus as CORPUS
 from life_agent.core import decide as DEC_RULE
 from life_agent.core import decider as DCD
@@ -769,6 +769,19 @@ def _regime_and_policy(decision: Payload) -> tuple[str, str, tuple[str, ...]]:
 _TERMINAL_ACTIONS: frozenset[str] = frozenset(DEC.LOOKUP_ACTION_ORDER)
 
 
+# The decision ids each log already holds: seeded from the file on a log's first write in
+# this process (one scan), then extended by each append — the bridge is the log's only writer
+# and serves one request at a time, so the set stays true.
+_LOGGED_IDS: dict[Path, set[str]] = {}
+
+
+def _logged_ids(path: Path) -> set[str]:
+    if path not in _LOGGED_IDS:
+        _LOGGED_IDS[path] = {str(loads(line).get("decision_id"))
+                             for line in jsonl_log.read_lines(path)}
+    return _LOGGED_IDS[path]
+
+
 def _log_decision(deps: BridgeDeps, p: Payload) -> Payload:
     """Append one terminal decision to the calibration decision log, shaped as a lookup
     decision row, so the owner's one-bit verdict folds into u(wrong) through the EXISTING
@@ -836,7 +849,10 @@ def _log_decision(deps: BridgeDeps, p: Payload) -> Payload:
         # v5: the documents a rung's answer disclosed to it; absent ⇒ not stated
         disclosed=(int(decision["disclosed"])
                    if decision.get("disclosed") is not None else None))
-    DEC.append(deps.decisions_path, event)
+    seen = _logged_ids(deps.decisions_path)
+    if decision_id not in seen:  # a re-post of the same decision is not a second row
+        DEC.append(deps.decisions_path, event)
+        seen.add(decision_id)
     return {"decision_id": decision_id}
 
 

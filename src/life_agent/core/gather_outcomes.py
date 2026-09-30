@@ -30,6 +30,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from life_agent.core import jsonl_log
 from life_agent.core import outcomes as O
 from life_agent.core import pricing as PRC
 
@@ -73,11 +74,9 @@ def append_outcome(path: Path, probe: str, sensors: dict[str, str], *,
                    recovered: bool) -> None:
     """Append one gather outcome (the structure-observe stream). Append-only JSONL; the fold
     (``warm_counts``) is a pure function of the log."""
-    path.parent.mkdir(parents=True, exist_ok=True)
     row = {"tx_time": O.now_iso(), "probe": probe, "ctx": _ctx_vector(sensors),
            "recovered": bool(recovered)}
-    with path.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(row, ensure_ascii=False) + "\n")
+    jsonl_log.append_line(path, json.dumps(row, ensure_ascii=False))
 
 
 def warm_counts(path: Path, probe: str) -> dict[str, Any] | None:

@@ -550,6 +550,20 @@ def test_log_decision_appends_lookup_shaped_event_and_returns_id(deps: BridgeDep
     assert d.utility_fold_version == "fold-test-v1"
 
 
+def test_log_decision_reposted_leaves_one_row(deps: BridgeDeps) -> None:
+    body = {"question": "my mobile?", "retrieval_keys": ["d1", "d0"], "decision": _decision()}
+    ids = [_call(deps, "POST", "/log_decision", body)[1]["decision_id"] for _ in range(2)]
+    assert ids[0] == ids[1]
+    assert [d.decision_id for d in DEC.read(deps.decisions_path)] == [ids[0]]
+    # a bridge restarted over the same log still knows the id
+    bridge_server._LOGGED_IDS.clear()
+    _call(deps, "POST", "/log_decision", body)
+    assert len(DEC.read(deps.decisions_path)) == 1
+    other = {**body, "retrieval_keys": ["d2"]}
+    _call(deps, "POST", "/log_decision", other)
+    assert len(DEC.read(deps.decisions_path)) == 2
+
+
 def test_log_decision_records_indeterminate_and_competition(deps: BridgeDeps) -> None:
     # the record's replayability fix (§14, 2026-08-17): run 8's single-candidate commits
     # were blind to in-chunk competition — the bridge writer now discloses both counts,
