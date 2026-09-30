@@ -283,7 +283,7 @@ def test_bar_summary_reads_the_break_even_of_both_folds(monkeypatch, tmp_path) -
     # the declared prior folds no evidence: at the shipped example model the bar is
     # the Chow bar of the prior mean, and with no stream the live fold equals it
     from life_agent.core import config as CFG
-    from life_agent.core import gate as GATE
+    from life_agent.core import decide as DECIDE
     from life_agent.core import lookup as LK
     from life_agent.core import utility as UT
 
@@ -294,6 +294,6 @@ def test_bar_summary_reads_the_break_even_of_both_folds(monkeypatch, tmp_path) -
     monkeypatch.setattr(CFG, "REACTIONS_LOG", tmp_path / "none-r.jsonl")
     monkeypatch.setattr(CFG, "DECISIONS_LOG", tmp_path / "none-d.jsonl")
     out = PR.bar_summary(now_iso="2026-09-19T00:00:00+00:00")
-    prior = GATE.break_even(UT.posterior(UT.load_model(model), [],
+    prior = DECIDE.break_even(UT.posterior(UT.load_model(model), [],
                                          policy=LK.U_BAR_POLICY).u_bar())
     assert out == {"p_dagger": prior, "declared": prior, "n_events": 0}

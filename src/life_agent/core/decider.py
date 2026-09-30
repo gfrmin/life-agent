@@ -7,8 +7,7 @@ The bridge answers ``POST /decide`` through :func:`decide`:
 
 Nothing here learns: the posterior is calibrated where the evidence is shaped (reliability
 folded from outcomes), the utility where the owner's reactions are folded, and the act is
-their expected-utility maximum. proplang, as an engine for the act, is a door after the MVP
-(``ROADMAP.md``; :mod:`life_agent.membrane` is kept green for it).
+their expected-utility maximum.
 """
 from __future__ import annotations
 

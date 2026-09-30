@@ -66,13 +66,8 @@ VALENCES: dict[str, frozenset[str]] = {"verdict": frozenset({"good", "bad"})}
 # domain is the declared exclusion, never an accident):
 #   (1) the (action, valence) → y table ``VERDICT_Y`` below (M-7's domain rule:
 #       hedge/ask_clarify/gather and any unrecognised pair are a named exclusion —
-#       ambiguous is not evidence). The membrane's session surface BINDS this table
-#       is-identity (``membrane.session._VERDICT_Y``); a second spelling cannot exist.
-#   (2) the Claude channel's y (``claude_verdicts.y``: the ``correct`` bit and nothing
-#       else), admitted under OWNER ≻ CLAUDE precedence by SOURCE (M-6) — enforced at
-#       the merge in ``membrane.boot.boot_snapshot``, where an owner's routable
-#       verdict on the same decision overrules the Claude one.
-#   (3) the utility-evidence branches in this module (R-3: which verdicts become
+#       ambiguous is not evidence).
+#   (2) the utility-evidence branches in this module (R-3: which verdicts become
 #       utility evidence): ``_lookup_reaction`` (the implied abstain-threshold datum,
 #       R-4) and ``_narrative_reaction`` (the coverage-gated narrative branch, R-5 —
 #       coverage enters the datum, never a bar on the fold).
@@ -133,8 +128,6 @@ def append(path: Path, event: ReactionEvent) -> None:
     """Append one reaction line, durably (the shared append-only mechanics), then mirror it onto
     the unified stream (design §8 C5; legacy-append-first, never raises)."""
     jsonl_log.append_line(path, _to_line(event))
-    from life_agent.ledger import mirror as _mirror  # C5 dual-write: after the legacy append
-    _mirror.after_legacy_append("calibration.reactions", path)
 
 
 def read(path: Path) -> list[ReactionEvent]:

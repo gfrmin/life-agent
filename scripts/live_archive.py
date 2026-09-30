@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The live stream as a board-shaped archive — the `live` row's producer.
 
-Every other archive on the board is made by *asking questions*: `scripts/score_typed.py`
+Every other archive on the board is made by *asking questions*: `python -m eval.run`
 drives a question file through a bridge and records what the act did. The live row cannot
 be made that way. Its questions were asked by the owner, once, in the past, and the only
 record is the write-once decision log. So this reads that log instead of re-running it.

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# ask-live — the Phase-1 dogfood "ask anything" REPL over the live pkm catalogue.
+# ask-live — ask one question (or a REPL) over the live pkm catalogue.
 # Sources .env (LIFE_AGENT_KB / PKM_CONFIG), then runs scripts/ask.py in life-agent's env
-# (which pulls in pkm as a path dependency — see pyproject.toml).
+# (pkm is vendored in-tree under src/pkm).
 #   ask-live                          # interactive loop
 #   ask-live "what is my ID?"         # one-shot (same line grammar as the REPL)
 #   ask-live "/tell My name is …"     # teach the agent an owner fact

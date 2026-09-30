@@ -2,7 +2,7 @@
 
 Read this, then [`MODEL.md`](./MODEL.md), then [`ROADMAP.md`](./ROADMAP.md). Nothing under
 `archive/` is required reading; do not import from it. [`PRINCIPLES.md`](./PRINCIPLES.md) holds
-the standing principles; [`docs/ORIENTATION.md`](./docs/ORIENTATION.md) is the five-minute tour.
+the standing principles.
 
 ## What this is
 
@@ -49,12 +49,11 @@ src/pkm/          the KB: sources → content-addressed, cited artifacts (SPEC-f
                   docs/pkm/SPEC.md and src/pkm/CLAUDE.md before touching it)
 src/life_agent/   core/ (retrieval shaping, posterior, utility, pricing, the decider in
                   decide.py + decider.py, executor), bridge/ (:8798 evidence server +
-                  /decide), reach/ (Telegram), tasks/ (GTD, event-sourced), trips/,
-                  membrane/ (the proplang client — deferred, kept green off the path)
+                  /decide), reach/ (Telegram), tasks/ (GTD, event-sourced), trips/
 eval/             score.py → SCOREBOARD.md; sets.yaml pins each set by sha256
-scripts/          entry points (ask, verdict, ingest_sources, production_readout, fairfight/,
-                  atm_bench/, engine.sh)
-config/           example configs; engine.lock pins the decider engine
+scripts/          entry points (ask, ingest_sources, production_readout,
+                  atm_bench/)
+config/           example configs
 packaging/        systemd --user units
 archive/          the unification arc (tag archive/unification-arc-v0); historical only
 ```
@@ -64,6 +63,7 @@ archive/          the unification arc (tag archive/unification-arc-v0); historic
 - **Sessions and commits.** One goal per session, small commits, `make check` (ruff + mypy +
   pytest, under two minutes) green before each. Worktrees under a sibling `worktrees/life-agent/<name>`; merge
   by PR. Commit and push when the owner asks or has delegated it.
+- **Rulings.** Owner rulings are recorded in `.claude/rules/rulings.md`, one dated paragraph each.
 - **History.** Docstrings describe current behaviour only; history lives in git. End a session
   with a summary of at most 15 lines (what changed, the board delta, at most three questions
   for the owner) and at most 5 lines appended to `CHANGELOG.md`.
@@ -72,10 +72,10 @@ archive/          the unification arc (tag archive/unification-arc-v0); historic
   - *Do and flag:* a new dependency, a default change, an additive contract change.
   - *Ask first:* the action menu, the utility gauge (`u_wrong`, `lambda_usd`), golden or eval
     questions, a new data source, anything touching personal data, removing an output field.
-- **Engines are upstream, and deferred.** proplang (an engine for the act) and tannen
-  (write-once records) are separate public repos, pinned (`config/engine.lock`; a `-close`
-  tag), and off the MVP path: each returns when it beats the host on the board. An issue filed
-  on either cites a board row or a failing law, never an opinion.
+- **Engines are upstream, and not in the tree.** wald (decision theory as law, a test
+  oracle for the act) and tannen (write-once, content-addressed records) are separate
+  repos. Each enters when it beats the host on the board or catches a defect a test here
+  cannot; an issue filed on either cites a board row or a failing law, never an opinion.
 - **Debugging.** When a number moves unexpectedly, print ten example rows before building an
   instrument to explain it. Anchor the clock (`date`) before any timing claim.
 

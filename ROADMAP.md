@@ -47,8 +47,7 @@ and a clone over someone else's mail works end to end.
   more than an 84% right rate earns when `u_wrong` is −5.13. Its own confidence cannot
   rescue it (best self-report bar 0.95: 67/3/24, +0.01 per question, because the call is
   paid before the confidence is visible). So a rung ships when it beats abstaining on the
-  board, not before; `scripts/regrade_outside_option.py` is the measurement, and
-  `core/outcome_mixture.py` already holds the row's shape.
+  board, not before; `core/outcome_mixture.py` already holds the row's shape.
 - **J3 — The stranger.** *Landed 2026-09-20.* `make data` completes the ingest (it had
   registered sources and stopped, leaving nothing searchable); `make sets` fetches
   ATM-Bench at a pinned revision and builds its KB on your machine (CC-BY-NC: the corpus
@@ -79,10 +78,10 @@ and a clone over someone else's mail works end to end.
 Each returns through the board: its arm's paired ΔU ≥ 0 against the host on every set, from the
 same recorded decisions.
 
-- **proplang** as the engine for the act: released as `doctrine-sitting-r1` (= `94fd4eb`;
-  [gfrmin/proplang#28](https://github.com/gfrmin/proplang/issues/28)), pinned in
-  `config/engine.lock`; `membrane/` stays in tree and green off the path. Precondition
-  upstream: #26 (per-cell p1 pooling) disposed and a new release pinned.
+- **An engine for the act.** The proplang client (`membrane/`) and its pin were removed on
+  2026-09-30; the tag `archive/pre-prune-2026-09-30` holds them. The successor is **wald**,
+  used as hkaddresses uses it: a test-only oracle that must take the same act as
+  `core/decide.bayes_act`, never the runtime (it hands no probability back to a host).
 - **tannen** as the write-once store, at its `m5-close` tag, once the MVP is live.
 - **The ER core** (J5): hkaddresses extracts it into its own public repo, with life-agent as
   the second domain (`renavondata/hkaddresses#27`).

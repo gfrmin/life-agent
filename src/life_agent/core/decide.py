@@ -27,9 +27,7 @@ The information rows are **measured evidence models**, not the preposterior over
 posterior; that is a door in ``ROADMAP.md``.
 
 ``u_wrong``/``lambda_int``/``kappa_att`` are :class:`life_agent.core.utility.UtilityPosterior`
-latents; ``u_correct``/``u_abstain`` its gauge constants. The proplang world
-(:mod:`life_agent.membrane.world`, deferred off the path) builds its ``said@1`` sentence
-from these same rows, so the two never drift.
+latents; ``u_correct``/``u_abstain`` its gauge constants.
 """
 from __future__ import annotations
 
@@ -148,6 +146,18 @@ def u_assert(p_correct: float, u_bar: Mapping[str, float]) -> float:
     the single written source of the assert-vs-wrong trade-off both families derive from.
     ``u_assert(1, Ū) = u_correct`` and ``u_assert(0, Ū) = u_wrong`` by construction."""
     return p_correct * u_bar["u_correct"] + (1.0 - p_correct) * u_bar["u_wrong"]
+
+
+def break_even(u_bar: Mapping[str, float]) -> float:
+    """The respond-vs-abstain break-even credence under ``u_bar`` (Chow's rule, with
+    ``u_abstain = 0``): the ``p`` at which :func:`u_assert` crosses zero."""
+    at_zero, at_one = u_assert(0.0, u_bar), u_assert(1.0, u_bar)
+    span = at_one - at_zero
+    if span <= 0.0:
+        raise ValueError(
+            "degenerate Ū: u_assert does not increase in p "
+            f"(u_assert(0)={at_zero!r}, u_assert(1)={at_one!r}), so no break-even exists")
+    return -at_zero / span
 
 
 def shaped_u_bar(u_bar: Mapping[str, float], shape: str) -> dict[str, float]:

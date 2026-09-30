@@ -221,7 +221,7 @@ def test_poison_every_wrapper_resolves_this_repo_from_a_sandbox_home(tmp_path: P
     which is every box anyone runs the suite on."""
     env, args_file, linkdir = _sandbox(tmp_path)
     names = wrappers(_ROOT)
-    assert len(names) >= 9, (
+    assert len(names) >= 8, (
         f"only {len(names)} wrapper(s) found in bin/ — the census reads the directory, so an "
         f"empty or unreadable bin/ would silently check nothing: {names}")
     for name in names:

@@ -5,7 +5,7 @@ Samples chunks from the live catalogue (one per document), asks a cheap model fo
 verbatim point facts each holds (an ID, date, number, name, reference, amount) and a
 self-contained question per fact, and keeps a fact only when its answer stands verbatim in
 the chunk it came from. The kept rows are written in the eval question schema to
-``$LIFE_AGENT_KB/eval/questions_generated.yaml``; ``scripts/score_typed.py`` answers them
+``$LIFE_AGENT_KB/eval/questions_generated.yaml``; ``python -m eval.run`` answers them
 through the executor and ``eval/score.py`` scores the result by exact match (set
 ``generated``).
 

@@ -8,12 +8,12 @@ SIBLING of the KB (the ingest guard refuses a root inside the KB or the content 
 ``Subject`` (the short summary), ``Message-ID`` ``<id@atm-bench>`` — and the detail as a
 ``text/plain`` body; no From/To/Cc. QA pairs whose evidence is ALL emails become the KB's
 ``eval/questions.yaml`` with ``fuzzy`` typed from the ANSWER (the one gradeability predicate,
-``gold_verdicts.gradeable``), ``answer_variants`` empty on purpose (normalisation lives in the
+:func:`gradeable`), ``answer_variants`` empty on purpose (normalisation lives in the
 matcher, not the data) and notes carrying ids, never values. The gauge is copied from the
 owner's KB — exactly ``utility/model.yaml`` and ``utility/elicitations.jsonl``, both sha256s
 recorded in ``external-corpus.json`` so X9 can name them. The pkm steps are the
 ``bootstrap-sample.sh`` recipe, run as subprocesses with ``LIFE_AGENT_KB``/``PKM_CONFIG`` set
-and ``LIFE_AGENT_MEMBRANE_COMMAND`` removed (env is bound at import time across the stack).
+(env is bound at import time across the stack).
 Stdout carries counts only. Idempotent: a second run writes nothing.
 
   uv run --project . python scripts/atm_bench/build_kb.py --emails EMAILS.json --qa QA.json \\
@@ -40,13 +40,20 @@ SCRIPTS = Path(__file__).resolve().parent.parent
 REPO = SCRIPTS.parent
 sys.path.insert(0, str(SCRIPTS))
 
-from gold_verdicts import MANIFEST, gradeable  # noqa: E402
-
-from atm_bench.vendored import UPSTREAM_SHA, is_abstention  # noqa: E402
+from atm_bench.vendored import UPSTREAM_SHA, detect_qtype, is_abstention  # noqa: E402
 from pkm.producers.email_producer import installed_email_version  # noqa: E402
 
+MANIFEST = "external-corpus.json"
 CORPUS = "atm-bench"
 LICENSE = "CC-BY-NC-4.0 (data) — read on-machine only, never redistributed from the repo"
+
+
+def gradeable(answer_text: str) -> bool:
+    """The gradeability predicate: a property of the ANSWER, by the benchmark's own detector.
+    ``number`` rows are mechanically gradeable; ``list_recall`` / ``open_end`` are not."""
+    return detect_qtype(str(answer_text)) == "number"
+
+
 GAUGE_FILES: tuple[str, ...] = ("utility/model.yaml", "utility/elicitations.jsonl")
 STABLE_COUNTS: tuple[str, ...] = ("emails", "unparseable_timestamps", "qa", "questions",
                                   "gradeable", "abstention")
@@ -218,11 +225,8 @@ def pkm_steps(repo: Path, pkm_yaml: Path, kb: Path) -> list[list[str]]:
 def run_pkm_steps(repo: Path, pkm_yaml: Path, kb: Path, *,
                   log: Callable[[str], None] = print) -> None:
     """Subprocesses, never imports: ``ingest_sources.DEFAULT_PKM_CONFIG`` and the whole stack
-    read env at import time, so the env is set BEFORE each interpreter starts; the membrane
-    command is removed so nothing here can enable a shadow."""
-    env = {k: v for k, v in os.environ.items() if k != "LIFE_AGENT_MEMBRANE_COMMAND"}
-    env["LIFE_AGENT_KB"] = str(kb)
-    env["PKM_CONFIG"] = str(pkm_yaml)
+    read env at import time, so the env is set BEFORE each interpreter starts."""
+    env = {**os.environ, "LIFE_AGENT_KB": str(kb), "PKM_CONFIG": str(pkm_yaml)}
     for cmd in pkm_steps(repo, pkm_yaml, kb):
         log("+ " + " ".join(cmd[4:]))
         res = subprocess.run(cmd, env=env, check=False)

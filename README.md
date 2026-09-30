@@ -7,8 +7,7 @@ the answer. Facts are grounded in your own documents, not a model's memory.
 
 > **Use it →** [`SETUP.md`](./SETUP.md) (clone to a cited answer in minutes, on a bundled synthetic
 > corpus first — no real data, no API key to build it).
-> **Contribute →** [`CONTRIBUTING.md`](./CONTRIBUTING.md).
-> **Understand the design →** [`PRINCIPLES.md`](./PRINCIPLES.md) · [`ROADMAP.md`](./ROADMAP.md) · [`CLAUDE.md`](./CLAUDE.md) · [`docs/`](./docs/).
+> **Understand the design →** [`MODEL.md`](./MODEL.md) · [`PRINCIPLES.md`](./PRINCIPLES.md) · [`ROADMAP.md`](./ROADMAP.md) · [`CLAUDE.md`](./CLAUDE.md).
 
 ## Quickstart
 
@@ -21,14 +20,14 @@ scripts/bootstrap-sample.sh                     # builds a throwaway corpus — 
 
 export LIFE_AGENT_KB=$PWD/examples/.sandbox/kb
 export PKM_CONFIG=$PWD/examples/.sandbox/pkm.yaml
-export ANTHROPIC_API_KEY=sk-ant-...             # only needed to *ask* (answer synthesis), not to build
+export ANTHROPIC_API_KEY=sk-ant-...             # only needed to *ask* (extraction), not to build
 
 bin/ask-live "what is my national ID number?"   # cited answer over the corpus you just built
 bin/ask-live "when does my passport expire?"
 ```
 
-`bin/ask-live` is **the** entrypoint: it retrieves from a DuckDB catalogue (BM25, Hebrew-aware),
-synthesises a `[n]`-cited answer, and runs the citation guard before printing. Full walkthrough,
+`bin/ask-live` is **the** entrypoint: it retrieves from a DuckDB catalogue (BM25, Hebrew-aware)
+and returns a cited span from your documents, or declines. Full walkthrough,
 prerequisites, and troubleshooting in [`SETUP.md`](./SETUP.md); more sample questions and the
 identity-guard demo in [`examples/README.md`](./examples/README.md).
 
@@ -47,8 +46,7 @@ your email ──┴──▶  pkm — cited, searchable memory ──▶  bin/a
 You interact in exactly **two places**: `bin/ask-live` to *know* (questions in, cited answers
 out) and the Telegram bot to *act* (tasks). Everything else — email→tasks, the digest — runs
 unattended on timers. Every command, intent, and reply across these surfaces is governed by one
-contract: [`docs/interaction-contract.md`](./docs/interaction-contract.md). Setting up the task
-half: [`SETUP.md`](./SETUP.md), step 4.
+grammar. Setting up the task half: [`SETUP.md`](./SETUP.md), step 4.
 
 ## Why the answers are trustworthy
 
@@ -59,15 +57,14 @@ The promise is **cited, no-hallucination** answers, and it is structural rather 
   nouns — actually appears in the source it cites. Anything that doesn't is flagged `⚠ unverified`,
   not presented as true.
 - **Weak retrieval abstains.** If nothing in your corpus is a strong enough match, it says so
-  instead of guessing (tunable via `LIFE_AGENT_SCORE_FLOOR` / `LIFE_AGENT_MIN_HITS`).
+  instead of guessing.
 - **Identity is pinned.** An owner profile (`bin/ask-live "/tell …"`) is the lens for who "I" is, so
   a relative's or co-signer's document is never reported as yours.
 
 Answers are grounded in [`pkm`](./src/pkm/)'s content-addressed, source-cited extractions — *not* a
 compiled summary. (The "compile a wiki from everything" approach is deliberately rejected: it does
 not scale and it hallucinates.) What is **not** guaranteed: facts pkm extracted wrong upstream (e.g.
-OCR garble) and the prose faithfulness of paraphrase — that is *measured* (`scripts/run_eval.py
---synthesis`), not hard-gated.
+OCR garble).
 
 ## Use it on your own data
 
@@ -111,8 +108,7 @@ and push. See [`docs/kb-schema.md`](./docs/kb-schema.md) for the expected layout
 SETUP.md              clone → cited answer (start here as a user)
 MODEL.md              the decision model: the act, the loss, the bar
 SCOREBOARD.md         what the act scores on every pinned set (eval/score.py writes it)
-PRINCIPLES.md         the stable cross-phase principles (the philosophy; other docs defer to it)
-CONTRIBUTING.md       dogfood loop, the PII guard, the two-package rules
+PRINCIPLES.md         the standing principles (KB trust, compose don't rebuild, privacy)
 ROADMAP.md            the plan (J0–J5, to the MVP)
 CLAUDE.md             operating manual for an agent working in this repo
 LICENSE               AGPL-3.0-or-later
@@ -132,16 +128,36 @@ config/
 scripts/
   bootstrap-sample.sh   build the sample corpus into a throwaway sandbox
   smoke-fresh-clone.sh  CI: clone → sample → cited retrieval, no key
-  ask.py                the ask-live implementation (retrieve → synthesise → verify)
+  ask.py                the ask-live implementation (retrieve → extract → decide → cite)
   ingest_sources.py     register + extract + chunk your declared data roots into pkm
 docs/
-  interaction-contract.md       every human-facing surface: one grammar per concept, nothing silent
-  act-layer-events.md           the GTD's event-sourced design (ledger = truth, SQLite = projection)
   kb-schema.md                  the knowledge-base schema (what lives under $LIFE_AGENT_KB)
-  failures-template.md          the dogfood log entry format (misses drive development)
-  pkm/                          pkm's SPEC + phase docs
-  nix-for-documents-report.md   commissioned research on the memory-core architecture
+  pkm/                          pkm's SPEC and principles
 ```
+
+## Entry points
+
+| Command | What it does |
+|---|---|
+| `bin/ask-live` | Ask one question. |
+| `bin/jarvis` | Telegram bot (GTD + questions), event-sourced. |
+| `bin/daily-digest` | Morning brief; systemd timer with a dead-man check. |
+| `make check` / `make score` | Tests; the scoreboard. |
+
+## Contributing
+
+- **Never commit personal data.** Test data is synthetic (`@example.com`, IDs that fail their
+  checksum, the fictional Ada Lovelace and Charles Babbage). Arm the PII guard once per clone:
+  `git config core.hooksPath .githooks` and `cp config/pii-patterns.txt.example
+  "$LIFE_AGENT_KB/pii-patterns.txt"`. It is fail-closed and prints `path:line: kind`, never the
+  value; a reviewed false positive takes a trailing `# PII-OK`. Without a KB:
+  `python .githooks/pii_check.py --shapes-only`.
+- **`make check`** (ruff + mypy + pytest) must be green before a PR; tests that need a network or
+  API key are marked `llm` and skipped by default.
+- **`src/pkm` has stricter rules** ([`src/pkm/CLAUDE.md`](./src/pkm/CLAUDE.md)): amend
+  `docs/pkm/SPEC.md` first, test before code, every cache operation proven idempotent by a
+  double-run.
+- Compose, don't rebuild: check whether a producer, transform or script already does it.
 
 ## License
 

@@ -19,11 +19,12 @@ import pytest
 import yaml
 
 sys.path.insert(0, "scripts")
+sys.path.insert(0, ".")
 
 import atm_bench.build_kb as B
-import run_eval
 from data_source_registry import RegistryError, assert_roots_ingestable, load_registry
 
+from eval import run as ER
 from pkm.producers.email_producer import EmailProducer, installed_email_version
 
 # PII-OK: every record below is synthetic ATM-Bench-shaped data (invented ids, dates, text)
@@ -102,11 +103,11 @@ def test_notes_carry_ids_not_values() -> None:
     assert "8 March" not in notes and "depot" not in notes
 
 
-def test_questions_yaml_loads_through_run_eval_load_questions(tmp_path: Path) -> None:
+def test_questions_yaml_loads_through_load_questions(tmp_path: Path) -> None:
     path = tmp_path / "questions.yaml"
     n = B.write_questions(path, [QA_EMAIL, QA_MIXED, QA_OPEN, QA_COUNT])
     assert n == 3
-    qs = run_eval.load_questions(path)
+    qs = ER.load_questions(path)
     assert [q["id"] for q in qs] == ["atm-q1", "atm-q3", "atm-q4"]
     assert qs[0]["question"] == QA_EMAIL["question"]        # verbatim: the hash join needs it
     assert qs[0]["search_queries"] == [] and qs[0]["distractors"] == []
@@ -165,7 +166,7 @@ def test_pkm_steps_are_the_bootstrap_recipe_in_order(tmp_path: Path) -> None:
     assert all(s[:3] == ["uv", "run", "--project"] for s in steps)
 
 
-def test_run_pkm_steps_sets_the_kb_and_config_and_drops_the_membrane(
+def test_run_pkm_steps_sets_the_kb_and_config(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     import subprocess
 
@@ -175,14 +176,12 @@ def test_run_pkm_steps_sets_the_kb_and_config_and_drops_the_membrane(
         seen.append((list(cmd), dict(kw["env"])))          # type: ignore[arg-type]
         return subprocess.CompletedProcess(cmd, 0)
 
-    monkeypatch.setenv("LIFE_AGENT_MEMBRANE_COMMAND", str(tmp_path / "engine"))
     monkeypatch.setattr(subprocess, "run", fake_run)
     B.run_pkm_steps(tmp_path / "repo", tmp_path / "pkm.yaml", tmp_path / "kb")
     assert len(seen) == 5
     for _cmd, env in seen:
         assert env["LIFE_AGENT_KB"] == str(tmp_path / "kb")
         assert env["PKM_CONFIG"] == str(tmp_path / "pkm.yaml")
-        assert "LIFE_AGENT_MEMBRANE_COMMAND" not in env
 
 
 # --- main: the layout, counts only, idempotent ------------------------------------------------

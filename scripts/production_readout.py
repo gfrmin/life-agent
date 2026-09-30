@@ -135,13 +135,13 @@ def bar_summary(*, now_iso: str | None = None) -> dict[str, Any]:
     """r33 A6 (owner-ruled MONITOR ONLY): the live respond-vs-abstain bar p† beside the
     declared-prior bar. Both fold the owner's utility model through the deployed fold
     (``utility.posterior``, under the decider's declared policy) and read the break-even
-    through ``gate.break_even`` — so neither 0.90 nor the live value is ever hard-coded
+    through ``decide.break_even`` — so neither 0.90 nor the live value is ever hard-coded
     here. The live fold takes the elicitations and reactions up to ``now_iso``; the
     declared bar folds none. GUARDED: a watch must never be a dependency — any failure
     returns ``{"error": ...}`` and the report renders the unavailability by name."""
     try:
         from life_agent.core import config as CFG
-        from life_agent.core import gate as GATE
+        from life_agent.core import decide as DECIDE
         from life_agent.core import lookup as LK
         from life_agent.core import reactions as RX
         from life_agent.core import utility as UT
@@ -153,7 +153,7 @@ def bar_summary(*, now_iso: str | None = None) -> dict[str, Any]:
         events = [e for e in events if str(e.tx_time) <= stamp]
         u_now = UT.posterior(model, events, policy=LK.U_BAR_POLICY).u_bar()
         u_declared = UT.posterior(model, [], policy=LK.U_BAR_POLICY).u_bar()
-        return {"p_dagger": GATE.break_even(u_now), "declared": GATE.break_even(u_declared),
+        return {"p_dagger": DECIDE.break_even(u_now), "declared": DECIDE.break_even(u_declared),
                 "n_events": len(events)}
     except Exception as e:  # the watch degrades to a named line, never a dead report
         return {"error": str(e)[:200]}

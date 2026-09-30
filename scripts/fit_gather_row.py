@@ -24,9 +24,11 @@ from pathlib import Path
 
 import yaml
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from eval.grading import realised_report
 from life_agent.core import config as CFG
 from life_agent.core import decide as DEC
-from life_agent.core import gate as GATE
 from life_agent.core import gather_row as GR
 from life_agent.core import posterior as POST
 
@@ -36,7 +38,7 @@ def episodes(fixture: dict, gold: dict) -> list[tuple[int, float, str]]:
     a candidate on the table; ``step`` is the number of gathers already applied."""
     out = fixture["outputs"]
     if out["effector"] == "report":
-        ok = GATE.realised_report([str(a) for a in out["asserted"]], gold.get("answer", ""),
+        ok = realised_report([str(a) for a in out["asserted"]], gold.get("answer", ""),
                                   gold.get("answer_variants", []))
         outcome = "right" if ok else "wrong"
     else:

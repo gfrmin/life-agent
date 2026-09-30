@@ -16,8 +16,8 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-# ~/.local/bin must stay on PATH: the bridge runs tools installed there (`make engine` puts the
-# decider engine, proplang-host, there). systemd --user does not guarantee it, so set it explicitly rather than
+# ~/.local/bin must stay on PATH: the bridge runs tools installed there (`claude`, for the
+# deliberative rung). systemd --user does not guarantee it, so set it explicitly rather than
 # inherit whatever the user manager happened to start with.
 Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
 ExecStart=%h/git/life-agent/bin/answer-bridge

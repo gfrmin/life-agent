@@ -401,8 +401,8 @@ def submit_reaction(event: R.ReactionEvent, *, reactions_path: Path,
     own path).
 
     Why route it at all: ``bridge/server.py``'s ``/log_reaction`` is the ONLY place a verdict
-    folds into the decider live, so a verdict appended directly here reaches it only at the
-    NEXT boot's replay (`membrane.boot.boot_snapshot`) — late, not lost. ask-live's verdicts
+    folds into the decider live, so a verdict appended directly here reaches it only when
+    the log is next read — late, not lost. ask-live's verdicts
     go through the bridge like Jarvis's already do (`core/ask_client.react`).
 
     Fail-open, deliberately: the reaction log is the source of truth for the utility fold —
