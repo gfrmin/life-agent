@@ -374,7 +374,7 @@ def react(did_prefix: str, valence: str,
     except Exception as e:
         print(f"verdict not recorded: {e}", file=sys.stderr)
         return 2
-    folds = d.chosen_action == "abstain" and valence in ("good", "bad")
+    folds = R.can_fold(d) and valence in ("good", "bad")
     fate = ("folds into the utility posterior on the next gate run" if folds
             else "recorded — not folded (only abstain verdicts move the fold)")
     print(f"→ {valence.upper()} on {d.family}/{d.chosen_action} {did[:12]} — {fate}")

@@ -805,7 +805,8 @@ def _log_reaction(deps: BridgeDeps, p: Payload) -> Payload:
     ask-live's ``/react``). Looks the decision up by ``decision_id`` for its ``question_id`` (the
     linkage the fold copies), appends a ``ReactionEvent``, and reports the fold fate so the app
     can echo it. The fold (:func:`core.reactions.load_reactions`) still decides what *moves*:
-    only an abstain verdict conditions u(wrong); a report verdict is recorded-not-folded. The
+    only a non-miss abstain verdict conditions u(wrong); a report or miss verdict is
+    recorded-not-folded. The
     verdict is one bit — ``good``/``bad``, never free text (the owner's prose is the loop's one
     expensive resource)."""
     decision_id = _req_str(p, "decision_id")
@@ -819,7 +820,7 @@ def _log_reaction(deps: BridgeDeps, p: Payload) -> Payload:
     RX.append(deps.reactions_path, RX.ReactionEvent(
         tx_time=O.now_iso(), question_id=d.question_id, decision_id=decision_id,
         kind="verdict", valence=valence))
-    folds = d.chosen_action == "abstain"  # only abstain verdicts move the fold (reactions §4.4)
+    folds = RX.can_fold(d)  # only a non-miss abstain verdict moves the fold (reactions §4.4)
     return {"valence": valence, "family": d.family, "chosen_action": d.chosen_action,
             "folds": folds}
 

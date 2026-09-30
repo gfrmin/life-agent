@@ -755,6 +755,21 @@ def test_log_reaction_report_is_recorded_not_folded(deps: BridgeDeps) -> None:
     assert RX.load_reactions(deps.reactions_path, deps.decisions_path) == []
 
 
+def test_log_reaction_on_a_miss_is_recorded_not_folded(deps: BridgeDeps) -> None:
+    # r33 RC-1: a miss is a coverage failure, not utility evidence — load_reactions skips it,
+    # so the reply must not say the verdict folds.
+    from life_agent.core import recorder as REC
+
+    did = REC.record_miss("my mobile?", retrieval_keys=["d0"],
+                          decisions_path=deps.decisions_path)
+    status, payload = _call(deps, "POST", "/log_reaction",
+                            {"decision_id": did, "valence": "bad"})
+    assert status == 200
+    assert payload["chosen_action"] == "abstain"
+    assert payload["folds"] is False
+    assert RX.load_reactions(deps.reactions_path, deps.decisions_path) == []
+
+
 def test_log_reaction_unknown_decision_is_404(deps: BridgeDeps) -> None:
     status, _ = _call(deps, "POST", "/log_reaction",
                       {"decision_id": "ab-does-not-exist", "valence": "good"})
