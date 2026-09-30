@@ -1,7 +1,7 @@
 """The cached-instrument model client — one constructor for route/extract/subject/intent.
 
-Local Ollama was deprecated 2026-08-17 (owner directive; bayesian-foundations §14
-registration): the four cached ask instruments run on the same Anthropic seam the pkm
+Local Ollama was deprecated 2026-08-17 (owner directive):
+the four cached ask instruments run on the same Anthropic seam the pkm
 ``entity_extraction`` transform already uses (``make_model_client`` → Structured
 Outputs). The identity that keys their caches is owned by
 :func:`life_agent.core.derivations.instrument_identity` — this module only constructs
@@ -15,11 +15,9 @@ from __future__ import annotations
 from typing import Any
 
 from life_agent.core import derivations as D
+from life_agent.core import pricing as PRC
 
-# The instruments' model — the repo's dated haiku pin (core/expansion.py precedent).
-# Changing it is a deliberate instrument change: it re-keys every verdict cache and
-# must be disclosed in the §14 ledger before a gate reading.
-INSTRUMENT_MODEL = "claude-haiku-4-5-20251001"
+INSTRUMENT_MODEL = PRC.INSTRUMENT_MODEL  # the instruments' dated haiku pin (core/pricing.py)
 
 
 class _LazyInstrumentClient:

@@ -47,12 +47,8 @@ def deps(tmp_path: Path) -> BridgeDeps:
         conn=object(),               # sentinel; retrieval/probes patched
         client=object(),             # sentinel; route/observe/subject patched
         profile="I am the owner; my name is Synthetic Owner.",
-        # r30: u_bar takes the requested answer shape (docs/unification/reports/
-        # r30-units-lever.md); this fixture ignores it — every other test's shape-blind
-        # assertion stays byte-identical.
-        u_bar=lambda shape: {"u_correct": 1.0, "u_wrong": -5.0, "u_hedged": 0.2,
-                             "u_abstain": 0.0, "oracle_p": 0.9, "lambda_int": 0.1,
-                             "kappa_att": 0.0},
+        u_bar=lambda: {"u_correct": 1.0, "u_wrong": -5.0, "u_abstain": 0.0,
+                       "oracle_p": 0.9, "lambda_int": 0.1, "kappa_att": 0.0},
         decisions_path=tmp_path / "decisions.jsonl",
         reactions_path=tmp_path / "reactions.jsonl",
         fold_version=lambda: "fold-test-v1",
@@ -146,7 +142,7 @@ def test_retrieve_reports_the_rerank_spend(
 def test_extract_is_exactly_to_abstract_observations(
         deps: BridgeDeps, monkeypatch: pytest.MonkeyPatch) -> None:
     # observe_hits is the model edge; with it fixed, /extract must return PRECISELY the abstract
-    # form to_abstract_observations produces — the daemon (Move 2) consumes this verbatim.
+    # form to_abstract_observations produces — the decider consumes this verbatim.
     observations = [_obs("Alpha", "d0", authority=0.95, time_factor=0.3),
                     _obs("Bravo", "d1", subject_factor=0.05),
                     _obs("Alpha", "d0")]
@@ -352,7 +348,7 @@ def test_reextract_correction_sentence_never_confirms_the_stale_candidate(
         deps: BridgeDeps, monkeypatch: pytest.MonkeyPatch) -> None:
     # The review's manufactured-CW case: a re-read that MENTIONS the known candidate while
     # CORRECTING it to a same-shaped successor. Containment alone would confirm the
-    # superseded value at the tier's trusted rho (0.95 on the daemon-scheduled paths);
+    # superseded value at the tier's trusted rho (0.95 on the decider-scheduled paths);
     # the same-shape competing token must keep the conservative no-observation contract —
     # and allow_new must NOT mint the whole correction sentence as a candidate either.
     import life_agent.core.joint_extract as JE
@@ -392,7 +388,7 @@ def test_reextract_ambiguous_containment_stays_no_observation(
 def test_reextract_returns_the_reads_own_confidence(
         deps: BridgeDeps, monkeypatch: pytest.MonkeyPatch) -> None:
     # The wire must not discard the instrument's stated uncertainty: the k=0 strong rescue
-    # conditions at min(tier rho, this confidence), so a hesitant read hedges instead of
+    # conditions at min(tier rho, this confidence), so a hesitant read abstains instead of
     # asserting at the tier's flat prior (the q-005 near-miss at credence 0.995).
     import life_agent.core.joint_extract as JE
 
@@ -497,27 +493,8 @@ def test_utility_returns_u_bar(deps: BridgeDeps) -> None:
     status, payload = _call(deps, "GET", "/utility")
     assert status == 200
     assert payload["u_bar"]["u_wrong"] == -5.0
-    assert set(payload["u_bar"]) == {"u_correct", "u_wrong", "u_hedged", "u_abstain",
+    assert set(payload["u_bar"]) == {"u_correct", "u_wrong", "u_abstain",
                                      "oracle_p", "lambda_int", "kappa_att"}
-
-
-def test_utility_defaults_to_the_anchor_shape_with_no_query_string(
-        deps: BridgeDeps) -> None:
-    from life_agent.core import answer_shape as AS
-    seen: list[str] = []
-    deps2 = dataclasses.replace(deps, u_bar=lambda shape: (seen.append(shape), {})[1])
-    _call(deps2, "GET", "/utility")
-    assert seen == [AS.DEFAULT_SHAPE]
-
-
-def test_utility_shape_query_param_reaches_deps_u_bar(deps: BridgeDeps) -> None:
-    # r30 (C5): executor.run_pass classifies the question and asks /utility for that
-    # shape — the SAME seam current_u_bar's other callers route through.
-    seen: list[str] = []
-    deps2 = dataclasses.replace(deps, u_bar=lambda shape: (seen.append(shape), {})[1])
-    status, _payload = _call(deps2, "GET", "/utility?shape=quantity")
-    assert status == 200
-    assert seen == ["quantity"]
 
 
 # --- /log_decision: emit answer-brain decisions into the calibration log ----------------
@@ -550,6 +527,20 @@ def test_log_decision_appends_lookup_shaped_event_and_returns_id(deps: BridgeDep
     assert d.utility_fold_version == "fold-test-v1"
 
 
+def test_log_decision_reposted_leaves_one_row(deps: BridgeDeps) -> None:
+    body = {"question": "my mobile?", "retrieval_keys": ["d1", "d0"], "decision": _decision()}
+    ids = [_call(deps, "POST", "/log_decision", body)[1]["decision_id"] for _ in range(2)]
+    assert ids[0] == ids[1]
+    assert [d.decision_id for d in DEC.read(deps.decisions_path)] == [ids[0]]
+    # a bridge restarted over the same log still knows the id
+    bridge_server._LOGGED_IDS.clear()
+    _call(deps, "POST", "/log_decision", body)
+    assert len(DEC.read(deps.decisions_path)) == 1
+    other = {**body, "retrieval_keys": ["d2"]}
+    _call(deps, "POST", "/log_decision", other)
+    assert len(DEC.read(deps.decisions_path)) == 2
+
+
 def test_log_decision_records_indeterminate_and_competition(deps: BridgeDeps) -> None:
     # the record's replayability fix (§14, 2026-08-17): run 8's single-candidate commits
     # were blind to in-chunk competition — the bridge writer now discloses both counts,
@@ -579,7 +570,7 @@ def test_extract_discloses_the_competed_observation_count(
                             {"question": "q", "hits": [{"chunk_text": "x"}]})
     assert status == 200
     assert payload["n_competing"] == 1
-    # the wire carries the factor per observation — the daemon's r product consumes it
+    # the wire carries the factor per observation — the decider's r product consumes it
     assert [o["competition_factor"] for o in payload["observations"]] == [0.5, 1.0]
 
 
@@ -601,7 +592,7 @@ def test_log_decision_records_a_cite_with_the_cited_document(deps: BridgeDeps) -
 
 
 def test_log_decision_carries_instrument_and_price(deps: BridgeDeps) -> None:
-    # §10 accounting on the ledger (decisions v2): the edge that answered, at what price,
+    # §10 accounting on the record (decisions v2): the edge that answered, at what price,
     # passes through when the body posts it — and defaults stay honest when it doesn't.
     _call(deps, "POST", "/log_decision",
           {"question": "q", "retrieval_keys": ["d0"],
@@ -643,8 +634,8 @@ def test_log_decision_run_id_passthrough(deps: BridgeDeps) -> None:
 
 
 def test_log_decision_sorts_credences_leader_first(deps: BridgeDeps) -> None:
-    # The load-bearing parity: the daemon returns credences in CANDIDATE order (server.jl
-    # `w[1:k]`), but the fold reads credences[0] as the LEADER. The bridge must sort desc, or an
+    # The load-bearing parity: the decider returns credences in CANDIDATE order,
+    # but the fold reads credences[0] as the LEADER. The bridge must sort desc, or an
     # abstain folds at the wrong p. Input (0.3, 0.5, 0.1)/(A,B,C) → leader B at 0.5.
     _call(deps, "POST", "/log_decision",
           {"question": "q", "retrieval_keys": ["d0"], "decision": _decision()})
@@ -761,7 +752,7 @@ def test_log_reaction_appends_verdict_and_reports_fold_fate(deps: BridgeDeps) ->
 
 def test_log_reaction_refuses_an_empty_decision_id(deps: BridgeDeps) -> None:
     """The §6.5 unavailability event carries decision_id="" so no verdict can EVER bind —
-    an unavailability must never fold as an abstain (r12 P3; the guard is _req_str's
+    an unavailability must never fold as an abstain (the guard is _req_str's
     non-empty rule, pinned here so it cannot regress silently)."""
     status, _payload = _call(deps, "POST", "/log_reaction",
                              {"decision_id": "", "valence": "bad"})
@@ -789,7 +780,7 @@ def test_log_reaction_report_is_recorded_not_folded(deps: BridgeDeps) -> None:
 
 
 def test_log_reaction_on_a_miss_is_recorded_not_folded(deps: BridgeDeps) -> None:
-    # r33 RC-1: a miss is a coverage failure, not utility evidence — load_reactions skips it,
+    # A miss is a coverage failure, not utility evidence — load_reactions skips it,
     # so the reply must not say the verdict folds.
     from life_agent.core import recorder as REC
 
@@ -1277,7 +1268,7 @@ def test_deliberate_warm_hit_carries_the_same_cache_key(
         deps: BridgeDeps, deliberate_seams: dict[str, Any],
         monkeypatch: pytest.MonkeyPatch) -> None:
     # A warm replay is the SAME artifact — its reply must carry the same identity the
-    # ledger was consulted with, so downstream dedup sees one observation, not two.
+    # record was consulted with, so downstream dedup sees one observation, not two.
     recorded = json.dumps({
         "format_version": 1, "question": "what is my rent?",
         "model": "claude-opus-4-8", "text": "NIS 4,200 [lease.pdf]",
@@ -1486,7 +1477,7 @@ def test_log_decision_refuses_a_policy_outside_the_vocabulary(deps: BridgeDeps) 
     assert status == 400 and "policy" in payload["error"]
 
 
-# --- r09 D2: the replace sites join instead of erasing ---------------------------------------
+# --- the replace sites join instead of erasing -----------------------------------------------
 
 _CHANNEL = [
     {"reports": 0, "group": 0, "authority": 0.9, "subject_factor": 1.0, "time_factor": 1.0,
@@ -1500,9 +1491,8 @@ _CHANNEL = [
 
 def test_corroborate_disagree_joins_instead_of_erasing(
         deps: BridgeDeps, monkeypatch: pytest.MonkeyPatch) -> None:
-    """r09 D3: a DISAGREE (non-null read whose value does not join the lattice) no longer
-    erases the grounded channel — the reply's observations ARE the standing channel. Run 7's
-    disagree⇒abstain contract is retired by the ruling's fix, named in the pre-registration."""
+    """A DISAGREE (non-null read whose value does not join the lattice) does not erase the
+    grounded channel — the reply's observations ARE the standing channel."""
     import life_agent.core.joint_extract as JE
 
     monkeypatch.setattr(JE, "extract_joint",
@@ -1521,7 +1511,7 @@ def test_corroborate_disagree_joins_instead_of_erasing(
 
 def test_corroborate_confirm_joins_the_channel_with_doc_keyed_groups(
         deps: BridgeDeps, monkeypatch: pytest.MonkeyPatch) -> None:
-    """r09 C3+C4: a CONFIRM adds its observation to the channel (never replaces), and the
+    """A CONFIRM adds its observation to the channel (never replaces), and the
     synthesised read gets its own fresh group — the bound's group-0 collision is dead."""
     import life_agent.core.joint_extract as JE
 
@@ -1543,8 +1533,8 @@ def test_corroborate_confirm_joins_the_channel_with_doc_keyed_groups(
 
 def test_corroborate_without_a_channel_behaves_as_before(
         deps: BridgeDeps, monkeypatch: pytest.MonkeyPatch) -> None:
-    """A caller that passes no channel (the rescue walk at k=0; an old caller) gets exactly
-    the pre-r09 contract: the probe's own observations, nothing pooled."""
+    """A caller that passes no channel (the rescue walk at k=0; an old caller) gets
+    the probe's own observations, nothing pooled."""
     import life_agent.core.joint_extract as JE
 
     monkeypatch.setattr(JE, "extract_joint",
@@ -1560,8 +1550,8 @@ def test_corroborate_without_a_channel_behaves_as_before(
 
 def test_deliberate_empty_ok_joins_and_keeps_the_channel(
         deps: BridgeDeps, monkeypatch: pytest.MonkeyPatch) -> None:
-    """r09 D3, the S3 edge: NOT_IN_CORPUS pooled with a grounded channel keeps the channel —
-    the empty-ok collapse is retired (r06 criterion 7 already read zero genuine collapses)."""
+    """The S3 edge: NOT_IN_CORPUS pooled with a grounded channel keeps the channel, never
+    collapsing to an empty ok."""
     import life_agent.core.deliberate as DL
 
     monkeypatch.setattr(DL, "answer", lambda q, cfg: DL.DeliberateResult(
@@ -1577,7 +1567,7 @@ def test_deliberate_empty_ok_joins_and_keeps_the_channel(
     assert [o["doc_key"] for o in payload["observations"]] == ["d0", "d1"]
 
 
-# --- r09c A2: a synthesised confirm cannot outrank the channel it re-read -------------------
+# --- a synthesised confirm cannot outrank the channel it re-read ----------------------------
 
 _WEAK_CHANNEL = [
     {"reports": 0, "group": 0, "authority": 0.85, "subject_factor": 0.525, "time_factor": 1.0,
@@ -1591,7 +1581,7 @@ _WEAK_CHANNEL = [
 
 def test_corroborate_confirm_covariates_capped_at_channel_max(
         deps: BridgeDeps, monkeypatch: pytest.MonkeyPatch) -> None:
-    """r09c A2: the synthesised confirm's minted authority/subject are capped at the
+    """The synthesised confirm's minted authority/subject are capped at the
     per-component max over the channel's doc-keyed rows for the same value (q2-071: a
     confirm at 1.0/1.0 outranked every grounded 0.85/0.525 carrier it re-read)."""
     import life_agent.core.joint_extract as JE
@@ -1657,7 +1647,7 @@ def test_corroborate_minted_candidate_capped_at_channel_doc_max(
 def test_corroborate_confirm_uncapped_without_a_doc_keyed_channel(
         deps: BridgeDeps, monkeypatch: pytest.MonkeyPatch) -> None:
     """No doc-keyed channel (the k=0 rescue mints from zero by design — the S5 exemption):
-    the pre-r09c covariates stand."""
+    the uncapped covariates stand."""
     import life_agent.core.joint_extract as JE
 
     monkeypatch.setattr(JE, "extract_joint",
@@ -1674,7 +1664,7 @@ def test_corroborate_confirm_uncapped_without_a_doc_keyed_channel(
 
 def test_deliberate_synthesis_capped_at_channel_max(
         deps: BridgeDeps, monkeypatch: pytest.MonkeyPatch) -> None:
-    """r09c A2 at the S3 edge: the deliberate re-mint is capped exactly like a corroborate
+    """At the S3 edge: the deliberate re-mint is capped exactly like a corroborate
     confirm (q2-105: the re-mint arrived above the twelve grounded rows it re-read)."""
     import life_agent.core.deliberate as DL
 
@@ -1695,7 +1685,7 @@ def test_deliberate_synthesis_capped_at_channel_max(
 
 def test_the_channel_never_enters_the_corroborate_derivation_key(
         deps: BridgeDeps, monkeypatch: pytest.MonkeyPatch) -> None:
-    """r09 C5 — warm policy: the joined channel is computed AFTER the derivation layer.
+    """Warm policy: the joined channel is computed AFTER the derivation layer.
     `extract_joint` receives byte-identical arguments whether or not the caller hands its
     channel, so every §18.9 warm entry keeps serving."""
     import life_agent.core.joint_extract as JE
@@ -1718,7 +1708,7 @@ def test_the_channel_never_enters_the_corroborate_derivation_key(
 
 def test_the_channel_never_enters_the_deliberate_cache_key(
         deps: BridgeDeps, monkeypatch: pytest.MonkeyPatch, deliberate_seams: Any) -> None:
-    """r09 C5 at the S3 edge: the deliberate §18.9 key is computed from the question and the
+    """At the S3 edge: the deliberate §18.9 key is computed from the question and the
     corpus digest alone — the channel changes nothing, so warm replays keep serving."""
     import life_agent.core.derivations as D
 
@@ -1736,7 +1726,7 @@ def test_the_channel_never_enters_the_deliberate_cache_key(
     assert len(keys) == 2 and keys[0] == keys[1]
 
 
-# --- r09b T1: the strict-span guard (entity-boundary containment) ----------------------------
+# --- the strict-span guard (entity-boundary containment) -------------------------------------
 
 
 def test_containment_confirm_refused_when_a_name_extends_the_candidate_leftward(

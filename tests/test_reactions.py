@@ -1,4 +1,4 @@
-"""The reaction log + the verdict→Reaction producer (bayesian-foundations §4.4 loop).
+"""The reaction log + the verdict→Reaction producer.
 
 No skin, no DB: the log is a jsonl file, the producer is a pure join over it and the
 decision log. These tests pin the schema (closed vocab), the supersession rule (latest
@@ -62,7 +62,7 @@ def _abstain_decision(decision_id: str, p: float, *, family: str = "lookup") -> 
                else {"n_proposed": 2, "n_included": 0})
     return DEC.DecisionEvent(
         tx_time="t", run_id="ask", question_id="q", family=family,
-        action_set=("report", "hedge", "ask_clarify", "abstain"),
+        action_set=("report", "ask_clarify", "abstain"),
         posterior_summary=summary, utility_fold_version="fv",
         chosen_action="abstain", predicted_eu=0.0, decision_id=decision_id)
 
@@ -70,7 +70,7 @@ def _abstain_decision(decision_id: str, p: float, *, family: str = "lookup") -> 
 def _report_decision(decision_id: str, p: float) -> DEC.DecisionEvent:
     return DEC.DecisionEvent(
         tx_time="t", run_id="ask", question_id="q", family="lookup",
-        action_set=("report", "hedge", "ask_clarify", "abstain"),
+        action_set=("report", "ask_clarify", "abstain"),
         posterior_summary={"credences": [p, 1 - p]}, utility_fold_version="fv",
         chosen_action="report", predicted_eu=0.5, decision_id=decision_id)
 
@@ -230,7 +230,7 @@ def test_narrative_no_claims_does_not_fold(tmp_path: Path) -> None:
     assert R.load_reactions(rpath, dpath) == []
 
 
-# --- r33 RC-1 rider: regime="miss" rows never fold (a coverage failure is not
+# --- regime="miss" rows never fold (a coverage failure is not
 # utility evidence — without this, every `bad` on a miss would drag the bar down) -------
 
 def test_a_reacted_miss_row_folds_nothing(tmp_path: Path) -> None:

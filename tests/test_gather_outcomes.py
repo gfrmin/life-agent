@@ -1,7 +1,7 @@
 """The gather-outcome instrumentation + the grow menu (core/gather_outcomes.py).
 
-The B half's data leg (docs/ask-as-connection.md §4 caveat 2): every enacted grow actuator
-logs one (probe, sensor-context, recovered) row — the structure-observe stream the daemon's
+Every enacted grow actuator
+logs one (probe, sensor-context, recovered) row — the structure-observe stream the decider's
 gather structure-BMA warm-seeds from (`warm_counts` → `reconstruct_structure_prior_from_data`,
 exact by order-independence). Sensors are BUCKETED strings (the structure-BMA needs finite
 value-sets); `recovered` is the honest v0 proxy — the grown question ended in a report through
@@ -18,7 +18,7 @@ from life_agent.core import gather_outcomes as GO
 
 def test_sensor_vocabulary_is_the_declared_bucketed_features() -> None:
     # The wire vocabulary: names + per-feature value-sets, in one declared order (the
-    # daemon's context_from_features errors on drift — this is the single source).
+    # decider's context_from_features errors on drift — this is the single source).
     names = [n for n, _ in GO.SENSOR_FEATURES]
     assert names == ["extracted", "p_none", "indeterminate"]
     for _, values in GO.SENSOR_FEATURES:
@@ -71,7 +71,7 @@ def test_append_and_fold_warm_counts(tmp_path: Path) -> None:
     by_ctx = {tuple(e["ctx"]): (e["n1"], e["n0"]) for e in wc["contexts"]}
     assert by_ctx[("some", "hi", "none")] == (2, 1)
     assert by_ctx[("none", "hi", "none")] == (0, 1)
-    assert GO.warm_counts(log, "retrieve_rerank") is None  # no rows ⇒ cold prior daemon-side
+    assert GO.warm_counts(log, "retrieve_rerank") is None  # no rows ⇒ cold prior decider-side
 
 
 def test_warm_counts_missing_log_is_cold(tmp_path: Path) -> None:

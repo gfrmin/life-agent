@@ -128,7 +128,7 @@ def test_sources_are_index_labelled_never_paths() -> None:
     assert "/" not in text.split("## Watch")[0].split("- sources:")[1].split("\n")[0]
 
 
-# --- r27 C10: a DECLARED root that is absent is a failure, not a quiet zero -------------
+# --- a DECLARED root that is absent is a failure, not a quiet zero -------------
 # Row 25's staleness signal can see a stale source but not an ABSENT one: `_rows` returns
 # [] for a missing file, so a root that was never there is indistinguishable from a root
 # with no traffic. Measured on the authoring box: the readout reported "1 KB root, 4660
@@ -137,7 +137,7 @@ def test_sources_are_index_labelled_never_paths() -> None:
 
 def test_a_declared_root_that_is_absent_fails_the_run(tmp_path: Path,
                                                       monkeypatch) -> None:
-    """r27 C10. MUST FAIL if a declared root can be missing and the run still succeed.
+    """MUST FAIL if a declared root can be missing and the run still succeed.
     Killed by restoring the silent `[]` for an absent root."""
     monkeypatch.setattr(PR, "bar_summary", lambda **k: {"error": "stubbed (hermetic)"})
     good = tmp_path / "kb"
@@ -149,7 +149,7 @@ def test_a_declared_root_that_is_absent_fails_the_run(tmp_path: Path,
 
 def test_a_declared_root_that_is_present_but_empty_succeeds(tmp_path: Path,
                                                             monkeypatch) -> None:
-    """r27 C10, the discriminating half (row 23): the check must tell an ABSENT root from
+    """The discriminating half: the check must tell an ABSENT root from
     a root with no traffic yet, or it is a gate that rejects everything. A fresh
     deployment has a root and no stream, and that is a legitimate zero.
     Killed by failing on a missing stream file rather than a missing root.
@@ -166,7 +166,7 @@ def test_a_declared_root_that_is_present_but_empty_succeeds(tmp_path: Path,
 
 
 # --- The dead-man: the readout's own verdict, not a sentence in a file ------------------
-# docs/guards.md row 12: row 25 made a stopped watch visible IN the report, but nothing
+# A stopped watch is visible IN the report, but nothing
 # asserted on it — "a stale readout is visible to whoever opens the file, which is the
 # same failure mode one layer up". The window flag was already computed; only the exit
 # code was missing, and bin/production-readout already turns non-zero into a /fail ping.
@@ -233,7 +233,7 @@ def test_an_eval_only_stream_is_stale_however_fresh(tmp_path: Path, monkeypatch)
                     "--out", str(tmp_path / "r.md")]) == 1
 
 
-# --- r33 A6 (owner-ruled MONITOR ONLY): the p† line — the bar drift, made visible -------
+# --- The p† line (monitor only) — the bar drift, made visible -------
 
 def _summary_with_bar(bar: dict) -> dict:
     s = PR.readout(DEC, [], [], since="2026-08-25",
@@ -245,7 +245,7 @@ def _summary_with_bar(bar: dict) -> dict:
 def test_render_carries_the_deployed_bar_beside_the_declared_one() -> None:
     out = PR.render(_summary_with_bar(
         {"p_dagger": 0.8369, "declared": 0.9000, "n_events": 55}))
-    assert "p† 0.8369" in out                    # the DEPLOYED bar (r32: not 0.90)
+    assert "p† 0.8369" in out                    # the DEPLOYED bar (not 0.90)
     assert "declared prior 0.9000" in out        # ...never quoted alone
     assert "55 folded events" in out
     assert "drift" in out                        # the direction is named, not implied

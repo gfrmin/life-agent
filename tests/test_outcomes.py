@@ -1,7 +1,7 @@
-"""The calibration outcomes log (bayesian-foundations §8) — core machinery tests.
+"""The calibration outcomes log — core machinery tests.
 
 Hermetic: every test writes under tmp_path; the live KB is never touched. The log is
-append-only JSONL whose file order is the canonical replay order (foundations §2: the
+append-only JSONL whose file order is the canonical replay order (the
 fold is order-defined), so round-trip tests assert order, not just content.
 
 Run: uv run --project . python -m pytest tests/test_outcomes.py

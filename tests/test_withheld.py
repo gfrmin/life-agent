@@ -149,7 +149,7 @@ def _call(deps: BridgeDeps, path: str, body: dict[str, Any]) -> tuple[int, Any]:
 @pytest.fixture
 def deps(tmp_path: Path) -> BridgeDeps:
     return BridgeDeps(root=Path("/fake/root"), conn=object(), client=object(), profile="",
-                      u_bar=lambda shape: {}, decisions_path=tmp_path / "d.jsonl",
+                      u_bar=lambda: {}, decisions_path=tmp_path / "d.jsonl",
                       reactions_path=tmp_path / "r.jsonl", fold_version=lambda: "v",
                       gather_outcomes_path=tmp_path / "g.jsonl")
 

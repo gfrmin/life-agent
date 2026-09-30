@@ -76,7 +76,7 @@ def test_a_negative_candidate_count_is_refused() -> None:
 # --- the replay pin ------------------------------------------------------------------------
 
 # m5-base: 104 questions recorded through the executor loop on 2026-08-26, 605 /decide calls
-# answered by the Julia daemon (credence 0.105.2). Pinned by its manifest's sha256.
+# answered by the Julia reference implementation. Pinned by its manifest's sha256.
 _M5_BASE = "eval/collapse-fixtures/m5-base"
 _M5_MANIFEST_SHA = "8b5a64653804bd4d747cd9b5b7aacf814c57155f18c3e135924bfea5cd152fad"
 _M5_DECIDES = 605
@@ -85,7 +85,7 @@ _M5_DECIDES = 605
 _TOL = 1e-15
 
 
-def test_the_port_replays_the_julia_daemon_on_m5_base() -> None:
+def test_the_port_replays_the_julia_reference_on_m5_base() -> None:
     kb = os.environ.get("LIFE_AGENT_KB")
     directory = Path(kb or "/nonexistent") / _M5_BASE
     if not (directory / "manifest.json").is_file():

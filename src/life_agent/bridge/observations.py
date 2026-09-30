@@ -1,6 +1,6 @@
-"""The parity boundary, Python side (move-2-design §1/§2).
+"""The parity boundary, Python side.
 
-The answer-brain daemon reasons over ABSTRACT observations — integers and floats: which candidate
+The decider reasons over ABSTRACT observations — integers and floats: which candidate
 index an observation reports, which ancestry group it belongs to, and its already-projected §4.1
 covariates. Candidate identity (string canon) and group keying are *normalisation, not
 inference*, so they stay here, on the body side. The brain never sees a candidate string.
@@ -16,12 +16,12 @@ from life_agent.core.lookup import Observation, _candidate_key, candidates_from
 
 # One observation reduced to numbers: the candidate index it reports, its ancestry-group index, and
 # the already-projected reliability covariates. Matches credence `AnswerBrain.Obs` field-for-field
-# — plus the two WIRE-ONLY correlation-key fields (r09 D1): `quote` (§5's cluster key) and
-# `doc_key` (the artifact), which make a §5-deduped JOIN computable wherever the wire reaches.
-# The daemon never sees them: `strip_wire_keys` removes them before any decide post.
+# — plus the two WIRE-ONLY correlation-key fields: `quote` (the cluster key) and
+# `doc_key` (the artifact), which make a deduped JOIN computable wherever the wire reaches.
+# The decider never sees them: `strip_wire_keys` removes them before any decide post.
 AbstractObservation = dict[str, Any]
 
-#: The wire-only fields — one spelling (r09 D1). Everything else in an abstract observation is
+#: The wire-only fields — one spelling. Everything else in an abstract observation is
 #: brain-facing.
 WIRE_KEY_FIELDS: tuple[str, ...] = ("quote", "doc_key", "value_norm")
 
@@ -60,7 +60,7 @@ def to_abstract_observations(
                 "subject_factor": o.subject_factor,
                 "time_factor": o.time_factor,
                 "competition_factor": o.competition_factor,
-                # r09 D1 — the correlation key, wire-only (stripped before the brain).
+                # the correlation key, wire-only (stripped before the brain).
                 # value_norm rides too: C2's identity needs the observation's OWN normal
                 # form (candidates[reports] breaks on OCR-variant candidates).
                 "quote": o.quote,
@@ -76,13 +76,13 @@ def join_wire_observations(
     probe: list[AbstractObservation],
     candidates: list[str],
 ) -> list[AbstractObservation]:
-    """r09 D2 — the §5-deduped JOIN: pool the standing channel with a probe's observations
+    """The deduped JOIN: pool the standing channel with a probe's observations
     and apply THE deployed rule (``lookup.dedup_drop_rows`` — called, never re-implemented).
 
     Groups re-derive from ``doc_key`` (C4): each distinct document is one group; an
     observation with no document of its own (a synthesised probe read) keeps its own fresh
-    group, so it never collides with the base channel's first document — the defect the r07
-    bound tolerated. An observation missing ``value_norm`` falls back to its candidate's
+    group, so it never collides with the base channel's first document — a collision the old bound
+    tolerated. An observation missing ``value_norm`` falls back to its candidate's
     normal form. Pure; returns new dicts in pooled order."""
     from life_agent.core.lookup import _norm_value, dedup_drop_rows
 

@@ -95,7 +95,7 @@ def test_handle_list_with_tag_routes_to_tag_view() -> None:
 
 
 def test_handle_question_routes_to_the_know_mode(monkeypatch: pytest.MonkeyPatch) -> None:
-    # since M3 jarvis takes the driver directly: drive → render (r13 amendment 4)
+    # jarvis answers through ask_client.answer: drive, then render
     from life_agent.core import ask_client, executor
 
     monkeypatch.setattr(ask_client, "drive",
@@ -137,8 +137,8 @@ def test_verdict_valence_maps_the_one_bit() -> None:
 
 
 # --- INTENTS: one table feeds prompt and help; drift gates enforce it ----------
-# (docs/interaction-contract.md invariant 4: a vocabulary nothing enforces will
-# quietly diverge — these tests are what make the table the single source.)
+# (a vocabulary nothing enforces will quietly diverge — these tests are what make the
+# table the single source.)
 
 
 def test_every_intent_dispatches() -> None:
@@ -244,7 +244,7 @@ def test_digest_is_none_when_empty() -> None:
     assert reach_digest.build_digest(USER) is None
 
 
-# --- M-2 daily briefing: contract sections, truncation naming, owner targeting ----------
+# --- daily briefing: contract sections, truncation naming, owner targeting ----------
 
 
 def test_digest_renders_overdue_and_due_today(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -315,7 +315,7 @@ def test_digest_sections_drift_gate() -> None:
 # "Active (running)" cannot distinguish a polling jarvis from a hung one (2026-08-30: a
 # locked keyring hung the poller for 15+ minutes while systemd reported healthy). The
 # heartbeat pings a dead-man check after each successful poll cycle; the monitor pages on
-# silence. Absence of JARVIS_HEARTBEAT_URL disables it (the membrane convention), and a
+# silence. Absence of JARVIS_HEARTBEAT_URL disables it (the usual convention), and a
 # monitoring outage must never take reach down with it.
 
 class _BeatResp:

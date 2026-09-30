@@ -22,7 +22,7 @@ import time
 import urllib.error
 import urllib.request
 from collections.abc import Callable
-from typing import Any
+from typing import Any, NamedTuple
 
 from life_agent.core import calibration as CAL
 from life_agent.core import config as CFG
@@ -40,8 +40,8 @@ FATE_FOLDS = "folds into the utility posterior on the next gate run"
 FATE_RECORDED = "recorded — not folded (only abstain verdicts move the fold)"
 
 
-# r33 A1 (conferral 2 §3.5, signature E): one live 5xx used to kill a whole ask — the ONE
-# transport now retries transient failures with bounded backoff. A 4xx is the bridge
+# One live 5xx must not kill a whole ask — the ONE
+# transport retries transient failures with bounded backoff. A 4xx is the bridge
 # SPEAKING (a named refusal), never retried; retrying it would re-ask a settled question.
 _RETRY_SLEEPS = (0.5, 2.0)
 
@@ -65,7 +65,7 @@ def _retrying[T](attempt: Callable[[], T]) -> T:
 
 def post_json(url: str, payload: dict[str, Any], *,
               timeout: int | None = None) -> dict[str, Any] | None:
-    """The ONE bridge/daemon POST transport (every client delegates here — three
+    """The ONE bridge POST transport (every client delegates here — three
     near-identical copies once hid the same defect). The bridge RETURNS a seam
     failure's name in the error body (server.py: "visible to the caller, never
     swallowed"); carry it in the raised error — the exception type stays HTTPError,
@@ -162,11 +162,11 @@ class DriveResult:
 
 def post_decision(post: Any, bridge: str, question: str, view: dict[str, Any], *,
                   run_id: str | None = None) -> str | None:
-    """The one poster (M2, design §5.1): post the committed lookup-family terminal with
+    """The one poster: post the committed lookup-family terminal with
     the ONE body — every accounting key present (0.0/"" honest defaults), ``regime`` and
     ``policy`` STATED. Posts iff the loop committed a lookup terminal through the seam
     (route ran, terminal effector, a ranked posterior). A MISS (route ran, nothing
-    grounded, the loop returned before ``/decide``) appends the r33 RC-1 row LOCALLY —
+    grounded, the loop returned before ``/decide``) appends the miss row LOCALLY —
     ``regime: "miss"``, a real id the verdict can bind to, excluded from the fold — never
     a bridge post (the bridge derives ids for ranked decisions and stamps the current
     fold version, both wrong here). A question the decider declined at the route stage
@@ -205,7 +205,7 @@ def post_decision(post: Any, bridge: str, question: str, view: dict[str, Any], *
         latency_s=view.get("latency_s"), run_id=run_id,
         # regime is a FACT of availability (§2.3): the decider decided, so the space was
         # full; policy derives from the decider's one declared regime — the same constant
-        # current_u_bar folds under, so record and fold cannot diverge (M3, r13)
+        # current_u_bar folds under, so record and fold cannot diverge
         regime="full", policy=LK.U_BAR_POLICY,
         # J2: where the delivered answer came from — the executor derived it once
         origin=str((view.get("origin") or {}).get("kind") or ""),
@@ -247,6 +247,28 @@ def drive(question: str, k: int = 20, *, bridge: str | None = None,
         print(f"  (stack unreachable mid-question: {e})")
         return _down(question, run_id)
     return DriveResult(view, post_decision(post, bridge, question, view, run_id=run_id))
+
+
+class Reply(NamedTuple):
+    """One answered question as a surface shows it: the rendered ``text`` (the down-stack
+    string when the bridge is down), the loop's ``view`` (``None`` when down), the
+    ``decision_id`` a verdict binds to (``None`` when nothing foldable was posted) and
+    the ``down`` fact."""
+
+    text: str
+    view: dict[str, Any] | None
+    decision_id: str | None
+    down: bool
+
+
+def answer(question: str, k: int = 20, **kw: Any) -> Reply:
+    """Answer ``question`` end to end: :func:`drive`, then render the view in the shared
+    credence grammar. A down stack is the named :data:`DOWN` reply, never another answer.
+    ``kw`` is :func:`drive`'s (bridge, transport, run id, hold-out)."""
+    r = drive(question, k=k, **kw)
+    if r.view is None:
+        return Reply(DOWN, None, None, True)
+    return Reply(EX.render_view(r.view), r.view, r.decision_id, False)
 
 
 def _down(question: str, run_id: str | None) -> DriveResult:

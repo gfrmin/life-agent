@@ -17,10 +17,9 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Any
 
-# Default synthesis model for production answers. Owned separately from the comparison
-# harness's pinned ANSWER_MODEL — they coincide today but are free to diverge (the eval
-# pin is frozen for reproducibility; the production default tracks the best model).
-DEFAULT_ANSWER_MODEL = "claude-sonnet-4-6"
+from life_agent.core import pricing as PRC
+
+DEFAULT_ANSWER_MODEL = PRC.DEFAULT_ANSWER_MODEL  # the production synthesis model
 TEMPERATURE = 0.0
 
 

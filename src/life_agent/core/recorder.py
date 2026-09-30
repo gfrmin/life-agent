@@ -1,6 +1,6 @@
-"""The one recorder (module-collapse design §5.1, landed at M2 — r12).
+"""The one recorder.
 
-One ``/log_decision`` body and the §6.5 unavailability event. *No
+One ``/log_decision`` body and the unavailability event. *No
 accounting field is optional on the poster's side*: a firing that ran unpriced records
 ``cost_usd: 0.0`` with its instrument, never an absent key.
 
@@ -13,11 +13,11 @@ Three writers, one shape:
 - :func:`record_route` — the decider declined the question at the route stage, before any
   retrieval: a local ``regime: route`` row carrying the router's verdict and kind, likewise
   kept out of the utility fold.
-- :func:`record_unavailable` — §6.5: when no optimiser is reachable there is no ranking to
+- :func:`record_unavailable` — when no optimiser is reachable there is no ranking to
   be inside of; the record is an *unavailability event* (``regime: unavailable``, stated)
   with ``decision_id: ""`` so no verdict can ever bind — never a foldable abstain verdict.
   Appended locally: the stack is down by definition, so the bridge cannot be assumed
-  reachable, and the client and the ledger share the box by deployment.
+  reachable, and the client and the decision log share the box by deployment.
 """
 from __future__ import annotations
 
@@ -81,12 +81,12 @@ def record_via_bridge(post: Callable[[str, dict[str, Any]], dict[str, Any] | Non
 def record_miss(question: str, *, retrieval_keys: list[str],
                 n_indeterminate: int = 0, run_id: str | None = None,
                 decisions_path: Path | None = None) -> str:
-    """The miss row (r33 RC-1): the engine was up, the lookup grounded NOTHING, the loop
-    returned before ``/decide`` — for 69 measured asks this lane wrote no row at all, so
-    the class was invisible to the reaction stream in both directions. One local
+    """The miss row: the engine was up, the lookup grounded NOTHING, the loop
+    returned before ``/decide`` — without this row the class would be invisible to the
+    reaction stream in both directions. One local
     ``lookup``-family row: ``regime: "miss"`` (a coverage failure, stated — and what keeps
-    a verdict on it OUT of the utility fold), ``chosen_action: "abstain"`` (the §6.5
-    precedent: the action vocabulary stays closed), an empty fold version (no fold ran),
+    a verdict on it OUT of the utility fold), ``chosen_action: "abstain"`` (the
+    action vocabulary stays closed), an empty fold version (no fold ran),
     and a REAL content-addressed ``decision_id`` — the ONE rule, over the empty posterior —
     returned so the reply can name it and the owner's verdict can bind. Local append, not a
     bridge post: the bridge derives ids for RANKED decisions and stamps the CURRENT fold

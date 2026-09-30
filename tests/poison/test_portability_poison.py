@@ -8,10 +8,10 @@ finding belongs there, and this file deliberately does not restate it.
 Nothing *kept* the tree portable: the wrappers resolve through `readlink -f` and the units
 use `%h` because each was written that way, with no check anywhere. Two layers here:
 
-* **the units — a rule** (pure function over synthetic source, r25's L8: a rule that can
+* **the units — a rule** (pure function over synthetic source: a rule that can
   only be exercised by mutating the real tree cannot be mutation-tested at all). `systemd`
   is the deployed reader of a unit file and cannot be invoked offline against a fake HOME,
-  so this half is a spelling census and is **disclosed as such** in `docs/guards.md`.
+  so this half is a spelling census and is **disclosed as such**.
 * **the wrappers — behaviour.** Each is symlinked into a scratch directory and run with a
   sandbox `HOME` and a stubbed `PATH`, and must still resolve its project root to THIS
   repo. That is the property, driven end to end, not a grep for `readlink`.

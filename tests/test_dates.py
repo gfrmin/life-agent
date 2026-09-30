@@ -24,7 +24,7 @@ def test_parse_date_leaves_ambiguous_or_non_dates_unparsed() -> None:
 
 
 def test_matcher_grades_a_date_across_formats() -> None:
-    # q-003-class: the daemon reports "25 December 1999"; the gold is "25/12/1999" — same date, ≡.
+    # q-003-class: the decider reports "25 December 1999"; the gold is "25/12/1999" — same date, ≡.
     assert answer_matches("25/12/1999", [], "25 December 1999")
     assert answer_matches("25 December 1999", [], "25/12/1999")
 

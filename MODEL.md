@@ -25,9 +25,9 @@ that holds it). The MVP commits only spans.
 **Proposal.** Retrieval (BM25 over pkm's FTS, reranked) → extraction per chunk → candidates.
 The proposal is not the posterior: a gold value not proposed is `NONE`'s mass.
 
-**Lane.** `core/answer_shape.py` classifies the question (`exact`, `quantity`, `threshold`,
-`set`). Anything that is not a verbatim point fact skips this world and goes straight to the
-escalation menu (§4).
+**Lane.** The router's verdict says whether the question is a verbatim point fact. One it
+calls otherwise is a row of the argmax (`decide.route_options`): attempted or declined, never
+silently skipped (§4).
 
 ## 2. The channel: P(observation | ω)
 
@@ -209,7 +209,9 @@ law is marked **unenforced**.
    otherwise the act is not available. Tests: `tests/test_lookup.py::test_ungrounded_quote_is_indeterminate_and_recorded`
    (an ungrounded quote is no observation), `tests/test_decider.py::test_a_certain_leader_is_reported_and_an_uncertain_one_withheld`.
 2. **String-blind.** The decider receives indices and numbers, never candidate text.
-   **Unenforced:** `core/decider.py` reads only `len(candidates)`, but no test perturbs candidate text.
+   Tests: `tests/test_decider.py::test_the_act_is_blind_to_candidate_text` (reversed, random or
+   identical candidate strings leave the act and its view unchanged) and
+   `::test_the_decider_modules_never_read_a_candidate_string` (an AST check).
 3. **One argmax.** No module but `core/decide.bayes_act` ranks actions; its callers are
    drift-gated. Test: `tests/test_decider.py::test_only_the_decider_takes_the_act`.
 4. **Provenance.** Every reply carries its origin; every commit, its citation and credence.
@@ -218,10 +220,15 @@ law is marked **unenforced**.
 5. **Write-once records.** Decision, disclosure and verdict rows are never edited; a
    retraction is a new row. Tests: `tests/test_outcomes.py::test_append_appends_never_truncates_and_order_is_preserved`,
    `tests/test_derivations.py::test_record_is_write_once`, `tests/test_disclosure.py::test_the_log_is_opened_in_append_mode_only`;
-   **unenforced** for the decision and reaction logs.
+   `tests/test_write_once.py` (the five logs' modules open nothing for writing and write through
+   `jsonl_log.append_line`); a re-posted decision leaves one row
+   (`tests/test_bridge_server.py::test_log_decision_reposted_leaves_one_row`).
 6. **One home per constant.** Channel constants, prices and the action vocabulary are each
    declared once (`core/pricing.py`) and bound everywhere else. Test:
-   `tests/test_pricing_table.py::test_no_priced_constant_is_declared_outside_the_table` (prices only).
+   `tests/test_pricing_table.py::test_no_priced_constant_is_declared_outside_the_table` (the tier and
+   menu literals) and `::test_no_probability_or_model_literal_is_declared_outside_the_table`
+   (no module-level float in (0, 1] and no `claude-` string in `core/` or `bridge/` outside
+   `core/pricing.py`, bar a named allowlist of utilities, epsilons and tables owned by their module).
 7. **Named degradation.** Bridge down ⇒ the reply says so; there is no fallback decider. A
    failed rung ⇒ a disclosure row and no answer. Tests: `tests/test_ask_client.py::test_answer_names_a_down_stack`,
    `tests/test_executor.py::test_the_body_side_cascade_is_gone`; the failed-rung clause:

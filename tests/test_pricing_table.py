@@ -1,4 +1,4 @@
-"""M4 — the one price table (r14; design §4.2) + the atom derivation (§4.1) + E-5.
+"""The one price table + the atom derivation + the required-lambda contract.
 
 Every priced constant that ranks an action lives in ONE declared table
 (`core/pricing.py`, which already owned the spend half); the executor and grow menus are
@@ -10,6 +10,7 @@ Run: uv run --project . python -m pytest tests/test_pricing_table.py
 """
 from __future__ import annotations
 
+import ast
 from pathlib import Path
 
 from life_agent.core import executor as EX
@@ -45,7 +46,7 @@ _GROW = [
 def test_the_menu_lives_in_the_table() -> None:
     # one declared MENU in the module that already owns the spend half; the version
     # bumps because the table grew (its identity contract is unchanged)
-    # v3 (r21): the §18.14 extract_amounts planning-price row joined the table.
+    # v3: the extract_amounts planning-price row is part of the table.
     assert P.PRICING_VERSION == 3
     assert P.EXTRACT_AMOUNTS_USD == 0.01
     assert {k: v[0] for k, v in _TIERS.items()} == P.TIER_MODEL
@@ -90,3 +91,44 @@ def test_no_priced_constant_is_declared_outside_the_table() -> None:
         assert needle not in ex, needle
     assert '"alpha0": 3.0' not in go
     assert '("extract", "value"): (4.0, 4.0)' not in rel
+
+
+# Module-level float literals in (0, 1] and `claude-` model strings outside the table. Each
+# allowance names what it is; a new one is a decision, not a convenience.
+_NOT_PRICES = {
+    ("decide.py", "CITE_RIGHT_DEFAULT"),  # utilities, not prices: the owner's gauge defaults
+    ("decide.py", "CITE_WRONG_DEFAULT"),
+    ("utility.py", "GAUGE"),              # the utility gauge (u_correct, u_abstain)
+    ("utility.py", "_FLOOR"),             # numerical epsilons and sizes
+    ("outcomes.py", "SCORE_EPS"),
+    ("ask_client.py", "_RETRY_SLEEPS"),   # seconds between attempts
+    ("derivations.py", "DELIBERATE_ENGINE_VERSION"),  # a cache-key tag, not a model
+    ("lookup.py", "_AUTHORITY_CLASSES"),  # the authority classifier's table, owned by lookup
+    ("lookup.py", "_AUTHORITY_DEFAULT"),
+    ("route_row.py", "PRIOR"),            # the route row's Beta prior, owned with its fit
+}
+
+
+def _priced_literals(tree: ast.Module) -> list[tuple[str, int]]:
+    def is_priced(c: ast.AST) -> bool:
+        return isinstance(c, ast.Constant) and (
+            (isinstance(c.value, float) and 0 < c.value <= 1)
+            or (isinstance(c.value, str) and c.value.startswith("claude-")))
+
+    out = []
+    for n in tree.body:
+        if isinstance(n, ast.Assign | ast.AnnAssign) and n.value is not None:
+            targets = n.targets if isinstance(n, ast.Assign) else [n.target]
+            if any(is_priced(c) for c in ast.walk(n.value)):
+                out += [(ast.unparse(t), n.lineno) for t in targets]
+    return out
+
+
+def test_no_probability_or_model_literal_is_declared_outside_the_table() -> None:
+    """Law 6: in `core/` and `bridge/`, no module-level assignment of a float in (0, 1] or of
+    a `claude-` model string lives outside `pricing.py`, bar the named allowances."""
+    root = Path(__file__).resolve().parent.parent / "src/life_agent"
+    found = {(p.name, name) for d in ("core", "bridge") for p in (root / d).glob("*.py")
+             if p.name != "pricing.py"
+             for name, _ in _priced_literals(ast.parse(p.read_text(encoding="utf-8")))}
+    assert found == _NOT_PRICES, (sorted(found - _NOT_PRICES), sorted(_NOT_PRICES - found))

@@ -1,4 +1,4 @@
-"""The reaction log + the verdict→Reaction producer — bayesian-foundations §4.4 loop.
+"""The reaction log + the verdict→Reaction producer.
 
 The owner's reactions to the agent's logged EU decisions are revealed-preference evidence
 about utility. This module is the calibration leg's third append-only log
@@ -52,6 +52,7 @@ from typing import Any
 
 from life_agent.core import decisions as DEC
 from life_agent.core import jsonl_log
+from life_agent.core import pricing as PRC
 from life_agent.core import utility as UT
 
 FORMAT_VERSION = 1
@@ -66,8 +67,8 @@ VALENCES: dict[str, frozenset[str]] = {"verdict": frozenset({"good", "bad"})}
 # Every verdict that becomes fold evidence passes through this projection. Its declared
 # domain, in full (a verdict route not named here does not fold — absence from the
 # domain is the declared exclusion, never an accident):
-#   (1) the (action, valence) → y table ``VERDICT_Y`` below (M-7's domain rule:
-#       hedge/ask_clarify/gather and any unrecognised pair are a named exclusion —
+#   (1) the (action, valence) → y table ``VERDICT_Y`` below (the domain rule:
+#       ask_clarify/gather and any unrecognised pair are a named exclusion —
 #       ambiguous is not evidence).
 #   (2) the utility-evidence branches in this module (R-3: which verdicts become
 #       utility evidence): ``_lookup_reaction`` (the implied abstain-threshold datum,
@@ -75,7 +76,6 @@ VALENCES: dict[str, frozenset[str]] = {"verdict": frozenset({"good", "bad"})}
 #       coverage enters the datum, never a bar on the fold).
 VERDICT_Y: dict[tuple[str, str], int] = {
     ("report", "good"): 1, ("report", "bad"): 0,
-    ("report_scoped", "good"): 1, ("report_scoped", "bad"): 0,
     ("abstain", "good"): 0, ("abstain", "bad"): 1,
 }
 
@@ -83,12 +83,8 @@ VERDICT_Y: dict[tuple[str, str], int] = {
 # distinct as the fold's gate for when non-folding valences land under a later kind (§ above).
 _FOLDED_VALENCES: frozenset[str] = frozenset({"good", "bad"})
 
-# §7.1: a narrative `bad`-on-ALL_WITHHELD folds as counter-pressure only when the proposal
-# coverage posterior mean clears this bar; below it the "I wanted an answer" is more likely a
-# recall failure than a utility complaint. The wide coverage prior (Beta(2,2), mean 0.5) keeps
-# the gate permissive until eval_coverage evidence sharpens it; the joint endpoint-mass monitor
-# is the backstop. Frozen-blind (never tuned to a gate result).
-_COVERAGE_BAR: float = 0.5
+# §7.1: the coverage bar a narrative `bad`-on-ALL_WITHHELD must clear to fold (core/pricing.py).
+_COVERAGE_BAR: float = PRC.COVERAGE_BAR
 
 
 @dataclass(frozen=True)
@@ -217,9 +213,9 @@ def ask_recovery_rate(decisions_path: Path, reactions_path: Path) -> float:
 
 def can_fold(d: DEC.DecisionEvent) -> bool:
     """Whether a verdict on ``d`` can move the utility posterior: only an abstain, and never a
-    ``miss`` (r33 RC-1: a verdict on a COVERAGE failure is not utility evidence — folding it
+    ``miss`` (a verdict on a COVERAGE failure is not utility evidence — folding it
     would read "bad, you found nothing" as "wrongness costs me less" and feed the one-sided
-    bar drift r32 priced, 0.900 → 0.837) nor a ``route`` decline (the question was never
+    bar drift from 0.900 towards 0.837) nor a ``route`` decline (the question was never
     attempted). The ONE rule: the fold below and every reply that names a verdict's fate
     read it here."""
     return d.chosen_action == "abstain" and d.regime not in ("miss", "route")

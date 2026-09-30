@@ -1,6 +1,6 @@
 """Tests for ``life_agent.tasks.knowledge`` — the ledger→knowledge projection.
 
-The mutable→knowledge mirror of ``tasks/project.py`` (system-design.md §5): a pure
+The mutable→knowledge mirror of ``tasks/project.py``: a pure
 fold of the GTD event ledger rendered as one markdown document, stamped with the
 ledger head it folds, so ask-time staleness is a cheap comparison. Deterministic by
 construction: no clock, no randomness — every date comes from an event.

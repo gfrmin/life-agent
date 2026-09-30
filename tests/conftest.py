@@ -37,11 +37,12 @@ def _hermetic_decisions_log(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> 
 @pytest.fixture(autouse=True)
 def _hermetic_pkm_root(request: pytest.FixtureRequest, tmp_path_factory: pytest.TempPathFactory,
                        monkeypatch: pytest.MonkeyPatch) -> None:
-    """The machine's pkm root is unreachable by default. The A0 reach (r00-lineage-writer)
-    ran through ``PKM_CONFIG``'s DEFAULT path — ``~/.config/life-agent/pkm.yaml`` on the
-    owner's box — so ``ask.main`` reconciled the LIVE root with no variable exported. All
-    THREE routes are neutralised here (patching the innermost symbol alone is how this class
-    recurs — reviewer ruling, r00 Q1): the ``PKM_CONFIG`` environment variable and the
+    """The machine's pkm root is unreachable by default. A test that reaches
+    ``ask.main`` would otherwise go through ``PKM_CONFIG``'s DEFAULT path —
+    ``~/.config/life-agent/pkm.yaml`` on the owner's box —
+    and ``ask.main`` would reconcile the LIVE root with no variable exported.
+    All THREE routes are neutralised here (patching the innermost symbol alone is how this class
+    recurs): the ``PKM_CONFIG`` environment variable and the
     ``config.PKM_CONFIG`` constant point at a scratch config naming a scratch root (a
     per-test sibling of tmp_path — never inside it, so tests that enumerate tmp_path are
     untouched); ``config.pkm_root`` and ``ask._pkm_root`` return that root. Opt-in for a

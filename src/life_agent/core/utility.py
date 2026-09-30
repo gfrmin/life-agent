@@ -1,8 +1,8 @@
-"""The utility posterior — utility as inference (bayesian-foundations §4.4/§10).
+"""The utility posterior — utility as inference.
 
 The agent holds a *belief* about the owner's preferences, never a table: gauge-pinned
 (u(correct) = +1, u(abstain) = 0 — convention, since behaviour identifies utility only
-up to positive affine transform), with the remaining latents (u_wrong, u_hedged, the
+up to positive affine transform), with the remaining latents (u_wrong, the
 interruption cost λ_int, the per-claim attention cost κ_att) as grid-discretised
 posteriors learned from evidence. Design commitments, all from the amended foundations:
 
@@ -44,8 +44,8 @@ from typing import Any
 
 import yaml
 
-from life_agent.core import answer_shape as AS
 from life_agent.core.decisions import POLICIES
+from life_agent.core.posterior import normalised
 
 FORMAT_VERSION = 1
 
@@ -62,25 +62,17 @@ GAUGE: dict[str, float] = {"u_correct": 1.0, "u_abstain": 0.0}
 # encodes the months-operating $1 ≈ 1·u_correct convention within 0.2%, frozen BEFORE
 # any elicitation; the owner's elicitations.jsonl line narrows it. Consumers: executor
 # menu/grow pricing (usd x rate at the decide payload) and gate.realised_utility's
-# -rate*cost_usd spend term (run-6, pre-registered in bayesian-foundations §14).
-REQUIRED_LATENTS: tuple[str, ...] = ("u_wrong", "u_wrong_scoped", "u_hedged",
-                                     "lambda_int", "kappa_att", "lambda_usd")
+# -rate*cost_usd spend term.
+REQUIRED_LATENTS: tuple[str, ...] = ("u_wrong", "lambda_int", "kappa_att", "lambda_usd")
 
-# r30 (`docs/unification/reports/r30-units-lever.md`): the six OPTIONAL per-shape utility
-# scale latents — `voi_scale_<shape>`/`regret_scale_<shape>` for each of
-# `answer_shape.SCALED_SHAPES` (never retyped here — the shape vocabulary has one
-# spelling). Deliberately NOT in REQUIRED_LATENTS: unlike lambda_usd, which the gate's
-# spend term needs unconditionally, these six default to 1.0 in `decide.shaped_u_bar`
-# when absent, so a model file may opt a shape in without every other model file (every
-# test fixture, the owner's live deployed copy) being forced to declare it the day this
-# merges — the `tau_narrative` precedent, not the `lambda_usd` one.
-SHAPE_LATENT_NAMES: tuple[str, ...] = tuple(
-    f"{kind}_scale_{shape}" for shape in AS.SCALED_SHAPES for kind in ("voi", "regret"))
+# Latents the model once carried. A model file may still declare them and an elicitation may
+# still name them (the owner's elicitation log is append-only); both are read and ignored.
+RETIRED_LATENTS: frozenset[str] = frozenset({"u_hedged", "u_wrong_scoped"})
 
 # The two OPTIONAL cite latents: what naming the document is worth when it holds the answer
-# and when it does not. Not in REQUIRED_LATENTS for the same reason as the shape scales — a
-# model file without them loads, and `decide.utility_by_action` reads their prior means
-# (`CITE_RIGHT_DEFAULT`, `CITE_WRONG_DEFAULT`) when absent.
+# and when it does not. Not in REQUIRED_LATENTS, so a model file without them loads, and
+# `decide.utility_by_action` reads their prior means (`CITE_RIGHT_DEFAULT`,
+# `CITE_WRONG_DEFAULT`) when absent.
 CITE_LATENT_NAMES: tuple[str, ...] = ("u_cite_right", "u_cite_wrong")
 
 
@@ -134,7 +126,10 @@ def _latent_spec(name: str, raw: dict[str, Any]) -> LatentSpec:
 
 
 def load_model(path: Path) -> UtilityModel:
-    """Parse and validate the utility model. Loud on anything missing or off-gauge."""
+    """Parse and validate the utility model. Loud on anything missing or off-gauge. Only the
+    required and cite latents are read: a file that still declares a retired latent
+    (:data:`RETIRED_LATENTS`, the per-shape scales) loads, and the extra entries
+    are ignored."""
     raw = yaml.safe_load(path.read_text(encoding="utf-8"))
     gauge = {k: float(v) for k, v in raw["gauge"].items()}
     if gauge != GAUGE:
@@ -149,10 +144,10 @@ def load_model(path: Path) -> UtilityModel:
             "(additive and deploy-order-safe; a file without lambda_usd predates plan "
             "item C, 2026-08-08)")
     latents = {name: _latent_spec(name, latents_raw[name]) for name in REQUIRED_LATENTS}
-    # each optional shape-scale and cite latent parses through the SAME generic path iff the
-    # owner's file declares it — absent ones simply never enter `model.latents`, and
-    # the reader (`decide.shaped_u_bar`, `decide.utility_by_action`) supplies the default.
-    for name in (*SHAPE_LATENT_NAMES, *CITE_LATENT_NAMES):
+    # each optional cite latent parses through the SAME generic path iff the owner's file
+    # declares it — an absent one never enters `model.latents`, and the reader
+    # (`decide.utility_by_action`) supplies the default.
+    for name in CITE_LATENT_NAMES:
         if name in latents_raw:
             latents[name] = _latent_spec(name, latents_raw[name])
     tau = _latent_spec("tau", raw["tau"])
@@ -225,7 +220,8 @@ Evidence = Elicitation | Reaction | MarginReaction
 
 def load_elicitations(path: Path, model: UtilityModel) -> list[Elicitation]:
     """The elicitation evidence in file order. Missing file = zero elicitations — a
-    working state (the prior carries v0). Unknown latent names are loud."""
+    working state (the prior carries v0). An elicitation of a retired latent
+    (:data:`RETIRED_LATENTS`) is skipped; any other unknown latent name is loud."""
     if not path.exists():
         return []
     events: list[Elicitation] = []
@@ -234,6 +230,8 @@ def load_elicitations(path: Path, model: UtilityModel) -> list[Elicitation]:
             continue
         obj = json.loads(line)
         latent = str(obj["latent"])
+        if latent in RETIRED_LATENTS:
+            continue
         if latent not in model.latents:
             raise ValueError(f"elicitation names unknown latent {latent!r} "
                              f"(declared: {list(model.latents)})")
@@ -377,12 +375,6 @@ def _product(axes: list[list[float]]) -> list[tuple[float, ...]]:
     return [tuple(p) for p in itertools.product(*axes)]
 
 
-def _normalised(log_w: list[float]) -> list[float]:
-    top = max(log_w)
-    log_total = top + math.log(sum(math.exp(x - top) for x in log_w))
-    return [x - log_total for x in log_w]
-
-
 def _weights(log_w: list[float]) -> list[float]:
     top = max(log_w)
     w = [math.exp(x - top) for x in log_w]
@@ -457,10 +449,10 @@ def _fold(model: UtilityModel, comp: frozenset[str],
             lw += -0.5 * ((xi - s.prior_mu) / s.prior_sigma) ** 2
         log_w.append(lw)
     if len(names) > 1:
-        log_w = _normalised(log_w)
+        log_w = normalised(log_w)
     for event in events:
         ll = _log_likelihood(event, names, model)
-        log_w = _normalised([w + ll(x) for w, x in zip(log_w, points, strict=True)])
+        log_w = normalised([w + ll(x) for w, x in zip(log_w, points, strict=True)])
     if len(names) == 1:
         marginals = [log_w]
     else:
@@ -471,7 +463,7 @@ def _fold(model: UtilityModel, comp: frozenset[str],
             mass = [0.0] * len(axis)
             for flat, wi in enumerate(w):
                 mass[(flat // stride[j]) % len(axis)] += wi
-            marginals.append(_normalised([math.log(max(m, _FLOOR)) for m in mass]))
+            marginals.append(normalised([math.log(max(m, _FLOOR)) for m in mass]))
     out: dict[str, LatentPosterior] = {}
     for name, spec, axis, marginal in zip(names, specs, axes, marginals, strict=True):
         mean, var = _moments(axis, marginal)

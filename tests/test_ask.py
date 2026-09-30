@@ -17,6 +17,7 @@ from pathlib import Path
 import duckdb
 
 from life_agent.core import ask_client as AC_client
+from life_agent.core import executor as EX
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
@@ -118,7 +119,7 @@ def test_main_returns_2_on_locked_corpus(monkeypatch, capsys) -> None:
 
 
 # --- hermetic default: the machine's pkm root is unreachable unless a test opts in ------ #
-# (r00-lineage-writer Q1/Q2 rulings): the A0 reach ran through PKM_CONFIG's DEFAULT path, so
+# Otherwise ask would reach the machine's root through PKM_CONFIG's DEFAULT path, so
 # the conftest fixture neutralises all three routes — ask._pkm_root, config.pkm_root, and the
 # PKM_CONFIG environment variable — at a scratch config naming a scratch root under pytest's
 # basetemp (a per-test sibling of tmp_path).
@@ -159,8 +160,7 @@ def test_ask_main_reconciles_the_scratch_root_not_the_machine(monkeypatch, tmp_p
 
 def test_startup_reconcile_failure_is_named_not_silent(monkeypatch, caplog) -> None:
     """The startup reconcile is best-effort by contract (files stay authoritative), but a
-    failure of the pass itself is WARNed with the exception class — never swallowed silently
-    (r00 Q2)."""
+    failure of the pass itself is WARNed with the exception class — never swallowed silently."""
     import logging
 
     def boom(root: Path) -> None:
@@ -228,14 +228,14 @@ def test_log_entry_records_unverified_line() -> None:
 def test_answer_via_executor_renders_logs_and_binds(monkeypatch) -> None:
     # The executor read-path drives the loop (stubbed), renders in the shared credence grammar,
     # builds ask's cards/scores from the view's hits, AND logs the terminal lookup decision so a
-    # verdict can fold — EXECUTOR_LAST holds the bridge's id. No live daemon.
+    # verdict can fold — EXECUTOR_LAST holds the bridge's id. No live bridge.
     monkeypatch.setattr(ask, "_executor_ready", lambda: True)
     view = {"effector": "report", "asserted": ["P123"], "candidates": ["P123"],
             "credences": [0.9], "p_none": 0.05, "eu": 0.8, "n_obs": 1,
             "hits": [{"artifact_cache_key": "d0", "chunk_text": "Passport P123",
                       "origin": "/data/id.pdf", "score": 9.0}],
             "route": {"construct": "passport number"}}
-    monkeypatch.setattr(ask.EX, "decide_via_loop", lambda *a, **k: view)
+    monkeypatch.setattr(EX, "decide_via_loop", lambda *a, **k: view)
     posted: dict[str, object] = {}
 
     def fake_post(url: str, payload: dict) -> dict | None:
@@ -250,14 +250,14 @@ def test_answer_via_executor_renders_logs_and_binds(monkeypatch) -> None:
     log_url = next(u for u in posted if u.endswith("/log_decision"))
     assert posted[log_url]["decision"]["effector"] == "report"
     assert posted[log_url]["retrieval_keys"] == ["d0"]
-    # M2 (r12 DIR-1): the one poster STATES the two M0 fields on every posted body
+    # the one poster STATES the regime and policy fields on every posted body
     assert posted[log_url]["decision"]["regime"] == "full"
     assert posted[log_url]["decision"]["policy"] == "all-to-date"
     assert ask.EXECUTOR_LAST == "ab-cafef00d"
 
 
 def test_answer_via_executor_logs_a_miss_locally_never_by_wire(monkeypatch) -> None:
-    # r33 RC-1: a miss (zero grounded observations) now writes ONE local regime="miss"
+    # a miss (zero grounded observations) now writes ONE local regime="miss"
     # row with a reactable id — still never a /log_decision post (the bridge derives ids
     # for RANKED decisions; a miss has no posterior to rank).
     from life_agent.core import config as CFG
@@ -266,7 +266,7 @@ def test_answer_via_executor_logs_a_miss_locally_never_by_wire(monkeypatch) -> N
             "p_none": None, "eu": None, "n_obs": 0,
             "hits": [{"artifact_cache_key": "d0", "chunk_text": "x", "origin": "/d.pdf",
                       "score": 1.0}], "route": {"construct": "passport number"}}
-    monkeypatch.setattr(ask.EX, "decide_via_loop", lambda *a, **k: view)
+    monkeypatch.setattr(EX, "decide_via_loop", lambda *a, **k: view)
     calls: list[str] = []
     monkeypatch.setattr(ask, "_http_post", lambda url, payload: calls.append(url) or None)
     ask.answer_via_executor("my passport?", 20)
@@ -286,7 +286,7 @@ def test_answer_via_executor_tags_run_id_when_set(monkeypatch) -> None:
             "hits": [{"artifact_cache_key": "d0", "chunk_text": "Passport P123",
                       "origin": "/data/id.pdf", "score": 9.0}],
             "route": {"construct": "passport number"}}
-    monkeypatch.setattr(ask.EX, "decide_via_loop", lambda *a, **k: view)
+    monkeypatch.setattr(EX, "decide_via_loop", lambda *a, **k: view)
     posted: list[tuple[str, dict]] = []
 
     def fake_post(url: str, payload: dict) -> dict | None:
@@ -302,8 +302,8 @@ def test_answer_via_executor_tags_run_id_when_set(monkeypatch) -> None:
     monkeypatch.setattr(ask, "EXECUTOR_RUN_ID", None)
     ask.answer_via_executor("my passport?", 20)
     decision = next(p for u, p in posted if u.endswith("/log_decision"))["decision"]
-    # M2 (r12): no accounting field is optional on the poster's side — the live default
-    # is STATED, matching the bridge's own ("answer-brain"), so the ledger row is unchanged
+    # no accounting field is optional on the poster's side — the live default
+    # is STATED, matching the bridge's own ("answer-brain"), so the decision row is unchanged
     assert decision["run_id"] == "answer-brain"
 
 
@@ -349,9 +349,9 @@ def test_http_post_surfaces_the_500_body(monkeypatch) -> None:
         ask._http_post("http://b/probe/corroborate", {"question": "q"})
 
 
-def test_answer_via_executor_abstains_named_when_daemon_down(monkeypatch) -> None:
+def test_answer_via_executor_abstains_named_when_bridge_down(monkeypatch) -> None:
     # Never a silent fallback to another path's answer: a down stack is the NAMED abstention —
-    # and, since M2 (r12 D2), a RECORDED one: the §6.5 unavailability event is appended
+    # and a RECORDED one: the §6.5 unavailability event is appended
     # (regime=unavailable, no decision_id), never a foldable abstain verdict.
     from life_agent.core import recorder as REC
 
@@ -402,5 +402,5 @@ def test_ask_once_clears_stale_executor_decision_when_the_stack_is_down(monkeypa
 
 
 def test_the_edge_curves_shim_is_dead() -> None:
-    # r13 mandate 3 (as amended): the fold has one spelling (ask_client._edge_curves)
+    # the fold has one spelling (ask_client._edge_curves)
     assert not hasattr(ask, "_edge_curves")

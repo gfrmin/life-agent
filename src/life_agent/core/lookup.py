@@ -1,7 +1,7 @@
 """The lookup family's evidence shaping — a point-fact question into observations.
 
-V is a point fact ("what is my ID?", "when is the appointment?"). Every stage is on the
-ledger (system-design §3) and every modelling choice is stated:
+V is a point fact ("what is my ID?", "when is the appointment?"). Every stage is recorded
+and every modelling choice is stated:
 
     route      cached model verdict: is this a verbatim point fact? A question that is not
                is declined (the MVP bar, CLAUDE.md)
@@ -32,18 +32,17 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
-from life_agent.core import answer_shape as AS
 from life_agent.core import config
 from life_agent.core import derivations as D
 from life_agent.core import disclosure as DISC
 from life_agent.core import instrument as INSTR
 from life_agent.core import matching as MATCH
 from life_agent.core import outcomes as O
+from life_agent.core import pricing as PRC
 from life_agent.core import reactions as R
 from life_agent.core import reliability as REL
 from life_agent.core import utility as UT
 from life_agent.core.dates import parse_date as _parse_date
-from life_agent.core.decide import shaped_u_bar
 
 # The route + extract instrument model (local Ollama deprecated 2026-08-17 — owner
 # directive, §14-registered; both verdicts are cached, so call counts are bounded by
@@ -196,14 +195,11 @@ _AUTHORITY_CLASSES: tuple[tuple[tuple[str, ...], str, float], ...] = (
 _AUTHORITY_MAIL_MARKERS = ("/mail/", "/cur/", "/new/")
 _AUTHORITY_DEFAULT = ("other", 0.85)
 
-# §4.1's covariates on a_i (stated priors, calibrated later from outcomes). The second
-# eval run's remaining confident-wrong reports were exactly these two channels: documents
-# about someone else agreeing on their value, and stale documents agreeing on a
-# superseded one — construct validity, entering the likelihood, never a rank heuristic.
-_A_SUBJECT_OTHER = 0.05      # P(a doc about someone else asserts the owner's value)
-_P_OWNER_GIVEN_INDET = 0.5   # P(the doc is about the owner | subject indeterminate)
-_TIME_HALF_LIFE_YEARS = 5.0  # current-state facts: P(assertion still current | doc age)
-_A_TIME_UNKNOWN = 0.6        # undated/underived doc date under a time-indexed construct
+# §4.1's covariates on a_i, declared in the price table (core/pricing.py).
+_A_SUBJECT_OTHER = PRC.A_SUBJECT_OTHER
+_P_OWNER_GIVEN_INDET = PRC.P_OWNER_GIVEN_INDET
+_TIME_HALF_LIFE_YEARS = PRC.TIME_HALF_LIFE_YEARS
+_A_TIME_UNKNOWN = PRC.A_TIME_UNKNOWN
 
 # Closed abstention reasons (the credence grammar — interaction contract).
 # The reason must be the TRUE one. These are not interchangeable labels: DISPERSED is a
@@ -213,8 +209,8 @@ _A_TIME_UNKNOWN = 0.6        # undated/underived doc date under a time-indexed c
 # this machine's catalogue, so no amount of thinking here would have found it.
 REASON_DISPERSED = "dispersed posterior"
 REASON_NO_OBSERVATIONS = "no admitted evidence"
-# (REASON_UNAVAILABLE was retired at r33 A4: defined since M5 and never bound by any
-# render branch — the §6.5 reply is ask_client.DOWN, its own contract string.)
+# (There is no REASON_UNAVAILABLE: the bridge-down reply is ask_client.DOWN, its own
+# contract string.)
 
 # One grammar table for every rendered string (drift-gated; interaction contract).
 # Credences render at three decimals: two rounded 0.997 up to "1.00" on the first live
@@ -231,7 +227,7 @@ GRAMMAR: dict[str, str] = {
     # held-back "thinking" that makes the decision verdictable (is that value right?) rather
     # than a blind "should you have answered?". Used when the posterior held >=1 candidate.
     "abstain_withheld": "No answer asserted ({reason}). Held back: {alts}",
-    # r33 RC-3: {p_none}/{eu} arrive PRE-FORMATTED — a number only when a posterior
+    # {p_none}/{eu} arrive PRE-FORMATTED — a number only when a posterior
     # produced one; a miss (None) renders "—", never a fabricated 0.000 (an "I found
     # nothing" must not print identically to "zero mass on NONE").
     "footer": ("lookup: {n_hits} hits → {n_obs} grounded observations"
@@ -645,9 +641,9 @@ def observe_hits(root: Path, question: str, hits: list[dict[str, Any]], *,
     # §5 dedup (correlation collapse) at the SHARED shaper: collapse correlated duplicate documents
     # (identical-quote forward/reply chains, re-filed copies) to one witness here, BEFORE the
     # shaping→deciding split, so a duplicate cannot saturate the posterior on EITHER decider — the
-    # host lookup_posterior OR the daemon's reliability_categorical (which consumes this verbatim
-    # through to_abstract_observations). Placed in the decider alone (commit 546f1a5), the §4.2
-    # temper never reached the executor path; observe_hits is the single seam both consume.
+    # host lookup_posterior OR the bridge's reliability categorical (which consumes this
+    # verbatim through to_abstract_observations). Placed in the decider alone (commit 546f1a5),
+    # the temper never reached the executor path; observe_hits is the single seam both consume.
     return dedup_correlated(observations), indeterminate
 
 
@@ -685,9 +681,9 @@ def dedup_correlated(observations: list[Observation]) -> list[Observation]:
     wrong value, q-014's 9 stale copies → 0.80). Each substantial-quote cluster spanning
     multiple documents is reduced to the MAX-covariate document's observations — the
     strongest/freshest copy, so a recent re-attestation keeps its recency. Within a single
-    document, ONE VALUE IS ONE ATTESTATION (r09c A1): repeated carriers of the same value —
+    document, ONE VALUE IS ONE ATTESTATION: repeated carriers of the same value —
     identical quotes, near-duplicate boilerplate, page headers — collapse to the
-    first-maximal-covariate row (q2-105: twelve same-doc rows rode the group coarsening to
+    first-maximal-covariate row (twelve same-doc rows once rode the group coarsening to
     0.989; correlated is not once). Across documents, value-ONLY quotes (no shared context)
     do not collapse: genuine independent corroboration must still accumulate. Order-preserving
     and pure."""
@@ -700,10 +696,10 @@ def dedup_correlated(observations: list[Observation]) -> list[Observation]:
 def dedup_drop_rows(rows: list[tuple[str, str, str, float]]) -> set[int]:
     """THE §5 clustering rule over ``(quote, doc_key, value_norm, covariate)`` rows — the
     index set to drop. :func:`dedup_correlated` and the wire join
-    (``bridge/observations.join_wire_observations``, r09 D2) both call this; a second
+    (``bridge/observations.join_wire_observations``) both call this; a second
     implementation of the rule anywhere is a defect (§6.8)."""
     drop: set[int] = set()
-    # r09c A1 — one document attests one value once: doc-keyed rows collapse per
+    # One document attests one value once: doc-keyed rows collapse per
     # (doc_key, value_norm) to the first-maximal-covariate row, whatever the quotes (the
     # boilerplate/page-repetition class evades any quote key; the doc-keyed group only
     # CORRELATES the copies, it does not count them once). Value-only rows (no doc_key)
@@ -746,26 +742,19 @@ def dedup_drop_rows(rows: list[tuple[str, str, str, float]]) -> set[int]:
 
 # --- the utility fold (per-process, lazily) ----------------------------------------------
 
-# The fold is memoised per fold_version (recomputed only when evidence moves); the cheap,
-# pure per-shape scaling (decide.shaped_u_bar) is memoised separately per (fold_version,
-# shape), so a second question's DIFFERENT shape never re-runs the fold.
-_U_BAR_RAW: tuple[str, dict[str, float]] | None = None       # (fold_version, raw u_bar)
-_U_BAR_SHAPED: dict[tuple[str, str], dict[str, float]] = {}  # (fold_version, shape) -> Ū
+# The fold is memoised per fold_version (recomputed only when evidence moves).
+_U_BAR_RAW: tuple[str, dict[str, float]] | None = None       # (fold_version, u_bar)
 
 
 U_BAR_POLICY = "all-to-date"  # the decider's declared evidence regime (design §3.1, Q-O5)
 
 
-def current_u_bar(*, shape: str = AS.DEFAULT_SHAPE) -> tuple[dict[str, float], str, str]:
+def current_u_bar() -> tuple[dict[str, float], str, str]:
     """Ū from the utility posterior (fold of model + elicitations + the verdict→evidence
-    projection — the ``all-to-date`` regime, declared once above), SCALED for one
-    question's answer ``shape`` (r30, `decide.shaped_u_bar` — the ONLY place a scale
-    applies; C5). The fold is cached per fold version within the process — it is
-    recomputed only when evidence moves, never when only ``shape`` changes, so every
-    caller (the bridge's decider and its grow-menu pricing) can classify its own
-    question and ask for its own shape at no extra cost. Returns
+    projection — the ``all-to-date`` regime, declared once above). The fold is cached per
+    fold version within the process — it is recomputed only when evidence moves. Returns
     ``(u_bar, fold_version, policy)``: the policy the fold ACTUALLY ran under, so a record
-    stamps what was used, never an independent literal (M3, r13)."""
+    stamps what was used, never an independent literal."""
     global _U_BAR_RAW
     model = UT.load_model(config.UTILITY_MODEL)
     events: list[UT.Evidence] = list(
@@ -779,10 +768,7 @@ def current_u_bar(*, shape: str = AS.DEFAULT_SHAPE) -> tuple[dict[str, float], s
         for warning in post.endpoint_warnings(model.endpoint_mass_warn):
             print(f"  ⚠ {warning}")
         _U_BAR_RAW = (version, post.u_bar())
-    cache_key = (version, shape)
-    if cache_key not in _U_BAR_SHAPED:
-        _U_BAR_SHAPED[cache_key] = shaped_u_bar(_U_BAR_RAW[1], shape)
-    return _U_BAR_SHAPED[cache_key], version, U_BAR_POLICY
+    return dict(_U_BAR_RAW[1]), version, U_BAR_POLICY
 
 
 # --- the family, end to end --------------------------------------------------------------

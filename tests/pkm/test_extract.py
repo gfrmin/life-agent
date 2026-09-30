@@ -189,7 +189,7 @@ def test_extract_registers_an_unregistered_derivation_instead_of_sweeping_it(
 ) -> None:
     """SPEC §6.2 (0.18.0) at the extract's own sweep: a file-first §18.9 derivation whose
     catalogue rows lag (complete content + lineage.json + meta.json, no row) SURVIVES the
-    sweep at extract start and comes out registered — the r03 loss path, closed."""
+    sweep at extract start and comes out registered — no loss."""
     bench = _bench(tmp_path, [("note.md", "# Hello\n\nBody text.\n")])
     extract(bench.root, bench.config)
     with open_catalogue(bench.root) as conn:

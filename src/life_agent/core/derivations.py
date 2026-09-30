@@ -297,7 +297,7 @@ def deliberate_key(question: str, corpus_digest: str, *, model: str,
     """Key for one deliberative answer (the promoted A1b edge): claude CLI over the pkm
     MCP surface, searching the corpus itself — so its input is the CORPUS DIGEST, not a
     retrieval-set hash (the edge chooses its own evidence; retrieve-then-key would not
-    cover it). Keyed pre-call (system-design §3). ``model`` is the configured CLI alias;
+    cover it). Keyed pre-call. ``model`` is the configured CLI alias;
     the CLI binary version is recorded in metadata for audit, same provenance caveat as
     the eval arm. NAMED EXCLUSION: the machine's ambient Claude Code config (user/KB
     CLAUDE.md) is part of the instrument but not part of this key — editing it changes
@@ -417,7 +417,7 @@ def record(root: Path, key: StageKey, content: bytes, *,
 @dataclass(frozen=True)
 class ReconcileCounts:
     """What one :func:`reconcile` pass did with the queued keys, per class — the loud,
-    counted form of the reconciler (the r03 finding: silence here left 2,047 artefacts
+    counted form of the reconciler (silence here once left thousands of artefacts
     unregistered until a sweep removed them). ``inserted`` rows registered (of which
     ``deduplicated`` needed a lineage repair on read — WARNING'd, never silent);
     ``present`` already registered (dropped, idempotent); ``dead`` queued keys whose

@@ -31,7 +31,7 @@ from life_agent.reach.trips.ics import to_ics
 from life_agent.trips import store
 
 HOST = os.environ.get("LIFE_AGENT_TRIPS_WEB_HOST", "0.0.0.0")
-# after GTD 8797 / bridge 8798 / daemon 8799
+# after GTD 8797 / bridge 8798
 PORT = int(os.environ.get("LIFE_AGENT_TRIPS_WEB_PORT", "8800"))
 
 Payload = dict[str, Any]

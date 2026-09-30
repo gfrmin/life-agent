@@ -23,13 +23,13 @@ EXISTING reaction loop with no new fold code; the next decision reads the moved 
 **Stateless reads**: every read endpoint is a pure function of (corpus, request); the body
 holds the growing hit set + accumulated covariates and resends them each refinement (uniform
 with `/decide`), so two questions interleaved in one process cannot perturb each other.
-`/log_decision`'s append is content-addressed (a stable `decision_id`), so a re-post coalesces
-rather than double-counting.
+`/log_decision`'s append is content-addressed (a stable `decision_id`) and skipped when that
+id is already in the log, so a re-post leaves one row rather than double-counting.
 
 **PII stays server-side**: the owner profile and the utility posterior are read INSIDE the
 bridge (`BridgeDeps`), so `/probe/subject` and `/utility` carry neither over the wire; the
 service binds loopback only. `/extract` returns the candidate display strings + the abstract
-integer observations (`to_abstract_observations`) the daemon consumes verbatim — the single
+integer observations (`to_abstract_observations`) the decider consumes verbatim — the single
 source of that mapping, so the brain stays string-blind.
 """
 from __future__ import annotations
@@ -51,8 +51,7 @@ import duckdb
 
 from life_agent import owner
 from life_agent.bridge.observations import join_wire_observations, to_abstract_observations
-from life_agent.core import answer_shape as AS
-from life_agent.core import config
+from life_agent.core import config, jsonl_log
 from life_agent.core import corpus as CORPUS
 from life_agent.core import decide as DEC_RULE
 from life_agent.core import decider as DCD
@@ -78,12 +77,11 @@ from life_agent.core import volatility as VOL
 from life_agent.core.llm import LLMResult
 
 HOST = os.environ.get("LIFE_AGENT_BRIDGE_HOST", "127.0.0.1")
-PORT = int(os.environ.get("LIFE_AGENT_BRIDGE_PORT", "8798"))  # adjacent to the daemon's 8799
+PORT = int(os.environ.get("LIFE_AGENT_BRIDGE_PORT", "8798"))
 _DEFAULT_K = 20
-# the corroborate re-read's model + reliability. The cloud model is strong + subject-aware, so a
-# high constant reliability for v0; Slice 3 calibrates this from verdicts (calib(c)) instead.
-_JOINT_MODEL = "claude-opus-4-8"
-_JOINT_RHO = 0.95
+# the joint re-read's model + reliability (core/pricing.py)
+_JOINT_MODEL = PRICING.JOINT_MODEL
+_JOINT_RHO = PRICING.JOINT_RHO
 
 Payload = dict[str, Any]
 
@@ -103,10 +101,8 @@ class BridgeDeps:
     conn: duckdb.DuckDBPyConnection      # read-only catalogue (FTS loaded) — retrieval + probes
     client: Any                          # instrument client — route / observe / subject
     profile: str                         # owner profile, loaded server-side (never over the wire)
-    # the utility posterior's u_bar, SHAPED for one requested answer shape (r30, lazy
-    # brain) — /utility reads the shape off the request; every other caller (e.g.
-    # _build_decider) fixes its own.
-    u_bar: Callable[[str], dict[str, float]]
+    # the utility posterior's u_bar, folded lazily on first use
+    u_bar: Callable[[], dict[str, float]]
     decisions_path: Path                 # calibration decision log — /log_decision appends here
     reactions_path: Path                 # calibration reaction log — /log_reaction appends here
     fold_version: Callable[[], str]      # current utility fold version (pins the logged decision)
@@ -405,12 +401,11 @@ def _probe_corroborate(deps: BridgeDeps, p: Payload) -> Payload:
     priced = PRICING.cost_usd(LLMResult(
         text="", in_tokens=jr.in_tokens, out_tokens=jr.out_tokens, seconds=0.0,
         served_model=jr.served_model or model))
-    # r09 D2 — the §5-deduped JOIN: a caller that hands its standing channel gets the
-    # POOLED set back (a disagree or null read pools nothing and the channel survives —
-    # run 7's disagree⇒abstain contract is retired by the ruling's fix); a caller with
-    # no channel keeps the pre-r09 contract verbatim.
+    # The deduped JOIN: a caller that hands its standing channel gets the
+    # POOLED set back (a disagree or null read pools nothing and the channel survives);
+    # a caller with no channel gets the read's own observations verbatim.
     channel = list(p.get("observations") or [])
-    obs = _cap_synthesised_covariates(obs, channel)   # r09c A2, before the join
+    obs = _cap_synthesised_covariates(obs, channel)   # before the join
     if channel:
         joined_cands = (candidates if new_candidate is None
                         else [*candidates, new_candidate])
@@ -443,7 +438,7 @@ def _lattice_join(value: str, candidates: list[str],
     but nor may it read a CORRECTING sentence as a confirmation: containment alone
     cannot tell confirm from correct-while-mentioning, so a competing same-shaped
     token beside the contained candidate (``_competing_value_shape``) or a
-    name/digit-group extending it (``_superset_extension``, r09b T1) keeps the
+    name/digit-group extending it (``_superset_extension``) keeps the
     conservative no-observation contract. Else, ``allow_new`` mints the value as a
     candidate indexed at ``len(candidates)`` (the grow contract) — gated on ``not
     contained``: a read that MENTIONS a known candidate (ambiguous or
@@ -468,7 +463,7 @@ def _joined_observation(idx: int, candidates: list[str], new_candidate: str | No
                         *, time_factor: float, competition_factor: float) -> Payload:
     """[§3.3 · BR-4] The ONE builder for a joined edge observation (D-11's output
     shape) — the re-read edge's fixed authority/subject covariates are declared model
-    content (learnable). r09 D1's
+    content (learnable). The
     uniform wire keys on every observation — a synthesised read has no verbatim quote
     and no single source document (value-only, so §5 never clusters it; the join gives
     it its own fresh group). ``value_norm`` is the REPORTED candidate's normal form,
@@ -492,7 +487,7 @@ def _candidate_competition(p: Payload, idx: int) -> float:
 
 
 def _superset_extension(value: str, candidate: str) -> bool:
-    """r09b T1 — the strict-span guard: True when the candidate's matched token span in
+    """The strict-span guard: True when the candidate's matched token span in
     ``value`` is NOT at an entity boundary — the token immediately adjacent (either side)
     has the same token class as the candidate's own tokens (name-shaped beside name tokens,
     digit-group beside digit tokens). The superset-confirm class: a shorter personal-name
@@ -531,7 +526,7 @@ def _superset_extension(value: str, candidate: str) -> bool:
 
 
 def _cap_synthesised_covariates(obs: list[Payload], channel: list[Payload]) -> list[Payload]:
-    """r09c A2 — a re-read cannot outrank the channel it re-read: every synthesised
+    """A re-read cannot outrank the channel it re-read: every synthesised
     observation's minted authority/subject is capped at the per-component max over the
     channel's doc-keyed rows for the SAME value_norm, else over all doc-keyed rows. A
     channel with no doc-keyed rows caps nothing (the rescue from nothing mints from zero by
@@ -585,14 +580,13 @@ def _join_deliberate_value(value: str | None, candidates: list[str], allow_new: 
 
 def _deliberate_joined(p: Payload, obs: list[Payload], candidates: list[str],
                        new_candidate: str | None) -> list[Payload]:
-    """r09 D2 at the S3 edge: pool the caller's standing channel with the deliberate
-    observation (the §5 rule, one spelling). An empty ok reply pools nothing, so the
-    grounded channel survives — the empty-ok collapse is retired (pre-registration D3).
-    A caller with no channel keeps the pre-r09 contract verbatim."""
+    """Pool the caller's standing channel with the deliberate observation (the dedup
+    rule, one spelling). An empty ok reply pools nothing, so the grounded channel
+    survives. A caller with no channel gets the observation verbatim."""
     channel = list(p.get("observations") or [])
     if not channel:
         return obs
-    obs = _cap_synthesised_covariates(obs, channel)   # r09c A2, before the join
+    obs = _cap_synthesised_covariates(obs, channel)   # before the join
     joined_cands = candidates if new_candidate is None else [*candidates, new_candidate]
     return join_wire_observations(channel, obs, joined_cands)
 
@@ -640,7 +634,7 @@ def _probe_deliberate(deps: BridgeDeps, p: Payload) -> Payload:
     if r.status == "ok" and key is not None:
         try:
             DL.record_answer(deps.root, key, r)
-        except Exception as e:  # a ledger write must never break an answered question
+        except Exception as e:  # a record write must never break an answered question
             print(f"  (deliberate answer not recorded: {e})")
     obs, new_candidate = _join_deliberate_value(
         r.value, candidates, allow_new,
@@ -662,18 +656,14 @@ def _probe_deliberate(deps: BridgeDeps, p: Payload) -> Payload:
     return out
 
 
-def _utility(deps: BridgeDeps, p: Payload) -> Payload:
-    # r30: the requesting question's own answer shape prices its own u_bar (C5) — the
-    # SAME seam current_u_bar's other callers route through, reached here via an
-    # optional query param so executor.run_pass's grow-menu pricing is shaped too.
-    shape = str(p.get("shape") or AS.DEFAULT_SHAPE)
-    return {"u_bar": deps.u_bar(shape)}
+def _utility(deps: BridgeDeps, _p: Payload) -> Payload:
+    return {"u_bar": deps.u_bar()}
 
 
 def _grow_menu(deps: BridgeDeps, _p: Payload) -> Payload:
     """The `/decide` grow block, verbatim (slice 6): the declared sensor vocabulary + the menu
-    actuators, each with its body-persisted warm counts (``None`` ⇒ the daemon's cold Beta
-    prior). The bridge owns the store; the executor forwards the block to the daemon, which
+    actuators, each with its body-persisted warm counts (``None`` ⇒ the declared cold Beta
+    prior). The bridge owns the store; the executor forwards the block to the decider, which
     reads the learned ``g`` per actuator and prices the grow lane."""
     return {"grow": GO.grow_block(deps.gather_outcomes_path)}
 
@@ -722,7 +712,7 @@ def _decide(deps: BridgeDeps, p: Payload) -> Payload:
         raise BridgeError(400, f"malformed /decide request ({type(e).__name__}: {e})") from e
 
 
-#: [r33 RC-1] the ONE content-addressed decision-id rule — declared in
+#: The ONE content-addressed decision-id rule — declared in
 #: ``core.decisions.decision_id_for``; the bridge BINDS it (a second spelling cannot
 #: exist — the miss recorder derives ids through the same declaration).
 _decision_id = DEC.decision_id_for
@@ -769,6 +759,19 @@ def _regime_and_policy(decision: Payload) -> tuple[str, str, tuple[str, ...]]:
 _TERMINAL_ACTIONS: frozenset[str] = frozenset(DEC.LOOKUP_ACTION_ORDER)
 
 
+# The decision ids each log already holds: seeded from the file on a log's first write in
+# this process (one scan), then extended by each append — the bridge is the log's only writer
+# and serves one request at a time, so the set stays true.
+_LOGGED_IDS: dict[Path, set[str]] = {}
+
+
+def _logged_ids(path: Path) -> set[str]:
+    if path not in _LOGGED_IDS:
+        _LOGGED_IDS[path] = {str(loads(line).get("decision_id"))
+                             for line in jsonl_log.read_lines(path)}
+    return _LOGGED_IDS[path]
+
+
 def _log_decision(deps: BridgeDeps, p: Payload) -> Payload:
     """Append one terminal decision to the calibration decision log, shaped as a lookup
     decision row, so the owner's one-bit verdict folds into u(wrong) through the EXISTING
@@ -791,7 +794,7 @@ def _log_decision(deps: BridgeDeps, p: Payload) -> Payload:
     eu = float(decision.get("eu", 0.0))
     n_obs = int(decision.get("n_obs", 0))
 
-    # Leader-first: the daemon returns credences in CANDIDATE order (server.jl `w[1:k]`), but the
+    # Leader-first: the decider returns credences in CANDIDATE order, but the
     # fold reads ``credences[0]`` as the leader (lookup orders by weight desc). Sort here, or an
     # abstain folds at the first candidate's p rather than the leader's.
     order = DEC.leader_order(credences)   # D-4: the one leader label-view
@@ -836,7 +839,10 @@ def _log_decision(deps: BridgeDeps, p: Payload) -> Payload:
         # v5: the documents a rung's answer disclosed to it; absent ⇒ not stated
         disclosed=(int(decision["disclosed"])
                    if decision.get("disclosed") is not None else None))
-    DEC.append(deps.decisions_path, event)
+    seen = _logged_ids(deps.decisions_path)
+    if decision_id not in seen:  # a re-post of the same decision is not a second row
+        DEC.append(deps.decisions_path, event)
+        seen.add(decision_id)
     return {"decision_id": decision_id}
 
 
@@ -907,7 +913,6 @@ def dispatch(deps: BridgeDeps, method: str, path: str,
             if handler is None:
                 raise BridgeError(404, f"no GET endpoint {route!r}")
             # a GET query string is the same Payload-dict shape a POST body already gets
-            # (r30: /utility?shape=<shape> — no new parsing machinery).
             params = {k: v[0] for k, v in parse_qs(query).items()}
             return 200, handler(deps, params)
         if method == "POST":
@@ -997,8 +1002,8 @@ def build_deps() -> BridgeDeps:
     conn = duckdb.connect(str(root / "catalogue.duckdb"), read_only=True)
     conn.execute("INSTALL fts; LOAD fts;")
 
-    def _u_bar(shape: str) -> dict[str, float]:
-        u_bar, _version, _policy = LK.current_u_bar(shape=shape)
+    def _u_bar() -> dict[str, float]:
+        u_bar, _version, _policy = LK.current_u_bar()
         return u_bar
 
     def _fold_version() -> str:
@@ -1012,8 +1017,7 @@ def build_deps() -> BridgeDeps:
                       reactions_path=config.REACTIONS_LOG, fold_version=_fold_version,
                       gather_outcomes_path=config.GATHER_OUTCOMES_LOG,
                       disclosures_path=config.DISCLOSURES_LOG,
-                      # the handshake declares the anchor shape's utility once
-                      decider=_build_decider(lambda: _u_bar(AS.DEFAULT_SHAPE)))
+                      decider=_build_decider(_u_bar))
 
 
 def _shutdown(server: BridgeServer) -> None:

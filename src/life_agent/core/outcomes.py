@@ -1,4 +1,4 @@
-"""The calibration outcomes log — the third evidence stream (bayesian-foundations §8).
+"""The calibration outcomes log — the third evidence stream.
 
 Append-only JSONL at :data:`life_agent.core.config.OUTCOMES_LOG`
 (``$LIFE_AGENT_KB/calibration/outcomes.jsonl`` — the values are personal data, so the
@@ -34,7 +34,7 @@ FORMAT_VERSION = 1
 
 # Stated clamp for the log score: p in {0, 1} on the wrong outcome is -inf under the
 # exact rule; the clamp keeps gate arithmetic finite and is part of the gate's stated
-# definition (bayesian-foundations §8), not a hidden mercy.
+# definition, not a hidden mercy.
 SCORE_EPS = 1e-6
 
 # Grader -> the closed grade vocabulary it may emit. Declared here so an outcome outside
@@ -96,7 +96,7 @@ def now_iso() -> str:
 
 @dataclass(frozen=True)
 class OutcomeEvent:
-    """One graded outcome (bayesian-foundations §8 schema, format_version 1).
+    """One graded outcome (format_version 1).
 
     ``instrument_identity`` holds the schema-3 cache-key components where the instrument
     has them (producer_name/version, model identity, prompt/engine hashes) or a declared
@@ -161,7 +161,7 @@ def read(path: Path) -> list[OutcomeEvent]:
     return [_from_line(line) for line in jsonl_log.read_lines(path)]
 
 
-# --- proper scoring rules (bayesian-foundations §8) ------------------------------------
+# --- proper scoring rules ------------------------------------
 
 def log_score(p: float, *, correct: bool, eps: float = SCORE_EPS) -> float:
     """Log probability assigned to the realised outcome (<= 0; 0 is perfect).

@@ -343,7 +343,7 @@ def _rows(root: Path, cache_key: str) -> tuple[int, list[tuple[str, str]]]:
 
 
 def test_sweep_registers_an_unregistered_file_complete_dir(migrated_root: Path) -> None:
-    """The r03 class: complete files, no row (§18.9 index lag). The sweep MUST NOT remove
+    """Complete files, no row (§18.9 index lag). The sweep MUST NOT remove
     it — it inserts the row from meta.json, preserving the recorded produced_at."""
     cache_key, _ = _write(migrated_root)
     with open_catalogue(migrated_root) as conn:
@@ -386,7 +386,7 @@ def test_sweep_registers_transform_dir_with_its_lineage_rows(migrated_root: Path
 def test_sweep_registers_duplicate_lineage_dir_loudly_with_one_row_per_input(
     migrated_root: Path, caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """The exact r03 loss chain: a pre-fix writer's lineage.json repeats an input, so the
+    """The loss chain: a pre-fix writer's lineage.json repeats an input, so the
     row insert used to trip the PK, the artefact stayed unregistered, and the sweep deleted
     it. Now: registered with one row per input, and a WARNING naming the artefact."""
     cache_key, _ = _write_transform(migrated_root)

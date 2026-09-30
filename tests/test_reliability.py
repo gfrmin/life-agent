@@ -16,7 +16,7 @@ from life_agent.core import reliability as REL
 
 def test_the_prior_table_declares_both_edges_in_one_home() -> None:
     # the extractor's wide Beta(4,4) and the claim instrument's three audit cells —
-    # the exact priors the two instances declared before the unification
+    # the exact priors the two instances declared before they shared a table
     assert REL.PRIORS[("extract", "value")] == (4.0, 4.0)
     assert REL.PRIORS[("eval_claim", "verified")] == (3.0, 2.0)
     assert REL.PRIORS[("eval_claim", "unsupported")] == (1.0, 3.0)

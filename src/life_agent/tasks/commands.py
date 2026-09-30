@@ -74,8 +74,8 @@ def complete(user_id: int, task_id: int | None = None, text_match: str | None = 
         elif text_match:
             matches = store.resolve_by_text(conn, user_id, text_match)
             if len(matches) > 1:
-                # Ambiguity is surfaced, never resolved by an arbitrary pick
-                # (docs/interaction-contract.md invariant 3): list and complete nothing.
+                # Ambiguity is surfaced, never resolved by an arbitrary pick:
+                # list and complete nothing.
                 header = f"{len(matches)} tasks match '{text_match}' — which one? Say 'done <id>':"
                 return store._format_task_list(matches, header)
             row = matches[0] if matches else None

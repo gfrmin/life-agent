@@ -41,7 +41,7 @@ from life_agent.core import secret
 from life_agent.tasks import commands, store
 
 HOST = os.environ.get("LIFE_AGENT_WEB_HOST", "0.0.0.0")
-PORT = int(os.environ.get("LIFE_AGENT_WEB_PORT", "8797"))  # adjacent to bridge 8798 / daemon 8799
+PORT = int(os.environ.get("LIFE_AGENT_WEB_PORT", "8797"))  # adjacent to bridge 8798
 
 Payload = dict[str, Any]
 _INDEX = Path(__file__).parent / "index.html"

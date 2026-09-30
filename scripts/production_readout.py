@@ -18,9 +18,8 @@ that carries the live stream.
 the same condition the report's window line names; exit 2 = a declared KB root that is not
 there. The report is written and printed either way — the exit code is what makes the
 silence loud, because the wrapper (``bin/production-readout``) turns a non-zero run into a
-monitor ``/fail`` ping. Before this, a stopped watch was a sentence in a file nobody opens
-(the gap stated in ``docs/guards.md``: "nothing reads the production readout"). An empty
-stream is stale too: an arm nobody exercises is an unmeasured configuration, not a pass.
+monitor ``/fail`` ping, so a stopped watch is never a sentence in a file nobody opens. An
+empty stream is stale too: an arm nobody exercises is an unmeasured configuration, not a pass.
 ``--allow-stale`` reads the report without the verdict; the timer must never pass it.
 """
 from __future__ import annotations
@@ -132,7 +131,7 @@ def readout(decisions: list[dict[str, Any]], outcomes: list[dict[str, Any]],
 
 
 def bar_summary(*, now_iso: str | None = None) -> dict[str, Any]:
-    """r33 A6 (owner-ruled MONITOR ONLY): the live respond-vs-abstain bar p† beside the
+    """The live respond-vs-abstain bar p† (monitor only) beside the
     declared-prior bar. Both fold the owner's utility model through the deployed fold
     (``utility.posterior``, under the decider's declared policy) and read the break-even
     through ``decide.break_even`` — so neither 0.90 nor the live value is ever hard-coded
@@ -188,16 +187,16 @@ def _sources_line(sources: Sequence[dict[str, Any]]) -> str:
 
 
 def _bar_line(bar: dict[str, Any] | None) -> list[str]:
-    """The p† bullet (A6): absent bar key = a pre-A6 summary, no line (back-compat);
+    """The p† bullet: absent bar key = an older summary, no line (back-compat);
     an error = the named unavailability; else the deployed bar BESIDE the declared one
-    (r32's rule: never quote either alone) with the drift direction stated."""
+    (never quote either alone) with the drift direction stated."""
     if bar is None:
         return []
     if "p_dagger" not in bar:
         return [f"- assert bar p† unavailable ({bar.get('error', 'unknown')})"]
     return [f"- assert bar p† {bar['p_dagger']:.4f} (declared prior {bar['declared']:.4f}; "
             f"{bar['n_events']} folded events — one-way drift downward until a wrong "
-            f"commit folds, r32)"]
+            f"commit folds)"]
 
 
 def render(s: dict[str, Any]) -> str:
@@ -246,7 +245,7 @@ def main(argv: list[str] | None = None) -> int:
     from life_agent.core import config as CFG
     roots = [Path(k).expanduser() for k in (args.kb or [])] or [CFG.KB]
 
-    # r27 (C10): a DECLARED root that is absent is a failure, not a quiet zero. `_rows`
+    # A DECLARED root that is absent is a failure, not a quiet zero. `_rows`
     # returns [] for a missing file, so a root that was never there reads exactly like a
     # root with no traffic — and a watch that cannot tell "nothing happened" from "I was
     # not looking there" is the failure mode row 25 exists to end. Measured on the

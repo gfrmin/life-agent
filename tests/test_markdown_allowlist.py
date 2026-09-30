@@ -73,12 +73,12 @@ def test_the_matcher_rejects_stray_prose_and_honours_segments() -> None:
         "README.md",
         ".claude/rules/approach.md",
         ".claude/rules/deeper/x.md",
-        "archive/docs/25-report.md",
-        "docs/notes.md",
+        "archive/docs/kb-schema.md",
+        "docs/kb-schema.md",
         "NOTES.md",
     ]
     assert strays(paths, allowed) == [
         ".claude/rules/deeper/x.md",
         "NOTES.md",
-        "docs/notes.md",
+        "docs/kb-schema.md",
     ]

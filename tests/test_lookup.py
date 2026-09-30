@@ -230,7 +230,7 @@ def test_observe_hits_collapses_correlated_duplicate_documents(migrated_root: Pa
     # correlated witnesses, not independent — observe_hits, the shared evidence SHAPER, collapses
     # them to one. The §5 dedup must live here, not only in the host lookup_posterior: the
     # decouple split shaping from deciding, so a dedup in the host decider never reached the
-    # daemon path (bridge /extract → to_abstract_observations) and the q-002/q-014 confident-wrong
+    # decider path (bridge /extract → to_abstract_observations) and the q-002/q-014 confident-wrong
     # regression stayed latent in the executor.
     quote = "Passport No: P1234567"  # PII-OK: synthetic passport
     client = FakeClient({"found": True, "value": "P1234567", "quote": quote})
@@ -253,11 +253,11 @@ def test_observe_hits_keeps_independent_value_only_corroboration(migrated_root: 
     assert len(obs) == 2  # value-only quotes don't collapse — independent corroboration stands
 
 
-def test_daemon_abstract_observations_collapse_correlated_duplicates(
+def test_abstract_observations_collapse_correlated_duplicates(
         migrated_root: Path) -> None:
     # The executor's evidence shaping end-to-end: observe_hits → to_abstract_observations is
-    # exactly what the daemon (Move 2) consumes. A correlated duplicate must not reach it as two
-    # witnesses (which saturated the §4.2-less posterior — the regression). This is the daemon-seam
+    # exactly what the decider consumes. A correlated duplicate must not reach it as two
+    # witnesses (which saturated the §4.2-less posterior — the regression). This is the decider-seam
     # lock: it would also fail if to_abstract_observations ever re-expanded a collapsed cluster.
     from life_agent.bridge.observations import to_abstract_observations
     quote = "Passport No: P1234567"  # PII-OK: synthetic passport
@@ -266,7 +266,7 @@ def test_daemon_abstract_observations_collapse_correlated_duplicates(
             _hit("b" * 64, f"FWD: {quote} issued 2019")]
     obs, _ = observe_hits(migrated_root, "passport number?", hits, client=client)
     _candidates, abstract = to_abstract_observations(obs)
-    assert len(abstract) == 1  # the daemon sees one witness, not a saturating duplicate
+    assert len(abstract) == 1  # the decider sees one witness, not a saturating duplicate
 
 
 def test_extractor_reliability_learns_from_eval_outcomes(tmp_path: Path) -> None:
@@ -428,7 +428,7 @@ def test_dedup_correlated_keeps_independent_corroboration() -> None:
 
 
 def test_dedup_correlated_one_document_attests_one_value_once() -> None:
-    # r09c A1: within ONE document, every observation of the SAME value is one attestation —
+    # Within ONE document, every observation of the SAME value is one attestation —
     # identical quotes, near-duplicate boilerplate, or repeated page headers alike. The old
     # rule skipped within-document rows on the premise that the per-document group "already
     # counts it once"; the group mechanism counts them CORRELATED, not once (q2-105: twelve
@@ -625,8 +625,6 @@ format_version: 1
 gauge: {u_correct: 1.0, u_abstain: 0.0}
 latents:
   u_wrong:    {grid: {lo: -10.0, hi: 0.0, n: 11}, prior: {type: gaussian, mu: -4.0, sigma: 3.0}}
-  u_wrong_scoped: {grid: {lo: -6.0, hi: 0.0, n: 7}, prior: {type: gaussian, mu: -2.0, sigma: 1.0}}
-  u_hedged:   {grid: {lo: -1.0, hi: 1.0, n: 5},  prior: {type: gaussian, mu: 0.4, sigma: 0.4}}
   lambda_int: {grid: {lo: -0.5, hi: 4.0, n: 10}, prior: {type: gaussian, mu: 1.0, sigma: 1.0}}
   kappa_att:  {grid: {lo: -0.2, hi: 1.0, n: 7},  prior: {type: gaussian, mu: 0.05, sigma: 0.1}}
   lambda_usd: {grid: {lo: 0.0, hi: 8.0, n: 9},   prior: {type: gaussian, mu: 1.0, sigma: 1.0}}
@@ -635,29 +633,15 @@ endpoint_mass_warn: 0.01
 """
 
 
-# --- r30 step 2: current_u_bar shapes per question and folds the posterior ONCE -----------
+# --- current_u_bar folds the posterior once per fold version ------------------------------
 
-def test_current_u_bar_defaults_to_the_anchor_shape(
+def test_current_u_bar_folds_the_posterior_once(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     model_path = tmp_path / "model.yaml"
     model_path.write_text(MODEL_YAML, encoding="utf-8")
     monkeypatch.setattr(config, "UTILITY_MODEL", model_path)
     monkeypatch.setattr(config, "UTILITY_ELICITATIONS", tmp_path / "elicit.jsonl")
     monkeypatch.setattr(LK, "_U_BAR_RAW", None)
-    monkeypatch.setattr(LK, "_U_BAR_SHAPED", {})
-    u_bar, _version, policy = LK.current_u_bar()
-    assert policy == LK.U_BAR_POLICY
-    assert u_bar == LK.current_u_bar(shape="exact")[0]
-
-
-def test_current_u_bar_folds_the_posterior_once_across_shapes(
-        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    model_path = tmp_path / "model.yaml"
-    model_path.write_text(MODEL_YAML, encoding="utf-8")
-    monkeypatch.setattr(config, "UTILITY_MODEL", model_path)
-    monkeypatch.setattr(config, "UTILITY_ELICITATIONS", tmp_path / "elicit.jsonl")
-    monkeypatch.setattr(LK, "_U_BAR_RAW", None)
-    monkeypatch.setattr(LK, "_U_BAR_SHAPED", {})
     folds: list[int] = []
     real_posterior = LK.UT.posterior
 
@@ -666,27 +650,8 @@ def test_current_u_bar_folds_the_posterior_once_across_shapes(
         return real_posterior(*args, **kwargs)
 
     monkeypatch.setattr(LK.UT, "posterior", _counting)
-    LK.current_u_bar(shape="exact")
+    u_bar, _version, policy = LK.current_u_bar()
+    assert policy == LK.U_BAR_POLICY
+    again = LK.current_u_bar()[0]
+    assert again == u_bar and again is not u_bar  # a copy: a caller cannot move the fold
     assert len(folds) == 1
-    LK.current_u_bar(shape="quantity")  # a DIFFERENT shape, same fold_version
-    # the raw posterior is memoised per fold_version — a second SHAPE must not re-fold it;
-    # only decide.shaped_u_bar's cheap host arithmetic runs again.
-    assert len(folds) == 1
-
-
-def test_current_u_bar_undeclared_scales_give_the_same_u_bar_for_every_shape(
-        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    # MODEL_YAML declares none of the six optional latents — every shape must read
-    # byte-identically until the owner's file opts one in (C4/C10's no-op claim).
-    model_path = tmp_path / "model.yaml"
-    model_path.write_text(MODEL_YAML, encoding="utf-8")
-    monkeypatch.setattr(config, "UTILITY_MODEL", model_path)
-    monkeypatch.setattr(config, "UTILITY_ELICITATIONS", tmp_path / "elicit.jsonl")
-    monkeypatch.setattr(LK, "_U_BAR_RAW", None)
-    monkeypatch.setattr(LK, "_U_BAR_SHAPED", {})
-    from life_agent.core import answer_shape as AS
-    exact, version_e, _ = LK.current_u_bar(shape="exact")
-    for shape in AS.SCALED_SHAPES:
-        shaped, version_s, _ = LK.current_u_bar(shape=shape)
-        assert shaped == exact
-        assert version_s == version_e

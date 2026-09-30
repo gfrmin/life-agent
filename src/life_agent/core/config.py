@@ -10,7 +10,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-KB = Path(os.environ.get("LIFE_AGENT_KB", str(Path.home() / ".life-agent/kb")))
+KB = Path(os.environ.get("LIFE_AGENT_KB", str(Path.home() / ".life-agent/kb"))).expanduser()
 PKM_CONFIG = Path(os.environ.get("PKM_CONFIG", "~/.config/life-agent/pkm.yaml")).expanduser()
 
 # --- GTD (the agent's act layer) ---
@@ -65,12 +65,12 @@ def data_sources() -> dict[str, Any]:
     return parsed if isinstance(parsed, dict) else {}
 
 # --- Calibration (the Bayesian foundations' empirical leg) ---
-# The outcomes log (bayesian-foundations §8): append-only third evidence stream — graded
+# The outcomes log: append-only third evidence stream — graded
 # outcomes attributed to instrument identities. It cannot be backfilled, and its append
-# order is the canonical replay order (the fold is order-defined, foundations §2). The
+# order is the canonical replay order (the fold is order-defined). The
 # claims it records are personal data, hence under $LIFE_AGENT_KB (PRINCIPLES §12).
 OUTCOMES_LOG = KB / "calibration" / "outcomes.jsonl"
-# The decision log (foundations §8): every EU decision's context — without it, owner
+# The decision log: every EU decision's context — without it, owner
 # reactions are not readable as choices. Append-only, order-defined, unbackfillable;
 # no EU decision is ever made unlogged.
 DECISIONS_LOG = KB / "calibration" / "decisions.jsonl"
@@ -87,8 +87,8 @@ ROUTE_ROW = KB / "calibration" / "route_row.json"
 # decisions, joined to DECISIONS_LOG by decision_id. The calibration leg's third
 # append-only log; the utility posterior folds the clean abstain-verdicts from it.
 REACTIONS_LOG = KB / "calibration" / "reactions.jsonl"
-# The gather-outcome log (ask-as-connection §4 caveat 2): one row per enacted grow
-# actuator — the structure-observe stream the daemon's gather structure-BMA warm-seeds
+# The gather-outcome log: one row per enacted grow
+# actuator — the structure-observe stream the decider's gather structure-BMA warm-seeds
 # from (core/gather_outcomes.py). The calibration leg's fourth append-only log.
 GATHER_OUTCOMES_LOG = KB / "calibration" / "gather_outcomes.jsonl"
 
@@ -107,7 +107,7 @@ def deliberate_enabled() -> bool:
     (2026-08-17, owner's rider on the run-7/run-9 §8 PASSes): the arm the gate measured
     and the owner adopted IS the deliberate-on arm, so the daily path runs the measured
     configuration. DELIBERATE_TRANSFORM joins the priced transform menu and observations
-    fold through the per-edge calibration curves; the daemon still prices every scheduled
+    fold through the per-edge calibration curves; the decider still prices every scheduled
     fire, so an unaffordable deliberate simply never schedules. Rollback is
     ``LIFE_AGENT_DELIBERATE=0`` — the only value that disables; absence and ``"1"``
     are both on."""

@@ -1,4 +1,4 @@
-"""The decision log — no EU decision is ever made unlogged (bayesian-foundations §8).
+"""The decision log — no EU decision is ever made unlogged.
 
 Append-only JSONL at :data:`life_agent.core.config.DECISIONS_LOG`
 (``$LIFE_AGENT_KB/calibration/decisions.jsonl``). Owner reactions are readable as
@@ -25,11 +25,11 @@ from typing import Any
 from life_agent.core import jsonl_log
 
 # v2 (2026-08-06): + instrument / cost_usd / latency_s — the §10 metareasoning
-# accounting lands on the ledger itself (which edge answered, at what price), and the
+# accounting lands on the record itself (which edge answered, at what price), and the
 # per-edge calibration fold (core/calibration.EdgeOutcome) gains its attribution key.
 # v1 lines replay with the fields defaulted (no instrument, unpriced).
-# v3 (2026-08-19, module-collapse M0): + regime / policy / defaulted — WHICH decision space
-# the act was ranked over (design §2.3) and WHICH evidence set valued it (§3.1). Both are
+# v3 (2026-08-19): + regime / policy / defaulted — WHICH decision space
+# the act was ranked over and WHICH evidence set valued it. Both are
 # facts ABOUT the record, never host choices; `defaulted` names the ones the writer filled
 # in, so an assumption can never be read as a statement. v1/v2 lines replay at the declared
 # defaults claiming nothing.
@@ -42,17 +42,15 @@ from life_agent.core import jsonl_log
 # lines — not stated, never a claimed zero.
 FORMAT_VERSION = 5
 
-# Question families with an EU response layer. The aggregate family was deleted at
-# K1 (r22): a classifier choosing a pipeline is decision-shaping outside the argmax
-# (PRINCIPLES §16), and membrane-shadow §11 i-13 already stages that class for the
-# migration. What remains of the split dies with `/route` at migration stage M5.
+# Question families with an EU response layer. The aggregate family was deleted: a
+# classifier choosing a pipeline is decision-shaping outside the argmax (PRINCIPLES §16).
 FAMILIES: frozenset[str] = frozenset({"lookup", "narrative"})
 
-# Families that ONCE wrote to this stream and no longer may (r31). An append-only ledger
-# outlives the vocabulary that wrote it: `aggregate` was a declared family when run 19 wrote
-# two rows on 2026-08-26, and K1 deleted it (`r22`) afterwards. A reader that dies on its own
+# Families that ONCE wrote to this stream and no longer may. An append-only log
+# outlives the vocabulary that wrote it: `aggregate` was a declared family when two rows were
+# written on 2026-08-26, and it was deleted afterwards. A reader that dies on its own
 # history cannot read an append-only log — two rows of 3,391 made the whole stream unreadable,
-# which killed the utility fold and with it every executor pass (found by firing r31).
+# which killed the utility fold and with it every executor pass.
 #
 # Tolerance is READ-side and ENUMERATED, deliberately, on both counts: a writer still cannot
 # emit one (`DecisionEvent.__post_init__` refuses), and a label that is neither declared nor
@@ -62,15 +60,17 @@ FAMILIES: frozenset[str] = frozenset({"lookup", "narrative"})
 # vocabulary retirement must say what happens to the history that used it.
 RETIRED_FAMILIES: frozenset[str] = frozenset({"aggregate"})
 
-# The M4 response actions (bayesian-foundations §3). ask-about-U is deliberately absent
+# The response actions. ask-about-U is deliberately absent
 # — utility learning is passive until the governor (§4.4, a stated action-set
 # coarsening). cite is the partial answer: the document believed to hold the answer, without
-# the value (``posterior_summary["cited"]`` is the document's cache key). report_scoped is
-# the time-scoped assertion ("as of <date>, X" — scoped-claims design): a true claim about
-# the record, graded on attestation not currency, so it carries u_wrong_scoped (a citable
-# misread) not the catastrophic current-value u_wrong.
-ACTIONS: frozenset[str] = frozenset({"report", "report_scoped", "hedge",
-                                     "ask_clarify", "abstain", "cite"})
+# the value (``posterior_summary["cited"]`` is the document's cache key).
+ACTIONS: frozenset[str] = frozenset({"report", "ask_clarify", "abstain", "cite"})
+
+# Actions the log's history carries and no writer emits: ``hedge`` (a named shortlist) and
+# ``report_scoped`` (a time-scoped assertion). Read-side only, like ``RETIRED_FAMILIES``: a
+# row naming one still loads (the reaction fold joins those rows), :func:`append` refuses to
+# write one, and ``ACTIONS`` and ``LOOKUP_ACTION_ORDER`` no longer offer them.
+RETIRED_ACTIONS: frozenset[str] = frozenset({"hedge", "report_scoped"})
 
 # Per-family action subsets of ACTIONS — the single vocabulary, named once and imported by
 # the families (never re-declared in a family module). NARRATIVE is the restricted set
@@ -78,28 +78,27 @@ ACTIONS: frozenset[str] = frozenset({"report", "report_scoped", "hedge",
 # fold). The subset and partition invariants (these <= ACTIONS; LOOKUP - NARRATIVE == the
 # lookup-only actions; gate's assert/withhold union == ACTIONS) are drift-gated in
 # tests/test_decide.py.
-LOOKUP_ACTION_ORDER: tuple[str, ...] = ("report", "hedge", "ask_clarify", "abstain",
-                                        "report_scoped", "cite")
+LOOKUP_ACTION_ORDER: tuple[str, ...] = ("report", "ask_clarify", "abstain", "cite")
 NARRATIVE_ACTION_ORDER: tuple[str, ...] = ("report", "abstain")
 
-# The DECLARED DECISION SPACE the act was ranked over (module-collapse-design.md §2.3). One
-# rule, two spaces: `full` = the transformations and the terminals (the daemon up),
+# The DECLARED DECISION SPACE the act was ranked over One
+# rule, two spaces: `full` = the transformations and the terminals (the decider up),
 # `terminals-only` = the terminals alone (recorded by the retired in-process leaves, which
 # ranked the same terminals over the same posterior and the same Ū). The regime is a FACT OF
 # AVAILABILITY recorded on the decision, never a choice: nothing may prefer one regime when both are
 # available, and a terminals-only decision is not a fallback lane — it is the same ranking
 # with an empty transformation set, honestly recorded.
 #
-# `unavailable` is the third case and NOT an action (§6.5): when no optimiser is reachable
+# `unavailable` is the third case and NOT an action: when no optimiser is reachable
 # there is no ranking to be inside of, so the record is an unavailability event. Keeping it
 # in this vocabulary — rather than spelling it `abstain` — is what stops it folding as an
-# abstain verdict, which reactions §4.4 reads as utility evidence.
+# abstain verdict, which the reaction fold reads as utility evidence.
 #
-# `miss` is the fourth (r33 RC-1): the engine was UP but the lookup grounded nothing, so
+# `miss` is the fourth: the decider was UP but the lookup grounded nothing, so
 # the loop returned before /decide — a coverage failure under a live engine, distinct from
-# `unavailable` (no engine at all). Unlike §6.5 it carries a REAL decision_id (the owner
-# can react; the Stage-4 measurement was blind to the class in both directions), and like
-# §6.5 the regime is what keeps the reaction OUT of the utility fold — a verdict on a
+# `unavailable` (no decider at all). Unlike `unavailable` it carries a REAL decision_id (the owner
+# can react; the measurement was blind to the class in both directions), and like
+# `unavailable` the regime is what keeps the reaction OUT of the utility fold — a verdict on a
 # coverage failure is not evidence about u(wrong) (`reactions.load_reactions` skips it).
 #
 # `route` is the fifth: the decider declined the question before any retrieval, on the
@@ -131,8 +130,8 @@ def decision_id_for(question: str, retrieval_keys: list[str],
     retrieval set it was grounded on, and the posterior it was taken under. Namespaced
     (``ab-``) so it never collides with the lookup family's §18.9 answer keys; the reaction
     loop binds verdicts to it (``core.reactions`` join key). Identical re-runs coalesce.
-    THE one id rule (r33 promoted it verbatim from ``bridge/server._decision_id``, which
-    now binds it): the bridge's ranked rows and the miss rows share one spelling."""
+    THE one id rule (``bridge/server._decision_id`` binds it): the bridge's ranked rows and the
+    miss rows share one spelling."""
     payload = json.dumps({"source": "answer-brain", "question": question,
                           "retrieval_keys": sorted(retrieval_keys),
                           "credences": credences, "p_none": p_none},
@@ -143,15 +142,13 @@ def decision_id_for(question: str, retrieval_keys: list[str],
 def question_id(question: str) -> str:
     """The ONE derivation of a decision's ``question_id`` from the question text: sha256
     of the raw text, first :data:`QUESTION_ID_CHARS` hex chars. Every producer of a
-    ``DecisionEvent`` (``core/recorder.py``, ``bridge/server.py``),
-    every reaction writer (``scripts/ask.py``), and the membrane mirror
-    (``core/shadow_mirror.py``'s callers) key on this — a second, hand-copied spelling
-    anywhere silently splits the id namespace and every join across it reads as "no
-    data" rather than as an error (exactly the bug the membrane shadow's grounded join
-    shipped with). Drift-gated in ``tests/test_decisions.py``: no other site in ``src/``
-    or ``scripts/`` may hash a question itself.
+    ``DecisionEvent`` (``core/recorder.py``, ``bridge/server.py``) and every reaction writer
+    (``scripts/ask.py``) key on this — a second, hand-copied spelling anywhere silently
+    splits the id namespace and every join across it reads as "no data" rather than as an
+    error. Drift-gated in ``tests/test_decisions.py``: no other site in ``src/`` or
+    ``scripts/`` may hash a question itself.
 
-    NOT the same namespace as an eval/fair-fight CORPUS id (``q-001``, an
+    NOT the same namespace as an eval CORPUS id (``q-001``, an
     ``OutcomeVector.question_id``). Bridging those two namespaces is a deliberate,
     named join through the questions file that assigned the corpus ids."""
     return hashlib.sha256(question.encode("utf-8")).hexdigest()[:QUESTION_ID_CHARS]
@@ -159,7 +156,7 @@ def question_id(question: str) -> str:
 
 @dataclass(frozen=True)
 class DecisionEvent:
-    """One EU decision (bayesian-foundations §8 schema, format_version 2).
+    """One EU decision (the schema is ``FORMAT_VERSION``).
 
     ``posterior_summary`` is the answer-posterior digest the decision was taken under
     (claim credences, dispersion — enough to reconstruct *why* without the full
@@ -209,7 +206,7 @@ class DecisionEvent:
             raise ValueError(f"unknown family {self.family!r} (declared: {sorted(FAMILIES)})")
         if not self.action_set:
             raise ValueError("action_set is empty — a decision needs alternatives")
-        unknown = set(self.action_set) - ACTIONS
+        unknown = set(self.action_set) - ACTIONS - RETIRED_ACTIONS
         if unknown:
             raise ValueError(
                 f"action(s) {sorted(unknown)} not in the declared vocabulary {sorted(ACTIONS)}"
@@ -261,8 +258,11 @@ def _from_line(line: str) -> DecisionEvent:
 
 
 def append(path: Path, event: DecisionEvent) -> None:
-    """Append one decision line, durably (the shared append-only mechanics), then mirror it onto
-    the unified stream (design §8 C5; legacy-append-first, never raises)."""
+    """Append one decision line, durably (the shared append-only mechanics). A retired
+    action (:data:`RETIRED_ACTIONS`) is read, never written."""
+    retired = RETIRED_ACTIONS & {*event.action_set, event.chosen_action}
+    if retired:
+        raise ValueError(f"retired action(s) {sorted(retired)} are never written")
     jsonl_log.append_line(path, _to_line(event))
 
 
@@ -289,7 +289,7 @@ def read(path: Path) -> list[DecisionEvent]:
 
 def withhold_reason(*, effector: object, candidates: object,
                     available: bool = True) -> str:
-    """D-5 (M5, r15): withhold-reason is ONE derivation over the decision record —
+    """Withhold-reason is ONE derivation over the decision record —
     ``unavailable ≻ miss ≻ dispersed``. ``unavailable`` dominates (no engine ranked, the
     row says nothing about the policy); ``miss`` means no posterior ever existed (the
     effector says so, or no candidate ever grounded); ``dispersed`` means a posterior
@@ -346,7 +346,7 @@ def origin(*, effector: object, candidates: object, asserted: object,
     and the record's ``origin`` field are both this function's callers."""
     eff = str(effector)
     values = [str(a) for a in (asserted if isinstance(asserted, list | tuple) else [])]
-    if eff in ("report", "report_scoped") and values:
+    if eff == "report" and values:
         if instrument and instrument_value is not None and values[0] == str(instrument_value):
             return Origin("rung", rung=str(instrument), disclosed=disclosed)
         return Origin("documents")
