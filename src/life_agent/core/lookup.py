@@ -81,13 +81,10 @@ happened, a published figure, a definition.
 
 QUESTION: {question}
 
-If it is NOT a lookup, also name which of the four asks of STEP 1 it is, in that order:
-"list", "aggregate", "summary" or "multiple".
-
 Reply with JSON only:
 {"lookup": true, "construct": "<3-8 words naming the value asked for>", \
 "time_indexed": true|false}
-or {"lookup": false, "kind": "list"|"aggregate"|"summary"|"multiple"}
+or {"lookup": false}
 """
 
 ROUTE_SCHEMA: dict[str, Any] = {
@@ -95,17 +92,42 @@ ROUTE_SCHEMA: dict[str, Any] = {
     "required": ["lookup"],
     "properties": {
         "lookup": {"type": "boolean"},
-        "kind": {"type": "string"},
         "construct": {"type": "string"},
         "time_indexed": {"type": "boolean"},
     },
 }
 
 #: What the router says a question is: ``lookup`` when it has one value to read off a
-#: document, else which answer type outside the hypothesis space it asks for (STEP 1 of
-#: :data:`ROUTE_PROMPT`); ``other`` is a rejection whose kind the router did not name.
+#: document, else which answer type outside the hypothesis space it asks for (the four
+#: asks of STEP 1 of :data:`ROUTE_PROMPT`); ``other`` is a rejection whose kind the second
+#: reading did not name. The kind is an annotation: it is asked in its own call, only of a
+#: rejection, so that naming it cannot move the verdict.
 KIND_LOOKUP = "lookup"
 REJECTED_KINDS: tuple[str, ...] = ("list", "aggregate", "summary", "multiple", "other")
+
+ROUTE_KIND_PROMPT = """\
+This question was judged NOT to be a lookup of one specific value. Name which kind of ask
+it is:
+- "list": a list or set (plural asks: "which banks", "what are my balances", "who are
+  all", "list every ...");
+- "aggregate": a figure the reader must compute over several documents ("in total across
+  all my X", "how much did I spend last year");
+- "summary": a summary, overview, comparison, or explanation ("summarise", "compare",
+  "why", "explain");
+- "multiple": several separate values at once ("lender, amount, and end date"; "when and
+  where").
+
+QUESTION: {question}
+
+Reply with JSON only:
+{"kind": "list"|"aggregate"|"summary"|"multiple"}
+"""
+
+ROUTE_KIND_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "required": ["kind"],
+    "properties": {"kind": {"type": "string"}},
+}
 
 EXTRACT_PROMPT = """\
 You are extracting ONE value from a document excerpt, if it is present.
@@ -445,11 +467,12 @@ def _client() -> Any:
 def route_question(root: Path, question: str, *,
                    client: Any | None = None,
                    meter: list[float] | None = None) -> Route:
-    """The cached route verdict for EVERY question: the :class:`Route` (lookup or not, its
-    kind, construct, time-indexedness). A rejection whose kind is missing or unrecognised is
-    kind ``other``. A verdict outside the schema raises and is never recorded. ``meter``,
-    when given, accumulates the realised USD cost of cache-miss model calls (warm replays
-    append nothing — $0 by construction, §18.9)."""
+    """The cached route for EVERY question: the :class:`Route` (lookup or not, its kind,
+    construct, time-indexedness). The verdict is one call; a rejection's kind is a second,
+    separate call (:func:`route_kind`), so asking for the kind cannot move the verdict.
+    A verdict outside the schema raises and is never recorded. ``meter``, when given,
+    accumulates the realised USD cost of cache-miss model calls (warm replays append
+    nothing — $0 by construction, §18.9)."""
     if client is None:
         client = _client()
     key = D.lookup_route_key(question, model=LOOKUP_MODEL,
@@ -472,10 +495,41 @@ def route_question(root: Path, question: str, *,
                             ensure_ascii=False).encode("utf-8"),
                  lineage=[])
     lookup = bool(parsed.get("lookup"))
-    kind = str(parsed.get("kind") or "")
     return Route(construct=str(parsed.get("construct") or "the asked value"),
                  time_indexed=bool(parsed.get("time_indexed", False)), lookup=lookup,
-                 kind=KIND_LOOKUP if lookup else kind if kind in REJECTED_KINDS else "other")
+                 kind=KIND_LOOKUP if lookup
+                 else route_kind(root, question, client=client, meter=meter))
+
+
+def route_kind(root: Path, question: str, *,
+               client: Any, meter: list[float] | None = None) -> str:
+    """The cached kind of a rejected question: one of :data:`REJECTED_KINDS`. An annotation
+    that never changes or blocks the verdict: a failed call, or a reply outside the four
+    kinds, is ``other`` (and a failure is not recorded, so a later call retries)."""
+    key = D.lookup_route_kind_key(question, model=LOOKUP_MODEL,
+                                  prompt_template=ROUTE_KIND_PROMPT,
+                                  engine_version=str(client.engine_version),
+                                  output_schema=ROUTE_KIND_SCHEMA)
+    try:
+        cached = D.lookup(root, key.cache_key)
+        if cached is not None:
+            parsed = json.loads(cached.decode("utf-8"))
+        else:
+            response = client.complete(ROUTE_KIND_PROMPT.replace("{question}", question),
+                                       ROUTE_KIND_SCHEMA)
+            if meter is not None:
+                meter.append(float(getattr(response, "cost_usd", 0.0) or 0.0))
+            parsed = json.loads(response.raw_text)
+            if not isinstance(parsed, dict) or parsed.get("kind") not in REJECTED_KINDS[:4]:
+                return "other"
+            D.record(root, key,
+                     json.dumps({"format_version": 1, **parsed}, sort_keys=True,
+                                ensure_ascii=False).encode("utf-8"),
+                     lineage=[])
+        kind = parsed.get("kind")
+    except Exception:  # an annotation must not block the verdict
+        return "other"
+    return kind if kind in REJECTED_KINDS[:4] else "other"
 
 
 def observe_hits(root: Path, question: str, hits: list[dict[str, Any]], *,
