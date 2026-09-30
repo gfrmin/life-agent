@@ -209,7 +209,9 @@ law is marked **unenforced**.
    otherwise the act is not available. Tests: `tests/test_lookup.py::test_ungrounded_quote_is_indeterminate_and_recorded`
    (an ungrounded quote is no observation), `tests/test_decider.py::test_a_certain_leader_is_reported_and_an_uncertain_one_withheld`.
 2. **String-blind.** The decider receives indices and numbers, never candidate text.
-   **Unenforced:** `core/decider.py` reads only `len(candidates)`, but no test perturbs candidate text.
+   Tests: `tests/test_decider.py::test_the_act_is_blind_to_candidate_text` (reversed, random or
+   identical candidate strings leave the act and its view unchanged) and
+   `::test_the_decider_modules_never_read_a_candidate_string` (an AST check).
 3. **One argmax.** No module but `core/decide.bayes_act` ranks actions; its callers are
    drift-gated. Test: `tests/test_decider.py::test_only_the_decider_takes_the_act`.
 4. **Provenance.** Every reply carries its origin; every commit, its citation and credence.

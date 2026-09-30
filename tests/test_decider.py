@@ -377,6 +377,68 @@ def test_only_the_decider_takes_the_act() -> None:
     assert not {n for n in ("max", "min", "sorted") if _calls(trees["core/enact.py"], n)}
 
 
+# --- law 2: the act never reads a candidate string --------------------------------------
+
+_SPLIT = [{"reports": 0, "group": 0, "authority": 1.0, "subject_factor": 1.0,
+           "time_factor": 1.0, "competition_factor": 1.0, "document": "d0"},
+          {"reports": 1, "group": 1, "authority": 1.0, "subject_factor": 1.0,
+           "time_factor": 1.0, "competition_factor": 1.0, "document": "d1"},
+          {"reports": 2, "group": 2, "authority": 1.0, "subject_factor": 1.0,
+           "time_factor": 1.0, "competition_factor": 1.0, "document": "d2"}]
+_STRONG = [{**o, "reports": 2, "group": g} for g, o in enumerate([_SPLIT[2]] * 4)]
+_BLIND_VIEW = ("act", "effector", "probe", "group", "credences", "p1", "eu")
+
+
+def _blind_payloads() -> list[dict[str, Any]]:
+    """Several states: a split (gather), a strong leader (respond), nothing open (abstain)."""
+    transforms = [{"probe": "corroborate_a", "kind": "voi", "cost": 0.004},
+                  {"probe": "corroborate_b", "kind": "voi", "cost": 0.012}]
+    cands = ["alpha one", "beta two", "gamma three"]
+    return [_payload(candidates=cands, observations=_SPLIT, transforms=transforms),
+            _payload(candidates=cands, observations=_STRONG, transforms=transforms, rho=0.95),
+            _payload(candidates=cands, observations=_SPLIT, transforms=[])]
+
+
+def test_the_act_is_blind_to_candidate_text() -> None:
+    """Law 2: the same payload with the candidate strings reversed, replaced by random
+    tokens, or all equal yields the same act and view; only ``value`` follows the strings."""
+    rng = random.Random(7)
+    mutations = [lambda cs: [c[::-1] for c in cs],
+                 lambda cs: [f"{rng.getrandbits(64):016x}" for _ in cs],
+                 lambda cs: ["same" for _ in cs]]
+    for payload in _blind_payloads():
+        base = DCD.decide(payload, _U)
+        for mutate in mutations:
+            cands = mutate(payload["candidates"])
+            view = DCD.decide({**payload, "candidates": cands}, _U)
+            assert {k: view.get(k) for k in _BLIND_VIEW} == {k: base.get(k) for k in _BLIND_VIEW}
+            if base["effector"] == "report":
+                assert view["value"] == cands[base["credences"].index(max(base["credences"]))]
+            else:
+                assert view["value"] is None
+
+
+def test_the_decider_modules_never_read_a_candidate_string() -> None:
+    root = Path(__file__).resolve().parents[1] / "src" / "life_agent" / "core"
+    decider = ast.parse((root / "decider.py").read_text(encoding="utf-8"))
+    parents = {c: n for n in ast.walk(decider) for c in ast.iter_child_nodes(n)}
+    uses = [n for n in ast.walk(decider) if isinstance(n, ast.Name) and n.id == "candidates"
+            and isinstance(n.ctx, ast.Load)]
+    assert uses, "decider.py no longer counts its candidates"
+    for n in uses:  # the only reading of the list is its length
+        call = parents[n]
+        assert isinstance(call, ast.Call) and isinstance(call.func, ast.Name) \
+            and call.func.id == "len", f"decider.py line {n.lineno} reads candidates"
+    keys = [n for n in ast.walk(decider) if isinstance(n, ast.Constant)
+            and n.value == "candidates"]
+    assert len(keys) == 1  # the one `payload.get("candidates")` that feeds the count
+    # decide.py ranks indices: it never sees a payload or its candidate key
+    rank = ast.parse((root / "decide.py").read_text(encoding="utf-8"))
+    assert not [n for n in ast.walk(rank) if isinstance(n, ast.Constant)
+                and n.value == "candidates"]
+    assert not [n for n in ast.walk(rank) if isinstance(n, ast.Name) and n.id == "payload"]
+
+
 # --- every choice is a row: the equivalence with the rule it replaced --------------------
 
 def _old_bayes_act(u_bar: dict[str, float], p1: float, gather_open: bool,
