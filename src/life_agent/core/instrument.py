@@ -15,11 +15,9 @@ from __future__ import annotations
 from typing import Any
 
 from life_agent.core import derivations as D
+from life_agent.core import pricing as PRC
 
-# The instruments' model — the repo's dated haiku pin (core/expansion.py precedent).
-# Changing it is a deliberate instrument change: it re-keys every verdict cache and
-# must be disclosed in the §14 ledger before a gate reading.
-INSTRUMENT_MODEL = "claude-haiku-4-5-20251001"
+INSTRUMENT_MODEL = PRC.INSTRUMENT_MODEL  # the instruments' dated haiku pin (core/pricing.py)
 
 
 class _LazyInstrumentClient:

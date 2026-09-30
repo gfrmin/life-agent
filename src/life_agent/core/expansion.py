@@ -20,8 +20,9 @@ from pathlib import Path
 
 import life_agent.core as C
 from life_agent.core import derivations as D
+from life_agent.core import pricing as PRC
 
-EXPAND_MODEL = "claude-haiku-4-5-20251001"
+EXPAND_MODEL = PRC.EXPAND_MODEL
 EXPAND_SYSTEM = (
     "You expand a personal-assistant question into keywords for a bag-of-words (BM25) "
     "search over the owner's personal documents, which are in English AND Hebrew. The "

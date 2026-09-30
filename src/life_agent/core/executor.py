@@ -120,15 +120,7 @@ _UNPRICED_ATTRIBUTION: dict[str, Any] = {
 # (core/gather_outcomes.GROW_ACTUATORS, served by the bridge's /grow_menu).
 _GROW_RETRIEVE = {"retrieve_rerank": (True, False), "retrieve_expand": (True, True)}
 _RE_EXTRACT_MODEL = PRC.RE_EXTRACT_MODEL
-# The rescue channel's reliability CAP — a stated wide prior (mean of the local
-# extractor's own Beta(4,4), core/reliability.PRIORS), declared blind, NOT the tier's
-# 0.95 and NOT the model's self-stated confidence: a lone strong read with zero local
-# corroboration is an unmeasured instrument, and the first field run showed fiat trust
-# asserting a true-but-vague read at 0.866 (q-015, graded wrong). Under this cap the
-# rescue NAMES candidates (hedge — EU-positive under u_hedged vs silence) and earns
-# assert-grade trust only through conditioned verdicts, exactly as the local channel
-# did after its own 0.85-fiat prior was refuted.
-_RESCUE_RHO = 0.5
+_RESCUE_RHO = PRC.RESCUE_RHO
 
 
 def _conditioned_rho(curves: Curves, edge: str, confidence: Any, fallback: float) -> float:

@@ -80,10 +80,9 @@ from life_agent.core.llm import LLMResult
 HOST = os.environ.get("LIFE_AGENT_BRIDGE_HOST", "127.0.0.1")
 PORT = int(os.environ.get("LIFE_AGENT_BRIDGE_PORT", "8798"))  # adjacent to the daemon's 8799
 _DEFAULT_K = 20
-# the corroborate re-read's model + reliability. The cloud model is strong + subject-aware, so a
-# high constant reliability for v0; Slice 3 calibrates this from verdicts (calib(c)) instead.
-_JOINT_MODEL = "claude-opus-4-8"
-_JOINT_RHO = 0.95
+# the joint re-read's model + reliability (core/pricing.py)
+_JOINT_MODEL = PRICING.JOINT_MODEL
+_JOINT_RHO = PRICING.JOINT_RHO
 
 Payload = dict[str, Any]
 

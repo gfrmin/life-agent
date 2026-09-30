@@ -57,6 +57,7 @@ from dataclasses import dataclass
 
 from life_agent.core import answer_shape as AS
 from life_agent.core import gather_row as GR
+from life_agent.core import pricing as PRC
 from life_agent.core import route_row as RR
 
 #: The actions, in tie-break order: the first-listed wins an exact tie, so ``abstain`` is
@@ -70,8 +71,8 @@ ROUTE_ACTIONS: tuple[str, ...] = ("abstain", "attempt")
 #: The u_bar key carrying the ask's measured recovery rate.
 ASK_RECOVERY_KEY = "ask_recovery"
 
-#: The Beta(1, 1) prior mean an unmeasured recovery rate reads as.
-PRIOR_RECOVERY = 0.5
+#: The Beta(1, 1) prior mean an unmeasured recovery rate reads as (core/pricing.py).
+PRIOR_RECOVERY = PRC.PRIOR_RECOVERY
 
 #: The prior means an undeclared ``u_cite_right`` / ``u_cite_wrong`` read as: a right pointer
 #: is half a right answer, a wrong one costs one read.

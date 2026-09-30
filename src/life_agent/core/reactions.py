@@ -52,6 +52,7 @@ from typing import Any
 
 from life_agent.core import decisions as DEC
 from life_agent.core import jsonl_log
+from life_agent.core import pricing as PRC
 from life_agent.core import utility as UT
 
 FORMAT_VERSION = 1
@@ -83,12 +84,8 @@ VERDICT_Y: dict[tuple[str, str], int] = {
 # distinct as the fold's gate for when non-folding valences land under a later kind (§ above).
 _FOLDED_VALENCES: frozenset[str] = frozenset({"good", "bad"})
 
-# §7.1: a narrative `bad`-on-ALL_WITHHELD folds as counter-pressure only when the proposal
-# coverage posterior mean clears this bar; below it the "I wanted an answer" is more likely a
-# recall failure than a utility complaint. The wide coverage prior (Beta(2,2), mean 0.5) keeps
-# the gate permissive until eval_coverage evidence sharpens it; the joint endpoint-mass monitor
-# is the backstop. Frozen-blind (never tuned to a gate result).
-_COVERAGE_BAR: float = 0.5
+# §7.1: the coverage bar a narrative `bad`-on-ALL_WITHHELD must clear to fold (core/pricing.py).
+_COVERAGE_BAR: float = PRC.COVERAGE_BAR
 
 
 @dataclass(frozen=True)

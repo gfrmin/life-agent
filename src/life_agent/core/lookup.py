@@ -39,6 +39,7 @@ from life_agent.core import disclosure as DISC
 from life_agent.core import instrument as INSTR
 from life_agent.core import matching as MATCH
 from life_agent.core import outcomes as O
+from life_agent.core import pricing as PRC
 from life_agent.core import reactions as R
 from life_agent.core import reliability as REL
 from life_agent.core import utility as UT
@@ -196,14 +197,11 @@ _AUTHORITY_CLASSES: tuple[tuple[tuple[str, ...], str, float], ...] = (
 _AUTHORITY_MAIL_MARKERS = ("/mail/", "/cur/", "/new/")
 _AUTHORITY_DEFAULT = ("other", 0.85)
 
-# §4.1's covariates on a_i (stated priors, calibrated later from outcomes). The second
-# eval run's remaining confident-wrong reports were exactly these two channels: documents
-# about someone else agreeing on their value, and stale documents agreeing on a
-# superseded one — construct validity, entering the likelihood, never a rank heuristic.
-_A_SUBJECT_OTHER = 0.05      # P(a doc about someone else asserts the owner's value)
-_P_OWNER_GIVEN_INDET = 0.5   # P(the doc is about the owner | subject indeterminate)
-_TIME_HALF_LIFE_YEARS = 5.0  # current-state facts: P(assertion still current | doc age)
-_A_TIME_UNKNOWN = 0.6        # undated/underived doc date under a time-indexed construct
+# §4.1's covariates on a_i, declared in the price table (core/pricing.py).
+_A_SUBJECT_OTHER = PRC.A_SUBJECT_OTHER
+_P_OWNER_GIVEN_INDET = PRC.P_OWNER_GIVEN_INDET
+_TIME_HALF_LIFE_YEARS = PRC.TIME_HALF_LIFE_YEARS
+_A_TIME_UNKNOWN = PRC.A_TIME_UNKNOWN
 
 # Closed abstention reasons (the credence grammar — interaction contract).
 # The reason must be the TRUE one. These are not interchangeable labels: DISPERSED is a

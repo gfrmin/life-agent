@@ -26,7 +26,7 @@ from life_agent.core import disclosure as DISC
 from life_agent.core import pricing as PRC
 from life_agent.core.llm import TEMPERATURE, anthropic_complete
 
-RERANK_MODEL = "claude-sonnet-4-6"
+RERANK_MODEL = PRC.RERANK_MODEL
 RERANK_POOL = 150  # lexical chunks fed to the reranker (covers the deepest addressable gold)
 RERANK_SYSTEM = (
     "You are a retrieval reranker for a personal-assistant corpus (English AND Hebrew). "

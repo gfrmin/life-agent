@@ -225,7 +225,10 @@ law is marked **unenforced**.
    (`tests/test_bridge_server.py::test_log_decision_reposted_leaves_one_row`).
 6. **One home per constant.** Channel constants, prices and the action vocabulary are each
    declared once (`core/pricing.py`) and bound everywhere else. Test:
-   `tests/test_pricing_table.py::test_no_priced_constant_is_declared_outside_the_table` (prices only).
+   `tests/test_pricing_table.py::test_no_priced_constant_is_declared_outside_the_table` (the tier and
+   menu literals) and `::test_no_probability_or_model_literal_is_declared_outside_the_table`
+   (no module-level float in (0, 1] and no `claude-` string in `core/` or `bridge/` outside
+   `core/pricing.py`, bar a named allowlist of utilities, epsilons and tables owned by their module).
 7. **Named degradation.** Bridge down ⇒ the reply says so; there is no fallback decider. A
    failed rung ⇒ a disclosure row and no answer. Tests: `tests/test_ask_client.py::test_answer_names_a_down_stack`,
    `tests/test_executor.py::test_the_body_side_cascade_is_gone`; the failed-rung clause:

@@ -15,15 +15,18 @@ Since M4 (design §4.2, r14) this module is THE price table: every priced consta
 ranks an action — the corroborate tier ladder, the transform menu, the deliberate row,
 the grow actuators, the re-read model, and the reliability prior column (§3.2/D-2) —
 is declared here, once, as data. The executor and grow modules BIND these rows; the
-reliability fold imports its priors from here. Covariate parameters, sizing/timeouts
-and the gate's frozen δ/level are NOT prices and live with their owners.
+reliability fold imports its priors from here, and so do the covariate attenuations, the
+answer and expansion models and the other stated priors the rest of the package binds (law
+6: one home per constant). The utilities (``decide.CITE_*_DEFAULT``, ``utility.GAUGE``),
+sizing/timeouts and the gate's frozen δ/level are not declared here.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from life_agent.core.llm import LLMResult
+if TYPE_CHECKING:
+    from life_agent.core.llm import LLMResult
 
 PRICING_VERSION = 3
 
@@ -141,6 +144,48 @@ DELIBERATE_FALLBACK_RHO = 0.5
 
 # The strong re-read's model (the joint extract@<model> edge).
 RE_EXTRACT_MODEL = "claude-opus-4-8"
+
+# The bridge's joint re-read (/extract_joint): the model it runs when the request names
+# none, and the reliability the re-read is conditioned at (a strong, subject-aware model, so
+# a high constant; calibrated from verdicts downstream).
+JOINT_MODEL = DELIBERATE_MODEL
+JOINT_RHO = 0.95
+
+# The rescue channel's reliability CAP: a stated wide prior (the mean of the local
+# extractor's own Beta(4,4), core/reliability.PRIORS), declared blind, not the tier's 0.95
+# and not the model's self-stated confidence. A lone strong read with zero local
+# corroboration is an unmeasured instrument (fiat trust asserted a true-but-vague read at
+# 0.866 and was graded wrong); it earns assert-grade trust only through conditioned verdicts.
+RESCUE_RHO = 0.5
+
+# The default synthesis model for production answers (owned apart from the comparison
+# harness's pinned ANSWER_MODEL: the eval pin is frozen, this one tracks the best model) and
+# the model the question expansion runs on.
+DEFAULT_ANSWER_MODEL = "claude-sonnet-4-6"
+EXPAND_MODEL = "claude-haiku-4-5-20251001"
+
+# The instruments' model (the dated haiku pin): changing it is a deliberate instrument
+# change that re-keys every verdict cache. The reranker's model is the sonnet tier's.
+INSTRUMENT_MODEL = "claude-haiku-4-5-20251001"
+RERANK_MODEL = "claude-sonnet-4-6"
+
+# §4.1's covariates on a_i (stated priors, calibrated later from outcomes): documents about
+# someone else agreeing on the owner's value, and stale documents agreeing on a superseded
+# one — construct validity, entering the likelihood, never a rank heuristic.
+A_SUBJECT_OTHER = 0.05      # P(a doc about someone else asserts the owner's value)
+P_OWNER_GIVEN_INDET = 0.5   # P(the doc is about the owner | subject indeterminate)
+TIME_HALF_LIFE_YEARS = 5.0  # current-state facts: P(assertion still current | doc age)
+A_TIME_UNKNOWN = 0.6        # undated/underived doc date under a time-indexed construct
+
+# The Beta(1, 1) prior mean an unmeasured ask recovery rate reads as.
+PRIOR_RECOVERY = 0.5
+
+# §7.1: a narrative `bad`-on-ALL_WITHHELD folds as counter-pressure only when the proposal
+# coverage posterior mean clears this bar; below it the "I wanted an answer" is more likely a
+# recall failure than a utility complaint. The wide coverage prior (Beta(2,2), mean 0.5) keeps
+# the gate permissive until eval_coverage evidence sharpens it; the joint endpoint-mass monitor
+# is the backstop. Frozen-blind (never tuned to a gate result).
+COVERAGE_BAR = 0.5
 
 # The grow menu as data (autonomous-recall-design; served by the bridge's /grow_menu).
 # Costs are in USD, like the corroborate tiers (the executor converts them at lambda_usd);
