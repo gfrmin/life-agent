@@ -136,9 +136,17 @@ def summarise(set_name: str, arm: str, responses: Sequence[Response]) -> Row:
                         if n and all(x is not None for x in lat) else None))
 
 
-def score_paired(set_name: str, lines: Iterable[str]) -> list[Row]:
-    """typed / outside / router rows from a paired-rows archive. Censored rows (the typed arm
-    could not read the corpus) are excluded from every arm alike."""
+ARMS = ("typed", "outside", "router")
+
+
+def score_paired(set_name: str, lines: Iterable[str],
+                 arms: Sequence[str] = ARMS) -> list[Row]:
+    """typed / outside / router rows from a paired-rows archive, or only the named ``arms``
+    (a set's `arms:`; the router is still recombined from the recorded typed arm). Censored
+    rows (the typed arm could not read the corpus) are excluded from every arm alike."""
+    unknown = [a for a in arms if a not in ARMS]
+    if unknown:
+        raise SystemExit(f"{set_name}: unknown arm(s) {unknown} (arms are {list(ARMS)})")
     typed, outside = [], []
     for ln in lines:
         if not ln.strip():
@@ -148,10 +156,9 @@ def score_paired(set_name: str, lines: Iterable[str]) -> list[Row]:
             continue
         typed.append(_response(r["typed"]))
         outside.append(_response(r["mono"]))
-    return [summarise(set_name, "typed", typed),
-            summarise(set_name, "outside", outside),
-            summarise(set_name, "router", [route(t, o) for t, o in zip(typed, outside,
-                                                                        strict=True)])]
+    by_arm = {"typed": typed, "outside": outside,
+              "router": [route(t, o) for t, o in zip(typed, outside, strict=True)]}
+    return [summarise(set_name, a, by_arm[a]) for a in ARMS if a in arms]
 
 
 def score_typed(set_name: str, lines: Iterable[str]) -> list[Row]:
@@ -214,10 +221,13 @@ def score(kb: Path | None, sets: Mapping[str, Mapping[str, Any]]
         if digest != spec["sha256"]:
             raise SystemExit(f"{name}: sha256 {digest} != pinned {spec['sha256']} "
                              f"({f}) — the pinned bytes moved; re-pin deliberately")
-        scorer = {"paired": score_paired, "typed": score_typed}.get(spec["kind"])
-        if scorer is None:
+        lines = data.decode("utf-8").splitlines()
+        if spec["kind"] == "paired":
+            rows += score_paired(name, lines, spec.get("arms", ARMS))
+        elif spec["kind"] == "typed":
+            rows += score_typed(name, lines)
+        else:
             raise SystemExit(f"{name}: unknown kind {spec['kind']!r}")
-        rows += scorer(name, data.decode("utf-8").splitlines())
     return rows, skipped
 
 
@@ -243,7 +253,7 @@ def with_calibration(kb: Path | None, sets: Mapping[str, Mapping[str, Any]],
     """Attach each scored set's calibration to its typed row, and return the calibrations
     of the sets that have any pair. A set that could not be read was not scored either."""
     cals: dict[str, CAL.Calibration] = {}
-    for name in dict.fromkeys(r.set for r in rows):
+    for name in dict.fromkeys(r.set for r in rows if r.arm == "typed"):
         spec = sets[name]
         root, _ = set_root(spec, kb)
         if root is None:

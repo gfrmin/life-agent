@@ -5,7 +5,8 @@
 # kind: paired — one JSONL row per question, `typed` and `mono` (the recorded oracle) arms
 # on the same row, as a gate run archives them. The board scores three arms from it:
 # typed, oracle, and router (typed where typed asserted, otherwise the oracle — a
-# recombination of recorded responses, no model call).
+# recombination of recorded responses, no model call). `arms:` names the ones a set emits
+# (default: all three).
 #
 # Calibration (the `log score` / `ECE` columns and the Calibration section) is read from the
 # archive's own `typed.p1` fields. An archive that predates them may name, instead,
@@ -13,34 +14,59 @@
 # is then taken from the decision log for that run, joined to those questions.
 sets:
   owner:
+    kind: typed
+    path: eval/typed/gate-typed-20260930T191304.jsonl
+    sha256: b066b6cbec8b4e4bf4f939572fa4b11e0e74938aa86f92bd773c6a83f194e0fe
+    note: >-
+      The owner's 104 questions, typed arm only, re-run 2026-09-30 on master 4912b08 against
+      the corpus pin full-2026-06-11 (catalogue digest 03d1b09c…): 43 right / 0 wrong / 61
+      declined, list price $1.41 (the menu's prices for the probes applied), metered $0.19 on
+      this run because most calls replayed from the cache of an earlier cold run the same
+      day (which metered $5.49). Calibration is the archive's own (`typed.p1`): 103 scored,
+      mean log score -0.464, ECE 0.146. Replaces the 2026-09-20 typed row (48/0/56 at $1.44):
+      43 of its 48 rights are right again; the other 5 went right -> declined, the same
+      probes applied and the leading candidate correct, `p1` ending between 0.47 and 0.78,
+      below the bar. They come from one fresh cold draw of the model calls (the earlier run
+      today, now cached); the pinned run was a different draw, and no code change explains
+      them. 41 of the 61 declines had the correct leader. The outside and router rows for
+      this set are the frozen recordings under `owner-0920`.
+  owner-0920:
     kind: paired
+    arms: [outside, router]
     path: eval/gate-outside-option/paired-gate-20260920T160935-strict.jsonl
     sha256: de0078c94030a2e7a4625071e1c0653cdc39d654c60ea85079c107d95e83d147
-    questions: eval/questions_v2.yaml
-    decisions_run: gate-20260920T160935
     note: >-
-      J1's host Bayes act (core/decide.bayes_act) over the owner's 104 questions
-      (2026-09-20, corpus pin full-2026-06-11), both arms on ONE GRADER and ONE PRICE LIST:
-      each arm is graded on the answer it commits, by exact match, and priced at its declared
-      prices (the typed arm's applied probes at the menu's prices, cache or no cache; the
-      outside arm is the live deliberative rung's ANSWER line at the cost the call recorded).
-      Replaces run 18 (the Julia daemon, 2026-08-26: typed 61/2/41 at $20.95, U/q +0.220 on
-      the same grader and prices; its record is paired-gate-20260826T083356-strict-priced.jsonl).
-      The daemon's 13 extra right answers came with 2 wrongs and a policy that called the
-      deliberative rung on 40 questions at $0.38; at today's gauge that bundle is worth less
-      than abstaining.
+      FROZEN RECORDINGS from 2026-09-20, the owner's 104 questions (corpus pin
+      full-2026-06-11): the outside arm is the live deliberative rung's ANSWER line at the
+      cost the call recorded, graded by exact match (87 right / 13 wrong / 4 declined). The
+      router row recombines that OUTSIDE arm with the 2026-09-20 typed arm (48/0/56), NOT
+      with today's `owner/typed` row: typed where that asserted, otherwise the outside
+      answer, at the sum of both costs. Neither row has been re-run; the typed arm of this
+      archive is not a board row (see `owner`). Both were priced at their declared prices on
+      one grader with J1's host Bayes act; they replace run 18 (the Julia daemon, 2026-08-26,
+      paired-gate-20260826T083356-strict-priced.jsonl).
   generated:
     kind: typed
-    path: eval/typed/gate-typed-20260920T120757.jsonl
-    sha256: 856caf2f258c73819f809ac1c51bb8770691596f1538af95cbfcaaaff4e0f7d1
+    path: eval/typed/gate-typed-20260930T191924.jsonl
+    sha256: c815c16b1557f3bef732c7f1bff7021c6103ff060cf8a3db05d82e601b12d7a0
     note: >-
       The generated golden set: 212 verbatim point-fact questions extracted from the owner's
       corpus by the generator (claude-haiku-4-5-20251001, prompt sha ea86a53553e58005;
       questions file sha256 2a548ef4239c4347 in $LIFE_AGENT_KB/eval/questions_generated.yaml).
-      J1's host Bayes act, run COLD (no derivation cache) on a second machine 2026-09-20 against the
-      corpus pin full-2026-06-11, priced at the menu's prices for the probes it applied
-      (metered $12.85 for the 212; the menu understates what the probes meter, see
-      CHANGELOG). First pin: this is the baseline, no incumbent.
+      Re-run 2026-09-30 on master 4912b08 against the corpus pin full-2026-06-11 (catalogue
+      digest 03d1b09c…): 81 right / 4 wrong / 127 declined, list price $2.63, metered $0
+      because every call replayed from the cache of the 2026-09-20 cold run. Calibration is
+      the archive's own (`typed.p1`): 198 scored, mean log score -0.425, ECE 0.136; leaders
+      given 0.6-0.9 were right about 96% of the time (61 rows), leaders given under 0.4
+      about 44% (52 rows), the top bin 0.947 stated against 0.948 realised; 79 of the 127
+      declines had the correct leader. Every question's answer is in the corpus by
+      construction, so this reads calibration on answerable questions only. Replaces the
+      2026-09-20 row (85/4/123): 81 of its 85 rights are right again and all 4 wrongs are
+      wrong again. 4 went right -> declined with nothing applied: they began with nothing
+      extracted and were answered by the fixed rescue sequence; since PR #206 (ruling 6) a
+      state with no candidate is decided by the argmax, which at today's gauge abstains. 5
+      former declines that had reached candidates through that rescue are now declines with
+      nothing applied, for the same reason.
   atm:
     kind: typed
     root_env: LIFE_AGENT_ATM_KB

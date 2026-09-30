@@ -4,19 +4,19 @@
       "set": "owner",
       "arm": "typed",
       "rows": 104,
-      "right": 48,
+      "right": 43,
       "wrong": 0,
       "esc_right": 0,
       "esc_wrong": 0,
-      "declined": 56,
-      "usd_per_q": 0.013894230769230768,
+      "declined": 61,
+      "usd_per_q": 0.013576923076923077,
       "s_per_q": null,
-      "log_score": -0.4494144582144806,
-      "ece": 0.15899967204935278,
-      "n_scored": 102
+      "log_score": -0.46355816096806707,
+      "ece": 0.14589482870027712,
+      "n_scored": 103
     },
     {
-      "set": "owner",
+      "set": "owner-0920",
       "arm": "outside",
       "rows": 104,
       "right": 87,
@@ -31,7 +31,7 @@
       "n_scored": null
     },
     {
-      "set": "owner",
+      "set": "owner-0920",
       "arm": "router",
       "rows": 104,
       "right": 90,
@@ -49,16 +49,16 @@
       "set": "generated",
       "arm": "typed",
       "rows": 212,
-      "right": 85,
+      "right": 81,
       "wrong": 4,
       "esc_right": 0,
       "esc_wrong": 0,
-      "declined": 123,
-      "usd_per_q": 0.015094339622641508,
+      "declined": 127,
+      "usd_per_q": 0.01240566037735849,
       "s_per_q": null,
-      "log_score": null,
-      "ece": null,
-      "n_scored": null
+      "log_score": -0.42545628723704604,
+      "ece": 0.13605472356906964,
+      "n_scored": 198
     },
     {
       "set": "atm",

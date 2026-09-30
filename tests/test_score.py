@@ -56,6 +56,35 @@ def test_router_cost_is_additive_on_escalation() -> None:
     assert _by_arm()["router"].usd_per_q == pytest.approx(0.74 / 5)
 
 
+def test_a_paired_set_may_name_the_arms_it_emits() -> None:
+    rows = S.score_paired("t", LINES, ("outside", "router"))
+    assert [r.arm for r in rows] == ["outside", "router"]
+    full = {r.arm: r for r in S.score_paired("t", LINES)}
+    assert rows == [full["outside"], full["router"]]   # router still recombines the typed arm
+
+
+def test_the_default_emits_every_arm() -> None:
+    assert [r.arm for r in S.score_paired("t", LINES)] == ["typed", "outside", "router"]
+    assert [r.arm for r in S.score_paired("t", LINES, S.ARMS)] == ["typed", "outside", "router"]
+
+
+def test_an_unknown_arm_refuses() -> None:
+    with pytest.raises(SystemExit, match="unknown arm"):
+        S.score_paired("t", LINES, ("mono",))
+
+
+def test_a_set_with_arms_reaches_score_and_has_no_typed_calibration(tmp_path: Path) -> None:
+    import hashlib
+    f = tmp_path / "p.jsonl"
+    f.write_text("\n".join(LINES), encoding="utf-8")
+    sets = {"x": {"kind": "paired", "path": "p.jsonl", "arms": ["outside"],
+                  "sha256": hashlib.sha256(f.read_bytes()).hexdigest()}}
+    rows, _ = S.score(tmp_path, sets)
+    assert [r.arm for r in rows] == ["outside"]
+    _, cals = S.with_calibration(tmp_path, sets, rows)
+    assert cals == {}
+
+
 def test_censored_rows_leave_every_arm() -> None:
     assert {r.rows for r in S.score_paired("t", LINES)} == {5}
 
@@ -178,15 +207,16 @@ def test_the_owner_board_reproduces_the_host_act_on_one_grader_and_one_price_lis
     applied at the menu's prices, cache or no cache (the daemon it replaced: 61/2/41 at
     $20.95, forty calls to the deliberative rung its warm replays had metered at $0)."""
     kb = os.environ.get("LIFE_AGENT_KB")
-    spec = S.load_sets()["owner"]
+    spec = S.load_sets()["owner-0920"]
     if not kb or not (Path(kb) / spec["path"]).is_file():
         pytest.skip("needs the owner's KB ($LIFE_AGENT_KB with the run-18 paired archive); "
                     "owner data, not buildable")
-    rows, _ = S.score(Path(kb), {"owner": spec})
+    rows, _ = S.score(Path(kb), {"owner-0920": spec})
     got = {r.arm: (r.right, r.wrong, r.declined, round(r.usd_per_q * r.rows, 2))
            for r in rows}
-    assert got == {"typed": (48, 0, 56, 1.44), "outside": (87, 13, 4, 43.00),
-                   "router": (90, 11, 3, 24.51)}
+    # frozen 2026-09-20 recordings; the router recombines them with the 48/0/56 typed arm,
+    # which is no longer a board row (`owner/typed` is the 2026-09-30 re-run)
+    assert got == {"outside": (87, 13, 4, 43.00), "router": (90, 11, 3, 24.51)}
 
 
 def test_the_board_is_never_written_from_less_than_every_pinned_set(tmp_path: Path) -> None:
