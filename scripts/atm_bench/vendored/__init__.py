@@ -1,4 +1,4 @@
-"""ATM-Bench's evaluator, vendored at a pinned sha (r51b 2e). MIT (LICENSE-ATM-Bench) inside an
+"""ATM-Bench's evaluator, vendored at a pinned sha. MIT (LICENSE-ATM-Bench) inside an
 AGPL repo, notice kept; provenance and the one edit per file in SOURCE; pinned by
 ``tests/test_atm_vendored.py``. No vendored logic is edited — a behaviour change goes in a wrapper.
 

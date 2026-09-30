@@ -1,4 +1,4 @@
-"""Tests for ask.py's demand-led GTD refresh (system-design.md §5).
+"""Tests for ask.py's demand-led GTD refresh.
 
 Before each question, the ask path checks whether the GTD ledger has moved past
 its knowledge projection; if so it re-projects, re-ingests the one state
@@ -174,7 +174,7 @@ def test_refresh_without_pkm_root_is_fail_open(
 
 # --- reconcile-or-refuse: the re-ingest never extracts over an unregistered artefact -- #
 # pkm's extract sweeps every file-complete artefact without a catalogue row at start (SPEC
-# §6.2) — the r03 loss. So the refresh registers what is registerable first, and if any
+# §6.2) — a loss. So the refresh registers what is registerable first, and if any
 # registerable key is still pending it does NOT extract: a named line, un-stamped, retried.
 
 

@@ -48,7 +48,7 @@ View = dict[str, Any]  # {effector, asserted, cited, candidates, credences, p_no
 #                        hits, route}; a narrative view also carries "rendered" (rendered
 #                        bridge-side); a cite view carries "cited" = {cache_key, hit_n}.
 
-# Every priced row below is a BINDING of the one price table (core/pricing — M4, r14):
+# Every priced row below is a BINDING of the one price table (core/pricing):
 # the ladder, the menu, the deliberate seed and the re-read model are declared there as
 # data; this module enacts them. Same objects, so a second spelling cannot drift.
 _TIER_MODEL = PRC.TIER_MODEL
@@ -82,7 +82,7 @@ def menu_transforms(curves: Curves) -> list[dict[str, Any]]:
     the body will condition at. Without curves — or for any edge the fold has no rows
     for (the regime is per-edge, `_conditioned_rho`) — the tiers keep their declared
     rho (legacy parity) and the deliberate row prices at the conservative cap — never
-    the 0.92 seed by fiat. Priced-vs-enacted divergence is the C2 failure: the daemon buys
+    the 0.92 seed by fiat. Priced-vs-enacted divergence is a failure mode: the decider buys
     a probe, the body folds it at a fraction of the priced reliability, and the spend
     converts nothing. HONESTY BOUND: with a FITTED (non-flat) curve this pricing is an
     UPPER-BOUND rule — the offer prices at curve(declared prior) while enactment folds
@@ -312,7 +312,7 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str,
     # price the menu in the OWNER'S utility (plan item C): transform rows and grow
     # actuators are AUTHORED in USD; the elicited exchange rate (lambda_usd, gauge
     # units per dollar — a learned latent, never a constant invented here) converts
-    # them at the one place the daemon reads prices. A u_bar lacking the latent
+    # them at the one place the decider reads prices. A u_bar lacking the latent
     # (pre-elicitation prod) prices at the legacy $1 ≈ 1-gauge convention, unchanged.
     rate = float(u_bar["lambda_usd"])  # REQUIRED latent — a missing one fails loud (E-5)
     transforms = [dict(t, cost=float(t["cost"]) * rate) if "cost" in t else t
@@ -341,7 +341,7 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str,
 
     def _decide(observations: list[Any], r: float, applied: list[str]) -> View:
         payload: dict[str, Any] = {
-            # r09 D1: the correlation key (quote, doc_key) is wire-only — the decider stays
+            # the correlation key (quote, doc_key) is wire-only — the decider stays
             # string-blind, so the decide post strips it while the loop's channel keeps it
             "question_id": question_id,
             "candidates": candidates,
@@ -377,8 +377,8 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str,
             p_none=dec["p_none"], indeterminate=int(ext.get("indeterminate") or 0))
         if eff == "gather" and probe.startswith("corroborate"):
             # a subject-aware whole-doc re-read at the scheduled TIER's model, JOINED onto the
-            # standing channel bridge-side (r09: the payload carries the channel; the reply is
-            # the §5-deduped pool, so a disagree adds evidence instead of erasing). Each tier
+            # standing channel bridge-side (the payload carries the channel; the reply is
+            # the deduped pool, so a disagree adds evidence instead of erasing). Each tier
             # fires at most once (dedup on the probe name) ⇒ escalation across tiers terminates.
             model = _TIER_MODEL.get(probe, _RE_EXTRACT_MODEL)  # the table's strong-read model
             tier_rho = _TIER_RHO.get(probe, _GATHER_RHO)
@@ -386,8 +386,8 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str,
                       {"reextract": True, "question": question, "hits": hits,
                        # with no candidate a re-read that cannot name a new one buys nothing
                        "allow_new": not candidates,
-                       # r09 D2: the standing channel rides the payload so the bridge
-                       # computes the §5-deduped JOIN where the deployed rule lives
+                       # the standing channel rides the payload so the bridge
+                       # computes the deduped JOIN where the deployed rule lives
                        "observations": obs,
                        "candidates": candidates, "model": model, "rho": tier_rho,
                        "candidate_competition": cand_comp,
@@ -423,7 +423,7 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str,
                 applied = list(dict.fromkeys([*applied, probe]))
                 dec = _decide(obs, rho, applied)
         elif eff == "gather" and probe in _GROW_RETRIEVE:
-            # [§3.3 · E-10] a DAEMON-SCHEDULED retrieval grow: rebuild the evidence at
+            # a DECIDER-SCHEDULED retrieval grow: rebuild the evidence at
             # the named breadth and adopt it iff it grounded candidates (L-1 applied; else
             # the prior evidence stands and the probe is simply retired — a fruitless
             # recall must not erase a posterior).
@@ -431,13 +431,11 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str,
             n_hits, n_recency, n_ext = _evidence(rr, ex)
             changed = bool(n_ext["candidates"])
             if changed:
-                # r09d D3 — S2 JOINS (the one replace site r09 left untouched). The standing
-                # channel keeps its candidate indices, the grow's new values are appended, and
-                # the pooled set goes through THE §5 rule (``join_wire_observations`` — called,
-                # never re-implemented). A grow ADDS evidence; it must not discard a channel.
-                # r09c measured the cost of replacing here: seven rows shrank at this site and
-                # on two a five-observation channel became one, taking a correct leader under
-                # the report bar with it.
+                # The grow JOINS. The standing channel keeps its candidate indices, the
+                # grow's new values are appended, and the pooled set goes through THE dedup
+                # rule (``join_wire_observations`` — called, never re-implemented). A grow
+                # ADDS evidence; it must not discard a channel (replacing one can shrink a
+                # five-observation channel to one and drop a correct leader under the bar).
                 joined = list(candidates)
                 slots = {LK._candidate_key(c): j for j, c in enumerate(joined)}
                 remap: dict[int, int] = {}
@@ -466,18 +464,16 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str,
             applied = list(dict.fromkeys([*applied, probe]))
             dec = _decide(obs, rho, applied)
         elif eff == "gather" and probe == "deliberate":
-            # The promoted A1b edge, daemon-scheduled: an agentic deliberative answer
+            # The deliberate edge, decider-scheduled: an agentic deliberative answer
             # over the corpus (bridge /probe/deliberate — warm-replayed when the corpus
             # is unchanged). Its bare ANSWER value is joined bridge-side; a new value
             # comes back as a minted candidate (allow_new — the edge exists FOR the
             # questions the local channel can't ground). On a SUCCESSFUL call the reply
-            # is the §5-deduped JOIN of the standing channel with the deliberate
-            # observation (r09 — the empty-ok collapse is retired: NOT_IN_CORPUS pooled
-            # with a grounded channel keeps the channel; r06 criterion 7 read zero
-            # genuine collapses). An INFRASTRUCTURE failure (CLI error/timeout,
-            # transport raise) is
-            # not evidence of anything: the grounded channel survives untouched and the
-            # probe is simply retired (fail-open — instrumentation never breaks an
+            # is the deduped JOIN of the standing channel with the deliberate
+            # observation (NOT_IN_CORPUS pooled with a grounded channel keeps the
+            # channel). An INFRASTRUCTURE failure (CLI error/timeout,
+            # transport raise) is not evidence of anything: the grounded channel survives
+            # untouched and the probe is simply retired (fail-open — instrumentation never breaks an
             # already-grounded answer). The raw self-report conditions only through the
             # per-edge curve (Δ1).
             try:
@@ -525,8 +521,8 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str,
         elif eff == "gather" and probe == "re_extract_strong":
             # the K-ENLARGING strong re-extract: a whole-doc opus re-read with allow_new — a
             # value outside the local candidate set comes back as a NEW candidate (the bridge
-            # indexes its observation at len(candidates)); the reply is the §5-deduped JOIN
-            # of the standing channel with the re-read (r09), exactly as corroborate does.
+            # indexes its observation at len(candidates)); the reply is the deduped JOIN
+            # of the standing channel with the re-read, exactly as corroborate does.
             if not hits:
                 # nothing was retrieved at any breadth, so there is nothing to re-read: the
                 # probe retires unenacted (no call, no outcome row) and the decider decides again
@@ -547,8 +543,7 @@ def run_pass(question: str, k: int, route: dict[str, Any], *, bridge: str,
                 candidates = [*candidates, str(cr["new_candidate"])]
                 cand_comp = [*cand_comp, 1.0]
             # A DISAGREEING strong re-read no longer erases: the bridge returns the joined
-            # channel (r09 — run 7's disagree⇒abstain contract retired by the ruling's
-            # fix; a disagree that NAMES a joinable value contributes evidence against
+            # channel (a disagree that NAMES a joinable value contributes evidence against
             # the leader instead). A NULL read — the model named nothing at all — is the
             # absence-of-evidence case (§14, 2026-08-18): the probe retires fail-open and
             # the grounded channel stands, rho untouched.
@@ -647,7 +642,7 @@ def render_view(view: View) -> str:
     elif eff == "ask_clarify":
         body = LK.GRAMMAR["ask_clarify"].format(alts=alts)
     else:
-        # D-5 (M5, r15): the reason is the ONE derivation over the decision record;
+        # The reason is the ONE derivation over the decision record;
         # this render maps it onto the interaction contract's grammar strings.
         reason = DEC.withhold_reason(effector=eff, candidates=cands)
         if reason == "dispersed":
@@ -667,7 +662,7 @@ def render_view(view: View) -> str:
         # the extractor's own indeterminate count, carried on the View (was hard-coded 0 —
         # a footer that claimed "0 indeterminate" on every executor answer)
         n_ind=view.get("n_indeterminate", 0),
-        # r33 RC-3: None = no posterior ever existed (the miss) — render "—", never a
+        # None = no posterior ever existed (the miss) — render "—", never a
         # fabricated 0.000 indistinguishable from a genuine zero-mass-on-NONE
         p_none=(f"{p_none:.3f}" if p_none is not None else "—"),
         action=eff, eu=(f"{eu:.2f}" if eu is not None else "—"))

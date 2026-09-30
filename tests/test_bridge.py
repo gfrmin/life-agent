@@ -153,9 +153,8 @@ def test_corroborate_time_factor_passes_through_a_permanent_construct() -> None:
 
 
 def test_competition_factor_rides_the_abstract_observation() -> None:
-    # §4.2's competing-values temper (foundations §14, 2026-08-17): the factor is
-    # projected at observe_hits and passes through the parity boundary verbatim —
-    # the daemon's r product is the only consumer.
+    # §4.2's competing-values temper: the factor is projected at observe_hits and passes
+    # through the parity boundary verbatim — the decider's r product is the only consumer.
     import dataclasses
 
     competed = dataclasses.replace(_obs("Alpha", "d0"), n_competing=1,
@@ -164,12 +163,12 @@ def test_competition_factor_rides_the_abstract_observation() -> None:
     assert [a["competition_factor"] for a in abstract] == [0.5, 1.0]
 
 
-# --- r09 D1: the correlation key on the wire -------------------------------------------------
+# --- the correlation key on the wire ---------------------------------------------------------
 
 
 def test_abstract_observations_carry_the_correlation_key() -> None:
-    """r09 D1: every wire observation carries the §5 dedup key — the grounding quote and the
-    document key — so a §5-deduped JOIN is computable wherever the wire reaches. The daemon
+    """Every wire observation carries the §5 dedup key — the grounding quote and the
+    document key — so a §5-deduped JOIN is computable wherever the wire reaches. The decider
     never sees these fields (the executor strips them; its own test pins that)."""
     o = _obs("Alpha", "d0")
     o = __import__("dataclasses").replace(o, quote="the alpha value is Alpha per the form")
@@ -181,7 +180,7 @@ def test_abstract_observations_carry_the_correlation_key() -> None:
 
 
 def test_strip_wire_keys_removes_exactly_the_key_fields() -> None:
-    """r09 D1: the parity boundary holds — the brain stays string-blind. One helper, one
+    """The parity boundary holds — the brain stays string-blind. One helper, one
     spelling of which fields are wire-only."""
     from life_agent.bridge.observations import strip_wire_keys
     stripped = strip_wire_keys([{"reports": 0, "group": 0, "authority": 0.9,
@@ -193,7 +192,7 @@ def test_strip_wire_keys_removes_exactly_the_key_fields() -> None:
                          "competition_factor": 1.0}]
 
 
-# --- r09 D2: the §5-deduped JOIN, one rule ----------------------------------------------------
+# --- the §5-deduped JOIN, one rule ------------------------------------------------------------
 
 
 def _wire(value: str, doc: str, *, quote: str, authority: float = 0.9,

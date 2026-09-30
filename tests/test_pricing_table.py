@@ -1,4 +1,4 @@
-"""M4 — the one price table (r14; design §4.2) + the atom derivation (§4.1) + E-5.
+"""The one price table + the atom derivation + the required-lambda contract.
 
 Every priced constant that ranks an action lives in ONE declared table
 (`core/pricing.py`, which already owned the spend half); the executor and grow menus are
@@ -46,7 +46,7 @@ _GROW = [
 def test_the_menu_lives_in_the_table() -> None:
     # one declared MENU in the module that already owns the spend half; the version
     # bumps because the table grew (its identity contract is unchanged)
-    # v3 (r21): the §18.14 extract_amounts planning-price row joined the table.
+    # v3: the extract_amounts planning-price row is part of the table.
     assert P.PRICING_VERSION == 3
     assert P.EXTRACT_AMOUNTS_USD == 0.01
     assert {k: v[0] for k, v in _TIERS.items()} == P.TIER_MODEL

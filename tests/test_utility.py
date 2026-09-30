@@ -1,4 +1,4 @@
-"""The utility posterior (bayesian-foundations §4.4/§10 as amended) — utility.py.
+"""The utility posterior — utility.py.
 
 Hermetic strata:
 1. Pure parts: model loading, grid/gauge validation, endpoint-mass monitoring (`near_bound`),
@@ -357,10 +357,10 @@ def test_lookup_u_wrong_marginal_is_invariant_when_pulled_into_a_joint(
     assert uw_joint.variance == pytest.approx(uw_1d.variance, abs=1e-6)
 
 
-# --- Q-O5/D-8: the one entry point names its evidence policy (r13, M3) -------------------
+# --- the one entry point names its evidence policy -------------------
 
 def test_posterior_requires_a_policy(model: U.UtilityModel) -> None:
-    # the regime indicator is a required keyword — no old spelling survives (design §3.1)
+    # the regime indicator is a required keyword — no old spelling survives
     with pytest.raises(TypeError):
         U.posterior(model, [])  # type: ignore[call-arg]
 
@@ -404,50 +404,3 @@ def test_fold_version_covers_the_policy(model: U.UtilityModel) -> None:
 def test_fold_version_requires_the_policy(model: U.UtilityModel) -> None:
     with pytest.raises(TypeError):
         U.fold_version(model, [])  # type: ignore[call-arg]
-
-
-# --- the replay pin: every recorded boot's Ū -----------------------------------------------
-
-# The proplang shadow logged Ū at each of its 23 boots (2026-07-18 → 2026-09-12), folded by
-# the credence skin. Re-folding the evidence that existed at each boot must reproduce it; the
-# boots span three evidence sets (11, 12-13 and 55 events). Julia's exp/log round differently
-# from libm in the last ulp, so the tolerance is the measured residue (4.4e-16 relative).
-_MODEL_SHA = "b4fdc98741e4c1d92bab8f3a03c7ce412e70a02f6f2bb0160da5f71af7860cd4"
-_ELICITATIONS_SHA = "710ed2a9feff31316bb5a1fb2c629e7587dd633e10c37d5f64025340634f45b2"
-_BOOT_REL_TOL = 1e-15
-
-
-def test_the_fold_replays_every_recorded_boot_u_bar() -> None:
-    import hashlib
-    import os
-    from datetime import UTC, datetime
-
-    from life_agent.core import reactions as R
-
-    kb = Path(os.environ.get("LIFE_AGENT_KB") or "/nonexistent")
-    shadow = kb / "membrane" / "shadow.jsonl"
-    model_path, elicit = kb / "utility" / "model.yaml", kb / "utility" / "elicitations.jsonl"
-    if not (shadow.is_file() and model_path.is_file()):
-        pytest.skip("needs the owner's KB ($LIFE_AGENT_KB with membrane/shadow.jsonl and "
-                    "utility/model.yaml); owner data, not buildable")
-    for path, sha in ((model_path, _MODEL_SHA), (elicit, _ELICITATIONS_SHA)):
-        assert hashlib.sha256(path.read_bytes()).hexdigest() == sha, (
-            f"{path.name} changed since the boots were recorded; re-pin deliberately")
-    model = U.load_model(model_path)
-    events: list[U.Evidence] = [
-        *U.load_elicitations(elicit, model),
-        *R.load_reactions(kb / "calibration" / "reactions.jsonl",
-                          kb / "calibration" / "decisions.jsonl")]
-    boots = [row for row in map(json.loads, shadow.read_text(encoding="utf-8").splitlines())
-             if row.get("kind") == "boot" and row.get("u_bar")]
-    assert len(boots) >= 23
-    folds: dict[int, dict[str, float]] = {}
-    for boot in boots:
-        at = datetime.fromtimestamp(boot["ts"], UTC).isoformat()
-        seen = [e for e in events if str(e.tx_time) <= at]
-        if len(seen) not in folds:
-            folds[len(seen)] = U.posterior(model, seen, policy="all-to-date").u_bar()
-        got = folds[len(seen)]
-        for name, want in boot["u_bar"].items():
-            assert abs(got[name] - want) <= _BOOT_REL_TOL * max(1.0, abs(want)), (at, name)
-    assert len(folds) >= 3

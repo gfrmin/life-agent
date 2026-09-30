@@ -1,8 +1,7 @@
-"""Poison fixtures for the decision-path guards — r23, from the K1 G4 adversary pass.
+"""Poison fixtures for the decision-path guards.
 
 These require the GUARD to FAIL. Each was verified RED by mutation against the exact
-violation the adversary reproduced; the transcript is in
-``docs/unification/reports/r23-k1-g4-adversary.md``.
+violation an adversary pass reproduced.
 """
 from __future__ import annotations
 
@@ -87,7 +86,7 @@ def test_poison_the_bridge_serves_no_second_stage_router() -> None:
     extra = set(server._POST) - declared
     assert not extra, (
         f"the bridge serves undeclared endpoint(s) {sorted(extra)} — a second-stage "
-        f"router on the wire under any name is family routing (membrane-shadow §11 i-13)"
+        f"router on the wire under any name is family routing"
     )
 
 

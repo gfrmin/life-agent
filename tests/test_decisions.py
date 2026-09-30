@@ -1,4 +1,4 @@
-"""The decision log (bayesian-foundations §8) — no EU decision is ever made unlogged.
+"""The decision log — no EU decision is ever made unlogged.
 
 Mirrors the outcomes-log discipline: append-only JSONL, file order = canonical replay
 order, closed vocabularies validated at construction, durable appends, loud corruption.
@@ -80,7 +80,7 @@ def test_lines_are_canonical_json(tmp_path: Path) -> None:
 
 
 def test_pricing_and_instrument_fields_round_trip(tmp_path: Path) -> None:
-    # §10 accounting on the ledger: the edge that answered, at what dollar/latency cost.
+    # §10 accounting on the record: the edge that answered, at what dollar/latency cost.
     log = tmp_path / "decisions.jsonl"
     priced = _event(instrument="deliberate@claude-opus-4-8",
                     cost_usd=0.42, latency_s=23.1)
@@ -119,9 +119,9 @@ def test_corrupt_line_is_loud(tmp_path: Path) -> None:
 #
 # A second, hand-copied spelling of this hash silently SPLITS the id namespace, and every
 # join across it then reads as "no data" rather than as an error. That is not hypothetical:
-# the membrane shadow's grounded join shipped structurally impossible (always 0 rows) and
-# the report narrated it as an under-powered sample, because the derivation was inline in
-# four call sites and nothing gated a fifth.
+# a grounded join that hashed the question differently from the log was structurally
+# impossible (always 0 rows) and read as an under-powered sample, because the derivation
+# was inline in four call sites and nothing gated a fifth.
 
 
 def test_question_id_is_sha256_of_the_raw_text_truncated() -> None:
@@ -140,7 +140,7 @@ def test_no_other_site_hashes_a_question_itself() -> None:
     ``question`` value — both spellings that were live before this was extracted
     (``hashlib.sha256(question.encode(...))`` in four modules, ``_sha(question)[:16]`` in
     two more, plus a fifth in ``scripts/verdict.py``), while leaving hashes of OTHER things
-    (a questions FILE, an answer, a ledger) alone."""
+    (a questions FILE, an answer, a log) alone."""
     import re
 
     root = Path(__file__).resolve().parent.parent
@@ -163,7 +163,7 @@ def test_no_other_site_hashes_a_question_itself() -> None:
 
 def test_regime_and_policy_are_closed_vocabularies() -> None:
     """Same discipline as `family` and `action_set`: junk fails at construction, never
-    silently onto the ledger."""
+    silently into the log."""
     base = dict(tx_time="2026-08-19T00:00:00+00:00", run_id="r", question_id="q",
                 family="lookup", action_set=D.LOOKUP_ACTION_ORDER,
                 posterior_summary={}, utility_fold_version="v", chosen_action="abstain",
@@ -207,7 +207,7 @@ def test_unavailability_is_a_regime_not_an_action() -> None:
     assert "unavailable" not in D.ACTIONS
 
 
-# --- r31: an append-only stream outlives the vocabulary that wrote it --------------------
+# --- an append-only stream outlives the vocabulary that wrote it --------------------
 
 def test_retired_families_are_declared_and_disjoint() -> None:
     """R1 — the retired vocabulary is a CLOSED declared set, and a label cannot be both

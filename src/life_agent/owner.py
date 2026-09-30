@@ -11,7 +11,7 @@ pkm. Putting "my name is X" into the content-addressed corpus would make it just
 rankable chunk competing with a family member's document — it would not fix identity confusion.
 So the profile is a small markdown file under ``$LIFE_AGENT_KB`` (out of the public repo, out of
 pkm). The owner extends it opportunistically — ``/tell My name is …``, the same form in the
-REPL and one-shot argv (docs/interaction-contract.md) — which appends here.
+REPL and one-shot argv — which appends here.
 """
 from __future__ import annotations
 

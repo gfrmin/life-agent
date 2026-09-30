@@ -1,20 +1,19 @@
 """The gather-outcome instrumentation + the grow menu — the B half's data leg.
 
-The conferred factoring (docs/ask-as-connection.md §4/§7): only the *gather* decision is
-offloaded to the engine's structure-BMA — ``g = P(this actuator recovers the answer | sensors)``
-— and the price of a *learned* g is instrumenting gather outcomes. This module is that leg,
-body-side:
+Only the *gather* decision is offloaded to the decider's structure-BMA —
+``g = P(this actuator recovers the answer | sensors)`` — and the price of a *learned* g is
+instrumenting gather outcomes. This module is that leg, body-side:
 
 - ``SENSOR_FEATURES`` — the declared, BUCKETED sensor vocabulary (the structure-BMA needs
   finite value-sets). ``sensors_from`` buckets the candidate posterior's uncertainty summary:
   the old ``_truth_likely_missing`` gate (P(NONE) ≥ leader) survives only as the ``p_none="hi"``
   bucket — a *feature the belief conditions on*, never control flow (the ruling).
-- ``GROW_ACTUATORS`` — the menu as data (autonomous-recall-design): each row a probe the body
-  can enact, its cost-in-utility, and a hand-set cold Beta g-prior (the *demoted* g-prior —
-  §4 caveat 1); the daemon's warm reconstruction sharpens it as counts accrue. Adding a recall
+- ``GROW_ACTUATORS`` — the menu as data: each row a probe the body
+  can enact, its cost-in-utility, and a hand-set cold Beta g-prior (the *demoted* g-prior);
+  the decider's warm reconstruction sharpens it as counts accrue. Adding a recall
   strategy (``semantic``, …) is one row here + one bridge capability — the scheduler is untouched.
 - ``append_outcome`` / ``warm_counts`` — the structure-observe stream: one JSONL row per enacted
-  grow, folded to per-context ``(n1, n0)`` counts the daemon replays exactly
+  grow, folded to per-context ``(n1, n0)`` counts the decider replays exactly
   (``reconstruct_structure_prior_from_data`` — Bayesian order-independence). ``recovered`` is the
   honest v0 outcome proxy: the grown question ended in a **report through the exact 0-CW terminal
   threshold** (not ground truth — the verdict join by decision_id refines this later; a g learned
@@ -34,7 +33,7 @@ from life_agent.core import jsonl_log
 from life_agent.core import outcomes as O
 from life_agent.core import pricing as PRC
 
-# The declared sensor vocabulary — names + per-feature bucket sets, in ONE order (the daemon's
+# The declared sensor vocabulary — names + per-feature bucket sets, in ONE order (the decider's
 # `context_from_features` fails loud on drift; this list is the single source).
 SENSOR_FEATURES: list[tuple[str, list[str]]] = [
     ("extracted", ["none", "some"]),        # did the local extraction ground any candidate?
@@ -42,12 +41,12 @@ SENSOR_FEATURES: list[tuple[str, list[str]]] = [
     ("indeterminate", ["none", "some"]),    # hits whose subject verdict was indeterminate
 ]
 
-# The grow menu is a BINDING of the one price table (core/pricing — M4, r14); the rows'
+# The grow menu is a BINDING of the one price table (core/pricing); the rows'
 # rationale lives with the data. Same object, so a second spelling cannot drift.
 GROW_ACTUATORS: list[dict[str, Any]] = PRC.GROW_ACTUATORS
 
 
-def sensors_from(  # [§3.3 · GO-1] the sensor vocabulary (with M-9)
+def sensors_from(  # the sensor vocabulary
         *, candidates: list[str], credences: list[float],
                  p_none: float | None, indeterminate: int) -> dict[str, str]:
     """Bucket one decision view into the declared sensor vocabulary. Nothing extracted (or no
@@ -66,7 +65,7 @@ def sensors_from(  # [§3.3 · GO-1] the sensor vocabulary (with M-9)
 
 
 def _ctx_vector(sensors: dict[str, str]) -> list[str]:
-    """The ordered context vector (the daemon's ``ctx`` shape), per SENSOR_FEATURES order."""
+    """The ordered context vector (the decider's ``ctx`` shape), per SENSOR_FEATURES order."""
     return [sensors[name] for name, _ in SENSOR_FEATURES]
 
 
@@ -82,7 +81,7 @@ def append_outcome(path: Path, probe: str, sensors: dict[str, str], *,
 def warm_counts(path: Path, probe: str) -> dict[str, Any] | None:
     """Fold the outcome log to one actuator's per-context ``(n1, n0)`` counts — the exact
     warm-seed shape ``reconstruct_structure_prior_from_data`` replays. No rows ⇒ ``None``
-    (the daemon falls back to the actuator's declared cold Beta prior)."""
+    (the decider falls back to the actuator's declared cold Beta prior)."""
     if not path.exists():
         return None
     counts: dict[tuple[str, ...], list[int]] = {}
@@ -104,10 +103,8 @@ def warm_counts(path: Path, probe: str) -> dict[str, Any] | None:
 
 
 def grow_block(path: Path) -> dict[str, Any]:
-    """[§3.3 · GO-2] (cold prior: an actuator with no rows carries None ⇒ the
-    daemon's declared cold prior — correct, declared.) The `/decide` grow block: the
-    shared feature vocabulary + every menu actuator with its
-    body-persisted warm counts (``None`` ⇒ the daemon uses the declared cold prior)."""
+    """The `/decide` grow block: the shared feature vocabulary + every menu actuator with
+    its body-persisted warm counts (``None`` ⇒ the decider uses the declared cold prior)."""
     return {
         "features": {"names": [n for n, _ in SENSOR_FEATURES],
                      "values": [v for _, v in SENSOR_FEATURES]},

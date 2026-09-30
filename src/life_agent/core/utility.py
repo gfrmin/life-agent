@@ -1,4 +1,4 @@
-"""The utility posterior — utility as inference (bayesian-foundations §4.4/§10).
+"""The utility posterior — utility as inference.
 
 The agent holds a *belief* about the owner's preferences, never a table: gauge-pinned
 (u(correct) = +1, u(abstain) = 0 — convention, since behaviour identifies utility only
@@ -62,7 +62,7 @@ GAUGE: dict[str, float] = {"u_correct": 1.0, "u_abstain": 0.0}
 # encodes the months-operating $1 ≈ 1·u_correct convention within 0.2%, frozen BEFORE
 # any elicitation; the owner's elicitations.jsonl line narrows it. Consumers: executor
 # menu/grow pricing (usd x rate at the decide payload) and gate.realised_utility's
-# -rate*cost_usd spend term (run-6, pre-registered in bayesian-foundations §14).
+# -rate*cost_usd spend term.
 REQUIRED_LATENTS: tuple[str, ...] = ("u_wrong", "lambda_int", "kappa_att", "lambda_usd")
 
 # Latents the model once carried. A model file may still declare them and an elicitation may

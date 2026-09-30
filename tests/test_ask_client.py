@@ -48,8 +48,8 @@ def test_answer_renders_and_binds_the_decision(monkeypatch: Any) -> None:
     # the replayability fields (§14, 2026-08-17) ride the posted decision, zero-default
     assert posted[0][1]["decision"]["n_indeterminate"] == 0
     assert posted[0][1]["decision"]["n_competing"] == 0
-    # the ONE body (M2, r12 DIR-1): no accounting field is optional on the poster's side,
-    # and the two M0 fields are STATED — the reach surface's decisions become priced rows
+    # the ONE body: no accounting field is optional on the poster's side,
+    # and the regime and policy fields are STATED — the reach surface's decisions become priced rows
     dec = posted[0][1]["decision"]
     assert dec["instrument"] == "" and dec["cost_usd"] == 0.0 and dec["latency_s"] == 0.0
     assert dec["run_id"] == "answer-brain"
@@ -156,11 +156,11 @@ def test_answer_deliberate_rollback_reverts_to_the_bare_menu(monkeypatch: Any) -
     assert captured["transforms"] is None and captured["curves"] is None
 
 
-# --- the one driver (M2, r12 D2/D3) --------------------------------------------------------
+# --- the one driver ------------------------------------------------------------
 
 def test_answer_passes_realised_accounting_through(monkeypatch: Any) -> None:
     """A priced firing's instrument/cost/latency ride the reach surface's body verbatim —
-    the ledger change M2 pre-registered (design §5.1)."""
+    the decision record carries them."""
     view = _fake_view()
     view["instrument"] = "deliberate@synthetic-model"  # PII-OK: synthetic
     view["cost_usd"], view["latency_s"] = 0.0123, 2.5
@@ -228,13 +228,13 @@ def test_the_ready_gate_needs_a_decider(monkeypatch: Any) -> None:
     assert AC._ready() is True
 
 def test_the_m2_shims_are_dead() -> None:
-    # r13 mandate 3 (as amended): AC.answer and ask._edge_curves are deleted — callers
+    # AC.answer and ask._edge_curves are deleted — callers
     # take the one driver directly; no old-poster spelling survives in core
     assert not hasattr(AC, "answer")
 
 
-# --- r33 A1: the transport retries transient failures (signature E) ----------------------
-# One live 5xx killed a whole ask during the Stage-4 measurement (conferral 2 §3.5). The
+# --- the transport retries transient failures --------------------------------------
+# One live 5xx would otherwise kill a whole ask. The
 # transport retries 5xx / connection errors / timeouts with bounded backoff; a 4xx is the
 # bridge speaking and is NEVER retried.
 
@@ -344,7 +344,7 @@ def test_get_retries_5xx_then_succeeds(monkeypatch: Any) -> None:
     assert calls["n"] == 2
 
 
-# --- r33 RC-1: the poster mints the miss row (the lane that was silent for 69 asks) -----
+# --- the poster mints the miss row --------------------------------------------------
 
 def _miss_view() -> dict[str, Any]:
     return {"effector": "miss", "asserted": [], "candidates": [], "credences": [],

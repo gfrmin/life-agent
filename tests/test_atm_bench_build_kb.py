@@ -1,4 +1,4 @@
-"""r51b (2a) — `scripts/atm_bench/build_kb.py`: the external KB built from ATM-Bench's files.
+"""`scripts/atm_bench/build_kb.py`: the external KB built from ATM-Bench's files.
 
 Layout under ``--out DIR``: ``DIR/kb`` (the second LIFE_AGENT_KB), ``DIR/emails`` as a SIBLING
 (the ingest guard refuses a root inside the KB or the store), ``DIR/pkm.yaml``; the content
@@ -71,7 +71,7 @@ def test_eml_omits_date_when_timestamp_unparseable() -> None:
 
 
 def test_eml_renders_through_the_deployed_email_producer(tmp_path: Path) -> None:
-    # the deployed producer end-to-end (`M-7`): the rendered text carries Subject + detail
+    # the deployed producer end-to-end: the rendered text carries Subject + detail
     p = tmp_path / "e.eml"
     p.write_bytes(B.eml_bytes(REC))
     res = EmailProducer(installed_email_version()).produce(p, "h", {})
@@ -119,7 +119,7 @@ def test_questions_yaml_loads_through_load_questions(tmp_path: Path) -> None:
 
 def test_registry_doc_passes_the_ingest_guard_only_as_a_sibling(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    out, store = tmp_path / "r51", tmp_path / "store"
+    out, store = tmp_path / "atm", tmp_path / "store"
     kb, emails = out / "kb", out / "emails"
     for d in (kb, emails, store, kb / "emails"):
         d.mkdir(parents=True)
@@ -208,7 +208,7 @@ def _snapshot(root: Path) -> dict[str, tuple[int, bytes]]:
 def test_main_builds_the_layout_prints_counts_only_and_a_second_run_writes_nothing(
         tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     emails, qa, real = _inputs(tmp_path)
-    out, store = tmp_path / "r51", tmp_path / "store"
+    out, store = tmp_path / "atm", tmp_path / "store"
     argv = ["--emails", str(emails), "--qa", str(qa), "--out", str(out), "--store", str(store),
             "--gauge-from", str(real), "--hf-revision", "abc123", "--no-pkm"]
     assert B.main(argv) == 0

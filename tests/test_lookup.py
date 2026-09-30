@@ -230,7 +230,7 @@ def test_observe_hits_collapses_correlated_duplicate_documents(migrated_root: Pa
     # correlated witnesses, not independent — observe_hits, the shared evidence SHAPER, collapses
     # them to one. The §5 dedup must live here, not only in the host lookup_posterior: the
     # decouple split shaping from deciding, so a dedup in the host decider never reached the
-    # daemon path (bridge /extract → to_abstract_observations) and the q-002/q-014 confident-wrong
+    # decider path (bridge /extract → to_abstract_observations) and the q-002/q-014 confident-wrong
     # regression stayed latent in the executor.
     quote = "Passport No: P1234567"  # PII-OK: synthetic passport
     client = FakeClient({"found": True, "value": "P1234567", "quote": quote})
@@ -253,11 +253,11 @@ def test_observe_hits_keeps_independent_value_only_corroboration(migrated_root: 
     assert len(obs) == 2  # value-only quotes don't collapse — independent corroboration stands
 
 
-def test_daemon_abstract_observations_collapse_correlated_duplicates(
+def test_abstract_observations_collapse_correlated_duplicates(
         migrated_root: Path) -> None:
     # The executor's evidence shaping end-to-end: observe_hits → to_abstract_observations is
-    # exactly what the daemon (Move 2) consumes. A correlated duplicate must not reach it as two
-    # witnesses (which saturated the §4.2-less posterior — the regression). This is the daemon-seam
+    # exactly what the decider consumes. A correlated duplicate must not reach it as two
+    # witnesses (which saturated the §4.2-less posterior — the regression). This is the decider-seam
     # lock: it would also fail if to_abstract_observations ever re-expanded a collapsed cluster.
     from life_agent.bridge.observations import to_abstract_observations
     quote = "Passport No: P1234567"  # PII-OK: synthetic passport
@@ -266,7 +266,7 @@ def test_daemon_abstract_observations_collapse_correlated_duplicates(
             _hit("b" * 64, f"FWD: {quote} issued 2019")]
     obs, _ = observe_hits(migrated_root, "passport number?", hits, client=client)
     _candidates, abstract = to_abstract_observations(obs)
-    assert len(abstract) == 1  # the daemon sees one witness, not a saturating duplicate
+    assert len(abstract) == 1  # the decider sees one witness, not a saturating duplicate
 
 
 def test_extractor_reliability_learns_from_eval_outcomes(tmp_path: Path) -> None:
@@ -428,7 +428,7 @@ def test_dedup_correlated_keeps_independent_corroboration() -> None:
 
 
 def test_dedup_correlated_one_document_attests_one_value_once() -> None:
-    # r09c A1: within ONE document, every observation of the SAME value is one attestation —
+    # Within ONE document, every observation of the SAME value is one attestation —
     # identical quotes, near-duplicate boilerplate, or repeated page headers alike. The old
     # rule skipped within-document rows on the premise that the per-document group "already
     # counts it once"; the group mechanism counts them CORRELATED, not once (q2-105: twelve

@@ -129,7 +129,7 @@ def usable_terms(raw: str) -> str:
     a hand-mirrored copy had already drifted silent; the seam is now pinned by test).
     Gates refusal prose to '' (the callers' fail-open contract falls back to
     the raw-question query) and NAMES the fallback on every PROCESS surface — the
-    bridge daemon's journal. Honest scope (PR #64 review): the
+    bridge's journal. Honest scope: the
     note does NOT yet reach the owner's reply payload (Telegram / rendered answer);
     that user-facing disclosure is a named future refinement, and this print is
     observability until it lands. Applied post-cache, so already-recorded

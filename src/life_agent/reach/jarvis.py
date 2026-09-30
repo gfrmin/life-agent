@@ -36,7 +36,7 @@ log = logging.getLogger("jarvis")
 NLU_MODEL = os.environ.get("JARVIS_NLU_MODEL", "claude-haiku-4-5-20251001")
 POLL_TIMEOUT = 30
 
-# The canonical intent vocabulary (docs/interaction-contract.md): one table, three
+# The canonical intent vocabulary: one table, three
 # renderings — the NLU prompt's "Available actions" block, and the help reply. Each
 # entry is (action, JSON schema line for the model, help line for the human). The
 # drift gates in tests/test_reach.py assert every action dispatches and appears in
@@ -247,7 +247,7 @@ def handle_action(parsed: dict[str, Any], user_id: int) -> str:
 
 # Dead-man heartbeat: "active (running)" cannot distinguish a polling jarvis from a hung
 # one, so after each completed poll cycle we ping a monitor URL whose silence pages.
-# Env-gated (absence = disabled, the membrane convention); attempts are rate-limited; a
+# Env-gated (absence = disabled); attempts are rate-limited; a
 # monitoring outage must never take reach down with it.
 HEARTBEAT_ENV = "JARVIS_HEARTBEAT_URL"
 _HEARTBEAT_MIN_INTERVAL_S = 60.0

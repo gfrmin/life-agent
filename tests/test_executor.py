@@ -1,11 +1,11 @@
 """Hermetic tests for the body's executor loop (core/executor.py).
 
-The loop drives the credence answer-brain daemon's VOI schedule over the life-agent bridge:
+The loop drives the decider's VOI schedule over the life-agent bridge:
 route → retrieve → probe → extract → /decide, enacting each net_voi-scheduled transform the
-daemon returns and re-deciding until a terminal effector. The decision lives in the daemon;
+decider returns and re-deciding until a terminal effector. The decision lives in the decider;
 this is the BODY that enacts it. I/O is injected (post/get), so the whole control flow — grow
 escalation, recency acknowledgement, corroborate-tier enaction, terminal mapping — is pinned
-WITHOUT a live daemon or bridge.
+WITHOUT a live bridge.
 """
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ from life_agent.core import executor as EX
 from life_agent.core import route_row as RR
 
 B = "http://bridge"
-D = "http://daemon"
+D = "http://decider"
 _U = {"u_correct": 1.0, "u_wrong": -5.0, "u_abstain": 0.0,
       "oracle_p": 0.9, "lambda_int": 0.1, "kappa_att": 0.0, "lambda_usd": 1.0}
 _HIT = [{"artifact_cache_key": "d0", "chunk_text": "Passport No: P123"}]
@@ -50,7 +50,7 @@ _GROW_MENU = {
 
 
 class FakeServices:
-    """A scripted bridge + daemon. ``decides`` is consumed in order (the daemon's effector
+    """A scripted bridge + decider. ``decides`` is consumed in order (the decider's effector
     stream); ``extracts``, when given, is consumed per /extract call (a grow pass re-extracts);
     every other endpoint returns its fixed fixture. Records calls for assertions."""
 
@@ -111,7 +111,7 @@ class FakeServices:
 
     def get(self, url: str) -> dict[str, Any]:
         self.calls.append((url, None))
-        if url.split("?")[0].endswith("/utility"):  # r30: a shape= query string may follow
+        if url.split("?")[0].endswith("/utility"):  # a shape= query string may follow
             return {"u_bar": self.utility}
         if url.endswith("/grow_menu"):
             return {"grow": _GROW_MENU}
@@ -271,7 +271,7 @@ def test_view_threads_the_competed_observation_count() -> None:
 
 
 def test_corroborate_tier_is_enacted_then_report() -> None:
-    # The daemon schedules a corroborate at the haiku tier; the body re-reads (whole-doc,
+    # The decider schedules a corroborate at the haiku tier; the body re-reads (whole-doc,
     # subject-aware) at that tier's model and re-decides on the replacement channel.
     fake = FakeServices(
         route={"construct": "tax id", "time_indexed": False},
@@ -321,8 +321,8 @@ def test_grow_lane_decider_schedules_retrieve_expand() -> None:
     assert logged[0]["sensors"]["p_none"] == "hi"                     # NONE is MAP ⇒ hi
 
 
-def test_grow_lane_respects_a_daemon_decline() -> None:
-    # The daemon prices the grow lane and still withholds terminally ⇒ the body enacts NOTHING —
+def test_grow_lane_respects_a_decider_decline() -> None:
+    # The decider prices the grow lane and still withholds terminally ⇒ the body enacts NOTHING —
     # no cascade, no retry. The agent decides; the body carries it out (the de-patch).
     fake = FakeServices(
         route={"construct": "passport number", "time_indexed": False},
@@ -337,7 +337,7 @@ def test_grow_lane_respects_a_daemon_decline() -> None:
 
 
 def test_grow_lane_re_extract_strong_enlarges_k() -> None:
-    # The daemon schedules the strong re-extract; the whole-doc re-read names a value OUTSIDE
+    # The decider schedules the strong re-extract; the whole-doc re-read names a value OUTSIDE
     # the local candidate set ⇒ allow_new enlarges K and the re-decide reports the new value.
     fake = FakeServices(
         route={"construct": "tax id", "time_indexed": False},
@@ -407,7 +407,7 @@ def test_grow_lane_log_gather_failure_never_breaks_the_answer() -> None:
 
 
 def test_re_extract_strong_adopts_the_bridge_reply_verbatim() -> None:
-    # r09: the JOIN lives bridge-side (pinned in test_bridge_server); the executor adopts
+    # The JOIN lives bridge-side (pinned in test_bridge_server); the executor adopts
     # whatever observations the reply carries — this scripted bridge returns an empty set,
     # so the channel empties HERE, while the real bridge would return the joined channel.
     # The strong re-read REPLACES the channel exactly as corroborate does when it
@@ -453,11 +453,10 @@ def test_re_extract_strong_null_reread_keeps_the_channel() -> None:
 
 
 def test_corroborate_tier_null_read_keeps_the_channel_reply_adopted_otherwise() -> None:
-    # r09: same note — the executor adopts the non-null reply verbatim; the real bridge
+    # Same note — the executor adopts the non-null reply verbatim; the real bridge
     # returns the §5-deduped join, so a disagree keeps the channel live (test_bridge_server).
-    # The same split on the daemon-scheduled tier — the branch that cost 12 of run 9's
-    # 69 withholdings. A null read keeps the channel; a disagreeing one still erases it
-    # (run 7's disagree⇒abstain contract, untouched).
+    # The same split on the decider-scheduled tier. A null read keeps the channel; a
+    # disagreeing one still erases it (the disagree⇒abstain contract, untouched).
     def _run(corroborate: dict[str, Any]) -> list[dict[str, Any]]:
         fake = FakeServices(
             route={"construct": "tax id", "time_indexed": False},
@@ -523,7 +522,7 @@ def test_render_view_abstain_with_no_candidates() -> None:
 
 
 def test_render_view_report_shows_the_leaders_credence_not_index0() -> None:
-    # The daemon returns credences in CANDIDATE order (server.jl w[1:k]), not weight-sorted; the
+    # The decider returns credences in CANDIDATE order, not weight-sorted; the
     # reported value is the MAP/leader, generally NOT index 0. render_view must show the LEADER's
     # credence — else a report states the first-extracted candidate's probability (the bridge's
     # /log_decision already sorts leader-first; render_view must match).
@@ -856,7 +855,7 @@ def test_join_posts_carry_the_candidates_base_competition() -> None:
 
 
 def test_deliberate_gather_is_enacted_and_folds_through_its_curve() -> None:
-    # The daemon schedules the deliberate transform (the promoted A1b edge); the body
+    # The decider schedules the deliberate transform (the promoted A1b edge); the body
     # enacts it via /probe/deliberate and re-decides at curve(confidence) for the
     # deliberate@<model> edge — the raw self-report is a signal, never the rho.
     curves = _fitted_curves("deliberate@claude-opus-4-8", 0.85)
@@ -1041,8 +1040,8 @@ def test_run_pass_prices_the_menu_in_owner_utility_via_lambda_usd() -> None:
 
 
 def test_run_pass_without_the_rate_latent_fails_loud() -> None:
-    # E-5 (M4, r14): lambda_usd is a REQUIRED latent — the old silent $1 ≈ 1-gauge
-    # default died with the module-local fallbacks; a u_bar lacking the latent is a
+    # lambda_usd is a REQUIRED latent — there is no silent $1 ≈ 1-gauge
+    # default; a u_bar lacking the latent is a
     # modelling error, never a quietly re-priced menu.
     fake = FakeServices(
         route={"construct": "tax id", "time_indexed": False},
@@ -1452,7 +1451,7 @@ def test_tier_rho_and_menu_rho_never_drift() -> None:
 
 
 def test_menu_transforms_prices_what_enactment_can_deliver() -> None:
-    # C2: the daemon must never buy a probe at a rho the body cannot cash. Without
+    # C2: the decider must never buy a probe at a rho the body cannot cash. Without
     # curves the tiers keep their declared priors (parity) and the deliberate row
     # prices at the conservative cap; with fitted curves every voi row re-prices at
     # the SAME fold the enactment will use.
@@ -1579,7 +1578,7 @@ def test_instrument_client_is_lazy_on_secrets(monkeypatch) -> None:
 
 def test_the_priced_lane_is_the_only_lane() -> None:
     # M1: there is no lane flag left to pass. decide_via_loop consults the grow menu on the
-    # ordinary path, because recall growth is the daemon's priced row and nothing else.
+    # ordinary path, because recall growth is the decider's priced row and nothing else.
     fake = FakeServices(
         route={"construct": "passport number", "time_indexed": False},
         decides=[{"effector": "abstain", "credences": [0.2, 0.1], "p_none": 0.7, "eu": -0.1}] * 3)
@@ -1590,7 +1589,7 @@ def test_the_priced_lane_is_the_only_lane() -> None:
 def test_the_body_side_cascade_is_gone() -> None:
     # E-13/E-14: a withholding pass whose belief says the answer is OUTSIDE the set (p_none ≥
     # leader) used to trigger a body-side rerank→expand escalation. It no longer does: the
-    # daemon is asked WITH the grow block, declines, and the body enacts nothing. Exactly one
+    # decider is asked WITH the grow block, declines, and the body enacts nothing. Exactly one
     # recall pass, and no reranked one — `p_none ≥ leader` is a sensor, never control flow.
     fake = FakeServices(
         route={"construct": "passport number", "time_indexed": False},
@@ -1602,7 +1601,7 @@ def test_the_body_side_cascade_is_gone() -> None:
     assert not any(r["rerank"] for r in retrieves)
 
 
-# --- r09: the correlation key and the channel handoff (D1/D2) --------------------------------
+# --- the correlation key and the channel handoff (D1/D2) --------------------------------
 
 _EXTRACT_KEYED = {
     "candidates": ["P123"],
@@ -1614,7 +1613,7 @@ _EXTRACT_KEYED = {
 
 
 def test_decide_payloads_never_carry_the_wire_key() -> None:
-    """r09 D1: the brain stays string-blind — the executor strips the correlation-key fields
+    """D1: the brain stays string-blind — the executor strips the correlation-key fields
     (quote, doc_key) from every /decide post, while the channel it holds and hands to probes
     keeps them."""
     fake = FakeServices(
@@ -1631,7 +1630,7 @@ def test_decide_payloads_never_carry_the_wire_key() -> None:
 
 
 def test_corroborate_payload_carries_the_standing_channel() -> None:
-    """r09 D2: the S1/S4/S5 corroborate call hands the bridge the executor's CURRENT
+    """D2: the S1/S4/S5 corroborate call hands the bridge the executor's CURRENT
     observations (key-carrying), so the §5-deduped JOIN is computed where the deployed rule
     lives. The reply's observations are adopted verbatim — the replace line becomes a join
     because the reply is the join."""
@@ -1658,7 +1657,7 @@ def test_corroborate_payload_carries_the_standing_channel() -> None:
 
 
 def test_deliberate_payload_carries_the_standing_channel() -> None:
-    """r09 D2, the S3 edge: /probe/deliberate receives the standing channel too."""
+    """D2, the S3 edge: /probe/deliberate receives the standing channel too."""
     fake = FakeServices(
         route={"construct": "fax number", "time_indexed": False},
         extract=_EXTRACT_KEYED,
@@ -1676,10 +1675,9 @@ def test_deliberate_payload_carries_the_standing_channel() -> None:
     assert delib and delib[0]["observations"] == _EXTRACT_KEYED["observations"]
 
 
-# --- r09d D3: S2 joins instead of replacing ----------------------------------------------
-# r09's JOIN reached S1/S3/S4/S5 and left S2 — the retrieval grow — replacing. r09c measured
-# the cost on the deployed tree: seven rows shrink at S2, and on two of them a
-# five-observation channel becomes one, taking a CORRECT leader under the report bar with it.
+# --- D3: S2 joins instead of replacing ----------------------------------------------
+# The JOIN covers S1/S3/S4/S5 and S2 — the retrieval grow — too: replacing the channel at S2
+# could shrink a five-observation channel to one, taking a CORRECT leader under the report bar.
 # A grow that grounds new candidates must ADD evidence, never discard the standing channel.
 
 def _wobs(reports: int, doc: str, value: str) -> dict[str, Any]:
@@ -1732,7 +1730,7 @@ def test_s2_grow_that_grounds_nothing_still_leaves_the_channel_alone() -> None:
 
 
 def test_render_view_miss_footer_never_fabricates_a_posterior_number() -> None:
-    # r33 RC-3: the miss view carries p_none=None / eu=None (no posterior ever existed);
+    # The miss view carries p_none=None / eu=None (no posterior ever existed);
     # coercing them to 0.000 printed "I found nothing" identically to a genuine posterior
     # that put ZERO mass on NONE — the honesty trap came out right for the wrong reason.
     view = {"effector": "miss", "asserted": [], "candidates": [], "credences": [],

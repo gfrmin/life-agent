@@ -1,6 +1,6 @@
 """The deliberative answer edge (core/deliberate.py) — the promoted A1b arm.
 
-The edge is a declared monolithic-class instrument (bayesian-foundations §2): its
+The edge is a declared monolithic-class instrument: its
 self-reported CREDENCE line is an observable *signal*, parsed off the answer text and
 never folded as reliability directly (§1 M3). Hermetic: the claude CLI is injected as a
 runner fake; no subprocess, no network.
@@ -105,7 +105,7 @@ def test_prompt_v2_keeps_the_v1_surface_contract_and_adds_protocol_lines() -> No
     assert "ANSWER:" in DL.PROMPT_DELIB_V2
 
 
-# --- the pre-call stage key (system-design §3: keyed before any model call) -------------
+# --- the pre-call stage key (keyed before any model call) -------------
 
 def test_deliberate_key_is_stable_and_input_sensitive() -> None:
     kw = dict(model="claude-opus-4-8", prompt_template=DL.PROMPT_DELIB_V2, max_turns=40)
@@ -303,7 +303,7 @@ def test_answer_pins_permission_mode_and_allowed_tools(tmp_path: Path) -> None:
     assert set(seen["env"]) <= {"HOME", "PATH"}
 
 
-# --- record_answer: the §18.9 on-ledger artifact ------------------------------------------
+# --- record_answer: the §18.9 recorded artifact ------------------------------------------
 
 def _ok_result(tmp_path: Path, question: str = "what is my rent?") -> DL.DeliberateResult:
     def runner(cmd, env, cwd, timeout_s):  # type: ignore[no-untyped-def]

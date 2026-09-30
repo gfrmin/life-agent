@@ -1,7 +1,7 @@
 """Pure line-grammar of the ask REPL (the interaction contract).
 
 Same dependency-free style as tests/test_ask.py: here we pin the ONE line grammar
-(identical in REPL and one-shot argv, docs/interaction-contract.md) — nothing silent,
+(identical in REPL and one-shot argv) — nothing silent,
 nothing arbitrary.
 """
 

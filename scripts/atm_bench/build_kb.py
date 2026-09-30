@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""build_kb — the external KB built from ATM-Bench's released files (r51b 2a).
+"""build_kb — the external KB built from ATM-Bench's released files.
 
 Layout under ``--out DIR``: ``DIR/kb`` (the second ``LIFE_AGENT_KB``), ``DIR/emails`` as a
 SIBLING of the KB (the ingest guard refuses a root inside the KB or the content store),
@@ -142,7 +142,7 @@ def registry_doc(emails_dir: Path) -> dict[str, Any]:
 
 
 def pkm_config_doc(store: Path) -> dict[str, Any]:
-    """Binds the INSTALLED email-producer version (`M-7`), never the literal."""
+    """Binds the INSTALLED email-producer version, never the literal."""
     return {"root_dir": str(store),
             "extractors": {"email": {"version": installed_email_version(), "config": {}}}}
 

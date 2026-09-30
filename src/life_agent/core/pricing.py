@@ -11,9 +11,9 @@ Local Ollama models (``qwen*`` prefix) cost nothing — the request never leaves
 Bump :data:`PRICING_VERSION` whenever a price changes, so a cost total computed against an
 older version can be told apart from one computed against the current table.
 
-Since M4 (design §4.2, r14) this module is THE price table: every priced constant that
+This module is THE price table: every priced constant that
 ranks an action — the corroborate tier ladder, the transform menu, the deliberate row,
-the grow actuators, the re-read model, and the reliability prior column (§3.2/D-2) —
+the grow actuators, the re-read model, and the reliability prior column —
 is declared here, once, as data. The executor and grow modules BIND these rows; the
 reliability fold imports its priors from here, and so do the covariate attenuations, the
 answer and expansion models and the other stated priors the rest of the package binds (law
@@ -30,7 +30,7 @@ if TYPE_CHECKING:
 
 PRICING_VERSION = 3
 
-# r21 (CP-D): the §18.14 extract_amounts derive's planning price — one haiku call on a
+# The extract_amounts derive's planning price — one haiku call on a
 # head-capped (20k chars) document; the demand-led warm's cap formula reads this row
 # (n_questions x k x this). A per-call REALISED cost still comes from usage x price_of.
 EXTRACT_AMOUNTS_USD = 0.01
@@ -95,9 +95,9 @@ def cost_usd(r: LLMResult) -> float | None:
     ) / 1_000_000
 
 
-# --- the menu half of the table (M4, design §4.2) ----------------------------------------
+# --- the menu half of the table ----------------------------------------
 
-# The corroborate model-tier ladder: the body names the tier (the daemon schedules it by
+# The corroborate model-tier ladder: the body names the tier (the decider schedules it by
 # name); each tier carries the model it re-reads with and the reliability that re-read is
 # conditioned at (the declared value is the curve-conditioned read's COLD fallback — a
 # prior, not a fixed reliability).
@@ -108,7 +108,7 @@ TIER_RHO: dict[str, float] = {"corroborate_haiku": 0.80, "corroborate_sonnet": 0
                               "corroborate_opus": 0.95}
 GATHER_RHO = 0.95  # the corroborate re-read's default reliability (the opus tier's)
 
-# The per-question transform MENU the body offers the daemon (the daemon prices +
+# The per-question transform MENU the body offers the decider (the decider prices +
 # schedules; the body enacts the arg-max by probe name). Guards fire on a precondition
 # (era_split / an owner-scoped report); voi tiers fire when a leader is below the EU bar,
 # each at a stated reliability + cost (frozen-blind world-knowledge priors, monotone in
@@ -126,12 +126,12 @@ DEFAULT_TRANSFORMS: list[dict[str, Any]] = [
 ]
 
 # The deliberative edge as a menu row (core/deliberate — the promoted A1b arm). The SEED
-# template — never offered to the daemon as-is: menu_transforms() re-prices its rho to
+# template — never offered to the decider as-is: menu_transforms() re-prices its rho to
 # what the enactment fold can actually deliver. rho_seed 0.92 = the arm's measured 92.3%
 # correct and cost 0.38 = the run's mean $/question (both ff-v2-delib-20260719, frozen
 # blind). Costs are AUTHORED IN USD (as are the tier costs); run_pass converts them to
-# gauge utility at u_bar's elicited lambda_usd exchange rate before the daemon reads
-# them — the latent is REQUIRED of every model (E-5: a missing latent fails loud).
+# gauge utility at u_bar's elicited lambda_usd exchange rate before the decider reads
+# them — the latent is REQUIRED of every model (a missing latent fails loud).
 DELIBERATE_MODEL = "claude-opus-4-8"
 DELIBERATE_TRANSFORM: dict[str, Any] = {
     "name": "deliberate", "probe": "deliberate", "kind": "voi",

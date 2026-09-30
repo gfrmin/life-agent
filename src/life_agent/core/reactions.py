@@ -1,4 +1,4 @@
-"""The reaction log + the verdict→Reaction producer — bayesian-foundations §4.4 loop.
+"""The reaction log + the verdict→Reaction producer.
 
 The owner's reactions to the agent's logged EU decisions are revealed-preference evidence
 about utility. This module is the calibration leg's third append-only log
@@ -67,7 +67,7 @@ VALENCES: dict[str, frozenset[str]] = {"verdict": frozenset({"good", "bad"})}
 # Every verdict that becomes fold evidence passes through this projection. Its declared
 # domain, in full (a verdict route not named here does not fold — absence from the
 # domain is the declared exclusion, never an accident):
-#   (1) the (action, valence) → y table ``VERDICT_Y`` below (M-7's domain rule:
+#   (1) the (action, valence) → y table ``VERDICT_Y`` below (the domain rule:
 #       ask_clarify/gather and any unrecognised pair are a named exclusion —
 #       ambiguous is not evidence).
 #   (2) the utility-evidence branches in this module (R-3: which verdicts become
@@ -213,9 +213,9 @@ def ask_recovery_rate(decisions_path: Path, reactions_path: Path) -> float:
 
 def can_fold(d: DEC.DecisionEvent) -> bool:
     """Whether a verdict on ``d`` can move the utility posterior: only an abstain, and never a
-    ``miss`` (r33 RC-1: a verdict on a COVERAGE failure is not utility evidence — folding it
+    ``miss`` (a verdict on a COVERAGE failure is not utility evidence — folding it
     would read "bad, you found nothing" as "wrongness costs me less" and feed the one-sided
-    bar drift r32 priced, 0.900 → 0.837) nor a ``route`` decline (the question was never
+    bar drift from 0.900 towards 0.837) nor a ``route`` decline (the question was never
     attempted). The ONE rule: the fold below and every reply that names a verdict's fate
     read it here."""
     return d.chosen_action == "abstain" and d.regime not in ("miss", "route")

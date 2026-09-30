@@ -8,7 +8,7 @@ as-of date — so it can read attribution across the whole context and withhold 
 belongs to someone else. It is the executor's costlier extraction edge; the executor runs it by
 VOI, picking the model tier (``claude-haiku-…`` / ``-sonnet-…`` / ``-opus-…``) as the cost knob.
 
-Everything-on-ledger (system-design §3): the edge is a content-addressed node, key-before-call
+Everything is recorded: the edge is a content-addressed node, key-before-call
 (``derivations.joint_extract_key``), so a re-ask of a committed question costs zero tokens. The
 **model must be a dated snapshot, never an alias** — LLM APIs are non-stationary; the key pins
 the snapshot and the served model is recorded for audit.

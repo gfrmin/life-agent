@@ -1,6 +1,6 @@
 """The ledger→knowledge projection: ``fold(events)`` rendered as one document.
 
-The mutable→knowledge mirror of ``project.py`` (system-design.md §5). The GTD
+The mutable→knowledge mirror of ``project.py``. The GTD
 event ledger is the act layer's truth; this module projects its fold into a
 markdown document at one stable declared path so the knowledge base can retrieve
 it like any source — "what's next on my gtd list?" becomes an ordinary cited

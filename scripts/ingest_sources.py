@@ -314,7 +314,7 @@ def preflight(pkm_config: Path,
 def stages(*, extract: bool, chunk: bool) -> list[list[str]]:
     """Pure: the `pkm` stage sequence for one promote. `ingest` alone only
     registers sources; `--extract`/`--chunk` complete the searchable promote.
-    Porcelain owns the sequencing knowledge (docs/interaction-contract.md):
+    Porcelain owns the sequencing knowledge:
     a chunk pass is always followed by `rebuild-index`, because chunks the
     FTS index hasn't seen are silently invisible to search."""
     plan: list[list[str]] = [["ingest"]]

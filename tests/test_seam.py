@@ -21,7 +21,7 @@ SRC = Path(__file__).resolve().parents[1] / "src" / "life_agent"
 
 # --- gates: declared observations decide, the engine is not consulted --------------------
 
-# r23 (F8): the exemption is an EXACT repo-relative path, never a basename. `p.name` let
+# The exemption is an EXACT repo-relative path, never a basename. `p.name` let
 # a file called `seam.py` ANYWHERE under src/life_agent exempt itself from the guard that
 # says one function commits acts — a fork committing acts outside the seam, invisible.
 _SEAM_EXEMPT = frozenset({"core/seam.py"})

@@ -7,7 +7,7 @@ renders the reply with its citations, then captures a one-key good/bad verdict i
 session log under $LIFE_AGENT_KB. The captured misses are the spec for what to build next.
 
 Run (from the repo root, for pkm.retrieval + duckdb). One-shot argv is the SAME line
-grammar as the REPL (docs/interaction-contract.md):
+grammar as the REPL:
     bin/ask-live                                   # interactive REPL
     bin/ask-live "what is my ID?"                  # answer once, prompt for a verdict
     bin/ask-live "/tell My name is …"              # record an authoritative owner fact
@@ -67,7 +67,7 @@ def _cards_from_set(hits: list[dict[str, Any]]) -> list[tuple[C.SourceCard, floa
 
 DEFAULT_K = 8  # matches phase1_answer.py's synthesis-context default
 
-# The ONE line grammar (docs/interaction-contract.md): identical in the REPL and in
+# The ONE line grammar: identical in the REPL and in
 # one-shot argv. Each entry is (form, meaning, example); the example is parsed by the
 # drift-gate test, so an entry the parser stops accepting fails CI, not the owner.
 GRAMMAR: tuple[tuple[str, str, str], ...] = (
@@ -137,27 +137,26 @@ def parse_line(line: str) -> Parsed:
     return Parsed(kind="ask", question=line)
 
 
-# --- the executor read-path (--executor): the daemon decides, the body enacts --------- #
-# PRINCIPLES §16/§4: drive the question through the credence answer-brain daemon's VOI schedule
-# (core.executor) over the capability bridge, render the decision in the SAME credence grammar the
-# in-process lookup family uses, and log the terminal lookup decision to the calibration log so the
-# owner's g/b verdict folds into u(wrong) through the EXISTING reaction loop (the bridge's
-# /log_decision owns the write, shaping it as the lookup family's own; the in-session verdict binds
-# to its content-addressed id). Flag-gated; the default path is untouched.
-# D-13: the stack URLs are read ONCE (ask_client); these are bindings, not reads.
+# --- the executor read-path (--executor): the bridge decides, the body enacts --------- #
+# Drive the question through the bridge's decider (core.executor) over the capability bridge,
+# render the decision in the SAME credence grammar the in-process lookup family uses, and
+# log the terminal lookup decision to the calibration log so the owner's g/b verdict folds into
+# u(wrong) through the EXISTING reaction loop (the bridge's /log_decision owns the write, shaping
+# it as the lookup family's own; the in-session verdict binds to its content-addressed id).
+# Flag-gated; the default path is untouched.
+# The stack URLs are read ONCE (ask_client); these are bindings, not reads.
 EXECUTOR_BRIDGE = AC.BRIDGE
 EXECUTOR_DOWN = AC.DOWN
 # the last executor decision's id (the bridge's content-addressed "ab-…") — the in-session g/b
 # verdict binds to it (the executor analogue of LOOKUP_LAST.answer_cache_key); None when the last
-# answer was a miss / narrative / daemon-down (nothing foldable to bind).
+# answer was a miss / narrative / bridge-down (nothing foldable to bind).
 EXECUTOR_LAST: str | None = None
 # the last executor decision's own structured View (life_agent.core.executor.View) — held so a
-# downstream consumer (e.g. the fair-fight harness's scripts/fairfight/arm_baseline.py) can build
-# a real decision_view instead of re-parsing the rendered free text: the rendered string alone
-# does not let a consumer recognise the credence grammar's own withholding renderings, so a
-# free-text decline detector reads every withholding as an assertion. Reset at the top of
-# answer_via_executor like every other "*_LAST" seam; None when the last call never reached a
-# decision (daemon down) — never a stale prior question's view.
+# downstream consumer can build a real decision_view instead of re-parsing the rendered free
+# text: the rendered string alone does not let a consumer recognise the credence grammar's own
+# withholding renderings, so a free-text decline detector reads every withholding as an
+# assertion. Reset at the top of answer_via_executor like every other "*_LAST" seam; None when
+# the last call never reached a decision (bridge down) — never a stale prior question's view.
 EXECUTOR_VIEW_LAST: dict[str, Any] | None = None
 # when set (the gate's executor arm), logged decisions carry this run_id so in-gate rows are
 # distinguishable from live traffic in decisions.jsonl; None (live) posts no run_id and the
@@ -187,11 +186,11 @@ def answer_via_executor(question: str, k: int
     """Ask's EXECUTOR-LANE SURFACE over the one driver
     (:func:`life_agent.core.ask_client.drive`): route → retrieve → probe → extract →
     /decide, then render in the shared credence grammar. The driver posts the one
-    /log_decision body (design §5.1) and, on a down stack, commits the declared gate +
-    appends the §6.5 unavailability record; this surface owns ask's concerns — the
+    /log_decision body and, on a down stack, commits the declared gate +
+    appends the unavailability record; this surface owns ask's concerns — the
     EXECUTOR_* globals, cards/scores, and the interaction contract's EXECUTOR_DOWN string —
     and is what run_eval's typed arm calls DIRECTLY (the full dispatch's in-process
-    fallback must never silently switch a gate's arm — r13 amendment 4)."""
+    fallback must never silently switch a gate's arm)."""
     global EXECUTOR_LAST, EXECUTOR_VIEW_LAST
     EXECUTOR_LAST = None
     EXECUTOR_VIEW_LAST = None
@@ -394,7 +393,7 @@ def ask_once(question: str, k: int) -> None:
 
 
 # --- GTD: the act ledger's knowledge projection, refreshed on demand ------- #
-# system-design.md §5: before a question is answered, if the GTD ledger has
+# Before a question is answered, if the GTD ledger has
 # moved past its projected state document, re-project and re-ingest it — the
 # degenerate (deterministic, near-zero-cost) case of derive-when-stale, so the
 # decision is simply "always derive". Nothing silent: the outcome is printed
@@ -464,7 +463,7 @@ def _reingest_state(root: Path, state: Path) -> None:
     cfg = pkm_load_config(C.PKM_CONFIG)
     prefix = hashlib.sha256(state.read_bytes()).hexdigest()[:16]
     # Reconcile-or-refuse (SPEC §18.9 meets §6.2): the extract's orphan sweep removes every
-    # file-complete artefact whose catalogue row lags — the r03 loss. Register what is
+    # file-complete artefact whose catalogue row lags. Register what is
     # registerable NOW (the startup reconcile does not cover the REPL's per-question refresh),
     # and if any registerable key is still pending, do not extract: the caller names it,
     # un-stamps the state doc, and the next ask retries.
@@ -606,7 +605,7 @@ def main(argv: list[str] | None = None) -> int:
     root = _pkm_root()
     if root is not None:
         # best-effort by contract; on any failure the files stay authoritative — but a failure
-        # of the pass itself is never silent (reconcile counts and WARNs per key; r00 Q2)
+        # of the pass itself is never silent (reconcile counts and WARNs per key)
         try:
             D.reconcile(root)
         except Exception as e:
@@ -614,7 +613,7 @@ def main(argv: list[str] | None = None) -> int:
                 "startup reconcile pass failed (%s) — files stay authoritative; retried next ask",
                 type(e).__name__)
 
-    # Demand-led GTD refresh (system-design.md §5), BEFORE the read-only
+    # Demand-led GTD refresh, BEFORE the read-only
     # connection opens: a one-shot question and the REPL's first question both
     # see fresh act-layer state. Mid-REPL changes are caught per-question.
     ensure_gtd_fresh()

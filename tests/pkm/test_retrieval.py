@@ -360,7 +360,7 @@ def test_search_returns_at_most_k_results(migrated_root: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# §6.13 — the LIMIT cut is part of the declared order (r08)
+# §6.13 — the LIMIT cut is part of the declared order
 # ---------------------------------------------------------------------------
 
 

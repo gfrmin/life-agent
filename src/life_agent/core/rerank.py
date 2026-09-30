@@ -3,7 +3,8 @@
 Over-fetch a wide lexical pool and let a cloud model surface the chunk that actually carries the
 answer into the top-k. It grows neither the corpus nor K; it *reorders* a wide pool so a buried gold
 reaches extraction (a recall action, not a VOI gather — discovery over a closed candidate set is
-outside the daemon's net_voi; the enlarged/reordered evidence justifies itself on the next decide).
+outside the decider's net value of information; the enlarged/reordered evidence justifies
+itself on the next decide).
 Fail-open: any error (API down, unparseable reply) returns the lexical top-k unchanged, so rerank
 can only improve recall, never break the path. The returned dicts are the pool's own (same
 artifact_cache_key / chunk_text / origin / score), so every downstream key and citation is intact.

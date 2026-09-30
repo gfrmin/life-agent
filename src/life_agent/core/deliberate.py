@@ -1,6 +1,6 @@
 """The deliberative answer edge — the A1b arm promoted to a production transformation.
 
-Declared instrument (bayesian-foundations §2): **construct** = "the corpus-decided answer
+Declared instrument: **construct** = "the corpus-decided answer
 to the question, cited"; **error-model class** = monolithic (free-form generation, the
 widest class — population-calibrated only); **calibration route** = the outcomes log,
 folded per-edge by :mod:`life_agent.core.calibration`. The measured basis for promotion
@@ -14,8 +14,7 @@ executor folds it only through the per-edge reliability curve
 (:func:`life_agent.core.calibration.curve_for` — pessimistic where evidence is thin),
 never as the observation reliability directly.
 
-Origin: ``scripts/fairfight/arm_claude.py`` (kept: the eval harness still runs the frozen
-V1 arm). This module carries none of the eval world — no gold, no grading, no runner
+This module carries none of the eval world — no gold, no grading, no runner
 state; the claude CLI invocation is injectable for hermetic tests.
 """
 from __future__ import annotations
@@ -154,7 +153,7 @@ def detect_decline(text: str) -> bool:
 @dataclass(frozen=True)
 class DeliberateConfig:
     """Everything one deliberative call needs. ``scratch_dir`` holds the per-question MCP
-    config, tool logs, and workdir (the CLI's cwd); it is scratch, never the ledger.
+    config, tool logs, and workdir (the CLI's cwd); it is scratch, never the record.
     The cwd avoids the REPO's CLAUDE.md, but the CLI still loads the machine's ambient
     Claude Code config (user CLAUDE.md, and any CLAUDE.md above the scratch dir — under
     the default KB scratch that includes the KB's own) — deliberately: the reference
@@ -173,7 +172,7 @@ class DeliberateConfig:
 
 def config_from_env() -> DeliberateConfig:
     """The edge's config as every caller builds it: the claude CLI from the env, scratch
-    under the KB (transient, never the ledger), and the pkm MCP config resolved the way the
+    under the KB (transient, never the record), and the pkm MCP config resolved the way the
     rest of the system resolves it (``config.PKM_CONFIG``: the env, else the user's).
 
     A config that does not resolve to a file is refused LOUDLY and up front, because the

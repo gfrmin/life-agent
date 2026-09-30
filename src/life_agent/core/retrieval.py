@@ -63,7 +63,7 @@ def retrieve_set(conn: duckdb.DuckDBPyConnection, question: str, k: int, *,
     parameter."""
     from pkm.retrieval import SearchResult, search
 
-    # Since r08 (SPEC 0.18.2) pkm's SQL cuts this same declared order, so the over-fetch
+    # pkm's SQL cuts this same declared order, so the over-fetch
     # window is the declared prefix of the corpus rather than an engine sample of a tie
     # block (§6.13); the sort below is defence in depth, idempotent over an ordered window.
     # Over-fetch, ORDER, then dedupe: sorting first keeps the dedupe rule unchanged (the

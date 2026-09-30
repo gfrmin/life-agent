@@ -1,7 +1,7 @@
 """The lookup family's evidence shaping — a point-fact question into observations.
 
-V is a point fact ("what is my ID?", "when is the appointment?"). Every stage is on the
-ledger (system-design §3) and every modelling choice is stated:
+V is a point fact ("what is my ID?", "when is the appointment?"). Every stage is recorded
+and every modelling choice is stated:
 
     route      cached model verdict: is this a verbatim point fact? A question that is not
                is declined (the MVP bar, CLAUDE.md)
@@ -209,8 +209,8 @@ _A_TIME_UNKNOWN = PRC.A_TIME_UNKNOWN
 # this machine's catalogue, so no amount of thinking here would have found it.
 REASON_DISPERSED = "dispersed posterior"
 REASON_NO_OBSERVATIONS = "no admitted evidence"
-# (REASON_UNAVAILABLE was retired at r33 A4: defined since M5 and never bound by any
-# render branch — the §6.5 reply is ask_client.DOWN, its own contract string.)
+# (There is no REASON_UNAVAILABLE: the bridge-down reply is ask_client.DOWN, its own
+# contract string.)
 
 # One grammar table for every rendered string (drift-gated; interaction contract).
 # Credences render at three decimals: two rounded 0.997 up to "1.00" on the first live
@@ -227,7 +227,7 @@ GRAMMAR: dict[str, str] = {
     # held-back "thinking" that makes the decision verdictable (is that value right?) rather
     # than a blind "should you have answered?". Used when the posterior held >=1 candidate.
     "abstain_withheld": "No answer asserted ({reason}). Held back: {alts}",
-    # r33 RC-3: {p_none}/{eu} arrive PRE-FORMATTED — a number only when a posterior
+    # {p_none}/{eu} arrive PRE-FORMATTED — a number only when a posterior
     # produced one; a miss (None) renders "—", never a fabricated 0.000 (an "I found
     # nothing" must not print identically to "zero mass on NONE").
     "footer": ("lookup: {n_hits} hits → {n_obs} grounded observations"
@@ -641,9 +641,9 @@ def observe_hits(root: Path, question: str, hits: list[dict[str, Any]], *,
     # §5 dedup (correlation collapse) at the SHARED shaper: collapse correlated duplicate documents
     # (identical-quote forward/reply chains, re-filed copies) to one witness here, BEFORE the
     # shaping→deciding split, so a duplicate cannot saturate the posterior on EITHER decider — the
-    # host lookup_posterior OR the daemon's reliability_categorical (which consumes this verbatim
-    # through to_abstract_observations). Placed in the decider alone (commit 546f1a5), the §4.2
-    # temper never reached the executor path; observe_hits is the single seam both consume.
+    # host lookup_posterior OR the bridge's reliability categorical (which consumes this
+    # verbatim through to_abstract_observations). Placed in the decider alone (commit 546f1a5),
+    # the temper never reached the executor path; observe_hits is the single seam both consume.
     return dedup_correlated(observations), indeterminate
 
 
@@ -681,9 +681,9 @@ def dedup_correlated(observations: list[Observation]) -> list[Observation]:
     wrong value, q-014's 9 stale copies → 0.80). Each substantial-quote cluster spanning
     multiple documents is reduced to the MAX-covariate document's observations — the
     strongest/freshest copy, so a recent re-attestation keeps its recency. Within a single
-    document, ONE VALUE IS ONE ATTESTATION (r09c A1): repeated carriers of the same value —
+    document, ONE VALUE IS ONE ATTESTATION: repeated carriers of the same value —
     identical quotes, near-duplicate boilerplate, page headers — collapse to the
-    first-maximal-covariate row (q2-105: twelve same-doc rows rode the group coarsening to
+    first-maximal-covariate row (twelve same-doc rows once rode the group coarsening to
     0.989; correlated is not once). Across documents, value-ONLY quotes (no shared context)
     do not collapse: genuine independent corroboration must still accumulate. Order-preserving
     and pure."""
@@ -696,10 +696,10 @@ def dedup_correlated(observations: list[Observation]) -> list[Observation]:
 def dedup_drop_rows(rows: list[tuple[str, str, str, float]]) -> set[int]:
     """THE §5 clustering rule over ``(quote, doc_key, value_norm, covariate)`` rows — the
     index set to drop. :func:`dedup_correlated` and the wire join
-    (``bridge/observations.join_wire_observations``, r09 D2) both call this; a second
+    (``bridge/observations.join_wire_observations``) both call this; a second
     implementation of the rule anywhere is a defect (§6.8)."""
     drop: set[int] = set()
-    # r09c A1 — one document attests one value once: doc-keyed rows collapse per
+    # One document attests one value once: doc-keyed rows collapse per
     # (doc_key, value_norm) to the first-maximal-covariate row, whatever the quotes (the
     # boilerplate/page-repetition class evades any quote key; the doc-keyed group only
     # CORRELATES the copies, it does not count them once). Value-only rows (no doc_key)

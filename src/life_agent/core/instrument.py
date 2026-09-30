@@ -1,7 +1,7 @@
 """The cached-instrument model client — one constructor for route/extract/subject/intent.
 
-Local Ollama was deprecated 2026-08-17 (owner directive; bayesian-foundations §14
-registration): the four cached ask instruments run on the same Anthropic seam the pkm
+Local Ollama was deprecated 2026-08-17 (owner directive):
+the four cached ask instruments run on the same Anthropic seam the pkm
 ``entity_extraction`` transform already uses (``make_model_client`` → Structured
 Outputs). The identity that keys their caches is owned by
 :func:`life_agent.core.derivations.instrument_identity` — this module only constructs

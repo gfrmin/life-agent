@@ -1,6 +1,6 @@
 """Resolve a forwarded booking mail back to the original it forwarded, before extraction.
 
-Design-mandated (docs/trips-design.md §Ingest): resolution doubles corpus yield (39->80
+Resolution doubles corpus yield (39->80
 reservations) and is the sole recovery path for pre-2018 history. Pure logic — the notmuch
 ``id:``/``subject:`` lookups are injected, so this is socket-free and fully unit-tested.
 Precedence, first that resolves to an existing, different message wins:

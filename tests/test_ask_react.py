@@ -1,4 +1,4 @@
-"""The deferred dogfood verdict — ``/react`` (docs/interaction-contract.md `know` mode).
+"""The deferred dogfood verdict — ``/react``.
 
 Pins the contract: the line grammar parses the one-key or spelled verdict (and errors loudly
 otherwise), the handler resolves a ``decision_id`` prefix git-style (unique match required),
@@ -137,10 +137,9 @@ def test_ambiguous_prefix_errors_and_writes_nothing(tmp_path: Path) -> None:
 
 # --- I3: where a verdict is WRITTEN — through the bridge when it is up ------- #
 #
-# `bridge/server.py`'s /log_reaction is the ONLY caller of MembraneShadow.submit_reaction,
-# so a verdict appended straight to the reaction log reaches the membrane shadow only at the
-# NEXT boot's snapshot replay. ask-live is the primary dogfood surface; its verdicts now take
-# the same route Jarvis's already do. The reaction log stays the source of truth, so the
+# `bridge/server.py`'s /log_reaction is how a verdict reaches the running bridge; ask-live is
+# the primary dogfood surface, so its verdicts take the same route Jarvis's do. The reaction
+# log stays the source of truth, so the
 # bridge leg is strictly fail-open: a verdict is never lost, and never written twice.
 
 

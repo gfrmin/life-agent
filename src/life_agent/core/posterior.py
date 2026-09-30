@@ -10,10 +10,10 @@ tempered: ``m`` chunks of one document count as ``1 + β_anc·(m-1)`` observatio
 documents read by the one extractor count as ``1 + β_mod·(G-1)``.
 
 Pure functions over the ``/decide`` wire observations (``reports``, ``group``, ``authority``,
-``subject_factor``, ``time_factor``, optional ``competition_factor``). The arithmetic follows
-credence's ``answer_brain.jl`` step for step (log weights renormalised after every
-condition), which the replay pin in ``tests/test_posterior.py`` holds it to. This module
-ranks nothing: the act is :func:`life_agent.core.decide.bayes_act`.
+``subject_factor``, ``time_factor``, optional ``competition_factor``). The arithmetic
+renormalises log weights after every condition, which the replay pin in
+``tests/test_posterior.py`` holds it to. This module ranks nothing: the act is
+:func:`life_agent.core.decide.bayes_act`.
 """
 from __future__ import annotations
 

@@ -6,7 +6,7 @@ the decision log (:mod:`life_agent.core.decisions`), and the reaction log
 only the file mechanics live here — extracted when the third log arrived (the
 "two logs is duplication, the third extracts the helper" note in ``decisions.py``).
 
-The discipline these enforce (bayesian-foundations §2/§8): **append-only** (the file is
+The discipline these enforce: **append-only** (the file is
 opened ``"a"`` and never rewritten — an event not logged when it happened is evidence
 destroyed), **order-defined** (file order is the canonical replay order; nothing sorts),
 and **durable** (flush + fsync — this is an evidence log).

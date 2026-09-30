@@ -1,7 +1,7 @@
-"""r51b (2e) — ATM-Bench's evaluator, vendored at a pinned sha (`scripts/atm_bench/vendored/`).
+"""ATM-Bench's evaluator, vendored at a pinned sha (`scripts/atm_bench/vendored/`).
 
 The verdict on the external corpus is the benchmark's OWN matcher, never the harness's
-token-run substring rule (r51 pre-registration, `GD-30` (1)): a substring matcher on dates and
+token-run substring rule: a substring matcher on dates and
 currency manufactures false "wrong"s, and every false wrong lowers a cell's realised rate while
 leaving `p1` untouched — a bias toward the very branch that posts evidence upstream.
 

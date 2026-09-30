@@ -1,5 +1,5 @@
-"""The one recorder (module-collapse M2, design §5.1) — one body, one place where a
-decision becomes two records (the §18.9 node and the ledger row), and the §6.5
+"""The one recorder — one body, one place where a
+decision becomes two records (the decision node and the decision-log row), and the
 unavailability event.
 
 Every value here is SYNTHETIC (CLAUDE.md: the repo is public and PII-free).
@@ -99,22 +99,22 @@ def test_record_unavailable_takes_the_surface_run_id(tmp_path: Path) -> None:
     assert DEC.read(decisions)[0].run_id == "gate-arm"
 
 
-# --- the one-writer drift gate (7.4's seeded defect: a second writer of decisions.jsonl) --
+# --- the one-writer drift gate (a second writer of decisions.jsonl) --
 
-def test_the_family_leaves_do_not_append_the_decision_ledger_themselves() -> None:
-    """M2 (design §5.1): the leaves' own ``DEC.append`` calls moved into the one recorder.
-    A leaf module that grows its own append back is the seeded defect 7.4 names — killed
+def test_the_family_leaves_do_not_append_the_decision_log_themselves() -> None:
+    """The leaves' ``DEC.append`` calls live in the one recorder.
+    A leaf module that grows its own append back is a second writer — killed
     here at the source level (the pattern ``tests/test_seam.py`` pins ``.optimise`` with),
     and at the store level by the fixture replay's one-event-per-decision bodies."""
     root = Path(__file__).resolve().parents[1] / "src" / "life_agent" / "core"
     for leaf in ("lookup.py",):
         src = (root / leaf).read_text(encoding="utf-8")
         assert "DEC.append(" not in src, (
-            f"{leaf} appends the decision ledger itself — the one recorder "
-            "(core/recorder.py) is the only writer since M2 (r12)")
+            f"{leaf} appends the decision log itself — the one recorder "
+            "(core/recorder.py) is the only writer")
 
 
-# --- r33 RC-1: the miss row — a coverage failure the reaction stream can finally see ----
+# --- the miss row — a coverage failure the reaction stream can finally see ----
 
 def test_record_miss_appends_a_reactable_lookup_row(tmp_path: Path) -> None:
     """A lookup that grounds nothing writes ONE local row: regime "miss", chosen_action
@@ -141,7 +141,7 @@ def test_record_miss_appends_a_reactable_lookup_row(tmp_path: Path) -> None:
 
 
 def test_the_bridge_binds_the_one_id_rule() -> None:
-    """DEC.decision_id_for is THE declaration (r33 promoted it from the bridge); the
+    """DEC.decision_id_for is THE declaration; the
     bridge's `_decision_id` must BE it — a second spelling cannot exist."""
     from life_agent.bridge import server as BS
     assert BS._decision_id is DEC.decision_id_for

@@ -1,4 +1,4 @@
-"""Poison fixtures for the structural PII guard — r23, from the K1 G4 adversary pass.
+"""Poison fixtures for the structural PII guard — from an adversary pass.
 
 A poison fixture inverts an ordinary test. An ordinary test requires the CODE to pass;
 these require the GUARD to FAIL, on a minimal violation of exactly the thing a finding
@@ -155,8 +155,8 @@ def test_poison_the_host_rule_is_not_scoped_to_src() -> None:
 
     This test asserted the OPPOSITE until K3: the rule was src/-only on the reading that a
     hostname in prose is documentation. It is not — CLAUDE.md forbids owner-specific values
-    "including in docs prose, §14 ledger entries, commit messages, and test fixtures", and
-    25 occurrences of two host names had accumulated across reports, conferrals, a design
+    "including in docs prose, commit messages, and test fixtures", and
+    25 occurrences of two host names had accumulated across reports, a design
     doc and one poison fixture, with the hook armed the whole time, because nothing looked
     outside `src/`. Killed by restoring the `in_src and ...` gate on the host rule.
     """
@@ -187,7 +187,7 @@ def test_shapes_only_reports_that_its_name_layer_is_empty() -> None:
     )
 
 
-# --- L6 (r25): the skip set is pinned whole, and every skip is announced ---------------
+# --- L6: the skip set is pinned whole, and every skip is announced ---------------
 
 def test_poison_the_skip_set_is_pinned_whole() -> None:
     """L6. MUST FAIL if a path is added to `_SKIP_PATHS`. Adding one tracked prose file
@@ -231,7 +231,7 @@ def test_poison_the_marker_does_not_exempt_the_name_layer() -> None:
     that spelling this line is invisible to the guard, which is how a real host name was
     committed to a public tree marked as synthetic."""
     marked = "the box is NOTAREALNAME  # PII-OK: synthetic"
-    kinds = [f.kind for f in scan_text("docs/x.md", marked,
+    kinds = [f.kind for f in scan_text("docs/kb-schema.md", marked,
                                        denylist=_DENY_PROBE, allowed_domains=D)]
     assert any("private-denylist" in k for k in kinds), (
         "a PII-OK line was exempted from the private denylist — the marker is a kill "
@@ -251,14 +251,14 @@ def test_poison_the_marker_still_exempts_a_synthetic_shape() -> None:
     )
 
 
-# --- r27 C8: ONE skip registry, and the BYTES decide ---------------------------------
+# --- ONE skip registry, and the BYTES decide ---------------------------------
 # `read_text_or_refuse` returned "skip" on file EXTENSION *before* the NUL refusal, so the
 # bytes were never consulted. `_BINARY_SUFFIXES` (20 entries) was a second skip set pinned
 # by nothing and announced never, restoring the exact defect `_SKIP_PATHS`' equality pin
 # was written to close, through a door that pin does not cover.
 
 def test_poison_a_text_file_with_a_declared_binary_suffix_is_scanned(tmp_path: Path) -> None:
-    """r27 C8. MUST FAIL if an extension alone can unscan a file. A declared suffix is
+    """MUST FAIL if an extension alone can unscan a file. A declared suffix is
     PERMISSION to be binary, not an assertion that the file is one — a plain-text `.db`
     or a PDF with an uncompressed text layer carries readable PII and rode every gate leg
     green. Killed by restoring the suffix check ahead of the NUL check."""
@@ -276,7 +276,7 @@ def test_poison_a_text_file_with_a_declared_binary_suffix_is_scanned(tmp_path: P
 
 def test_poison_a_binary_skip_is_announced(tmp_path: Path,
                                            capsys: pytest.CaptureFixture[str]) -> None:
-    """r27 C8. MUST FAIL if a binary skip passes in silence. `announce_skips` reported
+    """MUST FAIL if a binary skip passes in silence. `announce_skips` reported
     `_SKIP_PATHS` only, so every skip taken on a suffix was invisible in every transcript
     the gate has ever produced. Killed by dropping the stderr write from the skip branch."""
     genuine = tmp_path / "sample.pdf"
@@ -290,7 +290,7 @@ def test_poison_a_binary_skip_is_announced(tmp_path: Path,
 
 
 def test_poison_the_whole_skip_registry_is_pinned() -> None:
-    """r27 C8. MUST FAIL if EITHER skip set gains an entry. The register's own lesson is
+    """MUST FAIL if EITHER skip set gains an entry. The register's own lesson is
     that a pin whose universe is one of two sets is not a pin; `SKIP_REGISTRY` is the one
     declared universe and it is pinned whole. Killed by adding any path or any suffix."""
     from pii_check import SKIP_REGISTRY
@@ -309,7 +309,7 @@ def test_poison_the_whole_skip_registry_is_pinned() -> None:
 
 
 def test_poison_the_registry_is_announced_on_every_run() -> None:
-    """r27 C8. MUST FAIL if a RUN can complete without stating what it is allowed to skip.
+    """MUST FAIL if a RUN can complete without stating what it is allowed to skip.
     Announcing only the skips that HAPPENED cannot show a reader an entry that was added
     and never exercised. Killed by removing the announce_registry call from `main`.
 

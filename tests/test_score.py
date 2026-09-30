@@ -204,8 +204,9 @@ def test_the_owner_board_reproduces_the_host_act_on_one_grader_and_one_price_lis
     commit and priced at their declared prices. The outside arm's 13 wrongs are the honest
     count: the prose grading it replaced scored the same answers 5 wrong by accepting a
     gold that appeared anywhere in a paragraph. The typed arm's $1.44 is every probe it
-    applied at the menu's prices, cache or no cache (the daemon it replaced: 61/2/41 at
-    $20.95, forty calls to the deliberative rung its warm replays had metered at $0)."""
+    applied at the menu's prices, cache or no cache (the per-call arm it
+    replaced: 61/2/41 at $20.95, forty calls to the deliberative rung its warm replays had
+    metered at $0)."""
     kb = os.environ.get("LIFE_AGENT_KB")
     spec = S.load_sets()["owner-0920"]
     if not kb or not (Path(kb) / spec["path"]).is_file():

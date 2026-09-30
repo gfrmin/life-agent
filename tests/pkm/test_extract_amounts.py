@@ -1,4 +1,4 @@
-"""Tests for the ``extract_amounts`` LLM transform (SPEC §18.14, r21 phase 1).
+"""Tests for the ``extract_amounts`` LLM transform (SPEC §18.14).
 
 Hermetic: a fake ``ModelClient`` returns canned line-items — no model call. Covers the
 §18.5 grounding gate (an ungroundable ``amount_raw`` fails the whole source; ``label_raw``

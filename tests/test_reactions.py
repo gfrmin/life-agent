@@ -1,4 +1,4 @@
-"""The reaction log + the verdict→Reaction producer (bayesian-foundations §4.4 loop).
+"""The reaction log + the verdict→Reaction producer.
 
 No skin, no DB: the log is a jsonl file, the producer is a pure join over it and the
 decision log. These tests pin the schema (closed vocab), the supersession rule (latest
@@ -230,7 +230,7 @@ def test_narrative_no_claims_does_not_fold(tmp_path: Path) -> None:
     assert R.load_reactions(rpath, dpath) == []
 
 
-# --- r33 RC-1 rider: regime="miss" rows never fold (a coverage failure is not
+# --- regime="miss" rows never fold (a coverage failure is not
 # utility evidence — without this, every `bad` on a miss would drag the bar down) -------
 
 def test_a_reacted_miss_row_folds_nothing(tmp_path: Path) -> None:
