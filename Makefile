@@ -1,4 +1,4 @@
-.PHONY: check test-all score score-quick data sets fetch-sets engine golden live live-archive
+.PHONY: check test-all score score-quick data sets fetch-sets golden live live-archive
 
 PY := uv run python
 # pytest workers; 1 runs single-process.
@@ -76,7 +76,3 @@ sets: fetch-sets
 	  store="$(ATM_STORE)"; [ -n "$$store" ] || store="$$dest/store"; \
 	  $(PY) scripts/atm_bench/build_kb.py --emails "$$emails" --qa "$$qa" \
 	    --out "$$out" --store "$$store" --gauge-from "$${LIFE_AGENT_KB:-}"
-
-# The pinned decider engine (config/engine.lock) -> ~/.local/bin/proplang-host.
-engine:
-	scripts/engine.sh

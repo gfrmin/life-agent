@@ -49,12 +49,11 @@ src/pkm/          the KB: sources → content-addressed, cited artifacts (SPEC-f
                   docs/pkm/SPEC.md and src/pkm/CLAUDE.md before touching it)
 src/life_agent/   core/ (retrieval shaping, posterior, utility, pricing, the decider in
                   decide.py + decider.py, executor), bridge/ (:8798 evidence server +
-                  /decide), reach/ (Telegram), tasks/ (GTD, event-sourced), trips/,
-                  membrane/ (the proplang client — deferred, kept green off the path)
+                  /decide), reach/ (Telegram), tasks/ (GTD, event-sourced), trips/
 eval/             score.py → SCOREBOARD.md; sets.yaml pins each set by sha256
 scripts/          entry points (ask, ingest_sources, production_readout,
-                  atm_bench/, engine.sh)
-config/           example configs; engine.lock pins the decider engine
+                  atm_bench/)
+config/           example configs
 packaging/        systemd --user units
 archive/          the unification arc (tag archive/unification-arc-v0); historical only
 ```
@@ -72,10 +71,10 @@ archive/          the unification arc (tag archive/unification-arc-v0); historic
   - *Do and flag:* a new dependency, a default change, an additive contract change.
   - *Ask first:* the action menu, the utility gauge (`u_wrong`, `lambda_usd`), golden or eval
     questions, a new data source, anything touching personal data, removing an output field.
-- **Engines are upstream, and deferred.** proplang (an engine for the act) and tannen
-  (write-once records) are separate public repos, pinned (`config/engine.lock`; a `-close`
-  tag), and off the MVP path: each returns when it beats the host on the board. An issue filed
-  on either cites a board row or a failing law, never an opinion.
+- **Engines are upstream, and not in the tree.** wald (decision theory as law, a test
+  oracle for the act) and tannen (write-once, content-addressed records) are separate
+  repos. Each enters when it beats the host on the board or catches a defect a test here
+  cannot; an issue filed on either cites a board row or a failing law, never an opinion.
 - **Debugging.** When a number moves unexpectedly, print ten example rows before building an
   instrument to explain it. Anchor the clock (`date`) before any timing claim.
 

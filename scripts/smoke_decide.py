@@ -11,8 +11,7 @@ This closes that step without a key, a network or a model call:
 
 1. Boot the REAL `BridgeServer` on the sample sandbox's catalogue, with a **tripwire**
    in place of the extraction client — any model call at all is a failure, not a cost.
-2. `GET /ready` must report a decider, and report it as the **host** act. A stranger
-   downloads no engine to get one (`make engine` is a door, not a dependency).
+2. `GET /ready` must report a decider, and report it as the **host** act.
 3. `POST /decide` twice over HTTP, with the posterior in the body: evidence that settles
    on one candidate must COMMIT, and evidence that disperses must WITHHOLD. That is the
    one argmax (`core/decide.bayes_act`), reached the way the executor reaches it.

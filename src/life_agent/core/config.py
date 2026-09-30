@@ -7,7 +7,6 @@ no secrets here — secrets come from gnome-keyring via :func:`life_agent.core.l
 from __future__ import annotations
 
 import os
-import shlex
 from pathlib import Path
 from typing import Any
 
@@ -123,34 +122,7 @@ JOIN_TAP_LOG = KB / "eval" / "join-tap.jsonl"
 UTILITY_MODEL = KB / "utility" / "model.yaml"
 UTILITY_ELICITATIONS = KB / "utility" / "elicitations.jsonl"
 
-# --- The decider engine ---
-# The bridge runs the pinned proplang-host (config/engine.lock; `make engine` installs it at
-# ENGINE_BIN) as the one decider. LIFE_AGENT_MEMBRANE_COMMAND overrides the launch argv.
-MEMBRANE_COMMAND_ENV = "LIFE_AGENT_MEMBRANE_COMMAND"
-MEMBRANE_READ_TIMEOUT_ENV = "LIFE_AGENT_MEMBRANE_READ_TIMEOUT"
-ENGINE_BIN_ENV = "ENGINE_BIN"
 DELIBERATE_ENV = "LIFE_AGENT_DELIBERATE"
-# LIFE_AGENT_FALLBACK_LANE is retired: the uncalibrated dual-lane render was removed at
-# §13 adoption (2026-08-17) per its own registered destiny in the interaction contract —
-# the owner chose honest-withhold-only, so a set flag is simply ignored.
-
-MEMBRANE_DEFAULT_READ_TIMEOUT_S = 300.0
-
-
-def membrane_command() -> list[str] | None:
-    """The decider engine's launch argv: ``LIFE_AGENT_MEMBRANE_COMMAND`` shell-split when
-    set, else the ``make engine`` install (``$ENGINE_BIN``, default
-    ``~/.local/bin/proplang-host``) when it exists, else ``None`` — no engine, so no
-    decider, and ``/decide`` says so."""
-    raw = os.environ.get(MEMBRANE_COMMAND_ENV)
-    if raw:
-        return shlex.split(raw)
-    installed = Path(os.environ.get(ENGINE_BIN_ENV) or Path.home() / ".local/bin/proplang-host")
-    return [str(installed)] if installed.is_file() else None
-
-
-def membrane_read_timeout_s() -> float:
-    return float(os.environ.get(MEMBRANE_READ_TIMEOUT_ENV, MEMBRANE_DEFAULT_READ_TIMEOUT_S))
 
 
 def deliberate_enabled() -> bool:

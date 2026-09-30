@@ -120,8 +120,7 @@ crosses to a rung is a disclosure record.
 **Division of labour.** `core/posterior.py` computes the candidate posterior;
 `core/utility.py` folds the loss; `core/decide.bayes_act` takes the act; `core/enact.py`
 turns it into a reply (the MAP candidate on `respond`, the cheapest open transform on
-`gather`). proplang, as an engine for the act, is deferred until it beats this on the board
-(ROADMAP).
+`gather`).
 
 ## 5. Laws
 

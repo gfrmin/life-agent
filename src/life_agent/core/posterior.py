@@ -12,7 +12,7 @@ Pure functions over the ``/decide`` wire observations (``reports``, ``group``, `
 ``subject_factor``, ``time_factor``, optional ``competition_factor``). The arithmetic follows
 credence's ``answer_brain.jl`` step for step (log weights renormalised after every
 condition), which the replay pin in ``tests/test_posterior.py`` holds it to. This module
-ranks nothing: the act is proplang's.
+ranks nothing: the act is :func:`life_agent.core.decide.bayes_act`.
 """
 from __future__ import annotations
 

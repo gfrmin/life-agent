@@ -78,10 +78,10 @@ and a clone over someone else's mail works end to end.
 Each returns through the board: its arm's paired ΔU ≥ 0 against the host on every set, from the
 same recorded decisions.
 
-- **proplang** as the engine for the act: released as `doctrine-sitting-r1` (= `94fd4eb`;
-  [gfrmin/proplang#28](https://github.com/gfrmin/proplang/issues/28)), pinned in
-  `config/engine.lock`; `membrane/` stays in tree and green off the path. Precondition
-  upstream: #26 (per-cell p1 pooling) disposed and a new release pinned.
+- **An engine for the act.** The proplang client (`membrane/`) and its pin were removed on
+  2026-09-30; the tag `archive/pre-prune-2026-09-30` holds them. The successor is **wald**,
+  used as hkaddresses uses it: a test-only oracle that must take the same act as
+  `core/decide.bayes_act`, never the runtime (it hands no probability back to a host).
 - **tannen** as the write-once store, at its `m5-close` tag, once the MVP is live.
 - **The ER core** (J5): hkaddresses extracts it into its own public repo, with life-agent as
   the second domain (`renavondata/hkaddresses#27`).

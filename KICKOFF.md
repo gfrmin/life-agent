@@ -13,7 +13,7 @@ What survives is the model: a string-blind decider, a Bayes act under a stated l
 (`u_wrong` prior mean −9, folded from reactions; the bar derived), provenance on every answer,
 never invent. The act is the host's `core/decide.bayes_act`; the posterior is
 `core/posterior.py` until the **ER core** (its own public repo, extracted from hkaddresses)
-replaces it; **proplang** and **tannen** are doors after the MVP (`ROADMAP.md`). One home per
+replaces it; **wald** (a test oracle for the act) and **tannen** are doors after the MVP (`ROADMAP.md`). One home per
 responsibility; delete the duplicates.
 
 The MVP is **reusable by a stranger**, answering **verbatim point facts only** (graded by

@@ -166,7 +166,7 @@ def test_pkm_steps_are_the_bootstrap_recipe_in_order(tmp_path: Path) -> None:
     assert all(s[:3] == ["uv", "run", "--project"] for s in steps)
 
 
-def test_run_pkm_steps_sets_the_kb_and_config_and_drops_the_membrane(
+def test_run_pkm_steps_sets_the_kb_and_config(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     import subprocess
 
@@ -176,14 +176,12 @@ def test_run_pkm_steps_sets_the_kb_and_config_and_drops_the_membrane(
         seen.append((list(cmd), dict(kw["env"])))          # type: ignore[arg-type]
         return subprocess.CompletedProcess(cmd, 0)
 
-    monkeypatch.setenv("LIFE_AGENT_MEMBRANE_COMMAND", str(tmp_path / "engine"))
     monkeypatch.setattr(subprocess, "run", fake_run)
     B.run_pkm_steps(tmp_path / "repo", tmp_path / "pkm.yaml", tmp_path / "kb")
     assert len(seen) == 5
     for _cmd, env in seen:
         assert env["LIFE_AGENT_KB"] == str(tmp_path / "kb")
         assert env["PKM_CONFIG"] == str(tmp_path / "pkm.yaml")
-        assert "LIFE_AGENT_MEMBRANE_COMMAND" not in env
 
 
 # --- main: the layout, counts only, idempotent ------------------------------------------------

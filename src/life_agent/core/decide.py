@@ -27,9 +27,7 @@ The information rows are **measured evidence models**, not the preposterior over
 posterior; that is a door in ``ROADMAP.md``.
 
 ``u_wrong``/``lambda_int``/``kappa_att`` are :class:`life_agent.core.utility.UtilityPosterior`
-latents; ``u_correct``/``u_abstain`` its gauge constants. The proplang world
-(:mod:`life_agent.membrane.world`, deferred off the path) builds its ``said@1`` sentence
-from these same rows, so the two never drift.
+latents; ``u_correct``/``u_abstain`` its gauge constants.
 """
 from __future__ import annotations
 

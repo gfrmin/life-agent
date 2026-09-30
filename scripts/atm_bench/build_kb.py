@@ -13,7 +13,7 @@ matcher, not the data) and notes carrying ids, never values. The gauge is copied
 owner's KB — exactly ``utility/model.yaml`` and ``utility/elicitations.jsonl``, both sha256s
 recorded in ``external-corpus.json`` so X9 can name them. The pkm steps are the
 ``bootstrap-sample.sh`` recipe, run as subprocesses with ``LIFE_AGENT_KB``/``PKM_CONFIG`` set
-and ``LIFE_AGENT_MEMBRANE_COMMAND`` removed (env is bound at import time across the stack).
+(env is bound at import time across the stack).
 Stdout carries counts only. Idempotent: a second run writes nothing.
 
   uv run --project . python scripts/atm_bench/build_kb.py --emails EMAILS.json --qa QA.json \\
@@ -225,11 +225,8 @@ def pkm_steps(repo: Path, pkm_yaml: Path, kb: Path) -> list[list[str]]:
 def run_pkm_steps(repo: Path, pkm_yaml: Path, kb: Path, *,
                   log: Callable[[str], None] = print) -> None:
     """Subprocesses, never imports: ``ingest_sources.DEFAULT_PKM_CONFIG`` and the whole stack
-    read env at import time, so the env is set BEFORE each interpreter starts; the membrane
-    command is removed so nothing here can enable a shadow."""
-    env = {k: v for k, v in os.environ.items() if k != "LIFE_AGENT_MEMBRANE_COMMAND"}
-    env["LIFE_AGENT_KB"] = str(kb)
-    env["PKM_CONFIG"] = str(pkm_yaml)
+    read env at import time, so the env is set BEFORE each interpreter starts."""
+    env = {**os.environ, "LIFE_AGENT_KB": str(kb), "PKM_CONFIG": str(pkm_yaml)}
     for cmd in pkm_steps(repo, pkm_yaml, kb):
         log("+ " + " ".join(cmd[4:]))
         res = subprocess.run(cmd, env=env, check=False)
