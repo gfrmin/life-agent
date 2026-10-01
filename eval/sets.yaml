@@ -15,23 +15,24 @@
 sets:
   owner:
     kind: typed
-    path: eval/typed/gate-typed-20260930T225641.jsonl
-    sha256: c4601eaa202df47c20f0adda4fde1169f36d62ad8c3ae80c296d4d74b991b38c
+    path: eval/typed/gate-typed-20261001T095002.jsonl
+    sha256: 9ef07dd5d13a345d2c8d5b7c44967007d6d961a2d5a5387df4fa869bced1ac7c
     note: >-
-      The owner's 104 questions, typed arm only, re-run 2026-09-30 with the `cite` row
-      (partial answers: the document named, not the value) against the corpus pin
-      full-2026-06-11 (catalogue digest 03d1b09c…): 34 right / 0 wrong / 29 cite-right / 0
-      cite-wrong / 41 declined, list price $1.32 (the menu's prices for the probes applied),
-      metered $0 because every call replayed from the cache of the cold run earlier the same
-      day. Calibration is the archive's own (`typed.p1`): 103 scored, mean log score -0.474,
-      ECE 0.153. Replaces the same day's row without the cite row (43/0/61, the earlier
-      draw): 34 of its 43 rights are right again, 9 became right pointers (a cite pre-empts
-      a value answer where the document's mass is between the cite row's and the respond
-      row's crossing), and 20 of its declines became right pointers; nothing else moved.
-      The 29 cites name a document at `p1` 0.59-0.89 and every one attests the gold (26
-      with the leading candidate correct, 3 with it wrong but the document right). 24 of the
-      41 declines still had the correct leader. The outside and router rows for this set are
-      the frozen recordings under `owner-0920`.
+      The owner's 104 questions, typed arm only, re-run 2026-10-01 with every elicited
+      half-life scaled by 2 (`pricing.HALF_LIFE_SCALE`, fitted out of fold from the
+      2026-09-30 decide states with the withheld negatives in) against the corpus pin
+      full-2026-06-11 (catalogue digest 03d1b09c…): 41 right / 0 wrong / 26 cite-right / 0
+      cite-wrong / 37 declined, list price $1.19 (the menu's prices for the probes applied),
+      metered $0.01 because nearly every call replayed from the cache. Calibration is the
+      archive's own (`typed.p1`): 103 scored, mean log score -0.423, ECE 0.137 (the row before
+      it: -0.474, 0.153). Replaces the 2026-09-30 row with the `cite` row at the elicited
+      half-lives (34/0 + 29 cite-right/0 + 41): its 34 rights are right again, 6 of its 29
+      right pointers became right answers, 3 of its 41 declines became right pointers and 1 a
+      right answer; 23 pointers and 37 declines stand, nothing else moved. The 26 cites name
+      a document at `p1` 0.60-0.89 and every one attests the gold (22 with the leading
+      candidate correct, 4 with it wrong but the document right). 20 of the 37 declines still
+      had the correct leader, 1 had no candidate. The outside and router rows for this set
+      are the frozen recordings under `owner-0920`.
   owner-0920:
     kind: paired
     arms: [outside, router]
@@ -49,32 +50,35 @@ sets:
       paired-gate-20260826T083356-strict-priced.jsonl).
   generated:
     kind: typed
-    path: eval/typed/gate-typed-20260930T230047.jsonl
-    sha256: d369c26bd1b9c8b084769dc63d1e67e1768e5d5207dee4ad9102713ba948123a
+    path: eval/typed/gate-typed-20261001T095504.jsonl
+    sha256: 7e28b3c5353e7e2b25d7c7ae3c0a2f25d8382781c4b1c7ecb00546fe9cc6bcba
     note: >-
       The generated golden set: 212 verbatim point-fact questions extracted from the owner's
       corpus by the generator (claude-haiku-4-5-20251001, prompt sha ea86a53553e58005;
       questions file sha256 2a548ef4239c4347 in $LIFE_AGENT_KB/eval/questions_generated.yaml).
-      Re-run 2026-09-30 with the `cite` row (partial answers: the document named, not the
-      value) against the corpus pin full-2026-06-11 (catalogue digest 03d1b09c…): 71 right /
-      4 wrong / 44 cite-right / 0 cite-wrong / 93 declined, list price $2.57, metered $0
-      because every call replayed from the cache of the 2026-09-20 cold run. Calibration is
-      the archive's own (`typed.p1`): 198 scored, mean log score -0.428, ECE 0.142; leaders
-      given 0.6-0.9 were right about 96% of the time (64 rows), leaders given under 0.4
-      about 43% (51 rows), the top bin 0.947 stated against 0.946 realised. Every question's
-      answer is in the corpus by construction, so this reads calibration on answerable
-      questions only. Replaces the same day's row without the cite row (81/4/127): 71 of
-      its 81 rights are right again, 10 became right pointers, 34 of its 127 declines became
-      right pointers, and all 4 wrongs are wrong again (a wrong value at `p1` above the
-      respond crossing is not reached by the cite row). The 44 cites name a document at `p1`
-      0.41-0.89 and every one attests the gold (41 with the leading candidate correct, 3
-      with it wrong but the document right); predicted from the captured decide states
-      before the run: 74/4 + 40 cite-right / 2 cite-wrong / 88 declined. 48 of the 93
-      declines still had the correct leader, 14 had no candidate.
+      Re-run 2026-10-01 with every elicited half-life scaled by 2 (`pricing.HALF_LIFE_SCALE`,
+      fitted out of fold from the 2026-09-30 decide states with the withheld negatives in)
+      against the corpus pin full-2026-06-11 (catalogue digest 03d1b09c…): 84 right / 4
+      wrong / 52 cite-right / 1 cite-wrong / 71 declined, list price $2.37, metered $0.38 (a
+      changed posterior buys a few different probes; the rest replayed from the cache).
+      Calibration is the archive's own (`typed.p1`): 198 scored, mean log score -0.398, ECE
+      0.107 (the row before it: -0.428, 0.142); leaders given 0.6-0.9 were right about 94%
+      of the time (62 rows), leaders given under 0.4 about 44% (41 rows), the top bin 0.952
+      stated against 0.953 realised. Every question's answer is in the corpus by
+      construction, so this reads calibration on answerable questions only. Replaces the
+      2026-09-30 row with the `cite` row at the elicited half-lives (71/4 + 44 cite-right/0 +
+      93): its 71 rights and 4 wrongs are the same again, 11 of its 44 right pointers became
+      right answers, 19 of its 93 declines became right pointers, 2 became right answers and
+      1 a wrong pointer (this set's first: a document that does not attest the gold, named at
+      a credence the row prices as worth one read); predicted from the captured decide
+      states with the evidence held fixed: +15 right / 0 wrong on the respond rows. The 53
+      cites name a document at `p1` 0.41-0.89 and 52 attest the gold (48 with the leading
+      candidate correct, 4 with it wrong but the document right). 31 of the 71 declines still
+      had the correct leader, 14 had no candidate.
   generated-withheld:
     kind: typed
-    path: eval/typed/gate-withheld-20260930T230641.jsonl
-    sha256: c23293178e2e57ec75197342a730acd9f2b8e244d9c200add5e585f66add0b25
+    path: eval/typed/gate-withheld-20261001T100303.jsonl
+    sha256: 42f8fbf079e65db9359359ef5b66c653aa7bf7cf750197b558f5cdcb57c3398e
     note: >-
       The generated set's questions re-asked with their answers ABSENT: for each question,
       every document with any chunk the grader's matcher finds the gold (or a variant) in,
@@ -82,16 +86,22 @@ sets:
       off (`eval.run --withhold-source`, `eval/withheld.py`). Declining is right, an assertion
       is wrong, and an assertion matching the gold would be a leak (none). 188 of the 212
       questions; the other 24 were skipped because more than 500 documents attest their
-      answer. Re-run 2026-09-30 with the `cite` row on the corpus pin full-2026-06-11: 0
-      right / 3 wrong / 0 cite-right / 11 cite-wrong / 174 declined, 0 leaks, 61 rows with a
-      candidate (mean `p1` 0.445). A cite here is wrong by construction (every attesting
-      document is withheld), so the 11 are the price of the row on questions the corpus
-      cannot answer: 9 were declines on the same day's row without it (0/5/183), 2 were
-      wrong values that became wrong pointers, and 3 wrong values remain. At the folded gauge
-      the row's U falls 0.738 over the 188 (11 pointers at -1 against 2 wrongs at -5.131
-      saved), predicted 13 wrong pointers from the captured states. Wrong here is the cost
-      of answering a question whose answer is not in the corpus; it reads calibration on
-      unanswerable questions, where the answerable sets read it only on answerable ones.
+      answer. Re-run 2026-10-01 with every elicited half-life scaled by 2
+      (`pricing.HALF_LIFE_SCALE`) on the corpus pin full-2026-06-11: 0 right / 5 wrong / 0
+      cite-right / 17 cite-wrong / 166 declined, 0 leaks, 61 rows with a candidate (mean
+      `p1` 0.467), list $0.81, metered $0.11. A cite here is wrong by construction (every
+      attesting document is withheld); every assertion is the price of answering a question
+      the corpus cannot answer. Against the 2026-09-30 row at the elicited half-lives (0/3 +
+      0/11 + 174): the 3 wrong values stand, 2 wrong pointers became wrong values, 8 declines
+      became wrong pointers, 9 pointers and 166 declines stand. The one fall on this change:
+      ΔU -16.3 over the 188 at the folded gauge (2 more wrongs at -5.131, 6 more pointers at
+      -1) against +0.055 and +0.076 per question on `owner` and `generated`. The scale was
+      fitted out of fold with these negatives in and held their respond rows at 3 wrongs
+      with the evidence fixed; re-run live, the longer half-life also changes which probes
+      the gather row buys, so the states differ from the captured ones. Calibration is the
+      archive's own: mean log score -0.853, ECE 0.467. Wrong here is the cost of answering a
+      question whose answer is not in the corpus; it reads calibration on unanswerable
+      questions, where the answerable sets read it only on answerable ones.
   atm:
     kind: typed
     root_env: LIFE_AGENT_ATM_KB
