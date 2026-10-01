@@ -36,7 +36,7 @@ import hashlib
 import json
 import os
 import sys
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any
@@ -370,6 +370,29 @@ def unscored_pins(sets: Mapping[str, Mapping[str, Any]], skipped: Mapping[str, s
     return sorted(k for k in skipped if sets[k]["kind"] != "pending")
 
 
+def carries_p1(archive: str) -> bool:
+    """Whether any typed arm in an archive recorded a `p1`."""
+    return any((r.get("typed") or {}).get("p1") is not None for r in _archive_rows(archive))
+
+
+def uncalibrated_typed(rows: Sequence[Row], p1_sets: Collection[str]) -> list[str]:
+    """Typed sets whose archive carries `p1` but whose board row has no log score or ECE
+    (law 10: calibration is measured). The board is written only when this is empty."""
+    return sorted(r.set for r in rows if r.arm == "typed" and r.set in p1_sets
+                  and (r.log_score is None or r.ece is None))
+
+
+def _p1_sets(kb: Path | None, sets: Mapping[str, Mapping[str, Any]], rows: Sequence[Row]
+             ) -> set[str]:
+    """The scored typed sets whose archive records `p1`."""
+    out: set[str] = set()
+    for name in {r.set for r in rows if r.arm == "typed"}:
+        root, _ = set_root(sets[name], kb)
+        if root is not None and carries_p1((root / sets[name]["path"]).read_text("utf-8")):
+            out.add(name)
+    return out
+
+
 def falls(rows: Sequence[Row], baseline: Sequence[Mapping[str, Any]], gauge: Gauge
          ) -> list[str]:
     """Rows whose U fell against the committed board, both priced at
@@ -410,6 +433,11 @@ def main(argv: list[str] | None = None) -> int:
         print(f"(no gauge: {type(e).__name__}: {e})", file=sys.stderr)
         gauge = None
     rows, cals = with_calibration(Path(kb_env) if kb_env else None, load_sets(), rows)
+    uncalibrated = uncalibrated_typed(
+        rows, _p1_sets(Path(kb_env) if kb_env else None, load_sets(), rows))
+    if uncalibrated:
+        print(f"typed set(s) carry p1 but have no calibration: {uncalibrated}",
+              file=sys.stderr)
     text = render(rows, skipped, gauge,
                   {k: str(v["note"]) for k, v in load_sets().items() if v.get("note")}, cals)
     print(text)
@@ -426,6 +454,10 @@ def main(argv: list[str] | None = None) -> int:
         missing = unscored_pins(load_sets(), skipped)
         if missing:
             print(f"refusing to write the board: pinned set(s) not scored: {missing}",
+                  file=sys.stderr)
+            return 1
+        if uncalibrated:
+            print(f"refusing to write the board: calibration missing for: {uncalibrated}",
                   file=sys.stderr)
             return 1
         BOARD_MD.write_text(text, encoding="utf-8")

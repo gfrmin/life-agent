@@ -240,8 +240,10 @@ law is marked **unenforced**.
    `tests/test_bridge.py::test_same_document_shares_one_ancestry_group`.
 9. *(Retired 2026-09-30, ruling 5: SEALED documents were never built. The number is not reused.)*
 10. **Calibration is measured.** A-CAL is read off the verdict stream, never assumed.
-    **Unenforced:** `outcomes.ece` and the edge curves are unit-tested
-    (`tests/test_outcomes.py`, `tests/test_calibration.py`), but nothing fails when calibration goes unread.
+    Tests: `tests/test_score.py::test_a_typed_set_with_p1_is_never_written_without_its_calibration`
+    (a typed set whose archive carries `p1` is named, and the board is not written, when its row
+    has no log score or ECE); `tests/test_eval_calibration.py::test_bins_ece_and_log_score_from_known_pairs`
+    (the ECE and log score from known pairs).
 
 ## 6. Scoreboard
 
