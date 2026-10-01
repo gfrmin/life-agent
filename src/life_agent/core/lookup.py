@@ -200,6 +200,7 @@ _A_SUBJECT_OTHER = PRC.A_SUBJECT_OTHER
 _P_OWNER_GIVEN_INDET = PRC.P_OWNER_GIVEN_INDET
 _TIME_HALF_LIFE_YEARS = PRC.TIME_HALF_LIFE_YEARS
 _A_TIME_UNKNOWN = PRC.A_TIME_UNKNOWN
+_HALF_LIFE_SCALE = PRC.HALF_LIFE_SCALE
 
 # Closed abstention reasons (the credence grammar — interaction contract).
 # The reason must be the TRUE one. These are not interchangeable labels: DISPERSED is a
@@ -331,7 +332,8 @@ def time_factor(date_iso: str | None, *, time_indexed: bool,
     """[§3.3 · L-6] The doc_date covariate on a_i: for a time-indexed construct, the probability a
     document's assertion is still current decays with document age at the construct's
     ``half_life_years`` (the per-construct volatility prior; a permanent construct passes a
-    near-infinite half-life ⇒ no decay). ``date_iso`` None = projected but unknown
+    near-infinite half-life ⇒ no decay), scaled by ``pricing.HALF_LIFE_SCALE``.
+    ``date_iso`` None = projected but unknown
     (undated/underived) — the stated marginal attenuation. Future-dated documents clamp to 1.0."""
     if not time_indexed:
         return 1.0
@@ -339,7 +341,7 @@ def time_factor(date_iso: str | None, *, time_indexed: bool,
         return _A_TIME_UNKNOWN
     now = today if today is not None else datetime.now(UTC).date()
     age_years = max((now - date.fromisoformat(date_iso)).days, 0) / 365.25
-    return float(0.5 ** (age_years / half_life_years))
+    return float(0.5 ** (age_years / (half_life_years * _HALF_LIFE_SCALE)))
 
 
 @dataclass(frozen=True)
