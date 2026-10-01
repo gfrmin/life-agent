@@ -92,6 +92,7 @@ def test_empty_observations_yield_empty_mapping() -> None:
 # ── The keystone: the corroborate re-read carries recency (no transform reports stale as
 # current) ──
 from life_agent.bridge import server as SRV  # noqa: E402
+from life_agent.core import pricing as PRC  # noqa: E402
 from life_agent.core.joint_extract import JointResult  # noqa: E402
 
 
@@ -110,12 +111,12 @@ def _p(time_indexed: bool, construct: str | None, doc_date: dict, today: str) ->
 
 def test_corroborate_time_factor_attenuates_a_stale_source() -> None:
     # a re-read value whose only SOURCE doc is old must decay (the q-006 confident-stale bug):
-    # address half-life 7y, source dated 14y back ⇒ 0.5^(14/7) = 0.25, NOT 1.0.
+    # address half-life 7y (times the fitted scale), source dated 14y back ⇒ well under 1.0.
     jr = _jr("old st")
     hits = [_hit("d0", "i live at old st now")]
     tf = SRV._corroborate_time_factor(
         jr, hits, _p(True, "address", {"d0": "2010-01-01"}, "2024-01-01"))
-    assert tf < 0.3
+    assert abs(tf - 0.5 ** (14 / (7 * PRC.HALF_LIFE_SCALE))) < 0.01
 
 
 def test_corroborate_time_factor_keeps_a_fresh_source_current() -> None:

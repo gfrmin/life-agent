@@ -16,7 +16,7 @@ import fit_posterior as FP  # noqa: E402
 from life_agent.core import posterior as POST  # noqa: E402
 from life_agent.core import seam as SEAM  # noqa: E402
 
-BASE = POST.default_channel()
+BASE = FP.Setting.default()
 U_BAR = {"u_correct": 1.0, "u_abstain": 0.0, "u_wrong": -9.0}
 
 
@@ -59,7 +59,7 @@ def test_score_of_a_state_with_no_candidate_is_a_certain_none() -> None:
 def test_ascend_finds_the_maximum_of_a_concave_objective() -> None:
     grids = {"beta_ancestry": FP.arange(0.0, 1.0, 0.05), "eta": FP.arange(0.5, 4.0, 0.1)}
 
-    def objective(ch: POST.Channel) -> float:
+    def objective(ch: FP.Setting) -> float:
         return -((ch.beta_ancestry - 0.6) ** 2) - (ch.eta - 2.0) ** 2
 
     best = FP.ascend(objective, BASE, ("beta_ancestry", "eta"), grids)
@@ -230,3 +230,34 @@ def test_folds_by_question_keep_a_questions_states_together() -> None:
     groups = ["g", "g", "g", "o", "g", "g"]
     f = FP.folds_by_question(ids, groups, 2, seed=3)
     assert f[0] == f[4] and f[2] == f[5] and set(f) <= {0, 1}
+
+
+def _timed(reports: list[tuple[int, int, float]], *, truth: int, qid: str) -> FP.State:
+    s = _state([(r, g) for r, g, _ in reports], truth=truth, qid=qid)
+    return replace(s, observations=tuple(
+        {**o, "time_factor": t} for o, (_, _, t) in zip(s.observations, reports, strict=True)))
+
+
+def _factors(s: FP.State) -> list[float]:
+    return [o["time_factor"] for o in s.observations]
+
+
+def test_retiming_at_the_stated_constants_is_the_identity() -> None:
+    s = _timed([(0, 0, 0.25), (1, 1, 0.6), (2, 2, 1.0)], truth=0, qid="q")
+    assert FP.retimed(s, FP.Setting.default()) == s
+
+
+def test_retiming_scales_the_half_life() -> None:
+    s = _timed([(0, 0, 0.25), (1, 1, 0.6), (2, 2, 1.0)], truth=0, qid="q")
+    out = FP.retimed(s, replace(FP.Setting.default(), half_life_scale=2.0, a_time_unknown=0.9))
+    assert _factors(out) == [pytest.approx(0.5), 0.9, 1.0]
+    assert [{k: v for k, v in o.items() if k != "time_factor"} for o in out.observations] == [
+        {k: v for k, v in o.items() if k != "time_factor"} for o in s.observations]
+    assert (out.k, out.rho, out.truth) == (s.k, s.rho, s.truth)
+
+
+def test_the_time_fit_follows_old_right_leaders() -> None:
+    right = [_timed([(0, 0, 0.25), (1, 1, 1.0)], truth=0, qid=f"r{i}") for i in range(12)]
+    none = [_timed([(0, 0, 0.3)], truth=FP.NONE, qid=f"n{i}") for i in range(3)]
+    best = FP.fit(right + none, FP.Setting.default(), ("half_life_scale",), FP.GRIDS)
+    assert best.half_life_scale > 1.0

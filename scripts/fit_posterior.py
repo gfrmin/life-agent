@@ -14,7 +14,10 @@ leader probability with the pinned archive row's ``typed.p1``.
 ``fit`` scores the stated constants and six fits (tempering, eta, tempering + A, all but
 ``P_NONE_PRIOR``, ``P_NONE_PRIOR`` alone, all five) by the mean log probability the posterior
 gives the truth, in-sample and on the other set, then re-decides every state under each fit
-with the evidence held fixed. Prints aggregates only.
+with the evidence held fixed. Prints aggregates only. Two time parameters ride along on the
+captured states without re-capturing: a dated factor is ``0.5 ** (age / h)``, so
+``f ** (1 / m) == 0.5 ** (age / (m * h))`` scales every half-life by ``m``, and the undated
+factor is replaced by its own constant.
 
     uv run python scripts/fit_posterior.py capture --questions Q.yaml --set generated
     uv run python scripts/fit_posterior.py check --states S.jsonl --archive A.jsonl
@@ -48,6 +51,7 @@ from life_agent.core import enact as EN
 from life_agent.core import gather_row as GR
 from life_agent.core import outcomes as OUT
 from life_agent.core import posterior as POST
+from life_agent.core import pricing as PRC
 from life_agent.core import seam as SEAM
 
 NONE = -1  # the truth label of a state whose gold is not among the candidates
@@ -122,11 +126,53 @@ def reweighted(states: Sequence[State], *, negative_weight: float) -> list[State
 # --- the score ----------------------------------------------------------------------------
 
 
-def posterior_of(state: State, channel: POST.Channel) -> tuple[list[float], float]:
-    return POST.candidate_posterior(state.k, list(state.observations), state.rho, channel)
+@dataclass(frozen=True)
+class Setting:
+    """The channel's constants plus the two time parameters: ``half_life_scale`` ``m`` (every
+    half-life becomes ``m * h``) and ``a_time_unknown`` (the undated factor)."""
+
+    p_none_prior: float
+    beta_ancestry: float
+    beta_model: float
+    a_alternatives: float
+    eta: float = 1.0
+    half_life_scale: float = 1.0
+    a_time_unknown: float = PRC.A_TIME_UNKNOWN
+
+    @property
+    def channel(self) -> POST.Channel:
+        return POST.Channel(self.p_none_prior, self.beta_ancestry, self.beta_model,
+                            self.a_alternatives, self.eta)
+
+    @classmethod
+    def default(cls) -> Setting:
+        c = POST.default_channel()
+        return cls(c.p_none_prior, c.beta_ancestry, c.beta_model, c.a_alternatives, c.eta)
 
 
-def truth_prob(state: State, channel: POST.Channel) -> float:
+def retimed(state: State, setting: Setting) -> State:
+    """The state with every observation's ``time_factor`` re-derived at ``setting``: the
+    undated factor becomes ``a_time_unknown``, a dated one ``t ** (1 / half_life_scale)``
+    (``1.0`` stays ``1.0``). Assumes the undated factor is exactly ``PRC.A_TIME_UNKNOWN``; a
+    dated one equals it only by coincidence. The stated setting returns ``state`` itself."""
+    if (setting.half_life_scale == 1.0
+            and setting.a_time_unknown == PRC.A_TIME_UNKNOWN):
+        return state
+    inv = 1.0 / setting.half_life_scale
+
+    def factor(t: float) -> float:
+        return setting.a_time_unknown if t == PRC.A_TIME_UNKNOWN else float(t) ** inv
+
+    return replace(state, observations=tuple(
+        {**o, "time_factor": factor(o["time_factor"])} for o in state.observations))
+
+
+def posterior_of(state: State, setting: Setting) -> tuple[list[float], float]:
+    return POST.candidate_posterior(state.k, list(retimed(state, setting).observations),
+                                    state.rho, setting.channel)
+
+
+def truth_prob(state: State, channel: Setting) -> float:
     """The probability the posterior gives the truth: a candidate's credence, or NONE's."""
     credences, p_none = posterior_of(state, channel)
     return p_none if state.truth == NONE else credences[state.truth]
@@ -152,7 +198,7 @@ class Score:
     leader: Calibration
 
 
-def score(states: Sequence[State], channel: POST.Channel) -> Score:
+def score(states: Sequence[State], channel: Setting) -> Score:
     posts = [posterior_of(s, channel) for s in states]
     logs = [truth_log(p_none if s.truth == NONE else cred[s.truth])
             for s, (cred, p_none) in zip(states, posts, strict=True)]
@@ -161,11 +207,11 @@ def score(states: Sequence[State], channel: POST.Channel) -> Score:
     return Score(len(states), sum(logs) / len(logs), calibrate(Pairs(tuple(pairs))))
 
 
-def truth_objective(states: Sequence[State]) -> Callable[[POST.Channel], float]:
+def truth_objective(states: Sequence[State]) -> Callable[[Setting], float]:
     """The weighted mean log probability of the truth (every weight 1.0: the plain mean)."""
     total = sum(s.weight for s in states)
 
-    def objective(channel: POST.Channel) -> float:
+    def objective(channel: Setting) -> float:
         return sum(s.weight * truth_log(truth_prob(s, channel)) for s in states) / total
     return objective
 
@@ -184,6 +230,8 @@ GRIDS: dict[str, list[float]] = {
     "a_alternatives": [float(a) for a in range(2, 51)],
     "eta": arange(0.5, 4.0, 0.1),
     "p_none_prior": arange(0.02, 0.8, 0.02),
+    "half_life_scale": [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0, 8.0],
+    "a_time_unknown": arange(0.2, 1.0, 0.05),
 }
 
 #: fit g's grid for ``A``: wide enough to show whether it has an interior optimum.
@@ -201,9 +249,9 @@ FITS: dict[str, tuple[str, ...]] = {
 }
 
 
-def ascend(objective: Callable[[POST.Channel], float], start: POST.Channel,
+def ascend(objective: Callable[[Setting], float], start: Setting,
            free: Sequence[str], grids: Mapping[str, Sequence[float]] = GRIDS,
-           max_sweeps: int = 30) -> POST.Channel:
+           max_sweeps: int = 30) -> Setting:
     """Coordinate ascent over the grids of the ``free`` parameters: each sweep moves every
     parameter to its best grid value given the others, until a sweep moves nothing. A move
     needs a strict gain, so a tie keeps the current value."""
@@ -221,8 +269,8 @@ def ascend(objective: Callable[[POST.Channel], float], start: POST.Channel,
     return best
 
 
-def starts(base: POST.Channel, free: Sequence[str],
-           grids: Mapping[str, Sequence[float]] = GRIDS) -> list[POST.Channel]:
+def starts(base: Setting, free: Sequence[str],
+           grids: Mapping[str, Sequence[float]] = GRIDS) -> list[Setting]:
     """The baseline plus, for each of the grids' quartiles, every free parameter set there:
     a handful of deterministic starts, so a fit is not the baseline's nearest hill."""
     out = [base]
@@ -231,15 +279,15 @@ def starts(base: POST.Channel, free: Sequence[str],
     return out
 
 
-def fit(states: Sequence[State], base: POST.Channel, free: Sequence[str],
-        grids: Mapping[str, Sequence[float]] = GRIDS) -> POST.Channel:
+def fit(states: Sequence[State], base: Setting, free: Sequence[str],
+        grids: Mapping[str, Sequence[float]] = GRIDS) -> Setting:
     """The best of the ascents from each start, by mean log probability of the truth."""
     objective = truth_objective(states)
     return max((ascend(objective, s, free, grids) for s in starts(base, free, grids)),
                key=objective)
 
 
-def flatness(states: Sequence[State], best: POST.Channel, free: Sequence[str],
+def flatness(states: Sequence[State], best: Setting, free: Sequence[str],
              grids: Mapping[str, Sequence[float]] = GRIDS, tol: float = TOL_FLAT
              ) -> dict[str, tuple[float, float]]:
     """Per free parameter, the lowest and highest grid value whose mean log probability of
@@ -257,7 +305,7 @@ def flatness(states: Sequence[State], best: POST.Channel, free: Sequence[str],
 # --- what the fit would decide -------------------------------------------------------------
 
 
-def act_at(state: State, channel: POST.Channel, u_bar: Mapping[str, float]) -> DEC.Option:
+def act_at(state: State, channel: Setting, u_bar: Mapping[str, float]) -> DEC.Option:
     """The Bayes act at this state under ``channel``, as ``decider.decide`` takes it."""
     credences, _ = posterior_of(state, channel)
     u = GR.at_step(u_bar, len(state.applied))
@@ -280,7 +328,7 @@ class Consequence:
         return self.responds - self.right
 
 
-def consequences_each(states: Sequence[State], channels: Sequence[POST.Channel],
+def consequences_each(states: Sequence[State], channels: Sequence[Setting],
                       u_bar: Mapping[str, float]) -> Consequence:
     """Each state decided under its own channel (a cross-validation's held-out fold)."""
     acts = [act_at(s, ch, u_bar) for s, ch in zip(states, channels, strict=True)]
@@ -294,7 +342,7 @@ def consequences_each(states: Sequence[State], channels: Sequence[POST.Channel],
     return Consequence(len(states), responds, right, util, p1)
 
 
-def consequences(states: Sequence[State], channel: POST.Channel,
+def consequences(states: Sequence[State], channel: Setting,
                  u_bar: Mapping[str, float]) -> Consequence:
     return consequences_each(states, [channel] * len(states), u_bar)
 
@@ -321,9 +369,9 @@ def folds(groups: Sequence[str], n_folds: int, seed: int) -> list[int]:
     return out
 
 
-def cross_validate(states: Sequence[State], fold_of: Sequence[int], base: POST.Channel,
+def cross_validate(states: Sequence[State], fold_of: Sequence[int], base: Setting,
                    free: Sequence[str], grids: Mapping[str, Sequence[float]] = GRIDS
-                   ) -> list[POST.Channel]:
+                   ) -> list[Setting]:
     """Per state, the channel fitted on every fold but its own: out-of-fold by construction."""
     by_fold = {f: fit([s for s, g in zip(states, fold_of, strict=True) if g != f],
                       base, free, grids) for f in sorted(set(fold_of))}
@@ -340,7 +388,7 @@ def folds_by_question(ids: Sequence[str], groups: Sequence[str], n_folds: int, s
     return [fold[q] for q in ids]
 
 
-def score_each(states: Sequence[State], channels: Sequence[POST.Channel]) -> Score:
+def score_each(states: Sequence[State], channels: Sequence[Setting]) -> Score:
     posts = [posterior_of(s, ch) for s, ch in zip(states, channels, strict=True)]
     logs = [truth_log(p_none if s.truth == NONE else cred[s.truth])
             for s, (cred, p_none) in zip(states, posts, strict=True)]
@@ -357,7 +405,7 @@ def cmd_cv(a: argparse.Namespace) -> int:
     from life_agent.core import lookup as LK
 
     sets = {"generated": read_states(Path(a.generated)), "owner": read_states(Path(a.owner))}
-    base = POST.default_channel()
+    base = Setting.default()
     pooled = [s for v in sets.values() for s in v]
     where = [n for n, v in sets.items() for _ in v]
     fold_of = folds(where, a.folds, a.seed)
@@ -375,7 +423,7 @@ def cmd_cv(a: argparse.Namespace) -> int:
     print(f"fit g pooled: {_fmt_channel(g_all, FIT_G)} flat " + "; ".join(
         f"{k} [{lo:g}, {hi:g}]" for k, (lo, hi) in flatness(
             pooled, g_all, FIT_G, GRIDS_WIDE).items()))
-    chans: dict[str, list[POST.Channel]] = {
+    chans: dict[str, list[Setting]] = {
         "baseline": [base] * len(pooled),
         "g": cross_validate(pooled, fold_of, base, FIT_G, GRIDS_WIDE),
         "d": cross_validate(pooled, fold_of, base, FITS["d all but P_NONE"])}
@@ -416,15 +464,17 @@ def cmd_cv(a: argparse.Namespace) -> int:
 GRID_A_NEG = [2.0, 5.0, 10.0, 20.0, 35.0, 50.0, 75.0, 100.0, 150.0, 200.0, 300.0, 500.0, 1000.0]
 GRIDS_NEG: dict[str, list[float]] = {**GRIDS, "a_alternatives": GRID_A_NEG}
 NEG_FITS: dict[str, tuple[str, ...]] = {
-    "g": FIT_G, "d": FITS["d all but P_NONE"], "f": FITS["f all free"]}
+    "g": FIT_G, "d": FITS["d all but P_NONE"], "f": FITS["f all free"],
+    "t": ("half_life_scale", "a_time_unknown"),
+    "ft": (*FITS["f all free"], "half_life_scale", "a_time_unknown")}
 
 
 def _flat_text(flat: Mapping[str, tuple[float, float]]) -> str:
     return "; ".join(f"{k} [{lo:g}, {hi:g}]" for k, (lo, hi) in flat.items())
 
 
-def _decisions(states: Sequence[State], channels: Sequence[POST.Channel],
-               base: Sequence[POST.Channel], u_bar: Mapping[str, float]) -> str:
+def _decisions(states: Sequence[State], channels: Sequence[Setting],
+               base: Sequence[Setting], u_bar: Mapping[str, float]) -> str:
     c = consequences_each(states, channels, u_bar)
     b = consequences_each(states, base, u_bar)
     gained = c.responds - b.responds
@@ -437,7 +487,7 @@ def cmd_neg(a: argparse.Namespace) -> int:
 
     pos = {"generated": read_states(Path(a.generated)), "owner": read_states(Path(a.owner))}
     neg, leaks = read_negatives(Path(a.negatives))
-    base = POST.default_channel()
+    base = Setting.default()
     folded = LK.current_u_bar()[0]
     gauges = {f"folded u_wrong {folded['u_wrong']:.2f}": folded,
               "prior u_wrong -9": {**folded, "u_wrong": -9.0}}
@@ -461,7 +511,7 @@ def cmd_neg(a: argparse.Namespace) -> int:
     subsets = {"pooled": [True] * len(states), "positives": [not s.negative for s in states],
                "negatives": [s.negative for s in states]}
     print("\nfull-data fits (plain weights)")
-    full: dict[str, POST.Channel] = {}
+    full: dict[str, Setting] = {}
     for m, free in NEG_FITS.items():
         full[m] = fit(states, base, free, GRIDS_NEG)
         print(f"  {m}: {_fmt_channel(full[m], free)} flat "
@@ -606,7 +656,7 @@ def reproduction(rows: Sequence[Mapping[str, Any]], archive: Mapping[str, Mappin
     """How the default-channel posterior of each captured state compares with its archive
     row: ``typed.p1`` within ``tol``, and the truth label against ``typed.leader_correct``."""
     tally: Counter[str] = Counter()
-    base = POST.default_channel()
+    base = Setting.default()
     for row in rows:
         arch = (archive.get(str(row["question_id"])) or {}).get("typed")
         if arch is None:
@@ -640,7 +690,7 @@ def cmd_check(a: argparse.Namespace) -> int:
 # --- the report ---------------------------------------------------------------------------
 
 
-def _fmt_channel(ch: POST.Channel, free: Sequence[str]) -> str:
+def _fmt_channel(ch: Setting, free: Sequence[str]) -> str:
     return " ".join(f"{n}={getattr(ch, n):g}" for n in free) or "(stated)"
 
 
@@ -666,7 +716,7 @@ def cmd_fit(a: argparse.Namespace) -> int:
     from life_agent.core import lookup as LK
 
     sets = {"generated": read_states(Path(a.generated)), "owner": read_states(Path(a.owner))}
-    base = POST.default_channel()
+    base = Setting.default()
     u_bar = LK.current_u_bar()[0]
     print(f"u_correct {u_bar['u_correct']:g}  u_wrong {u_bar['u_wrong']:.3f}  "
           f"bar {DEC.respond_threshold(at_step0(u_bar)) or float('nan'):.4f}")
@@ -679,7 +729,7 @@ def cmd_fit(a: argparse.Namespace) -> int:
         sc = score(states, base)
         print(_line("baseline", sc))
         print("\n".join(fmt_bins(sc.leader)))
-    fits: dict[str, dict[str, POST.Channel]] = {n: {} for n in sets}
+    fits: dict[str, dict[str, Setting]] = {n: {} for n in sets}
     for name, states in sets.items():
         other = sets["owner" if name == "generated" else "generated"]
         print(f"\n=== fit on {name}, test on {'owner' if name == 'generated' else 'generated'}")

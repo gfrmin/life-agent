@@ -38,7 +38,9 @@ def test_the_half_life_drives_the_recency_decay() -> None:
     today = date(2025, 1, 1)
     permanent = LK.time_factor("2015-01-01", time_indexed=True, today=today,
                                half_life_years=V.PERMANENT)
-    volatile = LK.time_factor("2015-01-01", time_indexed=True, today=today, half_life_years=2.0)
+    # a 2-year effective half-life, whatever the fitted scale
+    volatile = LK.time_factor("2015-01-01", time_indexed=True, today=today,
+                              half_life_years=2.0 / LK._HALF_LIFE_SCALE)
     assert permanent > 0.999
     assert volatile < 0.05
     assert permanent > volatile

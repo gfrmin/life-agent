@@ -5,7 +5,9 @@ covariate); a *permanent* one does not. The HALF-LIFE — years to a ~50% chance
 changed — is a **world-knowledge prior**: the model already knows a date of birth never changes and
 a phone number changes every few years (elicited 2026-06-19 from the answer model: DOB / national-id
 ≈ permanent, passport / email ≈ 10y, phone ≈ 8, address ≈ 7, employer ≈ 4, salary ≈ 2). It is a
-prior, not a fact (a specific person may move yearly); the corpus's own evidence can refine it.
+prior, not a fact (a specific person may move yearly); the corpus's own evidence can refine it
+(the whole table is scaled by `pricing.HALF_LIFE_SCALE`, fitted from outcomes out of fold with
+negatives).
 
 v0 reads a keyword-classified seed of that elicitation — deterministic and offline, which keeps the
 eval reproducible. The named successor is an LLM-elicited half-life **cached per construct** (the

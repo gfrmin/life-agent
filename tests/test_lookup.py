@@ -8,7 +8,7 @@ Run: uv run --project . python -m pytest tests/test_lookup.py
 from __future__ import annotations
 
 import json
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -328,8 +328,12 @@ def test_time_factor_decay() -> None:
     # projected-but-unknown date under a time-indexed construct: stated attenuation
     assert LK.time_factor(None, time_indexed=True, today=today) == LK._A_TIME_UNKNOWN
     assert LK.time_factor("2026-06-13", time_indexed=True, today=today) == 1.0
-    one_half_life = LK.time_factor("2021-06-13", time_indexed=True, today=today)
-    assert one_half_life == pytest.approx(0.5, abs=0.01)
+    scale = LK._HALF_LIFE_SCALE
+    scaled = today - timedelta(days=round(5 * scale * 365.25))
+    assert LK.time_factor(scaled.isoformat(), time_indexed=True,
+                          today=today) == pytest.approx(0.5, abs=0.01)
+    five = LK.time_factor("2021-06-13", time_indexed=True, today=today)
+    assert five == pytest.approx(0.5 ** (1 / scale), abs=0.01)
     # future-dated documents clamp to 1.0 — no covariate bonus
     assert LK.time_factor("2030-01-01", time_indexed=True, today=today) == 1.0
 
@@ -344,7 +348,7 @@ def test_observe_hits_carries_covariates(migrated_root: Path) -> None:
                           client=client, covariates=cov, time_indexed=True,
                           today=date(2026, 6, 13))
     assert obs[0].subject_factor == pytest.approx(LK.subject_factor("underived"))
-    assert obs[0].time_factor == pytest.approx(0.25, abs=0.01)  # two half-lives
+    assert obs[0].time_factor == pytest.approx(0.25 ** (1 / LK._HALF_LIFE_SCALE), abs=0.01)
 
 
 def test_observe_hits_absent_covariates_are_unit(migrated_root: Path) -> None:

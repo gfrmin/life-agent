@@ -121,15 +121,27 @@ with a declared, measured outcome model; a fall is explained, not vetoed.
   measured outcome model. `multiple` stays the guess, since each of its parts is itself a
   lookup.
 
-- **The declines.** Generated's 93 declines: 14 with no candidate, 31 with a wrong leader, 48
-  with the right leader at `p1` 0.1–0.7 (19 of them in 0.6–0.7 against 1 wrong). Beside the
-  withheld set that bin is about 0.6 realised (14 of its 14 are wrong there), so the posterior
-  is about calibrated across answerable and unanswerable questions together and a bar move
-  buys nothing. The lever is evidence that separates an attesting document from a plausible
-  one, measured on `generated-withheld` and fitted out of fold with negatives in
-  (`scripts/fit_posterior.py`). Reactions to a cite are recorded, not folded: the fold needs an
-  outcome model for "bad" on a pointer. `sample` is pinned before the cite row (replay 8/0/6
-  to 2/10/2); re-pinning it is the owner's call.
+- **The declines — closed 2026-10-01.** Generated's 93 declines on the 2026-09-30 row: 14 with
+  no candidate, 31 with a wrong leader, 48 with the right leader at `p1` 0.1–0.7. Beside the
+  withheld set that band was about 0.6 realised, so the posterior was about calibrated across
+  answerable and unanswerable questions together and a bar move bought nothing. The spike
+  over the captured decide states asked which observation covariate separates those 48 from
+  the withheld set's candidates at matched `p1`: none the posterior sees (authority, subject,
+  competition, counts, leader share, `rho`, probes) except document age — the declined right
+  leaders were old-dated documents (29 of 34 in the band), and on every set an old-dated
+  leader was right more often than its credence said (pooled, `p1` 0.6–0.8: old 31/40, recent
+  12/18). The elicited half-lives were decaying old attestations too fast. Fitted out of fold
+  with the negatives in (`scripts/fit_posterior.py neg`, fit `t`): every half-life × 2
+  (`pricing.HALF_LIFE_SCALE`); the undated constant fitted beside it only lost responds and
+  stays. Re-run: owner 41/0 + 26/0 / 37 (U/q +0.449 → +0.504, ECE 0.153 → 0.137), generated
+  84/4 + 52/1 / 71 (+0.326 → +0.402, ECE 0.142 → 0.107), generated-withheld 0/5 + 0/17 / 166
+  (−0.146 → −0.233, the explained fall: the fit held the negatives' respond rows with the
+  evidence fixed; live, the longer half-life also changes which probes are bought). What is
+  left in generated's 71 declines: 14 with no candidate, 26 with a wrong leader, 31 with the
+  right one — the next lever there is retrieval or a new observation channel, not the
+  posterior's constants. Reactions to a cite are recorded, not folded: the fold needs an
+  outcome model for "bad" on a pointer. `sample` is pinned before the cite row and the scale
+  (replay under the cite row 8/0/6 to 2/10/2); re-pinning it is the owner's call.
 
 ## Owner-side
 

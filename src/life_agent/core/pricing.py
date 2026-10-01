@@ -176,6 +176,14 @@ A_SUBJECT_OTHER = 0.05      # P(a doc about someone else asserts the owner's val
 P_OWNER_GIVEN_INDET = 0.5   # P(the doc is about the owner | subject indeterminate)
 TIME_HALF_LIFE_YEARS = 5.0  # current-state facts: P(assertion still current | doc age)
 A_TIME_UNKNOWN = 0.6        # undated/underived doc date under a time-indexed construct
+# Every construct's elicited half-life (`volatility.half_life`) is multiplied by this before it
+# decays an observation: the one time constant fitted from outcomes, not elicited. Fitted
+# 2026-10-01 by `scripts/fit_posterior.py neg` on the captured decide states of 2026-09-30
+# (311 answerable, 171 withheld negatives), 5-fold out of fold by question: the folds chose
+# 1.5-2.5, the pooled truth log moved -0.5797 -> -0.5758, and at the folded gauge the act gained
+# 21 right answers and 1 wrong on the answerable sets with the negatives' 3 wrongs unchanged.
+# `A_TIME_UNKNOWN` was fitted beside it and left alone: moving it only lost right answers.
+HALF_LIFE_SCALE = 2.0
 
 # The Beta(1, 1) prior mean an unmeasured ask recovery rate reads as.
 PRIOR_RECOVERY = 0.5

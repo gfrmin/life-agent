@@ -114,3 +114,10 @@ def test_list_price_sums_an_applied_sequence() -> None:
 
     assert PRC.list_price(()) == 0.0
     assert PRC.list_price(["corroborate_haiku", "deliberate"]) == pytest.approx(0.004 + 0.38)
+
+
+def test_half_life_scale_never_shortens_the_elicited_half_life() -> None:
+    from life_agent.core import pricing as PRC
+
+    # the fit may stretch the elicited table, never shrink it below the elicitation
+    assert PRC.HALF_LIFE_SCALE >= 1.0
