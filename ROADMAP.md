@@ -56,9 +56,10 @@ and a clone over someone else's mail works end to end.
   answer, at P(g), the summed credence of the candidates that document reports, priced at
   +0.5 for a right pointer and −1 for a wrong one. The respond bar has to outbid it, so it
   rises (0.84 to about 0.89 at the folded gauge) and answers between the two become cites.
-  On the board, owner 34/0 + 29 cite-right out of 41 (U/q +0.395 to +0.449) and generated
-  71/4 + 44/0 out of 93 (+0.269 to +0.326); on `generated-withheld` 0/3 + 11 cite-wrong out
-  of 174 (−0.142 to −0.146), the declared price of a pointer on unanswerable questions.
+  On the board (right / wrong + cite-right / cite-wrong, declined): owner 34/0 + 29/0, 41
+  (U/q +0.395 to +0.449) and generated 71/4 + 44/0, 93 (+0.269 to +0.326); on
+  `generated-withheld` 0/3 + 0/11, 174 (−0.142 to −0.146), the declared price of a pointer
+  on unanswerable questions.
   Every cite on the answerable sets attested the gold; 6 of 73 named the right document
   under a wrong leading candidate.
 - **J3 — The stranger.** *Landed 2026-09-20.* `make data` completes the ingest (it had
