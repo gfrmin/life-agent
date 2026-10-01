@@ -33,8 +33,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from live_readout import is_live
+
 DEPLOY_DATE = "2026-08-25"          # run 14's deploy — the default window start
-EXCLUDED_RUN_PREFIXES = ("gate-", "collapse-")
 #: A weekly timer plus a day of slack. Past this the watch is reporting about a stream
 #: that stopped moving, which before K3 looked exactly like a watch with nothing to say.
 STALE_AFTER_DAYS = 8
@@ -76,7 +79,7 @@ def union(*streams: list[dict[str, Any]]) -> list[dict[str, Any]]:
 def _production(row: dict[str, Any], since: str) -> bool:
     if str(row.get("tx_time", "")) < since:
         return False
-    return not str(row.get("run_id", "")).startswith(EXCLUDED_RUN_PREFIXES)
+    return is_live(row)
 
 
 def _instrument(row: dict[str, Any]) -> str:

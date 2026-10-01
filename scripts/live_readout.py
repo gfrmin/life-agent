@@ -2,7 +2,8 @@
 """Live readout — what the DEPLOYED arm is actually doing for the owner.
 
 Every other instrument in this repo reads the eval corpus. This one reads only the
-LIVE stream: the decision rows whose ``run_id`` is not a ``gate-*`` id, joined to the
+LIVE stream: the decision rows whose ``run_id`` is not a ``gate-*`` or ``collapse-*`` id,
+joined to the
 owner's one-bit verdicts on ``decision_id`` (the §4.4 join key — ``question_id`` is not
 unique across runs). It exists because the MVP exit test (ROADMAP 3c) is stated in live
 terms — "a week of the owner asking Jarvis instead of the incumbent harnesses" — and a
@@ -38,10 +39,14 @@ from life_agent.core import config as LCFG
 _ASSERTS = ("report", "report_scoped", "hedge")
 
 
+EXCLUDED_RUN_PREFIXES = ("gate-", "collapse-")
+
+
 def is_live(row: dict[str, Any]) -> bool:
     """A live row is one no eval run produced. The gate stamps ``run_id`` on every row
-    it writes precisely so in-gate decisions can never masquerade as live."""
-    return not str(row.get("run_id") or "").startswith("gate-")
+    it writes precisely so in-gate decisions can never masquerade as live. The one
+    definition: the production readout and the live archive read it too."""
+    return not str(row.get("run_id") or "").startswith(EXCLUDED_RUN_PREFIXES)
 
 
 def _day(row: dict[str, Any]) -> str:

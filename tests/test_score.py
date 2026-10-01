@@ -384,3 +384,33 @@ def test_the_board_renders_the_cite_columns_and_the_gauge_rows() -> None:
     assert "u_cite_right 0.5, u_cite_wrong -1" in text
     # 1 right - 9 wrong + 2 cite-right - 1 cite-wrong, over 6 rows
     assert f"{(1 - 9 + 2 * 0.5 - 1.0) / 6:+.3f}" in text
+
+
+def test_a_typed_set_with_p1_is_never_written_without_its_calibration(
+        tmp_path: Path, monkeypatch, capsys) -> None:
+    """Law 10. A typed archive carrying `p1` that reaches the board with no log score / ECE
+    is named and `--write` refuses. On the current code path this cannot happen by itself
+    (`with_calibration` computes whatever the archive carries), so the suppressed case
+    monkeypatches `set_pairs` to return no pairs, standing in for a reader that regressed."""
+    from eval import calibration as CAL
+    sets, _ = _typed_set(tmp_path, [_cal_row("report", True, 0.9, 1, True, True),
+                                    _cal_row("abstain", None, 0.5, 2, False, False)])
+    monkeypatch.setenv("LIFE_AGENT_KB", str(tmp_path))
+    monkeypatch.setattr(S, "load_sets", lambda path=S.SETS: sets)
+    monkeypatch.setattr(S, "BOARD_MD", tmp_path / "BOARD.md")
+    monkeypatch.setattr(S, "BOARD_JSON", tmp_path / "board.json")
+    monkeypatch.setattr(S, "folded_gauge", lambda: (_ for _ in ()).throw(RuntimeError("n/a")))
+
+    rows, _ = S.score(tmp_path, sets)
+    assert S.uncalibrated_typed(rows, {"g"}) == ["g"]
+    with_cal, _ = S.with_calibration(tmp_path, sets, rows)
+    assert S.uncalibrated_typed(with_cal, {"g"}) == []
+
+    real = S.set_pairs
+    monkeypatch.setattr(S, "set_pairs", lambda *a, **k: CAL.Pairs())
+    assert S.main(["--write"]) == 1
+    assert "g" in capsys.readouterr().err and not (tmp_path / "BOARD.md").exists()
+    assert S.main([]) == 0 and "g" in capsys.readouterr().err
+
+    monkeypatch.setattr(S, "set_pairs", real)
+    assert S.main(["--write"]) == 0 and (tmp_path / "BOARD.md").is_file()
