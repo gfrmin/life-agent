@@ -2,7 +2,8 @@
 """Live readout — what the DEPLOYED arm is actually doing for the owner.
 
 Every other instrument in this repo reads the eval corpus. This one reads only the
-LIVE stream: the decision rows whose ``run_id`` is not a ``gate-*`` or ``collapse-*`` id, joined to the
+LIVE stream: the decision rows whose ``run_id`` is not a ``gate-*`` or ``collapse-*`` id,
+joined to the
 owner's one-bit verdicts on ``decision_id`` (the §4.4 join key — ``question_id`` is not
 unique across runs). It exists because the MVP exit test (ROADMAP 3c) is stated in live
 terms — "a week of the owner asking Jarvis instead of the incumbent harnesses" — and a

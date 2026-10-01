@@ -10,13 +10,13 @@ and a clone over someone else's mail works end to end.
 
 | Responsibility | Owner |
 |---|---|
-| Rank actions by expected utility | host `core/decide.bayes_act` (the one argmax) |
+| Rank actions by expected utility | host `core/decide.bayes_act` (the one argmax), audited by wald in tests (`tests/test_wald_oracle.py`) |
 | Declare the menu, prices, utility | host (`core/decide.py`, `core/pricing.py`, `core/utility.py`) |
 | Candidate posterior + claim lattice | host `core/posterior.py` (the **ER core** replaces it at J5) |
 | Action reliability, learned | host Beta folds from outcomes and verdicts (`core/reliability.py`, `core/gather_outcomes.py`, `core/reactions.py`) |
 | Evidence shaping | host (bridge, `core/lookup.py`, `core/matching.py`) |
 | Escalation rungs | rows like any other, shipped only when one beats abstaining (J2) |
-| Decision / disclosure / verdict records | host write-once JSONL (`core/recorder.py`); **tannen** after the MVP |
+| Decision / disclosure / verdict records | host write-once JSONL (`core/recorder.py`, `core/disclosure.py`); **tannen** after the MVP |
 | Measurement | `eval/score.py` → `SCOREBOARD.md` |
 
 ## Milestones
@@ -29,8 +29,9 @@ and a clone over someone else's mail works end to end.
   utility folds (credence-skin → local quadrature, pinned to recorded boot Ū); the act is
   the host Bayes act (`core/decide.bayes_act`, `core/decider.py`, `core/enact.py`) with
   gather priced from recorded gather sequences and ask at a measured recovery rate; the
-  Julia daemon, the credence skin and the in-process lanes retire; rule 5 is the ΔU merge
-  rule. The board is on one grader and one price list (the typed arm's applied probes at
+  Julia daemon, the credence skin and the in-process lanes retire; rule 5 was then the ΔU
+  merge rule, and ruling 7 (2026-09-30) replaced it: the loss decides, the board is
+  evidence. The board is on one grader and one price list (the typed arm's applied probes at
   the menu's prices, cache or no cache): the host act 48/0/56 at $1.44, U/q +0.443, against
   the daemon's 61/2/41 at $20.95, +0.220 — its 13 extra right answers rode with 2 wrongs and
   40 warm calls to the deliberative rung that had been metered at $0. ΔU +23.2. The
@@ -39,8 +40,9 @@ and a clone over someone else's mail works end to end.
 - **J2 — Origin, and escalation only if a rung earns it.** *Origin done 2026-09-20.* Every
   reply leads with where its answer came from — your documents, a named rung, or a
   decline with its reason (`decisions.origin`, one derivation; the record's v4 `origin`
-  field; the first line of `executor.render_view`). Disclosure rows wait with the rung
-  that would need them (`deliberate.record_answer` is the seam). The escalate ROW is measured and does
+  field; the first line of `executor.render_view`). *Disclosure done 2026-09-30 (#213):* one row
+  per model call that carried corpus text, failed calls included; a rung's reply says how
+  many documents it saw. The escalate ROW is measured and does
   not pay: the one rung with recorded verdicts (the deliberative edge) answers the owner's
   104 at 87 right / 13 wrong / 4 declined on the grader the act faces, which at today's
   gauge is −0.50 per escalation, and −0.04 even at zero price — a 12.5% wrong rate costs
@@ -48,6 +50,17 @@ and a clone over someone else's mail works end to end.
   rescue it (best self-report bar 0.95: 67/3/24, +0.01 per question, because the call is
   paid before the confidence is visible). So a rung ships when it beats abstaining on the
   board, not before; `core/outcome_mixture.py` already holds the row's shape.
+
+  *The second reply kind, partial answers* (ruling 8, #214). A third answer joins the
+  value and the decline: the `cite` row names the one document believed to hold the
+  answer, at P(g), the summed credence of the candidates that document reports, priced at
+  +0.5 for a right pointer and −1 for a wrong one. The respond bar has to outbid it, so it
+  rises (0.84 to about 0.89 at the folded gauge) and answers between the two become cites.
+  On the board, owner 34/0 + 29 cite-right out of 41 (U/q +0.395 to +0.449) and generated
+  71/4 + 44/0 out of 93 (+0.269 to +0.326); on `generated-withheld` 0/3 + 11 cite-wrong out
+  of 174 (−0.142 to −0.146), the declared price of a pointer on unanswerable questions.
+  Every cite on the answerable sets attested the gold; 6 of 73 named the right document
+  under a wrong leading candidate.
 - **J3 — The stranger.** *Landed 2026-09-20.* `make data` completes the ingest (it had
   registered sources and stopped, leaving nothing searchable); `make sets` fetches
   ATM-Bench at a pinned revision and builds its KB on your machine (CC-BY-NC: the corpus
@@ -66,22 +79,27 @@ and a clone over someone else's mail works end to end.
   log. *The dead-man landed 2026-09-20:* a stale window exits non-zero and the weekly timer
   pages on it, so a stopped arm is loud instead of legible. "With escalation" is satisfied
   as the board allows it: the deliberative rung sits on the priced menu and the act may buy
-  it, which is the only form escalation takes until a rung beats abstaining (J2). What
-  remains is use — the exit test counts calendar days carrying live traffic — and the
-  `live` row, produced by `scripts/live_archive.py` from the decision log joined to the
-  owner's verdicts on `decision_id`.
+  it, which is the only form escalation takes until a rung beats abstaining (J2). The
+  dead-man and `scripts/live_archive.py` (the `live` row, from the decision log joined to the
+  owner's verdicts on `decision_id`) exist; the exit test, which counts calendar days
+  carrying live traffic, has not started counting. The decision log of record holds no live
+  row after 2026-09-20. Whether that is no use or a log that does not carry the production
+  stream is the owner's to say. Live traffic has one definition, `live_readout.is_live`
+  (run ids not prefixed `gate-` or `collapse-`), used by every readout.
 - **J5 — The second domain.** Swap the posterior, lattice, loss and laws for the ER core's
   own public repo at a pinned tag (hkaddresses consumes the same core).
 
 ## Doors after the MVP
 
-Each returns through the board: its arm's paired ΔU ≥ 0 against the host on every set, from the
-same recorded decisions.
+Each returns through the board as rule 5 reads it now: an equivalence, or a row of the argmax
+with a declared, measured outcome model; a fall is explained, not vetoed.
 
 - **An engine for the act.** The proplang client (`membrane/`) and its pin were removed on
-  2026-09-30; the tag `archive/pre-prune-2026-09-30` holds them. The successor is **wald**,
-  used as hkaddresses uses it: a test-only oracle that must take the same act as
-  `core/decide.bayes_act`, never the runtime (it hands no probability back to a host).
+  2026-09-30; the tag `archive/pre-prune-2026-09-30` holds them. **wald** is in place as
+  hkaddresses uses it: a test-only oracle for `core/decide.bayes_act`, never the runtime (it
+  hands no probability back to a host). Over 3,000 seeded states and every documented
+  crossing it takes the act the host takes (#216). The door reopens only when wald catches a
+  defect a test here cannot, with an issue citing the failing law.
 - **tannen** as the write-once store, at its `m5-close` tag, once the MVP is live.
 - **The ER core** (J5): hkaddresses extracts it into its own public repo, with life-agent as
   the second domain (`renavondata/hkaddresses#27`).
@@ -97,8 +115,27 @@ same recorded decisions.
 - **The rejected answer types.** The router names why it rejects a question: a `list`, an
   `aggregate`, a `summary`, or `multiple` values at once. Each is an answer type outside the
   decider's hypothesis space (a single span), so each is declined today. The route decision rows
-  now record the kind, so the live counts of each say which to add first; each returns through
-  the board as its own answer type with its own measured outcome model. `multiple` is the likely
-  first, since each of its parts is itself a lookup.
+  record the kind, but no live route row exists yet, so the counts that would pick the first
+  type are not there; each returns through the board as its own answer type with its own
+  measured outcome model. `multiple` stays the guess, since each of its parts is itself a
+  lookup.
 
-`u_wrong` re-elicitation is the owner's alone (it moves every bar, including escalation's).
+- **The declines.** Generated's 93 declines: 14 with no candidate, 31 with a wrong leader, 48
+  with the right leader at `p1` 0.1–0.7 (19 of them in 0.6–0.7 against 1 wrong). Beside the
+  withheld set that bin is about 0.6 realised (14 of its 14 are wrong there), so the posterior
+  is about calibrated across answerable and unanswerable questions together and a bar move
+  buys nothing. The lever is evidence that separates an attesting document from a plausible
+  one, measured on `generated-withheld` and fitted out of fold with negatives in
+  (`scripts/fit_posterior.py`). Reactions to a cite are recorded, not folded: the fold needs an
+  outcome model for "bad" on a pointer. `sample` is pinned before the cite row (replay 8/0/6
+  to 2/10/2); re-pinning it is the owner's call.
+
+## Owner-side
+
+- `u_wrong` re-elicitation is the owner's alone (it moves every bar, including escalation's).
+- Confirm the production box writes `calibration/decisions.jsonl` and that the mirror carries
+  it (its last live row is 2026-09-20).
+- Disable `ledger-freshness.timer` on production.
+- Confirm the owner KB's fitted gather row.
+- `atm` has no calibration.
+- The live `model.yaml` may declare `u_cite_right` / `u_cite_wrong` (optional).
