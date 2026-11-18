@@ -7,13 +7,22 @@ Reach, not truth — outbound only, parses nothing (interaction contract §push)
 
 from __future__ import annotations
 
-from datetime import date
+import json
+import os
+from datetime import UTC, date, datetime, timedelta
 
 from life_agent.reach import telegram
 from life_agent.tasks.store import get_db, owner_user_id
 
 # How many #next tasks the digest shows before naming the remainder.
 NEXT_LIMIT = 5
+
+# Photo scans waiting for review: a status file written by ops' scans-review on the box
+# that holds the yo drive (gfrmin/ops scansplitter/README.md) -- the same box this digest
+# runs on, since both follow the drive. Its path comes from SCANS_REVIEW_STATUS, set by
+# the deploying box (ops' daily-digest drop-in); no path is baked in here. Read-only and
+# optional: unset, absent, unreadable or stale (scans-review not running) means no line.
+SCANS_STATUS_MAX_AGE = timedelta(hours=48)
 
 # The push-mode vocabulary (interaction contract §push): one table, rendered by
 # build_digest and drift-gated in tests/test_reach.py — the contract's enumerated
@@ -26,7 +35,28 @@ SECTIONS = {
     "next": "UP NEXT:",
     "next_more": "  (+{n} more in #next)",
     "inbox": "You have {n} item(s) in your inbox to process.",
+    "scans": "PHOTO SCANS: {n} waiting for review at {url}",
 }
+
+
+def scans_waiting() -> tuple[int, str] | None:
+    """(count, review URL) of photo scans waiting for review, or None when there is
+    nothing to say: no status file, an unreadable one, a stale one, or zero waiting."""
+    path = os.environ.get("SCANS_REVIEW_STATUS")
+    if not path:
+        return None
+    try:
+        with open(path) as f:
+            status = json.load(f)
+        waiting, url = int(status["waiting"]), str(status["url"])
+        updated = datetime.fromisoformat(status["updated"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    if updated.tzinfo is None:
+        updated = updated.replace(tzinfo=UTC)
+    if waiting <= 0 or datetime.now(UTC) - updated > SCANS_STATUS_MAX_AGE:
+        return None
+    return waiting, url
 
 
 def build_digest(user_id: int) -> str | None:
@@ -56,8 +86,9 @@ def build_digest(user_id: int) -> str | None:
         (user_id,),
     ).fetchone()["c"]
     conn.close()
+    scans = scans_waiting()
 
-    if not any([today_tasks, overdue, due_today, next_tasks]) and inbox_count == 0:
+    if not any([today_tasks, overdue, due_today, next_tasks, scans]) and inbox_count == 0:
         return None
 
     lines = ["Good morning! Here's your daily digest:\n"]
@@ -81,6 +112,8 @@ def build_digest(user_id: int) -> str | None:
         lines.append("")
     if inbox_count > 0:
         lines.append(SECTIONS["inbox"].format(n=inbox_count))
+    if scans:
+        lines.append(SECTIONS["scans"].format(n=scans[0], url=scans[1]))
     return "\n".join(lines)
 
 
