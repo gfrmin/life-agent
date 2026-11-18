@@ -290,6 +290,31 @@ def test_digest_main_targets_the_owner(monkeypatch: pytest.MonkeyPatch) -> None:
     assert "A task" in sent[0][1]
 
 
+def _write_scans_status(waiting: int, *, age_hours: float = 0) -> None:
+    import datetime as _dt
+    import os
+
+    updated = _dt.datetime.now(_dt.UTC) - _dt.timedelta(hours=age_hours)
+    Path(os.environ["SCANS_REVIEW_STATUS"]).write_text(json.dumps(
+        {"waiting": waiting, "url": "https://review-box.example.test:8444",
+         "updated": updated.isoformat()}))
+
+
+def test_digest_names_scans_waiting_for_review() -> None:
+    _write_scans_status(3)
+    out = reach_digest.build_digest(USER)
+    # scans alone are reason enough to send a digest, with nothing else to say
+    assert out is not None and "3 waiting for review at https://review-box.example.test:8444" in out
+
+
+def test_digest_is_silent_about_scans_when_none_stale_or_absent() -> None:
+    assert reach_digest.build_digest(USER) is None  # no status file (conftest)
+    _write_scans_status(0)
+    assert reach_digest.build_digest(USER) is None
+    _write_scans_status(5, age_hours=72)  # scans-review not running: say nothing stale
+    assert reach_digest.build_digest(USER) is None
+
+
 def test_digest_sections_drift_gate() -> None:
     # every push-mode section in the table renders in a fully-populated digest —
     # the contract's §push enumeration, enforced (its only conformance test)
@@ -303,6 +328,7 @@ def test_digest_sections_drift_gate() -> None:
     for i in range(6):
         commands.add(USER, f"N{i}", list_name="next")
     commands.add(USER, "Inbox thing")
+    _write_scans_status(2)
     out = reach_digest.build_digest(USER)
     assert out is not None
     for key, template in reach_digest.SECTIONS.items():
