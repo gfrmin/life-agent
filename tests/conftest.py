@@ -24,6 +24,14 @@ def _hermetic_gtd_paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None
 
 
 @pytest.fixture(autouse=True)
+def _hermetic_scans_status(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The digest reads the photo-scans review status from SCANS_REVIEW_STATUS, which the
+    deploying box points at a LIVE file; inherited, a test would see the owner's backlog.
+    Point it at a path that does not exist; a test that wants a status writes one there."""
+    monkeypatch.setenv("SCANS_REVIEW_STATUS", str(tmp_path / "hermetic-scans-status.json"))
+
+
+@pytest.fixture(autouse=True)
 def _hermetic_decisions_log(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """The M2 driver's §6.5 unavailability record (and any leaf left unstubbed) appends to
     ``config.DECISIONS_LOG`` — which, un-redirected, is the owner's LIVE calibration
