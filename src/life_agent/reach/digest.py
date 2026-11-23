@@ -11,7 +11,7 @@ import json
 import os
 from datetime import UTC, date, datetime, timedelta
 
-from life_agent.reach import telegram
+from life_agent.reach import door, telegram
 from life_agent.tasks.store import get_db, owner_user_id
 
 # How many #next tasks the digest shows before naming the remainder.
@@ -127,6 +127,11 @@ def main() -> None:
             telegram.send_message(user_id, digest)
         except Exception as e:
             print(f"Failed to send digest to {user_id}: {e}")
+        # A mirror, after the authoritative send and independent of it: a no-op unless the
+        # deploying box names a door (reach/door.py).
+        outcome = door.mirror(digest)
+        if outcome != "no door configured":
+            print(f"door: {outcome}")
 
 
 if __name__ == "__main__":
