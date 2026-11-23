@@ -70,7 +70,10 @@ def test_a_box_with_no_door_mirrors_nothing(monkeypatch: pytest.MonkeyPatch) -> 
     assert door.configured() is None
     assert door.mirror("a digest") == "no door configured"
     monkeypatch.setenv("DOOR_URL", "http://door.example.test:6167")
-    assert door.configured() is None  # half a configuration is none
+    assert door.configured() is None  # half a configuration is none, and it is said
+    assert door.mirror("a digest") == (
+        "door mirror not run: DOOR_URL is set, and DOOR_SERVER or DOOR_ACCOUNT is not"
+    )
 
 
 def test_the_box_says_which_door_and_which_account(box: dict[str, str]) -> None:
@@ -123,6 +126,32 @@ def test_invited_it_joins_hands_the_item_in_and_signs_out(box: dict[str, str]) -
     # the password is the one the box names, and it goes nowhere but the sign-in
     assert there.asked[0][2]["password"] == "the-DOOR_PASSWORD"
     assert there.asked[0][2]["identifier"] == {"type": "m.id.user", "user": "today"}
+    # one device, by name: a run that died before signing out leaves none behind to add up
+    assert there.asked[0][2]["device_id"] == door.DEVICE
+
+
+def test_the_password_goes_to_the_door_through_no_proxy_and_follows_no_redirect(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: dict[str, Any] = {}
+
+    class Opener:
+        def open(self, request: Any, timeout: float) -> Any:
+            raise OSError("no door here")
+
+    def build(*handlers: Any) -> Opener:
+        seen["handlers"] = handlers
+        return Opener()
+
+    monkeypatch.setenv("http_proxy", "http://proxy.example.test:3128")
+    monkeypatch.setattr(door, "build_opener", build)
+    ask = door._asking("http://door.example.test:6167")
+    assert ask("POST", f"{door.API}/login", {"password": "p"}, None) == (0, None)
+    proxy, redirect = seen["handlers"]
+    assert isinstance(proxy, door.ProxyHandler) and proxy.proxies == {}  # whatever the env says
+    assert isinstance(redirect, door._NoRedirect)
+    elsewhere = "http://elsewhere.example.test"
+    assert redirect.redirect_request(None, None, 302, "Found", {}, elsewhere) is None
 
 
 def test_already_in_its_room_it_finds_it_by_its_name_and_the_keeper(box: dict[str, str]) -> None:

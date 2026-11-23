@@ -17,7 +17,9 @@ any particular door is baked in here:
                     another key when a box holds more than one door password
 
 With ``DOOR_URL`` unset the mirror does nothing at all. It never raises into its caller:
-a door that is down must not cost the owner his morning message.
+a door that is down must not cost the owner his morning message. "Handed to the door" is
+not "shown": the keeper reads an item strictly and may refuse one, and says so in the
+room it was handed in.
 """
 
 from __future__ import annotations
@@ -31,7 +33,7 @@ from datetime import date
 from typing import Any
 from urllib.error import HTTPError
 from urllib.parse import quote, urlencode
-from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
 from life_agent.core import secret
 
@@ -40,6 +42,9 @@ API = "/_matrix/client/v3"  # PII-OK — a URL path on the server, not a file pa
 # The keeper's limits for an item's text (its contract): characters, and bytes.
 TEXT_CHARS, TEXT_BYTES = 16000, 32000
 _TIMEOUT_S = 20
+# One device, whatever happens to a run: a sign-in under a device's name takes that device
+# over, so a run that died before signing out leaves nothing behind to add up.
+DEVICE = "LIFEAGENTDIGEST"
 # (status, the answer's JSON or None); status 0 when there was no answer
 Ask = Callable[[str, str, Any, "str | None"], tuple[int, Any]]
 
@@ -102,15 +107,26 @@ def invited(answer: Any, me: str, keeper: str) -> list[str]:
     return found
 
 
+class _NoRedirect(HTTPRedirectHandler):
+    """An answer that points elsewhere is the answer: it is not followed."""
+
+    def redirect_request(self, *_args: Any, **_kwargs: Any) -> None:
+        return None
+
+
 def _asking(base: str) -> Ask:
+    """Requests to the door through no proxy, and never on to where an answer points:
+    the sign-in carries the password, and it goes to the door and nowhere else."""
+    opener = build_opener(ProxyHandler({}), _NoRedirect())
+
     def ask(method: str, path: str, body: Any, token: str | None) -> tuple[int, Any]:
         headers = {"content-type": "application/json"}
         if token:
             headers["Authorization"] = f"Bearer {token}"
         data = json.dumps(body).encode() if body is not None else None
         try:
-            with urlopen(Request(base + path, data=data, headers=headers, method=method),
-                         timeout=_TIMEOUT_S) as answer:
+            request = Request(base + path, data=data, headers=headers, method=method)
+            with opener.open(request, timeout=_TIMEOUT_S) as answer:
                 return answer.status, json.loads(answer.read())
         except HTTPError as refused:
             try:
@@ -164,6 +180,7 @@ def hand_in(
         "type": "m.login.password",
         "identifier": {"type": "m.id.user", "user": door["account"]},
         "password": secret(door["secret"]),
+        "device_id": DEVICE,
         "initial_device_display_name": "life-agent digest",
     }, None), "sign-in")
     token = str(login["access_token"])
@@ -183,6 +200,8 @@ def mirror(digest: str, day: date | None = None) -> str:
     line, and never raises: the digest's own sending must not depend on the door."""
     door = configured()
     if door is None:
+        if os.environ.get("DOOR_URL"):  # half a configuration is a mistake, and is said
+            return "door mirror not run: DOOR_URL is set, and DOOR_SERVER or DOOR_ACCOUNT is not"
         return "no door configured"
     try:
         sent = hand_in(item(digest, day or date.today()), door)
