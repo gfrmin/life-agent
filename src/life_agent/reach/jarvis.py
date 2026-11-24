@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import signal
 import sys
 import time
@@ -54,6 +55,9 @@ INTENTS: tuple[tuple[str, str, str], ...] = (
     ("move",
      '{"action": "move", "task_id": number, "list": "inbox|next|scheduled|someday", "due_date": "YYYY-MM-DD or null"}',
      'Move: "move 5 to next"'),
+    ("later",
+     '{"action": "later", "task_id": number}',
+     'Later: "later 3" (off today\'s focus, kept where it is)'),
     ("mark_today",
      '{"action": "mark_today", "task_id": number, "is_today": true|false}',
      'Focus: "today 3" or "focus on 3"; "untoday 3" to unmark'),
@@ -97,6 +101,21 @@ def verdict_valence(text: str) -> str | None:
     round-trips through the model."""
     return _VERDICTS.get(text.strip().lower())
 
+
+# "done 12", "later #12": a task by its number, read by rule. A tap must never depend on a
+# model (issue #221): these are the commands a door's tap stands in for, so they are
+# parsed before any model is asked, and anything else goes on to the NLU as before.
+_QUICK = re.compile(r"(done|later)\s*#?(\d{1,9})", re.IGNORECASE)
+
+
+def quick_command(text: str) -> dict[str, Any] | None:
+    """The intent of a bare "done N" or "later N", or None for anything else."""
+    found = _QUICK.fullmatch(text.strip())
+    if not found:
+        return None
+    verb, number = found.group(1).lower(), int(found.group(2))
+    return {"action": "complete" if verb == "done" else "later", "task_id": number}
+
 _ACTIONS_BLOCK = "\n".join(f"- {schema}" for _, schema, _ in INTENTS)
 
 # {today} is substituted by render_prompt's .replace (NOT .format — the schema lines
@@ -122,6 +141,8 @@ Rules:
 - If the user says "untoday 3" or "unmark 3", use "mark_today" with is_today false.
 - If the user says "schedule X for next tuesday", convert to a date and use "add" with list "scheduled".
 - If the user says "move 5 to next", use "move" with the task_id and list.
+- If the user says "later 3" or "not today 3" with no date, use "later" with the task_id: it only takes the task off today's focus.
+- If the user says "postpone 3 to friday", "push 3 to next week" or "3 for someday", that is a date or a list: use "move" with the task_id, the list ("scheduled" with the due_date, or "someday"), never "later".
 - If the user asks a question about their life, documents, dates, people, or facts — e.g. "what is my passport number?", "when does my lease end?" — use "question" with the question verbatim. Task commands always take precedence over "question".
 - For greetings and small talk, use "chat" with a brief friendly response.
 - Parse relative dates: "tomorrow" = next day, "next monday" = the coming Monday, etc.
@@ -185,6 +206,12 @@ def handle_action(parsed: dict[str, Any], user_id: int) -> str:
         if task_id is None:
             return "Which task should I move? Give me the task number."
         return commands.move(user_id, task_id, parsed.get("list", "next"), parsed.get("due_date"))
+
+    if action == "later":
+        task_id = parsed.get("task_id")
+        if task_id is None:
+            return "Which task should come off today's focus? Give me the task number."
+        return commands.later(user_id, task_id)
 
     if action == "mark_today":
         task_id = parsed.get("task_id")
@@ -296,6 +323,10 @@ def poll_loop() -> None:
                         reply = ask_client.react(LAST_DECISION_ID, valence)
                         LAST_DECISION_ID = None
                         telegram.send_message(chat_id, reply)
+                        continue
+                    quick = quick_command(text)
+                    if quick:  # a task by its number: no model is asked
+                        telegram.send_message(chat_id, handle_action(quick, user_id))
                         continue
                     telegram.send_chat_action(chat_id, "typing")
                     parsed = parse_intent(text)

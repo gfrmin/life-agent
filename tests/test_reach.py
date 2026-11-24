@@ -161,6 +161,14 @@ def test_help_renders_every_intent_example() -> None:
         assert help_line in help_text, action
 
 
+def test_prompt_keeps_later_apart_from_a_postponement_to_a_date() -> None:
+    """The second review of #223: "later" drops nothing but the focus, so the model must
+    not take "postpone 3 to friday" for it and lose the date that was asked for."""
+    prompt = jarvis.render_prompt("2026-11-25")
+    assert 'use "later" with the task_id' in prompt
+    assert '"postpone 3 to friday"' in prompt and 'never "later"' in prompt
+
+
 def test_prompt_mentions_the_tag_rule() -> None:
     # The list intent's tag form must be exemplified in Rules, or a small local
     # model never emits it (the path itself is wired in handle_action).
@@ -412,3 +420,154 @@ def test_poll_loop_beats_after_each_successful_cycle(
     with pytest.raises(_Stop):
         jarvis.poll_loop()
     assert len(beats) == 2  # one beat per completed cycle, none for the aborted third
+
+
+# --- a task by its number, by rule: no model between a tap and its record (#221) ----
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("done 12", {"action": "complete", "task_id": 12}),
+        ("Done #12", {"action": "complete", "task_id": 12}),
+        ("  DONE   3 ", {"action": "complete", "task_id": 3}),
+        ("done#4", {"action": "complete", "task_id": 4}),
+        ("later 7", {"action": "later", "task_id": 7}),
+        ("Later #7", {"action": "later", "task_id": 7}),
+    ],
+)
+def test_a_task_by_its_number_is_read_by_rule(text: str, expected: dict[str, Any]) -> None:
+    assert jarvis.quick_command(text) == expected
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["done buy milk", "done 3 4", "done", "later", "later x", "undone 3", "done 3.", "3 done",
+     "done -3", "later tomorrow", "done 3 please", "done 1234567890"],
+)
+def test_anything_else_is_left_to_the_model(text: str) -> None:
+    assert jarvis.quick_command(text) is None
+
+
+def _row(task_id: int) -> tuple[str, str | None, int]:
+    with store.get_db() as conn:
+        r = conn.execute("SELECT list, due_date, is_today FROM tasks WHERE id = ?",
+                         (task_id,)).fetchone()
+    return (r["list"], r["due_date"], r["is_today"])
+
+
+def test_later_takes_a_task_off_todays_focus_and_keeps_its_list_and_its_deadline() -> None:
+    """The review of #223: a deadline of 12-20 became tomorrow, and a #next task went to
+    #scheduled for good and sat in "overdue". Only the focus changes."""
+    commands.add(USER, "File the appeal", list_name="scheduled", due_date="2026-12-20",
+                 is_today=True)
+    commands.add(USER, "Learn Hebrew", list_name="next", is_today=True)
+    assert commands.later(USER, 1) == (
+        "Later: [1] File the appeal, off today's focus and still #scheduled"
+    )
+    assert _row(1) == ("scheduled", "2026-12-20", 0)
+    assert commands.later(USER, 2) == "Later: [2] Learn Hebrew, off today's focus and still #next"
+    assert _row(2) == ("next", None, 0)
+    out = reach_digest.build_digest(USER)
+    assert out is not None and reach_digest.SECTIONS["focus"] not in out
+    assert reach_digest.SECTIONS["next"] in out and "[2] Learn Hebrew" in out
+
+
+def test_later_of_a_task_not_in_focus_or_done_changes_nothing() -> None:
+    commands.add(USER, "Not in focus", list_name="next")
+    before = commands.LEDGER_PATH.read_text()
+    assert commands.later(USER, 1) == (
+        "[1] Not in focus is not on today's focus: nothing to put off."
+    )
+    assert commands.LEDGER_PATH.read_text() == before  # no event
+    assert commands.later(USER, 99) == "Task not found."
+    commands.add(USER, "Already done", is_today=True)
+    commands.complete(USER, 2)
+    assert commands.later(USER, 2) == "Task not found."
+
+
+def test_handle_later() -> None:
+    commands.add(USER, "Ring the bank", is_today=True)
+    assert "off today's focus" in jarvis.handle_action({"action": "later", "task_id": 1}, USER)
+    assert "task number" in jarvis.handle_action({"action": "later"}, USER)
+
+
+def _one_message(monkeypatch: pytest.MonkeyPatch, text: str) -> list[str]:
+    """Run poll_loop over one message from the owner; return what jarvis replied."""
+
+    class _Stop(BaseException):
+        pass
+
+    batches = iter([[{"update_id": 1, "message": {"from": {"id": USER}, "chat": {"id": 9},
+                                                   "text": text}}]])
+
+    def fake_poll(offset: int, timeout: int = 0) -> list[dict[str, Any]]:
+        try:
+            return next(batches)
+        except StopIteration:
+            raise _Stop from None
+
+    replies: list[str] = []
+    monkeypatch.setattr(telegram, "poll_updates", fake_poll)
+    monkeypatch.setattr(telegram, "send_message", lambda chat, reply: replies.append(reply))
+    monkeypatch.setattr(telegram, "send_chat_action", lambda *_: None)
+    monkeypatch.setattr(jarvis, "_user_id", lambda: USER)
+    monkeypatch.setattr(jarvis, "_heartbeat", lambda: None)
+    with pytest.raises(_Stop):
+        jarvis.poll_loop()
+    return replies
+
+
+def test_done_and_later_by_number_never_ask_the_model(monkeypatch: pytest.MonkeyPatch) -> None:
+    def no_model(_text: str) -> dict[str, Any]:
+        raise AssertionError("the model was asked")
+
+    monkeypatch.setattr(jarvis, "parse_intent", no_model)
+    commands.add(USER, "Finish me")
+    commands.add(USER, "Put me off", is_today=True)
+    assert _one_message(monkeypatch, "done 1") == ["Completed: Finish me"]
+    assert _one_message(monkeypatch, "later #2")[0].startswith("Later: [2] Put me off")
+    assert store.resolve_by_id(store.get_db(), USER, 1, active_only=True) is None
+
+
+def test_anything_else_still_goes_to_the_model(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: list[str] = []
+
+    def model(text: str) -> dict[str, Any]:
+        seen.append(text)
+        return {"action": "add", "text": "Buy milk"}
+
+    monkeypatch.setattr(jarvis, "parse_intent", model)
+    assert _one_message(monkeypatch, "buy milk")[0].startswith("Added")
+    assert seen == ["buy milk"]
+
+
+# --- the morning report fails loudly (#221) ---------------------------------------
+
+
+def test_a_morning_report_that_could_not_be_sent_fails_the_run_after_the_mirror(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    commands.add(USER, "A task", is_today=True)
+    monkeypatch.setenv("JARVIS_USER_ID", str(USER))
+
+    def down(_uid: int, _text: str) -> None:
+        raise OSError("telegram unreachable")
+
+    mirrored: list[str] = []
+    monkeypatch.setattr(reach_digest.telegram, "send_message", down)
+    monkeypatch.setattr(reach_digest.door, "mirror",
+                        lambda text: mirrored.append(text) or "handed in")
+    with pytest.raises(SystemExit) as stopped:
+        reach_digest.main()
+    assert stopped.value.code == 1
+    assert len(mirrored) == 1 and "A task" in mirrored[0]  # the door still had its chance
+    assert "Failed to send digest" in capsys.readouterr().err
+
+
+def test_a_morning_report_that_went_ends_well(monkeypatch: pytest.MonkeyPatch) -> None:
+    commands.add(USER, "A task", is_today=True)
+    monkeypatch.setenv("JARVIS_USER_ID", str(USER))
+    monkeypatch.setattr(reach_digest.telegram, "send_message", lambda *_: None)
+    monkeypatch.setattr(reach_digest.door, "mirror", lambda text: "no door configured")
+    reach_digest.main()  # returns: no SystemExit

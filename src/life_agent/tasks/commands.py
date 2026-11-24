@@ -114,6 +114,24 @@ def move(user_id: int, task_id: int, new_list: str, due_date: str | None = None)
     return f"Moved [{task_id}] {text} to #{new_list}{due_info}"
 
 
+def later(user_id: int, task_id: int) -> str:
+    """Not now: the task leaves today's focus and keeps its list and its due date.
+
+    Only the focus changes. Bringing it back by itself tomorrow would need a date the task
+    store does not keep; moving it to a list or a deadline to fake one loses the real ones
+    (the review of #223: a task due on 12-20 became due tomorrow, and a #next task sat in
+    "overdue" for good)."""
+    with store.get_db() as conn:
+        row = store.resolve_by_id(conn, user_id, task_id, active_only=True)
+        if not row:
+            return "Task not found."
+        text = row["text"]
+        if not row["is_today"]:
+            return f"[{task_id}] {text} is not on today's focus: nothing to put off."
+        _emit(conn, ev.amended(row["identity"], {"is_today": 0}))
+    return f"Later: [{task_id}] {text}, off today's focus and still #{row['list']}"
+
+
 def mark_today(user_id: int, task_id: int, is_today: bool = True) -> str:
     with store.get_db() as conn:
         row = store.resolve_by_id(conn, user_id, task_id, active_only=True)

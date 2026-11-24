@@ -227,12 +227,15 @@ def test_the_digest_is_mirrored_after_it_is_sent_and_a_failed_send_does_not_stop
     monkeypatch.setattr(reach_digest.telegram, "send_message", send)
     monkeypatch.setattr(reach_digest.door, "mirror",
                         lambda text: order.append(f"door:{text}") or "handed to the door as $e")
-    reach_digest.main()
+    # the mirror is not stopped by a failed send; the run then fails (issue #221)
+    with pytest.raises(SystemExit):
+        reach_digest.main()
     assert order == ["telegram", "door:the digest"]
     assert "door: handed to the door as $e" in capsys.readouterr().out
     # a box with no door says nothing about one
     monkeypatch.setattr(reach_digest.door, "mirror", lambda text: "no door configured")
-    reach_digest.main()
+    with pytest.raises(SystemExit):
+        reach_digest.main()
     assert "door" not in capsys.readouterr().out
     # and no digest, no mirror
     monkeypatch.setattr(reach_digest, "build_digest", lambda user_id: None)
