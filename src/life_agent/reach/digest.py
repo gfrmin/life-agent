@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from datetime import UTC, date, datetime, timedelta
 
 from life_agent.reach import door, telegram
@@ -123,15 +124,21 @@ def main() -> None:
     user_id = owner_user_id()
     digest = build_digest(user_id)
     if digest:
+        failed = None
         try:
             telegram.send_message(user_id, digest)
         except Exception as e:
-            print(f"Failed to send digest to {user_id}: {e}")
+            failed = e
+            print(f"Failed to send digest to {user_id}: {e}", file=sys.stderr)
         # A mirror, after the authoritative send and independent of it: a no-op unless the
         # deploying box names a door (reach/door.py).
         outcome = door.mirror(digest)
         if outcome != "no door configured":
             print(f"door: {outcome}")
+        if failed is not None:
+            # a morning report that did not go is a failed run, so its dead-man goes red
+            # (issue #221): the mirror above still had its chance
+            sys.exit(1)
 
 
 if __name__ == "__main__":

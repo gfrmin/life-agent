@@ -412,3 +412,156 @@ def test_poll_loop_beats_after_each_successful_cycle(
     with pytest.raises(_Stop):
         jarvis.poll_loop()
     assert len(beats) == 2  # one beat per completed cycle, none for the aborted third
+
+
+# --- a task by its number, by rule: no model between a tap and its record (#221) ----
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("done 12", {"action": "complete", "task_id": 12}),
+        ("Done #12", {"action": "complete", "task_id": 12}),
+        ("  DONE   3 ", {"action": "complete", "task_id": 3}),
+        ("done#4", {"action": "complete", "task_id": 4}),
+        ("later 7", {"action": "later", "task_id": 7}),
+        ("Later #7", {"action": "later", "task_id": 7}),
+    ],
+)
+def test_a_task_by_its_number_is_read_by_rule(text: str, expected: dict[str, Any]) -> None:
+    assert jarvis.quick_command(text) == expected
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["done buy milk", "done 3 4", "done", "later", "later x", "undone 3", "done 3.", "3 done",
+     "done -3", "later tomorrow", "done 3 please"],
+)
+def test_anything_else_is_left_to_the_model(text: str) -> None:
+    assert jarvis.quick_command(text) is None
+
+
+def test_later_takes_a_task_off_today_and_brings_it_back_tomorrow() -> None:
+    import datetime as _dt
+
+    commands.add(USER, "Ring the bank", is_today=True)
+    today = _dt.date(2026, 11, 25)
+    assert commands.later(USER, 1, today=today) == (
+        "Later: [1] Ring the bank, back tomorrow (2026-11-26)"
+    )
+    with store.get_db() as conn:
+        row = conn.execute("SELECT list, due_date, is_today FROM tasks WHERE id = 1").fetchone()
+    assert (row["list"], row["due_date"], row["is_today"]) == ("scheduled", "2026-11-26", 0)
+    assert commands.later(USER, 99) == "Task not found."
+    # a task already done is not brought back by "later"
+    commands.add(USER, "Already done")
+    commands.complete(USER, 2)
+    assert commands.later(USER, 2) == "Task not found."
+
+
+def test_a_task_put_off_until_later_is_in_tomorrows_report_as_due(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import datetime as _dt
+
+    commands.add(USER, "Ring the bank", is_today=True)
+    commands.later(USER, 1)
+    out = reach_digest.build_digest(USER)
+    assert out is None or "Ring the bank" not in out  # not on today's report any more
+
+    class _Tomorrow(_dt.date):
+        @classmethod
+        def today(cls) -> _dt.date:
+            return _dt.date.today() + _dt.timedelta(days=1)
+
+    monkeypatch.setattr(reach_digest, "date", _Tomorrow)
+    out = reach_digest.build_digest(USER)
+    assert out is not None
+    assert reach_digest.SECTIONS["due_today"] in out and "[1] Ring the bank" in out
+
+
+def test_handle_later() -> None:
+    commands.add(USER, "Ring the bank")
+    assert "back tomorrow" in jarvis.handle_action({"action": "later", "task_id": 1}, USER)
+    assert "task number" in jarvis.handle_action({"action": "later"}, USER)
+
+
+def _one_message(monkeypatch: pytest.MonkeyPatch, text: str) -> list[str]:
+    """Run poll_loop over one message from the owner; return what jarvis replied."""
+
+    class _Stop(BaseException):
+        pass
+
+    batches = iter([[{"update_id": 1, "message": {"from": {"id": USER}, "chat": {"id": 9},
+                                                   "text": text}}]])
+
+    def fake_poll(offset: int, timeout: int = 0) -> list[dict[str, Any]]:
+        try:
+            return next(batches)
+        except StopIteration:
+            raise _Stop from None
+
+    replies: list[str] = []
+    monkeypatch.setattr(telegram, "poll_updates", fake_poll)
+    monkeypatch.setattr(telegram, "send_message", lambda chat, reply: replies.append(reply))
+    monkeypatch.setattr(telegram, "send_chat_action", lambda *_: None)
+    monkeypatch.setattr(jarvis, "_user_id", lambda: USER)
+    monkeypatch.setattr(jarvis, "_heartbeat", lambda: None)
+    with pytest.raises(_Stop):
+        jarvis.poll_loop()
+    return replies
+
+
+def test_done_and_later_by_number_never_ask_the_model(monkeypatch: pytest.MonkeyPatch) -> None:
+    def no_model(_text: str) -> dict[str, Any]:
+        raise AssertionError("the model was asked")
+
+    monkeypatch.setattr(jarvis, "parse_intent", no_model)
+    commands.add(USER, "Finish me")
+    commands.add(USER, "Put me off")
+    assert _one_message(monkeypatch, "done 1") == ["Completed: Finish me"]
+    assert _one_message(monkeypatch, "later #2")[0].startswith("Later: [2] Put me off")
+    assert store.resolve_by_id(store.get_db(), USER, 1, active_only=True) is None
+
+
+def test_anything_else_still_goes_to_the_model(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: list[str] = []
+
+    def model(text: str) -> dict[str, Any]:
+        seen.append(text)
+        return {"action": "add", "text": "Buy milk"}
+
+    monkeypatch.setattr(jarvis, "parse_intent", model)
+    assert _one_message(monkeypatch, "buy milk")[0].startswith("Added")
+    assert seen == ["buy milk"]
+
+
+# --- the morning report fails loudly (#221) ---------------------------------------
+
+
+def test_a_morning_report_that_could_not_be_sent_fails_the_run_after_the_mirror(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    commands.add(USER, "A task", is_today=True)
+    monkeypatch.setenv("JARVIS_USER_ID", str(USER))
+
+    def down(_uid: int, _text: str) -> None:
+        raise OSError("telegram unreachable")
+
+    mirrored: list[str] = []
+    monkeypatch.setattr(reach_digest.telegram, "send_message", down)
+    monkeypatch.setattr(reach_digest.door, "mirror",
+                        lambda text: mirrored.append(text) or "handed in")
+    with pytest.raises(SystemExit) as stopped:
+        reach_digest.main()
+    assert stopped.value.code == 1
+    assert len(mirrored) == 1 and "A task" in mirrored[0]  # the door still had its chance
+    assert "Failed to send digest" in capsys.readouterr().err
+
+
+def test_a_morning_report_that_went_ends_well(monkeypatch: pytest.MonkeyPatch) -> None:
+    commands.add(USER, "A task", is_today=True)
+    monkeypatch.setenv("JARVIS_USER_ID", str(USER))
+    monkeypatch.setattr(reach_digest.telegram, "send_message", lambda *_: None)
+    monkeypatch.setattr(reach_digest.door, "mirror", lambda text: "no door configured")
+    reach_digest.main()  # returns: no SystemExit
