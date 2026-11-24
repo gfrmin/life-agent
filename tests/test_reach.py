@@ -435,54 +435,52 @@ def test_a_task_by_its_number_is_read_by_rule(text: str, expected: dict[str, Any
 @pytest.mark.parametrize(
     "text",
     ["done buy milk", "done 3 4", "done", "later", "later x", "undone 3", "done 3.", "3 done",
-     "done -3", "later tomorrow", "done 3 please"],
+     "done -3", "later tomorrow", "done 3 please", "done 1234567890"],
 )
 def test_anything_else_is_left_to_the_model(text: str) -> None:
     assert jarvis.quick_command(text) is None
 
 
-def test_later_takes_a_task_off_today_and_brings_it_back_tomorrow() -> None:
-    import datetime as _dt
-
-    commands.add(USER, "Ring the bank", is_today=True)
-    today = _dt.date(2026, 11, 25)
-    assert commands.later(USER, 1, today=today) == (
-        "Later: [1] Ring the bank, back tomorrow (2026-11-26)"
-    )
+def _row(task_id: int) -> tuple[str, str | None, int]:
     with store.get_db() as conn:
-        row = conn.execute("SELECT list, due_date, is_today FROM tasks WHERE id = 1").fetchone()
-    assert (row["list"], row["due_date"], row["is_today"]) == ("scheduled", "2026-11-26", 0)
+        r = conn.execute("SELECT list, due_date, is_today FROM tasks WHERE id = ?",
+                         (task_id,)).fetchone()
+    return (r["list"], r["due_date"], r["is_today"])
+
+
+def test_later_takes_a_task_off_todays_focus_and_keeps_its_list_and_its_deadline() -> None:
+    """The review of #223: a deadline of 12-20 became tomorrow, and a #next task went to
+    #scheduled for good and sat in "overdue". Only the focus changes."""
+    commands.add(USER, "File the appeal", list_name="scheduled", due_date="2026-12-20",
+                 is_today=True)
+    commands.add(USER, "Learn Hebrew", list_name="next", is_today=True)
+    assert commands.later(USER, 1) == (
+        "Later: [1] File the appeal, off today's focus and still #scheduled"
+    )
+    assert _row(1) == ("scheduled", "2026-12-20", 0)
+    assert commands.later(USER, 2) == "Later: [2] Learn Hebrew, off today's focus and still #next"
+    assert _row(2) == ("next", None, 0)
+    out = reach_digest.build_digest(USER)
+    assert out is not None and reach_digest.SECTIONS["focus"] not in out
+    assert reach_digest.SECTIONS["next"] in out and "[2] Learn Hebrew" in out
+
+
+def test_later_of_a_task_not_in_focus_or_done_changes_nothing() -> None:
+    commands.add(USER, "Not in focus", list_name="next")
+    before = commands.LEDGER_PATH.read_text()
+    assert commands.later(USER, 1) == (
+        "[1] Not in focus is not on today's focus: nothing to put off."
+    )
+    assert commands.LEDGER_PATH.read_text() == before  # no event
     assert commands.later(USER, 99) == "Task not found."
-    # a task already done is not brought back by "later"
-    commands.add(USER, "Already done")
+    commands.add(USER, "Already done", is_today=True)
     commands.complete(USER, 2)
     assert commands.later(USER, 2) == "Task not found."
 
 
-def test_a_task_put_off_until_later_is_in_tomorrows_report_as_due(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    import datetime as _dt
-
-    commands.add(USER, "Ring the bank", is_today=True)
-    commands.later(USER, 1)
-    out = reach_digest.build_digest(USER)
-    assert out is None or "Ring the bank" not in out  # not on today's report any more
-
-    class _Tomorrow(_dt.date):
-        @classmethod
-        def today(cls) -> _dt.date:
-            return _dt.date.today() + _dt.timedelta(days=1)
-
-    monkeypatch.setattr(reach_digest, "date", _Tomorrow)
-    out = reach_digest.build_digest(USER)
-    assert out is not None
-    assert reach_digest.SECTIONS["due_today"] in out and "[1] Ring the bank" in out
-
-
 def test_handle_later() -> None:
-    commands.add(USER, "Ring the bank")
-    assert "back tomorrow" in jarvis.handle_action({"action": "later", "task_id": 1}, USER)
+    commands.add(USER, "Ring the bank", is_today=True)
+    assert "off today's focus" in jarvis.handle_action({"action": "later", "task_id": 1}, USER)
     assert "task number" in jarvis.handle_action({"action": "later"}, USER)
 
 
@@ -518,7 +516,7 @@ def test_done_and_later_by_number_never_ask_the_model(monkeypatch: pytest.Monkey
 
     monkeypatch.setattr(jarvis, "parse_intent", no_model)
     commands.add(USER, "Finish me")
-    commands.add(USER, "Put me off")
+    commands.add(USER, "Put me off", is_today=True)
     assert _one_message(monkeypatch, "done 1") == ["Completed: Finish me"]
     assert _one_message(monkeypatch, "later #2")[0].startswith("Later: [2] Put me off")
     assert store.resolve_by_id(store.get_db(), USER, 1, active_only=True) is None

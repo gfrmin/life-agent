@@ -57,7 +57,7 @@ INTENTS: tuple[tuple[str, str, str], ...] = (
      'Move: "move 5 to next"'),
     ("later",
      '{"action": "later", "task_id": number}',
-     'Later: "later 3" (off today, back tomorrow)'),
+     'Later: "later 3" (off today\'s focus, kept where it is)'),
     ("mark_today",
      '{"action": "mark_today", "task_id": number, "is_today": true|false}',
      'Focus: "today 3" or "focus on 3"; "untoday 3" to unmark'),
@@ -105,7 +105,7 @@ def verdict_valence(text: str) -> str | None:
 # "done 12", "later #12": a task by its number, read by rule. A tap must never depend on a
 # model (issue #221): these are the commands a door's tap stands in for, so they are
 # parsed before any model is asked, and anything else goes on to the NLU as before.
-_QUICK = re.compile(r"(done|later)\s*#?(\d+)", re.IGNORECASE)
+_QUICK = re.compile(r"(done|later)\s*#?(\d{1,9})", re.IGNORECASE)
 
 
 def quick_command(text: str) -> dict[str, Any] | None:
@@ -208,7 +208,7 @@ def handle_action(parsed: dict[str, Any], user_id: int) -> str:
     if action == "later":
         task_id = parsed.get("task_id")
         if task_id is None:
-            return "Which task should wait until tomorrow? Give me the task number."
+            return "Which task should come off today's focus? Give me the task number."
         return commands.later(user_id, task_id)
 
     if action == "mark_today":

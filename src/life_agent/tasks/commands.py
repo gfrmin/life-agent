@@ -13,7 +13,6 @@ re-derivation dedups (``store.apply`` is an ``INSERT OR IGNORE`` on identity).
 from __future__ import annotations
 
 import sqlite3
-from datetime import date, timedelta
 from pathlib import Path
 
 from life_agent.core.config import TASKS_LEDGER
@@ -115,22 +114,22 @@ def move(user_id: int, task_id: int, new_list: str, due_date: str | None = None)
     return f"Moved [{task_id}] {text} to #{new_list}{due_info}"
 
 
-def later(user_id: int, task_id: int, today: date | None = None) -> str:
-    """Not today: the task leaves today's focus and comes back tomorrow, as due then.
+def later(user_id: int, task_id: int) -> str:
+    """Not now: the task leaves today's focus and keeps its list and its due date.
 
-    It is scheduled for tomorrow, so the morning report shows it under "due today", and
-    unmarked from today's focus, in one amendment."""
-    tomorrow = ((today or date.today()) + timedelta(days=1)).isoformat()
+    Only the focus changes. Bringing it back by itself tomorrow would need a date the task
+    store does not keep; moving it to a list or a deadline to fake one loses the real ones
+    (the review of #223: a task due on 12-20 became due tomorrow, and a #next task sat in
+    "overdue" for good)."""
     with store.get_db() as conn:
         row = store.resolve_by_id(conn, user_id, task_id, active_only=True)
         if not row:
             return "Task not found."
-        _emit(
-            conn,
-            ev.amended(row["identity"], {"list": "scheduled", "due_date": tomorrow, "is_today": 0}),
-        )
         text = row["text"]
-    return f"Later: [{task_id}] {text}, back tomorrow ({tomorrow})"
+        if not row["is_today"]:
+            return f"[{task_id}] {text} is not on today's focus: nothing to put off."
+        _emit(conn, ev.amended(row["identity"], {"is_today": 0}))
+    return f"Later: [{task_id}] {text}, off today's focus and still #{row['list']}"
 
 
 def mark_today(user_id: int, task_id: int, is_today: bool = True) -> str:
