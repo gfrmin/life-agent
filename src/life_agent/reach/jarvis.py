@@ -141,6 +141,8 @@ Rules:
 - If the user says "untoday 3" or "unmark 3", use "mark_today" with is_today false.
 - If the user says "schedule X for next tuesday", convert to a date and use "add" with list "scheduled".
 - If the user says "move 5 to next", use "move" with the task_id and list.
+- If the user says "later 3" or "not today 3" with no date, use "later" with the task_id: it only takes the task off today's focus.
+- If the user says "postpone 3 to friday", "push 3 to next week" or "3 for someday", that is a date or a list: use "move" with the task_id, the list ("scheduled" with the due_date, or "someday"), never "later".
 - If the user asks a question about their life, documents, dates, people, or facts — e.g. "what is my passport number?", "when does my lease end?" — use "question" with the question verbatim. Task commands always take precedence over "question".
 - For greetings and small talk, use "chat" with a brief friendly response.
 - Parse relative dates: "tomorrow" = next day, "next monday" = the coming Monday, etc.

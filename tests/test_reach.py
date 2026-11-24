@@ -161,6 +161,14 @@ def test_help_renders_every_intent_example() -> None:
         assert help_line in help_text, action
 
 
+def test_prompt_keeps_later_apart_from_a_postponement_to_a_date() -> None:
+    """The second review of #223: "later" drops nothing but the focus, so the model must
+    not take "postpone 3 to friday" for it and lose the date that was asked for."""
+    prompt = jarvis.render_prompt("2026-11-25")
+    assert 'use "later" with the task_id' in prompt
+    assert '"postpone 3 to friday"' in prompt and 'never "later"' in prompt
+
+
 def test_prompt_mentions_the_tag_rule() -> None:
     # The list intent's tag form must be exemplified in Rules, or a small local
     # model never emits it (the path itself is wired in handle_action).
