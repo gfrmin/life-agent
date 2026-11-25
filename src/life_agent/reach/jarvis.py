@@ -9,20 +9,23 @@ the brain. Run as the systemd service: ``python -m life_agent.reach.jarvis``.
 
 from __future__ import annotations
 
+import functools
 import json
 import logging
 import os
 import re
 import signal
 import sys
+import threading
 import time
+from collections.abc import Callable
 from datetime import date
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
 
 from life_agent.core import ask_client, secret
-from life_agent.reach import telegram
+from life_agent.reach import matrix, telegram
 from life_agent.tasks import commands, store
 
 logging.basicConfig(
@@ -178,11 +181,13 @@ def parse_intent(message: str) -> dict[str, Any]:
     return parsed
 
 
-def handle_action(parsed: dict[str, Any], user_id: int) -> str:
+def handle_action(parsed: dict[str, Any], user_id: int, identity: str | None = None) -> str:
     """Route a parsed intent to the event-sourced GTD; return the human reply.
 
     Writes go through ``tasks.commands`` (which append events + fold the read-model); reads
     go through ``tasks.store`` (the projection). Returns the reply string verbatim.
+    ``identity``, when the transport gives one, is the task an "add" makes: a message
+    answered twice adds one task (reach/matrix.py).
     """
     action = parsed.get("action", "chat")
 
@@ -190,7 +195,9 @@ def handle_action(parsed: dict[str, Any], user_id: int) -> str:
         text = parsed.get("text", "").strip()
         if not text:
             return "I didn't catch what to add. Could you say that again?"
-        return commands.add(user_id, text, parsed.get("list", "inbox"), parsed.get("due_date"))
+        return commands.add(
+            user_id, text, parsed.get("list", "inbox"), parsed.get("due_date"), identity=identity
+        )
 
     if action == "complete":
         return commands.complete(user_id, parsed.get("task_id"), parsed.get("text_match"))
@@ -294,8 +301,45 @@ def _heartbeat() -> None:
         log.warning("Heartbeat ping failed: %s", e)
 
 
-def poll_loop() -> None:
+# One message at a time, whichever transport carried it: they share the task store and the
+# one pending grade (LAST_DECISION_ID).
+_ONE_AT_A_TIME = threading.Lock()
+
+
+def respond(
+    text: str, user_id: int, typing: Callable[[], None] = lambda: None,
+    identity: str | None = None,
+) -> str:
+    """The reply to one message of the owner's, whichever transport carried it."""
     global LAST_DECISION_ID
+    with _ONE_AT_A_TIME:
+        # A bare one-bit verdict binds to the last know-mode answer without a model
+        # round-trip (deterministic, reaction-loop economics). With no pending answer it
+        # falls through to the ordinary NLU.
+        valence = verdict_valence(text)
+        if valence and LAST_DECISION_ID:
+            answer = ask_client.react(LAST_DECISION_ID, valence)
+            LAST_DECISION_ID = None
+            return answer
+        quick = quick_command(text)
+        if quick:  # a task by its number: no model is asked
+            return handle_action(quick, user_id, identity)
+        typing()
+        parsed = parse_intent(text)
+        log.info("Parsed: %s", parsed.get("action", "unknown"))
+        return handle_action(parsed, user_id, identity)
+
+
+def door_reply(text: str, identity: str, user_id: int) -> str:
+    """`respond` for the door's room: a fault is said in the room, as on Telegram."""
+    try:
+        return respond(text, user_id, identity=identity)
+    except Exception:
+        log.exception("Error processing a door message")
+        return "Something went wrong. Try again?"
+
+
+def poll_loop() -> None:
     store.init_db()
     user_id = _user_id()
     offset = 0
@@ -315,23 +359,9 @@ def poll_loop() -> None:
 
                 log.info("Message from %s: %s", from_id, text[:80])
                 try:
-                    # A bare one-bit verdict binds to the last know-mode answer without a
-                    # model round-trip (deterministic, reaction-loop economics). With no
-                    # pending answer it falls through to the ordinary NLU.
-                    valence = verdict_valence(text)
-                    if valence and LAST_DECISION_ID:
-                        reply = ask_client.react(LAST_DECISION_ID, valence)
-                        LAST_DECISION_ID = None
-                        telegram.send_message(chat_id, reply)
-                        continue
-                    quick = quick_command(text)
-                    if quick:  # a task by its number: no model is asked
-                        telegram.send_message(chat_id, handle_action(quick, user_id))
-                        continue
-                    telegram.send_chat_action(chat_id, "typing")
-                    parsed = parse_intent(text)
-                    log.info("Parsed: %s", parsed.get("action", "unknown"))
-                    telegram.send_message(chat_id, handle_action(parsed, user_id))
+                    reply = respond(text, user_id, functools.partial(
+                        telegram.send_chat_action, chat_id, "typing"))
+                    telegram.send_message(chat_id, reply)
                 except Exception:
                     log.exception("Error processing message")
                     telegram.send_message(chat_id, "Something went wrong. Try again?")
@@ -348,6 +378,15 @@ def poll_loop() -> None:
 def main() -> None:
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
     log.info("Jarvis GTD bot starting (model=%s)", NLU_MODEL)
+    if matrix.configured() is not None:
+        # the door's room beside Telegram, in the same process: one store, one lock
+        store.init_db()
+        user_id = _user_id()
+        threading.Thread(
+            target=matrix.loop,
+            args=(lambda text, identity: door_reply(text, identity, user_id),),
+            name="door", daemon=True,
+        ).start()
     poll_loop()
 
 
