@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # mail-to-tasks — the timer/debug entrypoint for email→GTD (M2).
 # Extracts grounded action items from new mail and auto-files them into the
-# GTD inbox (life_agent.tasks, event-sourced); you triage in Telegram. Meant to
+# GTD inbox (life_agent.tasks, event-sourced); you triage with Jarvis. Meant to
 # run unattended from a systemd --user timer after mail ingest — by hand it's
 # for debugging. Sources .env (LIFE_AGENT_KB / PKM_CONFIG / JARVIS_*), then runs
 # in life-agent's env (pkm + life_agent are in-tree packages).

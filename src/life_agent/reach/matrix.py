@@ -2,8 +2,10 @@
 
 The door is a Matrix server the owner reads on his phone (reach/door.py says more). Beside
 the keeper's room, where agents' items are shown, jarvis keeps one room of its own with
-him: he types there as he types to Telegram, and jarvis answers there. Telegram goes on
-beside it until the owner switches it off; both carry the same replies (``jarvis.respond``).
+him: he types there, and jarvis answers there. Since the owner moved his agents to the door
+(gfrmin/ops#274, win B3) this room is where jarvis listens; Telegram goes on beside it only
+while the box switches it on (``TELEGRAM_REACH``), and both carry the same replies
+(``jarvis.respond``).
 
 Configured entirely by the deploying box; nothing about any particular door is baked in:
 
@@ -70,7 +72,7 @@ def never_taken(status: int) -> bool:
     request that took too long (408) and "too many requests" (429)."""
     return 400 <= status < 500 and status not in (401, 408, 429)
 
-NOT_SENT = "That answer could not be sent here (the door refused it). Ask on Telegram."
+NOT_SENT = "That answer could not be sent here: the door refused it. Ask for less?"
 # (status, the answer's JSON or None), as reach/door.py asks
 Ask = door.Ask
 # respond(text, identity) -> the reply: jarvis.respond with the owner's id bound
@@ -290,9 +292,12 @@ def one_pass(ask: Ask, token: str, there: Mapping[str, str], kept: dict[str, Any
     return done
 
 
-def loop(respond: Respond, ask: Ask | None = None, *, forever: bool = True) -> None:
+def loop(respond: Respond, ask: Ask | None = None, *, forever: bool = True,
+         after_pass: Callable[[], None] = lambda: None) -> None:
     """Sign in, find or make the room, and answer what the owner says there, for as long
-    as the process runs. A door that is down is waited for; it never stops Telegram."""
+    as the process runs. A door that is down is waited for; it never stops Telegram.
+    `after_pass` runs after each pass that read the room (jarvis's dead-man beat), and
+    not while the door is down, so a door jarvis cannot hear is heard of."""
     there = configured()
     if there is None:
         log.info("No door configured for jarvis: the door is not read")
@@ -310,6 +315,7 @@ def loop(respond: Respond, ask: Ask | None = None, *, forever: bool = True) -> N
             log.info("Reading the door room %s", room)
             while True:
                 one_pass(ask, token, there, kept, respond)
+                after_pass()
                 if not forever:
                     return
         except Exception:

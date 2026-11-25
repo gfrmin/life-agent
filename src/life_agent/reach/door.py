@@ -1,10 +1,12 @@
-"""The door — a second place the morning digest is handed to. A mirror: outbound only.
+"""The door — where the morning digest is handed to. Outbound only.
 
 The door is a Matrix server the owner reads on his phone. A keeper there shows him what
 agents hand in; nobody else speaks to him in that room. This module hands the digest to
 the keeper as one item a day, in the room the keeper made for this account, as data (an
-event of type ``ITEM_EVENT``), never as a chat message. Telegram stays the authority for
-the digest until the list itself moves to the door.
+event of type ``ITEM_EVENT``), never as a chat message. Since the owner moved his agents
+to the door (gfrmin/ops#274, win B3) the door is where the digest goes; Telegram gets it
+too only while the box switches Telegram on (``TELEGRAM_REACH``), and then the door is a
+mirror beside it, as it was before.
 
 Configured entirely by the deploying box, like the other reach channels; nothing about
 any particular door is baked in here:
@@ -16,10 +18,10 @@ any particular door is baked in here:
 - the password      ``DOOR_PASSWORD`` in the env or the keyring; ``DOOR_SECRET`` names
                     another key when a box holds more than one door password
 
-With ``DOOR_URL`` unset the mirror does nothing at all. It never raises into its caller:
-a door that is down must not cost the owner his morning message. "Handed to the door" is
-not "shown": the keeper reads an item strictly and may refuse one, and says so in the
-room it was handed in.
+With ``DOOR_URL`` unset nothing is handed in. ``hand_over`` never raises into its caller:
+it says whether the digest was handed in, and what happened, and the caller decides what
+a failure means. "Handed to the door" is not "shown": the keeper reads an item strictly
+and may refuse one, and says so in the room it was handed in.
 """
 
 from __future__ import annotations
@@ -83,7 +85,7 @@ def item(digest: str, day: date, letters: str = "T-") -> dict[str, Any]:
         "id": f"{letters}{day.isoformat()}",
         "kind": "report",
         "about": f"your list for {day.isoformat()}",
-        "why": "the morning digest, mirrored: Telegram is still where you answer it",
+        "why": "the morning digest: answer it in the Jarvis room (done N, later N)",
         "text": clean(digest),
     }
 
@@ -196,18 +198,18 @@ def hand_in(
         ask("POST", f"{API}/logout", {}, token)
 
 
-def mirror(digest: str, day: date | None = None) -> str:
-    """Hand today's digest to the door, if this box has one. Says what happened, in one
-    line, and never raises: the digest's own sending must not depend on the door."""
+def hand_over(digest: str, day: date | None = None) -> tuple[bool, str]:
+    """Hand today's digest to the door, if this box has one: whether it was handed in, and
+    what happened, in one line. Never raises: the caller decides what a failure means."""
     door = configured()
     if door is None:
         if os.environ.get("DOOR_URL"):  # half a configuration is a mistake, and is said
-            return "door mirror not run: DOOR_URL is set, and DOOR_SERVER or DOOR_ACCOUNT is not"
-        return "no door configured"
+            return False, "not handed in: DOOR_URL is set, and DOOR_SERVER or DOOR_ACCOUNT is not"
+        return False, "no door configured"
     try:
         sent = hand_in(item(digest, day or date.today()), door)
     except (Exception, SystemExit) as error:  # never into the caller
-        return f"door mirror failed: {type(error).__name__}: {str(error)[:200]}"
+        return False, f"not handed in: {type(error).__name__}: {str(error)[:200]}"
     if sent is None:
-        return "the door's keeper has made no room for this account yet"
-    return f"handed to the door as {sent}"
+        return False, "the door's keeper has made no room for this account yet"
+    return True, f"handed to the door as {sent}"

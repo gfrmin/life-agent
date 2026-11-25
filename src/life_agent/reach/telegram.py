@@ -3,17 +3,28 @@
 Knows only the Telegram Bot API: it has no idea what a task or a GTD list is. The token is
 read lazily (env or gnome-keyring via ``life_agent.core.secret``) so importing this module is
 side-effect-free and testable.
+
+SWITCHED OFF BY DEFAULT. The owner moved his agents to the door (gfrmin/ops#274, win B3):
+jarvis, the morning digest and the email-to-tasks nudge use Telegram only while the
+deploying box sets ``TELEGRAM_REACH=on``. That one line is the way back.
 """
 
 from __future__ import annotations
 
 import json
+import os
 from typing import Any
 from urllib.request import Request, urlopen
 
 from life_agent.core import secret
 
 _POLL_TIMEOUT = 30
+REACH_ENV = "TELEGRAM_REACH"
+
+
+def enabled() -> bool:
+    """Whether this box reads and sends Telegram at all: only with ``TELEGRAM_REACH=on``."""
+    return os.environ.get(REACH_ENV, "").strip().lower() == "on"
 
 
 def _api() -> str:

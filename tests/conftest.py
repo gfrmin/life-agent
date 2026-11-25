@@ -24,6 +24,16 @@ def _hermetic_gtd_paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None
 
 
 @pytest.fixture(autouse=True)
+def _hermetic_reach(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Telegram is off unless a test switches it on, and no door is named unless a test
+    names one: a developer's shell or a box's env must not decide which channel a test
+    exercises (gfrmin/ops#274, win B3)."""
+    for name in ("TELEGRAM_REACH", "DOOR_URL", "DOOR_SERVER", "DOOR_ACCOUNT",
+                 "JARVIS_DOOR_ACCOUNT", "JARVIS_DOOR_OWNER"):
+        monkeypatch.delenv(name, raising=False)
+
+
+@pytest.fixture(autouse=True)
 def _hermetic_scans_status(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """The digest reads the photo-scans review status from SCANS_REVIEW_STATUS, which the
     deploying box points at a LIVE file; inherited, a test would see the owner's backlog.

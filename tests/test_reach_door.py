@@ -1,6 +1,7 @@
-"""The door mirror (reach/door.py): the morning digest handed to a door's keeper as one
-item a day. Outbound only, configured by the deploying box, and never in the way of the
-digest's own sending. Every name here is a synthetic stand-in (``*.example.test``)."""
+"""The door (reach/door.py): the morning digest handed to a door's keeper as one item a
+day. Outbound only, configured by the deploying box. The door is where the digest goes;
+with Telegram switched on it is a mirror beside Telegram, never in the way of that send.
+Every name here is a synthetic stand-in (``*.example.test``)."""
 
 from __future__ import annotations
 
@@ -68,11 +69,11 @@ def test_a_box_with_no_door_mirrors_nothing(monkeypatch: pytest.MonkeyPatch) -> 
     for name in ("DOOR_URL", "DOOR_SERVER", "DOOR_ACCOUNT"):
         monkeypatch.delenv(name, raising=False)
     assert door.configured() is None
-    assert door.mirror("a digest") == "no door configured"
+    assert door.hand_over("a digest") == (False, "no door configured")
     monkeypatch.setenv("DOOR_URL", "http://door.example.test:6167")
     assert door.configured() is None  # half a configuration is none, and it is said
-    assert door.mirror("a digest") == (
-        "door mirror not run: DOOR_URL is set, and DOOR_SERVER or DOOR_ACCOUNT is not"
+    assert door.hand_over("a digest") == (
+        False, "not handed in: DOOR_URL is set, and DOOR_SERVER or DOOR_ACCOUNT is not"
     )
 
 
@@ -91,7 +92,7 @@ def test_the_days_digest_is_one_item_named_by_its_date() -> None:
         "id": "T-2026-01-02",
         "kind": "report",
         "about": "your list for 2026-01-02",
-        "why": "the morning digest, mirrored: Telegram is still where you answer it",
+        "why": "the morning digest: answer it in the Jarvis room (done N, later N)",
         "text": "TODAY'S FOCUS:\n  [1] A task",
     }
 
@@ -185,37 +186,41 @@ def test_a_door_that_fails_is_said_in_a_line_and_never_raised(
 ) -> None:
     down = Door(login=(0, None))
     monkeypatch.setattr(door, "_asking", lambda base: down.ask)
-    assert door.mirror("a digest", DAY) == (
-        "door mirror failed: RuntimeError: the door: sign-in: status 0, no error code"
+    assert door.hand_over("a digest", DAY) == (
+        False, "not handed in: RuntimeError: the door: sign-in: status 0, no error code"
     )
     refused = Door(sync=(200, {"rooms": {"invite": invite("!b", KEEPER)}}),
                    join=(200, {}), send=(403, {"errcode": "M_FORBIDDEN", "error": "private words"}))
     monkeypatch.setattr(door, "_asking", lambda base: refused.ask)
-    said = door.mirror("a digest", DAY)
-    assert said == "door mirror failed: RuntimeError: the door: hand-in: status 403, M_FORBIDDEN"
+    said = door.hand_over("a digest", DAY)
+    assert said == (
+        False, "not handed in: RuntimeError: the door: hand-in: status 403, M_FORBIDDEN")
     assert refused.routes()[-1] == "POST /logout"  # signed out even so
 
     def no_secret(name: str) -> str:
         raise SystemExit(f"{name} not found in env or gnome-keyring")
 
     monkeypatch.setattr(door, "secret", no_secret)
-    assert door.mirror("a digest", DAY).startswith("door mirror failed: SystemExit: DOOR_PASSWORD")
+    handed, said = door.hand_over("a digest", DAY)
+    assert not handed and said.startswith("not handed in: SystemExit: DOOR_PASSWORD")
 
 
-def test_the_mirror_says_when_it_handed_in_and_when_there_is_no_room(
+def test_the_hand_over_says_when_it_handed_in_and_when_there_is_no_room(
     box: dict[str, str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     there = Door(sync=(200, {"rooms": {"invite": invite("!b", KEEPER)}}),
                  join=(200, {}), send=(200, {"event_id": "$e"}))
     monkeypatch.setattr(door, "_asking", lambda base: there.ask)
-    assert door.mirror("a digest", DAY) == "handed to the door as $e"
+    assert door.hand_over("a digest", DAY) == (True, "handed to the door as $e")
     monkeypatch.setattr(door, "_asking", lambda base: Door().ask)
-    assert door.mirror("a digest", DAY) == "the door's keeper has made no room for this account yet"
+    assert door.hand_over("a digest", DAY) == (
+        False, "the door's keeper has made no room for this account yet")
 
 
-def test_the_digest_is_mirrored_after_it_is_sent_and_a_failed_send_does_not_stop_it(
+def test_with_telegram_on_the_digest_is_mirrored_after_it_is_sent_and_a_failed_send_goes_on(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    monkeypatch.setenv("TELEGRAM_REACH", "on")  # the way back: Telegram first, the door a mirror
     order: list[str] = []
     monkeypatch.setattr(reach_digest, "owner_user_id", lambda: 7)
     monkeypatch.setattr(reach_digest, "build_digest", lambda user_id: "the digest")
@@ -225,20 +230,77 @@ def test_the_digest_is_mirrored_after_it_is_sent_and_a_failed_send_does_not_stop
         raise RuntimeError("telegram is down")
 
     monkeypatch.setattr(reach_digest.telegram, "send_message", send)
-    monkeypatch.setattr(reach_digest.door, "mirror",
-                        lambda text: order.append(f"door:{text}") or "handed to the door as $e")
+    monkeypatch.setattr(reach_digest.door, "hand_over", lambda text: order.append(f"door:{text}")
+                        or (True, "handed to the door as $e"))
     # the mirror is not stopped by a failed send; the run then fails (issue #221)
     with pytest.raises(SystemExit):
         reach_digest.main()
     assert order == ["telegram", "door:the digest"]
     assert "door: handed to the door as $e" in capsys.readouterr().out
     # a box with no door says nothing about one
-    monkeypatch.setattr(reach_digest.door, "mirror", lambda text: "no door configured")
+    monkeypatch.setattr(reach_digest.door, "hand_over", lambda text: (False, "no door configured"))
     with pytest.raises(SystemExit):
         reach_digest.main()
     assert "door" not in capsys.readouterr().out
+    # and a door that fails beside a Telegram send that went does not fail the run
+    monkeypatch.setattr(reach_digest.telegram, "send_message", lambda *_: None)
+    monkeypatch.setattr(reach_digest.door, "hand_over", lambda text: (False, "not handed in: x"))
+    reach_digest.main()  # returns: no SystemExit
+    assert "door: not handed in: x" in capsys.readouterr().out
     # and no digest, no mirror
     monkeypatch.setattr(reach_digest, "build_digest", lambda user_id: None)
     order.clear()
     reach_digest.main()
     assert order == []
+
+
+# --- the door is where the digest goes (gfrmin/ops#274, win B3) -------------------------
+
+
+def test_the_digest_goes_to_the_door_and_never_to_telegram(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(reach_digest, "owner_user_id", lambda: 7)
+    monkeypatch.setattr(reach_digest, "build_digest", lambda user_id: "the digest")
+    monkeypatch.setattr(reach_digest.telegram, "send_message",
+                        lambda *_: pytest.fail("Telegram was sent to while it is off"))
+    handed: list[str] = []
+    monkeypatch.setattr(reach_digest.door, "hand_over",
+                        lambda text: handed.append(text) or (True, "handed to the door as $e"))
+    reach_digest.main()  # returns: no SystemExit
+    assert handed == ["the digest"]
+    assert "door: handed to the door as $e" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("said", [
+    "not handed in: RuntimeError: the door: sign-in: status 0, no error code",
+    "the door's keeper has made no room for this account yet",
+    "no door configured",  # with Telegram off, a box with no door has nowhere to send
+])
+def test_a_digest_that_did_not_reach_the_door_fails_the_run_and_says_why(
+    said: str, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(reach_digest, "owner_user_id", lambda: 7)
+    monkeypatch.setattr(reach_digest, "build_digest", lambda user_id: "the digest")
+    monkeypatch.setattr(reach_digest.telegram, "send_message",
+                        lambda *_: pytest.fail("Telegram was sent to while it is off"))
+    monkeypatch.setattr(reach_digest.door, "hand_over", lambda text: (False, said))
+    with pytest.raises(SystemExit) as stopped:
+        reach_digest.main()
+    assert stopped.value.code == 1
+    assert f"door: {said}" in capsys.readouterr().err
+
+
+def test_the_real_hand_over_is_what_the_digest_runs(
+    box: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Not a stand-in: the digest's main through door.hand_over to a door that takes it."""
+    there = Door(sync=(200, {"rooms": {"invite": invite("!b", KEEPER)}}),
+                 join=(200, {}), send=(200, {"event_id": "$e"}))
+    monkeypatch.setattr(door, "_asking", lambda base: there.ask)
+    monkeypatch.setattr(reach_digest, "owner_user_id", lambda: 7)
+    monkeypatch.setattr(reach_digest, "build_digest", lambda user_id: "the digest")
+    reach_digest.main()
+    sent = next(body for method, path, body, _ in there.asked if method == "PUT")
+    assert sent["kind"] == "report" and sent["text"] == "the digest"
+    assert "Jarvis room" in sent["why"]

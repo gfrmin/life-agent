@@ -1,10 +1,15 @@
-"""Jarvis — the agent's GTD Telegram face: the loop, the NLU, the persona.
+"""Jarvis — the agent's GTD face: the loop, the NLU, the persona.
 
 This is *reach*, not truth: it parses a human message into an intent (one small
 model call), routes
 the intent to ``life_agent.tasks`` (the event-sourced commands + read-model), and sends the
-reply back over the ``telegram`` transport. "Jarvis" is the persona/voice; the GTD lives in
-the brain. Run as the systemd service: ``python -m life_agent.reach.jarvis``.
+reply back over the transport that carried the message. "Jarvis" is the persona/voice; the
+GTD lives in the brain. Run as the systemd service: ``python -m life_agent.reach.jarvis``.
+
+Where it listens: the door's Jarvis room (``reach/matrix.py``). Telegram is read too only
+while the deploying box switches it on (``TELEGRAM_REACH=on``, reach/telegram.py): the
+owner moved his agents to the door (gfrmin/ops#274, win B3). A box with neither has
+nowhere to listen, and jarvis says so and stops.
 """
 
 from __future__ import annotations
@@ -35,7 +40,7 @@ logging.basicConfig(
 log = logging.getLogger("jarvis")
 
 # The NLU model (local Ollama deprecated 2026-08-17 — owner directive): one small
-# cloud call per Telegram message, keyring-authed via core.llm. Env-overridable for
+# cloud call per message, keyring-authed via core.llm. Env-overridable for
 # an A/B, defaulting to the repo's dated haiku pin.
 NLU_MODEL = os.environ.get("JARVIS_NLU_MODEL", "claude-haiku-4-5-20251001")
 POLL_TIMEOUT = 30
@@ -277,7 +282,8 @@ def handle_action(parsed: dict[str, Any], user_id: int, identity: str | None = N
 
 
 # Dead-man heartbeat: "active (running)" cannot distinguish a polling jarvis from a hung
-# one, so after each completed poll cycle we ping a monitor URL whose silence pages.
+# one, so after each completed cycle of the channel it listens on first (the door's room,
+# or Telegram while that is on) we ping a monitor URL whose silence pages.
 # Env-gated (absence = disabled); attempts are rate-limited; a
 # monitoring outage must never take reach down with it.
 HEARTBEAT_ENV = "JARVIS_HEARTBEAT_URL"
@@ -331,7 +337,7 @@ def respond(
 
 
 def door_reply(text: str, identity: str, user_id: int) -> str:
-    """`respond` for the door's room: a fault is said in the room, as on Telegram."""
+    """`respond` for the door's room: a fault is said in the room."""
     try:
         return respond(text, user_id, identity=identity)
     except Exception:
@@ -378,15 +384,21 @@ def poll_loop() -> None:
 def main() -> None:
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
     log.info("Jarvis GTD bot starting (model=%s)", NLU_MODEL)
-    if matrix.configured() is not None:
+    at_door, on_telegram = matrix.configured() is not None, telegram.enabled()
+    if not (at_door or on_telegram):
+        log.error("No door is configured and Telegram is off (%s): nowhere to listen",
+                  telegram.REACH_ENV)
+        sys.exit(1)
+    store.init_db()
+    user_id = _user_id()
+    answer = functools.partial(door_reply, user_id=user_id)
+    if not on_telegram:
+        # the door alone, in the foreground: its passes are what the dead-man hears
+        matrix.loop(answer, after_pass=_heartbeat)
+        return
+    if at_door:
         # the door's room beside Telegram, in the same process: one store, one lock
-        store.init_db()
-        user_id = _user_id()
-        threading.Thread(
-            target=matrix.loop,
-            args=(lambda text, identity: door_reply(text, identity, user_id),),
-            name="door", daemon=True,
-        ).start()
+        threading.Thread(target=matrix.loop, args=(answer,), name="door", daemon=True).start()
     poll_loop()
 
 

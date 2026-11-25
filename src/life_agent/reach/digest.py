@@ -1,4 +1,8 @@
-"""Daily digest — a morning summary over the GTD projection, sent via Telegram.
+"""Daily digest — a morning summary over the GTD projection, handed to the door.
+
+The door is where it goes (reach/door.py); Telegram gets it only while the deploying box
+switches Telegram on (reach/telegram.py, ``TELEGRAM_REACH``), and then Telegram is the
+authority and the door a mirror beside it, as before the owner moved to the door.
 
 Reads the read-model (``tasks.store``) and speaks in the digest voice; runs from a
 ``systemd --user`` timer (``packaging/daily-digest.timer`` → ``bin/daily-digest``).
@@ -123,22 +127,32 @@ def main() -> None:
     # the same resolution every other surface uses, not a distinct-user scan
     user_id = owner_user_id()
     digest = build_digest(user_id)
-    if digest:
-        failed = None
-        try:
-            telegram.send_message(user_id, digest)
-        except Exception as e:
-            failed = e
-            print(f"Failed to send digest to {user_id}: {e}", file=sys.stderr)
-        # A mirror, after the authoritative send and independent of it: a no-op unless the
-        # deploying box names a door (reach/door.py).
-        outcome = door.mirror(digest)
-        if outcome != "no door configured":
-            print(f"door: {outcome}")
-        if failed is not None:
-            # a morning report that did not go is a failed run, so its dead-man goes red
-            # (issue #221): the mirror above still had its chance
+    if not digest:
+        return
+    if not telegram.enabled():
+        # The door is where the morning list goes (gfrmin/ops#274, win B3): a list that did
+        # not reach it is a failed run, so its dead-man goes red and systemd tries again.
+        # The keeper takes the day's id once, so a second try shows nothing twice.
+        handed, said = door.hand_over(digest)
+        print(f"door: {said}", file=sys.stdout if handed else sys.stderr)
+        if not handed:
             sys.exit(1)
+        return
+    failed = None
+    try:
+        telegram.send_message(user_id, digest)
+    except Exception as e:
+        failed = e
+        print(f"Failed to send digest to {user_id}: {e}", file=sys.stderr)
+    # With Telegram on, the door is a mirror after the authoritative send and independent
+    # of it, as before the move.
+    _, said = door.hand_over(digest)
+    if said != "no door configured":
+        print(f"door: {said}")
+    if failed is not None:
+        # a morning report that did not go is a failed run, so its dead-man goes red
+        # (issue #221): the mirror above still had its chance
+        sys.exit(1)
 
 
 if __name__ == "__main__":

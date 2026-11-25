@@ -39,12 +39,12 @@ your email ──┴──▶  pkm — cited, searchable memory ──▶  bin/a
                     │
                     │  grounded action items (local model, cited, auto-filed)
                     ▼
-                   GTD task ledger (event-sourced) ──▶  Telegram bot    you manage tasks in plain language
+                   GTD task ledger (event-sourced) ──▶  Jarvis (chat)   you manage tasks in plain language
                                                    ──▶  morning digest  it pushes a summary to you
 ```
 
 You interact in exactly **two places**: `bin/ask-live` to *know* (questions in, cited answers
-out) and the Telegram bot to *act* (tasks). Everything else — email→tasks, the digest — runs
+out) and Jarvis, a chat bot, to *act* (tasks). Everything else — email→tasks, the digest — runs
 unattended on timers. Every command, intent, and reply across these surfaces is governed by one
 grammar. Setting up the task half: [`SETUP.md`](./SETUP.md), step 4.
 
@@ -79,7 +79,7 @@ The kernel ([`PRINCIPLES.md`](./PRINCIPLES.md)): **a knowledge base built from D
 trustworthy transformations, and a personal assistant — the life agent — making rational,
 utility-maximising decisions over it.** Both halves exist today. The KB and its consumers: the
 cited read path (`bin/ask-live`) over [`pkm`](./src/pkm/)'s catalogue, and an event-sourced GTD
-(`life_agent.tasks`, reached over Telegram) that email auto-files into with citations. And the
+(`life_agent.tasks`, reached through Jarvis) that email auto-files into with citations. And the
 decision half: every answer is chosen by one Bayes act (`core/decide.bayes_act`) over a
 posterior on candidates, under a stated loss — a wrong answer costs about five times what a
 right one earns, folded from the owner's own verdicts, and the bar to commit is derived from
@@ -117,7 +117,7 @@ bin/
   mail-to-tasks       email→GTD timer entrypoint: grounded action items, auto-filed with citations
 src/
   pkm/                the KB — content-addressed extraction + transforms + DuckDB catalogue
-  life_agent/         the agent — retrieval/citation guard, event-sourced GTD (tasks), Telegram reach
+  life_agent/         the agent — retrieval/citation guard, event-sourced GTD (tasks), reach (Matrix, Telegram)
 examples/
   README.md           the sample-corpus guide + the identity-guard demo
   sample-corpus/      synthetic markdown docs (Ada Lovelace) to try before your own data
@@ -140,7 +140,7 @@ docs/
 | Command | What it does |
 |---|---|
 | `bin/ask-live` | Ask one question. |
-| `bin/jarvis` | Telegram bot (GTD + questions), event-sourced. |
+| `bin/jarvis` | Chat bot (GTD + questions), event-sourced: a Matrix room, and Telegram while `TELEGRAM_REACH=on`. |
 | `bin/daily-digest` | Morning brief; systemd timer with a dead-man check. |
 | `make check` / `make score` | Tests; the scoreboard. |
 
