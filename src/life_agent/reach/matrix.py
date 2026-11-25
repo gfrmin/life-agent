@@ -25,8 +25,18 @@ there. A task made from a message carries an identity made from that message's i
 message answered twice still adds one task. On its first start it reads from now on:
 what was said in the room before is history, not a request.
 
+A REPLY IS MADE ONCE (the review of #224). The reply is written down before it is sent,
+so a door that is down is sent the same words again later and the model is not asked
+again; and a reply the door will never take (a word too long) is replaced by one line
+that says so, and the room goes on. Replies are cut to the door's limits first.
+
 ONE ROOM. The room's id is kept in the same file. Before making one, the rooms it is in
 are looked through for its own, so a room whose id was lost is found again, not made twice.
+If the owner has left it, or declined, he is invited again when jarvis starts.
+
+What it does not do: a sync answers at most 50 messages since the last one, and one sent
+while jarvis was away beyond that is not read (it is said in the log). A swipe-reply is
+read as a message, without the lines it quotes; an edit is not read.
 """
 
 from __future__ import annotations
@@ -52,6 +62,8 @@ ROOM_NAME = "Jarvis"
 DEVICE = "LIFEAGENTJARVIS"  # one device, taken over by each sign-in
 WAIT_MS = 25_000  # how long one sync waits for something to say
 ANSWERED_KEPT = 200  # how many answered message ids are kept against a second answer
+NEVER_TAKEN = frozenset({400, 413})  # what the door answers a reply it will never take
+NOT_SENT = "That answer could not be sent here (the door refused it). Ask on Telegram."
 # (status, the answer's JSON or None), as reach/door.py asks
 Ask = door.Ask
 # respond(text, identity) -> the reply: jarvis.respond with the owner's id bound
@@ -112,12 +124,12 @@ def room_of(ask: Ask, token: str, there: Mapping[str, str], kept: dict[str, Any]
     rooms = door._need(*ask("GET", f"{API}/joined_rooms", None, token), "rooms")
     joined = [str(r) for r in rooms.get("joined_rooms", [])]
     if kept.get("room") in joined:
-        return str(kept["room"])
+        return _with_owner(ask, token, there, str(kept["room"]))
     for room in sorted(joined):
         state = f"{API}/rooms/{quote(room, safe='')}/state"  # PII-OK — a URL path on the server
         _, name = ask("GET", f"{state}/m.room.name", None, token)
         if isinstance(name, Mapping) and name.get("name") == ROOM_NAME:
-            return room
+            return _with_owner(ask, token, there, room)
     made = door._need(*ask("POST", f"{API}/createRoom", {
         "name": ROOM_NAME,
         "topic": "Your tasks and questions: type as you would to Jarvis on Telegram.",
@@ -129,6 +141,20 @@ def room_of(ask: Ask, token: str, there: Mapping[str, str], kept: dict[str, Any]
     return str(made["room_id"])
 
 
+def _with_owner(ask: Ask, token: str, there: Mapping[str, str], room: str) -> str:
+    """The room, with the owner in it or invited to it: one who has left or declined is
+    invited again (the review of #224: else the room was jarvis's alone for good). One the
+    room has banned is not."""
+    state = f"{API}/rooms/{quote(room, safe='')}/state"  # PII-OK — a URL path on the server
+    _, member = ask("GET", f"{state}/m.room.member/{quote(there['owner'], safe='')}", None, token)
+    membership = member.get("membership") if isinstance(member, Mapping) else None
+    if membership in (None, "leave"):
+        log.info("The owner is not in the door room: inviting him again")
+        door._need(*ask("POST", f"{API}/rooms/{quote(room, safe='')}/invite",
+                        {"user_id": there["owner"]}, token), "invite")
+    return room
+
+
 def _filter(room: str) -> str:
     return json.dumps({
         "room": {"rooms": [room], "timeline": {"types": ["m.room.message"], "limit": 50},
@@ -138,11 +164,31 @@ def _filter(room: str) -> str:
     })
 
 
+def _unquoted(body: str) -> str:
+    """A reply's own words, without the lines it quotes ("> ..." before a blank line)."""
+    lines = body.split("\n")
+    if lines and lines[0].startswith("> "):
+        while lines and lines[0].startswith(">"):
+            lines.pop(0)
+    return "\n".join(lines).strip()
+
+
+def _new_words(content: Mapping[str, Any]) -> bool:
+    """A message of its own, or a reply to one: not an edit or anything else related."""
+    related = content.get("m.relates_to")
+    if related is None:
+        return True
+    return isinstance(related, Mapping) and set(related) == {"m.in_reply_to"}
+
+
 def said(answer: Any, room: str, owner: str) -> list[tuple[str, str]]:
     """(event id, text) of each plain-text message of the owner's in the room, in order.
     Nobody else's words, and nothing that is not a plain message, are ever read."""
     joined = ((answer.get("rooms") or {}).get("join") or {}) if isinstance(answer, Mapping) else {}
-    events = (((joined.get(room) or {}).get("timeline") or {}).get("events")) or []
+    timeline = (joined.get(room) or {}).get("timeline") or {}
+    if timeline.get("limited"):
+        log.warning("The door: more was said than one sync holds; the earliest is not read")
+    events = timeline.get("events") or []
     found = []
     for event in events:
         if not isinstance(event, Mapping):
@@ -155,11 +201,11 @@ def said(answer: Any, room: str, owner: str) -> list[tuple[str, str]]:
             and isinstance(event.get("event_id"), str)
             and isinstance(content, Mapping)
             and content.get("msgtype") == "m.text"
-            and "m.relates_to" not in content  # an edit or a reply's thread: not a new word
+            and _new_words(content)  # an edit is not a new word; a reply is
             and isinstance(body, str)
-            and body.strip()
+            and _unquoted(body)
         ):
-            found.append((event["event_id"], body.strip()))
+            found.append((event["event_id"], _unquoted(body)))
     return found
 
 
@@ -168,13 +214,33 @@ def identity_of(event_id: str) -> str:
     return "door-" + hashlib.sha256(event_id.encode()).hexdigest()[:32]
 
 
-def reply(ask: Ask, token: str, room: str, event_id: str, text: str) -> None:
-    """A notice in the room, named for the message it answers: one reply to it, and no
-    ring (a notice does not notify)."""
+def reply(ask: Ask, token: str, room: str, event_id: str, text: str) -> int:
+    """Send a notice in the room, named for the message it answers: one reply to it, and
+    no ring (a notice does not notify). The door's status: 200 when it took it."""
     txn = "reply-" + hashlib.sha256(event_id.encode()).hexdigest()[:40]
     sent = f"{API}/rooms/{quote(room, safe='')}/send"  # PII-OK — a URL path on the server
     path = f"{sent}/m.room.message/{txn}"
-    door._need(*ask("PUT", path, {"msgtype": "m.notice", "body": text}, token), "reply")
+    status, _ = ask("PUT", path, {"msgtype": "m.notice", "body": door.clean(text)}, token)
+    return status
+
+
+def _deliver(ask: Ask, token: str, room: str, kept: dict[str, Any], path: Path) -> None:
+    """Send the reply that is written down as owed, and write down that it went. One the
+    door will never take is replaced by NOT_SENT; a door that is down is tried again by
+    the next pass, with the same words, and no model is asked again."""
+    owed = kept["owed"]
+    status = reply(ask, token, room, owed["event"], owed["text"])
+    if status in NEVER_TAKEN and owed["text"] != NOT_SENT:
+        log.warning("The door refused a reply (%s): saying so instead", status)
+        kept["owed"] = owed = {**owed, "text": NOT_SENT}
+        keep(path, kept)
+        status = reply(ask, token, room, owed["event"], NOT_SENT)
+    if status != 200 and status not in NEVER_TAKEN:
+        raise RuntimeError(f"the door: reply: status {status}")
+    answered = [str(e) for e in kept.get("answered", [])]
+    kept["answered"] = [*answered, owed["event"]][-ANSWERED_KEPT:]
+    del kept["owed"]
+    keep(path, kept)
 
 
 def one_pass(ask: Ask, token: str, there: Mapping[str, str], kept: dict[str, Any],
@@ -183,6 +249,8 @@ def one_pass(ask: Ask, token: str, there: Mapping[str, str], kept: dict[str, Any
     many were answered. `kept` is changed in place and written after each answer."""
     path = Path(there["state"])
     room = str(kept["room"])
+    if kept.get("owed"):  # a reply made and not yet sent: send it, ask nothing again
+        _deliver(ask, token, room, kept, path)
     since = kept.get("since")
     query = {"filter": _filter(room), "timeout": str(wait_ms if since else 0)}
     if since:
@@ -195,15 +263,13 @@ def one_pass(ask: Ask, token: str, there: Mapping[str, str], kept: dict[str, Any
         kept["since"] = batch
         keep(path, kept)
         return 0
-    answered = [str(e) for e in kept.get("answered", [])]
     done = 0
     for event_id, text in said(answer, room, there["owner"]):
-        if event_id in answered:
+        if event_id in kept.get("answered", []):
             continue
-        reply(ask, token, room, event_id, respond(text, identity_of(event_id)))
-        answered = [*answered, event_id][-ANSWERED_KEPT:]
-        kept["answered"] = answered
-        keep(path, kept)
+        kept["owed"] = {"event": event_id, "text": respond(text, identity_of(event_id))}
+        keep(path, kept)  # before it is sent: the model is never asked twice for it
+        _deliver(ask, token, room, kept, path)
         done += 1
     kept["since"] = batch
     keep(path, kept)

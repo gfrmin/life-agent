@@ -52,9 +52,13 @@ class Door:
     """A door that answers each sync from a list, and keeps what it was asked."""
 
     def __init__(self, syncs: list[dict[str, Any]], joined: list[str] | None = None,
-                 names: dict[str, str] | None = None, down_on: str | None = None) -> None:
+                 names: dict[str, str] | None = None, down_on: str | None = None,
+                 refuse: str | None = None, owner_is: str | None = "join") -> None:
         self.syncs, self.joined, self.names = list(syncs), joined or [], names or {}
         self.down_on = down_on  # a reply whose text holds this finds the door down
+        self.refuse = refuse  # a reply whose text holds this the door will never take
+        self.owner_is = owner_is  # the owner's membership of the room
+        self.invited: list[str] = []
         self.asked: list[tuple[str, str, Any]] = []
         self.sent: list[tuple[str, dict[str, Any]]] = []
 
@@ -65,6 +69,13 @@ class Door:
             return 200, {"access_token": "tok"}
         if route.endswith("/joined_rooms"):
             return 200, {"joined_rooms": self.joined}
+        if "/state/m.room.member/" in route:  # PII-OK — a URL path on the server
+            if self.owner_is is None:
+                return 404, {"errcode": "M_NOT_FOUND"}
+            return 200, {"membership": self.owner_is}
+        if route.endswith("/invite"):
+            self.invited.append(body["user_id"])
+            return 200, {}
         if route.endswith("/state/m.room.name"):  # PII-OK — a URL path on the server
             room = route.split("/rooms/")[1].split("/")[0].replace("%21", "!").replace("%3A", ":")
             return (200, {"name": self.names[room]}) if room in self.names else (404, {})
@@ -76,6 +87,8 @@ class Door:
         if "/send/m.room.message/" in route:  # PII-OK — a URL path on the server
             if self.down_on and self.down_on in json.dumps(body):
                 return 0, None
+            if self.refuse and self.refuse in json.dumps(body):
+                return 413, {"errcode": "M_TOO_LARGE"}
             self.sent.append((route.rsplit("/", 1)[1], body))
             return 200, {"event_id": "$reply"}
         return 404, {"errcode": "M_NOT_FOUND"}
@@ -151,6 +164,8 @@ def test_the_owners_words_are_answered_in_the_room_as_a_notice_each_once(
         message("$x", "done 3", sender=ME),  # its own reply
         message("$x", "done 3", msgtype="m.notice"),
         message("$x", "* done 4", **{"m.relates_to": {"rel_type": "m.replace"}}),  # an edit
+        message("$x", "done 4", **{"m.relates_to": {"rel_type": "m.thread"}}),
+        message("$x", "> <@jarvis> quoted only"),
         message("$x", "   "),
         {"type": "m.reaction", "event_id": "$x", "sender": OWNER, "content": {}},
         {"type": "m.room.message", "sender": OWNER, "content": {"msgtype": "m.text", "body": "x"}},
@@ -162,6 +177,18 @@ def test_nothing_but_the_owners_plain_words_is_read(there: dict[str, str], event
     door = Door([synced("s2", event)])
     assert matrix.one_pass(door.ask, "tok", there, {"room": ROOM, "since": "s1"}, echo(seen)) == 0
     assert seen == [] and door.sent == []
+
+
+def test_a_swipe_reply_is_read_as_his_words_without_what_it_quotes(
+    there: dict[str, str],
+) -> None:
+    """The review of #224: a reply carries `m.in_reply_to`, and was passed over."""
+    seen: list[tuple[str, str]] = []
+    quoted = "> <@jarvis:door.example.test> Added [3] Buy milk\n> to #inbox\n\ndone 3"
+    reply = {"m.relates_to": {"m.in_reply_to": {"event_id": "$prev"}}}
+    door = Door([synced("s2", message("$a", quoted, **reply), message("$b", "later 4", **reply))])
+    assert matrix.one_pass(door.ask, "tok", there, {"room": ROOM, "since": "s1"}, echo(seen)) == 2
+    assert [text for text, _ in seen] == ["done 3", "later 4"]
 
 
 def test_a_message_in_another_room_is_not_read(there: dict[str, str]) -> None:
@@ -181,14 +208,52 @@ def test_a_pass_cut_off_answers_the_rest_next_time_and_none_twice(there: dict[st
     kept: dict[str, Any] = {"room": ROOM, "since": "s1"}
     with pytest.raises(RuntimeError):
         matrix.one_pass(door.ask, "tok", there, kept, echo(seen))
+    # the reply to "two" was made and written down as owed before it was sent
     assert json.loads(Path(there["state"]).read_text()) == {
-        "room": ROOM, "since": "s1", "answered": ["$a"]}
+        "room": ROOM, "since": "s1", "answered": ["$a"],
+        "owed": {"event": "$b", "text": "you said two"}}
     door.down_on = None
     kept = matrix.load(Path(there["state"]))  # as a restart would find it
-    assert matrix.one_pass(door.ask, "tok", there, kept, echo(seen)) == 1
-    assert [text for text, _ in seen] == ["one", "two", "two"]  # "two" was asked twice...
-    # ...and sent once
+    assert matrix.one_pass(door.ask, "tok", there, kept, echo(seen)) == 0
+    # the review of #224: nothing was asked again, and each reply went once
+    assert [text for text, _ in seen] == ["one", "two"]
     assert [body["body"] for _, body in door.sent] == ["you said one", "you said two"]
+    assert kept == {"room": ROOM, "since": "s2", "answered": ["$a", "$b"]}
+
+
+def test_a_reply_the_door_will_never_take_is_said_in_one_line_and_the_room_goes_on(
+    there: dict[str, str],
+) -> None:
+    """The review of #224: an answer too long for the door was sent again, and the model
+    asked again, every 30 seconds for good, and nothing after it was answered."""
+    seen: list[tuple[str, str]] = []
+    door = Door([synced("s2", message("$a", "huge"), message("$b", "add milk"))],
+                refuse="you said huge")
+    kept: dict[str, Any] = {"room": ROOM, "since": "s1"}
+    assert matrix.one_pass(door.ask, "tok", there, kept, echo(seen)) == 2
+    assert [body["body"] for _, body in door.sent] == [matrix.NOT_SENT, "you said add milk"]
+    assert [text for text, _ in seen] == ["huge", "add milk"]
+    assert kept == {"room": ROOM, "since": "s2", "answered": ["$a", "$b"]}
+
+
+def test_when_even_the_one_line_is_refused_the_message_is_let_go(there: dict[str, str]) -> None:
+    door = Door([synced("s2", message("$a", "huge"))], refuse="m.notice")  # it takes nothing
+    kept: dict[str, Any] = {"room": ROOM, "since": "s1"}
+    assert matrix.one_pass(door.ask, "tok", there, kept, echo([])) == 1
+    assert door.sent == [] and kept["answered"] == ["$a"] and "owed" not in kept
+
+
+def test_a_reply_is_cut_to_the_doors_limits_before_it_is_sent(there: dict[str, str]) -> None:
+    door = Door([synced("s2", message("$a", "x"))])
+    matrix.one_pass(door.ask, "tok", there, {"room": ROOM, "since": "s1"},
+                    lambda text, identity: "y" * 100_000)
+    (_, body), = door.sent
+    assert len(body["body"]) == door_limits() and body["msgtype"] == "m.notice"
+
+
+def door_limits() -> int:
+    from life_agent.reach import door
+    return door.TEXT_CHARS
 
 
 def test_what_was_answered_is_kept_to_a_bound(there: dict[str, str]) -> None:
@@ -225,11 +290,24 @@ def test_its_room_is_the_one_kept_else_found_by_its_name_else_made_once(
     named = Door([], joined=["!x:y", ROOM], names={ROOM: "Jarvis"})
     assert matrix.room_of(named.ask, "tok", there, {}) == ROOM  # the id was lost: found again
     assert not [p for m, p, _ in named.asked if p.endswith("/createRoom")]
-    fresh = Door([], joined=["!x:y"])
+    fresh = Door([], joined=["!x:y"], owner_is=None)
     assert matrix.room_of(fresh.ask, "tok", there, {}) == ROOM
+    assert fresh.invited == []  # a new room invites him as it is made
     ((_, _, body),) = [(m, p, b) for m, p, b in fresh.asked if p.endswith("/createRoom")]
     assert body["invite"] == [OWNER] and body["preset"] == "private_chat"
     assert body["name"] == "Jarvis" and "initial_state" not in body  # no encryption asked for
+
+
+@pytest.mark.parametrize(("owner_is", "invited"), [
+    ("join", []), ("invite", []), ("leave", [OWNER]), (None, [OWNER]), ("ban", []),
+])
+def test_an_owner_who_has_left_the_room_is_invited_again(
+    there: dict[str, str], owner_is: str | None, invited: list[str]
+) -> None:
+    """The review of #224: if he declined or left, the room was jarvis's alone for good."""
+    door = Door([], joined=[ROOM], owner_is=owner_is)
+    assert matrix.room_of(door.ask, "tok", there, {"room": ROOM}) == ROOM
+    assert door.invited == invited
 
 
 def test_the_loop_signs_in_finds_its_room_keeps_it_and_reads(there: dict[str, str]) -> None:
