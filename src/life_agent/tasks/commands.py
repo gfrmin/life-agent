@@ -47,6 +47,15 @@ def add(
     if due_date and not parsed:
         return f"Invalid date '{due_date}'. Use YYYY-MM-DD format."
     ident = identity or ev.new_identity()
+    if identity is not None:
+        # a transport that names the task (a message's id) may answer that message again:
+        # the task is there already, and nothing is added (reach/matrix.py)
+        with store.get_db() as conn:
+            there = conn.execute(
+                "SELECT id, text FROM tasks WHERE identity = ?", (identity,)
+            ).fetchone()
+        if there is not None:
+            return f"Already added [{there['id']}] {there['text']}"
     event = ev.asserted(
         ident,
         payload={

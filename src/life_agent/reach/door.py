@@ -114,9 +114,10 @@ class _NoRedirect(HTTPRedirectHandler):
         return None
 
 
-def _asking(base: str) -> Ask:
+def _asking(base: str, timeout: float = _TIMEOUT_S) -> Ask:
     """Requests to the door through no proxy, and never on to where an answer points:
-    the sign-in carries the password, and it goes to the door and nowhere else."""
+    the sign-in carries the password, and it goes to the door and nowhere else. A
+    caller that waits on the door (a long sync) gives a longer `timeout`."""
     opener = build_opener(ProxyHandler({}), _NoRedirect())
 
     def ask(method: str, path: str, body: Any, token: str | None) -> tuple[int, Any]:
@@ -126,7 +127,7 @@ def _asking(base: str) -> Ask:
         data = json.dumps(body).encode() if body is not None else None
         try:
             request = Request(base + path, data=data, headers=headers, method=method)
-            with opener.open(request, timeout=_TIMEOUT_S) as answer:
+            with opener.open(request, timeout=timeout) as answer:
                 return answer.status, json.loads(answer.read())
         except HTTPError as refused:
             try:
