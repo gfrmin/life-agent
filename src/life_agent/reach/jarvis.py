@@ -337,9 +337,19 @@ def respond(
 
 
 def door_reply(text: str, identity: str, user_id: int) -> str:
-    """`respond` for the door's room: a fault is said in the room."""
+    """`respond` for the door's room: a fault is said in the room, and the room goes on.
+
+    A fault raised as SystemExit is a fault too (core.llm turns a refusal of the model's
+    API into one, as does a secret that cannot be found): let through, it would stop
+    jarvis, and a refusal that lasts would stop it again on every restart, a deaf room.
+    A stop is not a fault: SIGTERM's handler exits 0, and that goes on up."""
     try:
         return respond(text, user_id, identity=identity)
+    except SystemExit as stop:
+        if stop.code in (None, 0):
+            raise
+        log.error("A door message stopped short: %s", str(stop.code)[:300])
+        return "Something went wrong. Try again?"
     except Exception:
         log.exception("Error processing a door message")
         return "Something went wrong. Try again?"

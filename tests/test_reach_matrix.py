@@ -408,6 +408,26 @@ def test_a_fault_in_a_door_reply_is_said_in_the_room(monkeypatch: pytest.MonkeyP
     assert jarvis.door_reply("buy milk", "door-x", USER) == "Something went wrong. Try again?"
 
 
+def test_a_refusal_by_the_model_is_said_in_the_room_and_a_stop_still_stops(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The review of #225: core.llm raises an API refusal as SystemExit; let through, it
+    stopped jarvis, and a refusal that lasts would have stopped it on every restart."""
+    def refused(text: str) -> dict[str, Any]:
+        raise SystemExit("Anthropic API 400: a refusal")
+
+    monkeypatch.setattr(jarvis, "parse_intent", refused)
+    assert jarvis.door_reply("buy milk", "door-x", USER) == "Something went wrong. Try again?"
+
+    def stopped(text: str) -> dict[str, Any]:
+        raise SystemExit(0)  # what SIGTERM's handler raises
+
+    monkeypatch.setattr(jarvis, "parse_intent", stopped)
+    with pytest.raises(SystemExit) as stop:
+        jarvis.door_reply("buy milk", "door-x", USER)
+    assert stop.value.code == 0
+
+
 def test_with_telegram_on_jarvis_reads_the_door_beside_it_only_when_the_box_names_one(
     there: dict[str, str], monkeypatch: pytest.MonkeyPatch
 ) -> None:

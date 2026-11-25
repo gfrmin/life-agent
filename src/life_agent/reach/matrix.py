@@ -141,7 +141,7 @@ def room_of(ask: Ask, token: str, there: Mapping[str, str], kept: dict[str, Any]
             return _with_owner(ask, token, there, room)
     made = door._need(*ask("POST", f"{API}/createRoom", {
         "name": ROOM_NAME,
-        "topic": "Your tasks and questions: type as you would to Jarvis on Telegram.",
+        "topic": "Your tasks and questions: type them to Jarvis here.",
         "preset": "private_chat",
         "visibility": "private",
         "invite": [there["owner"]],
