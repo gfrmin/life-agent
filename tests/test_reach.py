@@ -8,6 +8,7 @@ loop's logic — intent → command/projection → reply — without any live I/
 from __future__ import annotations
 
 import json
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -290,6 +291,7 @@ def test_digest_main_targets_the_owner(monkeypatch: pytest.MonkeyPatch) -> None:
     # not a 30-day distinct-user scan
     commands.add(USER, "A task", is_today=True)
     sent: list[tuple[int, str]] = []
+    monkeypatch.setenv("TELEGRAM_REACH", "on")
     monkeypatch.setattr(reach_digest.telegram, "send_message",
                         lambda uid, text: sent.append((uid, text)))
     monkeypatch.setenv("JARVIS_USER_ID", str(USER))
@@ -555,9 +557,10 @@ def test_a_morning_report_that_could_not_be_sent_fails_the_run_after_the_mirror(
         raise OSError("telegram unreachable")
 
     mirrored: list[str] = []
+    monkeypatch.setenv("TELEGRAM_REACH", "on")
     monkeypatch.setattr(reach_digest.telegram, "send_message", down)
-    monkeypatch.setattr(reach_digest.door, "mirror",
-                        lambda text: mirrored.append(text) or "handed in")
+    monkeypatch.setattr(reach_digest.door, "hand_over",
+                        lambda text: mirrored.append(text) or (True, "handed in"))
     with pytest.raises(SystemExit) as stopped:
         reach_digest.main()
     assert stopped.value.code == 1
@@ -568,6 +571,71 @@ def test_a_morning_report_that_could_not_be_sent_fails_the_run_after_the_mirror(
 def test_a_morning_report_that_went_ends_well(monkeypatch: pytest.MonkeyPatch) -> None:
     commands.add(USER, "A task", is_today=True)
     monkeypatch.setenv("JARVIS_USER_ID", str(USER))
+    monkeypatch.setenv("TELEGRAM_REACH", "on")
     monkeypatch.setattr(reach_digest.telegram, "send_message", lambda *_: None)
-    monkeypatch.setattr(reach_digest.door, "mirror", lambda text: "no door configured")
+    monkeypatch.setattr(reach_digest.door, "hand_over", lambda text: (False, "no door configured"))
     reach_digest.main()  # returns: no SystemExit
+
+
+# --- Telegram off, the door the one place (gfrmin/ops#274, win B3) --------------------
+
+
+@pytest.mark.parametrize(("value", "on"), [
+    (None, False), ("", False), ("off", False), ("1", False), ("yes", False),
+    ("on", True), (" ON ", True),
+])
+def test_telegram_is_off_unless_the_box_says_on(
+    value: str | None, on: bool, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    if value is not None:
+        monkeypatch.setenv("TELEGRAM_REACH", value)
+    assert telegram.enabled() is on
+
+
+def _main_of_jarvis(monkeypatch: pytest.MonkeyPatch, *, door: bool) -> list[str]:
+    """jarvis.main with its two channels stood in for: what it started, in order."""
+    started: list[str] = []
+    monkeypatch.setattr(jarvis.matrix, "configured", lambda: {"url": "x"} if door else None)
+    monkeypatch.setattr(store, "init_db", lambda: None)
+    monkeypatch.setattr(jarvis, "_user_id", lambda: USER)
+
+    def door_loop(respond: Any, *, after_pass: Any = None) -> None:
+        started.append("door, beating" if after_pass is jarvis._heartbeat else "door")
+        assert respond("done 99", "door-x") == "Task not found."  # the owner's id is bound
+
+    monkeypatch.setattr(jarvis.matrix, "loop", door_loop)
+    monkeypatch.setattr(jarvis, "poll_loop", lambda: started.append("telegram"))
+
+    class Now(threading.Thread):  # the door's thread, run at once so the test sees it
+        def start(self) -> None:
+            self.run()
+
+    monkeypatch.setattr(jarvis.threading, "Thread", Now)
+    monkeypatch.setattr(jarvis.signal, "signal", lambda *_: None)
+    jarvis.main()
+    return started
+
+
+def test_jarvis_listens_at_the_door_alone_and_the_door_is_what_the_dead_man_hears(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(telegram, "poll_updates",
+                        lambda *_a, **_k: pytest.fail("Telegram was read while it is off"))
+    assert _main_of_jarvis(monkeypatch, door=True) == ["door, beating"]
+
+
+def test_with_telegram_on_jarvis_reads_both_and_telegram_beats(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TELEGRAM_REACH", "on")
+    assert _main_of_jarvis(monkeypatch, door=True) == ["door", "telegram"]
+    assert _main_of_jarvis(monkeypatch, door=False) == ["telegram"]
+
+
+def test_jarvis_with_nowhere_to_listen_says_so_and_stops(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    with caplog.at_level("ERROR", logger="jarvis"), pytest.raises(SystemExit) as stopped:
+        _main_of_jarvis(monkeypatch, door=False)
+    assert stopped.value.code == 1
+    assert "nowhere to listen" in caplog.text and "TELEGRAM_REACH" in caplog.text

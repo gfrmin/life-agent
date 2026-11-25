@@ -18,6 +18,7 @@ import pytest
 
 from life_agent.tasks import commands, store
 from life_agent.tasks import events as ev
+from life_agent.tasks import project as project_module
 from life_agent.tasks.project import project_action_items, to_candidates
 from life_agent.tasks.read import EmailActions
 from pkm.cache import write_artifact
@@ -191,6 +192,24 @@ def test_project_does_not_refile_a_completed_email_task(tmp_path: Path) -> None:
     assert r.filed == 0  # the disposed identity is known → never resurrected
     types = [e.type for e in ev.load(commands.LEDGER_PATH)]
     assert types == ["asserted", "disposed"]
+
+
+@pytest.mark.parametrize(("reach", "nudged"), [(None, False), ("on", True)])
+def test_the_filing_nudge_goes_to_telegram_only_while_it_is_on(
+    reach: str | None, nudged: bool, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """gfrmin/ops#274, win B3: with Telegram off the filed task is counted in the morning
+    list at the door, and nothing is sent."""
+    if reach is not None:
+        monkeypatch.setenv("TELEGRAM_REACH", reach)
+    sent: list[tuple[int, str]] = []
+    monkeypatch.setattr(project_module.telegram, "send_message",
+                        lambda chat, text: sent.append((chat, text)))
+    root = tmp_path / "pkm"
+    _seed_catalogue(root, message_id="<lease-7@example.com>", items=_LEASE)
+    report = project_action_items(root, user_id=7)  # notify on, as the timer runs it
+    assert report.filed == 1 and report.notified is nudged
+    assert [chat for chat, _ in sent] == ([7] if nudged else [])
 
 
 # --- triage gate (SPEC §18.8) -------------------------------------------------

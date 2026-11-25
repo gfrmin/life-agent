@@ -347,6 +347,28 @@ def test_an_owner_who_has_left_the_room_is_invited_again(
     assert matrix.room_of(refusing.ask, "tok", there, {"room": ROOM}) == ROOM
 
 
+def test_the_loop_beats_after_each_pass_that_read_the_room_and_not_when_the_door_is_down(
+    there: dict[str, str],
+) -> None:
+    """With Telegram off the door's passes are jarvis's dead-man beat (gfrmin/ops#274, B3):
+    a pass that read the room beats; a door that cannot be read does not."""
+    beats: list[int] = []
+    matrix.loop(echo([]), ask=Door([synced("s1")], joined=[]).ask, forever=False,
+                after_pass=lambda: beats.append(1))
+    assert beats == [1]
+
+    class DownOnRead(Door):  # signed in and in its room, and the door goes down on the read
+        def ask(self, method: str, path: str, body: Any, token: str | None) -> tuple[int, Any]:
+            if path.split("?")[0].endswith("/sync"):
+                return 0, None
+            return super().ask(method, path, body, token)
+
+    with pytest.raises(RuntimeError, match="sync"):
+        matrix.loop(echo([]), ask=DownOnRead([], joined=[]).ask, forever=False,
+                    after_pass=lambda: beats.append(2))
+    assert beats == [1]
+
+
 def test_the_loop_signs_in_finds_its_room_keeps_it_and_reads(there: dict[str, str]) -> None:
     door = Door([synced("s1")], joined=[])
     matrix.loop(echo([]), ask=door.ask, forever=False)
@@ -386,9 +408,30 @@ def test_a_fault_in_a_door_reply_is_said_in_the_room(monkeypatch: pytest.MonkeyP
     assert jarvis.door_reply("buy milk", "door-x", USER) == "Something went wrong. Try again?"
 
 
-def test_jarvis_reads_the_door_beside_telegram_only_when_the_box_names_one(
+def test_a_refusal_by_the_model_is_said_in_the_room_and_a_stop_still_stops(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The review of #225: core.llm raises an API refusal as SystemExit; let through, it
+    stopped jarvis, and a refusal that lasts would have stopped it on every restart."""
+    def refused(text: str) -> dict[str, Any]:
+        raise SystemExit("Anthropic API 400: a refusal")
+
+    monkeypatch.setattr(jarvis, "parse_intent", refused)
+    assert jarvis.door_reply("buy milk", "door-x", USER) == "Something went wrong. Try again?"
+
+    def stopped(text: str) -> dict[str, Any]:
+        raise SystemExit(0)  # what SIGTERM's handler raises
+
+    monkeypatch.setattr(jarvis, "parse_intent", stopped)
+    with pytest.raises(SystemExit) as stop:
+        jarvis.door_reply("buy milk", "door-x", USER)
+    assert stop.value.code == 0
+
+
+def test_with_telegram_on_jarvis_reads_the_door_beside_it_only_when_the_box_names_one(
     there: dict[str, str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    monkeypatch.setenv("TELEGRAM_REACH", "on")
     started: list[str] = []
 
     class _Thread:

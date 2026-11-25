@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# jarvis — the Telegram reach channel: polls for messages, parses each to an intent, routes to
+# jarvis — the reach channel: reads the owner's messages in its room at the door (and on Telegram
+# while TELEGRAM_REACH=on), parses each to an intent, routes to
 # tasks.commands / tasks.store. Transport only; no truth lives here (PRINCIPLES §6). Sources
 # .env (LIFE_AGENT_KB, JARVIS_USER_ID), then runs the bot in the foreground. Ctrl-C to stop.
 #   jarvis                                   # poll and serve

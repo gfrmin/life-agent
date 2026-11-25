@@ -5,7 +5,7 @@ A thin, idempotent *producer* of events into the agent's one task ledger
 + cited by its email's Message-ID via the lineage walk in ``read.py``) and files every
 not-yet-known assertion **once**, through the command layer (``commands.add``), as an
 ``Asserted(origin="email")`` event. The read-model updates as a fold; a task the human later
-clears in Telegram becomes a first-class ``Disposed`` event (no capture/diff) — so "already
+clears in Jarvis becomes a first-class ``Disposed`` event (no capture/diff) — so "already
 handled" is just membership in the ledger's known identities, keyed on a content+grounding
 **assertion identity** (not a positional ``message_id#index``).
 
@@ -100,9 +100,14 @@ class ProjectReport:
 def _notify(text: str, *, chat_id: int) -> bool:
     """Best-effort Telegram nudge via the reach transport. Never raises.
 
-    A notify failure (no token configured → ``SystemExit`` from ``secret``, or a network
-    hiccup) must not fail the filing, which is the source of truth.
+    Only while the box switches Telegram on (``TELEGRAM_REACH``, reach/telegram.py): with
+    it off the owner hears of the filed tasks as the inbox count in his morning list at
+    the door, and nothing is sent. A notify failure (no token configured → ``SystemExit``
+    from ``secret``, or a network hiccup) must not fail the filing, which is the source of
+    truth.
     """
+    if not telegram.enabled():
+        return False
     try:
         telegram.send_message(chat_id, text)
         return True
