@@ -264,7 +264,7 @@ def test_when_even_the_one_line_is_refused_the_message_is_let_go(
     assert everything.sent == [] and kept["answered"] == ["$a"] and "owed" not in kept
 
 
-@pytest.mark.parametrize("status", [0, 401, 429, 500, 502])
+@pytest.mark.parametrize("status", [0, 401, 408, 429, 500, 502])
 def test_a_door_that_is_down_or_busy_keeps_the_reply_owed(
     there: dict[str, str], status: int
 ) -> None:
