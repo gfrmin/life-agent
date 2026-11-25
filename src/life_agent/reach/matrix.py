@@ -62,7 +62,12 @@ ROOM_NAME = "Jarvis"
 DEVICE = "LIFEAGENTJARVIS"  # one device, taken over by each sign-in
 WAIT_MS = 25_000  # how long one sync waits for something to say
 ANSWERED_KEPT = 200  # how many answered message ids are kept against a second answer
-NEVER_TAKEN = frozenset({400, 413})  # what the door answers a reply it will never take
+
+
+def never_taken(status: int) -> bool:
+    """A refusal that sending again will not change: any 4xx but "too many requests"."""
+    return 400 <= status < 500 and status != 429
+
 NOT_SENT = "That answer could not be sent here (the door refused it). Ask on Telegram."
 # (status, the answer's JSON or None), as reach/door.py asks
 Ask = door.Ask
@@ -150,8 +155,10 @@ def _with_owner(ask: Ask, token: str, there: Mapping[str, str], room: str) -> st
     membership = member.get("membership") if isinstance(member, Mapping) else None
     if membership in (None, "leave"):
         log.info("The owner is not in the door room: inviting him again")
-        door._need(*ask("POST", f"{API}/rooms/{quote(room, safe='')}/invite",
-                        {"user_id": there["owner"]}, token), "invite")
+        status, _ = ask("POST", f"{API}/rooms/{quote(room, safe='')}/invite",
+                        {"user_id": there["owner"]}, token)
+        if status != 200:  # said, and the room is read all the same
+            log.warning("The door refused to invite the owner again (%s)", status)
     return room
 
 
@@ -164,8 +171,11 @@ def _filter(room: str) -> str:
     })
 
 
-def _unquoted(body: str) -> str:
-    """A reply's own words, without the lines it quotes ("> ..." before a blank line)."""
+def _unquoted(body: str, content: Mapping[str, Any]) -> str:
+    """His own words. A reply may carry the lines it quotes ("> ...") before them, and
+    those are not his; a message that is no reply is read whole, "> 3 done" and all."""
+    if "m.relates_to" not in content:
+        return body.strip()
     lines = body.split("\n")
     if lines and lines[0].startswith("> "):
         while lines and lines[0].startswith(">"):
@@ -203,9 +213,9 @@ def said(answer: Any, room: str, owner: str) -> list[tuple[str, str]]:
             and content.get("msgtype") == "m.text"
             and _new_words(content)  # an edit is not a new word; a reply is
             and isinstance(body, str)
-            and _unquoted(body)
+            and _unquoted(body, content)
         ):
-            found.append((event["event_id"], _unquoted(body)))
+            found.append((event["event_id"], _unquoted(body, content)))
     return found
 
 
@@ -230,12 +240,14 @@ def _deliver(ask: Ask, token: str, room: str, kept: dict[str, Any], path: Path) 
     the next pass, with the same words, and no model is asked again."""
     owed = kept["owed"]
     status = reply(ask, token, room, owed["event"], owed["text"])
-    if status in NEVER_TAKEN and owed["text"] != NOT_SENT:
+    if never_taken(status) and owed["text"] != NOT_SENT:
         log.warning("The door refused a reply (%s): saying so instead", status)
         kept["owed"] = owed = {**owed, "text": NOT_SENT}
         keep(path, kept)
         status = reply(ask, token, room, owed["event"], NOT_SENT)
-    if status != 200 and status not in NEVER_TAKEN:
+    if never_taken(status):
+        log.warning("The door refused even that (%s): the message is let go", status)
+    elif status != 200:
         raise RuntimeError(f"the door: reply: status {status}")
     answered = [str(e) for e in kept.get("answered", [])]
     kept["answered"] = [*answered, owed["event"]][-ANSWERED_KEPT:]

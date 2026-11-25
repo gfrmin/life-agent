@@ -59,6 +59,8 @@ class Door:
         self.refuse = refuse  # a reply whose text holds this the door will never take
         self.owner_is = owner_is  # the owner's membership of the room
         self.invited: list[str] = []
+        self.refused_with = 413  # the status of a refused reply
+        self.invite_status = 200
         self.asked: list[tuple[str, str, Any]] = []
         self.sent: list[tuple[str, dict[str, Any]]] = []
 
@@ -75,7 +77,7 @@ class Door:
             return 200, {"membership": self.owner_is}
         if route.endswith("/invite"):
             self.invited.append(body["user_id"])
-            return 200, {}
+            return self.invite_status, {}
         if route.endswith("/state/m.room.name"):  # PII-OK — a URL path on the server
             room = route.split("/rooms/")[1].split("/")[0].replace("%21", "!").replace("%3A", ":")
             return (200, {"name": self.names[room]}) if room in self.names else (404, {})
@@ -88,7 +90,7 @@ class Door:
             if self.down_on and self.down_on in json.dumps(body):
                 return 0, None
             if self.refuse and self.refuse in json.dumps(body):
-                return 413, {"errcode": "M_TOO_LARGE"}
+                return self.refused_with, {"errcode": "M_REFUSED"}
             self.sent.append((route.rsplit("/", 1)[1], body))
             return 200, {"event_id": "$reply"}
         return 404, {"errcode": "M_NOT_FOUND"}
@@ -165,7 +167,7 @@ def test_the_owners_words_are_answered_in_the_room_as_a_notice_each_once(
         message("$x", "done 3", msgtype="m.notice"),
         message("$x", "* done 4", **{"m.relates_to": {"rel_type": "m.replace"}}),  # an edit
         message("$x", "done 4", **{"m.relates_to": {"rel_type": "m.thread"}}),
-        message("$x", "> <@jarvis> quoted only"),
+        message("$x", "> <@jarvis> quoted only", **{"m.relates_to": {"m.in_reply_to": {}}}),
         message("$x", "   "),
         {"type": "m.reaction", "event_id": "$x", "sender": OWNER, "content": {}},
         {"type": "m.room.message", "sender": OWNER, "content": {"msgtype": "m.text", "body": "x"}},
@@ -189,6 +191,14 @@ def test_a_swipe_reply_is_read_as_his_words_without_what_it_quotes(
     door = Door([synced("s2", message("$a", quoted, **reply), message("$b", "later 4", **reply))])
     assert matrix.one_pass(door.ask, "tok", there, {"room": ROOM, "since": "s1"}, echo(seen)) == 2
     assert [text for text, _ in seen] == ["done 3", "later 4"]
+
+
+def test_a_message_of_his_that_begins_with_a_quote_is_read_whole(there: dict[str, str]) -> None:
+    """The second review of #224: only a reply's quote is taken off; "> 3 done" is his."""
+    seen: list[tuple[str, str]] = []
+    door = Door([synced("s2", message("$a", "> 3 done\nand more"))])
+    assert matrix.one_pass(door.ask, "tok", there, {"room": ROOM, "since": "s1"}, echo(seen)) == 1
+    assert [text for text, _ in seen] == ["> 3 done\nand more"]
 
 
 def test_a_message_in_another_room_is_not_read(there: dict[str, str]) -> None:
@@ -236,11 +246,34 @@ def test_a_reply_the_door_will_never_take_is_said_in_one_line_and_the_room_goes_
     assert kept == {"room": ROOM, "since": "s2", "answered": ["$a", "$b"]}
 
 
-def test_when_even_the_one_line_is_refused_the_message_is_let_go(there: dict[str, str]) -> None:
-    door = Door([synced("s2", message("$a", "huge"))], refuse="m.notice")  # it takes nothing
+@pytest.mark.parametrize("status", [400, 403, 413])
+def test_when_even_the_one_line_is_refused_the_message_is_let_go(
+    there: dict[str, str], status: int
+) -> None:
+    """The second review of #224: a 403 wedged the room as a 413 had."""
+    door = Door([synced("s2", message("$a", "huge"), message("$b", "add milk"))],
+                refuse="you said huge")
+    door.refused_with = status
     kept: dict[str, Any] = {"room": ROOM, "since": "s1"}
-    assert matrix.one_pass(door.ask, "tok", there, kept, echo([])) == 1
-    assert door.sent == [] and kept["answered"] == ["$a"] and "owed" not in kept
+    assert matrix.one_pass(door.ask, "tok", there, kept, echo([])) == 2
+    assert [body["body"] for _, body in door.sent] == [matrix.NOT_SENT, "you said add milk"]
+    everything = Door([synced("s2", message("$a", "huge"))], refuse="m.notice")
+    everything.refused_with = status
+    kept = {"room": ROOM, "since": "s1"}
+    assert matrix.one_pass(everything.ask, "tok", there, kept, echo([])) == 1
+    assert everything.sent == [] and kept["answered"] == ["$a"] and "owed" not in kept
+
+
+@pytest.mark.parametrize("status", [0, 429, 500, 502])
+def test_a_door_that_is_down_or_busy_keeps_the_reply_owed(
+    there: dict[str, str], status: int
+) -> None:
+    door = Door([synced("s2", message("$a", "x"))], refuse="you said x")
+    door.refused_with = status
+    kept: dict[str, Any] = {"room": ROOM, "since": "s1"}
+    with pytest.raises(RuntimeError):
+        matrix.one_pass(door.ask, "tok", there, kept, echo([]))
+    assert kept["owed"] == {"event": "$a", "text": "you said x"} and kept["since"] == "s1"
 
 
 def test_a_reply_is_cut_to_the_doors_limits_before_it_is_sent(there: dict[str, str]) -> None:
@@ -308,6 +341,10 @@ def test_an_owner_who_has_left_the_room_is_invited_again(
     door = Door([], joined=[ROOM], owner_is=owner_is)
     assert matrix.room_of(door.ask, "tok", there, {"room": ROOM}) == ROOM
     assert door.invited == invited
+    # a door that refuses the invitation is said, and the room is read all the same
+    refusing = Door([], joined=[ROOM], owner_is=owner_is)
+    refusing.invite_status = 403
+    assert matrix.room_of(refusing.ask, "tok", there, {"room": ROOM}) == ROOM
 
 
 def test_the_loop_signs_in_finds_its_room_keeps_it_and_reads(there: dict[str, str]) -> None:
