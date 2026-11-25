@@ -65,8 +65,10 @@ ANSWERED_KEPT = 200  # how many answered message ids are kept against a second a
 
 
 def never_taken(status: int) -> bool:
-    """A refusal that sending again will not change: any 4xx but "too many requests"."""
-    return 400 <= status < 500 and status != 429
+    """A refusal that sending again will not change: any 4xx but "too many requests", and
+    but a token the door has dropped (401: signing in again is the cure, and the reply
+    stays owed until then)."""
+    return 400 <= status < 500 and status not in (401, 429)
 
 NOT_SENT = "That answer could not be sent here (the door refused it). Ask on Telegram."
 # (status, the answer's JSON or None), as reach/door.py asks
