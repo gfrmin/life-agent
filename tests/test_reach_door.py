@@ -46,6 +46,7 @@ class Door:
             "sync": (200, {"rooms": {}}),
             "joined_rooms": (200, {"joined_rooms": []}),
             "logout": (200, {}),
+            "messages": (200, {"chunk": []}),  # its own room, empty
             **answers,
         }
         self.asked: list[tuple[str, str, Any, str | None]] = []
@@ -118,7 +119,7 @@ def test_invited_it_joins_hands_the_item_in_and_signs_out(box: dict[str, str]) -
     there = Door(sync=(200, {"rooms": {"invite": invite("!b", KEEPER)}}),
                  join=(200, {"room_id": "!b"}), send=(200, {"event_id": "$e"}))
     content = door.item("a digest", DAY)
-    assert door.hand_in(content, box, there.ask) == "$e"
+    assert door.hand_in(content, box, there.ask) == ("$e", "")
     assert there.routes()[:3] == ["POST /login", "GET /sync", "POST /join/%21b"]
     method, path, body, token = there.asked[3]
     assert (method, body, token) == ("PUT", content, "tok")
@@ -176,7 +177,7 @@ def test_already_in_its_room_it_finds_it_by_its_name_and_the_keeper(box: dict[st
 
 def test_with_no_room_yet_nothing_is_handed_in_and_it_still_signs_out(box: dict[str, str]) -> None:
     there = Door()
-    assert door.hand_in(door.item("a digest", DAY), box, there.ask) is None
+    assert door.hand_in(door.item("a digest", DAY), box, there.ask) == (None, "")
     assert not [r for r in there.routes() if r.startswith("PUT")]
     assert there.routes()[-1] == "POST /logout"
 
@@ -304,3 +305,76 @@ def test_the_real_hand_over_is_what_the_digest_runs(
     sent = next(body for method, path, body, _ in there.asked if method == "PUT")
     assert sent["kind"] == "report" and sent["text"] == "the digest"
     assert "Jarvis room" in sent["why"]
+
+
+# --- one list at a time (the owner's rule of 2026-11-26) -----------------------------------
+
+
+def handed(named: str, event: str) -> dict[str, Any]:
+    return {"type": door.ITEM_EVENT, "sender": ME, "event_id": event, "content": {"id": named}}
+
+
+def withdrew(named: str) -> dict[str, Any]:
+    return {"type": door.WITHDRAW_EVENT, "sender": ME, "event_id": "$w", "content": {"id": named}}
+
+
+def refused(event: str) -> dict[str, Any]:
+    return {"type": door.REFUSED_EVENT, "sender": KEEPER, "event_id": "$r",
+            "content": {"event": event, "why": "no"}}
+
+
+def test_the_earlier_lists_are_the_ones_it_handed_in_and_has_not_withdrawn() -> None:
+    events = [
+        handed("T-2026-01-02", "$today"),
+        handed("T-2026-01-01", "$y"),
+        handed("T-2025-12-30", "$old"),  # a day missed between: still found
+        handed("T-2025-12-29", "$gone"), withdrew("T-2025-12-29"),
+        handed("T-2025-12-28", "$bad"), refused("$bad"),  # the keeper never took it
+        {**handed("T-2025-12-27", "$x"), "sender": "@someone:door.example.test"},
+        handed("I-drill-1", "$i"),  # not a list
+        {"type": door.REFUSED_EVENT, "sender": ME, "content": {"event": "$y"}},  # not the keeper
+        "not an event", {"type": door.ITEM_EVENT, "sender": ME, "content": "no"},
+    ]
+    earlier = door.earlier_lists(events, ME, KEEPER, "T-2026-01-02")
+    assert earlier == ["T-2025-12-30", "T-2026-01-01"]
+    assert door.earlier_lists(None, ME, KEEPER, "T-2026-01-02") == []
+
+
+def test_once_today_is_in_the_earlier_lists_are_withdrawn_after_it(box: dict[str, str]) -> None:
+    room = {"chunk": [handed("T-2026-01-01", "$y"), handed("T-2025-12-31", "$z")]}
+    there = Door(sync=(200, {"rooms": {"invite": invite("!b", KEEPER)}}),
+                 join=(200, {"room_id": "!b"}), send=(200, {"event_id": "$e"}),
+                 messages=(200, room))
+    assert door.hand_in(door.item("a digest", DAY), box, there.ask) == (
+        "$e", "withdrew T-2025-12-31, T-2026-01-01")
+    puts = [(path.split("/send/")[1].split("/")[0], body)
+            for method, path, body, _ in there.asked if method == "PUT"]
+    # today's first, so he is never left with none; then each earlier one, by its id
+    assert [kind for kind, _ in puts] == [door.ITEM_EVENT, door.WITHDRAW_EVENT, door.WITHDRAW_EVENT]
+    assert [body for _, body in puts[1:]] == [{"id": "T-2025-12-31"}, {"id": "T-2026-01-01"}]
+    assert there.routes()[-1] == "POST /logout"
+
+
+def test_a_withdrawal_that_fails_never_fails_the_days_hand_in(
+    box: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    there = Door(sync=(200, {"rooms": {"invite": invite("!b", KEEPER)}}),
+                 join=(200, {"room_id": "!b"}), send=(200, {"event_id": "$e"}),
+                 messages=(500, {"errcode": "M_UNKNOWN"}))
+    monkeypatch.setattr(door, "_asking", lambda base: there.ask)
+    ok, said = door.hand_over("a digest", DAY)
+    assert ok and said == (
+        "handed to the door as $e; earlier lists not withdrawn:"
+        " RuntimeError: the door: its own room: status 500, M_UNKNOWN")
+    assert there.routes()[-1] == "POST /logout"
+
+
+def test_with_nothing_earlier_nothing_is_withdrawn_and_nothing_more_is_said(
+    box: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    there = Door(sync=(200, {"rooms": {"invite": invite("!b", KEEPER)}}),
+                 join=(200, {"room_id": "!b"}), send=(200, {"event_id": "$e"}),
+                 messages=(200, {"chunk": [handed("T-2026-01-02", "$e")]}))
+    monkeypatch.setattr(door, "_asking", lambda base: there.ask)
+    assert door.hand_over("a digest", DAY) == (True, "handed to the door as $e")
+    assert [m for m, *_ in there.asked].count("PUT") == 1
